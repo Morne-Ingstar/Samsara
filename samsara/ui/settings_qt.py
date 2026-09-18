@@ -944,12 +944,11 @@ class _SettingsWindow(
         close_btn.setProperty("class", "secondary")
         close_btn.style().unpolish(close_btn)
         close_btn.style().polish(close_btn)
-        close_btn.setFixedWidth(100)
+        close_btn.setMinimumWidth(max(100, close_btn.sizeHint().width()))
         close_btn.clicked.connect(self.close)
         btn_layout.addWidget(close_btn)
 
         apply_btn = QPushButton("Apply && Close")
-        apply_btn.setFixedWidth(140)
         apply_btn.setStyleSheet(
             "QPushButton {"
             f" background-color: {theme.ACCENT};"
@@ -962,6 +961,7 @@ class _SettingsWindow(
             "}"
             f"QPushButton:hover {{ background-color: {theme.ACCENT_HOVER}; }}"
         )
+        apply_btn.setMinimumWidth(max(140, apply_btn.sizeHint().width()))
         apply_btn.clicked.connect(self._apply_and_close)
         btn_layout.addWidget(apply_btn)
 

@@ -11530,6 +11530,12 @@ class DictationApp:
                         result, was_command = self.command_executor.process_text(text, self)
 
                         if was_command:
+                            _tut_cmd = self._tutorial_hooks.pop('command', None)
+                            if _tut_cmd:
+                                try:
+                                    _tut_cmd(result or "")
+                                except Exception as e:
+                                    logger.debug(f"Tutorial command hook failed: {e}")
                             _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
                             if (result and not _is_repeat_blacklisted(result, _store_cmd)
                                     and self.command_executor.find_command(result) == result):
@@ -11581,6 +11587,12 @@ class DictationApp:
                         return
 
                     # Regular dictation mode - proceed with text output
+                    _tut_dict = self._tutorial_hooks.pop('dictation', None)
+                    if _tut_dict:
+                        try:
+                            _tut_dict(text)
+                        except Exception as e:
+                            logger.debug(f"Tutorial dictation hook failed: {e}")
                     # Apply text processing (auto-capitalize, number formatting)
                     _diag_corr_start = time.perf_counter()
                     raw = text
