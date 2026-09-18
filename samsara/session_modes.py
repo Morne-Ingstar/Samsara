@@ -51,6 +51,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional, Union
 
+from samsara.draft_document import DraftDocument
+
 log = logging.getLogger("Samsara.session_modes")
 
 
@@ -1897,7 +1899,7 @@ class SessionModeManager:
         self._dictate_target_hwnd: Optional[int] = None
         self._last_dictate_ended_terminal: Optional[bool] = None
         self._stage_buffer: str = ""
-        self._dictate_pending_buffer: str = ""
+        self._draft = DraftDocument(clock=self._clock)
         self._dictate_pending_audio: list = []
         # A staged DICTATE draft set aside by a sleep phrase. Survives reset()
         # and is put back by the next reset() into the buffered DICTATE lane.
@@ -1932,7 +1934,7 @@ class SessionModeManager:
         self._dictate_target_hwnd = None
         self._last_dictate_ended_terminal = None
         self._stage_buffer = ""
-        self._dictate_pending_buffer = ""
+        self._draft.clear()
         self._dictate_pending_audio = []
         self._pending_clear = None
         # Queue 99: a new session never inherits an armed "again".
@@ -1979,8 +1981,8 @@ class SessionModeManager:
         # success and puts nothing back.
         if not buffer.strip():
             return 0
+        self._draft.stash_recoverable(source)
         self._recoverable_draft = {
-            "buffer": buffer,
             "audio": list(self._dictate_pending_audio),
             "last_ended_terminal": self._last_dictate_ended_terminal,
             "stack_items": [item for item in self._stack._items
@@ -1996,12 +1998,7 @@ class SessionModeManager:
     def recoverable_draft(self) -> str:
         """The draft an abort or clear set aside, '' when there is none or it
         has expired."""
-        draft = self._recoverable_draft
-        if draft is None:
-            return ""
-        if self._clock() - draft["stashed_at"] > RECOVERABLE_DRAFT_TTL_S:
-            return ""
-        return draft["buffer"]
+        return self._draft.recoverable_text
 
     def recover_draft(self) -> Optional[dict]:
         """Put a recoverable draft back into the staged buffer. Returns
@@ -2014,7 +2011,7 @@ class SessionModeManager:
             self._recoverable_draft = None
             log.info("[SESSION] recoverable draft expired (%.0f s limit)", RECOVERABLE_DRAFT_TTL_S)
             return None
-        if not draft["buffer"].strip():
+        if not self._draft.recoverable_text.strip():
             # Queue 88: nothing to put back is "nothing to bring back", never
             # a success. Belt and braces with _stash_recoverable_draft's own
             # guard, so a slot written by any future caller cannot lie either.
@@ -2023,18 +2020,19 @@ class SessionModeManager:
             return None
         self._recoverable_draft = None
         existing = self._dictate_pending_buffer
+        restored = self._draft.recover(prepend=bool(existing))
+        if restored is None:
+            return None
         if existing:
             # Chronological: what was lost came first. Nothing is overwritten.
-            self._dictate_pending_buffer = draft["buffer"].rstrip() + " " + existing.lstrip()
             self._dictate_pending_audio = list(draft["audio"]) + list(self._dictate_pending_audio)
         else:
-            self._dictate_pending_buffer = draft["buffer"]
             self._dictate_pending_audio = list(draft["audio"])
             self._last_dictate_ended_terminal = draft["last_ended_terminal"]
             for item in draft["stack_items"]:
                 self._stack.push(item)
-        log.info("[SESSION] recovered %d-char draft (%s)", len(draft["buffer"]), draft["source"])
-        return {"chars": len(draft["buffer"]), "source": draft["source"],
+        log.info("[SESSION] recovered %d-char draft (%s)", restored["chars"], draft["source"])
+        return {"chars": restored["chars"], "source": draft["source"],
                 "prepended": bool(existing)}
 
     def _restore_retained_draft(self) -> None:
@@ -2061,6 +2059,22 @@ class SessionModeManager:
     def dictate_pending_buffer(self) -> str:
         """Text transcribed in manual-commit DICTATE mode but not pasted yet."""
         return self._dictate_pending_buffer
+
+    @property
+    def draft_document(self) -> DraftDocument:
+        """The authoritative pending document for later live-surface packages."""
+        return self._draft
+
+    @property
+    def _dictate_pending_buffer(self) -> str:
+        return self._draft.text
+
+    @_dictate_pending_buffer.setter
+    def _dictate_pending_buffer(self, text: str) -> None:
+        if text:
+            self._draft.replace_text(text)
+        else:
+            self._draft.clear()
 
     @property
     def buffer_dictate_until_commit(self) -> bool:
@@ -2704,7 +2718,26 @@ class SessionModeManager:
                 if start >= payload_start:
                     top.payload = (top.payload[:start - payload_start] + replacement
                                    + top.payload[end - payload_start:])
-            self._dictate_pending_buffer = new_buffer
+            # Preserve a word correction as its own document transaction when
+            # the word is wholly inside one stable segment.  A decoder can
+            # theoretically split a word across chunks; retain the legacy
+            # whole-buffer replacement for that exceptional case rather than
+            # guessing at a partial segment edit.
+            segment_start = 0
+            edited = False
+            for segment in self._draft.segments:
+                segment_end = segment_start + len(segment.text)
+                if start >= segment_start and end <= segment_end:
+                    edit = self._draft.edit(
+                        self._draft.document_id, self._draft.revision, segment.id,
+                        start - segment_start, end - segment_start, replacement,
+                    )
+                    edited = edit.accepted
+                    break
+                segment_start = segment_end
+            if not edited:
+                self._dictate_pending_buffer = new_buffer
+                self._draft.edited = True
             self._last_dictate_ended_terminal = (
                 chunk_ends_terminal(new_buffer) if new_buffer else None)
             context = new_buffer[max(0, start - 40):start + len(replacement) + 40].strip()
@@ -2747,6 +2780,7 @@ class SessionModeManager:
                 "mode": self.mode,
                 "buffered": self._buffer_dictate_until_commit,
             })
+        self._draft.mark_manual_commit()
         return self._commit_dictate_buffer(target_mode=None)
 
     def _ava_entry_blocked_reason(self) -> Optional[str]:
@@ -3155,7 +3189,7 @@ class SessionModeManager:
             return DispatchOutcome(kind="empty")
 
         self._dictate_pending_audio.append(audio_ref)
-        self._dictate_pending_buffer += to_stage
+        self._draft.append(to_stage)
         self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)
         self._stack.push(StackItem(
             kind="dictation_staged_chunk", payload=to_stage,
@@ -3173,6 +3207,7 @@ class SessionModeManager:
         consumed_trailing_commit_word: bool = False,
     ) -> DispatchOutcome:
         """Paste the complete staged thought once, retaining it on failure."""
+        self._draft.mark_manual_commit()
         text = self._dictate_pending_buffer
         if not text:
             self._dictate_pending_audio = []
@@ -3236,7 +3271,7 @@ class SessionModeManager:
         if "  " in final_text:
             final_text = re.sub(r" {2,}", " ", final_text)
 
-        if self._commit_redecode_fn is not None:
+        if self._commit_redecode_fn is not None and not self._draft.edited:
             try:
                 redecode_text = self._commit_redecode_fn(
                     final_text, list(self._dictate_pending_audio),
