@@ -504,8 +504,11 @@ coll = COLLECT(
 # be added after installation. This archive instead preserves the installed
 # wheel files beneath _internal; a frozen onedir executable already imports
 # from sys._MEIPASS (_internal), so a restart after unpacking sees them.
+_CV2_DISTRIBUTION = next(iter(metadata.packages_distributions().get('cv2', ())), None)
+if _CV2_DISTRIBUTION is None:
+    raise SystemExit('samsara.spec: cv2 has no installed distribution metadata')
 _GESTURE_DISTRIBUTIONS = (
-    'mediapipe', 'opencv-contrib-python', 'absl-py', 'protobuf',
+    'mediapipe', _CV2_DISTRIBUTION, 'absl-py', 'protobuf',
     'flatbuffers', 'attrs', 'six', 'packaging',
 )
 
