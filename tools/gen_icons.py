@@ -43,7 +43,8 @@ if str(REPO) not in sys.path:
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt  # noqa: E402
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QPainter  # noqa: E402
+from PySide6.QtGui import QColor, QFont, QImage, QPainter  # noqa: E402
+from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 
 from samsara.ui import theme  # noqa: E402
 from samsara.ui.tray_qt import (  # noqa: E402
@@ -80,7 +81,28 @@ _TASKBAR_LIGHT = "#f3f3f3"
 
 
 def _ensure_gui_app():
-    return QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
+    return QApplication.instance() or QApplication(sys.argv[:1])
+
+
+class _MontageGrab(QWidget):
+    """Hidden real-platform canvas used solely for screenshot evidence."""
+    def __init__(self, image: QImage):
+        super().__init__()
+        self._image = image
+        self.resize(image.size())
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.drawImage(0, 0, self._image)
+        painter.end()
+
+
+def _grab_montage(image: QImage) -> QImage:
+    canvas = _MontageGrab(image)
+    try:
+        return canvas.grab().toImage()
+    finally:
+        canvas.deleteLater()
 
 
 def _replace_paths(text: str, pattern: re.Pattern, values: list[str], what: str) -> str:
@@ -283,7 +305,7 @@ def write_montage(path: Path) -> Path:
             painter.drawImage(x + (col_w - image.width()) // 2,
                               y + (row_h - image.height()) // 2, image)
     painter.end()
-    return _save(sheet, path)
+    return _save(_grab_montage(sheet), path)
 
 
 def write_spin_sheet(path: Path, size: int = 128) -> Path:
