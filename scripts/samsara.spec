@@ -283,6 +283,10 @@ if os.path.exists(portaudio_path):
 hiddenimports = [
     'shiboken6',
 
+    # matplotlib lives in the optional gesture archive, but its first import
+    # needs this stdlib module in the frozen base archive.
+    'plistlib',
+
     # Cloud-fallback TTS voice (2026-07-10 import audit)
     'edge_tts',
 
