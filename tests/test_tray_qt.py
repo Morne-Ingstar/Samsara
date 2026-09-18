@@ -158,6 +158,19 @@ class TestTrayDrawsTheMark:
         assert all(a[:2] == ("recording", "armed") and a[3:] == (30.0, 0.5) for a, _k in calls)
         assert not t._tray.icon().isNull()
 
+    def test_missing_small_ring_falls_back_to_a_visible_regular_mark(self, qapp, monkeypatch, tmp_path, caplog):
+        source = tray_qt.mark_svg_path().read_text(encoding="utf-8")
+        broken = tmp_path / "broken-mark.svg"
+        broken.write_text(source.replace(' id="ring-brand-small"', ' id="missing-brand-small"'), encoding="utf-8")
+        monkeypatch.setattr(tray_qt, "mark_svg_path", lambda: broken)
+        tray_qt.clear_mark_caches()
+        try:
+            image = tray_qt.render_mark("ava", "off", 16, small_max=tray_qt.TASKBAR_SMALL_MAX)
+            assert any(image.pixelColor(x, y).alpha() > 0 for x in range(16) for y in range(16))
+            assert "Samsara mark unavailable" in caplog.text
+        finally:
+            tray_qt.clear_mark_caches()
+
     @staticmethod
     def _app(**state):
         import dictation

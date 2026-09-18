@@ -34,7 +34,8 @@ Structure
 
 Two drawings, the second with "-small" ids:
   #regular (24 px and up) and #small (16 to 20 px, drawn for PRESENCE on a
-  taskbar, not fidelity: a heavy plain ring, stroke 8 hollow / 12 recording
+  taskbar, not fidelity: a heavy plain ring, stroke 8 hollow / 10 Ava brand /
+  12 recording
   (2 / 3 px at 16 px), radius 25, 40-degree gaps so the three segments stay
   separate and a turning ring reads as turning; no head or tail; the eye is
   ONE solid element: a pupil dot (r 7) when open, a lid bar (stroke 8) when
@@ -84,6 +85,11 @@ data-role attributes tell render_mark() what to recolour:
       <path data-role="segment" d="M 7.38,36.34 A 25 25 0 0 1 23.45,8.51"/>
     </g>
     <g id="ring-filled-small" fill="none" stroke="#8b929c" stroke-width="12" stroke-linecap="butt" display="none">
+      <path data-role="segment" d="M 40.55,8.51 A 25 25 0 0 1 56.62,36.34"/>
+      <path data-role="segment" d="M 48.07,51.15 A 25 25 0 0 1 15.93,51.15"/>
+      <path data-role="segment" d="M 7.38,36.34 A 25 25 0 0 1 23.45,8.51"/>
+    </g>
+    <g id="ring-brand-small" fill="none" stroke="#8b929c" stroke-width="10" stroke-linecap="butt" display="none">
       <path data-role="segment" d="M 40.55,8.51 A 25 25 0 0 1 56.62,36.34"/>
       <path data-role="segment" d="M 48.07,51.15 A 25 25 0 0 1 15.93,51.15"/>
       <path data-role="segment" d="M 7.38,36.34 A 25 25 0 0 1 23.45,8.51"/>

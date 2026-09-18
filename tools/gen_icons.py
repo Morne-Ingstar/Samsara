@@ -20,7 +20,7 @@ Usage:
   F:\\envs\\sami\\python.exe tools\\gen_icons.py              regenerate assets
   F:\\envs\\sami\\python.exe tools\\gen_icons.py --check      exit 1 if assets are stale
   F:\\envs\\sami\\python.exe tools\\gen_icons.py --montage PATH
-      16 px state sheet (1x next to 4x, dark and light taskbar) for sign-off
+      16/24/32/48 px state sheet on dark and light taskbar backgrounds
   F:\\envs\\sami\\python.exe tools\\gen_icons.py --recording-spin PATH
       the band-weight (recording) mark at eight rotations, 26/44/60/128 px,
       dark and light, to judge the nose and the 12 o'clock gap (42)
@@ -28,7 +28,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
+import logging
 import re
 import struct
 import xml.etree.ElementTree as ET
@@ -38,11 +38,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-# The offscreen platform ships no fonts; point it at the system fonts so the
-# montage labels render (icons themselves use no text).
-if os.name == "nt":
-    os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts"))
+# This is a build tool, not the app: prevent samsara.log's standalone-import
+# fallback from attaching a handler to the user's live Samsara log.
+logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QPainter  # noqa: E402
@@ -56,6 +54,8 @@ from samsara.ui.tray_qt import (  # noqa: E402
     RING_LINE_WIDTH,
     TASKBAR_SMALL_MAX,
     clear_mark_caches,
+    brand_capture,
+    mark_capture,
     render_mark,
     ring_centreline_path_data,
     ring_segment_path_data,
@@ -124,6 +124,20 @@ def sync_svg() -> bool:
     return True
 
 
+def missing_mark_ids(svg_text: str | None = None) -> list[str]:
+    """Every ring the renderer can request, regular and taskbar-small."""
+    root = ET.fromstring(svg_text if svg_text is not None else SVG_PATH.read_text(encoding="utf-8"))
+    available = {element.get("id") for element in root.iter() if element.get("id")}
+    rings = {ring for table in (mark_capture(), brand_capture()) for _colour, ring in table.values()}
+    return sorted(ring + suffix for ring in rings for suffix in ("", "-small") if ring + suffix not in available)
+
+
+def require_mark_ids(svg_text: str | None = None) -> None:
+    missing = missing_mark_ids(svg_text)
+    if missing:
+        raise ValueError("missing required Samsara mark id(s): " + ", ".join(missing))
+
+
 def render(state: str, size: int) -> QImage:
     """One named state (tray_qt.MARK_STATES) at one pixel size."""
     _ensure_gui_app()
@@ -170,6 +184,7 @@ def expected_outputs() -> dict[Path, QImage | bytes]:
 
 def write_assets() -> list[Path]:
     STATES_DIR.mkdir(parents=True, exist_ok=True)
+    require_mark_ids()
     written = [SVG_PATH] if sync_svg() else []
     # Never overwrite good assets with blank renders of a broken source.
     ET.fromstring(SVG_PATH.read_text(encoding="utf-8"))
@@ -191,6 +206,8 @@ def stale_assets() -> list[Path]:
     except ET.ParseError:
         # An unparseable SVG renders every asset blank, and blank would match
         # blank files written by the same broken run -- fail loudly instead.
+        return [SVG_PATH]
+    if missing_mark_ids(svg_text):
         return [SVG_PATH]
     if synced_svg_text(svg_text) != svg_text:
         stale.append(SVG_PATH)
@@ -225,14 +242,14 @@ def _save(image: QImage, path: Path) -> Path:
 
 
 def write_montage(path: Path) -> Path:
-    """The LARGE mark per state on a dark and a light taskbar: 16 px (the plain
-    ring, shown 4x nearest-neighbour), then 32, 48 and 128 px at 1x."""
+    """Every state at 16/24/32/48 px on dark and light taskbar backgrounds."""
     _ensure_gui_app()
+
+    require_mark_ids()
     label_w, pad, header_h, cell = 170, 12, 44, 128
     columns = []
     for tone, bg in (("dark", _TASKBAR_DARK), ("light", _TASKBAR_LIGHT)):
-        columns += [(f"16 px x4 {tone}", bg, 16), (f"32 px {tone}", bg, 32),
-                    (f"48 px {tone}", bg, 48), (f"128 px {tone}", bg, 128)]
+        columns += [(f"{size} px {tone}", bg, size) for size in (16, 24, 32, 48)]
     col_w = cell + 2 * pad
     row_h = cell + 2 * pad
     width = label_w + col_w * len(columns)
@@ -263,9 +280,6 @@ def write_montage(path: Path) -> Path:
             x = label_w + i * col_w
             painter.fillRect(x + 4, y + 4, col_w - 8, row_h - 8, QColor(bg))
             image = render(state, size)
-            if size == 16:
-                image = image.scaled(64, 64, Qt.AspectRatioMode.IgnoreAspectRatio,
-                                     Qt.TransformationMode.FastTransformation)
             painter.drawImage(x + (col_w - image.width()) // 2,
                               y + (row_h - image.height()) // 2, image)
     painter.end()
@@ -543,6 +557,8 @@ def main(argv: list[str] | None = None) -> int:
     theme.set_theme(theme.DEFAULT_THEME, refresh=False)
 
     _ensure_gui_app()
+
+    require_mark_ids()
 
     if args.check:
         stale = stale_assets()

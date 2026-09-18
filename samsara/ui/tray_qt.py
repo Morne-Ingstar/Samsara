@@ -459,14 +459,14 @@ def mark_eye_id(eye: str, brand: bool = False) -> Optional[str]:
 
 
 def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None,
-             brand: bool = False) -> bytes:
+             brand: bool = False, ring_id: str | None = None) -> bytes:
     """The SVG with only one layer ('ring' or 'eye') of one state visible.
     brand=True selects the brand presentation (brand_capture() / BRAND_EYE);
     the brand never uses the #small drawing."""
     if brand:
         small = False
     ring_colour, eye_colour = mark_colours(capture, eye, brand)
-    ring_id = (brand_capture() if brand else mark_capture())[capture][1]
+    ring_id = ring_id or (brand_capture() if brand else mark_capture())[capture][1]
     eye_id = mark_eye_id(eye, brand)
     suffix = "-small" if small else ""
 
@@ -517,7 +517,22 @@ def _renderer(capture: str, eye: str, small: bool, layer: str,
             renderer = QSvgRenderer(QByteArray(mark_svg(capture, eye, small, layer, brand=brand)))
         except (OSError, ET.ParseError, KeyError) as exc:
             logger.warning("[ICON] Samsara mark unavailable: %s", exc)
-            return None
+            # A missing small layer must not make a tray state disappear.
+            # Prefer its regular mark, then a known hollow ring as the last
+            # visible fallback.  The warning above keeps the source defect
+            # diagnosable while the user still has a tray icon.
+            fallbacks = ((False, None), (False, "ring-hollow")) if layer == "ring" else ((False, None),)
+            for fallback_small, fallback_ring in fallbacks:
+                try:
+                    renderer = QSvgRenderer(QByteArray(
+                        mark_svg(capture, eye, fallback_small, layer, brand=brand,
+                                 ring_id=fallback_ring)))
+                except (OSError, ET.ParseError, KeyError):
+                    continue
+                if renderer.isValid():
+                    break
+            else:
+                return None
         if not renderer.isValid():
             logger.warning("[ICON] Samsara mark did not parse: %s", mark_svg_path())
             return None
