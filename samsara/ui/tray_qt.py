@@ -1056,6 +1056,16 @@ class SamsaraTrayQt(QObject):
                 logger.debug("[TRAY] Could not open the memo list: %s", exc)
         self._open_memo_file()
 
+    def _set_gesture_lane(self, enabled: bool) -> None:
+        """Keep the tray toggle honest when its optional runtime is absent."""
+        self._app.set_gesture_enabled(enabled)
+        if enabled and getattr(self._app, "_gesture_loop", None) is None:
+            self._app.set_gesture_enabled(False)
+            self._report_action_failure(
+                "Gesture Lane",
+                "Gesture control is not installed. Add it from Settings > Advanced > Components.",
+            )
+
     def _open_memo_file(self):
         """Open the raw markdown, creating it first when no memo exists yet.
 
@@ -1242,7 +1252,7 @@ class SamsaraTrayQt(QObject):
         tools_sub.addSeparator()
         add(tools_sub, "Streaming Mode  (CapsLock)", lambda checked: app.set_streaming_mode(checked),
             checked=app.config.get('streaming_mode', False), report_as="Streaming Mode")
-        add(tools_sub, "Gesture Lane  (webcam)", lambda checked: app.set_gesture_enabled(checked),
+        add(tools_sub, "Gesture Lane  (webcam)", lambda checked: self._set_gesture_lane(checked),
             checked=app.config.get('gesture', {}).get('enabled', False), report_as="Gesture Lane")
         add(tools_sub, "Command Reference", lambda _checked: app.toggle_cheat_sheet(),
             checked=getattr(getattr(app, 'cheat_sheet', None), '_visible', False))

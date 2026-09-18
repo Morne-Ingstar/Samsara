@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -369,6 +370,46 @@ class AdvancedPage:
         gesture_cb.setChecked(bool(self.app.config.get('gesture', {}).get('enabled', False)))
         self._widgets['adv_gesture_enabled'] = gesture_cb
         layout.addWidget(gesture_cb)
+        layout.addSpacing(20)
+
+        # ---- Section: Components -------------------------------------------
+        layout.addWidget(self._section_title("Components"))
+        layout.addSpacing(4)
+        components_note = QLabel(
+            "Optional downloads are verified before installation. Installed, missing, "
+            "and coming-soon components are shown here."
+        )
+        components_note.setWordWrap(True)
+        components_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        layout.addWidget(components_note)
+
+        from samsara.ui.first_run_qt import ComponentsPage  # noqa: PLC0415
+        self._components_page = ComponentsPage(
+            container, on_later=lambda: None, include_installed=True, show_later=False,
+        )
+        layout.addWidget(self._components_page.widget)
+        self._components_page.refresh_async()
+
+        def _offer_gesture_install(checked):
+            if not checked:
+                return
+            gesture_cb.blockSignals(True)
+            gesture_cb.setChecked(False)
+            gesture_cb.blockSignals(False)
+            row = self._components_page._rows.get("gesture-control")
+            message = "Gesture control is not installed. Add it now from Components?"
+            if row is None or not row["get"].isEnabled():
+                QMessageBox.information(self, "Gesture control", message)
+                return
+            choice = QMessageBox.question(
+                self, "Gesture control", message,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if choice == QMessageBox.StandardButton.Yes:
+                self._components_page.start_fetch("gesture-control")
+
+        gesture_cb.toggled.connect(_offer_gesture_install)
         layout.addSpacing(20)
 
         # ---- Section: Smart Corrections -------------------------------------

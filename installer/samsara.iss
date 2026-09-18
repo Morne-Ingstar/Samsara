@@ -57,6 +57,9 @@
 #ifndef CommandModelSize
   #define CommandModelSize 0
 #endif
+#ifndef GestureControlSize
+  #define GestureControlSize 0
+#endif
 #ifndef CommandModelAvailable
   #define CommandModelAvailable 0
 #endif
@@ -117,6 +120,7 @@ Name: "core";             Description: "Samsara (required)";                    
 Name: "wake_word_models"; Description: "Hands-free: wake-word models";                        Types: full custom; ExtraDiskSpaceRequired: {#WakeWordModelsSize}
 Name: "cuda_pack";        Description: "GPU acceleration: NVIDIA CUDA pack";                  Types: full; ExtraDiskSpaceRequired: {#CudaPackSize}
 Name: "command_model";    Description: "Command model for the hands-free command lane";       ExtraDiskSpaceRequired: {#CommandModelSize}
+Name: "gesture_control";  Description: "Gesture control: webcam hand poses";                  ExtraDiskSpaceRequired: {#GestureControlSize}
 
 [Files]
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: core
@@ -147,6 +151,7 @@ begin
   if Name = 'cuda_pack' then Result := 'cuda-pack';
   if Name = 'wake_word_models' then Result := 'wake-word-models';
   if Name = 'command_model' then Result := 'command-model';
+  if Name = 'gesture_control' then Result := 'gesture-control';
 end;
 
 function ComponentIndex(const Name: String): Integer;
