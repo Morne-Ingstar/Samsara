@@ -51,6 +51,14 @@ import os
 import pkgutil
 import traceback
 
+def _pass():
+    marker = os.environ.get("SAMSARA_FROZEN_IMPORT_MARKER")
+    if marker:
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write("PASS\n")
+    os._exit(0)
+
+
 if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
     try:
         names = ["PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtSvg"]
@@ -62,11 +70,38 @@ if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
     except BaseException:
         traceback.print_exc()
         os._exit(1)
-    marker = os.environ.get("SAMSARA_FROZEN_IMPORT_MARKER")
-    if marker:
-        with open(marker, "w", encoding="utf-8") as handle:
-            handle.write("PASS\n")
-    os._exit(0)
+    _pass()
+
+if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "missing":
+    from samsara.components import ComponentNotInstalled
+    from samsara.vision.camera_service import CameraService
+    try:
+        CameraService().start()
+    except ComponentNotInstalled as exc:
+        print(f"[GESTURE-CHECK] {exc}")
+        _pass()
+    raise RuntimeError("gesture component unexpectedly present in core build")
+
+if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "installed":
+    import cv2  # noqa: F401
+    import mediapipe  # noqa: F401
+    from samsara.vision.gesture_loop import GestureLoop
+
+    class _Reader:
+        def get(self, timeout=0.1):
+            return None
+
+    class _Camera:
+        def subscribe(self):
+            return _Reader()
+        def unsubscribe(self, _reader):
+            return None
+
+    loop = GestureLoop(object(), _Camera(), {})
+    loop.start()
+    loop.stop()
+    print("[GESTURE-CHECK] installed component imports and gesture loop starts")
+    _pass()
 ''', encoding='utf-8')
 
 # ============================================================================
