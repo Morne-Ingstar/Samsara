@@ -92,6 +92,31 @@ if "%CHECK_FAIL%"=="1" (
 echo [CHECK-12] PASS
 
 echo.
+echo [14] Running frozen import inventory against an isolated temp profile...
+set "IMPORT_HOME=%TEMP%\samsara_import_%RANDOM%%RANDOM%"
+set "IMPORT_LOG=%TEMP%\samsara_import_%RANDOM%%RANDOM%.log"
+mkdir "%IMPORT_HOME%" >nul 2>nul
+set "SAMSARA_HOME_DIR=%IMPORT_HOME%"
+set "SAMSARA_FROZEN_IMPORT_CHECK=1"
+dist\Samsara\Samsara.exe > "%IMPORT_LOG%" 2>&1
+set "IMPORT_RESULT=%ERRORLEVEL%"
+set "SAMSARA_FROZEN_IMPORT_CHECK="
+set "SAMSARA_HOME_DIR="
+rmdir /s /q "%IMPORT_HOME%"
+if not "%IMPORT_RESULT%"=="0" (
+    echo [CHECK-14] FAIL -- frozen import inventory exited %IMPORT_RESULT%
+    if exist "%IMPORT_LOG%" type "%IMPORT_LOG%"
+    exit /b %IMPORT_RESULT%
+)
+findstr /c:"[FROZEN-IMPORT] PASS" "%IMPORT_LOG%" >nul
+if errorlevel 1 (
+    echo [CHECK-14] FAIL -- frozen import inventory did not report PASS
+    if exist "%IMPORT_LOG%" type "%IMPORT_LOG%"
+    exit /b 1
+)
+echo [CHECK-14] PASS -- every Samsara/plugin/Qt inventory module imported
+
+echo.
 echo [3/3] Running frozen_smoke.py against the fresh build...
 set "SMOKE_LOG=%TEMP%\samsara_smoke_%RANDOM%.log"
 "%PYTHON_EXE%" %PYTHON_ARGS% tools\frozen_smoke.py dist\Samsara > "%SMOKE_LOG%" 2>&1
@@ -119,4 +144,7 @@ if "%SMOKE_RESULT%"=="0" (
 )
 
 if not "%CHECK_FAIL%"=="0" exit /b 1
+echo.
+echo [SIZE] Fresh build report:
+"%PYTHON_EXE%" %PYTHON_ARGS% tools\size_report.py dist\Samsara
 exit /b %SMOKE_RESULT%

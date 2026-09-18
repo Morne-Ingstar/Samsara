@@ -37,6 +37,33 @@ site_packages = find_package_dir('ctranslate2')
 # App directory (parent of scripts folder)
 app_dir = Path(SPECPATH).parent
 
+# This hook runs only when build_and_smoke.cmd explicitly asks the frozen exe
+# to prove its import inventory.  It is generated under PyInstaller's build
+# directory rather than becoming a second application entry point or a shipped
+# source file.  ``os._exit`` prevents dictation.py from starting in this mode.
+_runtime_import_hook = app_dir / 'build' / 'samsara_runtime_import_check.py'
+_runtime_import_hook.parent.mkdir(parents=True, exist_ok=True)
+_runtime_import_hook.write_text(r'''
+import importlib
+import os
+import pkgutil
+import traceback
+
+if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
+    try:
+        names = ["PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtSvg"]
+        for package_name in ("samsara", "plugins.commands"):
+            package = importlib.import_module(package_name)
+            names.extend(item.name for item in pkgutil.walk_packages(package.__path__, package.__name__ + "."))
+        for name in names:
+            importlib.import_module(name)
+    except BaseException:
+        traceback.print_exc()
+        os._exit(1)
+    print("[FROZEN-IMPORT] PASS")
+    os._exit(0)
+''', encoding='utf-8')
+
 # ============================================================================
 # DATA FILES
 # ============================================================================
@@ -77,17 +104,15 @@ if _oww_missing:
         "--fetch-oww-models` before PyInstaller"
     )
 
-# 2c. PySide6 / shiboken6 — collect everything (2026-07-10 import audit).
-# ~48 samsara/ui/*_qt.py files depend on PySide6, and it was completely
-# uncollected here (no datas/binaries/hiddenimports at all) -- this is the
-# ModuleNotFoundError that first surfaced from CI's clean-env build.
-# Qt's plugin architecture (platforms/qwindows.dll, styles, imageformats,
-# translations) loads DLLs dynamically at runtime, not via Python import --
-# invisible to PyInstaller's static analysis regardless of hiddenimports,
-# so a blanket collect_all (not just hiddenimports) is required, same as
-# the openwakeword pattern above. shiboken6 is PySide6's binding-generator
-# runtime dependency (see requirements.txt) and needs the same treatment.
-pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all('PySide6')
+# 2c. PySide6.  The app imports only QtCore, QtGui, QtWidgets and QtSvg.
+# PyInstaller's Qt hooks follow their DLL dependencies and provide qwindows,
+# qico/qsvg image handlers and the Windows style; collect_all('PySide6') used
+# to also ship WebEngine, QML/Quick, Multimedia, translations and developer
+# tooling that no executable path imports.
+pyside6_datas, pyside6_binaries = [], []
+pyside6_hiddenimports = [
+    'PySide6', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets', 'PySide6.QtSvg',
+]
 shiboken6_datas, shiboken6_binaries, shiboken6_hiddenimports = collect_all('shiboken6')
 datas += pyside6_datas + shiboken6_datas
 
@@ -99,12 +124,7 @@ datas += pyside6_datas + shiboken6_datas
 mediapipe_datas, mediapipe_binaries, mediapipe_hiddenimports = collect_all('mediapipe')
 datas += mediapipe_datas
 
-# 3. customtkinter themes and assets
-customtkinter_path = os.path.join(site_packages, 'customtkinter')
-if os.path.exists(customtkinter_path):
-    datas.append((customtkinter_path, 'customtkinter'))
-
-# 4. sounddevice PortAudio binaries
+# 3. sounddevice PortAudio binaries
 sounddevice_data = os.path.join(site_packages, '_sounddevice_data')
 if os.path.exists(sounddevice_data):
     datas.append((sounddevice_data, '_sounddevice_data'))
@@ -208,14 +228,6 @@ if os.path.exists(portaudio_path):
 # HIDDEN IMPORTS
 # ============================================================================
 hiddenimports = [
-    # Qt UI framework (2026-07-10 import audit) -- collect_all('PySide6')
-    # above already pulls in the bulk of it; these specific submodules are
-    # listed explicitly too as a defensive backstop, matching this file's
-    # existing style for faster_whisper's submodules below.
-    'PySide6',
-    'PySide6.QtCore',
-    'PySide6.QtGui',
-    'PySide6.QtWidgets',
     'shiboken6',
 
     # Screen/webcam frame handling (2026-07-10 import audit)
@@ -267,12 +279,6 @@ hiddenimports = [
     # Clipboard/GUI automation
     'pyperclip',
     'pyautogui',
-    
-    # UI
-    'customtkinter',
-    'tkinter',
-    'tkinter.ttk',
-    'tkinter.messagebox',
     
     # Image/Tray
     'PIL',
@@ -361,7 +367,7 @@ hiddenimports = [
 # Merge imports collected by collect_all('openwakeword')
 hiddenimports += oww_hiddenimports
 
-# Merge imports collected by collect_all('PySide6' / 'shiboken6' / 'mediapipe')
+# Merge the narrow Qt inventory plus imports collected for shiboken6/mediapipe.
 hiddenimports += pyside6_hiddenimports + shiboken6_hiddenimports + mediapipe_hiddenimports
 
 # samsara.ui / samsara.tts (2026-07-10): both packages are only reached via
@@ -377,6 +383,10 @@ hiddenimports += pyside6_hiddenimports + shiboken6_hiddenimports + mediapipe_hid
 # every future rename.
 hiddenimports += collect_submodules('samsara.ui')
 hiddenimports += collect_submodules('samsara.tts')
+# The frozen import-check runtime hook walks every Samsara and dynamic plugin
+# module. Include them all so that check proves the artifact, not the source.
+hiddenimports += collect_submodules('samsara')
+hiddenimports += collect_submodules('plugins.commands')
 
 # ============================================================================
 # ANALYSIS
@@ -389,7 +399,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(_runtime_import_hook)],
     excludes=[
         # Exclude problematic modules
         'charset_normalizer',
@@ -443,6 +453,14 @@ a = Analysis(
         'pandas',
         'h5py',
         'pytest',
+        # No production module imports these. customtkinter is a requirements
+        # passenger; its PyInstaller hook was the only reason Tcl/Tk shipped.
+        'customtkinter',
+        'tkinter',
+        '_tkinter',
+        # mediapipe's broad package collector reaches its model-maker stack,
+        # but Samsara's gesture feature uses only mediapipe.solutions.
+        'pyarrow',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
