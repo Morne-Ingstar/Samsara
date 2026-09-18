@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,13 +19,12 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from samsara.runtime import thread_registry
-from samsara import ava_readiness
+from samsara import ava_readiness, config_defaults
 from samsara.ui import ava_consent_qt, theme
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
@@ -63,9 +63,8 @@ _WEB_SEARCH_NOTE = (
     "press keys or change files. Each search uses extra DeepSeek tokens."
 )
 _WEB_SEARCH_UNAVAILABLE = (
-    "Not available right now: web search needs Cloud AI enabled with DeepSeek as "
-    "the provider. Local models (Ollama) and the other providers have no built-in "
-    "web search, so Ava answers from what the model already knows."
+    "Web search is DeepSeek-only; you're using {provider}. "
+    "Local models (Ollama) and the other providers have no built-in web search."
 )
 
 
@@ -73,8 +72,6 @@ class AvaCloudPage:
     """Methods of the Ava / Cloud settings page (moved from _SettingsWindow)."""
 
     def _build_ava_cloud_tab(self):
-        from samsara import premium
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -371,126 +368,116 @@ class AvaCloudPage:
         layout.addLayout(test_row)
         layout.addSpacing(20)
 
-        # ---- Section: Support Samsara ---------------------------------------
-        layout.addWidget(self._section_title("Support Samsara"))
+        # Prompt 244: supporter-key UI removed because no feature is paywalled;
+        # stored premium_license and its handlers remain honoured.
+        layout.addWidget(self._section_title("Voice editing (experimental)"))
         layout.addSpacing(4)
 
-        support_text = QLabel(
-            "Samsara is free — every feature, forever. Supporting is optional and never "
-            "unlocks features. morneis.com/samsara/support"
+        edit_cfg = self.app.config.get("ava_edit", {}) or {}
+        if not isinstance(edit_cfg, dict):
+            edit_cfg = {}
+        edit_touched = set()
+
+        edit_enabled = QCheckBox("Let Ava edit what you just dictated")
+        edit_enabled.setChecked(bool(edit_cfg.get(
+            "enabled", config_defaults.DEFAULTS["ava_edit.enabled"])))
+        self._widgets["ava_edit_enabled"] = edit_enabled
+        layout.addWidget(edit_enabled)
+
+        edit_note = QLabel(
+            "Say 'Ava, make that more formal'. Ava shows the change; say 'apply' to type it. "
+            "Experimental: leave the cursor where it was until you say apply."
         )
-        support_text.setWordWrap(True)
-        support_text.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
-        layout.addWidget(support_text)
-        layout.addSpacing(8)
-
-        key = premium.get_license_key(self.app)
-        has_key = premium.validate_key(key)
-
-        # Plain QWidget, not a bordered/filled QFrame: the "supporter key
-        # active" state is read-only text (heading + masked key), and the
-        # "no key" state already has its own real QLineEdit with its own
-        # input-field chrome -- an outer field-styled box around either
-        # made static text read as a disabled input and doubled up the
-        # chrome around the real one.
-        supporter_frame = QWidget()
-        supporter_frame_layout = QVBoxLayout(supporter_frame)
-        supporter_frame_layout.setContentsMargins(16, 16, 16, 16)
-        supporter_frame_layout.setSpacing(0)
-
-        # QStackedWidget: index 0 = no key, index 1 = key stored. This never
-        # gates anything -- it only decides which of these two rows to show.
-        # Bare, unqualified "background: transparent" (no type/ID selector)
-        # can leak into the ancestor cascade and strip a descendant's own
-        # app-level type-selector styling -- this previously stripped
-        # activate_btn's QPushButton background/color rule, leaving it
-        # rendering near-invisible (same class of bug fixed for QLabel/
-        # QCheckBox in 9b7f00f/addaa88). Scoped ID selectors avoid that.
-        supporter_stack = QStackedWidget()
-        supporter_stack.setObjectName("supporterKeyStack")
-        supporter_stack.setStyleSheet(
-            "QStackedWidget#supporterKeyStack { background-color: transparent; }"
+        edit_note.setWordWrap(True)
+        edit_note.setStyleSheet(
+            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;"
         )
-        self._widgets['cloud_license_stack'] = supporter_stack
+        layout.addWidget(edit_note)
 
-        # -- Page 0: no supporter key ---
-        no_key_page = QWidget()
-        no_key_page.setObjectName("supporterKeyNoKeyPage")
-        no_key_page.setStyleSheet(
-            "QWidget#supporterKeyNoKeyPage { background-color: transparent; }"
+        edit_options = QWidget()
+        edit_options_layout = QVBoxLayout(edit_options)
+        edit_options_layout.setContentsMargins(26, 0, 0, 0)
+        edit_options_layout.setSpacing(8)
+
+        from samsara.config_schema import SETTINGS_SCHEMA
+        timeout_schema = SETTINGS_SCHEMA["ava_edit.timeout_s"]
+        edit_timeout = QDoubleSpinBox()
+        edit_timeout.setRange(
+            float(timeout_schema.get("min", 1.0)),
+            float(timeout_schema.get("max", 120.0)),
         )
-        nk_layout = QVBoxLayout(no_key_page)
-        nk_layout.setContentsMargins(0, 0, 0, 0)
-        nk_layout.setSpacing(10)
+        edit_timeout.setSingleStep(1.0)
+        edit_timeout.setDecimals(1)
+        edit_timeout.setSuffix(" s")
+        edit_timeout.setValue(float(edit_cfg.get(
+            "timeout_s", config_defaults.DEFAULTS["ava_edit.timeout_s"])))
+        self._widgets["ava_edit_timeout"] = edit_timeout
+        timeout_row = QWidget()
+        timeout_row.setLayout(self._setting_row(
+            "Timeout",
+            "Seconds Ava waits for the edit model to answer",
+            edit_timeout,
+            control_width=180,
+        ))
+        self._widgets["ava_edit_timeout_row"] = timeout_row
+        edit_options_layout.addWidget(timeout_row)
 
-        key_row = QHBoxLayout()
-        key_row.setSpacing(8)
-        key_row_lbl = QLabel("Supporter key (optional):")
-        key_row_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent;")
-        key_row_lbl.setFixedWidth(150)
-        license_entry = QLineEdit()
-        license_entry.setPlaceholderText("SAMSARA-XXXX-XXXX-XXXX")
-        self._widgets['cloud_license_entry'] = license_entry
-        activate_btn = QPushButton("Activate")
-        activate_btn.setMinimumWidth(110)  # sizeHint is 100; a few px of margin
-        activate_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-        activate_btn.clicked.connect(self._activate_license)
-        key_row.addWidget(key_row_lbl)
-        key_row.addWidget(license_entry, stretch=1)
-        key_row.addWidget(activate_btn)
-        nk_layout.addLayout(key_row)
+        edit_model = QComboBox()
+        edit_model.addItem("Ava's model", "")
+        for provider_display, provider_code in _PROVIDERS:
+            edit_model.addItem(
+                f"{provider_display}: {_DEFAULT_MODELS[provider_code]}",
+                _DEFAULT_MODELS[provider_code],
+            )
+        current_edit_model = str(edit_cfg.get("model", "") or "")
+        current_model_index = edit_model.findData(current_edit_model)
+        if current_model_index < 0 and current_edit_model:
+            edit_model.addItem(current_edit_model, current_edit_model)
+            current_model_index = edit_model.count() - 1
+        edit_model.setCurrentIndex(max(0, current_model_index))
+        self._widgets["ava_edit_model"] = edit_model
+        model_row = QWidget()
+        model_row.setLayout(self._setting_row(
+            "Model",
+            "Choose a provider model, or leave blank for Ava's model",
+            edit_model,
+        ))
+        self._widgets["ava_edit_model_row"] = model_row
+        edit_options_layout.addWidget(model_row)
 
-        license_status = QLabel("")
-        license_status.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px; background: transparent;")
-        self._widgets['cloud_license_status'] = license_status
-        nk_layout.addWidget(license_status)
+        demo_pacing = QCheckBox("Use demo pacing (slower)")
+        demo_pacing.setChecked(edit_cfg.get(
+            "demo_pacing", config_defaults.DEFAULTS["ava_edit.demo_pacing"]) == "cinematic")
+        self._widgets["ava_edit_demo_pacing"] = demo_pacing
+        pacing_row = QWidget()
+        pacing_layout = QHBoxLayout(pacing_row)
+        pacing_layout.setContentsMargins(0, 0, 0, 0)
+        pacing_layout.addWidget(demo_pacing)
+        pacing_layout.addStretch()
+        self._widgets["ava_edit_demo_pacing_row"] = pacing_row
+        edit_options_layout.addWidget(pacing_row)
+        layout.addWidget(edit_options)
 
-        supporter_stack.addWidget(no_key_page)  # index 0
+        def _sync_edit_options(checked):
+            edit_options.setVisible(checked)
+            for key in (
+                "ava_edit_timeout_row",
+                "ava_edit_model_row",
+                "ava_edit_demo_pacing_row",
+            ):
+                widget = self._widgets.get(key)
+                if widget is not None:
+                    widget.setVisible(checked)
 
-        # -- Page 1: supporter key stored ---
-        has_key_page = QWidget()
-        has_key_page.setObjectName("supporterKeyHasKeyPage")
-        has_key_page.setStyleSheet(
-            "QWidget#supporterKeyHasKeyPage { background-color: transparent; }"
-        )
-        hk_layout = QVBoxLayout(has_key_page)
-        hk_layout.setContentsMargins(0, 0, 0, 0)
-        hk_layout.setSpacing(6)
+        def _mark_edit_touched(key):
+            edit_touched.add(key)
 
-        active_lbl = QLabel("Supporter key active")
-        active_lbl.setStyleSheet(
-            f"color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px; font-weight: bold; background: transparent;"
-        )
-        hk_layout.addWidget(active_lbl)
-
-        masked_lbl = QLabel(premium.masked_key(key) if has_key else "")
-        masked_lbl.setStyleSheet(
-            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; "
-            "font-family: 'Consolas', 'Courier New', monospace; background: transparent;"
-        )
-        self._widgets['cloud_masked_key'] = masked_lbl
-        hk_layout.addWidget(masked_lbl)
-
-        remove_btn = QPushButton("Remove Key")
-        remove_btn.setFixedWidth(120)
-        remove_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
-            f"padding: 7px 14px; font-size: {theme.TYPE_BODY}px; }}"
-            f"QPushButton:hover {{ background-color: {theme.wash(0.04)}; color: {theme.TEXT_PRIMARY}; }}"
-        )
-        remove_btn.clicked.connect(self._remove_license)
-        hk_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-
-        supporter_stack.addWidget(has_key_page)  # index 1
-
-        supporter_stack.setCurrentIndex(1 if has_key else 0)
-        supporter_frame_layout.addWidget(supporter_stack)
-        layout.addWidget(supporter_frame)
-
-        supporter_instant_note = QLabel("Activating or removing a supporter key applies immediately.")
-        supporter_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
-        layout.addWidget(supporter_instant_note)
+        edit_enabled.toggled.connect(lambda checked: (
+            _mark_edit_touched("enabled"), _sync_edit_options(checked)))
+        edit_timeout.valueChanged.connect(lambda _value: _mark_edit_touched("timeout_s"))
+        edit_model.currentIndexChanged.connect(lambda _index: _mark_edit_touched("model"))
+        demo_pacing.toggled.connect(lambda _checked: _mark_edit_touched("demo_pacing"))
+        _sync_edit_options(edit_enabled.isChecked())
 
         def _save(_acc):
             updates = {}
@@ -539,6 +526,24 @@ class AvaCloudPage:
                         self._widgets['ava_memory_max_turns'].value()
                     )
                 updates['ava_memory'] = mem_updates
+
+            if edit_touched:
+                ava_edit_cfg = dict(_acc.get(
+                    "ava_edit", self.app.config.get("ava_edit", {})) or {})
+                if "enabled" in edit_touched:
+                    ava_edit_cfg["enabled"] = self._widgets[
+                        "ava_edit_enabled"].isChecked()
+                if "timeout_s" in edit_touched:
+                    ava_edit_cfg["timeout_s"] = self._widgets[
+                        "ava_edit_timeout"].value()
+                if "model" in edit_touched:
+                    ava_edit_cfg["model"] = self._widgets[
+                        "ava_edit_model"].currentData()
+                if "demo_pacing" in edit_touched:
+                    ava_edit_cfg["demo_pacing"] = (
+                        "cinematic" if self._widgets[
+                            "ava_edit_demo_pacing"].isChecked() else "instant")
+                updates["ava_edit"] = ava_edit_cfg
             return updates
         self._save_fns.append(_save)
 
@@ -555,12 +560,20 @@ class AvaCloudPage:
         provider_combo = self._widgets.get('cloud_provider')
         if cb is None or enabled_cb is None or provider_combo is None:
             return
-        provider = _DISPLAY_TO_CODE.get(provider_combo.currentText(), 'deepseek')
+        provider_display = provider_combo.currentText()
+        provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
         available = enabled_cb.isChecked() and provider == 'deepseek'
         if not available:
             cb.setChecked(False)
         cb.setEnabled(available)
         if note is not None:
+            if provider == "deepseek" and not enabled_cb.isChecked():
+                note.setText(
+                    "Web search is DeepSeek-only; you're using DeepSeek. "
+                    "Turn on Cloud AI to enable it."
+                )
+            else:
+                note.setText(_WEB_SEARCH_UNAVAILABLE.format(provider=provider_display))
             note.setVisible(not available)
 
     def _provider_info(self, display_name: str) -> str:
@@ -594,13 +607,6 @@ class AvaCloudPage:
         with self.app._config_lock:
             self.app.config['premium_license'] = key
             self.app.save_config()
-        # Switch supporter-key panel to the "key stored" state
-        stack = self._widgets.get('cloud_license_stack')
-        if stack:
-            stack.setCurrentIndex(1)
-        masked_lbl = self._widgets.get('cloud_masked_key')
-        if masked_lbl:
-            masked_lbl.setText(premium.masked_key(key))
         if status_lbl:
             status_lbl.setText("")
 
@@ -612,9 +618,6 @@ class AvaCloudPage:
         with self.app._config_lock:
             self.app.config['premium_license'] = ""
             self.app.save_config()
-        stack = self._widgets.get('cloud_license_stack')
-        if stack:
-            stack.setCurrentIndex(0)
         entry = self._widgets.get('cloud_license_entry')
         if entry:
             entry.clear()

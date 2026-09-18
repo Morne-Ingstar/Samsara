@@ -140,11 +140,14 @@ def enabled(app) -> bool:
     only ever STAGE a proposal on its own -- the word "apply" is what makes
     anything happen. Off means an edit request is an ordinary Ava turn again,
     with no chip and no staged slot."""
+    from samsara import config_defaults
+
     cfg = getattr(app, "config", None) or {}
     section = cfg.get("ava_edit")
     if not isinstance(section, dict):
-        return True
-    return bool(section.get("enabled", True))
+        return bool(config_defaults.DEFAULTS["ava_edit.enabled"])
+    return bool(section.get(
+        "enabled", config_defaults.DEFAULTS["ava_edit.enabled"]))
 
 
 def source_text(app) -> str:
