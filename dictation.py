@@ -2191,9 +2191,11 @@ class DictationApp:
         )
 
         # Start keyboard listener
+        from samsara import hotkeys
+        hotkeys.bind_host_module(sys.modules[__name__])
         self.keyboard_listener = pynput_keyboard.Listener(
-            on_press=self.on_key_press,
-            on_release=self.on_key_release
+            on_press=hotkeys.safe_listener_callback(self.on_key_press, "on_press"),
+            on_release=hotkeys.safe_listener_callback(self.on_key_release, "on_release"),
         )
         self.keyboard_listener.start()
         _boot("keyboard/mouse listener setup")

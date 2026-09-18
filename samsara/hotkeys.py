@@ -6,6 +6,7 @@ settings/tray seams remain stable.  These methods accept the app object as
 """
 import logging
 import sys
+import threading
 import time
 
 import keyboard
@@ -25,11 +26,53 @@ _OTHER_HOTKEY_KEYS = (
     ('cancel_hotkey', 'escape'),
 )
 _AVA_CMD_TAP_DEBOUNCE_MS = 40
+_host_module = None
+_listener_error_types = set()
+_listener_error_lock = threading.Lock()
+
+
+def bind_host_module(module):
+    """Bind the application module that owns the legacy hotkey helpers."""
+    global _host_module
+    previous = _host_module
+    _host_module = module
+    return previous
+
+
+def _listener_callback_error(callback_name, exc):
+    error_type = type(exc)
+    with _listener_error_lock:
+        first_for_type = error_type not in _listener_error_types
+        _listener_error_types.add(error_type)
+    if first_for_type:
+        logger.exception("[HOTKEY] Unhandled exception in listener callback %s: %s",
+                         callback_name, exc)
+    else:
+        logger.debug("[HOTKEY] Repeated exception in listener callback %s: %s",
+                     callback_name, exc)
+
+
+def safe_listener_callback(callback, callback_name):
+    """Return a pynput callback that never lets an exception kill the listener."""
+    def _safe_callback(key):
+        try:
+            return callback(key)
+        except BaseException as exc:
+            _listener_callback_error(callback_name, exc)
+            return None
+    return _safe_callback
 
 
 def _dictation_helper(name):
     """Use dictation's compatibility helpers, including test monkeypatches."""
-    return getattr(sys.modules['dictation'], name)
+    module = _host_module
+    if module is None:
+        module = sys.modules.get("__main__")
+        if module is None or not hasattr(module, name):
+            module = sys.modules.get("dictation")
+    if module is None:
+        raise RuntimeError("hotkey host module has not been bound")
+    return getattr(module, name)
 
 
 def _raw_key_pressed(name):
