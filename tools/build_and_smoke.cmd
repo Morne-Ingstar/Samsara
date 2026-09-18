@@ -116,8 +116,89 @@ if not exist "%IMPORT_MARKER%" (
     if exist "%IMPORT_LOG%" type "%IMPORT_LOG%"
     exit /b 1
 )
+findstr /x /c:"PASS" "%IMPORT_MARKER%" >nul
+if errorlevel 1 (
+    echo [CHECK-14] FAIL -- frozen import inventory wrote a non-PASS marker
+    type "%IMPORT_MARKER%"
+    if exist "%IMPORT_LOG%" type "%IMPORT_LOG%"
+    exit /b 1
+)
 del "%IMPORT_MARKER%" >nul 2>nul
 echo [CHECK-14] PASS -- every Samsara/plugin/Qt inventory module imported
+
+echo.
+echo [15] Proving the core refuses gesture control without its component...
+set "GESTURE_HOME=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%"
+set "GESTURE_LOG=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%.log"
+set "GESTURE_MARKER=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%.ok"
+mkdir "%GESTURE_HOME%" >nul 2>nul
+set "SAMSARA_HOME_DIR=%GESTURE_HOME%"
+set "SAMSARA_GESTURE_COMPONENT_CHECK=missing"
+set "SAMSARA_FROZEN_IMPORT_MARKER=%GESTURE_MARKER%"
+dist\Samsara\Samsara.exe > "%GESTURE_LOG%" 2>&1
+set "GESTURE_RESULT=%ERRORLEVEL%"
+set "SAMSARA_GESTURE_COMPONENT_CHECK="
+set "SAMSARA_FROZEN_IMPORT_MARKER="
+set "SAMSARA_HOME_DIR="
+rmdir /s /q "%GESTURE_HOME%"
+if not "%GESTURE_RESULT%"=="0" (
+    echo [CHECK-15] FAIL -- missing-component check exited %GESTURE_RESULT%
+    if exist "%GESTURE_LOG%" type "%GESTURE_LOG%"
+    exit /b %GESTURE_RESULT%
+)
+findstr /x /c:"PASS" "%GESTURE_MARKER%" >nul
+if errorlevel 1 (
+    echo [CHECK-15] FAIL -- missing-component check did not write PASS
+    if exist "%GESTURE_MARKER%" type "%GESTURE_MARKER%"
+    if exist "%GESTURE_LOG%" type "%GESTURE_LOG%"
+    exit /b 1
+)
+del "%GESTURE_MARKER%" >nul 2>nul
+echo [CHECK-15] PASS -- missing component is handled without app startup
+
+echo.
+echo [16] Proving the installed gesture component imports in the frozen app...
+set "GESTURE_ZIP="
+for %%F in (dist\Samsara-GestureControl-*.zip) do set "GESTURE_ZIP=%%~fF"
+if not defined GESTURE_ZIP (
+    echo [CHECK-16] FAIL -- gesture component archive was not built
+    exit /b 1
+)
+set "GESTURE_APP=%TEMP%\samsara_gesture_app_%RANDOM%%RANDOM%"
+set "GESTURE_HOME=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%"
+set "GESTURE_LOG=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%.log"
+set "GESTURE_MARKER=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%.ok"
+"%PYTHON_EXE%" %PYTHON_ARGS% -c "import shutil,sys,zipfile; from pathlib import Path; shutil.copytree(sys.argv[1], sys.argv[2]); zipfile.ZipFile(sys.argv[3]).extractall(Path(sys.argv[2]) / '_internal')" "dist\Samsara" "%GESTURE_APP%" "%GESTURE_ZIP%"
+if errorlevel 1 (
+    echo [CHECK-16] FAIL -- could not prepare the isolated component install
+    rmdir /s /q "%GESTURE_APP%"
+    exit /b 1
+)
+mkdir "%GESTURE_HOME%" >nul 2>nul
+set "SAMSARA_HOME_DIR=%GESTURE_HOME%"
+set "SAMSARA_GESTURE_COMPONENT_CHECK=installed"
+set "SAMSARA_FROZEN_IMPORT_MARKER=%GESTURE_MARKER%"
+"%GESTURE_APP%\Samsara.exe" > "%GESTURE_LOG%" 2>&1
+set "GESTURE_RESULT=%ERRORLEVEL%"
+set "SAMSARA_GESTURE_COMPONENT_CHECK="
+set "SAMSARA_FROZEN_IMPORT_MARKER="
+set "SAMSARA_HOME_DIR="
+rmdir /s /q "%GESTURE_HOME%"
+rmdir /s /q "%GESTURE_APP%"
+if not "%GESTURE_RESULT%"=="0" (
+    echo [CHECK-16] FAIL -- installed-component check exited %GESTURE_RESULT%
+    if exist "%GESTURE_LOG%" type "%GESTURE_LOG%"
+    exit /b %GESTURE_RESULT%
+)
+findstr /x /c:"PASS" "%GESTURE_MARKER%" >nul
+if errorlevel 1 (
+    echo [CHECK-16] FAIL -- installed-component check did not write PASS
+    if exist "%GESTURE_MARKER%" type "%GESTURE_MARKER%"
+    if exist "%GESTURE_LOG%" type "%GESTURE_LOG%"
+    exit /b 1
+)
+del "%GESTURE_MARKER%" >nul 2>nul
+echo [CHECK-16] PASS -- frozen component import and gesture loop start
 
 echo.
 echo [3/3] Running frozen_smoke.py against the fresh build...
