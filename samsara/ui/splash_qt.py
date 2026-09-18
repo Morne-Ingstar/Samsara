@@ -8,26 +8,22 @@ object freely while startup work runs on background threads.
 from __future__ import annotations
 
 import logging
-import math
 import threading
 import time
 
-from PySide6.QtCore import QElapsedTimer, QPointF, QRectF, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QElapsedTimer, QRectF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QFont,
     QLinearGradient,
     QPainter,
-    QPainterPath,
     QPen,
-    QRadialGradient,
 )
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
 from samsara.ui.tray_qt import paint_mark
-from samsara.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +35,6 @@ _DISPLAY_SCALE = 0.85
 _SIGNATURE_TEXT = "A Morne Ingstar Production"
 _DETAIL_DELAY_MS = 8_000
 _REASSURANCE_DELAY_MS = 15_000
-_TRAY_LOGICAL = (24.0, 322.0, 712.0, 94.0)
 
 
 def _color(value: str, alpha: int = 255) -> QColor:
@@ -123,10 +118,6 @@ class _SplashWidget(QWidget):
         self._frame_timer.setInterval(33)  # hard cap at about 30 fps
         self._frame_timer.timeout.connect(self._on_frame)
 
-        # Static knotwork is calculated once in logical coordinates.  The
-        # procedural vortex remains deliberately small (three 121-point paths).
-        self._knot_paths = self._make_knotwork()
-
         self._status_sig.connect(self._set_status)
         self._detail_sig.connect(self._set_detail)
         self._ready_ladder_sig.connect(self._set_ready_ladder)
@@ -135,26 +126,6 @@ class _SplashWidget(QWidget):
         self._error_sig.connect(self._set_error)
         self._complete_sig.connect(self._set_complete)
         self._close_sig.connect(self._begin_close)
-
-    @staticmethod
-    def _make_knotwork() -> tuple[QPainterPath, ...]:
-        paths: list[QPainterPath] = []
-        centre = QPointF(380.0, 213.0)
-        for phase in (0.0, math.pi / 2.0):
-            path = QPainterPath()
-            for index in range(145):
-                angle = math.tau * index / 144.0
-                radius = 142.0 + 35.0 * math.sin(3.0 * angle + phase)
-                point = QPointF(
-                    centre.x() + radius * math.cos(angle),
-                    centre.y() + radius * 0.64 * math.sin(angle),
-                )
-                if index == 0:
-                    path.moveTo(point)
-                else:
-                    path.lineTo(point)
-            paths.append(path)
-        return tuple(paths)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -262,17 +233,20 @@ class _SplashWidget(QWidget):
             return {"word": QRectF(24, 8, self.width()-48, 34), "tag": QRectF(24, 44, self.width()-48, 22),
                     "ring": QRectF(self.width()/2-32, 75, 64, 64), "mark": QRectF(self.width()/2-22, 85, 44, 44),
                     "status": QRectF(24, 148, self.width()-48, 24), "strip": QRectF(24, 176, self.width()-48, 22),
-                    "support": QRectF(24, 200, self.width()-48, 22), "credit": QRectF(24, 226, self.width()-48, 18)}
+                    "support": QRectF(24, 200, self.width()-48, 22), "credit": QRectF(54, 220, self.width()-108, 18)}
         return {"word": QRectF(24, 14, self.width()-48, 46), "tag": QRectF(24, 64, self.width()-48, 24),
                 "ring": QRectF(self.width()/2-64, 104, 128, 128), "mark": QRectF(self.width()/2-45, 123, 90, 90),
                 "status": QRectF(24, 248, self.width()-48, 26), "strip": QRectF(24, 280, self.width()-48, 24),
-                "support": QRectF(24, 308, self.width()-48, 24), "credit": QRectF(24, 336, self.width()-48, 18)}
+                "support": QRectF(24, 308, self.width()-48, 24), "credit": QRectF(54, 336, self.width()-108, 18)}
 
     def _support_text(self) -> str:
-        if self._error or self._detail and self._now_ms() >= _DETAIL_DELAY_MS:
+        if self._error or any(state in {"offline", "unavailable", "error"}
+                              for _line, state in self._ready_ladder):
             return self._detail
         if self._now_ms() >= _REASSURANCE_DELAY_MS:
-            return "Still starting — preparing voice services."
+            return f"Still starting — {self._detail}" if self._detail else "Still starting — preparing voice services."
+        if self._detail and self._now_ms() >= _DETAIL_DELAY_MS:
+            return self._detail
         return ""
 
     @staticmethod
@@ -309,14 +283,6 @@ class _SplashWidget(QWidget):
         painter.setPen(QPen(_color(theme.ACCENT, 30), 1.0))
         painter.setBrush(gradient)
         painter.drawRoundedRect(panel, 38.0, 38.0)
-
-    def _paint_knotwork(self, painter: QPainter):
-        painter.save()
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color(theme.ACCENT, 18), 2.0))
-        for path in self._knot_paths:
-            painter.drawPath(path)
-        painter.restore()
 
     #: The brand mark: cyan wheel, lid closed (tray_qt.APP_MARK). The splash
     #: never uses RECORDING -- nothing is being captured.
@@ -361,68 +327,6 @@ class _SplashWidget(QWidget):
         painter.drawArc(ring, round(start * 16), round(-span * 16))
         painter.restore()
 
-    @staticmethod
-    def _star_path(centre: QPointF, outer: float, inner: float,
-                   points: int, rotation: float = 0.0) -> QPainterPath:
-        path = QPainterPath()
-        for index in range(points * 2 + 1):
-            angle = rotation - math.pi / 2.0 + index * math.pi / points
-            radius = outer if index % 2 == 0 else inner
-            point = QPointF(centre.x() + math.cos(angle) * radius,
-                            centre.y() + math.sin(angle) * radius)
-            if index == 0:
-                path.moveTo(point)
-            else:
-                path.lineTo(point)
-        path.closeSubpath()
-        return path
-
-    def _paint_left_sigil(self, painter: QPainter, seconds: float):
-        centre = QPointF(92.0, 330.0)
-        flicker = 1.0 if self._reduced_motion else (
-            0.92 + 0.08 * math.sin(seconds * 9.7) * math.sin(seconds * 4.1)
-        )
-        painter.save()
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color(theme.ICON_IDLE, 120), 2.0))
-        painter.drawPath(self._star_path(centre, 43.0, 29.0, 8, seconds * 0.025))
-        painter.setPen(QPen(_color(theme.ACCENT, 150), 1.4))
-        painter.drawPath(self._star_path(centre, 32.0, 21.0, 4, -seconds * 0.035))
-
-        glow = QRadialGradient(centre, 28.0)
-        glow.setColorAt(0.0, _color(theme.ACCENT_HOVER, round(145 * flicker)))
-        glow.setColorAt(0.45, _color(theme.ACCENT, round(65 * flicker)))
-        glow.setColorAt(1.0, _color(theme.ACCENT, 0))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(centre, 29.0, 29.0)
-
-        flame = QPainterPath()
-        flame.moveTo(centre.x(), centre.y() + 20.0)
-        flame.cubicTo(centre.x() - 20.0, centre.y() + 4.0,
-                      centre.x() - 7.0, centre.y() - 8.0 * flicker,
-                      centre.x() - 3.0, centre.y() - 22.0 * flicker)
-        flame.cubicTo(centre.x() + 2.0, centre.y() - 11.0,
-                      centre.x() + 22.0, centre.y() + 2.0,
-                      centre.x(), centre.y() + 20.0)
-        painter.setBrush(_color(theme.ACCENT_HOVER, 220))
-        painter.drawPath(flame)
-        painter.restore()
-
-    def _paint_right_sigil(self, painter: QPainter, seconds: float):
-        centre = QPointF(668.0, 330.0)
-        rotation = 0.0 if self._reduced_motion else seconds * 0.012
-        painter.save()
-        painter.setBrush(_color(theme.BG2, 205))
-        painter.setPen(QPen(_color(theme.ICON_IDLE, 130), 2.0))
-        painter.drawEllipse(centre, 43.0, 43.0)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(centre, 35.0, 35.0)
-        painter.drawPath(self._star_path(centre, 30.0, 13.0, 6, rotation))
-        painter.setPen(QPen(_color(theme.ACCENT, 105), 1.2))
-        painter.drawPath(self._star_path(centre, 22.0, 10.0, 6, -rotation))
-        painter.restore()
-
     def _paint_text(self, painter: QPainter):
         painter.save()
         layout = self._layout()
@@ -442,7 +346,7 @@ class _SplashWidget(QWidget):
         cell_width = (strip.width() - 16.0) / 3.0
         for index, (line, state) in enumerate(self._ready_ladder[:3]):
             label, line_color = self._segment(
-                line, "unavailable" if self._error else state,
+                line, state if state == "ready" else "unavailable" if self._error else state,
                 detailed=self._error or state in {"offline", "unavailable", "error"},
             )
             painter.setPen(_color(line_color))
@@ -475,23 +379,6 @@ class _SplashWidget(QWidget):
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
                          _SIGNATURE_TEXT)
         painter.restore()
-
-    def _paint_completion_bloom(self, painter: QPainter):
-        if self._completion_started_ms is None or self._reduced_motion:
-            return
-        age = self._elapsed.elapsed() - self._completion_started_ms
-        if age < 0 or age > 800:
-            return
-        strength = math.sin(math.pi * age / 800.0)
-        painter.save()
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color(theme.SUCCESS, round(100 * strength)),
-                            8.0 + strength * 8.0))
-        painter.drawEllipse(QPointF(380.0, 213.0),
-                            121.0 + strength * 12.0,
-                            121.0 + strength * 12.0)
-        painter.restore()
-
 
 class SplashScreenQt:
     """Thread-safe facade over the splash widget on the shared Qt runtime."""

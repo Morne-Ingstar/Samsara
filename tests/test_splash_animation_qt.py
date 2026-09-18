@@ -71,6 +71,35 @@ def test_complete_and_error_states_are_explicit(app):
     widget.close()
 
 
+def test_error_keeps_reported_ready_capability_honest(app):
+    class RecordingPainter:
+        def __init__(self):
+            self.text = []
+
+        def save(self):
+            pass
+
+        def restore(self):
+            pass
+
+        def setPen(self, pen):
+            pass
+
+        def setFont(self, font):
+            pass
+
+        def drawText(self, rect, alignment, text):
+            self.text.append(text)
+
+    widget = _SplashWidget()
+    widget._set_ready_ladder((("hotkey: ready", "ready"), ("wake: loading", "loading"), ("Ava: checking", "checking")))
+    widget._set_error("Startup failed", "Microphone unavailable")
+    painter = RecordingPainter()
+    widget._paint_text(painter)
+    assert painter.text[2:5] == ["Hotkey ✓ Ready", "Wake × Unavailable", "Ava × Unavailable"]
+    widget.close()
+
+
 def test_close_holds_completed_state_briefly(app):
     widget = _SplashWidget()
     widget.show()
