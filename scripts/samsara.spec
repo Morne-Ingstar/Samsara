@@ -471,6 +471,12 @@ a = Analysis(
     noarchive=False,
 )
 
+# Qt Widgets renders through the Windows raster/D3D path; it does not need
+# Mesa's software OpenGL fallback. The frozen import inventory and normal
+# smoke run without it on the real Windows platform before this is shipped.
+a.binaries = [entry for entry in a.binaries
+              if os.path.basename(entry[0]).lower() != 'opengl32sw.dll']
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
