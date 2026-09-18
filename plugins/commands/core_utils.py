@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from samsara.plugin_commands import command
@@ -331,4 +332,158 @@ def personal_alias(app, remainder="", **kwargs):
         install_user_aliases(matcher, home_dir)
         app._personal_alias_offer = None
         speak_if_available(app, f"Saved {alias} as another way to say {canonical}.")
+    return True
+
+
+_LAST_OUTCOME_REPORT_SOURCE = "spoken_last_outcome"
+_COMMAND_EXECUTED_SOURCES = frozenset({
+    "command_executed", "hands_free_command_executed",
+})
+_COMMAND_FAILED_SOURCES = frozenset({
+    "command_failed", "hands_free_command_failed",
+    "hands_free_command_blocked", "hands_free_command_refused",
+})
+
+
+def _last_outcome_record(app):
+    """Return the latest real chip record, skipping this command's own report."""
+    from samsara import outcome_ring
+
+    for item in reversed(list(getattr(app, "_outcome_ring", None) or ())):
+        record = outcome_ring.as_record(item)
+        if record is not None and record.source != _LAST_OUTCOME_REPORT_SOURCE:
+            return record
+    return None
+
+
+def _diagnostic_timestamp(record):
+    try:
+        return datetime.fromisoformat(str(record.ts)).timestamp()
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return None
+
+
+def _heard_for_outcome(app, outcome):
+    """Read the utterance from the same diagnostics source Voice Help uses.
+
+    The outcome chip is rung after dispatch, so the matching diagnostics row
+    is the newest non-empty row at or before the chip timestamp. Falling back
+    to the newest text keeps old records and small test apps useful when their
+    clocks do not carry timestamps.
+    """
+    try:
+        from samsara.ui.voice_help_qt import _diag
+        records = [r for r in _diag(app) if str(getattr(r, "text", "")).strip()]
+    except Exception as exc:
+        logger.debug("last outcome diagnostics unavailable: %s", exc)
+        records = []
+    if not records:
+        return str(getattr(app, "_last_miss_text", "") or "").strip()
+
+    before = []
+    for record in records:
+        stamp = _diagnostic_timestamp(record)
+        if stamp is not None and outcome is not None and stamp <= outcome.at + 0.5:
+            before.append(record)
+    chosen = before[-1] if before else records[-1]
+    return str(getattr(chosen, "text", "") or "").strip()
+
+
+def _nearest_similarity_command(app, heard):
+    if not heard:
+        return ""
+    try:
+        from samsara.intent.resolve import IntentResolver
+
+        matcher = getattr(getattr(app, "command_executor", None), "_matcher", None)
+        rows = matcher.list_commands() if matcher is not None else None
+        resolver = IntentResolver(rows=rows) if rows else IntentResolver()
+        resolution = resolver.resolve(heard)
+        if resolution.tier != "similarity":
+            return ""
+        command_id = (resolution.suggestions or (resolution.canonical_id,))[0]
+        record = resolver.by_id.get(command_id)
+        if record is None:
+            return ""
+        from samsara import command_catalog
+        return command_catalog.canonical_phrase(record)
+    except Exception as exc:
+        logger.debug("last outcome similarity lookup unavailable: %s", exc)
+        return ""
+
+
+def _outcome_result(outcome, heard, app):
+    from samsara import outcome_ring
+
+    if outcome is None:
+        return "No recent outcome was recorded."
+
+    label = str(outcome.label or "").strip()
+    source = str(outcome.source or "")
+    if label == "typed" and outcome.kind == "success":
+        result = "typed"
+    elif source in _COMMAND_EXECUTED_SOURCES:
+        fragment = label.lstrip(chr(0x2713)).strip()
+        command = outcome_ring.canonical_command_label(outcome.canonical_id, fragment)
+        result = f"ran {command}" if command else "ran the command"
+    elif outcome_ring.is_command_miss(outcome):
+        result = "MISS"
+        nearest = _nearest_similarity_command(app, heard)
+        if nearest:
+            result += f". Nearest command at similarity tier: {nearest}"
+    elif label.lower().startswith("ava"):
+        result = label
+    elif label.lower().startswith("refused:"):
+        result = label
+    elif source in _COMMAND_FAILED_SOURCES and outcome.kind == "warning":
+        result = f"refused: {label or 'unknown reason'}"
+    elif outcome.kind == "error":
+        reason = label.lstrip(chr(0x2717)).strip()
+        result = f"failed: {reason}" if reason else "failed"
+    else:
+        result = label or "no outcome"
+
+    heard_part = f'Heard "{heard}". ' if heard else "No utterance was recorded. "
+    return heard_part + result + "."
+
+
+def _show_last_outcome_chip(app, text):
+    """Show the answer through the normal chip path, even when TTS is off."""
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        try:
+            show(text, "accent", 8000, source=_LAST_OUTCOME_REPORT_SOURCE)
+        except TypeError:
+            # Small compatibility stubs from older app/test seams have no
+            # source keyword; they can still show the chip.
+            show(text, "accent", 8000)
+        return
+    indicator = getattr(app, "listening_indicator", None)
+    if indicator is None or not hasattr(indicator, "show_outcome"):
+        return
+    try:
+        schedule = getattr(app, "_schedule_ui", None)
+        if callable(schedule):
+            schedule(indicator.show_outcome, text, "accent", 8000)
+        else:
+            indicator.show_outcome(text, "accent", 8000)
+    except Exception as exc:
+        logger.debug("last outcome chip unavailable: %s", exc)
+
+
+@command(
+    "why didn't that work",
+    aliases=["what just happened", "what did you hear"],
+    pack="core",
+    ai_visible=False,
+    ai_composable=False,
+    risk_class="read",
+)
+def explain_last_outcome(app, remainder="", **kwargs):
+    """Speaks and shows the most recent recorded outcome chip."""
+    outcome = _last_outcome_record(app)
+    heard = _heard_for_outcome(app, outcome)
+    text = _outcome_result(outcome, heard, app)
+    _show_last_outcome_chip(app, text)
+    speak_if_available(app, text)
     return True
