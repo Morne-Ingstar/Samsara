@@ -653,6 +653,24 @@ SETTINGS_SCHEMA = {
     # Idle blink/glance on the listening indicator's mark (queue 09b3). Only
     # the idle motion -- state animation (spin, pulse, heard flash) always runs.
     "ui.idle_animation": {"type": "bool", "default": True, "tab": "advanced"},
+    # Live surface contracts (220 A). These are additive only; package I
+    # later wires migration and Settings controls. Placement's nested map is
+    # validated by samsara.live_surface.config, not treated as a Qt widget.
+    "ui.live_surface.schema_version": {"type": "int", "min": 1, "max": 1, "default": 1, "tab": "advanced"},
+    "ui.live_surface.idle_delay_s": {
+        "type": "float", "min": 1.0, "max": 60.0, "step": 0.5, "default": 5.0, "tab": "advanced",
+    },
+    "ui.live_surface.show_idle_mark": {"type": "bool", "default": True, "tab": "advanced"},
+    "ui.live_surface.partials": {
+        "type": "enum", "options": ["auto", "on", "off"], "default": "auto", "tab": "advanced",
+    },
+    "ui.live_surface.focus_hotkey": {"type": "str", "default": "ctrl+alt+f10", "tab": "advanced"},
+    "ui.live_surface.reset_hotkey": {"type": "str", "default": "ctrl+alt+shift+f10", "tab": "advanced"},
+    "ui.live_surface.pause_hotkey": {"type": "str", "default": "pause", "tab": "advanced"},
+    "ui.live_surface.placement": {
+        "type": "dict", "default": {"preferred_monitor": None, "monitors": {}}, "tab": "advanced",
+    },
+    "ui.live_surface.legacy": {"type": "dict", "default": {}, "tab": "advanced"},
     "listening_indicator_position": {
         "type": "enum",
         "options": ["top-left", "top-center", "top-right",
