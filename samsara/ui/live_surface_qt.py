@@ -10,7 +10,7 @@ from typing import Any
 
 from PySide6.QtCore import QEasingCurve, QRect, QRectF, QPropertyAnimation, Qt, Signal
 from PySide6.QtGui import (QCloseEvent, QImage, QMouseEvent, QPainter, QPaintEvent,
-                           QPainterPath, QRegion)
+                           QPainterPath, QPen, QRegion)
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
 from samsara.live_surface.model import (CaptureState, DocumentState, NoticeKind,
@@ -24,6 +24,9 @@ MARK_SIZE = 44
 MARK_ART_SIZE = 24
 CONNECTOR = 4
 CARD_RADIUS = 12
+CARD_INSET = 8
+HEADER_HEIGHT = 44
+REGION_GAP = 8
 STATUS_SIZE = (360, 64)
 LIVE_SIZE = (500, 240)
 REVIEW_SIZE = (500, 360)
@@ -139,9 +142,11 @@ class LiveSurfaceWidget(QWidget):
         self._state.setAccessibleName("Live surface state")
         self._transcript = QLabel(self)
         self._transcript.setWordWrap(True)
+        self._transcript.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._transcript.setAccessibleName("Transcript")
         self._provisional = QLabel(self)
         self._provisional.setWordWrap(True)
+        self._provisional.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
         self._provisional.setAccessibleName("Provisional transcript")
         self._badge = QLabel(self)
         self._badge.setText("▣  Draft")
@@ -181,6 +186,11 @@ class LiveSurfaceWidget(QWidget):
             return QRect()
         return QRect(0, MARK_SIZE + CONNECTOR, self.width(), self.height() - MARK_SIZE - CONNECTOR)
 
+    @property
+    def card_content_rect(self) -> QRect:
+        """The §3 all-sides 8-DIP inset that contains every card child."""
+        return self.card_rect.adjusted(CARD_INSET, CARD_INSET, -CARD_INSET, -CARD_INSET)
+
     def hit_region(self) -> QRegion:
         return self.mask()
 
@@ -215,8 +225,9 @@ class LiveSurfaceWidget(QWidget):
         self._mark.setAccessibleName(self._state_text(view))
         self._state.setText(self._state_text(view))
         self._transcript.setText(view.text)
-        self._provisional.setText("Provisional: " + view.provisional_text if view.provisional_text else "")
-        self._badge.setText("▣  Draft" if view.document is not DocumentState.PARKED_DRAFT else "Ⅱ  Draft")
+        self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
+        words = len(view.text.split())
+        self._badge.setText(f"▤  Draft\n{words} word{'s' if words != 1 else ''}")
         target = self._form_rect(view.form)
         if animate and self.isVisible() and not self._reduced_motion and self.geometry().size() != target.size():
             self._animate_geometry(target)
@@ -260,36 +271,47 @@ class LiveSurfaceWidget(QWidget):
             self._badge.setGeometry(MARK_SIZE, 0, 76, MARK_SIZE)
             self._badge.show()
             return
-        card_y = MARK_SIZE + CONNECTOR
+        content = self.card_content_rect
         if form is VisibleForm.STATUS:
-            self._state.setGeometry(8, card_y + 8, 224, 48)
-            self._state.show()
             control = self._clear if self._view.notice.kind is NoticeKind.ERROR else self._pause
-            control.setGeometry(240, card_y + 8, 112, MARK_SIZE)
+            control_width = 112
+            state_width = content.width() - control_width - REGION_GAP
+            self._state.setGeometry(content.x(), content.y(), state_width, content.height())
+            self._state.show()
+            control.setGeometry(content.right() - control_width + 1,
+                                content.y() + (content.height() - MARK_SIZE) // 2,
+                                control_width, MARK_SIZE)
             control.show()
             return
-        self._state.setGeometry(8, card_y + 8, self.width() - 16, MARK_SIZE)
+        self._state.setGeometry(content.x(), content.y(), content.width(), HEADER_HEIGHT)
         self._state.show()
         viewport = 240 if form is VisibleForm.REVIEW else 120
-        self._transcript.setGeometry(8, card_y + 60, self.width() - 16, viewport - 24)
+        transcript_y = content.y() + HEADER_HEIGHT + REGION_GAP
+        self._transcript.setGeometry(content.x(), transcript_y, content.width(), viewport - 24)
         self._transcript.show()
-        self._provisional.setGeometry(8, card_y + 60 + viewport - 24, self.width() - 16, 24)
+        self._provisional.setGeometry(content.x(), transcript_y + viewport - 24,
+                                     content.width(), 24)
         self._provisional.show()
-        action_y = card_y + 8 + MARK_SIZE + 8 + viewport + 8
+        action_y = transcript_y + viewport + REGION_GAP
         controls = (self._clear, self._commit, self._pause, self._correct)
-        widths = (112, 112, 112, self.width() - 8 - 112 * 3 - 24)
-        x = 8
+        available = content.width() - REGION_GAP * (len(controls) - 1)
+        base_width, remainder = divmod(available, len(controls))
+        widths = tuple(base_width + (1 if index < remainder else 0)
+                       for index in range(len(controls)))
+        x = content.x()
         for control, width in zip(controls, widths):
             control.setGeometry(x, action_y, width, MARK_SIZE)
             control.show()
-            x += width + 8
+            x += width + REGION_GAP
 
     def _update_mask(self) -> None:
         form = self._view.form
         if form is VisibleForm.MARK:
             region = QRegion(self._mark.geometry(), QRegion.RegionType.Ellipse)
         elif form is VisibleForm.DRAFT_BADGE:
-            region = QRegion(QRect(0, 0, self.width(), MARK_SIZE), QRegion.RegionType.Ellipse)
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(0, 0, self.width(), MARK_SIZE), CARD_RADIUS, CARD_RADIUS)
+            region = QRegion(path.toFillPolygon().toPolygon())
         else:
             card = self.card_rect
             region = QRegion(self._mark.geometry(), QRegion.RegionType.Ellipse)
@@ -311,10 +333,15 @@ class LiveSurfaceWidget(QWidget):
         )
         self._state.setFont(theme.qfont(theme.TYPE_HEADING))
         self._transcript.setFont(theme.qfont(theme.TYPE_BODY))
-        self._provisional.setFont(theme.qfont(theme.TYPE_MIN))
+        provisional_font = theme.qfont(theme.TYPE_MIN)
+        provisional_font.setItalic(True)
+        self._provisional.setFont(provisional_font)
         self._badge.setFont(theme.qfont(theme.TYPE_MIN))
+        self._provisional.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; border-top: 1px dashed {theme.BORDER};"
+        )
         if form is VisibleForm.DRAFT_BADGE:
-            self._badge.setStyleSheet(f"background: {theme.BG1}; color: {theme.TEXT_PRIMARY};")
+            self._badge.setStyleSheet(f"background: transparent; color: {theme.TEXT_PRIMARY};")
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
@@ -323,17 +350,20 @@ class LiveSurfaceWidget(QWidget):
                 return
             painter = QPainter(self)
             try:
-                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setPen(QPen(theme.qcolor(theme.BORDER), 1))
                 painter.setBrush(theme.qcolor(theme.BG1))
-                painter.drawRoundedRect(QRectF(0, 0, self.width(), MARK_SIZE), CARD_RADIUS, CARD_RADIUS)
+                painter.drawRoundedRect(QRectF(0.5, 0.5, self.width() - 1, MARK_SIZE - 1),
+                                        CARD_RADIUS, CARD_RADIUS)
             finally:
                 painter.end()
             return
         painter = QPainter(self)
         try:
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(QPen(theme.qcolor(theme.BORDER), 1))
             painter.setBrush(theme.qcolor(theme.BG1))
-            painter.drawRoundedRect(QRectF(self.card_rect), CARD_RADIUS, CARD_RADIUS)
+            card = QRectF(self.card_rect).adjusted(0.5, 0.5, -0.5, -0.5)
+            painter.drawRoundedRect(card, CARD_RADIUS, CARD_RADIUS)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(theme.qcolor(theme.BG2))
             painter.drawRect((self.width() - CONNECTOR) // 2, MARK_SIZE, CONNECTOR, CONNECTOR)
         finally:
