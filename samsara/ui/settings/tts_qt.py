@@ -67,13 +67,16 @@ class TTSPage:
 
         engine_combo = QComboBox()
         engine_combo.addItems(['winrt', 'edge'])
-        engine_combo.setCurrentText(cfg.get('engine', 'winrt'))
+        engine_combo.setCurrentText(cfg.get('engine', 'edge'))
         self._widgets['tts_engine'] = engine_combo
         layout.addLayout(self._setting_row(
             "Engine",
             "winrt: built-in Windows voices.  edge: higher-quality online voices (internet required). Restart required.",
             engine_combo,
         ))
+        edge_note = QLabel("Edge uses Microsoft’s online voices; WinRT is the offline option.")
+        edge_note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
+        layout.addWidget(edge_note)
         layout.addSpacing(8)
 
         # Populate voice list from current engine instance

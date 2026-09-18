@@ -462,9 +462,10 @@ SETTINGS_SCHEMA = {
     "tts.engine": {
         "type": "enum",
         "options": ["winrt", "edge"],
-        "default": "winrt",
+        "default": "edge",
         "tab": "tts",
     },
+    "tts.voice_id": {"type": "str", "default": "en-US-AvaNeural", "tab": "tts"},
     "tts.speed": {
         "type": "float",
         "min": 0.5,
@@ -516,7 +517,7 @@ SETTINGS_SCHEMA = {
     # -------------------------------------------------------------------------
     # Alarms tab
     # -------------------------------------------------------------------------
-    "alarms.enabled": {"type": "bool", "default": True, "tab": "alarms"},
+    "alarms.enabled": {"type": "bool", "default": False, "tab": "alarms"},
     "alarms.nag_interval_seconds": {
         "type": "int",
         "min": 15,
