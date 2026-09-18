@@ -1487,6 +1487,28 @@ def ducking_host_pids() -> set[int]:
 # call surface with a module singleton. Idempotent; COM-failure-safe via
 # SessionDucker's own guards.
 _shim_ducker: "SessionDucker | None" = None
+_recording_media_pauser: Any = None
+_recording_media_lock = threading.Lock()
+
+
+def start_recording_media(mode: str, duck_level: float = 0.2) -> None:
+    """Apply the selected recording-media policy without delaying capture."""
+    global _recording_media_pauser
+    if mode == "off":
+        return
+    if mode != "pause":
+        duck(duck_level)
+        return
+
+    # Lazy import keeps normal startup free of WinRT media-session imports.
+    from samsara.media_pause import RecordingMediaPauser
+
+    with _recording_media_lock:
+        if _recording_media_pauser is not None:
+            return
+        pauser = RecordingMediaPauser(fallback=lambda: duck(duck_level))
+        _recording_media_pauser = pauser
+    pauser.start()
 
 
 def duck(level: float = 0.2) -> None:
@@ -1506,7 +1528,11 @@ def duck(level: float = 0.2) -> None:
 
 
 def restore() -> None:
-    global _shim_ducker
+    global _shim_ducker, _recording_media_pauser
+    with _recording_media_lock:
+        pauser, _recording_media_pauser = _recording_media_pauser, None
+    if pauser is not None:
+        pauser.finish()
     d, _shim_ducker = _shim_ducker, None
     if d is not None:
         _t0 = time.monotonic()

@@ -617,6 +617,10 @@ SETTINGS_SCHEMA = {
     # echo_cancellation entries above). Off by default -- opt-in, like
     # echo_cancellation. See samsara/audio_ducking.py.
     "ducking.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "ducking.recording_mode": {
+        "type": "enum", "options": ["duck", "pause", "off"],
+        "default": "duck", "tab": "advanced",
+    },
     "ducking.level": {
         "type": "float",
         "min": 0.0,

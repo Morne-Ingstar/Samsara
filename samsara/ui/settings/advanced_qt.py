@@ -236,31 +236,39 @@ class AdvancedPage:
         layout.addWidget(self._section_title("Playback Reduction While Dictating"))
         layout.addSpacing(4)
 
-        ducking_cb = QCheckBox("Lower other apps' volume while dictating")
-        ducking_cb.setChecked(bool(ducking_cfg.get('enabled', False)))
-        self._widgets['adv_ducking_enabled'] = ducking_cb
-        layout.addWidget(ducking_cb)
+        recording_mode = QComboBox()
+        recording_mode.addItems(["Duck", "Pause", "Leave alone"])
+        mode_value = ducking_cfg.get('recording_mode', 'duck')
+        recording_mode.setCurrentText({
+            'duck': 'Duck', 'pause': 'Pause', 'off': 'Leave alone',
+        }.get(mode_value, 'Duck'))
+        self._widgets['adv_ducking_recording_mode'] = recording_mode
+        layout.addLayout(self._setting_row(
+            "While I’m recording, other audio",
+            "Duck lowers it; Pause stops media and resumes only sessions Samsara paused. "
+            "Hands-free idle listening keeps its own ducking settings; capture follows this choice.",
+            recording_mode,
+        ))
 
-        ducking_note = QLabel(
-            "Turns down other apps' audio while you dictate so the mic hears less of it; "
-            "restores it after."
-        )
-        ducking_note.setWordWrap(True)
-        ducking_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
-        layout.addWidget(ducking_note)
-        layout.addSpacing(8)
-
+        ducking_level_row = QWidget()
+        ducking_level_layout = QVBoxLayout(ducking_level_row)
+        ducking_level_layout.setContentsMargins(0, 0, 0, 0)
         ducking_level_spin = QDoubleSpinBox()
         ducking_level_spin.setRange(0.0, 1.0)
         ducking_level_spin.setSingleStep(0.05)
         ducking_level_spin.setDecimals(2)
         ducking_level_spin.setValue(float(ducking_cfg.get('level', 0.2)))
         self._widgets['adv_ducking_level'] = ducking_level_spin
-        layout.addLayout(self._setting_row(
+        ducking_level_layout.addLayout(self._setting_row(
             "Ducked volume",
             "Absolute volume level for other apps during dictation (0 = silent, 1 = full volume).",
             ducking_level_spin,
         ))
+        ducking_level_row.setVisible(recording_mode.currentText() == 'Duck')
+        recording_mode.currentTextChanged.connect(
+            lambda text: ducking_level_row.setVisible(text == 'Duck')
+        )
+        layout.addWidget(ducking_level_row)
         layout.addSpacing(12)
 
         hands_free_ducking_cb = QCheckBox(
@@ -578,9 +586,18 @@ class AdvancedPage:
                     'latency_ms': self._widgets['adv_aec_latency'].value(),
                 }
                 ducking_out = dict(self.app.config.get('ducking', {}) or {})
+                mode_map = {'Duck': 'duck', 'Pause': 'pause', 'Leave alone': 'off'}
+                selected_recording_mode = mode_map[self._widgets[
+                    'adv_ducking_recording_mode'
+                ].currentText()]
+                legacy_mode = ('duck' if self.app.config.get(
+                    'capture_duck_hold_enabled', True
+                ) or ducking_out.get('enabled', False) else 'off')
+                if ('recording_mode' in ducking_out
+                        or selected_recording_mode != legacy_mode):
+                    ducking_out['recording_mode'] = selected_recording_mode
                 ducking_out.update({
-                    'enabled': self._widgets['adv_ducking_enabled'].isChecked(),
-                    'level':   self._widgets['adv_ducking_level'].value(),
+                    'level': self._widgets['adv_ducking_level'].value(),
                     'hands_free_enabled': self._widgets[
                         'adv_hands_free_ducking_enabled'
                     ].isChecked(),
