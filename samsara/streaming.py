@@ -1639,7 +1639,11 @@ class StreamingWorker(threading.Thread):
 
     def run(self):
         try:
-            self._loop_partials()
+            if getattr(self._session, '_cpu_final_only', False):
+                # CPU policy: do not spend a second decode pass on partials.
+                self._stop_event.wait()
+            else:
+                self._loop_partials()
         except Exception as e:
             logger.exception(f"[STREAM] Worker partial loop crashed: {e}")
         if self._cancel_event.is_set():
@@ -1862,6 +1866,30 @@ class StreamingWorker(threading.Thread):
         return text
 
 
+class _LiveSurfaceStreamingOverlay:
+    """Legacy overlay-shaped adapter; it creates no second top-level window."""
+
+    def __init__(self, partials) -> None:
+        self._partials = partials
+
+    def show(self):
+        return None
+
+    def update_text(self, text, state=None):
+        if state == StreamingOverlayQt.STATE_PROCESSING:
+            self._partials.partial(text)
+        else:
+            self._partials.final(text)
+
+    def close(self):
+        self._partials.stop()
+
+    def flash_done_and_fade(self, on_complete):
+        self._partials.stop()
+        if on_complete:
+            on_complete()
+
+
 class StreamingSession:
     """Owns one streaming dictation: overlay + worker + state machine.
 
@@ -1906,7 +1934,21 @@ class StreamingSession:
         # Serializes select+paste between the worker thread (partials),
         # the main Qt thread (final), and the cancel undo thread.
         self._paste_lock = threading.Lock()
-        self._overlay = StreamingOverlayQt(dim=self._direct_paste)
+        self._live_partials = None
+        self._cpu_final_only = False
+        controller = getattr(app, 'live_surface', None)
+        if controller is not None and (app.config.get('ui', {}) or {}).get(
+                'live_surface', {}).get('enabled', True):
+            from samsara.live_surface.model import Lane
+            from samsara.live_surface.partials import CapturePartials, cpu_final_only
+            capture_id = controller.begin_capture(Lane.HOLD)
+            self._cpu_final_only = cpu_final_only(app)
+            self._live_partials = CapturePartials(
+                controller, Lane.HOLD, capture_id, self._cpu_final_only,
+            )
+            self._overlay = _LiveSurfaceStreamingOverlay(self._live_partials)
+        else:
+            self._overlay = StreamingOverlayQt(dim=self._direct_paste)
         self._worker = StreamingWorker(self)
         self._last_partial = ""
         self._capture_cleanup_lock = threading.Lock()
@@ -2244,6 +2286,54 @@ class StreamingSession:
 DICTATE_PREVIEW_TRANSCRIPT_MAX_UTTERANCES = 120
 
 
+class _LiveSurfaceDictateOverlay:
+    """Presentation-compatible, windowless target for ``DictatePreviewSession``.
+
+    It deliberately implements only display methods.  The shared widget owns
+    its own intent signals, while the existing session remains the source of
+    GPU partial cadence and the authoritative final path.
+    """
+
+    def __init__(self, controller, partials):
+        self._controller = controller
+        self._partials = partials
+        self.idle_hints = []
+
+    def show(self):
+        self._controller.start()
+
+    def close(self):
+        self._partials.stop()
+
+    def set_transcript(self, lines, partial, link_words=True):
+        text = "\n".join([str(line) for line in lines if line] + ([partial] if partial else []))
+        self._partials.partial(text)
+
+    def set_interaction_callbacks(self, *_args):
+        pass
+
+    def set_correction_choice_callbacks(self, *_args):
+        pass
+
+    def set_literal_badge(self, _on):
+        pass
+
+    def set_prompt(self, _text):
+        pass
+
+    def show_correction_choices(self, *_args):
+        pass
+
+    def hide_correction_choices(self):
+        pass
+
+    def move_draft(self, _placement):
+        pass
+
+    def scroll_draft(self, _where):
+        pass
+
+
 class DictatePreviewSession:
     """Owns one toggle-session DICTATE-lane preview: overlay + tick thread.
 
@@ -2263,10 +2353,28 @@ class DictatePreviewSession:
         self.idle = IdleSettings.from_config(getattr(app, "config", None))
         command_mode = getattr(app, "config", {}).get("command_mode", {})
         saved_placement = command_mode.get("preview_position", PREVIEW_POSITION_DEFAULT)
-        self._overlay = StreamingOverlayQt(dim=False, idle=self.idle,
-                                           activity_probe=self._speech_active,
-                                           preview_position=saved_placement,
-                                           on_placement_committed=self._save_preview_placement)
+        self._live_partials = None
+        controller = getattr(app, "live_surface", None)
+        live_enabled = bool((getattr(app, "config", {}).get("ui", {}) or {}).get(
+            "live_surface", {}).get("enabled", True))
+        if controller is not None and live_enabled:
+            # Keep this session's existing GPU partial ticker and its
+            # authoritative final callback, but do not build a second Qt
+            # window.  The small adapter below forwards its presentation
+            # calls into the one shared surface.
+            from samsara.live_surface.model import Lane
+            from samsara.live_surface.partials import CapturePartials, cpu_final_only
+            self._live_partials = CapturePartials(
+                controller, Lane.HANDS_FREE_DICTATE,
+                controller.begin_capture(Lane.HANDS_FREE_DICTATE),
+                cpu_only=cpu_final_only(app),
+            )
+            self._overlay = _LiveSurfaceDictateOverlay(controller, self._live_partials)
+        else:
+            self._overlay = StreamingOverlayQt(dim=False, idle=self.idle,
+                                               activity_probe=self._speech_active,
+                                               preview_position=saved_placement,
+                                               on_placement_committed=self._save_preview_placement)
         # Session-scoped rolling transcript -- see module comment above and
         # on_utterance_final below. A fresh DictatePreviewSession is
         # constructed on every DICTATE re-entry (dictation.py's
@@ -2316,7 +2424,11 @@ class DictatePreviewSession:
         # spawn() registers AND starts -- do not call register() again
         # (that would double-enter this thread under a second, -2-suffixed
         # name; see thread_registry.spawn's docstring).
-        thread_registry.spawn("dictate-preview", self._loop, daemon=True)
+        # CPU-only machines retain the final callback below, but never add a
+        # second decoding loop merely to show partial words.
+        live_partials = getattr(self, "_live_partials", None)
+        if not (live_partials and live_partials.cpu_only):
+            thread_registry.spawn("dictate-preview", self._loop, daemon=True)
 
     def set_literal_badge(self, on: bool) -> None:
         """Forwarded from dictation.py's set_verbatim_forced so the preview

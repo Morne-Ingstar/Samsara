@@ -661,6 +661,7 @@ SETTINGS_SCHEMA = {
     # Idle blink/glance on the listening indicator's mark (queue 09b3). Only
     # the idle motion -- state animation (spin, pulse, heard flash) always runs.
     "ui.idle_animation": {"type": "bool", "default": True, "tab": "advanced"},
+    "ui.live_surface.enabled": {"type": "bool", "default": True, "tab": "advanced"},
     # Live surface contracts (220 A). These are additive only; package I
     # later wires migration and Settings controls. Placement's nested map is
     # validated by samsara.live_surface.config, not treated as a Qt widget.
