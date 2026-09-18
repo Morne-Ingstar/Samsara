@@ -31,6 +31,7 @@ def _legacy_config():
     cfg = json.loads(json.dumps(app.config))
     cfg["first_run_complete"] = True
     cfg["microphone"] = 1
+    cfg["wake_word_config"]["enabled"] = True
     cfg["wake_targets"] = [{"id": "stale", "phrase": "old"}]
     cfg["command_mode_enabled"] = False
     cfg["ai_command_mode"] = {"enabled": True, "key": "left_alt", "menu_limit": 9}
@@ -79,6 +80,7 @@ def test_first_load_migrates_and_the_keys_are_gone_on_disk(home, caplog):
         assert key not in on_disk, f"{key} was written back by the migration's own save"
     assert on_disk["command_mode"]["command_matching_enabled"] is False
     assert on_disk["ava_command_session"]["key"] == "left_alt"
+    assert "enabled" not in on_disk["wake_word_config"]
 
 
 def test_second_load_runs_no_migrations(home, caplog):
@@ -87,10 +89,14 @@ def test_second_load_runs_no_migrations(home, caplog):
     caplog.set_level(logging.INFO, logger=dictation.logger.name)
     backups = home.parent / "config_backups"
     before = sorted(p.name for p in backups.glob("config-*.json"))
+    before_bytes = home.read_bytes()
+    before_mtime = home.stat().st_mtime_ns
 
     app = _boot_load(home)
 
     assert _migrate_lines(caplog) == []
+    assert home.read_bytes() == before_bytes
+    assert home.stat().st_mtime_ns == before_mtime
     assert sorted(p.name for p in backups.glob("config-*.json")) == before, (
         "a settled config still rotated a backup on load"
     )
