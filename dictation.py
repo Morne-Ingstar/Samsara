@@ -1989,8 +1989,17 @@ class DictationApp:
         # causes "Timers cannot be started from another thread" and freezes
         # the entire Qt event loop.
         self.listening_indicator = None  # set by _init_indicator on Qt thread
+        self.live_surface = None
 
         def _init_indicator():
+            if (self.config.get('ui', {}) or {}).get('live_surface', {}).get('enabled', True):
+                from samsara.live_surface.controller import (
+                    LiveSurfaceController, LiveSurfaceIndicatorAdapter,
+                )
+                self.live_surface = LiveSurfaceController(self)
+                self.live_surface.start()
+                self.listening_indicator = LiveSurfaceIndicatorAdapter(self.live_surface)
+                return
             self.listening_indicator = ListeningIndicator()
             self.listening_indicator.set_mode(self._get_mode_display())
             position = self.config.get('listening_indicator_position', 'bottom-center')
@@ -7092,6 +7101,10 @@ class DictationApp:
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
             if _was_dictate_lane:
+                controller = getattr(self, 'live_surface', None)
+                if controller is not None:
+                    controller.sync_draft(manager)
+            if _was_dictate_lane:
                 # Shadow intent gate (36): observer only, strictly AFTER
                 # dispatch_utterance has staged/injected the text and the
                 # outcome was handled -- it gets a copy of the text and the
@@ -7889,6 +7902,17 @@ class DictationApp:
         enter_command_mode/exit_command_mode's own explicit calls to this
         method alongside their existing _update_mode_overlay calls.
         """
+        controller = getattr(self, 'live_surface', None)
+        if (controller is not None and (self.config.get('ui', {}) or {}).get(
+                'live_surface', {}).get('enabled', True)):
+            if mode is SessionMode.DICTATE:
+                # This creates the existing preview *session* as a headless
+                # source of GPU partials; streaming.py redirects its display
+                # calls into the shared surface, so no legacy window exists.
+                self._ensure_streaming_preview()
+            else:
+                self._release_streaming_preview()
+            return
         if not self.config.get('command_mode', {}).get('session_streaming_preview', True):
             return
         if mode is SessionMode.DICTATE:
@@ -7914,12 +7938,15 @@ class DictationApp:
         """Stop and clear the DICTATE-lane preview overlay. Idempotent
         no-op when nothing is running."""
         preview, self._dictate_preview = self._dictate_preview, None
-        if preview is None:
-            return
-        try:
-            preview.stop()
-        except Exception as e:
-            logger.debug(f'[DICTATE-PREVIEW] Stop failed: {e}')
+        if preview is not None:
+            try:
+                preview.stop()
+            except Exception as e:
+                logger.debug(f'[DICTATE-PREVIEW] Stop failed: {e}')
+        controller = getattr(self, 'live_surface', None)
+        if (controller is not None and (self.config.get('ui', {}) or {}).get(
+                'live_surface', {}).get('enabled', True)):
+            controller.stop_capture()
 
     # ── Hands-free audio ducking (2026-07-24) ──────────────────────────────
     #

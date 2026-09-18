@@ -327,6 +327,15 @@ class AdvancedPage:
         layout.addWidget(ind_cb)
         layout.addSpacing(8)
 
+        live_surface_cfg = (cfg.get('ui', {}) or {}).get('live_surface', {}) or {}
+        live_surface_cb = QCheckBox(
+            "Use the new live surface (turn off to go back to the old indicator and preview)"
+        )
+        live_surface_cb.setChecked(bool(live_surface_cfg.get('enabled', True)))
+        self._widgets['adv_live_surface_enabled'] = live_surface_cb
+        layout.addWidget(live_surface_cb)
+        layout.addSpacing(8)
+
         pos_options = [
             'top-left', 'top-center', 'top-right',
             'bottom-left', 'bottom-center', 'bottom-right',
@@ -612,6 +621,13 @@ class AdvancedPage:
                 updates['listening_indicator_enabled']  = (
                     self._widgets['adv_indicator_enabled'].isChecked()
                 )
+                ui_out = dict(self.app.config.get('ui', {}) or {})
+                live_surface_out = dict(ui_out.get('live_surface', {}) or {})
+                live_surface_out['enabled'] = self._widgets[
+                    'adv_live_surface_enabled'
+                ].isChecked()
+                ui_out['live_surface'] = live_surface_out
+                updates['ui'] = ui_out
                 selected_pos = self._widgets['adv_indicator_pos'].currentText()
                 updates['listening_indicator_position'] = selected_pos
                 if selected_pos != 'custom' and self.app.config.get(
