@@ -1614,6 +1614,8 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return (f"{CHIP_CHECK} fixed: {word}" if word else f"{CHIP_CHECK} word fixed", "success")
     if kind == "dictate_correction_cancelled":
         return ("correction cancelled", "warning")
+    if kind == "dictate_correction_unavailable":
+        return ("nothing to correct", "warning")
     if kind == "dictate_correction_refused":
         return ("refused: say it again", "warning")
     if kind == "dictate_correction_failed":

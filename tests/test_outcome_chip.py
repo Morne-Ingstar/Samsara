@@ -196,6 +196,10 @@ class TestLabels:
         assert outcome_chip("dictate_commit_unavailable") == (
             "refused: nothing staged", "warning")
 
+    def test_correction_unavailable_is_deliberate(self):
+        assert outcome_chip("dictate_correction_unavailable") == (
+            "nothing to correct", "warning")
+
     def test_non_dict_detail_is_tolerated(self):
         assert outcome_chip("command_executed", None) == (CHIP_CHECK, "success")
 
