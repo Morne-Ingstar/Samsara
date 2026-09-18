@@ -70,6 +70,7 @@ _DEFAULT_EARCON_DURATION_MS = 300
 #                          callers summarise long lists before speaking.
 TTS_CHAR_LIMIT_EXEMPT_CATEGORIES = frozenset({
     "ava_response", "ava_status", "ava_command_session", "confirmation", "readback",
+    "dictation_readback",
 })
 
 DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT = 50
@@ -84,7 +85,7 @@ SUPPRESSED_CMD_MODE_ID = 'noop-cmd-mode'
 # it would take away the confirmations a deaf-mode user still needs, and
 # captioning it would put command chatter in a window labelled Ava.
 AVA_SPEECH_CATEGORIES = frozenset({
-    "ava_response", "ava_status", "ava_command_session",
+    "ava_response", "ava_status", "ava_command_session", "dictation_readback",
 })
 #: Returned when Ava's audio is muted: the caption was shown, nothing spoke.
 MUTED_AVA_ID = 'noop-ava-muted'
