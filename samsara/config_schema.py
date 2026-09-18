@@ -348,7 +348,7 @@ SETTINGS_SCHEMA = {
     # fallback pass). Replaces the deleted ai_command_mode.* block; see
     # dictation.py's _migrate_ai_command_mode_config for the one-time
     # key-carryover migration from the old block.
-    "ava_command_session.enabled": {"type": "bool", "default": True, "tab": "commands"},
+    "ava_command_session.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "ava_command_session.backend": {
         "type": "enum",
         "options": ["ollama", "cloud"],
@@ -392,7 +392,7 @@ SETTINGS_SCHEMA = {
         "default": 12,
         "tab": "commands",
     },
-    "ava_command_session.keep_warm": {"type": "bool", "default": True, "tab": "commands"},
+    "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands"},
     "ava_command_session.ready_cue_enabled": {"type": "bool", "default": True, "tab": "commands"},
     "ava_command_session.ready_cue_dir": {
         "type": "str",
@@ -706,7 +706,7 @@ SETTINGS_SCHEMA = {
     # just dictated. Nothing is ever applied without the spoken word "apply",
     # so `enabled` gates whether the PROPOSAL is offered at all, not whether
     # something can happen behind the user's back.
-    "ava_edit.enabled": {"type": "bool", "default": True, "tab": "advanced"},
+    "ava_edit.enabled": {"type": "bool", "default": False, "tab": "advanced"},
     # Choreography only -- see samsara/ava_edit/pacing.py, which is built so
     # this cannot change WHAT is applied. "cinematic" adds dwell either side
     # of the deletion so a screen recording reads; "instant" is daily use.
@@ -883,6 +883,24 @@ SETTINGS_SCHEMA = {
         "default": {"version": 0, "accepted_at": None, "cloud_version": None},
         "tab": "ava",
     },
+    "ava.provider_policy": {
+        "type": "enum", "options": ["off", "local", "cloud"],
+        "default": "off", "tab": "ava",
+    },
+    "onboarding.version": {"type": "int", "default": 2, "min": 2, "max": 2, "tab": "general"},
+    "onboarding.setup_status": {
+        "type": "enum", "options": ["in_progress", "ready", "deferred"],
+        "default": "in_progress", "tab": "general",
+    },
+    "onboarding.next_step": {
+        "type": "enum", "options": ["microphone", "ai", "home"],
+        "default": "microphone", "tab": "general",
+    },
+    "onboarding.requested_ai": {
+        "type": "enum", "options": ["off", "local", "cloud"],
+        "default": "off", "tab": "general",
+    },
+    "onboarding.lessons": {"type": "dict", "default": {}, "tab": "general"},
     "ava_invocations": {
         # Exact whole-utterance phrases that switch into Ava mode -- see
         # samsara/session_modes.py's match_ava_invocation(). No settings-UI
