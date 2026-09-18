@@ -434,10 +434,8 @@ class DictionaryPanelQt(QWidget):
 
         for col, text in enumerate([key, val, src]):
             item = QTableWidgetItem(text)
-            if is_default:
-                item.setForeground(
-                    __import__('PySide6.QtGui', fromlist=['QColor']).QColor(theme.TEXT_DISABLED)
-                )
+            color = theme.TEXT_SECONDARY if is_default else theme.TEXT_PRIMARY
+            item.setForeground(__import__('PySide6.QtGui', fromlist=['QColor']).QColor(color))
             table.setItem(row, col, item)
 
     def _kv_add(self, table, field1, field2, mode, status_lbl):

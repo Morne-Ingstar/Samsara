@@ -67,6 +67,10 @@ MIN_TARGET = 44
 #: How many phrases one randomised pass carries. Enough that the pool is not
 #: obviously short, few enough that stepping comes round in reasonable time.
 PHRASE_COUNT = 12
+# The command is registered by core_utils and works without optional packs.
+# Frozen builds can paint the strip before their generated catalog is loaded;
+# a real universal command is more useful than a blank status strip there.
+FRESH_INSTALL_FALLBACK = "what can I say"
 #: Risk classes safe to show: reading the screen or moving the UI. Never
 #: "write", never "destructive".
 SAFE_RISKS = frozenset({"read", "ui"})
@@ -199,7 +203,7 @@ class CommandExampleStrip(QWidget):
 
     def __init__(self, records=None, parent=None, *,
                  rng: Optional[random.Random] = None, ctx=None,
-                 background: Optional[str] = None):
+                 background: Optional[str] = None, fallback_phrase: Optional[str] = None):
         super().__init__(parent)
         self.setObjectName("commandExampleStrip")
         self.setAccessibleName(ACCESSIBLE_NAME)
@@ -207,6 +211,8 @@ class CommandExampleStrip(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._background = background or theme.BG1
         self._phrases = example_phrases(records, ctx=ctx, rng=rng)
+        if not self._phrases and fallback_phrase:
+            self._phrases = [fallback_phrase]
         self._index = 0
 
         lay = QHBoxLayout(self)
@@ -382,4 +388,8 @@ def build_example_strip(app=None, parent=None, **kw) -> CommandExampleStrip:
     except Exception as exc:
         logger.debug(f"build_example_strip: catalog unavailable: {exc}")
     ctx = kw.pop("ctx", None)
-    return CommandExampleStrip(records, parent, ctx=ctx, **kw)
+    return CommandExampleStrip(
+        records, parent, ctx=ctx,
+        fallback_phrase=FRESH_INSTALL_FALLBACK if not records else None,
+        **kw,
+    )
