@@ -29,7 +29,7 @@ covered by `tests/test_release_manifest.py` and `tests/test_component_fetch.py`.
 | `id` | string | stable identifier, `[a-z0-9-]+`. Consumers key on it. |
 | `name` | string | human name for a picker. |
 | `description` | string | one line. |
-| `kind` | string | one of `core`, `acceleration`, `model`, `voice`. |
+| `kind` | string | one of `core`, `acceleration`, `model`, `voice`, `feature`. A `feature` is a downloadable app capability rather than a model or hardware acceleration. |
 | `available` | boolean | `false` for a component that is declared but not yet released. Its `url`, `sha256`, `size_bytes` and `min_disk_bytes` are `null`, and a consumer lists it as `unavailable` and never downloads it. |
 | `filename` | string | the asset's file name on the Release; also the local file name. |
 | `url` | string or null | `https://` only. The Release asset. |
@@ -54,6 +54,7 @@ without a schema change: its entry flips `available` to `true` and gains real
 | `cuda-pack` | acceleration | pinned | `Samsara-CUDA-Pack-v0.20.0.zip`, the ten NVIDIA runtime DLLs for `_internal/ctranslate2` (docs/CUDA.md). `requires: ["nvidia_gpu"]`. Not built on CI (see release.yml's closing note), so pinned to the v0.20.0 asset by URL, size and SHA-256. |
 | `wake-word-models` | model | built | `Samsara-WakeWord-Models-<tag>.zip`, the nine OpenWakeWord ONNX files as one archive, packaged from the frozen output. The generator checks every member against `tools/release_preflight.OWW_MODELS` before it will emit the entry. `install_dir: _internal/openwakeword/resources/models`. |
 | `command-model` | model | pinned | declared, `available: false`, until the hands-free command model is released. |
+| `gesture-control` | feature | built | `Samsara-GestureControl-<tag>.zip`, the MediaPipe/cv2 webcam hand-pose runtime. It unpacks into `_internal`, which is the frozen onedir interpreter's import root. |
 
 ## Guarantees of the generator
 
