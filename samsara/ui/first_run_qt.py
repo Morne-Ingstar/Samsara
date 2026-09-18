@@ -76,6 +76,7 @@ COMPONENT_BENEFITS = {
     "cuda-pack": "Faster transcription on an NVIDIA GPU.",
     "wake-word-models": "Hands-free control: say the wake word instead of pressing a key.",
     "command-model": "A local model for the hands-free command lane.",
+    "gesture-control": "Webcam hand poses for hands-free commands.",
 }
 COMING_SOON = "Coming soon"
 NO_NVIDIA = "No NVIDIA GPU detected"
@@ -535,7 +536,8 @@ class ComponentsPage:
                  manifest_loader: Callable[[], dict] = _load_manifest_default,
                  app_root=None, downloads_dir=None, opener=None,
                  gpu_probe: Callable[[], Optional[bool]] = nvidia_gpu_present,
-                 run_in_thread: bool = True):
+                 run_in_thread: bool = True, include_installed: bool = False,
+                 show_later: bool = True):
         from PySide6.QtCore import Qt  # noqa: PLC0415
         from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget  # noqa: PLC0415
 
@@ -549,6 +551,7 @@ class ComponentsPage:
         self._opener = opener
         self._gpu_probe = gpu_probe
         self._threaded = run_in_thread
+        self._include_installed = include_installed
         self._manifest: Optional[dict] = None
         self._rows: dict = {}
         self._cancel_flags: dict = {}
@@ -582,6 +585,7 @@ class ComponentsPage:
         self._later_btn.setMinimumWidth(MIN_TARGET)
         theme.make_secondary(self._later_btn)
         self._later_btn.clicked.connect(lambda: self._on_later())
+        self._later_btn.setVisible(show_later)
         lay.addWidget(self._later_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         self._Qt = Qt
 
@@ -654,7 +658,11 @@ class ComponentsPage:
             self._status.setText(self._error or "")
             return
         gpu = None
-        self._listed = missing_components(self._manifest, self._app_root, self._downloads)
+        self._listed = (
+            list(self._manifest["components"])
+            if self._include_installed else
+            missing_components(self._manifest, self._app_root, self._downloads)
+        )
         if any("nvidia_gpu" in c.get("requires", []) for c in self._listed):
             gpu = self._gpu_probe()
         if not self._listed:
@@ -676,6 +684,7 @@ class ComponentsPage:
             benefit.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(benefit)
             note = component_note(component, gpu)
+            installed = component_installed(component, self._app_root, self._downloads)
             row = QHBoxLayout()
             row.setSpacing(12)
             get_btn = QPushButton(f"Get {component['name']}")
@@ -712,7 +721,11 @@ class ComponentsPage:
             result.setAccessibleName(f"{component['name']} result")
             result.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(result)
-            if note == COMING_SOON or note == NO_NVIDIA:
+            if installed:
+                get_btn.setText("Installed")
+                get_btn.setEnabled(False)
+                result.setText("Installed.")
+            elif note == COMING_SOON or note == NO_NVIDIA:
                 get_btn.setEnabled(False)
             self._rows_layout.addWidget(card)
             self._rows[component["id"]] = {

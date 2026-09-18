@@ -26,9 +26,14 @@ from typing import Callable, Optional
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = 1
-KINDS = ("core", "acceleration", "model", "voice")
+KINDS = ("core", "acceleration", "model", "voice", "feature")
 SOURCES = ("built", "pinned")
 STATES = ("present", "missing", "unavailable")
+
+GESTURE_CONTROL_COMPONENT = "gesture-control"
+GESTURE_COMPONENT_MESSAGE = (
+    "Gesture control is not installed. Add it from Settings > Advanced > Components."
+)
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -64,6 +69,10 @@ class HashMismatch(RuntimeError):
 
 class DownloadError(RuntimeError):
     """The transport failed or returned something unusable."""
+
+
+class ComponentNotInstalled(RuntimeError):
+    """A user-selected optional feature has not been installed yet."""
 
 
 # ---------------------------------------------------------------------------

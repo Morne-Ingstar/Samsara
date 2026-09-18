@@ -106,6 +106,18 @@ def component_specs(tag: str) -> list:
             "default": False,
             "available": False,
         },
+        {
+            "id": "gesture-control",
+            "name": "Gesture control",
+            "description": "Webcam hand poses for hands-free commands.",
+            "kind": "feature",
+            "source": "built",
+            "filename": f"Samsara-GestureControl-{tag}.zip",
+            "install_dir": "_internal",
+            "requires": [],
+            "default": False,
+            "available": True,
+        },
     ]
 
 

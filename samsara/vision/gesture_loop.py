@@ -26,6 +26,7 @@ import threading
 import time
 
 from samsara.runtime import thread_registry
+from samsara.components import ComponentNotInstalled, GESTURE_COMPONENT_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,13 @@ class GestureLoop:
         """Begin the gesture poll loop. Idempotent."""
         if self._running:
             return
+        try:
+            import mediapipe  # noqa: F401
+            import cv2  # noqa: F401
+        except ModuleNotFoundError as exc:
+            if exc.name not in {"mediapipe", "cv2"}:
+                raise
+            raise ComponentNotInstalled(GESTURE_COMPONENT_MESSAGE) from exc
         self._reader = self._camera.subscribe()
         self._running = True
         self._thread = thread_registry.spawn(

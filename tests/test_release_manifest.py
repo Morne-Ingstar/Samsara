@@ -142,10 +142,11 @@ def _write_models_zip(path: Path, *, drop=None, corrupt=None) -> dict:
 
 @pytest.fixture
 def build(tmp_path, monkeypatch):
-    """A fake artifacts directory with the two built assets and fake OWW pins."""
+    """A fake artifacts directory with the built core, model, and feature assets."""
     core = tmp_path / f"Samsara-Windows-{TAG}.zip"
     core.write_bytes(b"core zip " * 1000)
     fake_pins = _write_models_zip(tmp_path / f"Samsara-WakeWord-Models-{TAG}.zip")
+    (tmp_path / f"Samsara-GestureControl-{TAG}.zip").write_bytes(b"gesture component" * 100)
     monkeypatch.setattr(gen, "OWW_MODELS", fake_pins)
     return tmp_path
 
@@ -173,6 +174,8 @@ class TestGenerator:
         assert by_id["cuda-pack"]["requires"] == ["nvidia_gpu"] and by_id["cuda-pack"]["default"] is False
         assert by_id["command-model"]["available"] is False
         assert by_id["command-model"]["sha256"] is None and by_id["command-model"]["url"] is None
+        assert by_id["gesture-control"]["kind"] == "feature"
+        assert by_id["gesture-control"]["default"] is False
         assert [c["id"] for c in doc["components"]] == sorted(c["id"] for c in doc["components"])
 
     def test_missing_built_artifact_fails_loudly(self, build):

@@ -6,6 +6,8 @@ Creates a standalone directory-based distribution
 
 import os
 import sys
+import zipfile
+from importlib import metadata
 from pathlib import Path
 from PyInstaller.utils.hooks import (
     collect_all,
@@ -119,13 +121,9 @@ pyside6_hiddenimports = [
 shiboken6_datas, shiboken6_binaries, shiboken6_hiddenimports = collect_all('shiboken6')
 datas += pyside6_datas + shiboken6_datas
 
-# 2d. mediapipe — collect everything. Ships model data files (hand-tracking
-# .tflite/.binarypb graphs) that PyInstaller's static analysis cannot see
-# (loaded by path at runtime, not imported), so hiddenimports alone would
-# leave the gesture lane silently broken in a frozen build even with the
-# package itself correctly bundled.
-mediapipe_datas, mediapipe_binaries, mediapipe_hiddenimports = collect_all('mediapipe')
-datas += mediapipe_datas
+# 2d. Gesture control is a downloadable component, not part of the core
+# onedir build. _write_gesture_component() below puts its files under
+# _internal, the frozen interpreter's existing sys._MEIPASS import root.
 
 # 3. sounddevice PortAudio binaries
 sounddevice_data = os.path.join(site_packages, '_sounddevice_data')
@@ -171,10 +169,8 @@ binaries = []
 # OpenWakeWord binaries (collected earlier)
 binaries += oww_binaries
 
-# PySide6 / shiboken6 / mediapipe binaries (collected earlier) -- Qt platform
-# plugins, shiboken6's compiled binding runtime, mediapipe's compiled graph
-# runner .pyd/.dll files.
-binaries += pyside6_binaries + shiboken6_binaries + mediapipe_binaries
+# PySide6 / shiboken6 binaries (collected earlier).
+binaries += pyside6_binaries + shiboken6_binaries
 
 # ctranslate2 DLLs
 for dll in ['ctranslate2.dll', 'cudnn64_9.dll', 'libiomp5md.dll']:
@@ -233,15 +229,8 @@ if os.path.exists(portaudio_path):
 hiddenimports = [
     'shiboken6',
 
-    # Screen/webcam frame handling (2026-07-10 import audit)
-    'cv2',
-
     # Cloud-fallback TTS voice (2026-07-10 import audit)
     'edge_tts',
-
-    # Gesture lane webcam hand-tracking (2026-07-10 import audit) --
-    # collect_all('mediapipe') above handles its model data files.
-    'mediapipe',
 
     # Rhyme/phonetic lookup (2026-07-10 import audit)
     'pronouncing',
@@ -370,8 +359,8 @@ hiddenimports = [
 # Merge imports collected by collect_all('openwakeword')
 hiddenimports += oww_hiddenimports
 
-# Merge the narrow Qt inventory plus imports collected for shiboken6/mediapipe.
-hiddenimports += pyside6_hiddenimports + shiboken6_hiddenimports + mediapipe_hiddenimports
+# Merge the narrow Qt inventory plus imports collected for shiboken6.
+hiddenimports += pyside6_hiddenimports + shiboken6_hiddenimports
 
 # samsara.ui / samsara.tts (2026-07-10): both packages are only reached via
 # qt_runtime.post()-scheduled lazy instantiation, invisible to PyInstaller's
@@ -444,12 +433,10 @@ a = Analysis(
         'streamlit',
         'gradio',
         # More unused transitive deps
-        # NOTE (2026-07-10): 'cv2' / 'opencv-python' were WRONGLY excluded
-        # here -- cv2 is directly imported by the gesture lane and show-
-        # numbers overlay (3 files) and is a hard mediapipe dependency.
-        # This exclusion was actively breaking every frozen build that
-        # touched those features; removed, not just left uncommented, so
-        # it can't silently come back via a careless copy-paste.
+        # Gesture control installs cv2 and mediapipe under _internal. The
+        # guarded vision modules let core run until that component is added.
+        'cv2',
+        'mediapipe',
         'numba',
         'llvmlite',
         'librosa',
@@ -508,3 +495,46 @@ coll = COLLECT(
     upx_exclude=[],
     name='Samsara',
 )
+
+
+# ---------------------------------------------------------------------------
+# Optional gesture-control component
+# ---------------------------------------------------------------------------
+# A PyInstaller hidden import would put Python modules into PYZ, which cannot
+# be added after installation. This archive instead preserves the installed
+# wheel files beneath _internal; a frozen onedir executable already imports
+# from sys._MEIPASS (_internal), so a restart after unpacking sees them.
+_GESTURE_DISTRIBUTIONS = (
+    'mediapipe', 'opencv-contrib-python', 'absl-py', 'protobuf',
+    'flatbuffers', 'attrs', 'six', 'packaging',
+)
+
+
+def _write_gesture_component(output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix('.zip.tmp')
+    seen = set()
+    try:
+        with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for distribution_name in _GESTURE_DISTRIBUTIONS:
+                distribution = metadata.distribution(distribution_name)
+                for relative in distribution.files or ():
+                    source = Path(distribution.locate_file(relative))
+                    if not source.is_file():
+                        continue
+                    arcname = source.relative_to(site_packages).as_posix()
+                    if arcname not in seen:
+                        archive.write(source, arcname)
+                        seen.add(arcname)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    if not any(name.startswith('mediapipe/') for name in seen):
+        raise SystemExit('samsara.spec: gesture component has no mediapipe files')
+    if not any(name.startswith('cv2/') for name in seen):
+        raise SystemExit('samsara.spec: gesture component has no cv2 files')
+    os.replace(temporary, output)
+
+
+from samsara import __version__  # noqa: E402
+_write_gesture_component(app_dir / 'dist' / f'Samsara-GestureControl-{__version__}.zip')

@@ -13,7 +13,14 @@ import logging
 import threading
 import time
 
-import cv2
+from samsara.components import ComponentNotInstalled, GESTURE_COMPONENT_MESSAGE
+
+try:
+    import cv2
+except ModuleNotFoundError as exc:
+    if exc.name != "cv2":
+        raise
+    cv2 = None
 
 from samsara.runtime import thread_registry
 
@@ -100,6 +107,8 @@ class CameraService:
 
     def start(self, device_index: int = 0, profile: dict | None = None) -> None:
         """Open the camera and begin the frame-read loop. Idempotent."""
+        if cv2 is None:
+            raise ComponentNotInstalled(GESTURE_COMPONENT_MESSAGE)
         if self._running:
             return
         self._device_index = device_index

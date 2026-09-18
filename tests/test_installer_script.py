@@ -77,12 +77,14 @@ class TestComponentsMatchTheManifest:
         assert "Types: full custom" in wake, "wake-word models preselected"
         cmd = [l for l in comp.splitlines() if 'Name: "command_model"' in l][0]
         assert "Types:" not in cmd, "the command model is never preselected"
+        gesture = [l for l in comp.splitlines() if 'Name: "gesture_control"' in l][0]
+        assert "Types:" not in gesture, "gesture control is never preselected"
         assert "Name: \"full\"" in _section(iss, "Types") and "Flags: iscustom" in _section(iss, "Types")
 
     def test_sizes_come_from_the_manifest_defines(self, iss):
         assert '#include "manifest_defines.iss"' in iss and '#ifexist "manifest_defines.iss"' in iss
         comp = _section(iss, "Components")
-        for define in ("WakeWordModelsSize", "CudaPackSize", "CommandModelSize"):
+        for define in ("WakeWordModelsSize", "CudaPackSize", "CommandModelSize", "GestureControlSize"):
             assert f"ExtraDiskSpaceRequired: {{#{define}}}" in comp
         assert "ShowComponentSizes=yes" in _section(iss, "Setup")
 
@@ -118,6 +120,7 @@ class TestGpuAndComingSoon:
         assert "manifest_defines.iss" in cmd
         assert "Available" in cmd and "'command-model': 'CommandModel'" in cmd
         assert "'cuda-pack': 'CudaPack'" in cmd and "'wake-word-models': 'WakeWordModels'" in cmd
+        assert "'gesture-control': 'GestureControl'" in cmd
 
 
 class TestInstallBehaviour:
