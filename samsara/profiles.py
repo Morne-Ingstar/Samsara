@@ -14,11 +14,15 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
+DICTIONARY_BUNDLE_FORMAT = "samsara.dictionary"
+DICTIONARY_BUNDLE_VERSION = 1
+DEFAULT_COMMAND_PROFILE = "Default"
+
 
 class ProfileManager:
     """Manages dictionary and command profiles for Samsara."""
     
-    def __init__(self, app_dir: str):
+    def __init__(self, app_dir: str, commands_path: Optional[str] = None):
         """
         Initialize the profile manager.
         
@@ -32,7 +36,8 @@ class ProfileManager:
         
         # Active data file paths
         self.training_data_path = self.app_dir / "training_data.json"
-        self.commands_path = self.app_dir / "commands.json"
+        self.commands_path = Path(commands_path) if commands_path else self.app_dir / "commands.json"
+        self.default_commands_path = self.app_dir / "commands.default.json"
         self.config_path = self.app_dir / "config.json"
         
         # Ensure directories exist
@@ -42,6 +47,14 @@ class ProfileManager:
         """Create profile directories if they don't exist."""
         self.dictionaries_dir.mkdir(parents=True, exist_ok=True)
         self.commands_dir.mkdir(parents=True, exist_ok=True)
+        # Capture the shipped command set once.  This is the read-only source
+        # for the built-in Default profile, even after the editable command
+        # file has been changed by the user.
+        if not self.default_commands_path.exists() and self.commands_path.exists():
+            try:
+                shutil.copy2(self.commands_path, self.default_commands_path)
+            except OSError as exc:
+                logger.debug("Could not seed Default command profile: %s", exc)
     
     # =========================================================================
     # Dictionary Profile Methods
@@ -260,21 +273,220 @@ class ProfileManager:
             return True, f"Imported as '{name}'."
         except Exception as e:
             return False, f"Import failed: {e}"
-    
+
+    # -------------------------------------------------------------------------
+    # One-file dictionary transfer
+    # -------------------------------------------------------------------------
+
+    def _read_json_object(self, path: Path) -> Dict[str, Any]:
+        if not path.exists():
+            return {}
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"{path.name} must contain a JSON object")
+        return data
+
+    def read_dictionary_bundle(self) -> Dict[str, Any]:
+        """Return the four user-owned dictionary lists in export format."""
+        training = self._read_json_object(self.training_data_path)
+        wake = self._read_json_object(self.app_dir / "user_wake_corrections.json")
+        aliases_file = self._read_json_object(self.app_dir / "user_aliases.json")
+        aliases = aliases_file.get("aliases", aliases_file)
+        if not isinstance(aliases, dict):
+            raise ValueError("user_aliases.json aliases must be an object")
+        vocabulary = training.get("vocabulary", [])
+        corrections = training.get("corrections", {})
+        if not isinstance(vocabulary, list) or not isinstance(corrections, dict):
+            raise ValueError("training_data.json has invalid vocabulary or corrections")
+        if not isinstance(wake, dict):
+            raise ValueError("user_wake_corrections.json must contain an object")
+        return {
+            "format": DICTIONARY_BUNDLE_FORMAT,
+            "version": DICTIONARY_BUNDLE_VERSION,
+            "vocabulary": list(vocabulary),
+            "corrections": dict(corrections),
+            "wake_word_corrections": dict(wake),
+            "personal_aliases": dict(aliases),
+        }
+
+    def export_dictionary_bundle(self, export_path: str) -> Tuple[bool, str]:
+        """Export vocabulary, corrections, wake corrections, and aliases."""
+        try:
+            bundle = self.read_dictionary_bundle()
+            destination = Path(export_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with open(destination, 'w', encoding='utf-8') as f:
+                json.dump(bundle, f, indent=2, ensure_ascii=False, sort_keys=True)
+            return True, f"Exported dictionary to {destination}"
+        except Exception as exc:
+            return False, f"Dictionary export failed: {exc}"
+
+    @staticmethod
+    def _validate_dictionary_bundle(data: Any) -> Tuple[bool, str]:
+        if not isinstance(data, dict):
+            return False, "Dictionary file must contain a JSON object."
+        if data.get("format") != DICTIONARY_BUNDLE_FORMAT:
+            return False, "Not a Samsara dictionary export."
+        if data.get("version") != DICTIONARY_BUNDLE_VERSION:
+            return False, f"Unsupported dictionary export version: {data.get('version')!r}."
+        if not isinstance(data.get("vocabulary"), list):
+            return False, "Dictionary export vocabulary must be a list."
+        for key in ("corrections", "wake_word_corrections", "personal_aliases"):
+            if not isinstance(data.get(key), dict):
+                return False, f"Dictionary export {key} must be an object."
+        return True, ""
+
+    def _backup_dictionary_files(self) -> Optional[Path]:
+        paths = (
+            self.training_data_path,
+            self.app_dir / "user_wake_corrections.json",
+            self.app_dir / "user_aliases.json",
+        )
+        existing = [path for path in paths if path.exists()]
+        if not existing:
+            return None
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_dir = self.app_dir / "backups" / f"dictionary-{stamp}"
+        counter = 1
+        while backup_dir.exists():
+            backup_dir = self.app_dir / "backups" / f"dictionary-{stamp}-{counter}"
+            counter += 1
+        backup_dir.mkdir(parents=True, exist_ok=False)
+        for path in existing:
+            shutil.copy2(path, backup_dir / path.name)
+        return backup_dir
+
+    @staticmethod
+    def _write_json_object(path: Path, data: Dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        with open(temporary, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, sort_keys=True)
+        try:
+            os.replace(temporary, path)
+        except OSError:
+            # The command file watcher can hold a read handle without
+            # FILE_SHARE_DELETE on Windows.  Match CommandExecutor's safe
+            # fallback: overwrite through an ordinary shared-write handle.
+            with open(temporary, 'r', encoding='utf-8') as f:
+                text = f.read()
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            temporary.unlink(missing_ok=True)
+
+    def import_dictionary_bundle(self, import_path: str, mode: str = "merge") -> Tuple[bool, str]:
+        """Import one dictionary bundle with explicit merge or replace semantics.
+
+        Merge never overwrites a conflicting current key; replace takes a
+        recoverable backup of each existing store before writing the bundle.
+        """
+        mode = str(mode or "").strip().lower()
+        if mode not in {"merge", "replace"}:
+            return False, "Choose either merge or replace when importing a dictionary."
+        try:
+            with open(import_path, 'r', encoding='utf-8') as f:
+                incoming = json.load(f)
+            valid, reason = self._validate_dictionary_bundle(incoming)
+            if not valid:
+                return False, reason
+            current = self.read_dictionary_bundle()
+            conflicts = 0
+            if mode == "merge":
+                vocabulary = list(dict.fromkeys(current["vocabulary"] + incoming["vocabulary"]))
+                merged_maps = {}
+                for key in ("corrections", "wake_word_corrections", "personal_aliases"):
+                    merged_maps[key] = dict(current[key])
+                    for name, value in incoming[key].items():
+                        if name in merged_maps[key] and merged_maps[key][name] != value:
+                            conflicts += 1
+                        else:
+                            merged_maps[key][name] = value
+                imported = {
+                    "vocabulary": vocabulary,
+                    **merged_maps,
+                }
+            else:
+                backup = self._backup_dictionary_files()
+                imported = {
+                    "vocabulary": list(incoming["vocabulary"]),
+                    "corrections": dict(incoming["corrections"]),
+                    "wake_word_corrections": dict(incoming["wake_word_corrections"]),
+                    "personal_aliases": dict(incoming["personal_aliases"]),
+                }
+
+            self._write_json_object(
+                self.training_data_path,
+                {"vocabulary": imported["vocabulary"], "corrections": imported["corrections"]},
+            )
+            self._write_json_object(
+                self.app_dir / "user_wake_corrections.json",
+                imported["wake_word_corrections"],
+            )
+            self._write_json_object(
+                self.app_dir / "user_aliases.json",
+                {"version": 1, "aliases": imported["personal_aliases"]},
+            )
+            if mode == "replace":
+                backup_text = f" Backup: {backup}." if backup else ""
+                return True, f"Replaced dictionary data.{backup_text}"
+            suffix = f" {conflicts} conflicting entr{'y' if conflicts == 1 else 'ies'} kept." if conflicts else ""
+            return True, f"Merged dictionary data.{suffix}"
+        except Exception as exc:
+            return False, f"Dictionary import failed: {exc}"
+
+    # Short names for callers that do not need to distinguish this from the
+    # older per-profile import/export methods.
+    export_dictionary = export_dictionary_bundle
+    import_dictionary = import_dictionary_bundle
+
     # =========================================================================
     # Command Profile Methods
     # =========================================================================
+
+    def _default_commands_data(self) -> Dict[str, Any]:
+        source = self.default_commands_path if self.default_commands_path.exists() else self.commands_path
+        data = self._read_json_object(source)
+        commands = data.get("commands", data)
+        if not isinstance(commands, dict):
+            raise ValueError("Default command profile has no commands object")
+        return {"commands": commands}
+
+    def _backup_current_commands(self) -> Optional[Path]:
+        if not self.commands_path.exists():
+            return None
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = self.commands_path.with_name(f"{self.commands_path.name}.bak-{stamp}")
+        counter = 1
+        while backup.exists():
+            backup = self.commands_path.with_name(f"{self.commands_path.name}.bak-{stamp}-{counter}")
+            counter += 1
+        shutil.copy2(self.commands_path, backup)
+        return backup
     
     def list_command_profiles(self) -> List[str]:
         """Get list of available command profile names."""
         profiles = []
         if self.commands_dir.exists():
             for f in self.commands_dir.glob("*.json"):
-                profiles.append(f.stem)
-        return sorted(profiles)
+                if f.stem != DEFAULT_COMMAND_PROFILE:
+                    profiles.append(f.stem)
+        return [DEFAULT_COMMAND_PROFILE] + sorted(profiles)
     
     def load_command_profile_metadata(self, name: str) -> Optional[Dict[str, Any]]:
         """Load just the metadata from a command profile."""
+        if name == DEFAULT_COMMAND_PROFILE:
+            try:
+                return {
+                    'name': DEFAULT_COMMAND_PROFILE,
+                    'description': 'Built-in command set; read-only and always available.',
+                    'author': 'Samsara',
+                    'version': 'built-in',
+                    'created': '',
+                    'command_count': len(self._default_commands_data()['commands']),
+                }
+            except Exception:
+                return None
         path = self.commands_dir / f"{name}.json"
         if not path.exists():
             return None
@@ -295,6 +507,8 @@ class ProfileManager:
     def save_command_profile(self, name: str, description: str = "",
                             author: str = "", overwrite: bool = False) -> Tuple[bool, str]:
         """Save current commands as a named profile."""
+        if name == DEFAULT_COMMAND_PROFILE:
+            return False, "The built-in Default profile is read-only."
         path = self.commands_dir / f"{name}.json"
         
         if path.exists() and not overwrite:
@@ -324,6 +538,16 @@ class ProfileManager:
     
     def load_command_profile(self, name: str, merge: bool = False) -> Tuple[bool, str]:
         """Load a command profile, either replacing or merging."""
+        if name == DEFAULT_COMMAND_PROFILE:
+            if merge:
+                return False, "The built-in Default profile can only replace the current command set."
+            try:
+                backup = self._backup_current_commands()
+                self._write_json_object(self.commands_path, self._default_commands_data())
+                detail = f" Backup: {backup}." if backup else ""
+                return True, f"Restored the built-in Default command profile.{detail}"
+            except Exception as exc:
+                return False, f"Could not restore Default: {exc}"
         path = self.commands_dir / f"{name}.json"
         
         if not path.exists():
@@ -363,6 +587,8 @@ class ProfileManager:
     
     def delete_command_profile(self, name: str) -> Tuple[bool, str]:
         """Delete a command profile."""
+        if name == DEFAULT_COMMAND_PROFILE:
+            return False, "The built-in Default profile is read-only."
         path = self.commands_dir / f"{name}.json"
         if not path.exists():
             return False, f"Profile '{name}' not found."
@@ -374,6 +600,17 @@ class ProfileManager:
     
     def export_command_profile(self, name: str, export_path: str) -> Tuple[bool, str]:
         """Export a command profile to an external location."""
+        if name == DEFAULT_COMMAND_PROFILE:
+            try:
+                with open(export_path, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'profile_name': DEFAULT_COMMAND_PROFILE,
+                        'description': 'Built-in command set; read-only and always available.',
+                        **self._default_commands_data(),
+                    }, f, indent=2, ensure_ascii=False)
+                return True, f"Exported to {export_path}"
+            except Exception as exc:
+                return False, f"Export failed: {exc}"
         source = self.commands_dir / f"{name}.json"
         if not source.exists():
             return False, f"Profile '{name}' not found."
@@ -399,6 +636,8 @@ class ProfileManager:
             return False, f"Invalid JSON: {e}"
         
         name = new_name or data.get('profile_name') or import_path.stem
+        if name == DEFAULT_COMMAND_PROFILE:
+            return False, "Default is built-in and read-only; choose another profile name."
         dest = self.commands_dir / f"{name}.json"
         
         if dest.exists():

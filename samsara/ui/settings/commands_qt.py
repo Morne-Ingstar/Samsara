@@ -176,9 +176,32 @@ class CommandsPage:
         pack_vlayout.addStretch()
         pack_scroll.setWidget(pack_container)
         self._widgets['_pack_checkboxes'] = pack_checkboxes
+        self._widgets['_pack_scroll'] = pack_scroll
         layout.addWidget(pack_scroll)
         layout.addWidget(restart_lbl)
         layout.addSpacing(4)
+
+        # ---- Command Profiles ---------------------------------------------
+        layout.addWidget(self._section_title("Command Profiles"))
+        profile_entry = QWidget()
+        profile_entry.setObjectName("commandProfilesEntry")
+        profile_row = QHBoxLayout(profile_entry)
+        profile_row.setContentsMargins(0, 0, 0, 0)
+        profile_note = QLabel(
+            "Profiles: export / import / manage. Default is built-in and read-only."
+        )
+        profile_note.setWordWrap(True)
+        profile_note.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
+        )
+        profile_row.addWidget(profile_note, stretch=1)
+        profile_button = QPushButton("Manage Profiles…")
+        profile_button.setObjectName("manageCommandProfilesButton")
+        profile_button.clicked.connect(lambda: self._open_command_profiles(table=None))
+        profile_row.addWidget(profile_button)
+        layout.addWidget(profile_entry)
+        self._widgets['_command_profiles_button'] = profile_button
+        self._widgets['_command_profiles_entry'] = profile_entry
 
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
@@ -230,6 +253,8 @@ class CommandsPage:
         )
         table.setMinimumHeight(260)
         self._widgets['cmd_table'] = table
+        profile_button.clicked.disconnect()
+        profile_button.clicked.connect(lambda: self._open_command_profiles(table=table))
         self._populate_commands_table(table, "")
         search_box.textChanged.connect(lambda txt: self._filter_commands(table, txt))
         layout.addWidget(table, stretch=1)
@@ -313,6 +338,34 @@ class CommandsPage:
 
         page.setWidget(outer)
         return page
+
+    def _open_command_profiles(self, table=None) -> None:
+        """Open the profile manager from the Commands page."""
+        from pathlib import Path
+        from samsara.profiles import ProfileManager
+        from samsara.ui.profile_manager_qt import ProfileManagerQt
+
+        if not hasattr(self, '_command_profile_manager_qt'):
+            config_path = getattr(self.app, 'config_path', None)
+            app_dir = Path(config_path).parent if config_path else Path(_SETTINGS_QT_FILE).parent
+            executor = getattr(self.app, 'command_executor', None)
+            commands_path = getattr(executor, 'commands_path', None)
+
+            def _on_changed():
+                try:
+                    if executor is not None and hasattr(executor, 'reload_commands'):
+                        executor.reload_commands()
+                    elif executor is not None and hasattr(executor, 'load_commands'):
+                        executor.load_commands()
+                except Exception as exc:
+                    logger.debug(f"_open_command_profiles reload: {exc}")
+                if table is not None:
+                    search = self._widgets.get('cmd_search')
+                    self._populate_commands_table(table, search.text() if search else '')
+
+            pm = ProfileManager(app_dir, commands_path=commands_path)
+            self._command_profile_manager_qt = ProfileManagerQt(pm, _on_changed)
+        self._command_profile_manager_qt.show()
     @staticmethod
     def _cmd_action_text(cmd_data: dict) -> str:
         t = cmd_data.get('type', '')

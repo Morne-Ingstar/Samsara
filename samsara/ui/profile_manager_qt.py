@@ -177,7 +177,9 @@ class _ProfileManagerWindow(QMainWindow):
 
         # ---- Command Profiles -----------------------------------------------
         layout.addWidget(self._section_title("Command Profiles"))
-        layout.addWidget(self._desc("Manage voice command profiles"))
+        layout.addWidget(self._desc(
+            "Manage voice command profiles. Default is built-in and read-only; restoring it backs up the current set."
+        ))
         self._cmd_active_lbl = QLabel(
             f"Active: {active.get('commands') or '(unsaved)'}"
         )
@@ -357,10 +359,20 @@ class _ProfileManagerWindow(QMainWindow):
             QMessageBox.warning(self, "No Profile", "Select a profile to load.")
             return
         action = "merge with" if merge else "replace"
+        if ptype == 'commands' and name == 'Default':
+            title = "Restore Default Commands"
+            question = (
+                "Restore the built-in Default command set?\n\n"
+                "Samsara will back up the current command set first."
+            )
+        else:
+            title = "Confirm Load"
+            question = (
+                f"This will {action} your current "
+                f"{'vocabulary and corrections' if ptype == 'dictionary' else 'commands'}.\n\nContinue?"
+            )
         reply = QMessageBox.question(
-            self, "Confirm Load",
-            f"This will {action} your current "
-            f"{'vocabulary and corrections' if ptype == 'dictionary' else 'commands'}.\n\nContinue?",
+            self, title, question,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -390,6 +402,13 @@ class _ProfileManagerWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         name, description, author = dlg.result
+
+        if ptype == 'commands' and name == 'Default':
+            QMessageBox.information(
+                self, "Read-only profile",
+                "Default is built-in and read-only. Use Load (Replace) to restore it.",
+            )
+            return
 
         if ptype == 'dictionary':
             existing = self._pm.list_dictionary_profiles()
