@@ -1767,6 +1767,7 @@ class SessionModeManager:
         cancel_window_fn: Optional[Callable[[HandsFreeCommandMatch, Callable[[], None]], float]] = None,
         on_deferred_outcome: Optional[Callable[[DispatchOutcome], None]] = None,
         speak_fn: Optional[Callable[[str, str], None]] = None,
+        fragment_clear_gap_s: float = 0.0,
     ) -> None:
         # Queue 80: speak_fn(text, category) says the clear-draft question and
         # its result out loud. dictation.py routes it to
@@ -1892,6 +1893,8 @@ class SessionModeManager:
         )
         self._pending_action_scratch_fn = pending_action_scratch_fn
         self._clock = clock
+        self._fragment_clear_gap_s = max(0.0, float(fragment_clear_gap_s))
+        self._last_dictate_dispatch_at: Optional[float] = None
 
         self.mode: SessionMode = SessionMode.COMMAND
         self._stack = UnitOfWorkStack()
@@ -1939,6 +1942,7 @@ class SessionModeManager:
         self._pending_clear = None
         # Queue 99: a new session never inherits an armed "again".
         self._last_scratch_at = None
+        self._last_dictate_dispatch_at = None
         if (self._retained_draft is not None
                 and initial_mode is SessionMode.DICTATE
                 and self._buffer_dictate_until_commit):
@@ -2337,6 +2341,13 @@ class SessionModeManager:
         # commit text transactionally BEFORE commands that move focus or submit.
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE):
+            fragment_guard = (
+                self._fragment_clear_gap_s > 0
+                and self._last_dictate_dispatch_at is not None
+                and self._clock() - self._last_dictate_dispatch_at < self._fragment_clear_gap_s
+                and bool(self._dictate_pending_buffer.strip())
+                and not chunk_ends_terminal(self._dictate_pending_buffer)
+            )
             literal_payload = match_literal_payload(text)
             if literal_payload is not None:
                 if not passes_switch_anti_hallucination_gate(signals):
@@ -2348,6 +2359,9 @@ class SessionModeManager:
             if self._hands_free_command_probe_fn is not None:
                 hands_free_match = self._hands_free_command_probe_fn(text)
                 if hands_free_match is not None:
+                    if fragment_guard:
+                        log.info("[SESSION] paced fragment kept as dictation: %r", text)
+                        return self._dispatch_dictate(text)
                     if not passes_switch_anti_hallucination_gate(signals):
                         return DispatchOutcome(kind="hands_free_command_refused", detail={
                             "phrase": hands_free_match.phrase,
@@ -2368,7 +2382,10 @@ class SessionModeManager:
                         return self._do_switch(SwitchMatch(target_mode=SessionMode.AVA))
                     return self._dispatch_hands_free_command(hands_free_match)
 
-        return self._dispatch_in_mode(text, signals=signals)
+        outcome = self._dispatch_in_mode(text, signals=signals)
+        if self._buffer_dictate_until_commit and self.mode is SessionMode.DICTATE:
+            self._last_dictate_dispatch_at = self._clock()
+        return outcome
 
     # -- queue 80: clear the whole staged draft ----------------------------
 

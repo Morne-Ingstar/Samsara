@@ -145,7 +145,7 @@ SETTINGS_SCHEMA = {
     "wake_word_config.audio.wake_command_timeout": {
         "type": "float",
         "min": 1.0,
-        "max": 30.0,
+        "max": 90.0,
         "step": 0.5,
         "default": 5.0,
         "tab": "hotkeys",
@@ -154,7 +154,7 @@ SETTINGS_SCHEMA = {
     "wake_word_config.quick_silence_timeout": {
         "type": "float",
         "min": 0.2,
-        "max": 5.0,
+        "max": 20.0,
         "step": 0.1,
         "default": 1.0,
         "tab": "hotkeys",
@@ -275,7 +275,7 @@ SETTINGS_SCHEMA = {
     "command_mode.dictate_utterance_silence_s": {
         "type": "float",
         "min": 0.3,
-        "max": 3.0,
+        "max": 12.0,
         "step": 0.05,
         "default": 0.65,
         "tab": "commands",
@@ -567,7 +567,7 @@ SETTINGS_SCHEMA = {
     "silence_threshold": {
         "type": "float",
         "min": 0.5,
-        "max": 10.0,
+        "max": 40.0,
         "step": 0.5,
         "default": 2.0,
         "tab": "advanced",
@@ -579,6 +579,10 @@ SETTINGS_SCHEMA = {
         "step": 0.1,
         "default": 0.3,
         "tab": "advanced",
+    },
+    "accessibility.speech_pace": {
+        "type": "enum", "options": ["standard", "relaxed", "unhurried", "custom"],
+        "default": "standard", "tab": "accessibility",
     },
     "wake_word_config.audio.speech_threshold": {
         "type": "float",

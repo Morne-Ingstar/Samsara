@@ -1116,7 +1116,9 @@ class WakeConsumer:
         speech_threshold = audio_config.get('speech_threshold', DEFAULT_SPEECH_THRESHOLD)
         if not app._vad_available:
             speech_threshold = min(speech_threshold, WAKE_SPEECH_THRESHOLD_CAP)
-        min_speech = audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION)
+        from samsara.speech_pace import effective_value
+        min_speech = effective_value(app.config, 'min_speech_duration',
+                                     audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION))
 
         if self._is_toggle_cmd(app):
             # Per-utterance silence gap for the unified session. Distinct
@@ -1130,7 +1132,8 @@ class WakeConsumer:
                 # transcript chunks; it no longer pastes on this boundary. A
                 # short gap therefore makes the sole-word "end" commit fast
                 # without forcing the speaker to race natural pauses.
-                silence_threshold = cm_cfg.get('dictate_utterance_silence_s', 0.65)
+                baseline = cm_cfg.get('dictate_utterance_silence_s', 0.65)
+                silence_threshold = effective_value(app.config, 'command_mode.dictate_utterance_silence_s', baseline)
             else:
                 silence_threshold = cm_cfg.get('utterance_silence_s', 1.0)
         elif app.app_state == 'long_dictation':

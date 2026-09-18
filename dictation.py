@@ -5604,6 +5604,7 @@ class DictationApp:
                 self.config.get('command_mode', {}).get('stop_phrases', [])),
             # Queue 80: "scratch everything" asks out loud before discarding.
             speak_fn=self._speak_session_notice,
+            fragment_clear_gap_s=__import__('samsara.speech_pace', fromlist=['clear_gap_s']).clear_gap_s(self.config),
         )
         return self._session_mode_manager
 
@@ -9839,7 +9840,8 @@ class DictationApp:
         ww_config = self.config.get('wake_word_config', {})
 
         if mode_name == 'quick_dictation':
-            timeout = ww_config.get('quick_silence_timeout', 1.0)
+            from samsara.speech_pace import effective_value
+            timeout = effective_value(self.config, 'wake_word_config.quick_silence_timeout', 1.0)
             self._dictation_silence_timeout = timeout
             self._dictation_require_end = False
             logger.debug(f"[STATE] {old_state} -> quick_dictation (silence timeout: {timeout}s)")
@@ -10509,7 +10511,8 @@ class DictationApp:
         
         # Use a separate, longer timeout for waiting for command after wake word
         ww_config = self.config.get('wake_word_config', {})
-        timeout = ww_config.get('audio', {}).get('wake_command_timeout', WAKE_COMMAND_TIMEOUT)
+        from samsara.speech_pace import effective_value
+        timeout = effective_value(self.config, 'wake_word_config.audio.wake_command_timeout', WAKE_COMMAND_TIMEOUT)
         self.wake_word_timer = thread_registry.timer(
             "dictation.wake_word_reset", timeout, self.reset_wake_word)
     
