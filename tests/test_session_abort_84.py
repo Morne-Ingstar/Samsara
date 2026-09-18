@@ -18,7 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from samsara import session_modes as sm
 from samsara.session_modes import (
-    GLOBAL_SESSION_EXIT_PHRASES, RECOVER_DRAFT_PHRASES, RECOVERABLE_DRAFT_TTL_S,
+    DEFAULT_DICTATE_COMMIT_PHRASE, GLOBAL_SESSION_EXIT_PHRASES, RECOVER_DRAFT_PHRASES,
+    RECOVERABLE_DRAFT_TTL_S,
     SessionMode, UtteranceSignals, is_recover_draft, outcome_chip,
 )
 
@@ -355,18 +356,25 @@ def test_the_chips_say_where_the_text_went():
 # 3. Per-lane vocabulary -- the report's table, pinned
 # ---------------------------------------------------------------------------
 
-def test_the_dictation_lane_commit_vocabulary_is_exactly_end():
-    """The report claims "end" is the only commit word in this lane. If a
+def test_the_dictation_lane_commit_vocabulary_is_the_configured_default():
+    """The dictation lane reserves exactly the configured product commit word. If a
     phrase is ever added here, this test makes that a deliberate act: every
     extra word is another way for prose to end a session."""
-    assert set(sm._DICTATE_COMMIT_HOMOPHONES) == {"end"}
-    assert sm.DICTATE_COMMIT_PHRASE == "end"
-    manager = make_manager()
-    stage(manager)
-    for word in ("over", "done", "send", "and", "finish", "stop dictating"):
-        outcome = manager.dispatch_utterance(word, GOOD_SIGNALS)
-        assert outcome.kind != "dictate_committed", word
-    assert manager.dispatch_utterance("end", GOOD_SIGNALS).kind == "dictate_committed"
+    original = sm.DICTATE_COMMIT_PHRASE
+    try:
+        sm.set_commit_phrase(DEFAULT_DICTATE_COMMIT_PHRASE)
+        assert set(sm._DICTATE_COMMIT_HOMOPHONES) == {DEFAULT_DICTATE_COMMIT_PHRASE}
+        assert sm.DICTATE_COMMIT_PHRASE == DEFAULT_DICTATE_COMMIT_PHRASE
+        manager = make_manager()
+        stage(manager)
+        for word in ("over", "done", "send", "and", "stop dictating"):
+            outcome = manager.dispatch_utterance(word, GOOD_SIGNALS)
+            assert outcome.kind != "dictate_committed", word
+        assert manager.dispatch_utterance(
+            DEFAULT_DICTATE_COMMIT_PHRASE, GOOD_SIGNALS
+        ).kind == "dictate_committed"
+    finally:
+        sm.set_commit_phrase(original)
 
 
 def test_the_wake_lane_keeps_its_own_end_words_and_this_lane_does_not_borrow_them():
