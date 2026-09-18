@@ -195,6 +195,18 @@ class DictionaryPanelQt(QWidget):
         btn_row.addStretch()
         lay.addLayout(btn_row)
 
+        transfer_row = QHBoxLayout()
+        export_dictionary_btn = QPushButton("Export dictionary…")
+        export_dictionary_btn.setObjectName("exportDictionaryButton")
+        export_dictionary_btn.clicked.connect(self._dictionary_export)
+        import_dictionary_btn = QPushButton("Import dictionary…")
+        import_dictionary_btn.setObjectName("importDictionaryButton")
+        import_dictionary_btn.clicked.connect(self._dictionary_import)
+        transfer_row.addWidget(export_dictionary_btn)
+        transfer_row.addWidget(import_dictionary_btn)
+        transfer_row.addStretch()
+        lay.addLayout(transfer_row)
+
         # Status label
         self._vocab_status = QLabel("")
         self._vocab_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
@@ -287,6 +299,79 @@ class DictionaryPanelQt(QWidget):
             self._vocab_status.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
         except Exception as exc:
             QMessageBox.critical(self, "Import failed", str(exc))
+
+    def _dictionary_profile_manager(self):
+        from pathlib import Path
+        from samsara.profiles import ProfileManager
+
+        config_path = getattr(self._app, "config_path", None)
+        app_dir = Path(config_path).parent if config_path else Path.cwd()
+        return ProfileManager(app_dir)
+
+    def _dictionary_export(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export dictionary", "samsara-dictionary.json",
+            "Samsara dictionary (*.json);;JSON files (*.json)"
+        )
+        if not path:
+            return
+        ok, message = self._dictionary_profile_manager().export_dictionary_bundle(path)
+        if ok:
+            self._vocab_status.setText(message)
+            self._vocab_status.setStyleSheet(
+                f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;"
+            )
+        else:
+            QMessageBox.critical(self, "Export failed", message)
+
+    def _dictionary_import(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import dictionary", "",
+            "Samsara dictionary (*.json);;JSON files (*.json)"
+        )
+        if not path:
+            return
+
+        choice = QMessageBox(self)
+        choice.setWindowTitle("Import dictionary")
+        choice.setText("How should the imported dictionary be applied?")
+        choice.setInformativeText(
+            "Merge keeps conflicting current entries. Replace backs up the current dictionary first."
+        )
+        merge_btn = choice.addButton("Merge", QMessageBox.ButtonRole.AcceptRole)
+        replace_btn = choice.addButton("Replace", QMessageBox.ButtonRole.DestructiveRole)
+        choice.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        choice.exec()
+        clicked = choice.clickedButton()
+        if clicked is merge_btn:
+            mode = "merge"
+        elif clicked is replace_btn:
+            mode = "replace"
+        else:
+            return
+
+        ok, message = self._dictionary_profile_manager().import_dictionary_bundle(path, mode=mode)
+        if not ok:
+            QMessageBox.critical(self, "Import failed", message)
+            return
+        try:
+            vt = self._vt
+            if vt is not None:
+                vt.load_training_data()
+            from samsara import wake_corrections
+            wake_corrections.reload_corrections()
+            from samsara.command_catalog import install_user_aliases
+            matcher = getattr(getattr(self._app, "command_executor", None), "_matcher", None)
+            install_user_aliases(matcher, self._dictionary_profile_manager().app_dir)
+        except Exception as exc:
+            logger.debug("Dictionary import reload failed: %s", exc)
+        self._vocab_list.clear()
+        for word in self._custom_vocab:
+            self._vocab_list.addItem(word)
+        self._vocab_status.setText(message)
+        self._vocab_status.setStyleSheet(
+            f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;"
+        )
 
     # ------------------------------------------------------------------
     # Corrections / Wake Words tabs (shared factory)
