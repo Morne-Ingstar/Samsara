@@ -411,6 +411,7 @@ class CommandsPage:
                     continue
                 row = table.rowCount()
                 table.insertRow(row)
+                table.setRowHeight(row, theme.HIT_TARGET_MIN)
                 phrase_item = QTableWidgetItem(command['phrase'])
                 phrase_item.setData(Qt.ItemDataRole.UserRole, command['source'])
                 table.setItem(row, 0, phrase_item)

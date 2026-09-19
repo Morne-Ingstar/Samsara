@@ -14,6 +14,7 @@ from string import Template
 from PySide6.QtCore import Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (
+    QAbstractButton, QAbstractSpinBox, QPlainTextEdit,
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QStackedWidget, QScrollArea,
     QLabel, QComboBox, QCheckBox, QPushButton, QFrame,
@@ -499,8 +500,9 @@ QListWidget {{
     outline: none;
 }}
 QListWidget::item {{
-    padding: 10px 20px;
-    min-height: {theme.HIT_TARGET_MIN}px;
+    margin: 5px 0;
+    padding: 0 20px;
+    min-height: {theme.TYPE_BODY + 19}px;
     border: none;
 }}
 QListWidget::item:selected {{
@@ -531,13 +533,15 @@ QLabel[class="section-title"] {{
     font-weight: bold;
 }}
 QComboBox {{
+    /* TYPE_BODY + 8 content + 8 padding + 2 border + 10 margin = 44 DIP. */
+    margin: 5px 0;
     background-color: ${{BG2}};
     border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
-    padding: 8px 12px;
+    padding: 4px 12px;
     color: ${{TEXT_PRIMARY}};
     min-width: 200px;
-    min-height: {theme.HIT_TARGET_MIN}px;
+    min-height: {theme.TYPE_BODY + 8}px;
 }}
 QComboBox::drop-down {{
     border: none;
@@ -550,6 +554,7 @@ QComboBox QAbstractItemView {{
     border: 1px solid {theme.wash(0.14)};
 }}
 QCheckBox {{
+    margin: 5px 0;
     color: ${{TEXT_PRIMARY}};
     spacing: 8px;
     /* Same cascade cause as the QLabel fix above (9b7f00f): QCheckBox is a
@@ -558,7 +563,7 @@ QCheckBox {{
        the row -- the ::indicator sub-control below already paints its own
        background correctly and is untouched. */
     background-color: transparent;
-    min-height: {theme.HIT_TARGET_MIN}px;
+    min-height: {theme.TYPE_BODY + 19}px;
 }}
 QCheckBox::indicator {{
     width: 18px;
@@ -576,14 +581,15 @@ QCheckBox::indicator:checked {{
     border: 4px solid ${{TEXT_ON_ACCENT}};
 }}
 QPushButton {{
+    margin: 5px 0;
     background-color: ${{ACCENT}};
     color: ${{TEXT_ON_ACCENT}};
     border: none;
     border-radius: 6px;
-    padding: 10px 24px;
+    padding: 6px 24px;
     font-weight: 600;
     font-size: {theme.TYPE_BODY}px;
-    min-height: {theme.HIT_TARGET_MIN}px;
+    min-height: {theme.TYPE_BODY + 8}px;
 }}
 QPushButton:hover {{
     background-color: ${{ACCENT_HOVER}};
@@ -602,13 +608,14 @@ QScrollArea {{
     background-color: transparent;
 }}
 QSpinBox, QDoubleSpinBox {{
+    margin: 5px 0;
     background-color: ${{BG2}};
     border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 4px 10px;
     color: ${{TEXT_PRIMARY}};
     min-width: 80px;
-    min-height: {theme.HIT_TARGET_MIN}px;
+    min-height: {theme.TYPE_BODY + 8}px;
 }}
 QSpinBox::up-button, QDoubleSpinBox::up-button,
 QSpinBox::down-button, QDoubleSpinBox::down-button {{
@@ -625,13 +632,14 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
     width: 0;
 }}
 QLineEdit {{
+    margin: 5px 0;
     background-color: ${{BG2}};
     border: 1px solid {theme.wash(0.14)};
     border-radius: 6px;
-    padding: 8px 12px;
+    padding: 4px 12px;
     color: ${{TEXT_PRIMARY}};
     font-size: {theme.TYPE_BODY}px;
-    min-height: {theme.HIT_TARGET_MIN}px;
+    min-height: {theme.TYPE_BODY + 8}px;
 }}
 QLineEdit:focus {{
     border-color: {theme.tint(theme.ACCENT, 0.5)};
@@ -940,10 +948,10 @@ class _SettingsWindow(
 
         # Button bar
         btn_bar = QWidget()
-        btn_bar.setFixedHeight(theme.HIT_TARGET_MIN + 24)
+        btn_bar.setFixedHeight(theme.HIT_TARGET_MIN + 14)
         btn_bar.setStyleSheet(f"background-color: {theme.BG0};")
         btn_layout = QHBoxLayout(btn_bar)
-        btn_layout.setContentsMargins(20, 12, 20, 12)
+        btn_layout.setContentsMargins(20, 6, 20, 6)
         btn_layout.addStretch()
 
         # "Close", not "Cancel" -- several tabs (Commands editor, Alarms
@@ -1036,7 +1044,7 @@ class _SettingsWindow(
     }
 
     def _apply_metric_minimum_widths(self) -> None:
-        """Re-derive hardcoded button minimums from each button's own metrics.
+        """Keep 44-DIP hit regions and derive button widths from font metrics.
 
         Runs AFTER the pages are in self._stack, which is when the window's
         stylesheet() cascade actually reaches them: a QPushButton's sizeHint()
@@ -1046,6 +1054,14 @@ class _SettingsWindow(
         the literals encoded -- they were correct for Segoe UI and clipped the
         label under any wider font stack.
         """
+        for widget_type in (
+            QAbstractButton, QComboBox, QLineEdit, QAbstractSpinBox,
+            QSlider, QPlainTextEdit, QTableWidget,
+        ):
+            for widget in self.findChildren(widget_type):
+                widget.setMinimumHeight(max(theme.HIT_TARGET_MIN, widget.minimumHeight()))
+                widget.setMinimumWidth(max(theme.HIT_TARGET_MIN, widget.minimumWidth()))
+
         for object_name, floor_px in self._METRIC_MIN_WIDTH_BUTTONS.items():
             button = self.findChild(QPushButton, object_name)
             if button is None:

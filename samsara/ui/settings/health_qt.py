@@ -238,6 +238,7 @@ class HealthPage:
         # Table
         self._health_log_table.setRowCount(len(entries))
         for i, e in enumerate(entries):
+            self._health_log_table.setRowHeight(i, theme.HIT_TARGET_MIN)
             t = e["type"]
             d = e["data"]
             time_str = _fmt_time(e["timestamp"])

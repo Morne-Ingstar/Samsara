@@ -243,6 +243,7 @@ class AlarmsPage:
                 alarm_id = alarm.get('id', alarm.get('name', 'unknown'))
                 row = table.rowCount()
                 table.insertRow(row)
+                table.setRowHeight(row, theme.HIT_TARGET_MIN)
                 enabled = alarm.get('enabled', False)
                 enabled_item = QTableWidgetItem(
                     "✓" if alarm.get('enabled', False) else "—"
