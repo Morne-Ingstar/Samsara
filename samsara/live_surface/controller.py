@@ -7,6 +7,10 @@ from typing import Any, Callable
 
 from samsara.live_surface.model import (CaptureState, EventKind, Lane, LiveSurfaceModel,
                                         NoticeKind, SurfaceEvent)
+from samsara.live_surface.caret import CaretLocator
+from samsara.live_surface.placement import (Edge, Placement, Rect, Screen, avoid_caret,
+                                             place_form, placement_for_screens,
+                                             placement_record, snap_edge)
 from samsara.ui import qt_runtime
 
 
@@ -18,7 +22,8 @@ class LiveSurfaceController:
     """
 
     def __init__(self, app: Any, *, model: LiveSurfaceModel | None = None,
-                 widget_factory: Callable[[Any], Any] | None = None) -> None:
+                 widget_factory: Callable[[Any], Any] | None = None,
+                 caret_locator: CaretLocator | None = None) -> None:
         self.app = app
         self.model = model or LiveSurfaceModel()
         self._widget_factory = widget_factory
@@ -28,6 +33,10 @@ class LiveSurfaceController:
         self._scheduled = False
         self._capture_seq = 0
         self._active_capture: str | None = None
+        # The host supplies the platform lookup.  It is intentionally optional
+        # on non-Windows and in deterministic tests.
+        self._caret_locator = caret_locator or getattr(app, "live_surface_caret_locator", None)
+        self._last_caret = None
 
     def view(self):
         return self.model.view()
@@ -42,6 +51,7 @@ class LiveSurfaceController:
         self.widget = self._widget_factory(self)
         self._connect_intents()
         self.widget.refresh(self.model.view(), animate=False)
+        self._place_widget()
         self.widget.show()
 
     def post(self, event: SurfaceEvent) -> None:
@@ -60,10 +70,15 @@ class LiveSurfaceController:
             self._scheduled = False
         accepted = 0
         while events:
-            if self.model.consume(events.popleft()):
+            event = events.popleft()
+            if event.kind in (EventKind.CAPTURE_STARTED, EventKind.DOCUMENT_UPDATED):
+                # These are the allowed placement reevaluation boundaries.
+                self._last_caret = None
+            if self.model.consume(event):
                 accepted += 1
         if self.widget is not None:
             self.widget.refresh(self.model.view())
+            self._place_widget()
             self.widget.show()
         return accepted
 
@@ -138,11 +153,130 @@ class LiveSurfaceController:
                                ("correction_apply_requested", self._apply_correction),
                                ("correction_cancel_requested", self._cancel_correction),
                                ("edit_receipt_requested", self._edit_receipt),
+                               ("move_requested", self._move_requested),
                                ("collapse_requested", self.widget.hide),
                                ("show_requested", self.widget.show)):
             signal = getattr(self.widget, name, None)
             if signal is not None:
                 signal.connect(callback)
+
+    def _placement_config(self) -> tuple[dict, dict]:
+        ui = (getattr(self.app, "config", {}) or {}).get("ui", {}) or {}
+        surface = ui.get("live_surface", {}) or {}
+        raw = surface.get("placement", {}) or {}
+        return dict(raw), dict(raw.get("monitors", {}) or {})
+
+    def _screens(self) -> list[Screen]:
+        from PySide6.QtGui import QGuiApplication
+        result = []
+        for index, screen in enumerate(QGuiApplication.screens()):
+            area = screen.availableGeometry()
+            result.append(Screen(screen.name() or f"screen-{index}",
+                                 Rect(area.x(), area.y(), area.width(), area.height()),
+                                 screen is QGuiApplication.primaryScreen()))
+        return result
+
+    def _place_widget(self) -> None:
+        if self.widget is None:
+            return
+        screens = self._screens()
+        if not screens:
+            return
+        raw, records = self._placement_config()
+        resolved = placement_for_screens(records, screens,
+            preferred_monitor=raw.get("preferred_monitor"))
+        card_w = min(500, resolved.screen.work_area.width)
+        card_h = min(360, max(44, self.widget.height() - 44))
+        placed = place_form(resolved.placement, resolved.screen, card_width=card_w,
+                            card_height=card_h)
+        if self._caret_locator is not None:
+            caret = self._caret_locator.request()
+            if caret is not None:
+                self._last_caret = caret
+            if self._last_caret is not None:
+                placed = avoid_caret(placed, self._last_caret.rect, resolved.screen,
+                                     card_width=card_w, card_height=card_h)
+        self.widget.apply_placement(placed)
+
+    def _move_requested(self, detail: object) -> None:
+        if not isinstance(detail, dict):
+            return
+        screens = self._screens()
+        if not screens:
+            return
+        cx, cy = detail.get("center", (None, None))
+        try:
+            screen = next((item for item in screens if item.work_area.x <= float(cx) <= item.work_area.right
+                           and item.work_area.y <= float(cy) <= item.work_area.bottom), screens[0])
+        except (TypeError, ValueError):
+            return
+        old, records = self._placement_config()
+        previous = Placement()
+        if screen.id in records:
+            from samsara.live_surface.placement import normalize_placement
+            previous = normalize_placement(records[screen.id])
+        snapped = snap_edge((float(cx), float(cy)), screen.work_area, previous=previous.edge)
+        if snapped is None:
+            placement = Placement(Edge.FREE,
+                free_cx=(float(cx) - screen.work_area.x) / max(1, screen.work_area.width),
+                free_cy=(float(cy) - screen.work_area.y) / max(1, screen.work_area.height))
+        else:
+            from samsara.live_surface.placement import normalized_t_for_mark
+            mark = Rect(float(cx) - 22, float(cy) - 22, 44, 44)
+            placement = Placement(snapped, t=normalized_t_for_mark(mark, snapped, screen.work_area))
+        records[screen.id] = placement_record(placement)
+        self._save_placement({"preferred_monitor": screen.id, "monitors": records})
+        self._place_widget()
+
+    def _save_placement(self, placement: dict) -> None:
+        config = getattr(self.app, "config", None)
+        if not isinstance(config, dict):
+            return
+        ui = dict(config.get("ui", {}) or {})
+        surface = dict(ui.get("live_surface", {}) or {})
+        surface["placement"] = placement; ui["live_surface"] = surface
+        update = getattr(self.app, "update_config_and_save", None)
+        if callable(update):
+            update({"ui": ui})
+        else:
+            config["ui"] = ui
+            save = getattr(self.app, "save_config", None)
+            if callable(save): save()
+
+    def reset_placement(self) -> bool:
+        """One recovery action: bottom-centre, visible, draft untouched."""
+        screens = self._screens()
+        if not screens:
+            return False
+        raw, records = self._placement_config()
+        screen = next((item for item in screens if item.id == raw.get("preferred_monitor")),
+                      next((item for item in screens if item.primary), screens[0]))
+        records[screen.id] = placement_record(Placement(Edge.BOTTOM, .5))
+        self._save_placement({"preferred_monitor": screen.id, "monitors": records})
+        if self.widget is not None:
+            self._place_widget(); self.widget.show()
+        return True
+
+    def move_to_foreground_screen(self) -> bool:
+        """Move the saved position to the foreground display without changing its edge.
+
+        A host may supply the active display name.  When that is unavailable,
+        deliberately use the primary display rather than inferring a screen from
+        a global coordinate that may belong to a different DPI space.
+        """
+        screens = self._screens()
+        if not screens:
+            return False
+        wanted = str(getattr(self.app, "foreground_screen_name", "") or "")
+        screen = next((item for item in screens if item.name == wanted), None)
+        screen = screen or next((item for item in screens if item.primary), screens[0])
+        raw, records = self._placement_config()
+        current = records.get(screen.id, placement_record(Placement(Edge.BOTTOM, .5)))
+        records[screen.id] = current
+        self._save_placement({"preferred_monitor": screen.id, "monitors": records})
+        if self.widget is not None:
+            self._place_widget(); self.widget.show()
+        return True
 
     def _manager(self):
         return getattr(self.app, "_session_mode_manager", None)

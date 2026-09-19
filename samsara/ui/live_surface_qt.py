@@ -126,6 +126,9 @@ class LiveSurfaceWidget(QWidget):
         self._sent_receipts: list[str] = []
         self._picker_page = self._candidate_page = 0
         self._editor_mode = ""
+        self._dragging = False
+        self._drag_offset = None
+        self._drag_restore = QRect()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -200,6 +203,12 @@ class LiveSurfaceWidget(QWidget):
     @property
     def card_content_rect(self) -> QRect: return self.card_rect.adjusted(CARD_INSET, CARD_INSET, -CARD_INSET, -CARD_INSET)
     def hit_region(self) -> QRegion: return self.mask()
+
+    def apply_placement(self, placed) -> None:
+        """Apply controller-owned, already-clamped geometry without focus."""
+        bounds = placed.bounds
+        self.setGeometry(round(bounds.x), round(bounds.y), round(bounds.width), round(bounds.height))
+        self._layout_children(); self._update_mask()
 
     def refresh(self, view: SurfaceView | None = None, *, animate: bool = True) -> None:
         self._apply_view(_view_from(self._controller) if view is None else view, animate=animate)
@@ -471,11 +480,33 @@ class LiveSurfaceWidget(QWidget):
         finally:painter.end()
 
     def mousePressEvent(self,event: QMouseEvent)->None:
+        # The mark/header is the intentional drag handle. Transcript words
+        # retain their correction interaction and never start a move.
+        if event.button() == Qt.MouseButton.LeftButton and self._mark.geometry().contains(event.position().toPoint()):
+            self._dragging = True; self._drag_restore = self.geometry()
+            self._drag_offset = event.globalPosition().toPoint() - self.pos()
+            event.accept(); return
         if self._view.form in (VisibleForm.MARK,VisibleForm.DRAFT_BADGE) and self.mask().contains(event.position().toPoint()): self.show_requested.emit(); event.accept(); return
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._dragging and self._drag_offset is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept(); return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._dragging and event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            center = self.geometry().center()
+            self.move_requested.emit({"center": (center.x(), center.y())})
+            event.accept(); return
+        super().mouseReleaseEvent(event)
+
     def keyPressEvent(self,event: QKeyEvent)->None:
         if event.key()==Qt.Key.Key_Escape:
+            if self._dragging:
+                self._dragging=False; self.setGeometry(self._drag_restore); event.accept(); return
             if self._editor_mode:self._cancel_editor()
             elif self._selection is not None:self._cancel_correction()
             else:self._transcript.setFocus()

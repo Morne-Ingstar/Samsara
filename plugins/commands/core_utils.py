@@ -275,13 +275,14 @@ def reset_hints(app, remainder="", **kwargs):
 
 @command(
     "reset floating windows",
-    aliases=["reset window positions"],
+    aliases=["reset window positions", "reset live surface", "reset preview position",
+             "reset indicator position"],
     pack="core",
     ai_visible=False,
     risk_class="ui",
 )
 def reset_floating_windows(app, remainder="", **kwargs):
-    """Restores both floating windows to their default positions."""
+    """Alias for the one live-surface recovery action when available."""
     # The combined hands-free lane is also a dictation lane. Do not take a
     # prefix out of a sentence; this is an exact whole-utterance recovery
     # command, like the draft-view controls in session_modes.
@@ -292,6 +293,13 @@ def reset_floating_windows(app, remainder="", **kwargs):
     from samsara.ui.listening_indicator import reset_indicator_placement
 
     def _reset():
+        surface = getattr(app, "live_surface_controller", None) or getattr(
+            app, "_live_surface_controller", None)
+        reset_surface = getattr(surface, "reset_placement", None)
+        if callable(reset_surface) and reset_surface():
+            speak_if_available(app, "Live surface reset.")
+            return
+        # Feature flag off: exact legacy recovery behaviour remains intact.
         reset_preview_placement(app)
         reset_indicator_placement(app)
         speak_if_available(app, "Floating windows reset.")
@@ -299,6 +307,32 @@ def reset_floating_windows(app, remainder="", **kwargs):
     # Voice commands arrive from the session worker; the live Qt widgets must
     # only be moved on the Qt runtime's thread.
     qt_runtime.post(_reset)
+    return True
+
+
+@command(
+    "move preview to this screen",
+    aliases=["move live surface to this screen"],
+    pack="core",
+    ai_visible=False,
+    risk_class="ui",
+)
+def move_preview_to_this_screen(app, remainder="", **kwargs):
+    """Moves the live surface's saved placement to the foreground display."""
+    if str(remainder or "").strip():
+        return False
+    from samsara.ui import qt_runtime
+
+    def _move():
+        surface = getattr(app, "live_surface_controller", None) or getattr(
+            app, "_live_surface_controller", None)
+        mover = getattr(surface, "move_to_foreground_screen", None)
+        if callable(mover) and mover():
+            speak_if_available(app, "Live surface moved to this screen.")
+        else:
+            speak_if_available(app, "Live surface is not available.")
+
+    qt_runtime.post(_move)
     return True
 
 

@@ -10,6 +10,10 @@ MARK_SIZE_DIP = 44.0
 SNAP_DISTANCE_DIP = 24.0
 INSET_DIP = 8.0
 ATTACHMENT_DIP = 4.0
+CARD_WIDTH_DIP = 500.0
+STATUS_WIDTH_DIP = 360.0
+MAX_REVIEW_HEIGHT_DIP = 360.0
+CARET_PADDING_DIP = 12.0
 
 
 class Edge(str, Enum):
@@ -219,6 +223,33 @@ def placement_for_screens(records: Mapping[str, object], screens: Iterable[Scree
     return ResolvedPlacement(selected, normalize_placement(records.get(selected.id), default=default), fallback)
 
 
+def avoid_caret(placed: PlacedForm, caret: Rect | None, screen: Screen, *,
+                card_width: float, card_height: float) -> PlacedForm:
+    """Return a temporary non-overlapping placement without changing preference.
+
+    The caller supplies caret coordinates already transformed for this screen.
+    A same-edge shift is preferred, then the opposite edge, then a shorter
+    scrollable card.  Persisted ``Placement`` is deliberately not involved.
+    """
+    if caret is None or not _overlaps(placed.bounds, _expand(caret, CARET_PADDING_DIP)):
+        return placed
+    protected = _expand(caret, CARET_PADDING_DIP)
+    edge = placed.edge if placed.edge is not Edge.FREE else Edge.BOTTOM
+    for t in (0.15, 0.85, 0.0, 1.0):
+        candidate = place_form(Placement(edge, t=t), screen, card_width=card_width,
+                               card_height=card_height)
+        if not _overlaps(candidate.bounds, protected):
+            return candidate
+    opposite = {Edge.TOP: Edge.BOTTOM, Edge.BOTTOM: Edge.TOP,
+                Edge.LEFT: Edge.RIGHT, Edge.RIGHT: Edge.LEFT}[edge]
+    candidate = place_form(Placement(opposite, t=.5), screen, card_width=card_width,
+                           card_height=card_height)
+    if not _overlaps(candidate.bounds, protected):
+        return candidate
+    return place_form(Placement(edge, t=.5), screen, card_width=card_width,
+                      card_height=max(MARK_SIZE_DIP, min(card_height, screen.work_area.height / 2)))
+
+
 def normalized_t_for_mark(mark: Rect, edge: Edge, work_area: Rect, *, inset: float = INSET_DIP) -> float:
     """Persist a dock mark by normalized usable-edge position."""
     if edge in (Edge.TOP, Edge.BOTTOM):
@@ -252,3 +283,11 @@ def _clamp(rect: Rect, area: Rect) -> Rect:
     x = min(max(rect.x, area.x), area.right - width)
     y = min(max(rect.y, area.y), area.bottom - height)
     return Rect(x, y, width, height)
+
+
+def _expand(rect: Rect, amount: float) -> Rect:
+    return Rect(rect.x - amount, rect.y - amount, rect.width + amount * 2, rect.height + amount * 2)
+
+
+def _overlaps(left: Rect, right: Rect) -> bool:
+    return left.x < right.right and left.right > right.x and left.y < right.bottom and left.bottom > right.y
