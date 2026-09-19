@@ -35,19 +35,22 @@
       "type": "launch",
       "target": "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
       "description": "Opens Google Chrome.",
-      "pack": "browsers"
+      "pack": "browsers",
+      "scope": false
     },
     "open firefox": {
       "type": "launch",
       "target": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
       "description": "Opens the Firefox browser.",
-      "pack": "browsers"
+      "pack": "browsers",
+      "scope": false
     },
     "open edge": {
       "type": "launch",
       "target": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
       "description": "Opens Microsoft Edge.",
-      "pack": "browsers"
+      "pack": "browsers",
+      "scope": false
     },
     "close window": {
       "type": "hotkey",
@@ -142,8 +145,10 @@
         "ctrl",
         "w"
       ],
-      "description": "Closes current tab.",
+      "description": "Closes the current browser tab; Reopen tab can restore it.",
       "pack": "browsers",
+      "risk_class": "destructive",
+      "reversible": true,
       "app_overrides": {
         "code.exe": {
           "keys": "ctrl+f4"
@@ -740,6 +745,28 @@
       ],
       "description": "Resets zoom to default.",
       "pack": "browsers"
+    },
+    "page zoom in": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "+"
+      ],
+      "description": "Makes the current browser page larger.",
+      "pack": "browsers",
+      "risk_class": "ui",
+      "reversible": true
+    },
+    "page zoom out": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "-"
+      ],
+      "description": "Makes the current browser page smaller.",
+      "pack": "browsers",
+      "risk_class": "ui",
+      "reversible": true
     },
     "bold": {
       "type": "hotkey",
@@ -1480,6 +1507,60 @@
         "3"
       ],
       "description": "Switches to tab 3.",
+      "pack": "browsers"
+    },
+    "tab four": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "4"
+      ],
+      "description": "Switches to tab 4.",
+      "pack": "browsers"
+    },
+    "tab five": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "5"
+      ],
+      "description": "Switches to tab 5.",
+      "pack": "browsers"
+    },
+    "tab six": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "6"
+      ],
+      "description": "Switches to tab 6.",
+      "pack": "browsers"
+    },
+    "tab seven": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "7"
+      ],
+      "description": "Switches to tab 7.",
+      "pack": "browsers"
+    },
+    "tab eight": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "8"
+      ],
+      "description": "Switches to tab 8.",
+      "pack": "browsers"
+    },
+    "tab nine": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "9"
+      ],
+      "description": "Switches to the last browser tab.",
       "pack": "browsers"
     },
     "last tab": {

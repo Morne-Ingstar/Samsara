@@ -53,6 +53,7 @@ from pathlib import Path
 import pytest
 
 from samsara.intent import resolve as rs
+from samsara.command_scope import MatchContext
 
 REPO = Path(__file__).resolve().parent.parent
 FIXTURE = REPO / "tests" / "fixtures" / "intent_eval.jsonl"
@@ -71,6 +72,20 @@ NONFILLER_EXECUTABLE_FLOOR = 0.60
 #: two thirds of the corpus and it is the easiest kind, so it is what the
 #: non-filler split removes.
 FILLER_KIND = "filler"
+
+
+def _live_context(record):
+    """Synthetic context in which this record is eligible for grammar coverage.
+
+    The corpus measures recognition of every catalog row. A focused-app row
+    must therefore be evaluated with one of its declared apps focused rather
+    than being counted as a grammar miss merely because this offline test has
+    no foreground window.
+    """
+    scope = record.get("scope") or {}
+    apps = scope.get("apps") or ()
+    tags = set(scope.get("tags") or ()) | set(scope.get("argument_tags") or ())
+    return MatchContext.for_app(apps[0], tags=tags) if apps else MatchContext.for_app("notepad.exe", tags=tags)
 WORST = 20
 
 
@@ -113,8 +128,11 @@ def report(gen, catalog, corpus):
     #: [ok, named, n] over the positives whose kind is not FILLER_KIND.
     nonfiller = [0, 0, 0]
     t12 = []
+    by_id = {record["canonical_id"]: record for record in records}
     for line in corpus:
-        res = resolver.resolve(line["text"])
+        # Scope-aware rows intentionally do not execute in an unknown app;
+        # evaluate their language here in an eligible synthetic context.
+        res = resolver.resolve(line["text"], context=_live_context(by_id[line["id"]]))
         t12.append(res.t12_ms)
         if line["polarity"] == "positive":
             named = res.canonical_id in line["accept"] or any(

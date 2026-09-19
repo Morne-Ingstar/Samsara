@@ -160,8 +160,12 @@ INVALID_SCOPE_TAG = "invalid_scope"
 
 def _resolve_scope(declared, pack: str, phrase: str):
     """The command's own scope, else its pack's (command_packs.PACKS[pack]
-    ['scope']), else None (global). A malformed declaration never makes a
+    ['scope']), else None (global). ``scope: false`` is the explicit opt-out
+    for a globally useful command in an otherwise focused pack (for example,
+    launching a browser). A malformed declaration never makes a
     command global by accident: it is logged and the command is never live."""
+    if declared is False:
+        return None
     raw = declared
     origin = "command"
     if raw is None:

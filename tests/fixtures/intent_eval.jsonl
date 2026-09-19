@@ -1476,7 +1476,7 @@
 {"accept": ["builtin.back_tab"], "id": "builtin.back_tab", "kind": "filler", "polarity": "positive", "text": "can you back tab for me please"}
 {"accept": ["builtin.back_tab"], "id": "builtin.back_tab", "kind": "filler", "polarity": "positive", "text": "Can you back tab for me please."}
 {"id": "builtin.back_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.back_tab", "text": "my grandmother never understood why people would back tab on a sunday"}
-{"id": "builtin.back_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.back_tab", "text": "go back"}
+{"id": "builtin.back_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.back_tab", "text": "tab 7"}
 {"id": "builtin.back_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.back_tab", "text": "lantern cobalt back marmalade quartz"}
 {"accept": ["builtin.backspace"], "id": "builtin.backspace", "kind": "alias", "polarity": "positive", "text": "backspace"}
 {"accept": ["builtin.backspace"], "id": "builtin.backspace", "kind": "filler", "polarity": "positive", "text": "backspace now"}
@@ -2116,7 +2116,7 @@
 {"accept": ["builtin.close_tab"], "id": "builtin.close_tab", "kind": "filler", "polarity": "positive", "text": "Can you close tab now."}
 {"accept": ["builtin.close_tab"], "id": "builtin.close_tab", "kind": "filler", "polarity": "positive", "text": "can you close tab thanks"}
 {"id": "builtin.close_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.close_tab", "text": "my grandmother never understood why people would close tab on a sunday"}
-{"id": "builtin.close_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.close_tab", "text": "close"}
+{"id": "builtin.close_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.close_tab", "text": "tab 7"}
 {"id": "builtin.close_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.close_tab", "text": "marmalade pickle close saxophone zeppelin"}
 {"accept": ["builtin.close_virtual_desktop"], "id": "builtin.close_virtual_desktop", "kind": "alias", "polarity": "positive", "text": "close virtual desktop"}
 {"accept": ["builtin.close_virtual_desktop"], "id": "builtin.close_virtual_desktop", "kind": "determiner", "polarity": "positive", "text": "close the virtual desktop"}
@@ -2956,7 +2956,7 @@
 {"accept": ["builtin.duplicate_tab"], "id": "builtin.duplicate_tab", "kind": "filler", "polarity": "positive", "text": "can you duplicate tab for me please"}
 {"accept": ["builtin.duplicate_tab"], "id": "builtin.duplicate_tab", "kind": "filler", "polarity": "positive", "text": "Can you duplicate tab for me please."}
 {"id": "builtin.duplicate_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.duplicate_tab", "text": "in the story the old captain decides to duplicate tab as the storm arrives"}
-{"id": "builtin.duplicate_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.duplicate_tab", "text": "new tab"}
+{"id": "builtin.duplicate_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.duplicate_tab", "text": "tab 7"}
 {"id": "builtin.duplicate_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.duplicate_tab", "text": "sideways zeppelin duplicate noodle octopus"}
 {"accept": ["builtin.ease_of_access"], "id": "builtin.ease_of_access", "kind": "alias", "polarity": "positive", "text": "ease of access"}
 {"accept": ["builtin.ease_of_access"], "id": "builtin.ease_of_access", "kind": "determiner", "polarity": "positive", "text": "ease the of access"}
@@ -4516,7 +4516,7 @@
 {"accept": ["builtin.last_tab"], "id": "builtin.last_tab", "kind": "filler", "polarity": "positive", "text": "can you last tab for me please"}
 {"accept": ["builtin.last_tab"], "id": "builtin.last_tab", "kind": "filler", "polarity": "positive", "text": "Can you last tab for me please."}
 {"id": "builtin.last_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.last_tab", "text": "in the story the old captain decides to last tab as the storm arrives"}
-{"id": "builtin.last_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.last_tab", "text": "new tab"}
+{"id": "builtin.last_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.last_tab", "text": "tab 7"}
 {"id": "builtin.last_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.last_tab", "text": "zeppelin sideways last cobalt thunderous"}
 {"accept": ["builtin.live_captions"], "id": "builtin.live_captions", "kind": "alias", "polarity": "positive", "text": "live captions"}
 {"accept": ["builtin.live_captions"], "id": "builtin.live_captions", "kind": "determiner", "polarity": "positive", "text": "live the captions"}
@@ -5076,7 +5076,7 @@
 {"accept": ["builtin.mute_tab"], "id": "builtin.mute_tab", "kind": "filler", "polarity": "positive", "text": "can you mute tab right now"}
 {"accept": ["builtin.mute_tab"], "id": "builtin.mute_tab", "kind": "filler", "polarity": "positive", "text": "Can you mute tab right now."}
 {"id": "builtin.mute_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.mute_tab", "text": "yesterday afternoon we argued for an hour about who would mute tab first"}
-{"id": "builtin.mute_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.mute_tab", "text": "mute"}
+{"id": "builtin.mute_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.mute_tab", "text": "tab 7"}
 {"id": "builtin.mute_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.mute_tab", "text": "sideways pickle mute saxophone purple"}
 {"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "alias", "polarity": "positive", "text": "my github"}
 {"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "determiner", "polarity": "positive", "text": "my the github"}
@@ -5396,7 +5396,7 @@
 {"accept": ["builtin.new_tab"], "id": "builtin.new_tab", "kind": "filler", "polarity": "positive", "text": "Can you new tab right now."}
 {"accept": ["builtin.new_tab"], "id": "builtin.new_tab", "kind": "filler", "polarity": "positive", "text": "can you new tab for me please"}
 {"id": "builtin.new_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.new_tab", "text": "honestly the whole point of the meeting was to new tab and nobody did"}
-{"id": "builtin.new_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.new_tab", "text": "pin tab"}
+{"id": "builtin.new_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.new_tab", "text": "tab 7"}
 {"id": "builtin.new_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.new_tab", "text": "quartz thunderous new cobalt pickle"}
 {"accept": ["builtin.new_virtual_desktop"], "id": "builtin.new_virtual_desktop", "kind": "alias", "polarity": "positive", "text": "new virtual desktop"}
 {"accept": ["builtin.new_virtual_desktop"], "id": "builtin.new_virtual_desktop", "kind": "determiner", "polarity": "positive", "text": "new the virtual desktop"}
@@ -5516,7 +5516,7 @@
 {"accept": ["builtin.next_tab"], "id": "builtin.next_tab", "kind": "filler", "polarity": "positive", "text": "can you next tab for me please"}
 {"accept": ["builtin.next_tab"], "id": "builtin.next_tab", "kind": "filler", "polarity": "positive", "text": "Can you next tab for me please."}
 {"id": "builtin.next_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.next_tab", "text": "honestly the whole point of the meeting was to next tab and nobody did"}
-{"id": "builtin.next_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.next_tab", "text": "next"}
+{"id": "builtin.next_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.next_tab", "text": "tab 7"}
 {"id": "builtin.next_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.next_tab", "text": "glimmer wobble next cobalt marmalade"}
 {"accept": ["builtin.night_light"], "id": "builtin.night_light", "kind": "alias", "polarity": "positive", "text": "night light"}
 {"accept": ["builtin.night_light"], "id": "builtin.night_light", "kind": "determiner", "polarity": "positive", "text": "night the light"}
@@ -8038,6 +8038,86 @@
 {"id": "builtin.other_window", "kind": "sentence", "polarity": "negative", "reject": "builtin.other_window", "text": "yesterday afternoon we argued for an hour about who would other window first"}
 {"id": "builtin.other_window", "kind": "other_command", "polarity": "negative", "reject": "builtin.other_window", "text": "window 8"}
 {"id": "builtin.other_window", "kind": "nonsense", "polarity": "negative", "reject": "builtin.other_window", "text": "purple marmalade window thunderous zeppelin"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "alias", "polarity": "positive", "text": "page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "determiner", "polarity": "positive", "text": "page the zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "so page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "punct", "polarity": "positive", "text": "Page zoom in."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "please page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "punct", "polarity": "positive", "text": "Page, zoom in?"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "page zoom in right now"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "page zoom in now"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "page zoom in please"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "could you page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "hey page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "uh page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "um page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "i need you to page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "would you please page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "page zoom in for me"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "okay page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "go ahead and page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you please page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "could you just page zoom in"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "page zoom in thanks"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "page zoom in for me please"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in please"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you page zoom in please."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in for me"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you page zoom in for me."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in now"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you page zoom in now."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in thanks"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you page zoom in thanks."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in right now"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you page zoom in right now."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "can you page zoom in for me please"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you page zoom in for me please."}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "could you page zoom in please"}
+{"accept": ["builtin.page_zoom_in"], "id": "builtin.page_zoom_in", "kind": "filler", "polarity": "positive", "text": "Could you page zoom in please."}
+{"id": "builtin.page_zoom_in", "kind": "sentence", "polarity": "negative", "reject": "builtin.page_zoom_in", "text": "yesterday i told my sister we should page zoom in before dinner"}
+{"id": "builtin.page_zoom_in", "kind": "other_command", "polarity": "negative", "reject": "builtin.page_zoom_in", "text": "zoom in"}
+{"id": "builtin.page_zoom_in", "kind": "nonsense", "polarity": "negative", "reject": "builtin.page_zoom_in", "text": "sideways marmalade page glimmer lantern"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "alias", "polarity": "positive", "text": "page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "determiner", "polarity": "positive", "text": "page the zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you please page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "punct", "polarity": "positive", "text": "Page, zoom out?"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "page zoom out for me"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "punct", "polarity": "positive", "text": "Page zoom out."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "um page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "page zoom out thanks"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "uh page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "page zoom out now"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "so page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "okay page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "page zoom out for me please"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "could you just page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "i need you to page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "please page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "page zoom out right now"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "could you page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "hey page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "would you please page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "go ahead and page zoom out"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "page zoom out please"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out please"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you page zoom out please."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out for me"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you page zoom out for me."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out now"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you page zoom out now."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out thanks"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you page zoom out thanks."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out right now"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you page zoom out right now."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "can you page zoom out for me please"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you page zoom out for me please."}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "could you page zoom out please"}
+{"accept": ["builtin.page_zoom_out"], "id": "builtin.page_zoom_out", "kind": "filler", "polarity": "positive", "text": "Could you page zoom out please."}
+{"id": "builtin.page_zoom_out", "kind": "sentence", "polarity": "negative", "reject": "builtin.page_zoom_out", "text": "yesterday afternoon we argued for an hour about who would page zoom out first"}
+{"id": "builtin.page_zoom_out", "kind": "other_command", "polarity": "negative", "reject": "builtin.page_zoom_out", "text": "zoom out"}
+{"id": "builtin.page_zoom_out", "kind": "nonsense", "polarity": "negative", "reject": "builtin.page_zoom_out", "text": "pickle saxophone page zeppelin quartz"}
 {"accept": ["builtin.paste"], "id": "builtin.paste", "kind": "alias", "polarity": "positive", "text": "paste"}
 {"accept": ["builtin.paste"], "id": "builtin.paste", "kind": "filler", "polarity": "positive", "text": "could you just paste"}
 {"accept": ["builtin.paste"], "id": "builtin.paste", "kind": "punct", "polarity": "positive", "text": "Paste."}
@@ -8196,7 +8276,7 @@
 {"accept": ["builtin.pin_tab"], "id": "builtin.pin_tab", "kind": "filler", "polarity": "positive", "text": "can you pin tab for me please"}
 {"accept": ["builtin.pin_tab"], "id": "builtin.pin_tab", "kind": "filler", "polarity": "positive", "text": "Can you pin tab for me please."}
 {"id": "builtin.pin_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.pin_tab", "text": "in the story the old captain decides to pin tab as the storm arrives"}
-{"id": "builtin.pin_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.pin_tab", "text": "new tab"}
+{"id": "builtin.pin_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.pin_tab", "text": "tab 7"}
 {"id": "builtin.pin_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.pin_tab", "text": "lantern glimmer pin sideways octopus"}
 {"accept": ["builtin.pointer_settings"], "id": "builtin.pointer_settings", "kind": "alias", "polarity": "positive", "text": "pointer settings"}
 {"accept": ["builtin.pointer_settings"], "id": "builtin.pointer_settings", "kind": "determiner", "polarity": "positive", "text": "pointer the settings"}
@@ -8356,7 +8436,7 @@
 {"accept": ["builtin.press_tab"], "id": "builtin.press_tab", "kind": "filler", "polarity": "positive", "text": "can you press tab for me please"}
 {"accept": ["builtin.press_tab"], "id": "builtin.press_tab", "kind": "filler", "polarity": "positive", "text": "Can you press tab for me please."}
 {"id": "builtin.press_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.press_tab", "text": "yesterday afternoon we argued for an hour about who would press tab first"}
-{"id": "builtin.press_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.press_tab", "text": "press"}
+{"id": "builtin.press_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.press_tab", "text": "tab 7"}
 {"id": "builtin.press_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.press_tab", "text": "lantern velvet press purple thunderous"}
 {"accept": ["builtin.preview_pane"], "id": "builtin.preview_pane", "kind": "alias", "polarity": "positive", "text": "preview pane"}
 {"accept": ["builtin.preview_pane"], "id": "builtin.preview_pane", "kind": "determiner", "polarity": "positive", "text": "preview the pane"}
@@ -8476,7 +8556,7 @@
 {"accept": ["builtin.previous_tab"], "id": "builtin.previous_tab", "kind": "filler", "polarity": "positive", "text": "can you previous tab for me please"}
 {"accept": ["builtin.previous_tab"], "id": "builtin.previous_tab", "kind": "filler", "polarity": "positive", "text": "Can you previous tab for me please."}
 {"id": "builtin.previous_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.previous_tab", "text": "during the lecture she explained how to previous tab without breaking anything"}
-{"id": "builtin.previous_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.previous_tab", "text": "new tab"}
+{"id": "builtin.previous_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.previous_tab", "text": "tab 7"}
 {"id": "builtin.previous_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.previous_tab", "text": "marmalade zeppelin previous glimmer wobble"}
 {"accept": ["builtin.print"], "id": "builtin.print", "kind": "alias", "polarity": "positive", "text": "print"}
 {"accept": ["builtin.print"], "id": "builtin.print", "kind": "filler", "polarity": "positive", "text": "would you please print"}
@@ -9236,7 +9316,7 @@
 {"accept": ["builtin.reopen_tab"], "id": "builtin.reopen_tab", "kind": "filler", "polarity": "positive", "text": "can you reopen tab for me please"}
 {"accept": ["builtin.reopen_tab"], "id": "builtin.reopen_tab", "kind": "filler", "polarity": "positive", "text": "Can you reopen tab for me please."}
 {"id": "builtin.reopen_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.reopen_tab", "text": "in the story the old captain decides to reopen tab as the storm arrives"}
-{"id": "builtin.reopen_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.reopen_tab", "text": "new tab"}
+{"id": "builtin.reopen_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.reopen_tab", "text": "tab 7"}
 {"id": "builtin.reopen_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.reopen_tab", "text": "purple pickle reopen marmalade sideways"}
 {"accept": ["builtin.repeat"], "id": "builtin.repeat", "kind": "alias", "polarity": "positive", "text": "repeat"}
 {"accept": ["builtin.repeat"], "id": "builtin.repeat", "kind": "filler", "polarity": "positive", "text": "repeat right now"}
@@ -11598,6 +11678,166 @@
 {"id": "builtin.system_info", "kind": "sentence", "polarity": "negative", "reject": "builtin.system_info", "text": "honestly the whole point of the meeting was to system info and nobody did"}
 {"id": "builtin.system_info", "kind": "other_command", "polarity": "negative", "reject": "builtin.system_info", "text": "8"}
 {"id": "builtin.system_info", "kind": "nonsense", "polarity": "negative", "reject": "builtin.system_info", "text": "glimmer thunderous system quartz noodle"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "alias", "polarity": "positive", "text": "tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "determiner", "polarity": "positive", "text": "tab the eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "tab eight for me please"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "mishear", "polarity": "positive", "text": "tab ate"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "numeral", "polarity": "positive", "text": "tab 8"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "punct", "polarity": "positive", "text": "Tab, eight?"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "reorder", "polarity": "positive", "text": "eight tab"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you please tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "mishear", "polarity": "positive", "text": "tap eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "punct", "polarity": "positive", "text": "Tab eight."}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "tab eight now"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "tab eight right now"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "hey tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "could you tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "okay tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "could you just tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "tab eight thanks"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "i need you to tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "so tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "um tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "please tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "tab eight please"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "would you please tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "go ahead and tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "uh tab eight"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "tab eight for me"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you tab eight please"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "Can you tab eight please."}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you tab eight for me"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "Can you tab eight for me."}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you tab eight now"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "Can you tab eight now."}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you tab eight thanks"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "Can you tab eight thanks."}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "can you tab eight right now"}
+{"accept": ["builtin.tab_eight"], "id": "builtin.tab_eight", "kind": "filler", "polarity": "positive", "text": "Can you tab eight right now."}
+{"id": "builtin.tab_eight", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_eight", "text": "during the lecture she explained how to tab eight without breaking anything"}
+{"id": "builtin.tab_eight", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_eight", "text": "tab 7"}
+{"id": "builtin.tab_eight", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_eight", "text": "sideways glimmer eight pickle lantern"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "alias", "polarity": "positive", "text": "tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "determiner", "polarity": "positive", "text": "tab the five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "tab five for me"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "mishear", "polarity": "positive", "text": "tap five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "numeral", "polarity": "positive", "text": "tab 5"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "punct", "polarity": "positive", "text": "Tab, five?"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "reorder", "polarity": "positive", "text": "five tab"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "i need you to tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "punct", "polarity": "positive", "text": "Tab five."}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "okay tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "so tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "uh tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "tab five please"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "go ahead and tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "tab five for me please"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "would you please tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "tab five thanks"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "could you just tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "tab five right now"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "tab five now"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "um tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you please tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "please tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "hey tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "could you tab five"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five please"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "Can you tab five please."}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five for me"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "Can you tab five for me."}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five now"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "Can you tab five now."}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five thanks"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "Can you tab five thanks."}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five right now"}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "Can you tab five right now."}
+{"accept": ["builtin.tab_five"], "id": "builtin.tab_five", "kind": "filler", "polarity": "positive", "text": "can you tab five for me please"}
+{"id": "builtin.tab_five", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_five", "text": "yesterday afternoon we argued for an hour about who would tab five first"}
+{"id": "builtin.tab_five", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_five", "text": "tab 7"}
+{"id": "builtin.tab_five", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_five", "text": "wobble pickle five thunderous sideways"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "alias", "polarity": "positive", "text": "tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "determiner", "polarity": "positive", "text": "tab the four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you please tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "mishear", "polarity": "positive", "text": "tap four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "numeral", "polarity": "positive", "text": "tab 4"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "punct", "polarity": "positive", "text": "Tab four."}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "reorder", "polarity": "positive", "text": "four tab"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "i need you to tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "mishear", "polarity": "positive", "text": "tab for"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "punct", "polarity": "positive", "text": "Tab, four?"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "could you tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "um tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "would you please tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "okay tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "tab four thanks"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "could you just tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "tab four please"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "hey tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "uh tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "tab four right now"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "so tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "tab four now"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "tab four for me please"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "go ahead and tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "tab four for me"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "please tab four"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you tab four please"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "Can you tab four please."}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you tab four for me"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "Can you tab four for me."}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you tab four now"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "Can you tab four now."}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you tab four thanks"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "Can you tab four thanks."}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "can you tab four right now"}
+{"accept": ["builtin.tab_four"], "id": "builtin.tab_four", "kind": "filler", "polarity": "positive", "text": "Can you tab four right now."}
+{"id": "builtin.tab_four", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_four", "text": "my grandmother never understood why people would tab four on a sunday"}
+{"id": "builtin.tab_four", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_four", "text": "tab 7"}
+{"id": "builtin.tab_four", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_four", "text": "glimmer quartz four marmalade wobble"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "alias", "polarity": "positive", "text": "tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "determiner", "polarity": "positive", "text": "tab the nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "would you please tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "mishear", "polarity": "positive", "text": "tap nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "numeral", "polarity": "positive", "text": "tab 9"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "punct", "polarity": "positive", "text": "Tab nine."}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "reorder", "polarity": "positive", "text": "nine tab"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "please tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "punct", "polarity": "positive", "text": "Tab, nine?"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "tab nine please"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "i need you to tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "okay tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "um tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "could you just tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "tab nine now"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "tab nine thanks"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you please tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "so tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "tab nine for me please"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "uh tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "could you tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "hey tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "tab nine right now"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "tab nine for me"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "go ahead and tab nine"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine please"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "Can you tab nine please."}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine for me"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "Can you tab nine for me."}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine now"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "Can you tab nine now."}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine thanks"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "Can you tab nine thanks."}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine right now"}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "Can you tab nine right now."}
+{"accept": ["builtin.tab_nine"], "id": "builtin.tab_nine", "kind": "filler", "polarity": "positive", "text": "can you tab nine for me please"}
+{"id": "builtin.tab_nine", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_nine", "text": "honestly the whole point of the meeting was to tab nine and nobody did"}
+{"id": "builtin.tab_nine", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_nine", "text": "tab 7"}
+{"id": "builtin.tab_nine", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_nine", "text": "wobble banana nine pickle saxophone"}
 {"accept": ["builtin.tab_one"], "id": "builtin.tab_one", "kind": "alias", "polarity": "positive", "text": "tab one"}
 {"accept": ["builtin.tab_one"], "id": "builtin.tab_one", "kind": "determiner", "polarity": "positive", "text": "tab the one"}
 {"accept": ["builtin.tab_one"], "id": "builtin.tab_one", "kind": "filler", "polarity": "positive", "text": "would you please tab one"}
@@ -11636,8 +11876,88 @@
 {"accept": ["builtin.tab_one"], "id": "builtin.tab_one", "kind": "filler", "polarity": "positive", "text": "can you tab one right now"}
 {"accept": ["builtin.tab_one"], "id": "builtin.tab_one", "kind": "filler", "polarity": "positive", "text": "Can you tab one right now."}
 {"id": "builtin.tab_one", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_one", "text": "honestly the whole point of the meeting was to tab one and nobody did"}
-{"id": "builtin.tab_one", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_one", "text": "one"}
+{"id": "builtin.tab_one", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_one", "text": "tab 7"}
 {"id": "builtin.tab_one", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_one", "text": "lantern zeppelin tab velvet cobalt"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "alias", "polarity": "positive", "text": "tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "determiner", "polarity": "positive", "text": "tab the seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "tab seven right now"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "mishear", "polarity": "positive", "text": "tap seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "numeral", "polarity": "positive", "text": "tab 7"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "punct", "polarity": "positive", "text": "Tab, seven?"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "reorder", "polarity": "positive", "text": "seven tab"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "tab seven for me"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "punct", "polarity": "positive", "text": "Tab seven."}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "i need you to tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "could you tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "tab seven for me please"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "so tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "okay tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "tab seven please"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "would you please tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "uh tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "tab seven thanks"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "hey tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "could you just tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "please tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "tab seven now"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "go ahead and tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you please tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "um tab seven"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven please"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "Can you tab seven please."}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven for me"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "Can you tab seven for me."}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven now"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "Can you tab seven now."}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven thanks"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "Can you tab seven thanks."}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven right now"}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "Can you tab seven right now."}
+{"accept": ["builtin.tab_seven"], "id": "builtin.tab_seven", "kind": "filler", "polarity": "positive", "text": "can you tab seven for me please"}
+{"id": "builtin.tab_seven", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_seven", "text": "in the story the old captain decides to tab seven as the storm arrives"}
+{"id": "builtin.tab_seven", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_seven", "text": "tab 7"}
+{"id": "builtin.tab_seven", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_seven", "text": "octopus marmalade seven velvet quartz"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "alias", "polarity": "positive", "text": "tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "determiner", "polarity": "positive", "text": "tab the six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "go ahead and tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "mishear", "polarity": "positive", "text": "tap six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "numeral", "polarity": "positive", "text": "tab 6"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "punct", "polarity": "positive", "text": "Tab six."}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "reorder", "polarity": "positive", "text": "six tab"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "tab six thanks"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "punct", "polarity": "positive", "text": "Tab, six?"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "could you tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "okay tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "tab six right now"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "hey tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "tab six please"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "so tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "tab six for me"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "tab six for me please"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "uh tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "um tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "would you please tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "i need you to tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "tab six now"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "could you just tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you please tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "please tab six"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six please"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "Can you tab six please."}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six for me"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "Can you tab six for me."}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six now"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "Can you tab six now."}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six thanks"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "Can you tab six thanks."}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six right now"}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "Can you tab six right now."}
+{"accept": ["builtin.tab_six"], "id": "builtin.tab_six", "kind": "filler", "polarity": "positive", "text": "can you tab six for me please"}
+{"id": "builtin.tab_six", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_six", "text": "yesterday i told my sister we should tab six before dinner"}
+{"id": "builtin.tab_six", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_six", "text": "tab 7"}
+{"id": "builtin.tab_six", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_six", "text": "pickle wobble tab saxophone noodle"}
 {"accept": ["builtin.tab_three"], "id": "builtin.tab_three", "kind": "alias", "polarity": "positive", "text": "tab three"}
 {"accept": ["builtin.tab_three"], "id": "builtin.tab_three", "kind": "determiner", "polarity": "positive", "text": "tab the three"}
 {"accept": ["builtin.tab_three"], "id": "builtin.tab_three", "kind": "filler", "polarity": "positive", "text": "could you just tab three"}
@@ -11676,7 +11996,7 @@
 {"accept": ["builtin.tab_three"], "id": "builtin.tab_three", "kind": "filler", "polarity": "positive", "text": "Can you tab three right now."}
 {"accept": ["builtin.tab_three"], "id": "builtin.tab_three", "kind": "filler", "polarity": "positive", "text": "can you tab three for me please"}
 {"id": "builtin.tab_three", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_three", "text": "honestly the whole point of the meeting was to tab three and nobody did"}
-{"id": "builtin.tab_three", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_three", "text": "three"}
+{"id": "builtin.tab_three", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_three", "text": "tab 7"}
 {"id": "builtin.tab_three", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_three", "text": "sideways lantern three glimmer thunderous"}
 {"accept": ["builtin.tab_two"], "id": "builtin.tab_two", "kind": "alias", "polarity": "positive", "text": "tab two"}
 {"accept": ["builtin.tab_two"], "id": "builtin.tab_two", "kind": "determiner", "polarity": "positive", "text": "tab the two"}
@@ -11716,7 +12036,7 @@
 {"accept": ["builtin.tab_two"], "id": "builtin.tab_two", "kind": "filler", "polarity": "positive", "text": "Can you tab two thanks."}
 {"accept": ["builtin.tab_two"], "id": "builtin.tab_two", "kind": "filler", "polarity": "positive", "text": "can you tab two right now"}
 {"id": "builtin.tab_two", "kind": "sentence", "polarity": "negative", "reject": "builtin.tab_two", "text": "honestly the whole point of the meeting was to tab two and nobody did"}
-{"id": "builtin.tab_two", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_two", "text": "two"}
+{"id": "builtin.tab_two", "kind": "other_command", "polarity": "negative", "reject": "builtin.tab_two", "text": "tab 7"}
 {"id": "builtin.tab_two", "kind": "nonsense", "polarity": "negative", "reject": "builtin.tab_two", "text": "glimmer pickle tab zeppelin lantern"}
 {"accept": ["builtin.take_a_screenshot"], "id": "builtin.take_a_screenshot", "kind": "alias", "polarity": "positive", "text": "take a screenshot"}
 {"accept": ["builtin.take_a_screenshot"], "id": "builtin.take_a_screenshot", "kind": "filler", "polarity": "positive", "text": "please take a screenshot"}
@@ -11876,7 +12196,7 @@
 {"accept": ["builtin.text_size"], "id": "builtin.text_size", "kind": "filler", "polarity": "positive", "text": "Can you text size for me please."}
 {"accept": ["builtin.text_size"], "id": "builtin.text_size", "kind": "filler", "polarity": "positive", "text": "could you text size please"}
 {"id": "builtin.text_size", "kind": "sentence", "polarity": "negative", "reject": "builtin.text_size", "text": "our manager keeps asking whether anyone remembered to text size last week"}
-{"id": "builtin.text_size", "kind": "other_command", "polarity": "negative", "reject": "builtin.text_size", "text": "bigger text"}
+{"id": "builtin.text_size", "kind": "other_command", "polarity": "negative", "reject": "builtin.text_size", "text": "find text check the oven"}
 {"id": "builtin.text_size", "kind": "nonsense", "polarity": "negative", "reject": "builtin.text_size", "text": "purple sideways text saxophone lantern"}
 {"accept": ["builtin.todays_note"], "id": "builtin.todays_note", "kind": "alias", "polarity": "positive", "text": "todays note"}
 {"accept": ["builtin.todays_note"], "id": "builtin.todays_note", "kind": "determiner", "polarity": "positive", "text": "todays the note"}
@@ -12556,7 +12876,7 @@
 {"accept": ["builtin.zoom_in"], "id": "builtin.zoom_in", "kind": "filler", "polarity": "positive", "text": "Can you zoom in for me please."}
 {"accept": ["builtin.zoom_in"], "id": "builtin.zoom_in", "kind": "filler", "polarity": "positive", "text": "could you zoom in please"}
 {"id": "builtin.zoom_in", "kind": "sentence", "polarity": "negative", "reject": "builtin.zoom_in", "text": "in the story the old captain decides to zoom in as the storm arrives"}
-{"id": "builtin.zoom_in", "kind": "other_command", "polarity": "negative", "reject": "builtin.zoom_in", "text": "zoom out"}
+{"id": "builtin.zoom_in", "kind": "other_command", "polarity": "negative", "reject": "builtin.zoom_in", "text": "page zoom in"}
 {"id": "builtin.zoom_in", "kind": "nonsense", "polarity": "negative", "reject": "builtin.zoom_in", "text": "banana noodle zoom saxophone velvet"}
 {"accept": ["builtin.zoom_out"], "id": "builtin.zoom_out", "kind": "alias", "polarity": "positive", "text": "zoom out"}
 {"accept": ["builtin.zoom_out"], "id": "builtin.zoom_out", "kind": "determiner", "polarity": "positive", "text": "zoom the out"}
@@ -12596,7 +12916,7 @@
 {"accept": ["builtin.zoom_out"], "id": "builtin.zoom_out", "kind": "filler", "polarity": "positive", "text": "Can you zoom out for me please."}
 {"accept": ["builtin.zoom_out"], "id": "builtin.zoom_out", "kind": "filler", "polarity": "positive", "text": "could you zoom out please"}
 {"id": "builtin.zoom_out", "kind": "sentence", "polarity": "negative", "reject": "builtin.zoom_out", "text": "our manager keeps asking whether anyone remembered to zoom out last week"}
-{"id": "builtin.zoom_out", "kind": "other_command", "polarity": "negative", "reject": "builtin.zoom_out", "text": "zoom in"}
+{"id": "builtin.zoom_out", "kind": "other_command", "polarity": "negative", "reject": "builtin.zoom_out", "text": "page zoom out"}
 {"id": "builtin.zoom_out", "kind": "nonsense", "polarity": "negative", "reject": "builtin.zoom_out", "text": "cobalt sideways zoom lantern purple"}
 {"accept": ["core_utils.check_for_updates"], "id": "core_utils.check_for_updates", "kind": "alias", "polarity": "positive", "text": "check for update"}
 {"accept": ["core_utils.check_for_updates"], "id": "core_utils.check_for_updates", "kind": "determiner", "polarity": "positive", "text": "check the for update"}
@@ -12638,6 +12958,46 @@
 {"id": "core_utils.check_for_updates", "kind": "sentence", "polarity": "negative", "reject": "core_utils.check_for_updates", "text": "in the story the old captain decides to check for update as the storm arrives"}
 {"id": "core_utils.check_for_updates", "kind": "other_command", "polarity": "negative", "reject": "core_utils.check_for_updates", "text": "timer for"}
 {"id": "core_utils.check_for_updates", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.check_for_updates", "text": "octopus saxophone update banana thunderous"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "alias", "polarity": "positive", "text": "move preview to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "determiner", "polarity": "positive", "text": "move the preview to this screen water the plants"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "filler", "polarity": "positive", "text": "please move live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear", "polarity": "positive", "text": "move live surface two this screen the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear_unknown", "polarity": "positive", "text": "move preview to this scream water the plants"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "punct", "polarity": "positive", "text": "Move, preview to this screen?"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "slot", "polarity": "positive", "text": "move live surface to this screen the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym", "polarity": "positive", "text": "chuck live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym_unknown", "polarity": "positive", "text": "scoot preview to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "alias", "polarity": "positive", "text": "move live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "determiner", "polarity": "positive", "text": "move the preview to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "filler", "polarity": "positive", "text": "could you just move preview to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear", "polarity": "positive", "text": "move preview two this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear_unknown", "polarity": "positive", "text": "move live surface to this scream"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "punct", "polarity": "positive", "text": "Move preview to this screen."}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "slot", "polarity": "positive", "text": "move preview to this screen water the plants"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym", "polarity": "positive", "text": "put live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym_unknown", "polarity": "positive", "text": "scoot preview to this screen water the plants"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "determiner", "polarity": "positive", "text": "move the live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "filler", "polarity": "positive", "text": "move preview to this screen water the plants for me"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear", "polarity": "positive", "text": "move live surface two this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear_unknown", "polarity": "positive", "text": "move preview to this scream"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "punct", "polarity": "positive", "text": "Move, live surface to this screen the build is green?"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym", "polarity": "positive", "text": "drag live surface to this screen the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym_unknown", "polarity": "positive", "text": "scoot live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "determiner", "polarity": "positive", "text": "move the live surface to this screen the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "filler", "polarity": "positive", "text": "could you move preview to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear", "polarity": "positive", "text": "move preview two this screen water the plants"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "mishear_unknown", "polarity": "positive", "text": "move live surface to this scream the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "punct", "polarity": "positive", "text": "Move live surface to this screen."}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym", "polarity": "positive", "text": "put preview to this screen water the plants"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym_unknown", "polarity": "positive", "text": "scoot live surface to this screen the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "filler", "polarity": "positive", "text": "move preview to this screen water the plants thanks"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "punct", "polarity": "positive", "text": "Move, preview to this screen water the plants?"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "synonym", "polarity": "positive", "text": "chuck live surface to this screen the build is green"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "filler", "polarity": "positive", "text": "um move live surface to this screen"}
+{"accept": ["core_utils.move_preview_to_this_screen"], "id": "core_utils.move_preview_to_this_screen", "kind": "punct", "polarity": "positive", "text": "Move preview to this screen water the plants."}
+{"id": "core_utils.move_preview_to_this_screen", "kind": "sentence", "polarity": "negative", "reject": "core_utils.move_preview_to_this_screen", "text": "honestly the whole point of the meeting was to move live surface to this screen and nobody did"}
+{"id": "core_utils.move_preview_to_this_screen", "kind": "other_command", "polarity": "negative", "reject": "core_utils.move_preview_to_this_screen", "text": "move mouse to"}
+{"id": "core_utils.move_preview_to_this_screen", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.move_preview_to_this_screen", "text": "marmalade quartz surface lantern pickle"}
 {"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "alias", "polarity": "positive", "text": "read my last dictation"}
 {"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "determiner", "polarity": "positive", "text": "read the that back"}
 {"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "can you read that back"}
@@ -12719,45 +13079,45 @@
 {"id": "core_utils.reload_config", "kind": "other_command", "polarity": "negative", "reject": "core_utils.reload_config", "text": "refresh"}
 {"id": "core_utils.reload_config", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.reload_config", "text": "octopus quartz refresh glimmer saxophone"}
 {"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "alias", "polarity": "positive", "text": "reset window positions"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the floating windows water the plants"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "can you please reset window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "mishear_unknown", "polarity": "positive", "text": "reset widow positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "numeral", "polarity": "positive", "text": "reset window positions call mom at 5"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset window positions call mom at five."}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "alias", "polarity": "positive", "text": "reset floating windows"}
 {"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the floating windows"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "go ahead and reset window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "mishear_unknown", "polarity": "positive", "text": "reset widow positions"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, floating windows?"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset floating windows water the plants"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the window positions"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset floating windows for me please"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, window positions?"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "go ahead and reset floating windows"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset floating windows water the plants."}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "um reset floating windows"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset floating windows."}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "go ahead and reset window positions"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, floating windows water the plants?"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset floating windows now"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, window positions call mom at five?"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset floating windows thanks"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset window positions."}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "um reset window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "so reset floating windows water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "go ahead and reset window positions check the oven"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "mishear_unknown", "polarity": "positive", "text": "reset widow positions check the oven"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "numeral", "polarity": "positive", "text": "reset indicator position call mom at 5"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, preview position?"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset window positions check the oven"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "alias", "polarity": "positive", "text": "reset indicator position"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the preview position water the plants"}
 {"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "uh reset floating windows"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "hey reset window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset window positions now"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "can you reset window positions call mom at five"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset floating windows water the plants now"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "i need you to reset floating windows"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "please reset floating windows"}
-{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "okay reset floating windows water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "mishear_unknown", "polarity": "positive", "text": "reset widow positions"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset live surface water the plants."}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset preview position water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "alias", "polarity": "positive", "text": "reset live surface"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the window positions check the oven"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset live surface right now"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset indicator position call mom at five."}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset indicator position call mom at five"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "alias", "polarity": "positive", "text": "reset floating windows"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the live surface water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "i need you to reset floating windows water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, window positions?"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset live surface water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "alias", "polarity": "positive", "text": "reset preview position"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the live surface"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset floating windows water the plants please"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset floating windows water the plants."}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "slot", "polarity": "positive", "text": "reset floating windows water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the indicator position"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "i need you to reset preview position"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset window positions check the oven."}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the floating windows water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "um reset indicator position call mom at five"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, live surface water the plants?"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "determiner", "polarity": "positive", "text": "reset the indicator position call mom at five"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "could you reset floating windows water the plants"}
+{"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "punct", "polarity": "positive", "text": "Reset, indicator position call mom at five?"}
 {"id": "core_utils.reset_floating_windows", "kind": "sentence", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "our manager keeps asking whether anyone remembered to reset floating windows last week"}
-{"id": "core_utils.reset_floating_windows", "kind": "other_command", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "window 8"}
-{"id": "core_utils.reset_floating_windows", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "saxophone marmalade floating quartz sideways"}
+{"id": "core_utils.reset_floating_windows", "kind": "other_command", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "move live surface to this screen"}
+{"id": "core_utils.reset_floating_windows", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "banana lantern floating pickle purple"}
 {"accept": ["core_utils.reset_hints"], "id": "core_utils.reset_hints", "kind": "alias", "polarity": "positive", "text": "replay hints"}
 {"accept": ["core_utils.reset_hints"], "id": "core_utils.reset_hints", "kind": "determiner", "polarity": "positive", "text": "replay the hints"}
 {"accept": ["core_utils.reset_hints"], "id": "core_utils.reset_hints", "kind": "filler", "polarity": "positive", "text": "could you just show hints again"}
@@ -17358,6 +17718,86 @@
 {"id": "tab_finder.find_tab", "kind": "sentence", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "my grandmother never understood why people would find my on a sunday"}
 {"id": "tab_finder.find_tab", "kind": "other_command", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "switch to"}
 {"id": "tab_finder.find_tab", "kind": "nonsense", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "cobalt marmalade find wobble velvet"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "determiner", "polarity": "positive", "text": "find the buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "find buy milk now"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find, text buy milk?"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "slot", "polarity": "positive", "text": "find text check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "search for buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "determiner", "polarity": "positive", "text": "find the check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "find text check the oven please"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find buy milk."}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "slot", "polarity": "positive", "text": "find buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "search for text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "determiner", "polarity": "positive", "text": "find the text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "find buy milk please"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find, check the oven?"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "slot", "polarity": "positive", "text": "find text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "look for check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "determiner", "polarity": "positive", "text": "find the text check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "could you find text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find text buy milk."}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "slot", "polarity": "positive", "text": "find check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "search for check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "uh find check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find, buy milk?"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "search for text check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "um find buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find text check the oven."}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "look for text check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "um find text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find, text check the oven?"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "look for text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "find buy milk right now"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "punct", "polarity": "positive", "text": "Find check the oven."}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "synonym", "polarity": "positive", "text": "look for buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "can you find text check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "can you find check the oven"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "can you please find text buy milk"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "find check the oven for me"}
+{"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "could you just find check the oven"}
+{"id": "tab_finder.find_text", "kind": "sentence", "polarity": "negative", "reject": "tab_finder.find_text", "text": "during the lecture she explained how to find call mom at five without breaking anything"}
+{"id": "tab_finder.find_text", "kind": "other_command", "polarity": "negative", "reject": "tab_finder.find_text", "text": "find my"}
+{"id": "tab_finder.find_text", "kind": "nonsense", "polarity": "negative", "reject": "tab_finder.find_text", "text": "pickle purple find quartz noodle"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "determiner", "polarity": "positive", "text": "tab the 3"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "tab number nine thanks"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "mishear", "polarity": "positive", "text": "tap number five"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "numeral", "polarity": "positive", "text": "tab number 9"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab number number nine."}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "slot", "polarity": "positive", "text": "tab 3"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "determiner", "polarity": "positive", "text": "tab the number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "tab number nine please"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "mishear", "polarity": "positive", "text": "tap number number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "numeral", "polarity": "positive", "text": "tab number number 9"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab number nine."}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "slot", "polarity": "positive", "text": "tab number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "determiner", "polarity": "positive", "text": "tab the number five"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "can you tab number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "mishear", "polarity": "positive", "text": "tap number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "numeral", "polarity": "positive", "text": "tab three"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab 3."}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "slot", "polarity": "positive", "text": "tab number five"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "determiner", "polarity": "positive", "text": "tab the number number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "so tab 3"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "mishear", "polarity": "positive", "text": "tap 3"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "numeral", "polarity": "positive", "text": "tab number 5"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab, number nine?"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "slot", "polarity": "positive", "text": "tab number number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "would you please tab number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab, number number nine?"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "tab number number nine thanks"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab, number five?"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "okay tab number number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab, 3?"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "could you tab number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "punct", "polarity": "positive", "text": "Tab number five."}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "please tab number nine"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "okay tab 3"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "tab number number nine for me please"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "uh tab number five"}
+{"accept": ["tab_finder.tab_number"], "id": "tab_finder.tab_number", "kind": "filler", "polarity": "positive", "text": "can you please tab number five"}
+{"id": "tab_finder.tab_number", "kind": "sentence", "polarity": "negative", "reject": "tab_finder.tab_number", "text": "in the story the old captain decides to tab five as the storm arrives"}
+{"id": "tab_finder.tab_number", "kind": "other_command", "polarity": "negative", "reject": "tab_finder.tab_number", "text": "new tab"}
+{"id": "tab_finder.tab_number", "kind": "nonsense", "polarity": "negative", "reject": "tab_finder.tab_number", "text": "marmalade pickle five wobble zeppelin"}
 {"accept": ["tasks.add_to_list"], "id": "tasks.add_to_list", "kind": "alias", "polarity": "positive", "text": "add task"}
 {"accept": ["tasks.add_to_list"], "id": "tasks.add_to_list", "kind": "determiner", "polarity": "positive", "text": "new the task"}
 {"accept": ["tasks.add_to_list"], "id": "tasks.add_to_list", "kind": "filler", "polarity": "positive", "text": "go ahead and new task call mom at five"}
@@ -18356,7 +18796,7 @@
 {"accept": ["window_cube.five"], "id": "window_cube.five", "kind": "filler", "polarity": "positive", "text": "okay 5"}
 {"accept": ["window_cube.five"], "id": "window_cube.five", "kind": "filler", "polarity": "positive", "text": "five now"}
 {"id": "window_cube.five", "kind": "sentence", "polarity": "negative", "reject": "window_cube.five", "text": "yesterday afternoon we argued for an hour about who would 5 first"}
-{"id": "window_cube.five", "kind": "other_command", "polarity": "negative", "reject": "window_cube.five", "text": "window 5"}
+{"id": "window_cube.five", "kind": "other_command", "polarity": "negative", "reject": "window_cube.five", "text": "tab five"}
 {"id": "window_cube.five", "kind": "nonsense", "polarity": "negative", "reject": "window_cube.five", "text": "saxophone velvet 5 zeppelin wobble"}
 {"accept": ["window_cube.four"], "id": "window_cube.four", "kind": "alias", "polarity": "positive", "text": "4"}
 {"accept": ["window_cube.four"], "id": "window_cube.four", "kind": "filler", "polarity": "positive", "text": "4 for me please"}
@@ -18396,7 +18836,7 @@
 {"accept": ["window_cube.four"], "id": "window_cube.four", "kind": "filler", "polarity": "positive", "text": "four thanks"}
 {"accept": ["window_cube.four"], "id": "window_cube.four", "kind": "filler", "polarity": "positive", "text": "four please"}
 {"id": "window_cube.four", "kind": "sentence", "polarity": "negative", "reject": "window_cube.four", "text": "my grandmother never understood why people would 4 on a sunday"}
-{"id": "window_cube.four", "kind": "other_command", "polarity": "negative", "reject": "window_cube.four", "text": "window 4"}
+{"id": "window_cube.four", "kind": "other_command", "polarity": "negative", "reject": "window_cube.four", "text": "tab four"}
 {"id": "window_cube.four", "kind": "nonsense", "polarity": "negative", "reject": "window_cube.four", "text": "quartz lantern 4 cobalt wobble"}
 {"accept": ["window_cube.hide_cube"], "id": "window_cube.hide_cube", "kind": "alias", "polarity": "positive", "text": "hide cube"}
 {"accept": ["window_cube.hide_cube"], "id": "window_cube.hide_cube", "kind": "determiner", "polarity": "positive", "text": "unpin the windows"}
@@ -18476,7 +18916,7 @@
 {"accept": ["window_cube.nine"], "id": "window_cube.nine", "kind": "filler", "polarity": "positive", "text": "okay nine"}
 {"accept": ["window_cube.nine"], "id": "window_cube.nine", "kind": "filler", "polarity": "positive", "text": "can you 9"}
 {"id": "window_cube.nine", "kind": "sentence", "polarity": "negative", "reject": "window_cube.nine", "text": "during the lecture she explained how to 9 without breaking anything"}
-{"id": "window_cube.nine", "kind": "other_command", "polarity": "negative", "reject": "window_cube.nine", "text": "window 9"}
+{"id": "window_cube.nine", "kind": "other_command", "polarity": "negative", "reject": "window_cube.nine", "text": "tab nine"}
 {"id": "window_cube.nine", "kind": "nonsense", "polarity": "negative", "reject": "window_cube.nine", "text": "saxophone purple 9 quartz lantern"}
 {"accept": ["window_cube.one"], "id": "window_cube.one", "kind": "alias", "polarity": "positive", "text": "1"}
 {"accept": ["window_cube.one"], "id": "window_cube.one", "kind": "filler", "polarity": "positive", "text": "1 for me"}
@@ -18676,7 +19116,7 @@
 {"accept": ["window_cube.six"], "id": "window_cube.six", "kind": "filler", "polarity": "positive", "text": "okay six"}
 {"accept": ["window_cube.six"], "id": "window_cube.six", "kind": "filler", "polarity": "positive", "text": "please six"}
 {"id": "window_cube.six", "kind": "sentence", "polarity": "negative", "reject": "window_cube.six", "text": "in the story the old captain decides to 6 as the storm arrives"}
-{"id": "window_cube.six", "kind": "other_command", "polarity": "negative", "reject": "window_cube.six", "text": "window 6"}
+{"id": "window_cube.six", "kind": "other_command", "polarity": "negative", "reject": "window_cube.six", "text": "tab six"}
 {"id": "window_cube.six", "kind": "nonsense", "polarity": "negative", "reject": "window_cube.six", "text": "cobalt thunderous 6 marmalade glimmer"}
 {"accept": ["window_cube.three"], "id": "window_cube.three", "kind": "alias", "polarity": "positive", "text": "3"}
 {"accept": ["window_cube.three"], "id": "window_cube.three", "kind": "filler", "polarity": "positive", "text": "three for me please"}
@@ -19756,7 +20196,7 @@
 {"accept": ["windows.find_window"], "id": "windows.find_window", "kind": "filler", "polarity": "positive", "text": "okay find window obsidian"}
 {"accept": ["windows.find_window"], "id": "windows.find_window", "kind": "filler", "polarity": "positive", "text": "could you just find window"}
 {"id": "windows.find_window", "kind": "sentence", "polarity": "negative", "reject": "windows.find_window", "text": "my grandmother never understood why people would find window on a sunday"}
-{"id": "windows.find_window", "kind": "other_command", "polarity": "negative", "reject": "windows.find_window", "text": "find my"}
+{"id": "windows.find_window", "kind": "other_command", "polarity": "negative", "reject": "windows.find_window", "text": "find check the oven"}
 {"id": "windows.find_window", "kind": "nonsense", "polarity": "negative", "reject": "windows.find_window", "text": "sideways octopus window zeppelin marmalade"}
 {"accept": ["windows.list_layouts"], "id": "windows.list_layouts", "kind": "alias", "polarity": "positive", "text": "what layouts"}
 {"accept": ["windows.list_layouts"], "id": "windows.list_layouts", "kind": "determiner", "polarity": "positive", "text": "list the layouts"}

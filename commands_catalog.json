@@ -440,7 +440,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2739",
+      "source": "plugins/commands/ask_ollama.py:2792",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -459,7 +459,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2791",
+      "source": "plugins/commands/ask_ollama.py:2844",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -479,7 +479,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2777",
+      "source": "plugins/commands/ask_ollama.py:2830",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -498,7 +498,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2818",
+      "source": "plugins/commands/ask_ollama.py:2871",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -526,7 +526,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2471",
+      "source": "plugins/commands/ask_ollama.py:2517",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -551,7 +551,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2581",
+      "source": "plugins/commands/ask_ollama.py:2631",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -572,7 +572,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2758",
+      "source": "plugins/commands/ask_ollama.py:2811",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -597,7 +597,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2634",
+      "source": "plugins/commands/ask_ollama.py:2687",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -664,7 +664,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2040",
+      "source": "commands.json:2121",
       "undoable": true,
       "verb": "accessibility",
       "whole_utterance": false
@@ -681,7 +681,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1214",
+      "source": "commands.json:1241",
       "undoable": true,
       "verb": "action",
       "whole_utterance": false
@@ -698,7 +698,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1340",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1367",
       "undoable": true,
       "verb": "address",
       "whole_utterance": false
@@ -715,7 +725,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2217",
+      "source": "commands.json:2298",
       "undoable": true,
       "verb": "again",
       "whole_utterance": false
@@ -732,7 +742,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:483",
+      "source": "commands.json:488",
       "undoable": false,
       "verb": "apostrophe",
       "whole_utterance": false
@@ -749,7 +759,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1566",
+      "source": "commands.json:1647",
       "undoable": true,
       "verb": "arc",
       "whole_utterance": false
@@ -766,7 +776,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:353",
+      "source": "commands.json:358",
       "undoable": true,
       "verb": "back",
       "whole_utterance": false
@@ -783,7 +793,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:362",
+      "source": "commands.json:367",
       "undoable": true,
       "verb": "back",
       "whole_utterance": false
@@ -800,7 +810,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:578",
+      "source": "commands.json:583",
       "undoable": false,
       "verb": "backspace",
       "whole_utterance": false
@@ -817,7 +827,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2013",
+      "source": "commands.json:2094",
       "undoable": true,
       "verb": "bigger",
       "whole_utterance": false
@@ -834,7 +844,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2162",
+      "source": "commands.json:2243",
       "undoable": true,
       "verb": "bigger",
       "whole_utterance": false
@@ -851,7 +861,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:744",
+      "source": "commands.json:771",
       "undoable": true,
       "verb": "bold",
       "whole_utterance": false
@@ -868,7 +878,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1391",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1418",
       "undoable": false,
       "verb": "bookmark",
       "whole_utterance": false
@@ -885,7 +905,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2150",
+      "source": "commands.json:2231",
       "undoable": true,
       "verb": "cancel",
       "whole_utterance": false
@@ -902,7 +922,7 @@
       "pack": "screen-capture",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1742",
+      "source": "commands.json:1823",
       "undoable": true,
       "verb": "capture",
       "whole_utterance": false
@@ -919,7 +939,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:868",
+      "source": "commands.json:895",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -936,7 +956,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:916",
+      "source": "commands.json:943",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -953,7 +973,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:880",
+      "source": "commands.json:907",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -970,7 +990,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:853",
+      "source": "commands.json:880",
       "undoable": true,
       "verb": "clipboard",
       "whole_utterance": false
@@ -987,7 +1007,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:532",
+      "source": "commands.json:537",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1004,7 +1024,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1838",
+      "source": "commands.json:1919",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1021,7 +1041,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:518",
+      "source": "commands.json:523",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1038,7 +1058,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:504",
+      "source": "commands.json:509",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1049,13 +1069,23 @@
       ],
       "args": [],
       "canonical_id": "builtin.close_tab",
-      "description": "Closes current tab.",
+      "description": "Closes the current browser tab; Reopen tab can restore it.",
       "kind": "builtin",
       "object": "tab",
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "destructive",
-      "source": "commands.json:139",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:142",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1072,7 +1102,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1262",
+      "source": "commands.json:1289",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1089,7 +1119,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "destructive",
-      "source": "commands.json:52",
+      "source": "commands.json:55",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1106,7 +1136,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:469",
+      "source": "commands.json:474",
       "undoable": false,
       "verb": "colon",
       "whole_utterance": false
@@ -1123,7 +1153,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1917",
+      "source": "commands.json:1998",
       "undoable": true,
       "verb": "color",
       "whole_utterance": false
@@ -1140,7 +1170,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:441",
+      "source": "commands.json:446",
       "undoable": false,
       "verb": "comma",
       "whole_utterance": false
@@ -1157,7 +1187,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:964",
+      "source": "commands.json:991",
       "undoable": false,
       "verb": "command",
       "whole_utterance": false
@@ -1174,7 +1204,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:244",
+      "source": "commands.json:249",
       "undoable": true,
       "verb": "copy",
       "whole_utterance": false
@@ -1191,7 +1221,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2064",
+      "source": "commands.json:2145",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -1208,7 +1238,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:253",
+      "source": "commands.json:258",
       "undoable": false,
       "verb": "cut",
       "whole_utterance": false
@@ -1225,7 +1255,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1122",
+      "source": "commands.json:1149",
       "undoable": false,
       "verb": "daily",
       "whole_utterance": false
@@ -1242,7 +1272,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2138",
+      "source": "commands.json:2219",
       "undoable": true,
       "verb": "dark",
       "whole_utterance": false
@@ -1259,7 +1289,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:546",
+      "source": "commands.json:551",
       "undoable": false,
       "verb": "dash",
       "whole_utterance": false
@@ -1276,7 +1306,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2192",
+      "source": "commands.json:2273",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1293,7 +1323,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1759",
+      "source": "commands.json:1840",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1310,7 +1340,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:823",
+      "source": "commands.json:850",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1327,7 +1357,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1664",
+      "source": "commands.json:1745",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1344,7 +1374,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2198",
+      "source": "commands.json:2279",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1361,7 +1391,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:584",
+      "source": "commands.json:589",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1378,7 +1408,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2120",
+      "source": "commands.json:2201",
       "undoable": true,
       "verb": "display",
       "whole_utterance": false
@@ -1395,7 +1425,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2070",
+      "source": "commands.json:2151",
       "undoable": true,
       "verb": "do",
       "whole_utterance": false
@@ -1412,7 +1442,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1400",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1427",
       "undoable": false,
       "verb": "duplicate",
       "whole_utterance": false
@@ -1429,7 +1469,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2049",
+      "source": "commands.json:2130",
       "undoable": true,
       "verb": "ease",
       "whole_utterance": false
@@ -1446,7 +1486,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:553",
+      "source": "commands.json:558",
       "undoable": false,
       "verb": "ellipsis",
       "whole_utterance": false
@@ -1463,7 +1503,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:785",
+      "source": "commands.json:812",
       "undoable": true,
       "verb": "emoji",
       "whole_utterance": false
@@ -1480,7 +1520,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2204",
+      "source": "commands.json:2285",
       "undoable": false,
       "verb": "enter",
       "whole_utterance": false
@@ -1497,7 +1537,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:324",
+      "source": "commands.json:329",
       "undoable": true,
       "verb": "escape",
       "whole_utterance": false
@@ -1514,7 +1554,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:455",
+      "source": "commands.json:460",
       "undoable": false,
       "verb": "exclamation",
       "whole_utterance": false
@@ -1531,7 +1571,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:462",
+      "source": "commands.json:467",
       "undoable": false,
       "verb": "exclamation",
       "whole_utterance": false
@@ -1548,7 +1588,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2019",
+      "source": "commands.json:2100",
       "undoable": true,
       "verb": "eye",
       "whole_utterance": false
@@ -1565,7 +1605,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1797",
+      "source": "commands.json:1878",
       "undoable": false,
       "verb": "file",
       "whole_utterance": false
@@ -1582,7 +1622,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2076",
+      "source": "commands.json:2157",
       "undoable": true,
       "verb": "focus",
       "whole_utterance": false
@@ -1599,7 +1639,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1065",
+      "source": "commands.json:1092",
       "undoable": false,
       "verb": "follow",
       "whole_utterance": false
@@ -1616,7 +1656,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:709",
+      "source": "commands.json:714",
       "undoable": true,
       "verb": "full",
       "whole_utterance": false
@@ -1633,7 +1673,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:435",
+      "source": "commands.json:440",
       "undoable": false,
       "verb": "full",
       "whole_utterance": false
@@ -1650,7 +1690,7 @@
       "pack": "screen-capture",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1733",
+      "source": "commands.json:1814",
       "undoable": true,
       "verb": "game",
       "whole_utterance": false
@@ -1667,7 +1707,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:217",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:222",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1684,7 +1734,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:226",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:231",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1701,7 +1761,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1349",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1376",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1718,7 +1788,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1524",
+      "source": "commands.json:1605",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1735,7 +1805,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1599",
+      "source": "commands.json:1680",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1752,7 +1822,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1590",
+      "source": "commands.json:1671",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1769,7 +1839,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1811",
+      "source": "commands.json:1892",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1786,7 +1856,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1011",
+      "source": "commands.json:1038",
       "undoable": true,
       "verb": "graph",
       "whole_utterance": false
@@ -1803,7 +1873,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1448",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1475",
       "undoable": true,
       "verb": "hard",
       "whole_utterance": false
@@ -1820,7 +1900,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1683",
+      "source": "commands.json:1764",
       "undoable": true,
       "verb": "heading",
       "whole_utterance": false
@@ -1837,7 +1917,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1703",
+      "source": "commands.json:1784",
       "undoable": true,
       "verb": "heading",
       "whole_utterance": false
@@ -1854,7 +1934,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1693",
+      "source": "commands.json:1774",
       "undoable": true,
       "verb": "heading",
       "whole_utterance": false
@@ -1871,7 +1951,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2186",
+      "source": "commands.json:2267",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -1888,7 +1968,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1907",
+      "source": "commands.json:1988",
       "undoable": true,
       "verb": "high",
       "whole_utterance": false
@@ -1905,7 +1985,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1094",
+      "source": "commands.json:1121",
       "undoable": true,
       "verb": "highlight",
       "whole_utterance": false
@@ -1922,7 +2002,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:394",
+      "source": "commands.json:399",
       "undoable": false,
       "verb": "hold",
       "whole_utterance": false
@@ -1939,7 +2019,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:408",
+      "source": "commands.json:413",
       "undoable": true,
       "verb": "hold",
       "whole_utterance": false
@@ -1956,7 +2036,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:539",
+      "source": "commands.json:544",
       "undoable": false,
       "verb": "hyphen",
       "whole_utterance": false
@@ -1973,7 +2053,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2084",
+      "source": "commands.json:2165",
       "undoable": true,
       "verb": "immersive",
       "whole_utterance": false
@@ -1990,7 +2070,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1142",
+      "source": "commands.json:1169",
       "undoable": true,
       "verb": "indent",
       "whole_utterance": false
@@ -2007,7 +2087,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1056",
+      "source": "commands.json:1083",
       "undoable": true,
       "verb": "insert",
       "whole_utterance": false
@@ -2024,7 +2104,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1927",
+      "source": "commands.json:2008",
       "undoable": true,
       "verb": "invert",
       "whole_utterance": false
@@ -2041,7 +2121,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:753",
+      "source": "commands.json:780",
       "undoable": true,
       "verb": "italic",
       "whole_utterance": false
@@ -2075,7 +2155,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1485",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1566",
       "undoable": true,
       "verb": "last",
       "whole_utterance": false
@@ -2092,7 +2182,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1933",
+      "source": "commands.json:2014",
       "undoable": true,
       "verb": "live",
       "whole_utterance": false
@@ -2109,7 +2199,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:634",
+      "source": "commands.json:639",
       "undoable": true,
       "verb": "lock",
       "whole_utterance": false
@@ -2126,7 +2216,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:625",
+      "source": "commands.json:630",
       "undoable": true,
       "verb": "lock",
       "whole_utterance": false
@@ -2143,7 +2233,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2132",
+      "source": "commands.json:2213",
       "undoable": true,
       "verb": "make",
       "whole_utterance": false
@@ -2160,7 +2250,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:70",
+      "source": "commands.json:73",
       "undoable": true,
       "verb": "maximize",
       "whole_utterance": false
@@ -2177,7 +2267,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:61",
+      "source": "commands.json:64",
       "undoable": true,
       "verb": "minimize",
       "whole_utterance": false
@@ -2194,7 +2284,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:88",
+      "source": "commands.json:91",
       "undoable": true,
       "verb": "minimize",
       "whole_utterance": false
@@ -2211,7 +2301,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:97",
+      "source": "commands.json:100",
       "undoable": true,
       "verb": "minimize",
       "whole_utterance": false
@@ -2228,7 +2318,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1953",
+      "source": "commands.json:2034",
       "undoable": true,
       "verb": "mono",
       "whole_utterance": false
@@ -2245,7 +2335,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2001",
+      "source": "commands.json:2082",
       "undoable": true,
       "verb": "mouse",
       "whole_utterance": false
@@ -2262,7 +2352,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2234",
+      "source": "commands.json:2315",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2279,7 +2369,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2244",
+      "source": "commands.json:2325",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2296,7 +2386,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2224",
+      "source": "commands.json:2305",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2313,7 +2403,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1421",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1448",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -2330,7 +2430,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1554",
+      "source": "commands.json:1635",
       "undoable": true,
       "verb": "my",
       "whole_utterance": false
@@ -2347,7 +2447,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1074",
+      "source": "commands.json:1101",
       "undoable": true,
       "verb": "navigate",
       "whole_utterance": false
@@ -2364,7 +2464,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1084",
+      "source": "commands.json:1111",
       "undoable": true,
       "verb": "navigate",
       "whole_utterance": false
@@ -2381,7 +2481,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1776",
+      "source": "commands.json:1857",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2398,7 +2498,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:560",
+      "source": "commands.json:565",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2415,7 +2515,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:928",
+      "source": "commands.json:955",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2432,7 +2532,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:566",
+      "source": "commands.json:571",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2449,7 +2549,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:116",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:119",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2466,7 +2576,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1252",
+      "source": "commands.json:1279",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2483,7 +2593,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:338",
+      "source": "commands.json:343",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -2500,7 +2610,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:174",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:179",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -2517,7 +2637,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2114",
+      "source": "commands.json:2195",
       "undoable": true,
       "verb": "night",
       "whole_utterance": false
@@ -2534,7 +2654,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1713",
+      "source": "commands.json:1794",
       "undoable": true,
       "verb": "normal",
       "whole_utterance": false
@@ -2551,7 +2671,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:794",
+      "source": "commands.json:821",
       "undoable": true,
       "verb": "notifications",
       "whole_utterance": false
@@ -2568,7 +2688,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1104",
+      "source": "commands.json:1131",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2585,7 +2705,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:937",
+      "source": "commands.json:964",
       "undoable": false,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2602,7 +2722,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:973",
+      "source": "commands.json:1000",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2619,7 +2739,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1047",
+      "source": "commands.json:1074",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2636,7 +2756,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1965",
+      "source": "commands.json:2046",
       "undoable": false,
       "verb": "on",
       "whole_utterance": false
@@ -2653,7 +2773,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1578",
+      "source": "commands.json:1659",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2670,7 +2790,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:892",
+      "source": "commands.json:919",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2687,7 +2807,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1518",
+      "source": "commands.json:1599",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2704,7 +2824,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1381",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1408",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -2721,7 +2851,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:525",
+      "source": "commands.json:530",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -2738,7 +2868,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:649",
+      "source": "commands.json:654",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2755,7 +2885,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:898",
+      "source": "commands.json:925",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2789,7 +2919,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:862",
+      "source": "commands.json:889",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2806,7 +2936,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1584",
+      "source": "commands.json:1665",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2823,7 +2953,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:874",
+      "source": "commands.json:901",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2840,7 +2970,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1322",
+      "source": "commands.json:1349",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2857,7 +2987,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1292",
+      "source": "commands.json:1319",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2874,7 +3004,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1440",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1467",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2891,7 +3031,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1172",
+      "source": "commands.json:1199",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2908,7 +3048,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1316",
+      "source": "commands.json:1343",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2925,7 +3065,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1334",
+      "source": "commands.json:1361",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2942,7 +3082,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1358",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1385",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2959,7 +3109,7 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:46",
+      "source": "commands.json:48",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2976,7 +3126,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1298",
+      "source": "commands.json:1325",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2993,7 +3143,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:655",
+      "source": "commands.json:660",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3010,7 +3160,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:664",
+      "source": "commands.json:669",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3027,7 +3177,7 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:40",
+      "source": "commands.json:41",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3044,7 +3194,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:904",
+      "source": "commands.json:931",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3061,7 +3211,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1548",
+      "source": "commands.json:1629",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3078,7 +3228,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1020",
+      "source": "commands.json:1047",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3095,7 +3245,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1367",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1394",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3112,7 +3272,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1572",
+      "source": "commands.json:1653",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3129,7 +3289,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2108",
+      "source": "commands.json:2189",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3146,7 +3306,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1975",
+      "source": "commands.json:2056",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3163,7 +3323,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2480",
+      "source": "commands.json:2561",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3180,7 +3340,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1829",
+      "source": "commands.json:1910",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3197,7 +3357,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1512",
+      "source": "commands.json:1593",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3214,7 +3374,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:955",
+      "source": "commands.json:982",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3231,7 +3391,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:643",
+      "source": "commands.json:648",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3248,7 +3408,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2102",
+      "source": "commands.json:2183",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3265,7 +3425,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:922",
+      "source": "commands.json:949",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3282,7 +3442,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1190",
+      "source": "commands.json:1217",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3299,7 +3459,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:511",
+      "source": "commands.json:516",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3316,7 +3476,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:910",
+      "source": "commands.json:937",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3333,7 +3493,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:497",
+      "source": "commands.json:502",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3350,7 +3510,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1310",
+      "source": "commands.json:1337",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3367,7 +3527,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1530",
+      "source": "commands.json:1611",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3384,7 +3544,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1304",
+      "source": "commands.json:1331",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3401,7 +3561,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:277",
+      "source": "commands.json:282",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3418,7 +3578,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1328",
+      "source": "commands.json:1355",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3435,7 +3595,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1178",
+      "source": "commands.json:1205",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3452,7 +3612,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1184",
+      "source": "commands.json:1211",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3469,7 +3629,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:847",
+      "source": "commands.json:874",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3486,7 +3646,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2438",
+      "source": "commands.json:2519",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3503,7 +3663,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2444",
+      "source": "commands.json:2525",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3520,7 +3680,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2450",
+      "source": "commands.json:2531",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3537,7 +3697,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1166",
+      "source": "commands.json:1193",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3554,7 +3714,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1160",
+      "source": "commands.json:1187",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3571,9 +3731,63 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:371",
+      "source": "commands.json:376",
       "undoable": true,
       "verb": "other",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "page zoom in"
+      ],
+      "args": [],
+      "canonical_id": "builtin.page_zoom_in",
+      "description": "Makes the current browser page larger.",
+      "kind": "builtin",
+      "object": "zoom_in",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:749",
+      "undoable": true,
+      "verb": "page",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "page zoom out"
+      ],
+      "args": [],
+      "canonical_id": "builtin.page_zoom_out",
+      "description": "Makes the current browser page smaller.",
+      "kind": "builtin",
+      "object": "zoom_out",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:760",
+      "undoable": true,
+      "verb": "page",
       "whole_utterance": false
     },
     {
@@ -3588,7 +3802,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:262",
+      "source": "commands.json:267",
       "undoable": true,
       "verb": "paste",
       "whole_utterance": false
@@ -3605,7 +3819,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:428",
+      "source": "commands.json:433",
       "undoable": false,
       "verb": "period",
       "whole_utterance": false
@@ -3622,7 +3836,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "destructive",
-      "source": "commands.json:1767",
+      "source": "commands.json:1848",
       "undoable": false,
       "verb": "permanent",
       "whole_utterance": false
@@ -3639,7 +3853,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1430",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1457",
       "undoable": false,
       "verb": "pin",
       "whole_utterance": false
@@ -3656,7 +3880,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2007",
+      "source": "commands.json:2088",
       "undoable": true,
       "verb": "pointer",
       "whole_utterance": false
@@ -3673,7 +3897,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:380",
+      "source": "commands.json:385",
       "undoable": false,
       "verb": "press",
       "whole_utterance": false
@@ -3690,7 +3914,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:387",
+      "source": "commands.json:392",
       "undoable": false,
       "verb": "press",
       "whole_utterance": false
@@ -3707,7 +3931,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:332",
+      "source": "commands.json:337",
       "undoable": true,
       "verb": "press",
       "whole_utterance": false
@@ -3724,7 +3948,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1820",
+      "source": "commands.json:1901",
       "undoable": true,
       "verb": "preview",
       "whole_utterance": false
@@ -3741,7 +3965,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:344",
+      "source": "commands.json:349",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -3758,7 +3982,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:183",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:188",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -3775,7 +4009,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:771",
+      "source": "commands.json:798",
       "undoable": false,
       "verb": "print",
       "whole_utterance": false
@@ -3792,7 +4026,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1494",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1575",
       "undoable": false,
       "verb": "private",
       "whole_utterance": false
@@ -3809,7 +4053,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:448",
+      "source": "commands.json:453",
       "undoable": false,
       "verb": "question",
       "whole_utterance": false
@@ -3826,7 +4070,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:946",
+      "source": "commands.json:973",
       "undoable": false,
       "verb": "quick",
       "whole_utterance": false
@@ -3843,7 +4087,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:490",
+      "source": "commands.json:495",
       "undoable": false,
       "verb": "quote",
       "whole_utterance": false
@@ -3860,7 +4104,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2092",
+      "source": "commands.json:2173",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -3877,7 +4121,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1857",
+      "source": "commands.json:1938",
       "undoable": false,
       "verb": "read",
       "whole_utterance": false
@@ -3894,7 +4138,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1867",
+      "source": "commands.json:1948",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -3911,7 +4155,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1847",
+      "source": "commands.json:1928",
       "undoable": false,
       "verb": "read",
       "whole_utterance": false
@@ -3928,7 +4172,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1038",
+      "source": "commands.json:1065",
       "undoable": true,
       "verb": "reading",
       "whole_utterance": false
@@ -3945,7 +4189,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1504",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1585",
       "undoable": true,
       "verb": "reading",
       "whole_utterance": false
@@ -3962,7 +4216,7 @@
       "pack": "screen-capture",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1723",
+      "source": "commands.json:1804",
       "undoable": true,
       "verb": "record",
       "whole_utterance": false
@@ -3979,7 +4233,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:298",
+      "source": "commands.json:303",
       "undoable": true,
       "verb": "redo",
       "whole_utterance": false
@@ -3996,7 +4250,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:193",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:198",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -4013,7 +4277,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:422",
+      "source": "commands.json:427",
       "undoable": true,
       "verb": "release",
       "whole_utterance": false
@@ -4030,7 +4294,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:415",
+      "source": "commands.json:420",
       "undoable": true,
       "verb": "release",
       "whole_utterance": false
@@ -4047,7 +4311,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2430",
+      "source": "commands.json:2511",
       "undoable": false,
       "verb": "remove",
       "whole_utterance": false
@@ -4064,7 +4328,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1751",
+      "source": "commands.json:1832",
       "undoable": true,
       "verb": "rename",
       "whole_utterance": false
@@ -4081,7 +4345,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:153",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:158",
       "undoable": true,
       "verb": "reopen",
       "whole_utterance": false
@@ -4098,7 +4372,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2210",
+      "source": "commands.json:2291",
       "undoable": true,
       "verb": "repeat",
       "whole_utterance": false
@@ -4115,7 +4389,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1002",
+      "source": "commands.json:1029",
       "undoable": true,
       "verb": "replace",
       "whole_utterance": false
@@ -4132,7 +4406,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1536",
+      "source": "commands.json:1617",
       "undoable": true,
       "verb": "report",
       "whole_utterance": false
@@ -4149,7 +4423,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:735",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:740",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -4166,7 +4450,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2359",
+      "source": "commands.json:2440",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -4183,7 +4467,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:886",
+      "source": "commands.json:913",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4200,7 +4484,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1205",
+      "source": "commands.json:1232",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4217,7 +4501,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:292",
+      "source": "commands.json:297",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4234,7 +4518,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1560",
+      "source": "commands.json:1641",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -4251,7 +4535,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:307",
+      "source": "commands.json:312",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -4268,7 +4552,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "destructive",
-      "source": "commands.json:2486",
+      "source": "commands.json:2567",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -4285,7 +4569,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:599",
+      "source": "commands.json:604",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -4302,7 +4586,7 @@
       "pack": "screen-capture",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:615",
+      "source": "commands.json:620",
       "undoable": true,
       "verb": "screenshot",
       "whole_utterance": false
@@ -4319,7 +4603,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:209",
+      "source": "commands.json:214",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -4336,7 +4620,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:201",
+      "source": "commands.json:206",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -4353,7 +4637,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:983",
+      "source": "commands.json:1010",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -4370,7 +4654,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:993",
+      "source": "commands.json:1020",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -4387,7 +4671,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1223",
+      "source": "commands.json:1250",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -4404,7 +4688,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:235",
+      "source": "commands.json:240",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4421,7 +4705,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1644",
+      "source": "commands.json:1725",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4438,7 +4722,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1654",
+      "source": "commands.json:1735",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4455,7 +4739,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1626",
+      "source": "commands.json:1707",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4472,7 +4756,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1635",
+      "source": "commands.json:1716",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4489,7 +4773,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:803",
+      "source": "commands.json:830",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4506,7 +4790,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:813",
+      "source": "commands.json:840",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -4523,7 +4807,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:476",
+      "source": "commands.json:481",
       "undoable": false,
       "verb": "semicolon",
       "whole_utterance": false
@@ -4540,7 +4824,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1542",
+      "source": "commands.json:1623",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4557,7 +4841,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2399",
+      "source": "commands.json:2480",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4574,7 +4858,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2368",
+      "source": "commands.json:2449",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4591,7 +4875,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2278",
+      "source": "commands.json:2359",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4608,7 +4892,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2254",
+      "source": "commands.json:2335",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4625,7 +4909,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2335",
+      "source": "commands.json:2416",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4642,7 +4926,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2302",
+      "source": "commands.json:2383",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4659,7 +4943,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2180",
+      "source": "commands.json:2261",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -4676,7 +4960,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:79",
+      "source": "commands.json:82",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -4693,7 +4977,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:286",
+      "source": "commands.json:291",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -4710,7 +4994,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2171",
+      "source": "commands.json:2252",
       "undoable": true,
       "verb": "smaller",
       "whole_utterance": false
@@ -4727,7 +5011,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:691",
+      "source": "commands.json:696",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -4744,7 +5028,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:700",
+      "source": "commands.json:705",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -4761,7 +5045,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1272",
+      "source": "commands.json:1299",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -4778,7 +5062,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1282",
+      "source": "commands.json:1309",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -4795,7 +5079,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:572",
+      "source": "commands.json:577",
       "undoable": false,
       "verb": "space",
       "whole_utterance": false
@@ -4812,7 +5096,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2034",
+      "source": "commands.json:2115",
       "undoable": true,
       "verb": "speech",
       "whole_utterance": false
@@ -4829,7 +5113,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1943",
+      "source": "commands.json:2024",
       "undoable": true,
       "verb": "start",
       "whole_utterance": false
@@ -4846,7 +5130,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2156",
+      "source": "commands.json:2237",
       "undoable": true,
       "verb": "start",
       "whole_utterance": false
@@ -4863,7 +5147,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1887",
+      "source": "commands.json:1968",
       "undoable": false,
       "verb": "start",
       "whole_utterance": false
@@ -4880,7 +5164,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2474",
+      "source": "commands.json:2555",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -4897,7 +5181,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2462",
+      "source": "commands.json:2543",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -4914,7 +5198,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2456",
+      "source": "commands.json:2537",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -4931,7 +5215,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2468",
+      "source": "commands.json:2549",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -4948,7 +5232,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1995",
+      "source": "commands.json:2076",
       "undoable": true,
       "verb": "sticky",
       "whole_utterance": false
@@ -4965,7 +5249,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:401",
+      "source": "commands.json:406",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -4982,7 +5266,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1897",
+      "source": "commands.json:1978",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -4999,7 +5283,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1877",
+      "source": "commands.json:1958",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -5016,7 +5300,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1673",
+      "source": "commands.json:1754",
       "undoable": true,
       "verb": "strikethrough",
       "whole_utterance": false
@@ -5033,7 +5317,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:316",
+      "source": "commands.json:321",
       "undoable": false,
       "verb": "submit",
       "whole_utterance": false
@@ -5050,7 +5334,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:682",
+      "source": "commands.json:687",
       "undoable": true,
       "verb": "switch",
       "whole_utterance": false
@@ -5067,7 +5351,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:673",
+      "source": "commands.json:678",
       "undoable": true,
       "verb": "switch",
       "whole_utterance": false
@@ -5084,9 +5368,117 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1196",
+      "source": "commands.json:1223",
       "undoable": true,
       "verb": "system",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab eight"
+      ],
+      "args": [],
+      "canonical_id": "builtin.tab_eight",
+      "description": "Switches to tab 8.",
+      "kind": "builtin",
+      "object": "eight",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1548",
+      "undoable": true,
+      "verb": "tab",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab five"
+      ],
+      "args": [],
+      "canonical_id": "builtin.tab_five",
+      "description": "Switches to tab 5.",
+      "kind": "builtin",
+      "object": "five",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1521",
+      "undoable": true,
+      "verb": "tab",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab four"
+      ],
+      "args": [],
+      "canonical_id": "builtin.tab_four",
+      "description": "Switches to tab 4.",
+      "kind": "builtin",
+      "object": "four",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1512",
+      "undoable": true,
+      "verb": "tab",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab nine"
+      ],
+      "args": [],
+      "canonical_id": "builtin.tab_nine",
+      "description": "Switches to the last browser tab.",
+      "kind": "builtin",
+      "object": "nine",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1557",
+      "undoable": true,
+      "verb": "tab",
       "whole_utterance": false
     },
     {
@@ -5101,7 +5493,71 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1458",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1485",
+      "undoable": true,
+      "verb": "tab",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab seven"
+      ],
+      "args": [],
+      "canonical_id": "builtin.tab_seven",
+      "description": "Switches to tab 7.",
+      "kind": "builtin",
+      "object": "seven",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1539",
+      "undoable": true,
+      "verb": "tab",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab six"
+      ],
+      "args": [],
+      "canonical_id": "builtin.tab_six",
+      "description": "Switches to tab 6.",
+      "kind": "builtin",
+      "object": "six",
+      "pack": "browsers",
+      "plugin": "builtin",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1530",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -5118,7 +5574,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1476",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1503",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -5135,7 +5601,17 @@
       "pack": "browsers",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1467",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "commands.json:1494",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -5152,7 +5628,7 @@
       "pack": "screen-capture",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:605",
+      "source": "commands.json:610",
       "undoable": true,
       "verb": "take",
       "whole_utterance": false
@@ -5169,7 +5645,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:106",
+      "source": "commands.json:109",
       "undoable": true,
       "verb": "task",
       "whole_utterance": false
@@ -5186,7 +5662,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2058",
+      "source": "commands.json:2139",
       "undoable": true,
       "verb": "text",
       "whole_utterance": false
@@ -5203,7 +5679,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2126",
+      "source": "commands.json:2207",
       "undoable": true,
       "verb": "text",
       "whole_utterance": false
@@ -5220,7 +5696,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1112",
+      "source": "commands.json:1139",
       "undoable": false,
       "verb": "todays",
       "whole_utterance": false
@@ -5237,7 +5713,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1132",
+      "source": "commands.json:1159",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -5254,7 +5730,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1029",
+      "source": "commands.json:1056",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -5271,7 +5747,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2492",
+      "source": "commands.json:2573",
       "undoable": true,
       "verb": "transcribe",
       "whole_utterance": false
@@ -5288,7 +5764,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2144",
+      "source": "commands.json:2225",
       "undoable": true,
       "verb": "type",
       "whole_utterance": false
@@ -5305,7 +5781,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:762",
+      "source": "commands.json:789",
       "undoable": true,
       "verb": "underline",
       "whole_utterance": false
@@ -5322,7 +5798,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:271",
+      "source": "commands.json:276",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -5339,7 +5815,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:593",
+      "source": "commands.json:598",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -5356,7 +5832,7 @@
       "pack": "ai",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1151",
+      "source": "commands.json:1178",
       "undoable": true,
       "verb": "unindent",
       "whole_utterance": false
@@ -5373,7 +5849,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1232",
+      "source": "commands.json:1259",
       "undoable": true,
       "verb": "virtual",
       "whole_utterance": false
@@ -5390,7 +5866,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1242",
+      "source": "commands.json:1269",
       "undoable": true,
       "verb": "virtual",
       "whole_utterance": false
@@ -5407,7 +5883,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:1985",
+      "source": "commands.json:2066",
       "undoable": false,
       "verb": "virtual",
       "whole_utterance": false
@@ -5424,7 +5900,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1959",
+      "source": "commands.json:2040",
       "undoable": true,
       "verb": "visual",
       "whole_utterance": false
@@ -5441,7 +5917,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2025",
+      "source": "commands.json:2106",
       "undoable": true,
       "verb": "windows",
       "whole_utterance": false
@@ -5458,7 +5934,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1608",
+      "source": "commands.json:1689",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false
@@ -5475,7 +5951,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:1617",
+      "source": "commands.json:1698",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false
@@ -5492,7 +5968,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:717",
+      "source": "commands.json:722",
       "undoable": true,
       "verb": "zoom",
       "whole_utterance": false
@@ -5509,7 +5985,7 @@
       "pack": "accessibility",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:726",
+      "source": "commands.json:731",
       "undoable": true,
       "verb": "zoom",
       "whole_utterance": false
@@ -5531,6 +6007,30 @@
       "source": "plugins/commands/core_utils.py:92",
       "undoable": false,
       "verb": "check",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "move live surface to this screen",
+        "move preview to this screen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "core_utils.move_preview_to_this_screen",
+      "description": "Moves the live surface's saved placement to the foreground display.",
+      "kind": "plugin",
+      "object": "preview_to_this_screen",
+      "pack": "core",
+      "plugin": "core_utils",
+      "risk": "ui",
+      "source": "plugins/commands/core_utils.py:313",
+      "undoable": true,
+      "verb": "move",
       "whole_utterance": false
     },
     {
@@ -5576,6 +6076,9 @@
     {
       "aliases": [
         "reset floating windows",
+        "reset indicator position",
+        "reset live surface",
+        "reset preview position",
         "reset window positions"
       ],
       "args": [
@@ -5586,7 +6089,7 @@
         }
       ],
       "canonical_id": "core_utils.reset_floating_windows",
-      "description": "Restores both floating windows to their default positions.",
+      "description": "Alias for the one live-surface recovery action when available.",
       "kind": "plugin",
       "object": "floating_windows",
       "pack": "core",
@@ -5654,7 +6157,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:305",
+      "source": "plugins/commands/core_utils.py:339",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -5693,7 +6196,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:474",
+      "source": "plugins/commands/core_utils.py:508",
       "undoable": true,
       "verb": "why",
       "whole_utterance": false
@@ -8077,9 +8580,87 @@
       "pack": "browsers",
       "plugin": "tab_finder",
       "risk": "ui",
-      "source": "plugins/commands/tab_finder.py:59",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "plugins/commands/tab_finder.py:80",
       "undoable": true,
       "verb": "find",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "find",
+        "find text"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "tab_finder.find_text",
+      "description": "Open the browser find bar and enter the requested page text.",
+      "kind": "plugin",
+      "object": "text",
+      "pack": "browsers",
+      "plugin": "tab_finder",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "plugins/commands/tab_finder.py:115",
+      "undoable": true,
+      "verb": "find",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "tab",
+        "tab number"
+      ],
+      "args": [
+        {
+          "name": "number",
+          "required": true,
+          "type": "int"
+        }
+      ],
+      "canonical_id": "tab_finder.tab_number",
+      "description": "Switch to browser tab 1 through 8; tab 9 means the last tab.",
+      "kind": "plugin",
+      "object": "number",
+      "pack": "browsers",
+      "plugin": "tab_finder",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "brave.exe",
+          "chrome.exe",
+          "firefox.exe",
+          "msedge.exe",
+          "opera.exe",
+          "vivaldi.exe"
+        ]
+      },
+      "source": "plugins/commands/tab_finder.py:130",
+      "undoable": true,
+      "verb": "tab",
       "whole_utterance": false
     },
     {
@@ -9578,7 +10159,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "ui",
-      "source": "plugins/commands/workflow_capture.py:611",
+      "source": "plugins/commands/workflow_capture.py:617",
       "undoable": true,
       "verb": "capture",
       "whole_utterance": false
@@ -9597,7 +10178,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "ui",
-      "source": "plugins/commands/workflow_capture.py:621",
+      "source": "plugins/commands/workflow_capture.py:627",
       "undoable": true,
       "verb": "review",
       "whole_utterance": false
@@ -9617,7 +10198,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "destructive",
-      "source": "plugins/commands/workflow_capture.py:577",
+      "source": "plugins/commands/workflow_capture.py:583",
       "undoable": false,
       "verb": "start",
       "whole_utterance": false
@@ -9637,7 +10218,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "destructive",
-      "source": "plugins/commands/workflow_capture.py:595",
+      "source": "plugins/commands/workflow_capture.py:601",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
