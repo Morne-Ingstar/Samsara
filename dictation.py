@@ -13122,8 +13122,43 @@ class DictationApp:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(None, "Log File", "No voice training log file found yet.")
     
+    def _resolve_parked_draft_before_quit(self) -> bool:
+        """Require an intentional delivery or discard before process exit.
+
+        Parked text is in-memory by contract.  A cancelled prompt leaves the
+        application running; a failed Commit likewise preserves the draft so
+        the user can correct the target rather than losing words on quit.
+        """
+        if not self._live_surface_hold_parking_enabled():
+            return True
+        manager = getattr(self, '_session_mode_manager', None)
+        if manager is None or not getattr(manager, 'has_parked_hold', False):
+            return True
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            choice = QMessageBox.question(
+                None,
+                'Pending draft',
+                'A draft is waiting. Send it before quitting, discard it, or cancel quitting?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+        except Exception as exc:
+            logger.warning('[EXIT] Pending draft decision could not be shown: %s', exc)
+            return False
+        if choice == QMessageBox.StandardButton.Yes:
+            outcome = manager.commit_pending_dictation()
+            return outcome.kind == 'dictate_committed'
+        if choice == QMessageBox.StandardButton.No:
+            manager.confirm_clear_draft('quit discard')
+            return True
+        return False
+
     def quit_app(self):
         """Exit the application"""
+        if not self._resolve_parked_draft_before_quit():
+            return
         logger.info("[EXIT] Shutting down Samsara...")
 
         # Release the Win32 mouse hook FIRST (32): nothing below may hold the
