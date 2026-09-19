@@ -280,7 +280,8 @@ class LiveSurfaceModel:
         return True
 
     def _set_document(self, event: SurfaceEvent, state: DocumentState) -> None:
-        if event.document_id is not None and event.document_id != self.document_id:
+        if event.document_id is not None and (event.document_id != self.document_id
+                                              or event.kind is EventKind.DOCUMENT_UPDATED):
             self._cleared_documents.discard(event.document_id)
         self.document_id = event.document_id or self.document_id
         if event.revision is not None:

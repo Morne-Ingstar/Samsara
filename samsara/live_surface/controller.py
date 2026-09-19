@@ -98,6 +98,9 @@ class LiveSurfaceController:
         kind = EventKind.DOCUMENT_UPDATED if text else EventKind.DOCUMENT_CLEARED
         self.post(SurfaceEvent(kind, document_id=document.document_id,
                                revision=document.revision, text=text))
+        if text and getattr(document, "manual_commit", False):
+            self.post(SurfaceEvent(EventKind.DOCUMENT_PARKED, document_id=document.document_id,
+                                   revision=document.revision))
 
     def document_snapshot(self) -> dict | None:
         """Return stable draft coordinates for the widget, without logging text."""
@@ -149,12 +152,14 @@ class LiveSurfaceController:
         commit = getattr(manager, "commit_pending_dictation", None)
         if callable(commit):
             commit()
+            self.sync_draft(manager)
 
     def _clear(self) -> None:
         manager = self._manager()
         clear = getattr(manager, "confirm_clear_draft", None)
         if callable(clear):
             clear("live surface")
+            self.sync_draft(manager)
 
     def _pause(self) -> None:
         pause_hold = getattr(self.app, "pause_hold_capture", None)

@@ -2114,6 +2114,10 @@ class SessionModeManager:
         with self._dispatch_lock:
             self._parked_hold = True
             self._draft.mark_manual_commit()
+            # Holds are separate utterances; decoder finals do not necessarily
+            # include the trailing space used by the hands-free staging path.
+            if text and self._draft.text and not self._draft.text[-1].isspace() and not text[0].isspace():
+                text = " " + text
             segment_id = self._draft.append(text)
             if segment_id is not None:
                 self._stack.push(StackItem(

@@ -10,7 +10,7 @@ from math import ceil
 import re
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QRect, QRectF, QPropertyAnimation, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, QEasingCurve, QRect, QRectF, QPropertyAnimation, QSignalBlocker, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (QCloseEvent, QImage, QKeyEvent, QMouseEvent, QPainter,
                            QPaintEvent, QPainterPath, QPen, QRegion)
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget
@@ -145,14 +145,20 @@ class LiveSurfaceWidget(QWidget):
         self._transcript.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._transcript.anchorClicked.connect(self._anchor_clicked)
         bar = self._transcript.verticalScrollBar()
-        bar.valueChanged.connect(self._scroll_value_changed)
+        # valueChanged also fires during Qt's deferred document layout. Track
+        # explicit scroll actions, including wheel/trackpad input, instead.
+        bar.sliderMoved.connect(self._scroll_value_changed)
+        bar.actionTriggered.connect(lambda _: self._scroll_value_changed(bar.sliderPosition()))
+        bar.rangeChanged.connect(lambda *_: self._scroll_to_latest() if self._follow_latest else None)
+        bar.installEventFilter(self)
+        self._transcript.viewport().installEventFilter(self)
         self._provisional = QLabel(self); self._provisional.setWordWrap(True)
         self._provisional.setAccessibleName("Provisional transcript")
         self._badge = QLabel(self); self._badge.setText("▣  Draft")
         self._badge.setAccessibleName("Draft pending")
         self._latest = self._button("Read the latest draft text", "Latest", self._latest_clicked)
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
-        self._commit = self._button("Commit draft", "Commit", self.commit_requested.emit)
+        self._commit = self._button("Insert pending text", "Insert text", self.commit_requested.emit)
         self._clear = self._button("Clear draft", "Clear", self.clear_requested.emit)
         self._clear.setObjectName("quietClear")
         self._pause = self._button("Pause capture", "Pause", self.pause_requested.emit)
@@ -226,6 +232,7 @@ class LiveSurfaceWidget(QWidget):
             return
         self._follow_latest = bar.value() >= bar.maximum()
         self.scroll_requested.emit(bar.value())
+        self._layout_children()
 
     def voice_review_action(self, action: str, value: object) -> None:
         """Deliver a routed, whole-utterance review-picker request on Qt."""
@@ -246,19 +253,33 @@ class LiveSurfaceWidget(QWidget):
                 self._announce("word-missing", "That word number is not in the draft")
 
     def show_word_picker(self) -> None:
+        self._editor_mode = ""
         self._selection = None; self._picker_active = True; self._picker_page = 0; self._candidates = []
         self._apply_view(self._view, animate=False); self._announce("picker", "Choose a word to correct")
 
     def show_candidates(self, selection: dict[str, object], candidates: list[object]) -> None:
+        self._editor_mode = ""
         self._selection, self._picker_active, self._candidates, self._candidate_page = dict(selection), False, list(candidates)[:12], 0
         self._apply_view(self._view, animate=False); self._announce(("correction", selection.get("revision")), "Correction choices ready")
 
     def correction_refused(self, message: str = "That word changed. Select it again.") -> None:
+        self._editor_mode = ""
         self._selection = None; self._picker_active = False; self._candidates = []
         self._apply_view(self._view, animate=False); self._announce("stale", message)
 
     def _apply_view(self, view: SurfaceView, *, animate: bool) -> None:
+        # setHtml(), font changes and resize all move the scrollbar. Only an
+        # actual reader scroll should stop following incoming text.
+        bar = self._transcript.verticalScrollBar()
+        position = bar.value()
+        with QSignalBlocker(bar):
+            self._apply_view_content(view, animate=animate)
+            bar.setValue(bar.maximum() if self._follow_latest else position)
+
+    def _apply_view_content(self, view: SurfaceView, *, animate: bool) -> None:
         previous, previous_text = self._view, self._view.text
+        if view.document_id != previous.document_id or not view.text:
+            self._follow_latest, self._unread_segments = True, 0
         self._view = view; self._rotation = self._rotation if self._reduced_motion else self._rotation + 15.0
         if (view.document is DocumentState.DELIVERED and previous.document is not DocumentState.DELIVERED
                 and view.text):
@@ -327,6 +348,9 @@ class LiveSurfaceWidget(QWidget):
         return QRect(self.x(), self.y(), width, height)
 
     def _animate_geometry(self, target: QRect) -> None:
+        if self._animation is not None:
+            self._animation.stop()
+            self._animation.deleteLater()
         animation = QPropertyAnimation(self, b"geometry", self); animation.setDuration(RESIZE_DURATION_MS)
         animation.setStartValue(self.geometry()); animation.setEndValue(target); animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.valueChanged.connect(lambda _: (self._layout_children(), self._update_mask()))
@@ -339,6 +363,13 @@ class LiveSurfaceWidget(QWidget):
                       self._keep, self._spell, self._edit, self._more, self._apply, self._cancel, self._editor): child.hide()
 
     def _layout_children(self) -> None:
+        bar = self._transcript.verticalScrollBar()
+        position = bar.value()
+        with QSignalBlocker(bar):
+            self._layout_content()
+            bar.setValue(bar.maximum() if self._follow_latest else position)
+
+    def _layout_content(self) -> None:
         form = self._view.form; self._mark.setGeometry((self.width()-MARK_SIZE)//2, 0, MARK_SIZE, MARK_SIZE); self._hide_children()
         if form is VisibleForm.MARK: return
         if form is VisibleForm.DRAFT_BADGE:
@@ -355,26 +386,32 @@ class LiveSurfaceWidget(QWidget):
             self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-20-clear_width, content.height()); self._state.show()
             self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
             self._clear.show(); return
-        self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-20-clear_width, HEADER_HEIGHT); self._state.show()
-        # Clear is the sole persistent surface control. Its 88x28 visual sits
-        # inside the 44-DIP button hit target rather than becoming a large row.
-        self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
-        self._clear.show()
         if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
-            # Correction controls replace the normal quiet Clear chrome.
-            self._clear.hide(); self._layout_correction(content); return
+            self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-12, HEADER_HEIGHT)
+            self._state.show(); self._layout_correction(content); return
+        # Reserve each action's space once. Pending-text recovery is separate
+        # from ordinary capture, whose final is inserted automatically.
+        actions = [(self._clear, 64)]
+        if (not recording and self._view.text and self._view.document in
+                (DocumentState.EDITABLE_DRAFT, DocumentState.PARKED_DRAFT)):
+            actions.insert(0, (self._commit, 104))
+        if not self._follow_latest or self._unread_segments:
+            self._latest.setText("Latest" + (f" (+{self._unread_segments})" if self._unread_segments else ""))
+            actions.insert(0, (self._latest, 104))
+        right = content.right()+1
+        for button, width in reversed(actions):
+            right -= width
+            button.setGeometry(right, content.y(), width, MARK_SIZE); button.show()
+            right -= REGION_GAP
+        state_x = content.x()+MARK_SIZE+12
+        self._state.setGeometry(state_x, content.y(), max(1, right-state_x), HEADER_HEIGHT)
+        self._state.show()
         y = content.y()+HEADER_HEIGHT+REGION_GAP
         available = content.bottom() - y + 1
         transcript_h = max(24, available - (24 if self._view.provisional_text else 0))
         self._transcript.setGeometry(content.x(), y, content.width(), transcript_h); self._transcript.show()
         if self._view.provisional_text:
             self._provisional.setGeometry(content.x(), y+transcript_h, content.width(), 24); self._provisional.show()
-        if not self._follow_latest or self._unread_segments:
-            # The one quiet review affordance: it only appears when there is
-            # actually newer text to return to.
-            self._latest.setText("Latest" + (f" (+{self._unread_segments})" if self._unread_segments else ""))
-            self._latest.setGeometry(content.right()-104, content.y()+4, 104, MARK_SIZE)
-            self._latest.show()
 
     def _layout_row(self, controls, x: int, y: int, width: int) -> None:
         available = width - REGION_GAP*(len(controls)-1); base, rem = divmod(available, len(controls))
@@ -383,6 +420,11 @@ class LiveSurfaceWidget(QWidget):
 
     def _layout_correction(self, content: QRect) -> None:
         y=content.y()+HEADER_HEIGHT+REGION_GAP
+        if self._editor_mode:
+            self._editor.setGeometry(content.x(), y, content.width(), MARK_SIZE)
+            self._editor.show()
+            self._layout_row((self._apply, self._cancel), content.x(), y+MARK_SIZE+REGION_GAP, content.width())
+            return
         buttons = self._candidate_buttons if self._candidates else self._picker_buttons
         page = self._candidate_page if self._candidates else self._picker_page
         source = self._candidates if self._candidates else self._word_targets
@@ -443,6 +485,13 @@ class LiveSurfaceWidget(QWidget):
         if event.key()==Qt.Key.Key_Pause: self.pause_requested.emit(); event.accept(); return
         super().keyPressEvent(event)
 
+    def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.Wheel and watched in
+                (self._transcript.viewport(), self._transcript.verticalScrollBar())):
+            self._follow_latest = False
+            QTimer.singleShot(0, self, self._layout_children)
+        return super().eventFilter(watched, event)
+
     def closeEvent(self,event:QCloseEvent)->None: self.hide(); self.collapse_requested.emit(); event.ignore()
     def _anchor_clicked(self,url:QUrl)->None:
         try:index=int(url.toString().split(":",1)[1])
@@ -467,13 +516,16 @@ class LiveSurfaceWidget(QWidget):
     def _latest_clicked(self)->None:self._follow_latest=True; self._unread_segments=0; self._scroll_to_latest(); self._layout_children()
     def _scroll_value_changed(self,value:int)->None:
         bar=self._transcript.verticalScrollBar()
-        if bar.maximum() and value<bar.maximum():self._follow_latest=False
+        self._follow_latest = value >= bar.maximum()
+        if self._follow_latest:
+            self._unread_segments = 0
+        QTimer.singleShot(0, self, self._layout_children)
     def _scroll_to_latest(self)->None:
         self._transcript.verticalScrollBar().setValue(self._transcript.verticalScrollBar().maximum())
     def _open_editor(self,mode:str)->None:
         self._editor_mode=mode; self._editor.clear(); self._editor.setAccessibleName("Spelled replacement" if mode=="spell" else "Edit replacement")
-        content=self.card_content_rect; y=content.y()+HEADER_HEIGHT+REGION_GAP+MARK_SIZE*2+REGION_GAP*2
-        self._editor.setGeometry(content.x(),y,content.width(),MARK_SIZE); self._editor.show(); self._layout_row((self._apply,self._cancel),content.x(),y+MARK_SIZE+REGION_GAP,content.width()); self._editor.setFocus(); self._announce("editor", "Enter a replacement, then apply")
+        self._apply_view(self._view, animate=False)
+        self.focus_review(); self._editor.setFocus(); self._announce("editor", "Enter a replacement, then apply")
     def _sanitize_spelling(self,value:str)->None:
         if self._editor_mode=="spell":
             cleaned="".join(ch for ch in value if ch.isalpha() or ch in " '-")
@@ -490,6 +542,7 @@ class LiveSurfaceWidget(QWidget):
         if view.capture is CaptureState.TRANSCRIBING:return "Transcribing"
         if view.capture is CaptureState.UNAVAILABLE:return "Microphone unavailable"
         if view.document is DocumentState.PARKED_DRAFT:return "Draft parked"
+        if view.document is DocumentState.DELIVERED:return "Inserted"
         if view.document is not DocumentState.EMPTY:return "Draft pending"
         if view.capture in (CaptureState.WAKE_ARMED,CaptureState.HANDS_FREE_LISTENING):return "Listening"
         return "Microphone idle"

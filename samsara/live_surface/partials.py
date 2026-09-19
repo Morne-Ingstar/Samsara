@@ -29,9 +29,10 @@ class CapturePartials:
         return True
 
     def final(self, text: str, *, document_id: str | None = None,
-              revision: int | None = None) -> None:
+              revision: int | None = None, delivered: bool = False) -> None:
         self.sequence += 1
-        self.controller.post(SurfaceEvent(EventKind.DOCUMENT_UPDATED, capture_id=self.capture_id,
+        kind = EventKind.DELIVERY_FINISHED if delivered else EventKind.DOCUMENT_UPDATED
+        self.controller.post(SurfaceEvent(kind, capture_id=self.capture_id,
                              sequence=self.sequence, lane=self.lane, text=text,
                              document_id=document_id, revision=revision))
 
