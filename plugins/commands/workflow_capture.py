@@ -553,6 +553,11 @@ Do NOT suggest commands that would capture or reproduce personal content.
 
 def analyze_local(summary: str, app) -> str:
     try:
+        from samsara import ai_preferences
+        state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava",
+                                             provider_route="ollama")
+        if not state.allowed:
+            return f"Error: {state.reason}."
         from plugins.commands.ask_ollama import ask_ollama
         return ask_ollama(summary, app, system=_AI_SYSTEM)
     except Exception as e:
@@ -561,10 +566,11 @@ def analyze_local(summary: str, app) -> str:
 
 def analyze_cloud(summary: str, app) -> str:
     try:
-        from samsara import cloud_llm
-        if not cloud_llm.is_enabled(app):
-            return ("Error: cloud LLM not enabled. "
-                    "Set cloud_llm.enabled=true and api_key in config.")
+        from samsara import ai_preferences, cloud_llm
+        state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava",
+                                             provider_route="cloud")
+        if not state.allowed:
+            return f"Error: {state.reason}."
         return cloud_llm.send(_AI_SYSTEM, summary, app, timeout=60)
     except Exception as e:
         return f"Error (cloud): {e}"

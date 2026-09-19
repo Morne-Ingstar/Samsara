@@ -136,18 +136,18 @@ def _stage(proposal: Proposal) -> PendingProposal:
 # ---------------------------------------------------------------------------
 
 def enabled(app) -> bool:
-    """ava_edit.enabled. True by default: this is the flagship, and it can
-    only ever STAGE a proposal on its own -- the word "apply" is what makes
-    anything happen. Off means an edit request is an ordinary Ava turn again,
-    with no chip and no staged slot."""
+    """Whether editing is both configured and authorized to use a model."""
     from samsara import config_defaults
+    from samsara import ai_preferences
 
     cfg = getattr(app, "config", None) or {}
     section = cfg.get("ava_edit")
     if not isinstance(section, dict):
-        return bool(config_defaults.DEFAULTS["ava_edit.enabled"])
-    return bool(section.get(
-        "enabled", config_defaults.DEFAULTS["ava_edit.enabled"]))
+        configured = bool(config_defaults.DEFAULTS["ava_edit.enabled"])
+    else:
+        configured = bool(section.get(
+            "enabled", config_defaults.DEFAULTS["ava_edit.enabled"]))
+    return configured and ai_preferences.runtime_state(cfg, "editing").allowed
 
 
 def source_text(app) -> str:

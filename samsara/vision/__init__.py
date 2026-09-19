@@ -20,8 +20,16 @@ def _vision_config(app):
     return getattr(app, "config", {}).get("vision", {})
 
 
+def _local_ai_allowed(app) -> bool:
+    """Vision is a local model route, so it follows the owner's AI choice."""
+    from samsara import ai_preferences  # noqa: PLC0415
+    state = ai_preferences.runtime_state(
+        getattr(app, "config", {}) or {}, "ava", provider_route="ollama")
+    return state.allowed
+
+
 def is_vision_enabled(app) -> bool:
-    return _vision_config(app).get("enabled", False)
+    return _vision_config(app).get("enabled", False) and _local_ai_allowed(app)
 
 
 class VisionBridge:
@@ -89,6 +97,8 @@ class VisionBridge:
 
     def describe(self, image_b64: str, prompt: str, timeout: int = 0) -> str | None:
         """Send image + prompt to the local vision model. Returns text or None."""
+        if not _local_ai_allowed(self._app):
+            return None
         t = timeout or self._timeout()
         payload = {
             "model": self._model(),
@@ -115,6 +125,8 @@ class VisionBridge:
 
     def is_available(self) -> bool:
         """Return True if Ollama is reachable. Does not verify model is pulled."""
+        if not _local_ai_allowed(self._app):
+            return False
         try:
             r = requests.get(f"{self._host()}/api/tags", timeout=2)
             return r.status_code == 200

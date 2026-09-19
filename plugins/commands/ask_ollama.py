@@ -570,7 +570,31 @@ def get_max_response_length(app):
     return _ollama_config(app).get("max_response_length")
 
 def is_enabled(app):
-    return _ollama_config(app).get("enabled", True)
+    from samsara import ai_preferences  # noqa: PLC0415
+    return ai_preferences.runtime_state(
+        getattr(app, "config", {}) or {}, "ava").allowed
+
+
+def _ai_state(app):
+    from samsara import ai_preferences  # noqa: PLC0415
+    return ai_preferences.runtime_state(
+        getattr(app, "config", {}) or {}, "ava")
+
+
+def _speak_ai_off_once(app):
+    """One local-only explanation per session; never contact a provider."""
+    if getattr(app, "_ava_ai_off_notice_given", False):
+        return
+    app._ava_ai_off_notice_given = True
+    speak(app, "Ava is off. Say open Settings or tap Settings, then choose Ava.")
+
+
+def _disabled_since_request(app) -> bool:
+    """Discard a completed reply and invalidate its generation after Off."""
+    if _ai_state(app).allowed:
+        return False
+    execution_policy.bump_generation(app, "optional AI disabled")
+    return True
 
 def is_safety_gate_enabled(app):
     return _ollama_config(app).get("safety_gate_enabled", True)
@@ -1100,8 +1124,9 @@ def ava_entry_block_reason(app):
     changed) is allowed: the first turn is then the check, and it reports
     honestly if it fails. A refusal also asks the monitor for an early
     re-probe, so trying again moments later reflects recovery."""
-    if not is_enabled(app):
-        return "Ava is turned off in Settings."
+    state = _ai_state(app)
+    if not state.allowed:
+        return state.reason
     snap = ava_readiness.readiness_for(app)
     if not snap.offline:
         return None
@@ -1154,6 +1179,11 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     def _ms():
         return int((time.monotonic() - started) * 1000)
 
+    state = _ai_state(app)
+    if not state.allowed:
+        return AvaReply(None, state.provider.identity if state.provider else "none", _ms(),
+                        failure_kind=ava_readiness.NOT_CONFIGURED)
+
     host = get_host(app)
     if not model:
         model = get_model(app)
@@ -1195,7 +1225,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
 
     # Personal facts and aliases stay on this device. They are supplied only
     # to a local provider, never included in a cloud-provider request.
-    personal_context_allowed = not cloud_llm.is_enabled(app)
+    personal_context_allowed = state.provider.identity == "ollama"
     profile_ctx = ''
     aliases_ctx = ''
     if personal_context_allowed:
@@ -1231,8 +1261,8 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     # ── Cloud LLM path (bring-your-own-key, no license required) ──
     cloud_provider = None
     cloud_failure = None
-    if cloud_llm.is_enabled(app):
-        cloud_provider = ava_readiness.configured_provider(app)
+    if state.provider.identity != "ollama":
+        cloud_provider = state.provider.identity
         print("[AVA CLOUD] Routing to cloud provider")
         cloud_token_limit = int(
             getattr(app, "config", {}).get("ava_memory", {}).get(
@@ -1243,37 +1273,33 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         if allow_search and cloud_llm.web_search_available(app):
             reply = _ask_with_web_search(app, system, messages, cloud_provider, _ms)
             if reply.ok:
+                if _disabled_since_request(app):
+                    return AvaReply(None, cloud_provider, _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
                 return reply
             cloud_response = "Error: web search request failed"
             cloud_failure = reply.failure_kind
         else:
             cloud_response = cloud_llm.send(system, prompt, app, messages=messages)
         if not cloud_response.startswith("Error:"):
+            if _disabled_since_request(app):
+                app._ava_memory.pop_last_if_user()
+                return AvaReply(None, cloud_provider, _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
             app._ava_memory.add_assistant(cloud_response)
             app._ava_memory.save()
             ava_readiness.tracker.record_turn(cloud_provider, None)
             return AvaReply(cloud_response, cloud_provider, _ms())
         cloud_failure = cloud_failure or ava_readiness.classify_error_text(cloud_response)
-        # The configured provider failed: that IS Ava's readiness, whatever
-        # the fallback below does.
+        # The configured provider failed: that IS Ava's readiness. Policy
+        # deliberately forbids trying a second provider after this failure.
         ava_readiness.tracker.record_turn(cloud_provider, cloud_failure)
         logger.warning("[AVA-CLOUD] %s failed (%s) after %d ms",
                        cloud_provider, cloud_failure, _ms())
-        # Fall back to local Ollama only when the health monitor already
-        # knows it is up -- never a second network wait, and never an
-        # "Ollama is not running" message for a user who configured cloud.
-        with _ollama_health_lock:
-            ollama_known_up = _ollama_health_state == "up"
-        if not ollama_known_up:
-            app._ava_memory.pop_last_if_user()
-            return AvaReply(None, cloud_provider, _ms(), failure_kind=cloud_failure)
-        print("[AVA CLOUD] Falling back to local Ollama")
+        app._ava_memory.pop_last_if_user()
+        return AvaReply(None, cloud_provider, _ms(), failure_kind=cloud_failure)
 
     # ── Local Ollama path ──
-    if not _check_ollama_available(host, timeout=1):
+    if state.provider.identity != "ollama" or not _check_ollama_available(host, timeout=1):
         app._ava_memory.pop_last_if_user()
-        if cloud_provider is not None:
-            return AvaReply(None, cloud_provider, _ms(), failure_kind=cloud_failure)
         ava_readiness.tracker.record_turn("ollama", ava_readiness.UNREACHABLE)
         return AvaReply(None, "ollama", _ms(), failure_kind=ava_readiness.UNREACHABLE)
 
@@ -1286,8 +1312,6 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
 
     def _local_failed(kind):
         app._ava_memory.pop_last_if_user()
-        if cloud_provider is not None:
-            return AvaReply(None, cloud_provider, _ms(), failure_kind=cloud_failure)
         ava_readiness.tracker.record_turn("ollama", kind)
         return AvaReply(None, "ollama", _ms(), failure_kind=kind)
 
@@ -1301,12 +1325,14 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         reply = ava_readiness.ollama_response_content(response)
         if not reply:
             return _local_failed(ava_readiness.PROVIDER_ERROR)
+        if _disabled_since_request(app):
+            app._ava_memory.pop_last_if_user()
+            return AvaReply(None, "ollama", _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
         if reply:
             app._ava_memory.add_assistant(reply)
             app._ava_memory.save()
-        if cloud_provider is None:
-            ava_readiness.tracker.record_turn("ollama", None)
-        return AvaReply(reply, "ollama", _ms(), fallback_from=cloud_provider)
+        ava_readiness.tracker.record_turn("ollama", None)
+        return AvaReply(reply, "ollama", _ms())
     except requests.exceptions.ConnectionError:
         return _local_failed(ava_readiness.UNREACHABLE)
     except requests.exceptions.Timeout:
@@ -2492,8 +2518,12 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     # used to say "Ava <check>" whatever happened.
     _set_turn_outcome(app, None)
 
-    if not is_enabled(app):
-        speak(app, "Ava is turned off in Settings.")
+    state = _ai_state(app)
+    if not state.allowed:
+        if state.status == "off-by-choice":
+            _speak_ai_off_once(app)
+        else:
+            speak(app, "Ava needs setup in Settings before I can answer.")
         _set_turn_outcome(app, (f"{_CHIP_CROSS} Ava is off", "error"))
         _log_turn(app, remainder, outcome="disabled")
         _done()
@@ -2542,7 +2572,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
                 app.play_sound("ava_thinking")
             try:
                 response = ask_ollama(remainder, app)
-                if not execution_policy.is_current(app, generation):
+                if not execution_policy.is_current(app, generation) or _disabled_since_request(app):
                     print(f"[OLLAMA] Late response after cancel (gen {generation}) -- dropped")
                     outcome = "dropped_stale"
                     return
@@ -2587,9 +2617,12 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
 )
 def handle_is_it_safe(app, remainder="", **kwargs):
     """Asks Ava whether an action you describe is safe before you do it."""
-    if not is_enabled(app):
+    state = _ai_state(app)
+    if not state.allowed:
+        if state.status == "off-by-choice":
+            _speak_ai_off_once(app)
         return
-    if not cloud_llm.is_enabled(app):
+    if state.provider.identity == "ollama":
         host = get_host(app)
         if not _check_ollama_available(host):
             speak(app, "Ollama is not reachable.")
@@ -2899,6 +2932,8 @@ def start_services(app):
     """Explicit app-lifecycle hook, called once by
     plugin_commands.start_plugin_services(). The health monitor used to start
     at import time, so every extra copy of this module started another one."""
+    if not _ai_state(app).allowed:
+        return
     _start_health_monitor(app)
     # Queue 57: readiness of the CONFIGURED provider (cloud or Ollama),
     # probed in the background so nothing on the utterance path waits.

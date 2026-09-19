@@ -241,6 +241,30 @@ def effective_state(config: dict, feature: str, *, provider_route: str | None = 
     return EffectiveState("allowed", "Ready", provider)
 
 
+def runtime_state(config: dict, feature: str, *, provider_route: str | None = None) -> EffectiveState:
+    """Authorize a runtime route without probing or sending anything.
+
+    ``effective_state`` deliberately requires the caller to provide DNS and
+    readiness evidence.  Runtime inference routes must make their policy
+    decision *before* they can perform either operation, so the conventional
+    local ``localhost`` endpoint is supplied as its fixed loopback addresses
+    here.  A custom hostname remains unverified and therefore fails closed.
+    Provider-route callers use backend names (``ollama``/``cloud``); normalize
+    those to the persisted policy vocabulary.
+    """
+    route = {"ollama": "local", "cloud": "cloud"}.get(provider_route, provider_route)
+    resolved_addresses = ()
+    if _section(config, "ava").get("provider_policy", "off") == "local":
+        try:
+            host = urlsplit(cfg_get(config, "ollama.host")).hostname
+        except (TypeError, ValueError):
+            host = None
+        if host and host.lower() == "localhost":
+            resolved_addresses = ("127.0.0.1", "::1")
+    return effective_state(config, feature, provider_route=route, ready=True,
+                           resolved_addresses=resolved_addresses)
+
+
 def migrate_ai_preferences(persisted: dict) -> dict:
     """Call BEFORE defaults merge. Pure/idempotent; package G owns boot wiring.
 
