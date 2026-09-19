@@ -274,6 +274,7 @@ class AvaCloudPage:
         show_btn = QPushButton("Show")
         show_btn.setCheckable(True)
         show_btn.setFixedWidth(60)
+        show_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         show_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.TEXT_SECONDARY}; "
             f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "

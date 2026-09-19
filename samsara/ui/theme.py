@@ -594,6 +594,11 @@ TYPE_HERO = 40                   # splash title, the biggest in-window text
 TYPE_BANNER = 56                 # full-screen demo banners
 TYPE_GLYPH = 96                  # single decorative glyphs (not reading text)
 
+# Minimum logical-pixel hit area for an interactive control. This is a
+# physical-accessibility metric rather than decoration: Settings reuses it
+# for every button, selector, checkbox and text input.
+HIT_TARGET_MIN = 44
+
 FONT_FAMILY = "'Segoe UI', system-ui, sans-serif"
 # The four shared-scale names predate the hub scale; kept for importers, now
 # aliases of the one scale.

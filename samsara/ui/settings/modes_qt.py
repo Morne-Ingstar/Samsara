@@ -401,7 +401,7 @@ class ModesPage:
                 f" border: 1px solid {theme.wash(0.16)};"
                 " border-radius: 6px;"
                 " padding: 8px 12px;"
-                " font-size: 13px;"
+                f" font-size: {theme.TYPE_BODY}px;"
                 "}"
                 "QPushButton:hover {"
                 f" color: {theme.TEXT_PRIMARY};"
@@ -424,7 +424,7 @@ class ModesPage:
             "session, or toggle it for persistent Hands-Free commands and dictation."
         )
         modes_intro.setWordWrap(True)
-        modes_intro.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 13px;")
+        modes_intro.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(modes_intro)
 
         # ---- Card 1: Hands-Free / Voice Control -------------------------
@@ -487,13 +487,13 @@ class ModesPage:
         )
         behavior_note = QLabel(_button_behavior_note())
         behavior_note.setWordWrap(True)
-        behavior_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        behavior_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         self._widgets['button_behavior_note'] = behavior_note
         hands_free_layout.addWidget(behavior_note)
 
         hold_heading = QLabel("Command-only activation")
         hold_heading.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; margin-top: 4px;"
         )
         hands_free_layout.addWidget(hold_heading)
 
@@ -522,7 +522,7 @@ class ModesPage:
 
         wake_heading = QLabel("Wake activation")
         wake_heading.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; margin-top: 4px;"
         )
         hands_free_layout.addWidget(wake_heading)
 
@@ -593,20 +593,20 @@ class ModesPage:
             "Wake phrases are trained models. Custom phrases need a custom model."
         )
         wake_note.setWordWrap(True)
-        wake_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        wake_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         hands_free_layout.addWidget(wake_note)
 
         # ---- Hands-free session tuning (queue 62) ---------------------
         session_heading = QLabel("Hands-free session")
         session_heading.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; margin-top: 4px;"
         )
         hands_free_layout.addWidget(session_heading)
 
         def _warning_label(name: str) -> QLabel:
             label = QLabel("")
             label.setWordWrap(True)
-            label.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px;")
+            label.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")
             label.setVisible(False)
             self._widgets[name] = label
             return label
@@ -687,7 +687,7 @@ class ModesPage:
 
         recovery_heading = QLabel("Floating window recovery")
         recovery_heading.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; margin-top: 4px;"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; margin-top: 4px;"
         )
         hands_free_layout.addWidget(recovery_heading)
         preview_reset = QPushButton("Reset preview position")
@@ -750,7 +750,7 @@ class ModesPage:
         if _MODES_CONFIG_ONLY_KEYS:
             config_only_note = QLabel(_MODES_CONFIG_ONLY_NOTE)
             config_only_note.setWordWrap(True)
-            config_only_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+            config_only_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
             self._widgets['modes_config_only_note'] = config_only_note
             hands_free_layout.addWidget(config_only_note)
 
@@ -862,7 +862,7 @@ class ModesPage:
             "AI resolution (local or cloud) only when no exact command matches."
         )
         ai_intro.setWordWrap(True)
-        ai_intro.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: 12px;")
+        ai_intro.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         ai_layout.addWidget(ai_intro)
 
         ai_enabled = QCheckBox()

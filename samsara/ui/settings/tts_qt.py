@@ -148,6 +148,7 @@ class TTSPage:
         vol_slider.setRange(0, 100)
         vol_slider.setValue(int(raw_vol * 100))
         vol_slider.setFixedWidth(200)
+        vol_slider.setMinimumHeight(theme.HIT_TARGET_MIN)
         vol_slider.setStyleSheet(
             f"QSlider::groove:horizontal{{height:4px;background:{theme.wash(0.12)};border-radius:2px;}}"
             f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:{theme.ACCENT};}}"
@@ -195,6 +196,7 @@ class TTSPage:
         duck_slider.setRange(0, 100)
         duck_slider.setValue(int(raw_duck * 100))
         duck_slider.setFixedWidth(200)
+        duck_slider.setMinimumHeight(theme.HIT_TARGET_MIN)
         duck_slider.setStyleSheet(
             f"QSlider::groove:horizontal{{height:4px;background:{theme.wash(0.12)};border-radius:2px;}}"
             f"QSlider::handle:horizontal{{width:16px;height:16px;margin:-6px 0;border-radius:8px;background:{theme.ACCENT};}}"
@@ -224,6 +226,7 @@ class TTSPage:
         test_row.setSpacing(12)
         test_btn = QPushButton("Test Voice")
         test_btn.setMinimumWidth(120)
+        test_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._test_tts)
         test_status = QLabel("")
@@ -237,6 +240,7 @@ class TTSPage:
 
         # ---- When to speak (collapsible) ------------------------------------
         when_toggle = QPushButton("When should Samsara speak?  ▶")
+        when_toggle.setMinimumHeight(theme.HIT_TARGET_MIN)
         when_toggle.setStyleSheet(
             f"QPushButton{{background:transparent;color:{theme.ICON_IDLE};border:none;"
             f"font-size:{theme.TYPE_BODY}px;text-align:left;padding:0;}}"

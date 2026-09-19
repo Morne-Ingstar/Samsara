@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -46,6 +47,10 @@ class AdvancedPage:
 
         container = QWidget()
         container.setMaximumWidth(_CONTENT_MAX_WIDTH)
+        container.setMinimumWidth(0)
+        container.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(8)
@@ -53,6 +58,24 @@ class AdvancedPage:
         cfg = self.app.config
         aec_cfg = cfg.get('echo_cancellation', {}) or {}
         ducking_cfg = cfg.get('ducking', {}) or {}
+
+        def _add_checkbox_row(key: str, text: str, checked: bool) -> QCheckBox:
+            """Keep a checkbox's 44 DIP control compact while its unchanged
+            label can wrap inside the scroll viewport.
+
+            A native QCheckBox cannot wrap its own text; putting the existing
+            text in the row's label column avoids creating a horizontal
+            minimum wider than the page at 100% or 150% scaling. The control
+            retains the same accessible name and config key.
+            """
+            checkbox = QCheckBox()
+            checkbox.setAccessibleName(text)
+            checkbox.setChecked(checked)
+            self._widgets[key] = checkbox
+            layout.addLayout(self._setting_row(
+                text, "", checkbox, control_width=theme.HIT_TARGET_MIN,
+            ))
+            return checkbox
 
         # ---- Section: Hardware Acceleration --------------------------------
         layout.addWidget(self._section_title("Hardware Acceleration"))
@@ -203,10 +226,11 @@ class AdvancedPage:
         layout.addWidget(self._section_title("Experimental Echo Cancellation"))
         layout.addSpacing(4)
 
-        aec_cb = QCheckBox("Enable experimental echo cancellation (not recommended)")
-        aec_cb.setChecked(bool(aec_cfg.get('enabled', False)))
-        self._widgets['adv_aec_enabled'] = aec_cb
-        layout.addWidget(aec_cb)
+        aec_cb = _add_checkbox_row(
+            'adv_aec_enabled',
+            "Enable experimental echo cancellation (not recommended)",
+            bool(aec_cfg.get('enabled', False)),
+        )
 
         aec_note = QLabel(
             "Measured only 3–8% echo reduction and may distort audio. Leave off unless "
@@ -271,14 +295,11 @@ class AdvancedPage:
         layout.addWidget(ducking_level_row)
         layout.addSpacing(12)
 
-        hands_free_ducking_cb = QCheckBox(
-            "Reduce other apps while hands-free is listening"
+        hands_free_ducking_cb = _add_checkbox_row(
+            'adv_hands_free_ducking_enabled',
+            "Reduce other apps while hands-free is listening",
+            bool(ducking_cfg.get('hands_free_enabled', True)),
         )
-        hands_free_ducking_cb.setChecked(
-            bool(ducking_cfg.get('hands_free_enabled', True))
-        )
-        self._widgets['adv_hands_free_ducking_enabled'] = hands_free_ducking_cb
-        layout.addWidget(hands_free_ducking_cb)
 
         hands_free_capture_spin = QDoubleSpinBox()
         hands_free_capture_spin.setRange(0.0, 1.0)
@@ -321,19 +342,18 @@ class AdvancedPage:
         layout.addWidget(indicator_desc)
         layout.addSpacing(6)
 
-        ind_cb = QCheckBox("Show listening indicator overlay")
-        ind_cb.setChecked(bool(cfg.get('listening_indicator_enabled', False)))
-        self._widgets['adv_indicator_enabled'] = ind_cb
-        layout.addWidget(ind_cb)
+        ind_cb = _add_checkbox_row(
+            'adv_indicator_enabled', "Show listening indicator overlay",
+            bool(cfg.get('listening_indicator_enabled', False)),
+        )
         layout.addSpacing(8)
 
         live_surface_cfg = (cfg.get('ui', {}) or {}).get('live_surface', {}) or {}
-        live_surface_cb = QCheckBox(
-            "Use the new live surface (experimental — incomplete; the old indicator and preview are the default)"
+        live_surface_cb = _add_checkbox_row(
+            'adv_live_surface_enabled',
+            "Use the new live surface (experimental — incomplete; the old indicator and preview are the default)",
+            bool(live_surface_cfg.get('enabled', False)),
         )
-        live_surface_cb.setChecked(bool(live_surface_cfg.get('enabled', False)))
-        self._widgets['adv_live_surface_enabled'] = live_surface_cb
-        layout.addWidget(live_surface_cb)
         layout.addSpacing(8)
 
         pos_options = [
@@ -383,10 +403,10 @@ class AdvancedPage:
         layout.addWidget(gesture_note)
         layout.addSpacing(6)
 
-        gesture_cb = QCheckBox("Enable gesture lane (webcam hand poses)")
-        gesture_cb.setChecked(bool(self.app.config.get('gesture', {}).get('enabled', False)))
-        self._widgets['adv_gesture_enabled'] = gesture_cb
-        layout.addWidget(gesture_cb)
+        gesture_cb = _add_checkbox_row(
+            'adv_gesture_enabled', "Enable gesture lane (webcam hand poses)",
+            bool(self.app.config.get('gesture', {}).get('enabled', False)),
+        )
         layout.addSpacing(20)
 
         # ---- Section: Components -------------------------------------------
@@ -444,10 +464,9 @@ class AdvancedPage:
         layout.addWidget(sc_note)
         layout.addSpacing(6)
 
-        sc_enabled_cb = QCheckBox("Enable Smart Corrections")
-        sc_enabled_cb.setChecked(bool(sc_cfg.get('enabled', False)))
-        self._widgets['sc_enabled'] = sc_enabled_cb
-        layout.addWidget(sc_enabled_cb)
+        sc_enabled_cb = _add_checkbox_row(
+            'sc_enabled', "Enable Smart Corrections", bool(sc_cfg.get('enabled', False)),
+        )
         layout.addSpacing(6)
 
         sc_status_label = QLabel("Active backend: --")
@@ -486,13 +505,11 @@ class AdvancedPage:
         _update_sc_cloud_hint()
         layout.addSpacing(8)
 
-        sc_fallback_cb = QCheckBox(
-            "Allow cloud fallback when local AI is unavailable (sends "
-            "dictated text to your cloud provider)"
+        sc_fallback_cb = _add_checkbox_row(
+            'sc_allow_cloud_fallback',
+            "Allow cloud fallback when local AI is unavailable (sends dictated text to your cloud provider)",
+            bool(sc_cfg.get('allow_cloud_fallback', False)),
         )
-        sc_fallback_cb.setChecked(bool(sc_cfg.get('allow_cloud_fallback', False)))
-        self._widgets['sc_allow_cloud_fallback'] = sc_fallback_cb
-        layout.addWidget(sc_fallback_cb)
         layout.addSpacing(8)
 
         sc_model_edit = QLineEdit()
@@ -507,29 +524,24 @@ class AdvancedPage:
 
         sc_modes_cfg = sc_cfg.get('modes', {}) or {}
 
-        sc_mode_hotkey_cb = QCheckBox("Hold-to-dictate")
-        sc_mode_hotkey_cb.setChecked(bool(sc_modes_cfg.get('hotkey', True)))
-        self._widgets['sc_mode_hotkey'] = sc_mode_hotkey_cb
-        layout.addWidget(sc_mode_hotkey_cb)
+        sc_mode_hotkey_cb = _add_checkbox_row(
+            'sc_mode_hotkey', "Hold-to-dictate", bool(sc_modes_cfg.get('hotkey', True)),
+        )
 
-        sc_mode_wake_cb = QCheckBox("Wake dictation")
-        sc_mode_wake_cb.setChecked(bool(sc_modes_cfg.get('wake', True)))
-        self._widgets['sc_mode_wake'] = sc_mode_wake_cb
-        layout.addWidget(sc_mode_wake_cb)
+        sc_mode_wake_cb = _add_checkbox_row(
+            'sc_mode_wake', "Wake dictation", bool(sc_modes_cfg.get('wake', True)),
+        )
 
-        sc_mode_streaming_cb = QCheckBox("Streaming")
-        sc_mode_streaming_cb.setChecked(bool(sc_modes_cfg.get('streaming', False)))
-        self._widgets['sc_mode_streaming'] = sc_mode_streaming_cb
-        layout.addWidget(sc_mode_streaming_cb)
+        sc_mode_streaming_cb = _add_checkbox_row(
+            'sc_mode_streaming', "Streaming", bool(sc_modes_cfg.get('streaming', False)),
+        )
         layout.addSpacing(8)
 
-        sc_repair_disfluencies_cb = QCheckBox(
-            "Remove filler words and self-corrections "
-            "('I totally understand, misunderstood' -> 'I totally misunderstood')"
+        sc_repair_disfluencies_cb = _add_checkbox_row(
+            'sc_repair_disfluencies',
+            "Remove filler words and self-corrections ('I totally understand, misunderstood' -> 'I totally misunderstood')",
+            bool(sc_cfg.get('repair_disfluencies', False)),
         )
-        sc_repair_disfluencies_cb.setChecked(bool(sc_cfg.get('repair_disfluencies', False)))
-        self._widgets['sc_repair_disfluencies'] = sc_repair_disfluencies_cb
-        layout.addWidget(sc_repair_disfluencies_cb)
         layout.addSpacing(20)
 
         # ---- Section: Benchmark ---------------------------------------------
@@ -547,10 +559,10 @@ class AdvancedPage:
         layout.addWidget(bench_note)
         layout.addSpacing(6)
 
-        bench_cb = QCheckBox("Collect benchmark samples")
-        bench_cb.setChecked(bool(bench_cfg.get('collect_samples', False)))
-        self._widgets['adv_bench_collect'] = bench_cb
-        layout.addWidget(bench_cb)
+        bench_cb = _add_checkbox_row(
+            'adv_bench_collect', "Collect benchmark samples",
+            bool(bench_cfg.get('collect_samples', False)),
+        )
         layout.addSpacing(20)
 
         # ---- Section: Command word (93) --------------------------------------

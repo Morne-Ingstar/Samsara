@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -126,7 +127,12 @@ class AlarmsPage:
         table.setMinimumHeight(200)
         self._widgets['alarms_table'] = table
         self._populate_alarms_table(table)
-        layout.addWidget(table, stretch=1)
+        # This tab used to be the one non-scrollable Settings page. With
+        # populated rows, its expanding table competed with the action row
+        # for the same fixed viewport height and painted over it. Let the
+        # content take its natural height inside the shared Settings scroll
+        # pattern instead.
+        layout.addWidget(table)
 
         # Button row
         btn_row = QHBoxLayout()
@@ -140,6 +146,7 @@ class AlarmsPage:
 
         add_btn = QPushButton("Add Alarm")
         add_btn.setMinimumWidth(130)  # sizeHint is 116; a few px of margin
+        add_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         add_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         add_btn.clicked.connect(lambda: self._open_alarm_dialog(None, table))
         btn_row.addWidget(add_btn)
@@ -151,6 +158,7 @@ class AlarmsPage:
         ]:
             b = QPushButton(label)
             b.setMinimumWidth(width)
+            b.setMinimumHeight(theme.HIT_TARGET_MIN)
             b.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             b.setStyleSheet(_SEC)
             b.clicked.connect(handler)
@@ -158,6 +166,7 @@ class AlarmsPage:
 
         del_btn = QPushButton("Delete")
         del_btn.setMinimumWidth(80)  # sizeHint is 67; a few px of margin
+        del_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         del_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         del_btn.setStyleSheet(
             f"QPushButton{{background-color:{theme.tint(theme.RECORDING, 0.15)};color:{theme.ERROR};"
@@ -171,6 +180,7 @@ class AlarmsPage:
 
         reset_btn = QPushButton("Reset Stats")
         reset_btn.setMinimumWidth(105)  # sizeHint is 95; a few px of margin
+        reset_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         reset_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         reset_btn.setStyleSheet(_SEC)
         reset_btn.clicked.connect(lambda: self._reset_alarm_stats(table))
@@ -204,7 +214,14 @@ class AlarmsPage:
             return updates
         self._save_fns.append(_save)
 
-        return outer
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
+        scroll.setWidget(outer)
+        return scroll
 
     # Alarms tab helpers
 
