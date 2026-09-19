@@ -1,0 +1,20 @@
+<!--
+  Samsara's taskbar mark.  The three-ring geometry is the same wheel drawn by
+  tray_qt.paint_mark; this compact source is for the still app/tray icon.
+  tools/gen_icons.py substitutes ACCENT, OUTLINE, STROKE, OUTLINE_STROKE,
+  EYE_OUTER and EYE_INNER for each target size before Qt renders it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <g fill="none" stroke="OUTLINE" stroke-width="OUTLINE_STROKE" stroke-linecap="round">
+    <path d="M 39.5,8.9 A 25,25 0 0 1 56.7,38.7"/>
+    <path d="M 47.1,51.5 A 25,25 0 0 1 16.9,51.5"/>
+    <path d="M 7.3,38.7 A 25,25 0 0 1 24.5,8.9"/>
+  </g>
+  <g fill="none" stroke="ACCENT" stroke-width="STROKE" stroke-linecap="round">
+    <path d="M 39.5,8.9 A 25,25 0 0 1 56.7,38.7"/>
+    <path d="M 47.1,51.5 A 25,25 0 0 1 16.9,51.5"/>
+    <path d="M 7.3,38.7 A 25,25 0 0 1 24.5,8.9"/>
+  </g>
+  <circle cx="32" cy="32" r="EYE_OUTER" fill="OUTLINE"/>
+  <circle cx="32" cy="32" r="EYE_INNER" fill="ACCENT"/>
+</svg>

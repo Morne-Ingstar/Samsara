@@ -1530,8 +1530,8 @@ class DictationApp:
             "Opening the configured microphone and audio pipeline",
         )
 
-        # Set the Samsara lotus-wheel artwork as the default icon for all
-        # Qt windows (assets/icon/samsara.ico -- a multi-resolution .ico,
+        # Set the weighted Samsara mark as the default icon for all
+        # Qt windows (assets/brand/samsara.ico -- a multi-resolution .ico,
         # Qt/Windows picks whichever embedded size fits).
         #
         # QIcon is a GUI object that must be constructed on the Qt thread;
@@ -1548,7 +1548,7 @@ class DictationApp:
                 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
                 else os.path.dirname(os.path.abspath(__file__))
             )
-            _icon_ico_path = os.path.join(_icon_base, 'assets', 'icon', 'samsara.ico')
+            _icon_ico_path = os.path.join(_icon_base, 'assets', 'brand', 'samsara.ico')
 
             def _apply_window_icon():
                 try:

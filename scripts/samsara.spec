@@ -210,7 +210,7 @@ datas.append((str(app_dir / 'tools' / 'stremio_control.py'), 'tools'))
 # samsara.ico: setWindowIcon and the exe icon. samsara.svg: the single-source
 # mark that samsara/ui/tray_qt.render_mark draws for the tray, the listening
 # indicator and the splash (tray_qt.mark_svg_path resolves it under _MEIPASS).
-datas.append((str(app_dir / 'assets' / 'icon' / 'samsara.ico'), 'assets/icon'))
+datas.append((str(app_dir / 'assets' / 'brand' / 'samsara.ico'), 'assets/brand'))
 datas.append((str(app_dir / 'assets' / 'icon' / 'samsara.svg'), 'assets/icon'))
 # NOTE: config.json is intentionally NOT bundled — it contains dev-machine
 # paths and credentials. A fresh config is generated on first run.
@@ -540,7 +540,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(app_dir / 'assets' / 'icon' / 'samsara.ico'),
+    icon=str(app_dir / 'assets' / 'brand' / 'samsara.ico'),
 )
 
 coll = COLLECT(

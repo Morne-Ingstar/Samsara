@@ -31,6 +31,7 @@ import argparse
 import logging
 import re
 import struct
+import tempfile
 import xml.etree.ElementTree as ET
 import sys
 from pathlib import Path
@@ -44,6 +45,7 @@ logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
 from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QFont, QImage, QPainter  # noqa: E402
+from PySide6.QtSvg import QSvgRenderer  # noqa: E402
 from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 
 from samsara.ui import theme  # noqa: E402
@@ -65,6 +67,13 @@ from samsara.ui.tray_qt import (  # noqa: E402
 ICON_DIR = REPO / "assets" / "icon"
 SVG_PATH = ICON_DIR / "samsara.svg"
 STATES_DIR = ICON_DIR / "states"
+# Queue 241: the app/taskbar identity is a deliberately still, high-contrast
+# raster family.  Keep it separate from the live-state assets above so a
+# recording/Ava frame can remain painted at runtime without changing the
+# executable, Start, or idle-tray mark.
+BRAND_DIR = REPO / "assets" / "brand"
+BRAND_SVG_PATH = BRAND_DIR / "samsara-mark.svg"
+BRAND_SIZES = (16, 20, 24, 32, 48, 256)
 SPIN_SHEET_ANGLES = (0, 45, 90, 135, 180, 225, 270, 315)
 WEIGHT_SHEET_ANGLES = (0, 45)
 _SEGMENT_PATH = re.compile(r'(<path data-role="segment" d=")([^"]*)(")')
@@ -174,6 +183,89 @@ def png_bytes(image: QImage) -> bytes:
     return bytes(buffer.data())
 
 
+def _brand_metrics(size: int) -> tuple[float, float, float, float]:
+    """(cyan stroke, outlined stroke, inner-eye radius, outer-eye radius).
+
+    At taskbar sizes the cyan ring is at least two physical pixels wide and
+    the eye is a solid dot.  The outer stroke exceeds the inner by two
+    physical pixels (one pixel of outline on either side); large artwork uses
+    a restrained one-pixel outline rather than a heavy halo.
+    """
+    cyan = 9.0 if size <= 24 else 7.0 if size <= 32 else 6.0 if size <= 48 else 5.0
+    outlined = cyan + (128.0 / size)
+    eye_inner = 4.0 if size <= 16 else 4.8 if size <= 24 else 5.5 if size <= 48 else 7.0
+    eye_outer = eye_inner + (64.0 / size)
+    return cyan, outlined, eye_inner, eye_outer
+
+
+def render_brand(size: int) -> QImage:
+    """Render the still cyan app mark with its one-pixel dark outline.
+
+    Qt's built-in QSvgRenderer is intentionally used: no dependency beyond
+    the running app, and the source is kept as a readable single SVG.
+    """
+    _ensure_gui_app()
+    cyan, outlined, eye_inner, eye_outer = _brand_metrics(size)
+    accent = QColor(theme.ACCENT).name()
+    # A dark blue-black survives a white taskbar; the cyan interior carries
+    # the contrast on dark taskbars.  Both are opaque on a transparent icon.
+    outline = QColor(accent).darker(230).name()
+    source = BRAND_SVG_PATH.read_text(encoding="utf-8")
+    source = (source.replace("OUTLINE_STROKE", f"{outlined:.4f}")
+                    .replace("EYE_OUTER", f"{eye_outer:.4f}")
+                    .replace("EYE_INNER", f"{eye_inner:.4f}")
+                    .replace("OUTLINE", outline)
+                    .replace("ACCENT", accent)
+                    .replace("STROKE", f"{cyan:.4f}")
+                    )
+    renderer = QSvgRenderer(source.encode("utf-8"))
+    if not renderer.isValid():
+        raise ValueError("assets/brand/samsara-mark.svg is not renderable")
+    image = QImage(size, size, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    renderer.render(painter)
+    painter.end()
+    return image
+
+
+def brand_outputs(directory: Path) -> dict[Path, bytes]:
+    """Deterministic ICO/PNG bytes, rooted at either the checkout or a temp dir."""
+    pngs: list[tuple[int, bytes]] = []
+    output: dict[Path, bytes] = {}
+    for size in BRAND_SIZES:
+        data = png_bytes(render_brand(size))
+        output[directory / f"samsara_{size}.png"] = data
+        pngs.append((size, data))
+    output[directory / "samsara.ico"] = build_ico(pngs)
+    return output
+
+
+def write_brand_assets(directory: Path = BRAND_DIR) -> list[Path]:
+    directory.mkdir(parents=True, exist_ok=True)
+    written = []
+    for path, data in brand_outputs(directory).items():
+        path.write_bytes(data)
+        written.append(path)
+    return written
+
+
+def stale_brand_assets() -> list[Path]:
+    """Regenerate in a temporary directory, then byte-compare committed output."""
+    if not BRAND_SVG_PATH.exists():
+        return [BRAND_SVG_PATH]
+    with tempfile.TemporaryDirectory(prefix="samsara-icons-") as temp:
+        temporary = Path(temp)
+        write_brand_assets(temporary)
+        stale = []
+        for generated in temporary.iterdir():
+            committed = BRAND_DIR / generated.name
+            if not committed.exists() or committed.read_bytes() != generated.read_bytes():
+                stale.append(committed)
+        return stale
+
+
 def build_ico(pngs: list[tuple[int, bytes]]) -> bytes:
     """Multi-size ICO holding each PNG verbatim (same layout as the old
     _pack_ico.py: 6-byte header, 16-byte entry per size, PNG blobs)."""
@@ -214,6 +306,7 @@ def write_assets() -> list[Path]:
         data = value if isinstance(value, bytes) else png_bytes(value)
         path.write_bytes(data)
         written.append(path)
+    written.extend(write_brand_assets())
     return written
 
 
@@ -583,7 +676,10 @@ def main(argv: list[str] | None = None) -> int:
     require_mark_ids()
 
     if args.check:
-        stale = stale_assets()
+        # The queue-241 icon family is regenerated under %TEMP% before any
+        # comparison, so a locally changed PNG can never make its own gate
+        # pass.  Preserve the older live-state asset drift check too.
+        stale = stale_assets() + stale_brand_assets()
         for path in stale:
             print(f"stale: {path.relative_to(REPO)}")
         return 1 if stale else 0
