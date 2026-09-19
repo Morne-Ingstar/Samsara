@@ -72,6 +72,47 @@ class TestSettingsWindowConstruction:
         assert 'adv_threshold_mode' in win._widgets
         assert 'adv_cal_multiplier' in win._widgets
 
+    def test_interactive_settings_controls_keep_44_dip_hit_regions(self, qapp):
+        """Inputs draw compactly; their full Qt event rectangles remain ≥44 DIP."""
+        from PySide6.QtWidgets import (
+            QAbstractButton,
+            QAbstractItemView,
+            QAbstractSpinBox,
+            QComboBox,
+            QLineEdit,
+            QPlainTextEdit,
+            QSlider,
+            QTableWidget,
+        )
+        from samsara.ui.settings_qt import _SettingsWindow
+        from PySide6.QtCore import Qt
+
+        win = _SettingsWindow(_StubApp())
+        for widget_type in (
+            QAbstractButton,
+            QComboBox,
+            QLineEdit,
+            QAbstractSpinBox,
+            QPlainTextEdit,
+            QSlider,
+            QTableWidget,
+        ):
+            for widget in win.findChildren(widget_type):
+                assert widget.minimumWidth() >= 44
+                assert widget.minimumHeight() >= 44
+
+        assert win._search_edit.minimumHeight() >= 44
+        for row in range(win._sidebar.count()):
+            item = win._sidebar.item(row)
+            if item.flags() & Qt.ItemFlag.ItemIsSelectable:
+                assert win._sidebar.sizeHintForRow(row) >= 44
+        for table in win.findChildren(QTableWidget):
+            if (
+                table.selectionMode() != QAbstractItemView.SelectionMode.NoSelection
+                and table.selectionBehavior() == QAbstractItemView.SelectionBehavior.SelectRows
+            ):
+                assert all(table.rowHeight(row) >= 44 for row in range(table.rowCount()))
+
     def test_output_selector_recovers_truncated_legacy_name(self, qapp):
         """An MME-truncated saved name resolves to its unique WASAPI output."""
         from samsara.ui.settings_qt import _SettingsWindow
