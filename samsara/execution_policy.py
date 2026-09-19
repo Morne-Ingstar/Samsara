@@ -60,6 +60,7 @@ import hashlib
 import json
 import logging
 import copy
+import os
 import re
 import string
 import threading
@@ -1041,6 +1042,8 @@ class PendingOperation:
     def __init__(self, inv: Invocation, prompt: str, on_approve=None, on_reject=None, *,
                  app=None, targets: Optional[dict] = None,
                  target_probe: Optional[Callable[[], dict]] = None,
+                 foreground_target: Optional[dict] = None,
+                 foreground_probe: Optional[Callable[[], dict]] = None,
                  clock: Callable[[], float] = time.monotonic):
         self.invocation = inv
         self.prompt = prompt
@@ -1049,6 +1052,11 @@ class PendingOperation:
         self.arg_hash = argument_hash(inv.command_id, inv.args)
         self.targets = dict(targets or {})
         self._target_probe = target_probe
+        # Keep the historic public ``targets`` record for named targets.  A
+        # no-argument foreground action has no spoken target to expose, but
+        # its private identity is still captured and rechecked on approval.
+        self._foreground_target = dict(foreground_target or {})
+        self._foreground_probe = foreground_probe
         self._app = app
         self._clock = clock
         self.deadline = clock() + CONFIRM_TTL_S
@@ -1080,6 +1088,9 @@ class PendingOperation:
         if app is not None and not is_fresh(app, self.generation):
             return "stale"
         if self._target_probe is not None:
+            if self.targets.get("gone"):
+                self.target_change = describe_target_change(self.targets, self.targets)
+                return f"target changed: {self.target_change}"
             try:
                 now = dict(self._target_probe() or {})
             except Exception as exc:
@@ -1089,6 +1100,19 @@ class PendingOperation:
                 # Queue 126/C: named, not just reported. The caller speaks
                 # this, so "I did nothing" comes with the reason.
                 self.target_change = describe_target_change(self.targets, now)
+                return f"target changed: {self.target_change}"
+        if self._foreground_probe is not None:
+            if self._foreground_target.get("gone"):
+                self.target_change = describe_target_change(self._foreground_target,
+                                                            self._foreground_target)
+                return f"target changed: {self.target_change}"
+            try:
+                now = dict(self._foreground_probe() or {})
+            except Exception as exc:
+                logger.debug("[POLICY] foreground target probe failed: %s", exc)
+                return "target changed"
+            if now != self._foreground_target:
+                self.target_change = describe_target_change(self._foreground_target, now)
                 return f"target changed: {self.target_change}"
         return None
 
@@ -1220,6 +1244,92 @@ def bind_target(inv: Invocation, resolver=None):
     return _probe(), _probe
 
 
+def foreground_window_identity() -> Optional[dict]:
+    """Return the foreground window identity without retaining its title.
+
+    A confirmation for a keyboard, pointer, or text action describes the
+    window that was foreground when it was asked.  HWND alone can be reused;
+    PID, process image name, and a hash of the title make that identity
+    specific while keeping the title out of the pending record and logs.
+    """
+    try:
+        import ctypes  # noqa: PLC0415
+        from ctypes import wintypes  # noqa: PLC0415
+
+        user32 = ctypes.windll.user32
+        hwnd = int(user32.GetForegroundWindow() or 0)
+        if not hwnd:
+            return None
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(wintypes.HWND(hwnd), ctypes.byref(pid))
+        if not pid.value:
+            return None
+        title_len = int(user32.GetWindowTextLengthW(wintypes.HWND(hwnd)) or 0)
+        title = ctypes.create_unicode_buffer(title_len + 1)
+        user32.GetWindowTextW(wintypes.HWND(hwnd), title, len(title))
+        process_name = ""
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.QueryFullProcessImageNameW.argtypes = (
+            wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD))
+        kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        process = kernel32.OpenProcess(0x1000, False, pid.value)
+        if process:
+            try:
+                size = wintypes.DWORD(32768)
+                path = ctypes.create_unicode_buffer(size.value)
+                if kernel32.QueryFullProcessImageNameW(process, 0, path, ctypes.byref(size)):
+                    process_name = os.path.basename(path.value).lower()
+            finally:
+                kernel32.CloseHandle(process)
+        return {
+            "hwnd": hwnd,
+            "pid": int(pid.value),
+            "process": process_name,
+            "title_hash": hashlib.sha256(title.value.encode("utf-8", "replace")).hexdigest(),
+        }
+    except Exception as exc:
+        logger.debug("[POLICY] foreground identity failed: %s", exc)
+        return None
+
+
+def _staged_action_uses_foreground(inv: Invocation, executor) -> bool:
+    """Whether this built-in action sends input to the foreground window."""
+    commands = getattr(executor, "commands", None) or {}
+    entry = commands.get(inv.command_id, {})
+    return entry.get("type") in {"hotkey", "key_down", "key_up", "press", "text", "mouse", "macro"}
+
+
+def bind_staged_target(inv: Invocation, executor, *, resolver=None, foreground_resolver=None):
+    """Bind a named target, or the foreground window for an input action.
+
+    Named targets deliberately retain the existing resolver and record shape.
+    An action with no target argument that sends input to the foreground gets a
+    full foreground identity instead, and cannot be approved after it changes.
+    The third result says that this is the latter binding so callers can give
+    the precise, local refusal wording.
+    """
+    targets, probe = bind_target(inv, resolver=resolver)
+    if targets is not None or probe is not None:
+        return targets, probe, False
+    if not _staged_action_uses_foreground(inv, executor):
+        return None, None, False
+
+    def _probe():
+        fn = foreground_resolver if foreground_resolver is not None else foreground_window_identity
+        try:
+            found = fn()
+        except Exception as exc:
+            logger.debug("[POLICY] foreground target probe failed: %s", exc)
+            found = None
+        return found or {"gone": "the window"}
+
+    return _probe(), _probe, True
+
+
 def describe_target_change(before: Optional[dict], after: Optional[dict]) -> str:
     """One sentence naming what moved, for the spoken refusal."""
     before, after = before or {}, after or {}
@@ -1235,7 +1345,9 @@ def describe_target_change(before: Optional[dict], after: Optional[dict]) -> str
 def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reject=None,
                   extra: Optional[dict] = None, record_type: str = "invocation",
                   targets: Optional[dict] = None,
-                  target_probe: Optional[Callable[[], dict]] = None) -> PendingOperation:
+                  target_probe: Optional[Callable[[], dict]] = None,
+                  foreground_target: Optional[dict] = None,
+                  foreground_probe: Optional[Callable[[], dict]] = None) -> PendingOperation:
     """Put THE pending operation into the shared pending slot. An older record
     is superseded: cancelled visibly ("cancelled: superseded") so a blocked
     waiter wakes up and a late "yes" cannot reach it.
@@ -1283,7 +1395,8 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
 
         on_approve = approve_repeat
     op = PendingOperation(inv, prompt, on_approve=on_approve, on_reject=on_reject,
-                          app=app, targets=targets, target_probe=target_probe)
+                          app=app, targets=targets, target_probe=target_probe,
+                          foreground_target=foreground_target, foreground_probe=foreground_probe)
     record = {
         "type": record_type,
         "op": op,
