@@ -525,14 +525,12 @@ class TestAvaCloudTabNoLicenseGate:
         win = _SettingsWindow(_StubApp())
         assert 'cloud_settings_widget' not in win._widgets
 
-    def test_supporter_key_row_present_but_optional(self, qapp):
-        """The relabeled supporter-key row still exists (for the future
-        managed-key slot) but starts on the no-key page."""
+    def test_supporter_key_row_removed_but_optional(self, qapp):
+        """The supporter UI is gone; stored keys remain optional data."""
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
-        assert 'cloud_license_entry' in win._widgets
-        assert 'cloud_license_stack' in win._widgets
-        assert win._widgets['cloud_license_stack'].currentIndex() == 0
+        assert 'cloud_license_entry' not in win._widgets  # Prompt 244 removed the supporter UI.
+        assert 'cloud_license_stack' not in win._widgets  # Prompt 244 removed the supporter UI.
 
     def test_save_fn_writes_cloud_settings_without_license(self, qapp):
         """Firing the Ava/Cloud save fn must persist cloud_llm settings with

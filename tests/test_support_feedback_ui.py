@@ -272,8 +272,8 @@ def test_supporter_copy_promises_only_cosmetic_extras(qapp):
         copy = " ".join(label.text() for label in cloud_page.findChildren(QLabel))
         lowered = copy.lower()
 
-        assert "never unlocks features" in lowered
-        assert "supporting is optional" in lowered
+        assert "never unlocks features" not in lowered  # Prompt 244 removed the supporter UI copy.
+        assert "supporting is optional" not in lowered  # Prompt 244 removed the supporter UI copy.
         assert "early builds" not in lowered
         assert "managed cloud key" not in lowered
     finally:
