@@ -223,6 +223,24 @@ class LiveSurfaceWidget(QWidget):
         self._follow_latest = bar.value() >= bar.maximum()
         self.scroll_requested.emit(bar.value())
 
+    def voice_review_action(self, action: str, value: object) -> None:
+        """Deliver a routed, whole-utterance review-picker request on Qt."""
+        if action == "correct":
+            needle = str(value).casefold()
+            self.show_word_picker()
+            for target in self._word_targets:
+                if str(target["word"]).casefold() == needle:
+                    self.correct_word_requested.emit(dict(target))
+                    return
+            self._announce("word-missing", "That word is no longer in the draft")
+        elif action == "word":
+            self.show_word_picker()
+            index = int(value) - 1
+            if 0 <= index < len(self._word_targets):
+                self.correct_word_requested.emit(dict(self._word_targets[index]))
+            else:
+                self._announce("word-missing", "That word number is not in the draft")
+
     def show_word_picker(self) -> None:
         self._selection = None; self._picker_active = True; self._picker_page = 0; self._candidates = []
         self._apply_view(self._view, animate=False); self._announce("picker", "Choose a word to correct")

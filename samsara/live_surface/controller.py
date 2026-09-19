@@ -91,6 +91,9 @@ class LiveSurfaceController:
         document = getattr(manager, "draft_document", None)
         if document is None:
             return
+        register = getattr(manager, "set_surface_review_action_fn", None)
+        if callable(register):
+            register(self._voice_review_action)
         text = document.text
         kind = EventKind.DOCUMENT_UPDATED if text else EventKind.DOCUMENT_CLEARED
         self.post(SurfaceEvent(kind, document_id=document.document_id,
@@ -116,6 +119,12 @@ class LiveSurfaceController:
         if self.widget is None:
             return
         qt_runtime.post(lambda: self.widget is not None and self.widget.scroll_draft(where))
+
+    def _voice_review_action(self, action: str, value: object) -> bool:
+        if self.widget is None or action not in {"correct", "word"}:
+            return False
+        qt_runtime.post(lambda: self.widget is not None and self.widget.voice_review_action(action, value))
+        return True
 
     # Widget intents deliberately call the existing side-effect owners.
     def _connect_intents(self) -> None:
