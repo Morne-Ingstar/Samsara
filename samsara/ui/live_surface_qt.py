@@ -6,6 +6,7 @@ all edits remain with the revisioned document owned by ``SessionModeManager``.
 from __future__ import annotations
 
 from html import escape
+from math import ceil
 import re
 from typing import Any
 
@@ -133,6 +134,8 @@ class LiveSurfaceWidget(QWidget):
 
         self._mark = _Mark(self)
         self._mark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._recording_dot = QLabel(self)
+        self._recording_dot.setAccessibleName("Recording indicator")
         self._state = QLabel(self); self._state.setWordWrap(True)
         self._state.setAccessibleName("Live surface state")
         self._transcript = QTextBrowser(self)
@@ -151,6 +154,7 @@ class LiveSurfaceWidget(QWidget):
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
         self._commit = self._button("Commit draft", "Commit", self.commit_requested.emit)
         self._clear = self._button("Clear draft", "Clear", self.clear_requested.emit)
+        self._clear.setObjectName("quietClear")
         self._pause = self._button("Pause capture", "Pause", self.pause_requested.emit)
         self._correct = self._button("Correct a word", "Correct", self._request_correct)
         self._edit_receipt = self._button("Edit sent receipt as a new draft", "Edit as new draft", self._request_edit_receipt)
@@ -186,7 +190,7 @@ class LiveSurfaceWidget(QWidget):
     def mark_rect(self) -> QRect: return self._mark.geometry()
     @property
     def card_rect(self) -> QRect:
-        return QRect() if self._view.form in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE) else QRect(0, MARK_SIZE + CONNECTOR, self.width(), self.height() - MARK_SIZE - CONNECTOR)
+        return QRect() if self._view.form is VisibleForm.MARK else self.rect()
     @property
     def card_content_rect(self) -> QRect: return self.card_rect.adjusted(CARD_INSET, CARD_INSET, -CARD_INSET, -CARD_INSET)
     def hit_region(self) -> QRegion: return self.mask()
@@ -301,13 +305,26 @@ class LiveSurfaceWidget(QWidget):
                                            "word": word, "occurrence": occurrence[folded] - 1})
                 parts.append(f'<a href="word:{index}">{escape(word)}</a>'); at = match.end()
             parts.append(escape(text[at:]))
-        self._transcript.setHtml("<p>" + "".join(parts).replace("\n", "<br/>") + "</p>")
+        self._transcript.setHtml(
+            f"<style>body,a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }}</style><p>"
+            + "".join(parts).replace("\n", "<br/>") + "</p>")
 
     def _form_rect(self, form: VisibleForm) -> QRect:
         if form is VisibleForm.MARK: return QRect(self.x(), self.y(), MARK_SIZE, MARK_SIZE)
         if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), 120, MARK_SIZE)
-        width, card_height = STATUS_SIZE if form is VisibleForm.STATUS else (LIVE_SIZE if form is VisibleForm.LIVE else REVIEW_SIZE)
-        return QRect(self.x(), self.y(), width, MARK_SIZE + CONNECTOR + card_height)
+        if form is VisibleForm.STATUS:
+            return QRect(self.x(), self.y(), STATUS_SIZE[0], 68)
+        width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
+        if self._selection is not None or self._picker_active:
+            height = 280
+        else:
+            # A live panel grows for content, but does not retain a blank
+            # review-sized slab for a one-line draft.
+            chars_per_line = 50
+            lines = max(1, ceil(len(self._view.text or self._view.provisional_text) / chars_per_line))
+            height = 64 + min(10, lines) * 24 + (24 if self._view.provisional_text else 0) + 20
+            height = max(132, min(REVIEW_SIZE[1], height))
+        return QRect(self.x(), self.y(), width, height)
 
     def _animate_geometry(self, target: QRect) -> None:
         animation = QPropertyAnimation(self, b"geometry", self); animation.setDuration(RESIZE_DURATION_MS)
@@ -317,7 +334,7 @@ class LiveSurfaceWidget(QWidget):
         self._animation = animation; animation.start()
 
     def _hide_children(self) -> None:
-        for child in (self._state, self._transcript, self._provisional, self._badge, self._latest,
+        for child in (self._recording_dot, self._state, self._transcript, self._provisional, self._badge, self._latest,
                       *self._controls, *self._picker_buttons, *self._candidate_buttons,
                       self._keep, self._spell, self._edit, self._more, self._apply, self._cancel, self._editor): child.hide()
 
@@ -327,25 +344,37 @@ class LiveSurfaceWidget(QWidget):
         if form is VisibleForm.DRAFT_BADGE:
             self._mark.setGeometry(0, 0, MARK_SIZE, MARK_SIZE); self._badge.setGeometry(MARK_SIZE, 0, 76, MARK_SIZE); self._badge.show(); return
         content = self.card_content_rect
+        self._mark.setGeometry(content.x(), content.y(), MARK_SIZE, MARK_SIZE)
+        self._recording_dot.setGeometry(content.x() + MARK_SIZE - 4, content.y() + 18, 12, 12)
+        recording = self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
+        self._recording_dot.setText("●" if recording else "○")
+        self._recording_dot.setAccessibleDescription("Recording" if recording else "Not recording")
+        self._recording_dot.show()
+        clear_width = 88
         if form is VisibleForm.STATUS:
-            control = self._clear if self._view.notice.kind is NoticeKind.ERROR else self._pause; width=112
-            self._state.setGeometry(content.x(), content.y(), content.width()-width-REGION_GAP, content.height()); self._state.show()
-            control.setGeometry(content.right()-width+1, content.y()+(content.height()-MARK_SIZE)//2, width, MARK_SIZE); control.show(); return
-        self._state.setGeometry(content.x(), content.y(), content.width(), HEADER_HEIGHT); self._state.show()
-        if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active): self._layout_correction(content); return
-        transcript_h = 168 if form is VisibleForm.REVIEW else 96
+            self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-20-clear_width, content.height()); self._state.show()
+            self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
+            self._clear.show(); return
+        self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-20-clear_width, HEADER_HEIGHT); self._state.show()
+        # Clear is the sole persistent surface control. Its 88x28 visual sits
+        # inside the 44-DIP button hit target rather than becoming a large row.
+        self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
+        self._clear.show()
+        if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
+            # Correction controls replace the normal quiet Clear chrome.
+            self._clear.hide(); self._layout_correction(content); return
         y = content.y()+HEADER_HEIGHT+REGION_GAP
+        available = content.bottom() - y + 1
+        transcript_h = max(24, available - (24 if self._view.provisional_text else 0))
         self._transcript.setGeometry(content.x(), y, content.width(), transcript_h); self._transcript.show()
-        if form is VisibleForm.REVIEW:
-            y += transcript_h+REGION_GAP; self._latest.setGeometry(content.x(), y, content.width(), MARK_SIZE)
-            self._latest.setText("Latest" + (f" (+{self._unread_segments})" if self._unread_segments else "")); self._latest.setVisible(not self._follow_latest or self._unread_segments); y += MARK_SIZE+REGION_GAP
-            controls = (self._clear,self._commit,self._pause,self._correct)
-            if self._view.document is DocumentState.DELIVERED:
-                controls = (self._edit_receipt, self._correct)
-            self._layout_row(controls, content.x(), y, content.width())
-        else:
+        if self._view.provisional_text:
             self._provisional.setGeometry(content.x(), y+transcript_h, content.width(), 24); self._provisional.show()
-            self._layout_row((self._clear,self._commit,self._pause,self._correct), content.x(), y+transcript_h+24+REGION_GAP, content.width())
+        if not self._follow_latest or self._unread_segments:
+            # The one quiet review affordance: it only appears when there is
+            # actually newer text to return to.
+            self._latest.setText("Latest" + (f" (+{self._unread_segments})" if self._unread_segments else ""))
+            self._latest.setGeometry(content.right()-104, content.y()+4, 104, MARK_SIZE)
+            self._latest.show()
 
     def _layout_row(self, controls, x: int, y: int, width: int) -> None:
         available = width - REGION_GAP*(len(controls)-1); base, rem = divmod(available, len(controls))
@@ -375,14 +404,16 @@ class LiveSurfaceWidget(QWidget):
         elif self._view.form is VisibleForm.DRAFT_BADGE:
             path=QPainterPath(); path.addRoundedRect(QRectF(0,0,self.width(),MARK_SIZE),CARD_RADIUS,CARD_RADIUS); region=QRegion(path.toFillPolygon().toPolygon())
         else:
-            card=self.card_rect; region=QRegion(self._mark.geometry(),QRegion.RegionType.Ellipse); region |= QRegion(QRect((self.width()-CONNECTOR)//2,MARK_SIZE,CONNECTOR,CONNECTOR)); path=QPainterPath(); path.addRoundedRect(QRectF(card),CARD_RADIUS,CARD_RADIUS); region |= QRegion(path.toFillPolygon().toPolygon())
+            path=QPainterPath(); path.addRoundedRect(QRectF(self.card_rect),CARD_RADIUS,CARD_RADIUS); region=QRegion(path.toFillPolygon().toPolygon())
         self.setMask(region)
 
     def _restyle(self) -> None:
-        self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }}")
+        self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QTextBrowser a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }} QPushButton#quietClear {{ background: transparent; border: 0; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; }}")
         self._state.setFont(theme.qfont(theme.TYPE_HEADING)); self._transcript.setFont(theme.qfont(theme.TYPE_BODY))
-        font=theme.qfont(theme.TYPE_MIN); font.setItalic(True); self._provisional.setFont(font); self._badge.setFont(theme.qfont(theme.TYPE_MIN))
-        self._provisional.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border-top: 1px dashed {theme.BORDER};")
+        dot_color = theme.RECORDING if self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING) else theme.TEXT_SECONDARY
+        self._recording_dot.setStyleSheet(f"color: {dot_color};")
+        self._provisional.setFont(theme.qfont(theme.TYPE_MIN)); self._badge.setFont(theme.qfont(theme.TYPE_MIN))
+        self._provisional.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
@@ -394,7 +425,7 @@ class LiveSurfaceWidget(QWidget):
             return
         painter=QPainter(self)
         try:
-            painter.setPen(QPen(theme.qcolor(theme.BORDER),1)); painter.setBrush(theme.qcolor(theme.BG1)); painter.drawRoundedRect(QRectF(self.card_rect).adjusted(.5,.5,-.5,-.5),CARD_RADIUS,CARD_RADIUS); painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(theme.qcolor(theme.BG2)); painter.drawRect((self.width()-CONNECTOR)//2,MARK_SIZE,CONNECTOR,CONNECTOR)
+            painter.setPen(QPen(theme.qcolor(theme.BORDER),1)); painter.setBrush(theme.qcolor(theme.BG1)); painter.drawRoundedRect(QRectF(self.card_rect).adjusted(.5,.5,-.5,-.5),CARD_RADIUS,CARD_RADIUS)
         finally:painter.end()
 
     def mousePressEvent(self,event: QMouseEvent)->None:
