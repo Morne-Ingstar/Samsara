@@ -1884,6 +1884,9 @@ class _LiveSurfaceStreamingOverlay:
     def close(self):
         self._partials.stop()
 
+    def delivery_finished(self, text):
+        self._partials.final(text, delivered=True)
+
     def flash_done_and_fade(self, on_complete):
         self._partials.stop()
         if on_complete:
@@ -2086,10 +2089,12 @@ class StreamingSession:
                     manager.stage_parked_hold(text, source=(
                         "pause" if requested else "focus changed" if focus_changed else
                         "voice review" if voice_pause else "append"))
+                    # Settle the capture first, then project the entire parked
+                    # document. A one-hold preview must not overwrite it.
+                    self._overlay.update_text(text.rstrip(), StreamingOverlayQt.STATE_DONE)
                     controller = getattr(self.app, "live_surface", None)
                     if controller is not None:
                         controller.sync_draft(manager)
-                    self._overlay.update_text(text.rstrip(), StreamingOverlayQt.STATE_DONE)
                     self._overlay.flash_done_and_fade(self._mark_done)
                     return
                 except Exception as exc:
@@ -2129,7 +2134,22 @@ class StreamingSession:
             logger.debug(f"[STREAM] _notify_main_window failed: {e}")
 
         if self.app.config.get('auto_paste', True):
-            if self._direct_paste:
+            if self._parking_enabled:
+                try:
+                    delivered = self.app._paste_preserving_clipboard(text) is not False
+                except Exception:
+                    logger.exception("[STREAM] Final insertion failed; retaining draft")
+                    delivered = False
+                if delivered:
+                    if isinstance(self._overlay, _LiveSurfaceStreamingOverlay):
+                        self._overlay.delivery_finished(text.rstrip())
+                else:
+                    manager = self.app._ensure_session_mode_manager()
+                    manager.stage_parked_hold(text, source="failed delivery")
+                    controller = getattr(self.app, "live_surface", None)
+                    if controller is not None:
+                        controller.sync_draft(manager)
+            elif self._direct_paste:
                 thread_registry.spawn("streaming-final-paste", self._direct_paste_final,
                                  args=(text,),
                                  daemon=True)

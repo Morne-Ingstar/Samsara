@@ -11232,6 +11232,15 @@ class DictationApp:
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
+        if self._live_surface_hold_parking_enabled():
+            # Save the destination before feedback/UI or capture can change
+            # focus. Each accepted start owns a fresh target and pause latch.
+            # Explicit insertion of a parked draft still uses current focus.
+            self._hold_capture_target_hwnd = _get_foreground_hwnd()
+            self._hold_capture_target_process = _get_foreground_exe_lower()
+            manager = self._ensure_session_mode_manager()
+            self._hold_park_requested = bool(manager.draft_document.text)
+
         # Ordinary holds share the confirmed capture duck and exclude older
         # ring frames. Other recording lanes retain their legacy duck policy.
         if (self.config.get('mode', 'hold') == 'hold'
@@ -12232,14 +12241,6 @@ class DictationApp:
         if self._gesture_loop is not None:
             return
 
-        if self._live_surface_hold_parking_enabled():
-            # Capture the automatic-delivery destination at start. Explicit
-            # Commit deliberately does not use this value; it selects the
-            # app focused when the user asks to send.
-            self._hold_capture_target_hwnd = _get_foreground_hwnd()
-            self._hold_capture_target_process = _get_foreground_exe_lower()
-            manager = self._ensure_session_mode_manager()
-            self._hold_park_requested = bool(manager.draft_document.text)
         try:
             from samsara.vision.camera_service import CameraService
             from samsara.vision.gesture_loop import GestureLoop
