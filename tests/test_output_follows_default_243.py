@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from pathlib import Path
+import importlib.util
 
 from samsara import output_devices
 
@@ -36,6 +37,43 @@ def test_follow_default_reads_a_changed_windows_default_on_each_play():
     assert output_devices.resolve_playback_device(sd) == 0
     sd.default.device = (0, 1)
     assert output_devices.resolve_playback_device(sd) == 1
+
+
+def test_sounds_page_keeps_default_label_short_and_refreshes_device_on_show(
+    qapp, monkeypatch,
+):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from samsara.ui.settings_qt import _SettingsWindow
+
+    settings_test_path = Path(__file__).with_name("test_settings.py")
+    spec = importlib.util.spec_from_file_location(
+        "_samsara_settings_test_support", settings_test_path
+    )
+    settings_test_support = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(settings_test_support)
+
+    sd = _SoundDevice([_output("Roku TV")], default_output=0)
+    monkeypatch.setitem(__import__('sys').modules, "sounddevice", sd)
+    app = settings_test_support._StubApp()
+    app.get_available_output_devices = lambda: [
+        {"id": 0, "name": "Roku TV", "hostapi": "Windows WASAPI"}
+    ]
+    window = _SettingsWindow(app)
+
+    combo = window._widgets["sound_output_combo"]
+    description = window._widgets["sound_output_description"]
+    assert combo.itemText(0) == "Follow Windows default (recommended)"
+    assert "Roku TV" not in combo.itemText(0)
+    assert description.text().endswith("Currently playing to: Roku TV.")
+
+    # The Settings window and Sounds page are reused on reopen.
+    sd.devices = [_output("New Windows Default")]
+    QCoreApplication.sendEvent(
+        window._stack.widget(3), QEvent(QEvent.Type.Show)
+    )
+    assert description.text().endswith(
+        "Currently playing to: New Windows Default."
+    )
 
 
 def test_missing_selected_output_falls_back_to_default_and_logs_once(caplog):
