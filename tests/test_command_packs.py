@@ -22,6 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from samsara.command_registry import CommandEntry, CommandMatcher
 from samsara.command_packs import PACKS, get_enabled_packs, default_pack_config
+from samsara.command_scope import MatchContext
 
 
 # ---- Helpers ----------------------------------------------------------------
@@ -264,3 +265,72 @@ class TestCommandEntryPack:
     def test_none_pack_coerces_to_core(self):
         e = CommandEntry('some command', 'builtin', 'hotkey', pack=None)
         assert e.pack == 'core'
+
+
+# =============================================================================
+# Browser pack (265)
+# =============================================================================
+
+class TestBrowserPackScope:
+
+    @pytest.fixture(scope="class")
+    def browser_matcher(self):
+        """The production registry, including the existing tab_finder pack seam."""
+        from tools.dump_command_metadata import build_executor
+        return build_executor()._matcher
+
+    @pytest.mark.parametrize("phrase,canonical", [
+        ("new tab", "new tab"),
+        ("close tab", "close tab"),
+        ("reopen tab", "reopen tab"),
+        ("next tab", "next tab"),
+        ("previous tab", "previous tab"),
+        ("tab four", "tab four"),
+        ("tab nine", "tab nine"),
+        ("find billing", "find text"),
+        ("page zoom in", "page zoom in"),
+        ("page zoom out", "page zoom out"),
+        ("reset zoom", "reset zoom"),
+        ("go back", "go back"),
+        ("go forward", "go forward"),
+        ("refresh page", "refresh page"),
+        ("address bar", "address bar"),
+        ("open downloads", "open downloads"),
+        ("open history", "open history"),
+    ])
+    def test_every_browser_phrase_resolves_only_in_a_browser(self, browser_matcher, phrase, canonical):
+        browser = MatchContext.for_app("brave.exe")
+        other = MatchContext.for_app("notepad.exe")
+        hit, _remainder = browser_matcher.match(phrase, browser)
+        assert hit is not None and hit.phrase == canonical
+        miss, _remainder = browser_matcher.match(phrase, other)
+        assert miss is None
+
+    def test_browser_launch_rows_explicitly_opt_out_of_the_focus_scope(self, browser_matcher):
+        hit, _remainder = browser_matcher.match("open chrome", MatchContext.for_app("notepad.exe"))
+        assert hit is not None and hit.phrase == "open chrome"
+
+    def test_generated_catalog_keeps_browser_scope_and_close_tab_recovery(self):
+        from samsara import command_catalog
+        rows = {row["canonical_id"]: row for row in command_catalog.load_catalog_json() or ()}
+        scope = {"apps": ["brave.exe", "chrome.exe", "firefox.exe", "msedge.exe", "opera.exe", "vivaldi.exe"]}
+        for canonical in ("builtin.new_tab", "builtin.page_zoom_in", "builtin.tab_nine",
+                          "tab_finder.find_text", "tab_finder.tab_number"):
+            assert rows[canonical]["pack"] == "browsers"
+            assert rows[canonical]["scope"] == scope
+        close_tab = rows["builtin.close_tab"]
+        assert close_tab["risk"] == "destructive" and close_tab["undoable"] is True
+        assert "Reopen tab" in close_tab["description"]
+
+    def test_find_and_dynamic_tab_use_native_accelerators_without_text_logs(self, monkeypatch):
+        from plugins.commands import tab_finder
+        calls = []
+        monkeypatch.setattr(tab_finder.pyautogui, "hotkey", lambda *keys: calls.append(("hotkey", keys)))
+        monkeypatch.setattr(tab_finder.pyautogui, "write", lambda text, **kwargs: calls.append(("write", text)))
+
+        assert tab_finder.find_text(None, "private phrase")
+        assert calls == [("hotkey", ("ctrl", "f")), ("write", "private phrase")]
+        calls.clear()
+        assert tab_finder.tab_number(None, "4")
+        assert calls == [("hotkey", ("ctrl", "4"))]
+        assert tab_finder.tab_number(None, "twelve") is False

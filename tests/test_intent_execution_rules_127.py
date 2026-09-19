@@ -259,7 +259,10 @@ def test_the_chain_minimum_is_taken_over_every_member_not_just_aliased_ones():
 def test_an_ordinary_chain_still_runs(resolver):
     """The counter-test. Rule 1 is not allowed to eat legitimate chains --
     both members here are two-word forms the user actually spoke."""
-    res = resolver.resolve("next tab and go ahead")
+    # Browsers are now focused-app commands (265), so test this chain where
+    # its first member is deliberately eligible.
+    from samsara.command_scope import MatchContext
+    res = resolver.resolve("next tab and go ahead", context=MatchContext.for_app("brave.exe"))
     assert res.kind == rs.RESOLVED and res.blocked is None
     assert [p.canonical_id for p in res.chain] == ["builtin.next_tab", "ask_ollama.yes"]
     assert res.alias_words >= rs.MIN_COMMAND_WORDS and res.literal is True

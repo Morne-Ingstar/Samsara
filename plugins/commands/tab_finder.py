@@ -21,6 +21,27 @@ def _clean(text):
     return text.strip().strip(".,!?;:'\"")
 
 
+def _browser_tab_number(value):
+    """Return Chromium's tab shortcut number (1..9), or None.
+
+    Nine deliberately means the last tab, matching Brave, Chromium and
+    Firefox.  Keep this small and explicit: a phrase such as ``tab twelve``
+    must never silently select a different tab.
+    """
+    words = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    }
+    cleaned = _clean(value).lower()
+    if cleaned in words:
+        return words[cleaned]
+    try:
+        number = int(cleaned)
+    except (TypeError, ValueError):
+        return None
+    return number if 1 <= number <= 9 else None
+
+
 def _focus_browser():
     """Find and focus the first Chrome or Edge window.
 
@@ -88,4 +109,32 @@ def find_tab(app, remainder):
     pyautogui.press('enter')
 
     print(f"[TABS] Searched for: {search_term}")
+    return True
+
+
+@command(
+    "find text", aliases=["find"], pack="browsers", risk_class="ui",
+    param_schema={"text": {"type": "text", "required": True}},
+)
+def find_text(app, remainder):
+    """Open the browser find bar and enter the requested page text."""
+    query = _clean(remainder)
+    if not query:
+        return False
+    pyautogui.hotkey("ctrl", "f")
+    pyautogui.write(query, interval=0.02)
+    # Do not log the searched text: it can be private page content.
+    return True
+
+
+@command(
+    "tab number", aliases=["tab"], pack="browsers", risk_class="ui",
+    param_schema={"number": {"type": "int", "required": True, "min": 1, "max": 9}},
+)
+def tab_number(app, remainder):
+    """Switch to browser tab 1 through 8; tab 9 means the last tab."""
+    number = _browser_tab_number(remainder)
+    if number is None:
+        return False
+    pyautogui.hotkey("ctrl", str(number))
     return True

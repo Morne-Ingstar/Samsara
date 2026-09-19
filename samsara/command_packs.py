@@ -45,6 +45,13 @@ PACKS = {
         'description': 'Open Chrome/Firefox/Edge, tab control, zoom, navigation',
         'always_on': False,
         'default_enabled': True,
+        # Browser accelerators must never land in a document or another app.
+        # CommandRegistry applies this to every pack row unless a launch row
+        # explicitly opts out with ``scope: false``.
+        'scope': {'apps': [
+            'brave.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe',
+            'opera.exe', 'vivaldi.exe',
+        ]},
     },
     'media': {
         'label': 'Media & Music',
