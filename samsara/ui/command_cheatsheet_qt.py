@@ -18,11 +18,12 @@ hand-written list.
 """
 
 import json
+import shutil
 from pathlib import Path
 from typing import Callable, List
 
-from PySide6.QtCore import Qt, QTimer, Signal, QPoint
-from PySide6.QtGui import QColor, QCursor, QPalette
+from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect
+from PySide6.QtGui import QColor, QCursor, QPalette, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListView, QListWidget, QListWidgetItem, QLineEdit, QPushButton,
@@ -37,6 +38,37 @@ from samsara.log import get_logger
 from samsara.ui import theme
 
 logger = get_logger(__name__)
+
+
+def _migrate_palette_state(legacy_path: Path, target_path: Path) -> None:
+    """Move the former cwd state file into the per-user app directory once."""
+    marker = target_path.parent / ".command-palette-migrated"
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if marker.exists():
+            return
+        if (legacy_path.resolve() != target_path.resolve()
+                and legacy_path.is_file() and not target_path.exists()):
+            try:
+                legacy_path.replace(target_path)
+            except OSError:
+                # The old and new locations can be on different volumes.
+                if not target_path.exists():
+                    shutil.move(str(legacy_path), str(target_path))
+        marker.write_text("command palette state migration checked\n", encoding="utf-8")
+    except OSError as exc:
+        # A read-only profile must not prevent the guide from opening.
+        logger.warning(f"Command Reference state migration skipped: {exc}")
+
+
+def _palette_state_path(explicit_path: Path | None = None) -> Path:
+    if explicit_path is not None:
+        return Path(explicit_path)
+    from samsara.paths import samsara_home_dir
+
+    target = samsara_home_dir() / "command_palette.json"
+    _migrate_palette_state(Path.cwd() / "command_palette.json", target)
+    return target
 
 #: Shown instead of the list when no catalog can be built.
 UNAVAILABLE_TEXT = (
@@ -302,7 +334,7 @@ class CommandCheatSheetQt:
     ):
         self._execute_cb  = execute_cb  or (lambda p: None)
         self._commands_cb = commands_cb or (lambda: [])
-        self._palette_path = Path(palette_path) if palette_path else Path("command_palette.json")
+        self._palette_path = _palette_state_path(palette_path)
         self._window: "_CheatSheetWindow | None" = None
         self._init_posted = False
         self._visible = False
@@ -668,6 +700,7 @@ class _CheatSheetWindow(QMainWindow):
         self._opacity = 0.85
         self._most_used_expanded = False
         self._geom = {"x": None, "y": None, "w": _DEFAULT_W, "h": _DEFAULT_H}
+        self._has_opened = False
 
         self._load_palette()
 
@@ -685,15 +718,6 @@ class _CheatSheetWindow(QMainWindow):
         # bug, not a reason to shorten the words.
         self.setMinimumHeight(_MIN_H)
         self.setStyleSheet(_ss())
-
-        # Initial position: restore saved coords if present, otherwise
-        # default to the right-centre of the primary screen.
-        # showEvent will clamp to screen on every show() call.
-        if self._geom["x"] is not None:
-            self.move(int(self._geom["x"]), int(self._geom["y"]))
-        else:
-            scr = QApplication.primaryScreen().availableGeometry()
-            self.move(scr.right() - _DEFAULT_W - 40, (scr.height() - _DEFAULT_H) // 2)
 
         # ---- Layout ---------------------------------------------------------
         # 1-px border via outer widget background
@@ -1079,16 +1103,29 @@ class _CheatSheetWindow(QMainWindow):
                 data = json.loads(
                     self._palette_path.read_text(encoding="utf-8")
                 )
+                if not isinstance(data, dict):
+                    return
                 self._pinned          = set(data.get("pinned", []))
                 self._opacity         = max(0.35, float(data.get("opacity", 0.85)))
                 self._active_category = data.get("last_category", "All")
                 self._most_used_expanded = bool(data.get("most_used_expanded", False))
                 g = data.get("geometry", {})
+                if not isinstance(g, dict):
+                    g = {}
+                try:
+                    x, y = int(g["x"]), int(g["y"])
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    x = y = None
+                try:
+                    width = max(1, int(g.get("w", _DEFAULT_W)))
+                    height = max(1, int(g.get("h", _DEFAULT_H)))
+                except (TypeError, ValueError, OverflowError):
+                    width, height = _DEFAULT_W, _DEFAULT_H
                 self._geom = {
-                    "x": g.get("x"),
-                    "y": g.get("y"),
-                    "w": g.get("w", _DEFAULT_W),
-                    "h": g.get("h", _DEFAULT_H),
+                    "x": x,
+                    "y": y,
+                    "w": width,
+                    "h": height,
                 }
         except Exception as e:
             logger.debug(f"_load_palette: {e}")
@@ -1113,22 +1150,104 @@ class _CheatSheetWindow(QMainWindow):
 
     def showEvent(self, e):
         super().showEvent(e)
-        self._clamp_to_screen()
+        initial = not self._has_opened
+        has_saved_position = self._geom["x"] is not None and self._geom["y"] is not None
+        if initial and has_saved_position:
+            self.move(self._geom["x"], self._geom["y"])
+            candidate = QRect(self._geom["x"], self._geom["y"],
+                              self.width(), self.height())
+        elif initial:
+            candidate = QRect()
+        else:
+            candidate = QRect(self.frameGeometry())
 
-    def _clamp_to_screen(self):
+        screen = self._screen_for_visible_rect(candidate)
+        saved_rejected = bool(
+            (initial and has_saved_position and screen is None)
+            or (not initial and screen is None)
+        )
+        if screen is None:
+            screen = self._foreground_screen() or QApplication.primaryScreen()
+            if screen is None:
+                screens = QApplication.screens()
+                screen = screens[0] if screens else None
+            if screen is not None:
+                area = screen.availableGeometry()
+                x = area.right() - self.width() - 40
+                y = area.top() + (area.height() - self.height()) // 2
+                self.move(x, y)
+        if screen is not None:
+            screen = self._clamp_to_screen(screen) or screen
+
+        self._has_opened = True
+        resolved = QApplication.screenAt(self.frameGeometry().center()) or screen
+        screen_name = resolved.name() if resolved is not None else "unknown"
+        logger.info(
+            "[CHEATSHEET] Opened geometry=(%d,%d,%d,%d) screen=%s "
+            "saved_rejected=%s",
+            self.x(), self.y(), self.width(), self.height(), screen_name,
+            saved_rejected,
+        )
+
+    @staticmethod
+    def _screen_for_visible_rect(rect):
+        """Find a current screen containing a substantial part of ``rect``.
+
+        At least one quarter of the frame, with a minimum useful overlap of
+        up to 120x140 DIPs, must remain visible. This rejects stale monitor
+        coordinates while accepting a window that only needs edge-clamping.
+        """
+        if rect.isEmpty():
+            return None
+        minimum_width = max(1, min(120, int(rect.width() * 0.30)))
+        minimum_height = max(1, min(140, int(rect.height() * 0.30)))
+        minimum_area = rect.width() * rect.height() * 0.25
+        best_screen, best_area = None, 0
+        for candidate in QApplication.screens():
+            visible = rect.intersected(candidate.availableGeometry())
+            area = visible.width() * visible.height()
+            if (visible.width() >= minimum_width
+                    and visible.height() >= minimum_height
+                    and area >= minimum_area and area > best_area):
+                best_screen, best_area = candidate, area
+        return best_screen
+
+    def _foreground_screen(self):
+        """Resolve the screen containing the Windows foreground window."""
+        try:
+            import sys
+            if sys.platform != "win32":
+                return None
+            import ctypes
+            hwnd = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+            if not hwnd:
+                return None
+            # This existing mapper handles Windows DPI coordinate conversion.
+            from samsara.ui.numbers_overlay_qt import screen_for_hwnd
+            return screen_for_hwnd(hwnd)
+        except Exception as exc:
+            logger.debug(f"Command Reference foreground-screen lookup failed: {exc}")
+            return None
+
+    def _clamp_to_screen(self, screen=None):
         """Move the window back inside its screen if any part is off-screen.
 
         Frameless windows bypass OS edge-clamping, so this must be called
         explicitly on every show() to guard against saved off-screen coords.
         """
-        from PySide6.QtGui import QGuiApplication
+        screen = screen or (
+            QGuiApplication.screenAt(self.frameGeometry().center())
+            or QApplication.primaryScreen()
+        )
+        if screen is None:
+            return None
         w, h = self.width(), self.height()
-        scr = (QGuiApplication.screenAt(self.frameGeometry().topLeft()) or
-               QApplication.primaryScreen()).availableGeometry()
+        scr = screen.availableGeometry()
         x = max(scr.left(), min(self.x(), scr.right()  - w))
         y = max(scr.top(),  min(self.y(), scr.bottom() - h))
         if x != self.x() or y != self.y():
             self.move(x, y)
+        return screen
 
     def closeEvent(self, e):
         self._save_palette()

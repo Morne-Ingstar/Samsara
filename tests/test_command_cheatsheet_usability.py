@@ -2,11 +2,118 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 from PySide6.QtCore import Qt
 
 from samsara.ui import command_cheatsheet_qt as sheet
+
+
+def test_default_palette_state_lives_under_samsara_home(tmp_path, monkeypatch):
+    cwd = tmp_path / "working-directory"
+    home = tmp_path / "profile"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(home))
+
+    assert sheet._palette_state_path() == home / "command_palette.json"
+    assert not (cwd / "command_palette.json").exists()
+
+
+def test_legacy_cwd_palette_is_migrated_once(tmp_path, monkeypatch):
+    cwd = tmp_path / "working-directory"
+    home = tmp_path / "profile"
+    cwd.mkdir()
+    legacy = cwd / "command_palette.json"
+    legacy.write_text('{"opacity": 0.7}', encoding="utf-8")
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(home))
+
+    target = sheet._palette_state_path()
+    assert target.read_text(encoding="utf-8") == '{"opacity": 0.7}'
+    assert not legacy.exists()
+
+    legacy.write_text('{"opacity": 0.4}', encoding="utf-8")
+    assert sheet._palette_state_path() == target
+    assert legacy.exists()  # the migration marker prevents stale state returning
+    assert json.loads(target.read_text(encoding="utf-8"))["opacity"] == 0.7
+
+
+def test_palette_path_resolution_does_not_fail_when_profile_is_unwritable(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path / "read-only-profile"))
+
+    def deny_mkdir(*_args, **_kwargs):
+        raise PermissionError("read-only profile")
+
+    monkeypatch.setattr(sheet.Path, "mkdir", deny_mkdir)
+    assert sheet._palette_state_path() == tmp_path / "read-only-profile" / "command_palette.json"
+
+
+def _make_position_window(qapp, path):
+    return sheet._CheatSheetWindow(lambda _phrase: None, lambda: [], path)
+
+
+def test_saved_geometry_on_removed_screen_uses_foreground_screen_default(
+    qapp, tmp_path, monkeypatch, caplog
+):
+    primary = qapp.primaryScreen()
+    area = primary.availableGeometry()
+    path = tmp_path / "palette.json"
+    path.write_text(json.dumps({"geometry": {"x": 100000, "y": -100000}}),
+                    encoding="utf-8")
+    monkeypatch.setattr(
+        sheet._CheatSheetWindow, "_foreground_screen", lambda _self: primary
+    )
+
+    with caplog.at_level(logging.INFO, logger=sheet.logger.name):
+        win = _make_position_window(qapp, path)
+        win.show()
+        qapp.processEvents()
+
+    assert area.contains(win.frameGeometry().center())
+    assert win.x() == area.right() - win.width() - 40
+    messages = [record.getMessage() for record in caplog.records]
+    opened = next(message for message in messages if "[CHEATSHEET] Opened" in message)
+    assert "geometry=(" in opened and f"screen={primary.name()}" in opened
+    assert "saved_rejected=True" in opened
+    win.deleteLater()
+
+
+def test_saved_geometry_on_present_screen_is_honoured(qapp, tmp_path):
+    area = qapp.primaryScreen().availableGeometry()
+    x, y = area.left() + 40, area.top() + 40
+    path = tmp_path / "palette.json"
+    path.write_text(json.dumps({"geometry": {
+        "x": x, "y": y, "w": sheet._DEFAULT_W, "h": sheet._DEFAULT_H,
+    }}), encoding="utf-8")
+
+    win = _make_position_window(qapp, path)
+    win.show()
+    qapp.processEvents()
+    assert win.x() == x and win.y() == y
+    win.deleteLater()
+
+
+@pytest.mark.parametrize("contents", [None, "not-json"], ids=["missing", "corrupt"])
+def test_missing_or_corrupt_palette_uses_defaults_without_exception(
+    contents, qapp, tmp_path
+):
+    path = tmp_path / "palette.json"
+    if contents is not None:
+        path.write_text(contents, encoding="utf-8")
+
+    win = _make_position_window(qapp, path)
+    assert win._geom == {
+        "x": None, "y": None, "w": sheet._DEFAULT_W, "h": sheet._DEFAULT_H,
+    }
+    assert win._opacity == 0.85
+    win.show()
+    qapp.processEvents()
+    assert win.isVisible()
+    win.deleteLater()
 
 
 @pytest.fixture(scope="module")
