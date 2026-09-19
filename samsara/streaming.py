@@ -1913,8 +1913,12 @@ class StreamingSession:
         self.cancel_event = threading.Event()
         self._state = self.STATE_RECORDING
         self._state_lock = threading.Lock()
-        self._direct_paste = bool(
-            app.config.get('streaming_direct_paste', False))
+        self._parking_enabled = bool((app.config.get('ui', {}) or {}).get(
+            'live_surface', {}).get('enabled', False))
+        # Surface-enabled holds must stay retractable until their final
+        # delivery decision.  Direct partial paste defeats Pause.
+        self._direct_paste = (not self._parking_enabled and bool(
+            app.config.get('streaming_direct_paste', False)))
         # Whether the last direct-paste operation actually pasted
         # something. Drives the Ctrl+Z undo before each new paste so we
         # replace only our most recent partial, never pre-existing
@@ -2054,6 +2058,48 @@ class StreamingSession:
                                       StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
             return
+
+        if self._parking_enabled:
+            original = self._target_hwnd
+            current = None
+            if sys.platform == "win32":
+                try:
+                    current = _user32.GetForegroundWindow()
+                except Exception:
+                    current = None
+            focus_changed = original is None or current != original
+            literal_rule = getattr(self.app, "_verbatim_rule", None)
+            literal = bool(literal_rule and literal_rule())
+            # Without explicit silence-boundary proof, retain the complete
+            # final for review.  Do not strip a phrase from prose and paste
+            # the remainder on a guess.
+            voice_pause = (not literal and text.strip().lower().endswith("pause draft"))
+            requested = bool(getattr(self.app, "_hold_park_requested", False))
+            manager = getattr(self.app, "_session_mode_manager", None)
+            pending = bool(getattr(getattr(manager, "draft_document", None), "text", ""))
+            if requested or pending or focus_changed or voice_pause:
+                try:
+                    manager = self.app._ensure_session_mode_manager()
+                    if focus_changed or voice_pause:
+                        manager.pause_draft(source=(
+                            "focus changed" if focus_changed else "voice review"))
+                    manager.stage_parked_hold(text, source=(
+                        "pause" if requested else "focus changed" if focus_changed else
+                        "voice review" if voice_pause else "append"))
+                    controller = getattr(self.app, "live_surface", None)
+                    if controller is not None:
+                        controller.sync_draft(manager)
+                    self._overlay.update_text(text.rstrip(), StreamingOverlayQt.STATE_DONE)
+                    self._overlay.flash_done_and_fade(self._mark_done)
+                    return
+                except Exception as exc:
+                    # Fail closed: a staging error must never turn a parked
+                    # result into an external paste.
+                    logger.exception("[STREAM] parked final could not be staged: %s", exc)
+                    self.cancel_event.set()
+                    self._overlay.close()
+                    self._notify_finished()
+                    return
 
         # Update overlay to show final text.
         self._overlay.update_text(text.rstrip(),

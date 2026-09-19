@@ -239,6 +239,21 @@ class HotkeyCluster:
                 logger.debug('[SESSION] Local commit error earcon failed: %s', sound_exc)
             return None
 
+    def _live_surface_enabled(self) -> bool:
+        return bool((self.config.get('ui', {}) or {}).get(
+            'live_surface', {}).get('enabled', False))
+
+    def _pause_active_hold(self) -> bool:
+        """Park an owned hold capture; this is inert on the default path."""
+        if (not HotkeyCluster._live_surface_enabled(self)
+                or self.config.get('mode', 'hold') != 'hold'
+                or not getattr(self, 'recording', False)
+                or getattr(self, 'command_mode_recording', False)
+                or getattr(self, 'ava_mode_recording', False)):
+            return False
+        pause = getattr(self, 'pause_hold_capture', None)
+        return bool(pause and pause())
+
     def on_key_press(self, key):
         """Handle key press - uses state-based checking for reliable simultaneous key detection"""
         key_name = self.get_key_name(key)
@@ -275,6 +290,15 @@ class HotkeyCluster:
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
         memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
+        pause_hotkey = ((self.config.get('ui', {}) or {}).get(
+            'live_surface', {}).get('pause_hotkey', 'pause'))
+
+        if (HotkeyCluster._live_surface_enabled(self) and pause_hotkey
+                and self.check_hotkey_state(pause_hotkey)
+                and not getattr(self, '_pause_hotkey_down', False)):
+            self._pause_hotkey_down = True
+            if self._pause_active_hold():
+                return
 
         if (self.check_hotkey_state(memo_hotkey)
                 and not self.hotkey_pressed and not self.recording):
@@ -522,6 +546,10 @@ class HotkeyCluster:
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
+        pause_hotkey = ((self.config.get('ui', {}) or {}).get(
+            'live_surface', {}).get('pause_hotkey', 'pause'))
+        if pause_hotkey and not self.check_hotkey_state(pause_hotkey):
+            self._pause_hotkey_down = False
 
         # Reset hotkey flag when no hotkey combo is currently pressed
         # Use state-based checking for reliable detection. The MAIN combo
@@ -546,6 +574,12 @@ class HotkeyCluster:
         # whatever other combos are held.
         if getattr(self, '_hold_down_key', False) and not main_pressed:
             self._hold_down_key = False
+
+        if (getattr(self, '_consume_parked_hold_keyup', False)
+                and not main_pressed and mode == 'hold'):
+            self._consume_parked_hold_keyup = False
+            self.hotkey_pressed = False
+            return
 
         if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed:
             if self.hotkey_pressed:
@@ -1003,6 +1037,10 @@ class HotkeyCluster:
             self._mouse_guard("release ignored: no press was seen")
             return
         self._hold_down_mouse = False
+        if getattr(self, '_consume_parked_hold_keyup', False) and mode == 'hold':
+            self._consume_parked_hold_keyup = False
+            self._mouse_guard("release consumed by parked hold")
+            return
         if self._main_hotkey_source != 'mouse':
             self._mouse_guard("release: the keyboard owns the main hotkey, nothing to do")
             return

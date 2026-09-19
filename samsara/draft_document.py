@@ -123,6 +123,15 @@ class DraftDocument:
         self.edited = any(t.kind == "edit" for t in self._transactions)
         return True
 
+    @property
+    def newest_operation(self) -> str:
+        """The local operation that a caller is about to undo.
+
+        The parking coordinator uses this to keep its capture metadata in
+        step with the document.  It deliberately exposes no dictated text.
+        """
+        return self._transactions[-1].kind if self._transactions else ""
+
     def mark_manual_commit(self) -> None:
         if not self.manual_commit:
             self.manual_commit = True

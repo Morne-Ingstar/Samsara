@@ -130,6 +130,13 @@ class LiveSurfaceController:
             clear("live surface")
 
     def _pause(self) -> None:
+        pause_hold = getattr(self.app, "pause_hold_capture", None)
+        if callable(pause_hold) and pause_hold(source="live surface", consume_keyup=False):
+            return
+        manager = self._manager()
+        pause_draft = getattr(manager, "pause_draft", None)
+        if callable(pause_draft):
+            pause_draft(source="live surface")
         stop = getattr(self.app, "stop_continuous_mode", None)
         if callable(stop) and getattr(self.app, "continuous_active", False):
             stop()

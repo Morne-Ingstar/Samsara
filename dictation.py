@@ -5090,6 +5090,14 @@ class DictationApp:
         from samsara import hotkeys
         return hotkeys.HotkeyCluster._commit_pending_hands_free_dictation(self)
 
+    def _live_surface_enabled(self) -> bool:
+        from samsara import hotkeys
+        return hotkeys.HotkeyCluster._live_surface_enabled(self)
+
+    def _pause_active_hold(self) -> bool:
+        from samsara import hotkeys
+        return hotkeys.HotkeyCluster._pause_active_hold(self)
+
     def on_key_press(self, key):
         # main_hotkey = getattr(self, '_main_hotkey_override', None) or self.config['hotkey']
         from samsara import hotkeys
@@ -5649,6 +5657,8 @@ class DictationApp:
             # Queue 80: "scratch everything" asks out loud before discarding.
             speak_fn=self._speak_session_notice,
             fragment_clear_gap_s=__import__('samsara.speech_pace', fromlist=['clear_gap_s']).clear_gap_s(self.config),
+            live_surface_enabled=bool((self.config.get('ui', {}) or {}).get(
+                'live_surface', {}).get('enabled', False)),
         )
         return self._session_mode_manager
 
@@ -11041,12 +11051,67 @@ class DictationApp:
         enabled-check on the way out."""
         audio_ducking.restore()
 
+    def _live_surface_hold_parking_enabled(self) -> bool:
+        return bool((self.config.get('ui', {}) or {}).get(
+            'live_surface', {}).get('enabled', False))
+
+    def _park_hold_feedback(self, message: str, sound: str = 'error') -> None:
+        """Best-effort feedback; parking must never depend on Qt/audio."""
+        try:
+            self.play_sound(sound)
+        except Exception:
+            pass
+        try:
+            self._show_outcome_chip(message, 'warning')
+        except Exception:
+            pass
+
+    def pause_hold_capture(self, *, source: str = 'pause key',
+                           consume_keyup: bool = True) -> bool:
+        """Latch and finalize the current opt-in hold without delivery.
+
+        The latch is set before the stop worker runs.  This ordering is the
+        ownership guarantee: a release or final callback cannot race ahead
+        and paste the capture that the user just parked.
+        """
+        if (not self._live_surface_hold_parking_enabled()
+                or self.config.get('mode', 'hold') != 'hold'
+                or not self.recording
+                or getattr(self, 'command_mode_recording', False)
+                or getattr(self, 'ava_mode_recording', False)):
+            return False
+        if getattr(self, '_hold_park_finalizing', False):
+            self._park_hold_feedback('Finishing the parked hold')
+            return False
+        manager = self._ensure_session_mode_manager()
+        manager.pause_draft(source=source)
+        self._hold_park_requested = True
+        self._hold_park_finalizing = True
+        self._consume_parked_hold_keyup = bool(consume_keyup)
+        self._stop_in_flight = True
+
+        def _stop_for_park():
+            try:
+                self.stop_recording()
+            finally:
+                # The decoder may still be running.  _hold_park_finalizing is
+                # deliberately retained until its terminal callback, while
+                # this flag only protects the synchronous stop lifecycle.
+                self._stop_in_flight = False
+
+        thread_registry.spawn('dictation.park_hold', _stop_for_park, daemon=True)
+        return True
+
     def start_recording(self, streaming=None, play_earcon=True):
         """Serialize capture startup with release, cancellation and shutdown."""
         with self._hold_capture_lifecycle_lock:
             if (not self._running or self.recording
                     or getattr(self, '_streaming_session', None) is not None
                     or self._stop_in_flight or not self.model_loaded):
+                return
+            if (self._live_surface_hold_parking_enabled()
+                    and getattr(self, '_hold_park_finalizing', False)):
+                self._park_hold_feedback('Still finishing the last hold')
                 return
             started = False
             try:
@@ -11340,6 +11405,17 @@ class DictationApp:
         )
 
         ownership = self._take_recording_ownership()
+        park_hold_requested = bool(
+            self._live_surface_hold_parking_enabled()
+            and getattr(self, '_hold_park_requested', False)
+        )
+        live_hold_finalizing = bool(
+            self._live_surface_hold_parking_enabled()
+            and self.config.get('mode', 'hold') == 'hold'
+            and not ownership.is_command and not ownership.is_ava
+        )
+        if live_hold_finalizing:
+            self._hold_park_finalizing = True
         adaptive_release_tail = bool(
             getattr(self, '_ace_dictation_active', False)
             and self.config.get('mode', 'hold') == 'hold'
@@ -11399,6 +11475,8 @@ class DictationApp:
                     from samsara.session_modes import CHIP_CROSS
                     # Was a bare beep; the reason is now on screen.
                     self._show_outcome_chip(f"{CHIP_CROSS} no audio", "error")
+                if live_hold_finalizing:
+                    self._hold_park_finalizing = False
                 return
         else:
             # Streaming path (CapsLock): ACE-04B consumer accumulator — no stream to close.
@@ -11786,6 +11864,41 @@ class DictationApp:
                         )
                         return
 
+                    # A pause latch, an older parked document, or focus drift
+                    # turns this final into a local segment.  This check is
+                    # immediately before the former auto-delivery branch so
+                    # a paused hold has no path that can paste first.
+                    target_changed = False
+                    if self._live_surface_hold_parking_enabled():
+                        original_hwnd = getattr(self, '_hold_capture_target_hwnd', None)
+                        target_changed = (
+                            original_hwnd is None or _get_foreground_hwnd() != original_hwnd
+                        )
+                    # We do not have a continuous preview decoder on this
+                    # CPU path.  A terminal phrase is therefore never
+                    # stripped from a sentence: it is retained whole for
+                    # review, which is the spec's safe ambiguous-boundary
+                    # outcome.  Verbatim/literal mode bypasses this path.
+                    voice_pause_ambiguous = (
+                        self._live_surface_hold_parking_enabled()
+                        and not _verbatim_active
+                        and text.strip().lower().endswith('pause draft')
+                    )
+                    if park_hold_requested or target_changed or voice_pause_ambiguous:
+                        manager = self._ensure_session_mode_manager()
+                        if target_changed or voice_pause_ambiguous:
+                            manager.pause_draft(source=(
+                                'focus changed' if target_changed else 'voice review'))
+                        manager.stage_parked_hold(
+                            text, source=(
+                                'pause' if park_hold_requested else
+                                'focus changed' if target_changed else 'voice review'))
+                        controller = getattr(self, 'live_surface', None)
+                        if controller is not None:
+                            controller.sync_draft(manager)
+                        self._park_hold_feedback('Draft parked', 'success')
+                        return
+
                     logger.info(f"[OK] {text}")
                     # Queue 50: this success sound used to play before the
                     # paste below, even into an elevated window that drops
@@ -11867,7 +11980,20 @@ class DictationApp:
                         logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
 
                     if self.config['auto_paste']:
-                        self._paste_preserving_clipboard(text)
+                        delivered = self._paste_preserving_clipboard(text)
+                        if (delivered is False
+                                and self._live_surface_hold_parking_enabled()):
+                            # The injector explicitly reported failure.  Keep
+                            # the authoritative final locally rather than
+                            # relying on a blind retry or a clipboard-only
+                            # fallback that can be overwritten.
+                            manager = self._ensure_session_mode_manager()
+                            manager.pause_draft(source='failed delivery')
+                            manager.stage_parked_hold(text, source='failed delivery')
+                            controller = getattr(self, 'live_surface', None)
+                            if controller is not None:
+                                controller.sync_draft(manager)
+                            self._park_hold_feedback('Delivery failed; draft kept')
 
                     if hasattr(self, 'hints'):
                         self.hints.maybe_show(
@@ -11963,6 +12089,11 @@ class DictationApp:
                     winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
                 except Exception as _snd_err:
                     logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
+            finally:
+                if park_hold_requested:
+                    self._hold_park_requested = False
+                if live_hold_finalizing:
+                    self._hold_park_finalizing = False
 
         def _transcribe_with_chip_watchdog():
             try:
@@ -12024,6 +12155,8 @@ class DictationApp:
         if getattr(self, '_capslock_streaming_session', None) is session:
             self._capslock_streaming_session = None
         self._ace_streaming_active = False
+        self._hold_park_requested = False
+        self._hold_park_finalizing = False
         if not self.recording:
             self._hotkey_recording = False
 
@@ -12098,6 +12231,15 @@ class DictationApp:
         """Start CameraService + GestureLoop. Safe to call from any thread."""
         if self._gesture_loop is not None:
             return
+
+        if self._live_surface_hold_parking_enabled():
+            # Capture the automatic-delivery destination at start. Explicit
+            # Commit deliberately does not use this value; it selects the
+            # app focused when the user asks to send.
+            self._hold_capture_target_hwnd = _get_foreground_hwnd()
+            self._hold_capture_target_process = _get_foreground_exe_lower()
+            manager = self._ensure_session_mode_manager()
+            self._hold_park_requested = bool(manager.draft_document.text)
         try:
             from samsara.vision.camera_service import CameraService
             from samsara.vision.gesture_loop import GestureLoop
