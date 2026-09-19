@@ -95,8 +95,8 @@ SELECTED_OVER_BG1 = "#" + "".join(
 PAIRS = [
     # --- Command reference -------------------------------------------------
     ("cheatsheet: window title", theme.TEXT_PRIMARY, theme.BG1, theme.TYPE_EMPHASIS),
-    ("cheatsheet: drag hint / opacity", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_MIN),
-    ("cheatsheet: close x (hover)", theme.ERROR, theme.BG1, theme.TYPE_MIN),
+    ("cheatsheet: opacity", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_BODY),
+    ("cheatsheet: close button (hover)", theme.ERROR, theme.BG2, theme.TYPE_TITLE),
     ("cheatsheet: filter text", theme.TEXT_PRIMARY, theme.BG2, theme.TYPE_BODY),
     ("cheatsheet: filter placeholder", theme.TEXT_SECONDARY, theme.BG2, theme.TYPE_BODY),
     ("cheatsheet: list row", theme.TEXT_PRIMARY, theme.BG1, theme.TYPE_BODY),
@@ -108,7 +108,6 @@ PAIRS = [
     ("cheatsheet: static row count", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_MIN),
     ("cheatsheet: pin star, pinned", theme.ACCENT, theme.BG1, theme.TYPE_BODY),
     ("cheatsheet: pin star, unpinned", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_BODY),
-    ("cheatsheet: category label", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_BODY),
     ("cheatsheet: live-here-only box", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_BODY),
     ("cheatsheet: hidden count", theme.TEXT_SECONDARY, theme.BG1, theme.TYPE_MIN),
     ("cheatsheet: combo text", theme.TEXT_PRIMARY, theme.BG2, theme.TYPE_BODY),
@@ -250,7 +249,9 @@ class TestColourComesFromTheme:
     def test_the_selected_fill_is_tinted_from_the_accent(self):
         """Not a flat dim-cyan hex: if ACCENT moves, the selection moves with
         it. Same alpha history_view.py uses, so both windows agree."""
-        assert getattr(cs, "_SELECTED_BG", None) == theme._rgba(theme.ACCENT, SELECTED_ALPHA)
+        # This must be evaluated when the window is styled, not frozen at
+        # import, because the app can switch between dark and light palettes.
+        assert cs._selected_bg() == theme._rgba(theme.ACCENT, SELECTED_ALPHA)
         assert getattr(cs, "_SELECTED_ALPHA", None) == SELECTED_ALPHA
 
 
@@ -274,15 +275,15 @@ class TestTypeScale:
     def test_the_rows_the_owner_reads_are_at_the_body_floor(self):
         """"Some of them are too small": every string in this window was
         TYPE_MIN (14 px, the caption floor). The list rows, the filter, the
-        static rows and the controls are reading text and are TYPE_BODY now;
-        only chrome and metadata stay at TYPE_MIN."""
+        static rows and controls are reading text and are TYPE_BODY now;
+        only counts and other metadata stay at TYPE_MIN."""
         code = (REPO / WINDOWS[0]).read_text(encoding="utf-8")
         body_sites = [
             "QListWidget {{",                    # the command list itself
             "QLineEdit {{",                      # the filter the user types in
             "phrase_lbl.setStyleSheet",          # Most Used / Pinned rows
-            "cat_lbl.setStyleSheet",             # "Category"
             "self._live_only.setStyleSheet",     # "Live here only"
+            "self._opacity_label.setStyleSheet", # "Opacity"
         ]
         for marker in body_sites:
             index = code.index(marker)
