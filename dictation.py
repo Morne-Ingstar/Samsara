@@ -1998,7 +1998,7 @@ class DictationApp:
         self.live_surface = None
 
         def _init_indicator():
-            if (self.config.get('ui', {}) or {}).get('live_surface', {}).get('enabled', True):
+            if (self.config.get('ui', {}) or {}).get('live_surface', {}).get('enabled', False):
                 from samsara.live_surface.controller import (
                     LiveSurfaceController, LiveSurfaceIndicatorAdapter,
                 )
@@ -7923,7 +7923,7 @@ class DictationApp:
         """
         controller = getattr(self, 'live_surface', None)
         if (controller is not None and (self.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', True)):
+                'live_surface', {}).get('enabled', False)):
             if mode is SessionMode.DICTATE:
                 # This creates the existing preview *session* as a headless
                 # source of GPU partials; streaming.py redirects its display
@@ -7964,7 +7964,7 @@ class DictationApp:
                 logger.debug(f'[DICTATE-PREVIEW] Stop failed: {e}')
         controller = getattr(self, 'live_surface', None)
         if (controller is not None and (self.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', True)):
+                'live_surface', {}).get('enabled', False)):
             controller.stop_capture()
 
     # ── Hands-free audio ducking (2026-07-24) ──────────────────────────────

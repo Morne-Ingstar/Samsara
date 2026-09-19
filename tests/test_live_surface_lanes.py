@@ -7,6 +7,33 @@ from samsara.live_surface.model import CaptureState, Lane
 from samsara.live_surface.partials import CapturePartials
 
 
+def test_live_surface_schema_default_is_opt_in():
+    from samsara.config_schema import SETTINGS_SCHEMA
+
+    assert SETTINGS_SCHEMA["ui.live_surface.enabled"]["default"] is False
+
+
+@pytest.mark.parametrize(("config", "expected"), [
+    ({}, False),
+    ({"ui": {"live_surface": {"enabled": True}}}, True),
+])
+def test_advanced_live_surface_setting_reflects_opt_in_state(qapp, config, expected):
+    from samsara.ui.settings_qt import _SettingsWindow
+    from tests._theme_stub_app import StubApp
+
+    app = StubApp(config)
+    window = _SettingsWindow(app)
+    try:
+        checkbox = window._widgets["adv_live_surface_enabled"]
+        assert checkbox.isChecked() is expected
+        assert checkbox.text() == (
+            "Use the new live surface (experimental — incomplete; the old indicator "
+            "and preview are the default)"
+        )
+    finally:
+        window.deleteLater()
+
+
 class _Widget:
     instances = []
     def __init__(self, controller):
@@ -61,11 +88,15 @@ def test_dictate_switch_uses_windowless_preview_only_when_live_surface_enabled(m
     monkeypatch.setattr(streaming, "StreamingOverlayQt", LegacyOverlay)
 
     class Controller:
-        def begin_capture(self, _lane): return 7
+        def __init__(self): self.begun = []
+        def begin_capture(self, lane):
+            self.begun.append(lane)
+            return 7
         def start(self): pass
 
+    enabled_controller = Controller()
     enabled = SimpleNamespace(
-        live_surface=Controller(),
+        live_surface=enabled_controller,
         config={"ui": {"live_surface": {"enabled": True}}},
     )
     enabled_session = streaming.DictatePreviewSession(enabled)
@@ -78,4 +109,36 @@ def test_dictate_switch_uses_windowless_preview_only_when_live_surface_enabled(m
     )
     disabled_session = streaming.DictatePreviewSession(disabled)
     assert isinstance(disabled_session._overlay, LegacyOverlay)
+    assert len(constructed) == 1
+
+    absent_controller = Controller()
+    absent = SimpleNamespace(live_surface=absent_controller, config={})
+    absent_session = streaming.DictatePreviewSession(absent)
+    assert isinstance(absent_session._overlay, LegacyOverlay)
+    assert absent_controller.begun == []
+    assert len(constructed) == 2
+
+
+def test_hold_stream_uses_legacy_overlay_when_live_surface_flag_is_absent(monkeypatch):
+    import samsara.streaming as streaming
+
+    constructed = []
+
+    class LegacyOverlay:
+        def __init__(self, **_kwargs):
+            constructed.append(self)
+
+    class Controller:
+        def __init__(self): self.begun = []
+        def begin_capture(self, lane):
+            self.begun.append(lane)
+            return 7
+
+    monkeypatch.setattr(streaming, "StreamingOverlayQt", LegacyOverlay)
+    controller = Controller()
+    app = SimpleNamespace(config={}, live_surface=controller, device_type="cpu")
+    session = streaming.StreamingSession(app)
+
+    assert isinstance(session._overlay, LegacyOverlay)
+    assert controller.begun == []
     assert len(constructed) == 1

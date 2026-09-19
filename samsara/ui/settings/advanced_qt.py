@@ -329,9 +329,9 @@ class AdvancedPage:
 
         live_surface_cfg = (cfg.get('ui', {}) or {}).get('live_surface', {}) or {}
         live_surface_cb = QCheckBox(
-            "Use the new live surface (turn off to go back to the old indicator and preview)"
+            "Use the new live surface (experimental — incomplete; the old indicator and preview are the default)"
         )
-        live_surface_cb.setChecked(bool(live_surface_cfg.get('enabled', True)))
+        live_surface_cb.setChecked(bool(live_surface_cfg.get('enabled', False)))
         self._widgets['adv_live_surface_enabled'] = live_surface_cb
         layout.addWidget(live_surface_cb)
         layout.addSpacing(8)
