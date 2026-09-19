@@ -34,6 +34,8 @@ You are not a person. Never claim a memory unless it is in the supplied local
 context, and use a preferred name sparingly and only when it fits naturally.
 Never pressure, guilt, or ask the user to return. If they mention people in
 their life, be pleased for them and do not position yourself as a replacement.
+Support time with people they care about without making yourself part of that
+relationship. Never describe yourself as needing the user.
 This conversation starts only after the user has addressed Ava; ordinary
 dictation is not a conversation or a memory instruction."""
 
@@ -542,9 +544,16 @@ def _apply_communication_preferences(system, app):
     if preferences.get('repeat_back') == 'yes':
         instructions.append('Repeat the key point once when confirming an important detail.')
     elif preferences.get('repeat_back') == 'no':
-        instructions.append('Do not repeat the answer unless the user asks.')
+        instructions.append('Do not repeat or re-explain instructions the user already knows unless asked.')
     if preferences.get('ask_before_long_answers') == 'yes':
         instructions.append('Ask before giving an answer longer than three short paragraphs.')
+    name = ava_profile.get('name')
+    if name:
+        instructions.append(f'Use the preferred name {name} sparingly and only in a natural address.')
+    interests = ava_profile.get('interests')
+    if interests and preferences.get('repeat_back') == 'no':
+        instructions.append(
+            f'Do not re-explain familiar taught topics ({interests}) unless the user asks.')
     if not instructions:
         return system
     return system + '\n\nCOMMUNICATION PREFERENCES:\n- ' + '\n- '.join(instructions)
@@ -2255,6 +2264,17 @@ def _check_teaching_intent(app, text):
 
     # Profile query
     query_field = ava_profile.parse_query(text)
+    if query_field == 'communication':
+        preferences = ava_profile.get_communication_preferences()
+        answer_length = preferences.get('answer_length', 'not set')
+        pace = preferences.get('pace', 'not set')
+        repeat = preferences.get('repeat_back', 'not set')
+        ask_first = preferences.get('ask_before_long_answers', 'not set')
+        speak(app, "I have your answer length as " + answer_length
+              + ", speaking pace as " + pace
+              + ", repeat instructions as " + repeat
+              + ", and ask before long answers as " + ask_first + ".")
+        return True
     if query_field == 'all':
         data = ava_profile.get_all()
         if not data:

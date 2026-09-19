@@ -4,6 +4,8 @@ import tempfile
 import types
 from pathlib import Path
 
+import pytest
+
 
 # The profile modules resolve their paths while importing. Isolate this entire
 # test process before importing them; never read or write the owner's profile.
@@ -140,9 +142,79 @@ def test_short_answer_preference_changes_the_system_instructions(tmp_path, monke
     assert "one short sentence" in prompt
 
 
+@pytest.mark.parametrize(("utterance", "field", "value", "forget"), [
+    ("keep things short", "answer_length", "short", "forget my answer length preference"),
+    ("talk slowly", "pace", "slow", "forget my pace preference"),
+    ("don't repeat instructions I know", "repeat_back", "no", "forget my repetition preference"),
+    ("I'm into soundtracks", "interests", "soundtracks", "forget my interests"),
+])
+def test_adaptation_preferences_are_taught_receipted_and_forgotten(
+        tmp_path, monkeypatch, utterance, field, value, forget):
+    _reset_profile(tmp_path, monkeypatch)
+    app = _app()
+
+    assert ask_ollama._check_teaching_intent(app, utterance) is True
+    assert ava_profile.get(field) == value
+    assert value in app.audio_coordinator.lines[-1]
+    if field == "interests":
+        assert ask_ollama._check_teaching_intent(app, "what do you remember about me") is True
+        assert "interests: soundtracks" in app.audio_coordinator.lines[-1].lower()
+    else:
+        assert ask_ollama._check_teaching_intent(app, "how do you talk to me") is True
+        assert value in app.audio_coordinator.lines[-1].lower()
+    assert ask_ollama._check_teaching_intent(app, forget) is True
+    assert ava_profile.get(field) is None
+    assert "removed" in app.audio_coordinator.lines[-1].lower()
+
+
+def test_how_do_you_talk_to_me_reads_back_set_and_not_set_preferences(tmp_path, monkeypatch):
+    _reset_profile(tmp_path, monkeypatch)
+    app = _app()
+    assert ava_profile.set_field("answer_length", "detailed")[0] == "set"
+
+    assert ask_ollama._check_teaching_intent(app, "how do you talk to me") is True
+
+    answer = app.audio_coordinator.lines[-1].lower()
+    assert "answer length as detailed" in answer
+    assert answer.count("not set") == 3
+
+
+def test_explicit_name_interest_and_repetition_preferences_change_local_prompt(tmp_path, monkeypatch):
+    _reset_profile(tmp_path, monkeypatch)
+    assert ava_profile.set_field("name", "Matt")[0] == "set"
+    assert ava_profile.set_field("interests", "soundtracks")[0] == "set"
+    assert ava_profile.set_field("repeat_back", "no")[0] == "set"
+
+    prompt = ask_ollama._apply_communication_preferences("BASE PROMPT", _app())
+
+    assert "preferred name Matt" in prompt
+    assert "soundtracks" in prompt
+    assert "Do not repeat or re-explain" in prompt
+
+
+def test_untaught_preferences_do_not_change_the_prompt(tmp_path, monkeypatch):
+    _reset_profile(tmp_path, monkeypatch)
+
+    assert ask_ollama._apply_communication_preferences("BASE PROMPT", _app()) == "BASE PROMPT"
+
+
+def test_failed_adaptation_preference_write_speaks_failure_and_rolls_back(tmp_path, monkeypatch):
+    _reset_profile(tmp_path, monkeypatch)
+    app = _app()
+    monkeypatch.setattr(ava_profile, "_save_locked", lambda: False)
+    monkeypatch.setattr(ava_profile, "_last_save_error", "the file is locked")
+
+    assert ask_ollama._check_teaching_intent(app, "don't repeat instructions I know") is True
+
+    assert ava_profile.get("repeat_back") is None
+    assert app.audio_coordinator.lines == ["I couldn't save that — the file is locked."]
+
+
 def test_cloud_provider_gets_no_profile_or_alias_context(tmp_path, monkeypatch):
     _reset_profile(tmp_path, monkeypatch)
     assert ava_profile.set_field("name", "Matt")[0] == "set"
+    assert ava_profile.set_field("interests", "soundtracks")[0] == "set"
+    assert ava_profile.set_field("repeat_back", "no")[0] == "set"
     monkeypatch.setattr(ava_corrections, "_aliases", {
         "soundtracks": {"expansion": "film music", "use_count": 0},
     })
@@ -163,6 +235,8 @@ def test_cloud_provider_gets_no_profile_or_alias_context(tmp_path, monkeypatch):
             pass
 
     app = types.SimpleNamespace(config={"cloud_llm": {"enabled": True}}, _ava_memory=_Memory())
+    monkeypatch.setattr(ask_ollama, "_ai_state", lambda _app: types.SimpleNamespace(
+        allowed=True, provider=types.SimpleNamespace(identity="cloud")))
     monkeypatch.setattr(ask_ollama.cloud_llm, "is_enabled", lambda _app: True)
     monkeypatch.setattr(ask_ollama.cloud_llm, "send", lambda *_args, **_kwargs: "plain reply")
     monkeypatch.setattr(ask_ollama.ava_readiness, "configured_provider", lambda _app: "fake")
@@ -173,11 +247,13 @@ def test_cloud_provider_gets_no_profile_or_alias_context(tmp_path, monkeypatch):
     assert reply.text == "plain reply"
     assert "Matt" not in seen["system"]
     assert "soundtracks" not in seen["system"]
+    assert "Do not repeat or re-explain" not in seen["system"]
 
 
 def test_persona_has_no_attachment_or_dependency_language():
     persona = ask_ollama.AVA_PERSONA_TEXT.lower()
-    for banned in ("i need you", "don't leave", "i missed you", "only i"):
+    for banned in ("i need you", "don't leave", "i missed you", "only i", "come back to me"):
         assert banned not in persona
     assert "not a person" in persona
     assert "ordinary\ndictation" in persona
+    assert "people they care about" in persona
