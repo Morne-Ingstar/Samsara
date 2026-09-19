@@ -57,17 +57,20 @@ Line schema (v2 -- v1 rows are still readable; the reader keys off `would`):
     app          focused process image name ("warp.exe") or null -- NEVER a window title
     error        exception type name when would == "miss" because resolve raised, else absent
 
-Privacy: plain readable JSONL in the user's own home; no audio, no audio
-path, no window title; never uploaded and not part of any diagnostics
-bundle. Delete the folder to clear it. Disabled (intent.shadow_enabled =
-false) means no worker thread, no directory, no file handle.
+Privacy: this stores the text of dictated utterances locally in the user's
+own home; it is off by default and auto-deleted after N days. It stores no
+audio, audio path, or window title; it is never uploaded and is not part of
+any diagnostics bundle. Delete the folder to clear it. Disabled
+(intent.shadow_enabled = false) means no worker thread, no directory, no
+file handle.
 """
 from __future__ import annotations
 
 import json
 import queue
+import re
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -75,7 +78,11 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_ENABLED = True
+DEFAULT_ENABLED = False
+DEFAULT_RETENTION_DAYS = 14
+MIN_RETENTION_DAYS = 1
+MAX_RETENTION_DAYS = 90
+_SHADOW_FILE = re.compile(r"^intent-(\d{4}-\d{2}-\d{2})\.jsonl$")
 #: DICTATE outcomes whose text became dictation -- the only ones observed.
 OBSERVED_OUTCOMES = {"dictate_staged": "staged", "dictate_injected": "injected"}
 #: Utterances waiting for the worker beyond this are dropped (counted).
@@ -90,7 +97,41 @@ def shadow_settings(config) -> dict:
 
 
 def shadow_enabled(config) -> bool:
-    return bool(shadow_settings(config).get("shadow_enabled", DEFAULT_ENABLED))
+    settings = shadow_settings(config)
+    if "shadow_enabled" in settings:
+        return bool(settings["shadow_enabled"])
+    # A legacy profile that explicitly configured a shadow directory was
+    # already opted in before the enable flag existed. Fresh profiles have
+    # neither key and use the privacy-safe default above.
+    return bool(settings.get("shadow_dir"))
+
+
+def shadow_retention_days(config) -> int:
+    value = shadow_settings(config).get("shadow_retention_days", DEFAULT_RETENTION_DAYS)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return DEFAULT_RETENTION_DAYS
+    return max(MIN_RETENTION_DAYS, min(MAX_RETENTION_DAYS, value))
+
+
+def _prune_old_files(folder: Path, today: date, retention_days: int) -> int:
+    cutoff = today - timedelta(days=retention_days)
+    removed = 0
+    for path in folder.iterdir():
+        match = _SHADOW_FILE.fullmatch(path.name)
+        if match is None or not path.is_file():
+            continue
+        try:
+            file_date = date.fromisoformat(match.group(1))
+        except ValueError:
+            continue
+        if file_date >= cutoff:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        removed += 1
+    return removed
 
 
 def command_prefix(config) -> str:
@@ -244,6 +285,7 @@ class IntentShadow:
         self.dropped = 0
         self.errors = 0
         self._error_logged = False
+        self._retention_date: Optional[date] = None
 
     # -- hot path ------------------------------------------------------------
 
@@ -332,6 +374,12 @@ class IntentShadow:
                                 app=app, when=when, error=error, grammar2=grammar2)
             folder = shadow_dir(config)
             folder.mkdir(parents=True, exist_ok=True)
+            today = self._now().date()
+            if self._retention_date != today:
+                self._retention_date = today
+                removed = _prune_old_files(folder, today, shadow_retention_days(config))
+                if removed:
+                    logger.info("[INTENT-SHADOW] retention removed %d file(s)", removed)
             path = folder / f"intent-{when:%Y-%m-%d}.jsonl"
             with open(path, "a", encoding="utf-8", newline="\n") as fh:
                 fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
