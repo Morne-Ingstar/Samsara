@@ -19,19 +19,21 @@ def _view(form, *, text="", partial="", capture=CaptureState.OFF,
                        "d1", 1, text, partial, True)
 
 
-@pytest.mark.parametrize(("form", "size"), [
-    (VisibleForm.MARK, (44, 44)), (VisibleForm.DRAFT_BADGE, (120, 44)),
-    (VisibleForm.STATUS, (STATUS_SIZE[0], STATUS_SIZE[1] + 48)),
-    (VisibleForm.LIVE, (LIVE_SIZE[0], LIVE_SIZE[1] + 48)),
-    (VisibleForm.REVIEW, (REVIEW_SIZE[0], REVIEW_SIZE[1] + 48)),
-])
+@pytest.mark.parametrize("form", (VisibleForm.MARK, VisibleForm.DRAFT_BADGE,
+                                  VisibleForm.STATUS, VisibleForm.LIVE, VisibleForm.REVIEW))
 @pytest.mark.parametrize("dpr", (1.0, 1.5))
-def test_every_form_has_its_specified_geometry_and_contained_text(qapp, form, size, dpr):
+def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp, form, dpr):
     widget = LiveSurfaceWidget(_view(form, text="Settled words", partial="tail"))
     widget.setProperty("test_dpr", dpr)
     widget.show()
     qapp.processEvents()
-    assert (widget.width(), widget.height()) == size
+    # Owner's 2026-09-18 ruling replaces fixed tall L/R cards with content-fit panels.
+    assert (widget.width(), widget.height()) == ((44, 44) if form is VisibleForm.MARK else
+        (120, 44) if form is VisibleForm.DRAFT_BADGE else
+        (STATUS_SIZE[0], 68) if form is VisibleForm.STATUS else
+        (LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0], widget.height()))
+    if form not in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE, VisibleForm.STATUS):
+        assert 96 <= widget.height() <= REVIEW_SIZE[1]
     for child in widget.findChildren(type(widget._state)):
         if child.isVisible():
             assert widget.rect().contains(child.geometry())
@@ -88,8 +90,9 @@ def test_provisional_tail_has_a_shape_and_type_cue_not_a_literal_label(qapp):
                                      capture=CaptureState.RECORDING))
     assert "Provisional:" not in widget._provisional.text()
     assert widget._provisional.text().startswith("⋯ ")
-    assert widget._provisional.font().italic()
-    assert "dashed" in widget._provisional.styleSheet()
+    # The visual ruling uses a modest colour cue, not a long italic/dashed tail.
+    assert not widget._provisional.font().italic()
+    assert "dashed" not in widget._provisional.styleSheet()
     widget.close()
 
 
@@ -114,22 +117,16 @@ def test_draft_badge_keeps_its_12_dip_rounded_corner(qapp):
     widget.close()
 
 
-@pytest.mark.parametrize(("form", "viewport"), ((VisibleForm.LIVE, 120),
-                                                    (VisibleForm.REVIEW, 168)))
-def test_live_regions_follow_the_header_viewport_action_table(qapp, form, viewport):
+@pytest.mark.parametrize("form", (VisibleForm.LIVE, VisibleForm.REVIEW))
+def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
     widget = LiveSurfaceWidget(_view(form, text="Settled", partial="moving words",
                                      capture=CaptureState.RECORDING))
     widget.show()
     qapp.processEvents()
-    assert widget._transcript.y() == widget._state.geometry().bottom() + 1 + 8
-    if form is VisibleForm.LIVE:
-        assert widget._provisional.y() == widget._transcript.geometry().bottom() + 1
-        assert widget._provisional.height() + widget._transcript.height() == viewport
-        assert widget._clear.y() == widget._provisional.geometry().bottom() + 1 + 8
-    else:
-        # 220-G reserves review space for the 44-DIP Latest and correction controls.
-        assert widget._transcript.height() == viewport
-        assert widget._clear.y() > widget._transcript.geometry().bottom()
+    assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8
+    assert widget._transcript.height() >= 24
+    assert widget._clear.isVisible() and widget._clear.height() >= MARK_SIZE
+    assert not widget._commit.isVisible() and not widget._pause.isVisible() and not widget._correct.isVisible()
     # 220-G makes this a scrollable QTextBrowser; its document begins at top.
     assert widget._transcript.document().documentMargin() >= 0
     widget.close()
