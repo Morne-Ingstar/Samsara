@@ -625,11 +625,23 @@ class CommandExecutor:
         (ask_ollama.handle_ava_confirm) re-enters execute_canonical with
         confirmed=True -- which re-authorizes, so a pack switched off or a
         scope left while the question was open refuses the effect."""
+        targets, target_probe, foreground_bound = execution_policy.bind_staged_target(inv, self)
+
         def _approve(op):
             self.execute_canonical(inv.command_id, app, route=inv.route, generation=inv.generation,
                                    confirmed=True, args=inv.args, source_text=inv.source_text)
+
+        def _reject(op):
+            if foreground_bound and getattr(op, "target_change", None):
+                speak = getattr(app, "audio_coordinator", None)
+                if speak is not None:
+                    speak.speak("That window changed, so I didn't do it", category="confirmation")
+
+        stage_target = {} if foreground_bound else {"targets": targets, "target_probe": target_probe}
+        if foreground_bound:
+            stage_target = {"foreground_target": targets, "foreground_probe": target_probe}
         execution_policy.stage_pending(app, inv, decision.prompt, on_approve=_approve,
-                                       record_type="action")
+                                       on_reject=_reject, record_type="action", **stage_target)
         self._speak_confirmation(app, decision.prompt)
 
     def _speak_confirmation(self, app, prompt: str) -> None:

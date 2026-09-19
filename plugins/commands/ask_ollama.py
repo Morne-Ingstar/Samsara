@@ -2536,12 +2536,28 @@ def handle_is_it_safe(app, remainder="", **kwargs):
             response = ask_ollama(prompt, app)
             if not execution_policy.is_current(app, generation):
                 return
-            handle_response(app, response, original_text=remainder, generation=generation)
+            _answer_advice_text_only(app, response)
         except Exception as e:
             print(f"[OLLAMA] Error in worker: {e}")
             speak(app, "Sorry, something went wrong.")
 
     thread_registry.spawn("ask_ollama._worker", _worker, daemon=True)
+
+
+def _answer_advice_text_only(app, response) -> None:
+    """Deliver a safety answer as speech/captions, never as an action grammar.
+
+    Advice replies are untrusted prose.  In particular, they must not enter
+    ``handle_response``: that function intentionally parses ACTION/ACTION2 for
+    the separate, explicitly action-capable Ava request path.
+    """
+    if response == MODEL_UNAVAILABLE:
+        speak(app, unavailable_sentence(app))
+        return
+    if not isinstance(response, str):
+        speak(app, "Ollama returned an invalid response.")
+        return
+    speak(app, response)
 
 
 @command(
