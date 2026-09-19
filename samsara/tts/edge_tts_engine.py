@@ -187,7 +187,7 @@ class EdgeTTSEngine(TTSEngine):
     Drop-in replacement for WinRTEngine.
     """
 
-    def __init__(self, output_device: Optional[int] = None):
+    def __init__(self, output_device: Optional[int] = None, output_device_resolver=None):
         _import_edge_tts()
         self._voices = list(_BUILTIN_VOICES)
         self._lock = threading.Lock()
@@ -195,11 +195,22 @@ class EdgeTTSEngine(TTSEngine):
         self._state = "idle"
         self._cancelled = False
         self._output_device = output_device
+        self._output_device_resolver = output_device_resolver
         logger.info("[TTS] EdgeTTSEngine initialized (Azure Neural voices via edge-tts)")
 
     def set_output_device(self, device_id: Optional[int]) -> None:
         """Route subsequent speech to a Samsara-specific output device."""
         self._output_device = device_id
+
+    def _playback_device(self):
+        """Resolve output immediately before this utterance opens its stream."""
+        if callable(self._output_device_resolver):
+            try:
+                return self._output_device_resolver()
+            except Exception as exc:
+                logger.warning("[EdgeTTS] output resolver failed; using Windows default: %s", exc)
+                return None
+        return self._output_device
 
     # ------------------------------------------------------------------
     # TTSEngine interface
@@ -343,18 +354,16 @@ class EdgeTTSEngine(TTSEngine):
                 )
                 return stream, device_audio, device_rate
 
+            device = self._playback_device()
             try:
-                stream_context, audio, playback_rate = _prepare(
-                    self._output_device
-                )
+                stream_context, audio, playback_rate = _prepare(device)
             except Exception as exc:
-                if self._output_device is None:
+                if device is None:
                     raise
                 logger.warning(
                     "[EdgeTTS] output device %s unavailable (%s); falling back to system default",
-                    self._output_device, exc,
+                    device, exc,
                 )
-                self._output_device = None
                 stream_context, audio, playback_rate = _prepare(None)
 
             total_frames = len(audio)

@@ -111,6 +111,39 @@ class SoundsPage:
         layout.addLayout(vol_row)
         layout.addSpacing(20)
 
+        # Output selection belongs beside the sound controls, not the mic
+        # selector: it affects earcons and speech only and never changes the
+        # Windows default endpoint.
+        from samsara.output_devices import output_identity, resolve_playback_device  # noqa: PLC0415
+        output_combo = QComboBox()
+        try:
+            outputs = self.app.get_available_output_devices()
+            live_id = resolve_playback_device(
+                __import__('sounddevice'), cfg.get('output_device_name'),
+                cfg.get('output_device_hostapi'),
+            )
+            live_name, _live_api = output_identity(__import__('sounddevice'), live_id)
+        except Exception:
+            outputs, live_name = [], None
+        output_combo.addItem(
+            "Follow Windows default (recommended)" + (f" — now: {live_name}" if live_name else ""),
+            (None, None),
+        )
+        for output in outputs:
+            output_combo.addItem(output['name'], (output['name'], output.get('hostapi')))
+        wanted = cfg.get('output_device_name')
+        for index in range(output_combo.count()):
+            if output_combo.itemData(index)[0] == wanted:
+                output_combo.setCurrentIndex(index)
+                break
+        self._widgets['sound_output_combo'] = output_combo
+        layout.addLayout(self._setting_row(
+            "Output",
+            "Where Samsara plays earcons and speech. It follows Windows’ current default unless you choose a device.",
+            output_combo,
+        ))
+        layout.addSpacing(20)
+
         # ---- Section: Sound Theme ----------------------------------------------
         layout.addWidget(self._section_title("Sound Theme"))
         layout.addSpacing(4)
@@ -296,6 +329,12 @@ class SoundsPage:
                 updates['audio_feedback'] = self._widgets['sound_feedback'].isChecked()
                 updates['sound_volume'] = self._widgets['sound_volume_slider'].value() / 100.0
                 updates['sound_theme'] = self._widgets['sound_theme_combo'].currentText()
+                output_name, output_api = self._widgets['sound_output_combo'].currentData()
+                # The numeric index is intentionally retired: it changes when
+                # a monitor sleeps. The runtime resolves this identity anew.
+                updates['output_device'] = None
+                updates['output_device_name'] = output_name
+                updates['output_device_hostapi'] = output_api
             if 'spoken_notices_combo' in self._widgets:
                 # NESTED, not the dotted key. settings_qt does a FLAT
                 # config.update(updates), while cfg_get() walks the dotted

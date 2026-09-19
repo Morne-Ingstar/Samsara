@@ -1570,6 +1570,7 @@ class DictationApp:
         logger.info("[INIT] Enumerating audio devices...")
         from samsara.output_devices import (
             enumerate_output_devices,
+            output_identity,
             reconcile_output_device,
         )
         self.available_mics = self.get_available_microphones()
@@ -1584,6 +1585,11 @@ class DictationApp:
                 self.config.get('output_device_name'),
             )
         )
+        self.output_device_hostapi = self.config.get('output_device_hostapi')
+        if self.output_device_name and not self.output_device_hostapi:
+            _ignored_name, self.output_device_hostapi = output_identity(
+                sd, self.output_device,
+            )
         if output_missing:
             logger.warning(
                 "[AUDIO] Selected output '%s' is unavailable; using system default",
@@ -2105,6 +2111,7 @@ class DictationApp:
             get_config=lambda: self.config,
             save_config=self.persist_config,
             output_device=self.output_device,
+            output_device_resolver=self._resolve_playback_output,
         )
         self.alarm_manager.on_alarm_triggered = self._show_alarm_notification
         if self.config.get('alarms', {}).get('enabled', True):
@@ -2361,10 +2368,10 @@ class DictationApp:
             from samsara.tts import WinRTEngine, EdgeTTSEngine, AudioCoordinator
             tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
             if tts_engine_name == 'edge':
-                engine = EdgeTTSEngine(output_device=self.output_device)
+                engine = EdgeTTSEngine(output_device_resolver=self._resolve_playback_output)
                 logger.info("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
             else:
-                engine = WinRTEngine(output_device=self.output_device)
+                engine = WinRTEngine(output_device_resolver=self._resolve_playback_output)
                 logger.info("[TTS] Initialized WinRT engine")
             coordinator = AudioCoordinator(
                 self,
@@ -2732,6 +2739,7 @@ class DictationApp:
             "microphone": None,
             "output_device": None,
             "output_device_name": None,
+            "output_device_hostapi": None,
             "silence_threshold": DEFAULT_SILENCE_TIMEOUT,
             "min_speech_duration": DEFAULT_MIN_SPEECH_DURATION,
             # Continuous mode commit trigger: "silence" is today's fixed
@@ -4245,11 +4253,20 @@ class DictationApp:
         )
         return self.available_outputs
 
+    def _resolve_playback_output(self):
+        """Live PortAudio index for this play, from stable user preference."""
+        from samsara.output_devices import resolve_playback_device
+        return resolve_playback_device(
+            sd,
+            getattr(self, 'output_device_name', None),
+            getattr(self, 'output_device_hostapi', None),
+        )
+
     def switch_output_device(self, device_id, device_name=None):
         """Route Samsara feedback only; never changes the Windows default."""
-        from samsara.output_devices import reconcile_output_device
+        from samsara.output_devices import output_identity, reconcile_output_device
 
-        if device_id is None:
+        if device_id is None and not device_name:
             resolved_id, resolved_name, missing = None, None, False
         else:
             self.available_outputs = enumerate = self.get_available_output_devices()
@@ -4264,6 +4281,7 @@ class DictationApp:
 
         self.output_device = resolved_id
         self.output_device_name = resolved_name
+        _ignored_name, self.output_device_hostapi = output_identity(sd, resolved_id)
         self.stop_sound_stream()
         self._start_sound_stream()
         # _start_sound_stream may itself fall back after an open failure.
@@ -10833,7 +10851,7 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[AUDIO] Extended-earcon discovery failed: {e}")
 
-    def _start_sound_stream(self):
+    def _start_sound_stream(self, force_windows_default=False):
         """Start the persistent output stream for sound playback.
         
         This stream stays open for the lifetime of the app. Unlike sd.play()
@@ -10846,8 +10864,9 @@ class DictationApp:
             # 48 kHz). Rebuild the cache whenever routing changes so callback
             # frames always match the stream's native/default rate.
             from samsara.output_devices import output_sample_rate
+            device = None if force_windows_default else self._resolve_playback_output()
             stream_rate = output_sample_rate(
-                sd, getattr(self, 'output_device', None),
+                sd, device,
                 fallback=getattr(self, '_sound_stream_sr', 44100),
             )
             if stream_rate != self._sound_stream_sr:
@@ -10861,23 +10880,22 @@ class DictationApp:
                 dtype='float32',
                 callback=self._sound_stream_callback,
                 blocksize=1024,  # ~21-23 ms at common 44.1/48 kHz rates
-                device=getattr(self, 'output_device', None),
+                device=device,
             )
             self._sound_stream.start()
+            self._sound_stream_device = device
             logger.info(
                 "[AUDIO] Persistent sound stream started (device=%s, rate=%d Hz)",
-                getattr(self, 'output_device', None), self._sound_stream_sr,
+                device, self._sound_stream_sr,
             )
         except Exception as e:
-            requested = getattr(self, 'output_device', None)
+            requested = locals().get('device')
             if requested is not None:
                 logger.warning(
                     "[AUDIO] Output device %s failed (%s); falling back to system default",
                     requested, e,
                 )
-                self.output_device = None
-                self.output_device_name = None
-                self._start_sound_stream()
+                self._start_sound_stream(force_windows_default=True)
                 return
             logger.exception(f"[AUDIO] Failed to start sound stream: {e}")
             self._sound_stream = None
@@ -10924,6 +10942,13 @@ class DictationApp:
         """
         if not self.config.get('audio_feedback', True):
             return
+
+        # A PortAudio index dies when a monitor sleeps or is unplugged. Check
+        # the stable name/default at every earcon, reopening only on change.
+        device = self._resolve_playback_output()
+        if device != getattr(self, '_sound_stream_device', object()):
+            self.stop_sound_stream()
+            self._start_sound_stream()
 
         # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
         # getattr guard means play_sound works before the coordinator is set up.

@@ -82,6 +82,7 @@ class AlarmManager:
         get_config: Callable,
         save_config: Callable,
         output_device: Optional[int] = None,
+        output_device_resolver: Optional[Callable[[], Optional[int]]] = None,
     ):
         """
         Initialize the alarm manager.
@@ -97,6 +98,7 @@ class AlarmManager:
         self.get_config = get_config
         self.save_config = save_config
         self.output_device = output_device
+        self._output_device_resolver = output_device_resolver
         
         self.running = False
         self.thread = None
@@ -389,6 +391,15 @@ class AlarmManager:
         if new_rate != self._sound_sample_rate:
             self._sound_sample_rate = new_rate
             self._load_sound_cache()
+
+    def _playback_device(self) -> Optional[int]:
+        if callable(self._output_device_resolver):
+            try:
+                return self._output_device_resolver()
+            except Exception as exc:
+                logger.warning("[ALARM] Output resolver failed; using Windows default: %s", exc)
+                return None
+        return self.output_device
     
     def play_sound(self, alarm: dict, volume: float = 0.7):
         """Play the sound for an alarm."""
@@ -397,7 +408,7 @@ class AlarmManager:
         if audio is not None and HAS_SOUNDDEVICE:
             try:
                 scaled = (audio * volume).flatten()
-                sd.play(scaled, self._sound_sample_rate, device=self.output_device)
+                sd.play(scaled, self._sound_sample_rate, device=self._playback_device())
                 sd.wait()
             except Exception as e:
                 if self.output_device is not None:
@@ -457,7 +468,7 @@ class AlarmManager:
             if audio is not None:
                 try:
                     scaled = (audio * volume).flatten()
-                    sd.play(scaled, self._sound_sample_rate, device=self.output_device)
+                    sd.play(scaled, self._sound_sample_rate, device=self._playback_device())
                     sd.wait()
                 except Exception as e:
                     if self.output_device is not None:

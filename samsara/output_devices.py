@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any, Iterable, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 _HOST_API_PRIORITY = {
@@ -19,6 +23,7 @@ _HOST_API_PRIORITY = {
 # recovery is deliberately limited to long, unique names so ordinary short
 # names ("Speakers", "Headset", etc.) are never guessed.
 _MIN_TRUNCATED_NAME_CHARS = 24
+_missing_playback_logged: set[tuple[str, str]] = set()
 
 
 def _key(name: str) -> str:
@@ -66,6 +71,79 @@ def enumerate_output_devices(sd_module: Any, show_all: bool = False) -> list[dic
             chosen[_key(name)] = (rank, entry)
 
     return [item[1] for item in sorted(chosen.values(), key=lambda x: _key(x[1]["name"]))]
+
+
+def output_identity(sd_module: Any, device_id: Optional[int]) -> tuple[Optional[str], Optional[str]]:
+    """Return the stable (name, host API) identity for one live output index."""
+    if device_id is None:
+        return None, None
+    try:
+        item = sd_module.query_devices(device_id, "output")
+        name = " ".join(str(item.get("name", "")).split()) or None
+        host_index = int(item.get("hostapi", -1))
+        hostapis = sd_module.query_hostapis()
+        host = str(hostapis[host_index].get("name", "")) if 0 <= host_index < len(hostapis) else None
+        return name, host
+    except Exception:
+        return None, None
+
+
+def windows_default_output(sd_module: Any) -> Optional[int]:
+    """The output endpoint Windows/PortAudio calls default *right now*.
+
+    `sounddevice.default.device[1]` is intentionally queried per playback;
+    it is not a selection to cache.  Returning None remains a valid PortAudio
+    default when a backend does not expose an index.
+    """
+    try:
+        default = getattr(getattr(sd_module, "default", None), "device", None)
+        if isinstance(default, (tuple, list)) and len(default) > 1:
+            candidate = default[1]
+            if isinstance(candidate, int) and candidate >= 0:
+                return candidate
+    except Exception:
+        pass
+    return None
+
+
+def resolve_playback_device(
+    sd_module: Any,
+    stored_name: Optional[str] = None,
+    stored_hostapi: Optional[str] = None,
+) -> Optional[int]:
+    """Resolve the current output at playback time, never using a saved index.
+
+    A chosen endpoint is identified by name plus host API.  If it disappeared,
+    return the current Windows default and log that fallback once.  A missing
+    selection means "Follow Windows default" and is re-read for every call.
+    """
+    name = " ".join(str(stored_name or "").split())
+    if not name:
+        return windows_default_output(sd_module)
+    try:
+        devices = sd_module.query_devices()
+        hostapis = sd_module.query_hostapis()
+    except Exception as exc:
+        logger.warning("[AUDIO] Could not enumerate selected output; using Windows default: %s", exc)
+        return windows_default_output(sd_module)
+    wanted_name, wanted_host = _key(name), _key(stored_hostapi or "")
+    candidates: list[tuple[int, str]] = []
+    for index, item in enumerate(devices):
+        if int(item.get("max_output_channels", 0) or 0) <= 0 or _key(item.get("name", "")) != wanted_name:
+            continue
+        host_index = int(item.get("hostapi", -1))
+        host = str(hostapis[host_index].get("name", "")) if 0 <= host_index < len(hostapis) else ""
+        candidates.append((index, host))
+    if candidates:
+        for index, host in candidates:
+            if wanted_host and _key(host) == wanted_host:
+                return index
+        return min(candidates, key=lambda pair: (_HOST_API_PRIORITY.get(_key(pair[1]), 50), pair[0]))[0]
+    key = (wanted_name, wanted_host)
+    if key not in _missing_playback_logged:
+        _missing_playback_logged.add(key)
+        logger.warning("[AUDIO] Selected output '%s' is unavailable; following Windows default", name)
+    return windows_default_output(sd_module)
 
 
 def output_sample_rate(
