@@ -188,11 +188,25 @@ def test_not_wired_into_dispatch():
                REPO / "samsara" / "command_registry.py", *sorted((REPO / "plugins").rglob("*.py"))]
     for path in targets:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        parents = {child: parent for parent in ast.walk(tree)
+                   for child in ast.iter_child_nodes(parent)}
+
+        def enclosing_function(node):
+            parent = parents.get(node)
+            while parent is not None:
+                if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    return parent.name
+                parent = parents.get(parent)
+            return None
+
         imports = [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
         assert not any(
-            (isinstance(n, ast.ImportFrom) and (n.module or "").startswith("samsara.intent")
-             and n.module != "samsara.intent.normalize")
-            or (isinstance(n, ast.Import) and any(a.name.startswith("samsara.intent") for a in n.names))
+            ((isinstance(n, ast.ImportFrom) and (n.module or "").startswith("samsara.intent")
+              and n.module != "samsara.intent.normalize")
+             or (isinstance(n, ast.Import) and any(a.name.startswith("samsara.intent") for a in n.names)))
+            # spoken last-outcome formats a suggestion; it never dispatches it
+            and not (path.name == "core_utils.py" and
+                     enclosing_function(n) == "_nearest_similarity_command")
             for n in imports
         ), path
     # 36: dictation.py may use the gate ONLY as the shadow observer -- both

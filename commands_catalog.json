@@ -440,7 +440,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2637",
+      "source": "plugins/commands/ask_ollama.py:2739",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -459,7 +459,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2689",
+      "source": "plugins/commands/ask_ollama.py:2791",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -479,7 +479,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2675",
+      "source": "plugins/commands/ask_ollama.py:2777",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -498,7 +498,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2716",
+      "source": "plugins/commands/ask_ollama.py:2818",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -526,7 +526,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2380",
+      "source": "plugins/commands/ask_ollama.py:2471",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -551,7 +551,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2490",
+      "source": "plugins/commands/ask_ollama.py:2581",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -572,7 +572,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2656",
+      "source": "plugins/commands/ask_ollama.py:2758",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -597,7 +597,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2527",
+      "source": "plugins/commands/ask_ollama.py:2634",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -5528,9 +5528,29 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:80",
+      "source": "plugins/commands/core_utils.py:92",
       "undoable": false,
       "verb": "check",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read it back",
+        "read my last dictation",
+        "read that back",
+        "what did you type"
+      ],
+      "args": [],
+      "canonical_id": "core_utils.read_that_back",
+      "description": "Reads the latest committed dictation or command aloud for accessibility.",
+      "kind": "plugin",
+      "object": "that_back",
+      "pack": "accessibility",
+      "plugin": "core_utils",
+      "risk": "read",
+      "source": "plugins/commands/core_utils.py:219",
+      "undoable": true,
+      "verb": "read",
       "whole_utterance": false
     },
     {
@@ -5548,7 +5568,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:98",
+      "source": "plugins/commands/core_utils.py:110",
       "undoable": true,
       "verb": "reload",
       "whole_utterance": false
@@ -5572,7 +5592,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:174",
+      "source": "plugins/commands/core_utils.py:276",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -5591,7 +5611,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:156",
+      "source": "plugins/commands/core_utils.py:258",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -5610,9 +5630,33 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "destructive",
-      "source": "plugins/commands/core_utils.py:44",
+      "source": "plugins/commands/core_utils.py:56",
       "undoable": false,
       "verb": "restart",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "remove alias",
+        "save alias"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "core_utils.save_alias",
+      "description": "Saves the offered wording; say \"remove alias <words>\" to undo it.",
+      "kind": "plugin",
+      "object": "alias",
+      "pack": "core",
+      "plugin": "core_utils",
+      "risk": "write",
+      "source": "plugins/commands/core_utils.py:305",
+      "undoable": false,
+      "verb": "save",
       "whole_utterance": false
     },
     {
@@ -5630,9 +5674,28 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:121",
+      "source": "plugins/commands/core_utils.py:133",
       "undoable": true,
       "verb": "what",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what did you hear",
+        "what just happened",
+        "why didnt that work"
+      ],
+      "args": [],
+      "canonical_id": "core_utils.why_didnt_that_work",
+      "description": "Speaks and shows the most recent recorded outcome chip.",
+      "kind": "plugin",
+      "object": "didnt_that_work",
+      "pack": "core",
+      "plugin": "core_utils",
+      "risk": "read",
+      "source": "plugins/commands/core_utils.py:474",
+      "undoable": true,
+      "verb": "why",
       "whole_utterance": false
     },
     {
@@ -6626,6 +6689,52 @@
     },
     {
       "aliases": [
+        "album"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "music.album",
+      "description": "Play a named Spotify album from the user's Music library.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:576",
+      "undoable": true,
+      "verb": "album",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "artist"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "music.artist",
+      "description": "Play a named Spotify artist from the user's Music library.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:584",
+      "undoable": true,
+      "verb": "artist",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "mute",
         "mute spotify"
       ],
@@ -6637,7 +6746,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:419",
+      "source": "plugins/commands/music.py:606",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -6656,7 +6765,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:412",
+      "source": "plugins/commands/music.py:599",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -6673,7 +6782,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:405",
+      "source": "plugins/commands/music.py:592",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -6685,7 +6794,7 @@
       ],
       "args": [
         {
-          "name": "text",
+          "name": "name",
           "required": false,
           "type": "text"
         }
@@ -6697,7 +6806,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:396",
+      "source": "plugins/commands/music.py:558",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -6735,9 +6844,49 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:365",
+      "source": "plugins/commands/music.py:497",
       "undoable": true,
       "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "playlist"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "music.playlist",
+      "description": "Play a named Spotify playlist from the user's Music library.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:568",
+      "undoable": true,
+      "verb": "playlist",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "search"
+      ],
+      "args": [],
+      "canonical_id": "music.search",
+      "description": "Search Spotify only after a named-library miss asked for it.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:537",
+      "undoable": true,
+      "verb": "search",
       "whole_utterance": false
     },
     {
