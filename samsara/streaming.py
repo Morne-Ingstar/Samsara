@@ -1938,7 +1938,7 @@ class StreamingSession:
         self._cpu_final_only = False
         controller = getattr(app, 'live_surface', None)
         if controller is not None and (app.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', True):
+                'live_surface', {}).get('enabled', False):
             from samsara.live_surface.model import Lane
             from samsara.live_surface.partials import CapturePartials, cpu_final_only
             capture_id = controller.begin_capture(Lane.HOLD)
@@ -2356,7 +2356,7 @@ class DictatePreviewSession:
         self._live_partials = None
         controller = getattr(app, "live_surface", None)
         live_enabled = bool((getattr(app, "config", {}).get("ui", {}) or {}).get(
-            "live_surface", {}).get("enabled", True))
+            "live_surface", {}).get("enabled", False))
         if controller is not None and live_enabled:
             # Keep this session's existing GPU partial ticker and its
             # authoritative final callback, but do not build a second Qt
