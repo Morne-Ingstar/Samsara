@@ -96,11 +96,26 @@ class LiveSurfaceController:
         self.post(SurfaceEvent(kind, document_id=document.document_id,
                                revision=document.revision, text=text))
 
+    def document_snapshot(self) -> dict | None:
+        """Return stable draft coordinates for the widget, without logging text."""
+        manager = self._manager()
+        document = getattr(manager, "draft_document", None)
+        if document is None:
+            return None
+        return {"document_id": document.document_id, "revision": document.revision,
+                "segments": tuple((segment.id, segment.text) for segment in document.segments)}
+
     def close(self) -> None:
         if self.widget is not None:
             self.widget.hide()
             self.widget.deleteLater()
             self.widget = None
+
+    def scroll_draft(self, where: str) -> None:
+        """Forward existing draft-scoped voice scrolling into the one surface."""
+        if self.widget is None:
+            return
+        qt_runtime.post(lambda: self.widget is not None and self.widget.scroll_draft(where))
 
     # Widget intents deliberately call the existing side-effect owners.
     def _connect_intents(self) -> None:
@@ -108,6 +123,9 @@ class LiveSurfaceController:
                                ("clear_requested", self._clear),
                                ("pause_requested", self._pause),
                                ("correct_word_requested", self._correct),
+                               ("correction_apply_requested", self._apply_correction),
+                               ("correction_cancel_requested", self._cancel_correction),
+                               ("edit_receipt_requested", self._edit_receipt),
                                ("collapse_requested", self.widget.hide),
                                ("show_requested", self.widget.show)):
             signal = getattr(self.widget, name, None)
@@ -145,10 +163,72 @@ class LiveSurfaceController:
 
     def _correct(self, span: object) -> None:
         manager = self._manager()
-        request = getattr(manager, "request_word_correction", None)
-        text = self.model.view().text
-        if callable(request) and isinstance(span, tuple) and text:
-            request(text[span[0]:span[1]], 0, source="live_surface")
+        select = getattr(manager, "select_live_surface_word", None)
+        if not callable(select):
+            return
+        result = select(span)
+        if not result.get("ok"):
+            if self.widget is not None:
+                self.widget.correction_refused()
+            return
+        selection = result["selection"]
+        # This is the sole proposal service.  It is pure and receives only
+        # caller-owned snapshots, never audio or a model request.
+        from samsara.correction_candidates import build_snapshot, suggest_candidates
+        snapshot = build_snapshot(self._approved_corrections(), self._taught_vocabulary())
+        candidates = suggest_candidates(str(selection["word"]),
+                                        (int(selection["start"]), int(selection["end"])),
+                                        language="en", snapshot=snapshot)
+        self.sync_draft(manager)
+        # Selection is a deliberate review operation, so it owns the R form
+        # even if no audio capture happens to be active.
+        self.model.consume(SurfaceEvent(EventKind.CORRECTION_OPENED))
+        if self.widget is not None:
+            self.widget.refresh(self.model.view(), animate=False)
+            self.widget.show_candidates(selection, candidates)
+
+    def _apply_correction(self, selection: object, replacement: str) -> None:
+        manager = self._manager()
+        apply = getattr(manager, "apply_live_surface_correction", None)
+        if not callable(apply):
+            return
+        result = apply(selection, replacement)
+        if not result.get("ok"):
+            if self.widget is not None:
+                self.widget.correction_refused()
+            return
+        self.sync_draft(manager)
+        self.model.consume(SurfaceEvent(EventKind.CORRECTION_CLOSED))
+        if self.widget is not None:
+            self.widget.refresh(self.model.view(), animate=False)
+            self.widget.correction_refused("Correction applied")
+
+    def _cancel_correction(self) -> None:
+        manager = self._manager()
+        cancel = getattr(manager, "cancel_word_correction", None)
+        if callable(cancel):
+            cancel("live_surface_cancelled")
+
+    def _edit_receipt(self, text: str) -> None:
+        manager = self._manager()
+        copy = getattr(manager, "copy_sent_receipt_as_draft", None)
+        if not callable(copy):
+            return
+        result = copy(text)
+        if result.get("ok"):
+            self.sync_draft(manager)
+        elif self.widget is not None:
+            self.widget.correction_refused("Finish or clear the current draft first")
+
+    def _approved_corrections(self):
+        training = getattr(self.app, "voice_training_window", None)
+        values = getattr(training, "corrections_dict", None) if training is not None else None
+        return values if isinstance(values, dict) else ()
+
+    def _taught_vocabulary(self):
+        training = getattr(self.app, "voice_training_window", None)
+        values = getattr(training, "custom_vocab", None) if training is not None else ()
+        return values if isinstance(values, (tuple, list, set)) else ()
 
 
 class LiveSurfaceIndicatorAdapter:

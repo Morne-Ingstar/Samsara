@@ -2376,8 +2376,8 @@ class _LiveSurfaceDictateOverlay:
     def move_draft(self, _placement):
         pass
 
-    def scroll_draft(self, _where):
-        pass
+    def scroll_draft(self, where):
+        self._controller.scroll_draft(where)
 
 
 class DictatePreviewSession:
