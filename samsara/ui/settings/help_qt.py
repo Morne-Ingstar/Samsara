@@ -34,6 +34,36 @@ from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
 class HelpPage:
     """Methods of the Help & Support settings page (moved from _SettingsWindow)."""
 
+    def _create_support_bundle(self, status_label: QLabel, open_folder_btn: QPushButton) -> None:
+        from samsara.support_bundle import build_bundle
+
+        open_folder_btn.setEnabled(False)
+        self._support_bundle_path = None
+        try:
+            path = build_bundle()
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not build report bundle: %s", exc)
+            status_label.setText(f"Could not create the report bundle: {exc}")
+            return
+        self._support_bundle_path = path
+        open_folder_btn.setEnabled(True)
+        status_label.setText(f"Report bundle saved: {path}")
+
+    def _open_support_bundle_folder(self, status_label: QLabel) -> None:
+        path = getattr(self, "_support_bundle_path", None)
+        if path is None:
+            status_label.setText("Create a report bundle before opening its folder.")
+            return
+        try:
+            opened = bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent))))
+        except Exception as exc:
+            logger.exception("[SUPPORT] Could not open report folder: %s", exc)
+            opened = False
+        status_label.setText(
+            "Opened the report folder."
+            if opened else f"Could not open the report folder: {path.parent}"
+        )
+
     def _open_support_url(self, url: str, status_label: QLabel) -> None:
         """Open a user-requested support destination and show any failure."""
         try:
@@ -192,6 +222,33 @@ class HelpPage:
             email_control,
         ))
 
+        bundle_btn = QPushButton("Report a problem")
+        bundle_btn.setObjectName("createSupportBundleButton")
+        bundle_btn.setAccessibleName("Create a report bundle for a Samsara problem")
+        open_bundle_folder_btn = QPushButton("Open folder")
+        open_bundle_folder_btn.setObjectName("openSupportBundleFolderButton")
+        open_bundle_folder_btn.setAccessibleName("Open the folder containing the report bundle")
+        open_bundle_folder_btn.setEnabled(False)
+        bundle_actions = QWidget()
+        bundle_actions_row = QHBoxLayout(bundle_actions)
+        bundle_actions_row.setContentsMargins(0, 0, 0, 0)
+        bundle_actions_row.setSpacing(10)
+        bundle_actions_row.addWidget(bundle_btn)
+        bundle_actions_row.addWidget(open_bundle_folder_btn)
+        bundle_actions_row.addStretch()
+        bundle_btn.clicked.connect(
+            lambda: self._create_support_bundle(support_status, open_bundle_folder_btn)
+        )
+        open_bundle_folder_btn.clicked.connect(
+            lambda: self._open_support_bundle_folder(support_status)
+        )
+        layout.addLayout(self._setting_row(
+            "Share a support bundle",
+            "Creates a zip with recent logs, scrubbed settings, versions, and device names. "
+            "Transcripts, memos, Ava memory, and vault files are excluded.",
+            bundle_actions,
+        ))
+
         # 2. Safe diagnostics
         diagnostics_btn = QPushButton("Copy safe diagnostics")
         diagnostics_btn.setObjectName("copyDiagnosticButton")
@@ -206,14 +263,14 @@ class HelpPage:
         ))
 
         # 3. GitHub
-        report_btn = QPushButton("Report a problem")
+        report_btn = QPushButton("Open GitHub form")
         report_btn.setObjectName("reportBugButton")
-        report_btn.setAccessibleName("Report a Samsara problem on GitHub")
+        report_btn.setAccessibleName("Open a Samsara problem report on GitHub")
         report_btn.clicked.connect(
             lambda: self._open_support_url(BUG_REPORT_URL, support_status)
         )
         layout.addLayout(self._setting_row(
-            "Report a reproducible problem (GitHub)",
+            "Reproducible problem (GitHub)",
             "Open a public GitHub report. Include expected behavior, what happened, and steps.",
             report_btn,
         ))
