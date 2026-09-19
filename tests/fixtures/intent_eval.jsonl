@@ -956,7 +956,7 @@
 {"accept": ["ask_ollama.hey_ava"], "id": "ask_ollama.hey_ava", "kind": "punct", "polarity": "positive", "text": "Ask, ava?"}
 {"accept": ["ask_ollama.hey_ava"], "id": "ask_ollama.hey_ava", "kind": "determiner", "polarity": "positive", "text": "samsara the think"}
 {"id": "ask_ollama.hey_ava", "kind": "sentence", "polarity": "negative", "reject": "ask_ollama.hey_ava", "text": "yesterday afternoon we argued for an hour about who would ask ava first"}
-{"id": "ask_ollama.hey_ava", "kind": "other_command", "polarity": "negative", "reject": "ask_ollama.hey_ava", "text": "what alarms do i have"}
+{"id": "ask_ollama.hey_ava", "kind": "other_command", "polarity": "negative", "reject": "ask_ollama.hey_ava", "text": "what did you type"}
 {"id": "ask_ollama.hey_ava", "kind": "nonsense", "polarity": "negative", "reject": "ask_ollama.hey_ava", "text": "marmalade lantern ask quartz octopus"}
 {"accept": ["ask_ollama.is_it_safe_to"], "id": "ask_ollama.is_it_safe_to", "kind": "alias", "polarity": "positive", "text": "is it okay to"}
 {"accept": ["ask_ollama.is_it_safe_to"], "id": "ask_ollama.is_it_safe_to", "kind": "determiner", "polarity": "positive", "text": "should the i buy milk"}
@@ -12638,6 +12638,46 @@
 {"id": "core_utils.check_for_updates", "kind": "sentence", "polarity": "negative", "reject": "core_utils.check_for_updates", "text": "in the story the old captain decides to check for update as the storm arrives"}
 {"id": "core_utils.check_for_updates", "kind": "other_command", "polarity": "negative", "reject": "core_utils.check_for_updates", "text": "timer for"}
 {"id": "core_utils.check_for_updates", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.check_for_updates", "text": "octopus saxophone update banana thunderous"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "alias", "polarity": "positive", "text": "read my last dictation"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "determiner", "polarity": "positive", "text": "read the that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "can you read that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "mishear", "polarity": "positive", "text": "red it back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "Read, my last dictation?"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "synonym", "polarity": "positive", "text": "say that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "alias", "polarity": "positive", "text": "read it back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "determiner", "polarity": "positive", "text": "what the did you type"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "um read that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "mishear", "polarity": "positive", "text": "red that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "Read, it back?"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "synonym", "polarity": "positive", "text": "read out it back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "alias", "polarity": "positive", "text": "what did you type"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "determiner", "polarity": "positive", "text": "read the it back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "go ahead and read that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "mishear", "polarity": "positive", "text": "red my last dictation"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "Read, that back?"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "synonym", "polarity": "positive", "text": "read out that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "alias", "polarity": "positive", "text": "read that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "read it back for me"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "What, did you type?"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "synonym", "polarity": "positive", "text": "say it back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "read it back right now"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "Read that back."}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "synonym", "polarity": "positive", "text": "read out my last dictation"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "read it back thanks"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "Read my last dictation."}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "synonym", "polarity": "positive", "text": "say my last dictation"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "could you just read that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "Read it back."}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "could you just what did you type"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "punct", "polarity": "positive", "text": "What did you type."}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "so read that back"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "what did you type right now"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "read my last dictation thanks"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "can you what did you type"}
+{"accept": ["core_utils.read_that_back"], "id": "core_utils.read_that_back", "kind": "filler", "polarity": "positive", "text": "can you please read it back"}
+{"id": "core_utils.read_that_back", "kind": "sentence", "polarity": "negative", "reject": "core_utils.read_that_back", "text": "honestly the whole point of the meeting was to read it back and nobody did"}
+{"id": "core_utils.read_that_back", "kind": "other_command", "polarity": "negative", "reject": "core_utils.read_that_back", "text": "what did you hear"}
+{"id": "core_utils.read_that_back", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.read_that_back", "text": "lantern zeppelin read purple octopus"}
 {"accept": ["core_utils.reload_config"], "id": "core_utils.reload_config", "kind": "alias", "polarity": "positive", "text": "reread config"}
 {"accept": ["core_utils.reload_config"], "id": "core_utils.reload_config", "kind": "determiner", "polarity": "positive", "text": "reread the config"}
 {"accept": ["core_utils.reload_config"], "id": "core_utils.reload_config", "kind": "filler", "polarity": "positive", "text": "hey refresh config"}
@@ -12878,6 +12918,46 @@
 {"id": "core_utils.what_can_i_say", "kind": "sentence", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "yesterday i told my sister we should help before dinner"}
 {"id": "core_utils.what_can_i_say", "kind": "other_command", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "what alarms do i have"}
 {"id": "core_utils.what_can_i_say", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "marmalade pickle help zeppelin sideways"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "alias", "polarity": "positive", "text": "what just happened"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "determiner", "polarity": "positive", "text": "what the just happened"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "please what just happened"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "punct", "polarity": "positive", "text": "What did you hear."}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "alias", "polarity": "positive", "text": "what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "determiner", "polarity": "positive", "text": "what the did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "why didnt that work please"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "punct", "polarity": "positive", "text": "What, did you hear?"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "alias", "polarity": "positive", "text": "why didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "determiner", "polarity": "positive", "text": "why the didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "could you what just happened"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "punct", "polarity": "positive", "text": "What, just happened?"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "uh why didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "punct", "polarity": "positive", "text": "Why didnt that work."}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "would you please what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "punct", "polarity": "positive", "text": "Why, didnt that work?"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "hey what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "punct", "polarity": "positive", "text": "What just happened."}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "can you why didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what did you hear for me"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what just happened for me"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "could you why didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what just happened right now"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "go ahead and what just happened"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what did you hear for me please"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what just happened now"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "i need you to what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "can you please why didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what just happened please"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "why didnt that work for me please"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "why didnt that work for me"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "go ahead and what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "hey why didnt that work"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "so what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "uh what just happened"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "can you what did you hear"}
+{"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "what did you hear please"}
+{"id": "core_utils.why_didnt_that_work", "kind": "sentence", "polarity": "negative", "reject": "core_utils.why_didnt_that_work", "text": "last night he wrote in the notes that you can what did you hear whenever it feels right"}
+{"id": "core_utils.why_didnt_that_work", "kind": "other_command", "polarity": "negative", "reject": "core_utils.why_didnt_that_work", "text": "what did you type"}
+{"id": "core_utils.why_didnt_that_work", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.why_didnt_that_work", "text": "velvet lantern what octopus sideways"}
 {"accept": ["demo_commands.archive_my_tabs"], "id": "demo_commands.archive_my_tabs", "kind": "alias", "polarity": "positive", "text": "archive my tabs"}
 {"accept": ["demo_commands.archive_my_tabs"], "id": "demo_commands.archive_my_tabs", "kind": "determiner", "polarity": "positive", "text": "save the all tabs"}
 {"accept": ["demo_commands.archive_my_tabs"], "id": "demo_commands.archive_my_tabs", "kind": "filler", "polarity": "positive", "text": "um save all tabs"}

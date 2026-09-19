@@ -100,13 +100,24 @@ def _manager(buffered):
 
 def _state(mgr):
     """Every comparable non-callable session attribute, deep-copied and rendered."""
+    def value_snapshot(value):
+        # DraftDocument repr is identity-based; compare its session value instead.
+        if value.__class__.__name__ == "DraftDocument":
+            return {
+                "text": value.text,
+                "segments": tuple(segment.text for segment in value.segments),
+                "revision": value.revision,
+                "flags": (value.manual_commit, value.edited),
+            }
+        return repr(copy.deepcopy(value))
+
     snapshot = {}
     for name, value in sorted(vars(mgr).items()):
         if callable(value) and not isinstance(value, (list, dict, set, tuple)):
             continue
         if name == "_dispatch_lock":
             continue                            # synchronization, not session state
-        snapshot[name] = repr(copy.deepcopy(value)) if not name.startswith("_stack") else repr(
+        snapshot[name] = value_snapshot(value) if not name.startswith("_stack") else repr(
             [(i.kind, i.payload, i.mode, i.extra) for i in getattr(value, "_items", [])] or value)
     return snapshot
 
