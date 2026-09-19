@@ -78,9 +78,11 @@ _TEACHING_PATTERNS = [
     (re.compile(rf'^{_AVA}my interests are (.+?){_DOT}', _P), 'interests'),
     (re.compile(rf'^{_AVA}(?:keep answers|keep your answers) (short|normal|detailed){_DOT}', _P), 'answer_length'),
     (re.compile(rf'^{_AVA}i prefer (short|normal|detailed) answers{_DOT}', _P), 'answer_length'),
+    (re.compile(rf'^{_AVA}keep (?:things|it) (short|normal|detailed){_DOT}', _P), 'answer_length'),
     (re.compile(rf'^{_AVA}(?:speak|talk) (slowly|at a normal pace|quickly){_DOT}', _P), 'pace'),
     (re.compile(rf'^{_AVA}(?:please )?repeat (?:that|long answers) back to me{_DOT}', _P), 'repeat_back_yes'),
     (re.compile(rf"^{_AVA}(?:don'?t|do not) repeat (?:that|long answers) back to me{_DOT}", _P), 'repeat_back_no'),
+    (re.compile(rf"^{_AVA}(?:don'?t|do not) repeat instructions i know{_DOT}", _P), 'repeat_back_no'),
     (re.compile(rf'^{_AVA}ask before long answers{_DOT}', _P), 'ask_before_long_answers_yes'),
     (re.compile(rf"^{_AVA}(?:don'?t|do not) ask before long answers{_DOT}", _P), 'ask_before_long_answers_no'),
     # notes (free-form append)
@@ -100,6 +102,8 @@ _FORGET_PATTERNS = [
     (re.compile(rf'^{_AVA}forget my interests{_DOT}', _P), 'interests'),
     (re.compile(rf'^{_AVA}forget my answer length preference{_DOT}', _P), 'answer_length'),
     (re.compile(rf'^{_AVA}forget my pace preference{_DOT}', _P), 'pace'),
+    (re.compile(rf'^{_AVA}forget my repetition preference{_DOT}', _P), 'repeat_back'),
+    (re.compile(rf'^{_AVA}forget (?:that i )?know those instructions{_DOT}', _P), 'repeat_back'),
     # Voice correction of a wrongly stored name (queue 57).
     (re.compile(rf"^{_AVA}that(?:'s| is) not my name{_DOT}", _P), 'name'),
     (re.compile(rf"^{_AVA}(?:don'?t|do not) call me that{_DOT}", _P), 'name'),
@@ -120,6 +124,8 @@ _QUERY_PATTERNS = [
     (re.compile(rf'^{_AVA}what are my pronouns\??{_DOT}', _P), 'pronouns'),
     (re.compile(rf'^{_AVA}what(?:\'s| is) my occupation\??{_DOT}', _P), 'occupation'),
     (re.compile(rf'^{_AVA}what(?:\'s| is) my job\??{_DOT}', _P), 'occupation'),
+    (re.compile(rf'^{_AVA}how do you talk to me\??{_DOT}', _P), 'communication'),
+    (re.compile(rf'^{_AVA}what are my communication preferences\??{_DOT}', _P), 'communication'),
 ]
 
 # ---------------------------------------------------------------------------
