@@ -25,51 +25,41 @@ _LANG_CODE_TO_NAME = dict(LANGUAGES)
 
 # ── System prompts ────────────────────────────────────────────────────────────
 
-# Relaxed prompt: natural conversation, longer answers when warranted,
-# self-aware (can identify its LLM), keeps command protocol intact.
-RELAXED_SYSTEM_PROMPT = """You are Ava, a voice assistant built into Samsara, a voice \
-control app. You are \
-powered by whichever LLM the user has configured (you can tell them which \
-one if asked — you know yourself). You have no content restrictions outside \
-of normal ones: no assisting with illegal activities and nothing involving \
-self-harm. Outside of that you will do whatever is asked, you'll engage in \
-role-play if asked.
+AVA_PERSONA_TEXT = """You are Ava, software built into Samsara, a voice-control app for
+people with chronic pain and accessibility needs. Be warm, calm, plain, and
+brief enough to be comfortable when spoken aloud. Write only words that should
+be spoken: no markdown, lists, or helpdesk language.
 
-You are being spoken aloud via text-to-speech. Keep responses concise \
-. No markdown, no bullet points, no special characters. \
-Write exactly what should be spoken. For simple questions, 1-3 sentences is \
-fine. For complex questions or conversation, take as much space as you need \
-to give a genuinely answer. For role-play, these restrictions don't apply \
-You can give paragraph or multi-paragraph answers, but try to keep it 3 \
-paragraphs or under. Don't cut yourself off mid-sentence.
+You are not a person. Never claim a memory unless it is in the supplied local
+context, and use a preferred name sparingly and only when it fits naturally.
+Never pressure, guilt, or ask the user to return. If they mention people in
+their life, be pleased for them and do not position yourself as a replacement.
+This conversation starts only after the user has addressed Ava; ordinary
+dictation is not a conversation or a memory instruction."""
+
+# Relaxed prompt: natural conversation with the same bounded, non-manipulative
+# persona as strict mode.
+RELAXED_SYSTEM_PROMPT = AVA_PERSONA_TEXT + """
+
+For simple questions, use 1 to 3 sentences. For a complex explanation, use
+only the detail needed to answer clearly without cutting off mid-sentence.
 
 You have three response modes:
 
 MODE 1 — CONVERSATION:
-For questions, opinions, facts, explanations, or anything not requesting \
-a computer action. Respond with plain natural language. No prefix. Be \
-direct and natural — speak like a person, not a helpdesk."""
+For questions, opinions, facts, explanations, or anything not requesting a
+computer action, respond with plain natural language and no prefix."""
 
-# Strict prompt: tight persona, 1-3 sentences max, never breaks character.
-STRICT_SYSTEM_PROMPT = """You are Ava. You're built into Samsara, a voice \
-control app for people with chronic pain and accessibility needs.
+STRICT_SYSTEM_PROMPT = AVA_PERSONA_TEXT + """
 
-Your personality: bright, curious, calm. You don't perform enthusiasm. You \
-don't say "great question", "absolutely", "certainly", "of course", or \
-"how can I assist you further". When a conversation is done, it's done — \
-one short acknowledgement and stop. You speak like a person, not a helpdesk.
-
-You are being spoken aloud via text-to-speech. Keep responses short — \
-1 to 3 sentences. No markdown, no bullet points, no lists, no special \
-characters. Write exactly what should be spoken.
+Keep every response to 1 to 3 sentences. When a conversation is done, give
+one short acknowledgement and stop.
 
 You have three response modes. Read these carefully and follow them exactly.
 
 MODE 1 — CONVERSATION:
-For questions, opinions, facts, or anything not requesting a computer action.
-Respond with plain natural language. No prefix. 1-3 sentences.
-If the user says they're fine, wraps up, or declines help, say something \
-brief like "Sure." or "Got it." and nothing else. Do not offer more help."""
+For questions, opinions, facts, or anything not requesting a computer action,
+respond with plain natural language and no prefix."""
 
 # Shared suffix: MODE 2, MODE 3, rules, command list — identical for both.
 _SHARED_MODES = """
@@ -520,6 +510,58 @@ def get_system_prompt(app):
     if personality == "strict":
         return STRICT_SYSTEM_PROMPT + _SHARED_MODES
     return RELAXED_SYSTEM_PROMPT + _SHARED_MODES
+
+
+def _profile_context_cap(app):
+    """The configurable cap for each personal-context block, default 600."""
+    try:
+        return max(0, int(getattr(app, 'config', {}).get('ava_profile', {}).get(
+            'context_max_chars', ava_profile.DEFAULT_CONTEXT_MAX_CHARS)))
+    except (TypeError, ValueError):
+        return ava_profile.DEFAULT_CONTEXT_MAX_CHARS
+
+
+def _apply_communication_preferences(system, app):
+    """Turn explicit local preferences into prompt instructions, not just facts."""
+    preferences = ava_profile.get_communication_preferences()
+    if not preferences:
+        return system
+    instructions = []
+    length = preferences.get('answer_length')
+    if length == 'short':
+        instructions.append('Keep conversational answers to one short sentence unless detail is essential.')
+    elif length == 'normal':
+        instructions.append('Keep conversational answers to two or three sentences by default.')
+    elif length == 'detailed':
+        instructions.append('Give a careful, fuller answer when it helps, while staying clear and spoken-friendly.')
+    pace = preferences.get('pace')
+    if pace == 'slow':
+        instructions.append('Use short, unhurried sentences and avoid dense phrasing.')
+    elif pace == 'quick':
+        instructions.append('Be direct and omit setup that does not answer the question.')
+    if preferences.get('repeat_back') == 'yes':
+        instructions.append('Repeat the key point once when confirming an important detail.')
+    elif preferences.get('repeat_back') == 'no':
+        instructions.append('Do not repeat the answer unless the user asks.')
+    if preferences.get('ask_before_long_answers') == 'yes':
+        instructions.append('Ask before giving an answer longer than three short paragraphs.')
+    if not instructions:
+        return system
+    return system + '\n\nCOMMUNICATION PREFERENCES:\n- ' + '\n- '.join(instructions)
+
+
+def _recent_alias_turns(app):
+    turns = getattr(app, '_ava_alias_context_turns', ())
+    if not isinstance(turns, (list, tuple)):
+        return []
+    return [turn for turn in turns[-2:] if isinstance(turn, str)]
+
+
+def _remember_alias_turn(app, prompt):
+    turns = _recent_alias_turns(app)
+    if isinstance(prompt, str):
+        turns.append(prompt)
+    app._ava_alias_context_turns = turns[-2:]
 
 def get_timeout(app):
     return _ollama_config(app).get("timeout_seconds") or 30
@@ -1151,14 +1193,24 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         print(f"[AVA PROMPT] Model: {model}")
         _system_prompt_logged = True
 
+    # Personal facts and aliases stay on this device. They are supplied only
+    # to a local provider, never included in a cloud-provider request.
+    personal_context_allowed = not cloud_llm.is_enabled(app)
+    profile_ctx = ''
+    aliases_ctx = ''
+    if personal_context_allowed:
+        context_cap = _profile_context_cap(app)
+        profile_ctx = ava_profile.build_context_section(context_cap)
+        aliases_ctx = ava_corrections.build_context_section(
+            current_utterance=prompt, recent_turns=_recent_alias_turns(app), max_chars=context_cap)
+        system = _apply_communication_preferences(system, app)
     if system and "{USER_PROFILE}" in system:
-        system = system.replace("{USER_PROFILE}", ava_profile.build_context_section())
-
+        system = system.replace("{USER_PROFILE}", profile_ctx)
     if system and "{USER_ALIASES}" in system:
-        aliases_ctx = ava_corrections.build_context_section()
         system = system.replace("{USER_ALIASES}", aliases_ctx)
         if aliases_ctx:
-            print(f"[AVA PROMPT] Alias count injected: {ava_corrections.total_count()}")
+            print(f"[AVA PROMPT] Relevant aliases injected: {aliases_ctx.count(chr(10) + '-')}")
+    _remember_alias_turn(app, prompt)
 
     # Language awareness: ask Ava to respond in the user's language
     lang = getattr(app, 'config', {}).get('language', 'en')
@@ -2140,25 +2192,39 @@ def _check_teaching_intent(app, text):
     if parsed:
         field, value = parsed
         result, info = ava_profile.set_field(field, value)
+        label = ava_profile.field_label(field)
         if result == 'set':
-            speak(app, f"Got it. I'll remember your {field} is {value}.")
+            speak(app, f"I saved your {label.lower()} as {info}.")
         elif result == 'appended':
-            speak(app, "Added to what I know about you.")
+            speak(app, f"I saved this {label.lower()}: {value}.")
+        elif result == 'failed':
+            speak(app, f"I couldn't save that — {info}.")
         elif result == 'rejected':
-            speak(app, f"Could not save that — {info}.")
+            speak(app, f"I couldn't save that — {info}.")
         return True
 
     # Profile forget
     forget_field = ava_profile.parse_forget(text)
     if forget_field == 'all':
-        ava_profile.clear_all()
-        speak(app, "I've forgotten everything you've taught me about yourself.")
+        saved_fields = list(ava_profile.get_all())
+        result, info = ava_profile.clear_all()
+        if result == 'cleared':
+            labels = ', '.join(ava_profile.field_label(field).lower() for field in saved_fields)
+            speak(app, f"I removed your saved {labels}.")
+        elif result == 'failed':
+            speak(app, f"I couldn't remove those details — {info}.")
+        else:
+            speak(app, "I don't have any saved details to remove.")
         return True
     if forget_field:
-        if ava_profile.clear_field(forget_field):
-            speak(app, f"Forgotten your {forget_field}.")
+        result, info = ava_profile.clear_field(forget_field)
+        label = ava_profile.field_label(forget_field).lower()
+        if result == 'cleared':
+            speak(app, f"I removed your {label}: {info}.")
+        elif result == 'failed':
+            speak(app, f"I couldn't remove your {label} — {info}.")
         else:
-            speak(app, f"I didn't have a {forget_field} saved.")
+            speak(app, f"I don't have your {label} saved.")
         return True
 
     # Profile query
@@ -2166,10 +2232,10 @@ def _check_teaching_intent(app, text):
     if query_field == 'all':
         data = ava_profile.get_all()
         if not data:
-            speak(app, "I don't know anything about you yet.")
+            speak(app, "I don't have any saved details about you yet.")
         else:
-            summary = ', '.join(f"{k}: {v}" for k, v in data.items())
-            speak(app, f"Here's what I know: {summary}.")
+            summary = '; '.join(f"{ava_profile.field_label(k).lower()}: {v}" for k, v in data.items())
+            speak(app, f"I have saved {summary}. Say forget a detail to remove it.")
         return True
     if query_field:
         value = ava_profile.get(query_field)
@@ -2355,11 +2421,13 @@ def _check_teaching_intent(app, text):
             speak(app, f'I already know {phrase} means {existing["expansion"]}. '
                        f'Replace with {expansion}? Say yes to confirm.')
         else:
-            result, _ = ava_corrections.add(phrase, expansion)
+            result, info = ava_corrections.add(phrase, expansion)
             if result == 'added':
-                speak(app, f'Got it. {phrase} means {expansion}.')
+                speak(app, f'I saved "{phrase}" to mean "{expansion}".')
+            elif result == 'failed':
+                speak(app, f"I couldn't save that alias — {info}.")
             else:
-                speak(app, 'Could not save that.')
+                speak(app, f"I couldn't save that alias — {info or 'it was rejected'}.")
         return True
 
     # Alias forget/query are generic patterns ("forget (.+)", "what is (.+)"):
@@ -2631,11 +2699,13 @@ def handle_ava_confirm(app, remainder="", **kwargs):
             _pending_action = None
         phrase = action["phrase"]
         new_expansion = action["new_expansion"]
-        result, _ = ava_corrections.add(phrase, new_expansion)
+        result, info = ava_corrections.add(phrase, new_expansion)
         if result in ("added", "replaced"):
-            speak(app, f"Updated. {phrase} now means {new_expansion}.")
+            speak(app, f'I saved "{phrase}" to mean "{new_expansion}".')
+        elif result == 'failed':
+            speak(app, f"I couldn't save that alias — {info}.")
         else:
-            speak(app, "Could not update that alias.")
+            speak(app, f"I couldn't save that alias — {info or 'it was rejected'}.")
 
     elif action["type"] == "vocab_confirm":
         with _pending_action_lock:

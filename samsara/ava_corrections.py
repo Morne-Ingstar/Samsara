@@ -224,21 +224,34 @@ def increment_use(phrase):
             _dirty_count = True
 
 
-def build_context_section():
-    """Returns the USER-DEFINED ALIASES block for the system prompt, or empty string."""
+def build_context_section(current_utterance='', recent_turns=(), max_chars=600):
+    """Return only aliases relevant to this Ava turn, within ``max_chars``.
+
+    The caller supplies the current utterance and at most its two preceding
+    turns. Alias data stays local unless the local-provider path explicitly
+    chooses to build this block.
+    """
+    try:
+        max_chars = max(0, int(max_chars))
+    except (TypeError, ValueError):
+        max_chars = 600
+    spoken = ' '.join([current_utterance or '', *(recent_turns or ())]).lower()
     with _aliases_lock:
         if not _aliases:
             return ''
-        lines = [
-            'USER-DEFINED ALIASES:',
-            'The user has taught you the following terminology:',
+        relevant = [
+            (phrase, data) for phrase, data in _aliases.items()
+            if re.search(r'(?<!\w)' + re.escape(phrase) + r'(?!\w)', spoken)
         ]
-        for phrase, data in _aliases.items():
-            lines.append(f'- "{phrase}" means: {data["expansion"]}')
-        lines.append('')
-        lines.append('When the user uses these terms, interpret them according to these')
-        lines.append('aliases. Do not substitute them blindly -- apply them in context.')
-        return '\n'.join(lines)
+    if not relevant or max_chars < len('USER-DEFINED ALIASES:'):
+        return ''
+    lines = ['USER-DEFINED ALIASES:']
+    for phrase, data in relevant:
+        line = f'- "{phrase}" means: {data["expansion"]}'
+        candidate = '\n'.join([*lines, line])
+        if len(candidate) <= max_chars:
+            lines.append(line)
+    return '\n'.join(lines) if len(lines) > 1 else ''
 
 
 def list_top(n=5):
