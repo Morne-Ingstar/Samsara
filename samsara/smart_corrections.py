@@ -138,7 +138,11 @@ def _sc_config(app) -> dict:
 
 
 def is_enabled(app) -> bool:
-    return bool(_sc_config(app).get("enabled", False))
+    if not _sc_config(app).get("enabled", False):
+        return False
+    from samsara import ai_preferences  # noqa: PLC0415
+    return ai_preferences.runtime_state(
+        getattr(app, "config", {}) or {}, "editing").allowed
 
 
 def _ollama_host(app) -> str:
@@ -190,37 +194,16 @@ def _resolve_backend_detailed(app):
         None whenever a backend was resolved.
     """
     try:
-        cfg = _sc_config(app)
-        backend_setting = cfg.get("backend", "auto")
-        allow_fallback = bool(cfg.get("allow_cloud_fallback", False))
-
-        if backend_setting == "ollama":
+        from samsara import ai_preferences  # noqa: PLC0415
+        state = ai_preferences.runtime_state(
+            getattr(app, "config", {}) or {}, "editing")
+        if not state.allowed:
+            return None, False, "ai_not_authorized"
+        if state.provider.identity == "ollama":
             if _ollama_reachable(app):
                 return "ollama", False, None
             return None, False, "ollama_down_explicit_backend"
-
-        if backend_setting == "cloud":
-            if cloud_llm.is_enabled(app):
-                return "cloud", False, None
-            return None, False, "cloud_not_configured_explicit_backend"
-
-        if backend_setting == "auto":
-            if _ollama_reachable(app):
-                return "ollama", False, None
-            if not allow_fallback:
-                logger.info(
-                    "[SMART] local backend down, cloud fallback disabled -- skipping"
-                )
-                return None, False, "ollama_down_fallback_disabled"
-            if cloud_llm.is_enabled(app):
-                return "cloud", True, None
-            logger.info(
-                "[SMART] local backend down, cloud fallback enabled but no "
-                "cloud provider configured -- skipping"
-            )
-            return None, False, "ollama_down_no_cloud_configured"
-
-        return None, False, "unknown_backend_setting"
+        return "cloud", False, None
     except Exception as exc:
         logger.debug(f"[SMART] backend resolution failed: {exc}")
         return None, False, "exception"
@@ -248,6 +231,8 @@ def describe_backend_status(app) -> str:
         return "None — local AI down"
     if skip_reason == "cloud_not_configured_explicit_backend":
         return "None — cloud AI not configured"
+    if skip_reason == "ai_not_authorized":
+        return "None — optional AI is off or needs setup"
     return "None — no backend configured"
 
 

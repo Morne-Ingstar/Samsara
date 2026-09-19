@@ -198,11 +198,10 @@ def ollama_response_content(response) -> str:
 
 
 def configured_provider(app) -> str:
-    """The provider Ava will actually use for the next turn -- the same
-    rule ask_ollama routes by (cloud only when enabled AND keyed)."""
-    from samsara import cloud_llm  # noqa: PLC0415
-    if cloud_llm.is_enabled(app):
-        cfg = getattr(app, "config", {}).get("cloud_llm", {}) or {}
+    """The provider explicitly selected by the current Ava policy."""
+    config = getattr(app, "config", {}) or {}
+    if (config.get("ava", {}) or {}).get("provider_policy", "off") == "cloud":
+        cfg = config.get("cloud_llm", {}) or {}
         return str(cfg.get("provider", "deepseek"))
     return "ollama"
 
@@ -221,7 +220,10 @@ def warm_on_boot_enabled(app) -> bool:
     Cloud warm-ups consume a billable completion, so absence is not consent.
     Local Ollama warm-up remains on by default for its first-reply benefit.
     """
+    from samsara import ai_preferences  # noqa: PLC0415
     config = getattr(app, "config", {}) or {}
+    if not ai_preferences.runtime_state(config, "ava").allowed:
+        return False
     ava = config.get("ava", {}) or {}
     if "warm_on_boot" in ava:
         value = ava["warm_on_boot"]
@@ -240,6 +242,10 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
     429 is rate limiting, which a bare "did anything answer" check (the old
     cloud_llm.check_available) reported as available.
     Ollama: GET <host>/api/tags."""
+    from samsara import ai_preferences  # noqa: PLC0415
+    state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava")
+    if not state.allowed:
+        return "none", NOT_CONFIGURED
     import requests  # noqa: PLC0415
     from samsara import cloud_llm  # noqa: PLC0415
 
@@ -274,6 +280,9 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
 def warm_configured_provider(app) -> Readiness:
     """Run one harmless completion after startup to make the configured model
     resident. This is called from a background worker, never the boot lane."""
+    from samsara import ai_preferences  # noqa: PLC0415
+    if not ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava").allowed:
+        return tracker.snapshot()
     import requests  # noqa: PLC0415
 
     provider = configured_provider(app)

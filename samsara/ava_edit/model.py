@@ -149,19 +149,24 @@ def _call_cloud(app, user_message: str, timeout_s: float):
 
 
 def resolve_backend(app) -> "str | None":
-    """'ollama' | 'cloud' | None. Local first, cloud only when configured."""
-    from samsara import cloud_llm, smart_corrections as sc  # noqa: PLC0415
-    try:
-        if sc._ollama_reachable(app):
-            return "ollama"
-    except Exception as exc:
-        logger.debug(f"[AVA-EDIT] ollama probe failed: {exc}")
-    try:
-        if cloud_llm.is_enabled(app):
-            return "cloud"
-    except Exception as exc:
-        logger.debug(f"[AVA-EDIT] cloud probe failed: {exc}")
-    return None
+    """Return only the provider the owner authorized for Ava editing.
+
+    This is intentionally not a local-then-cloud fallback: policy selection
+    must happen before a reachability probe or model request.
+    """
+    from samsara import ai_preferences  # noqa: PLC0415
+
+    state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "editing")
+    if not state.allowed:
+        return None
+    if state.provider.identity == "ollama":
+        from samsara import smart_corrections as sc  # noqa: PLC0415
+        try:
+            return "ollama" if sc._ollama_reachable(app) else None
+        except Exception as exc:
+            logger.debug(f"[AVA-EDIT] Ollama probe failed: {exc}")
+            return None
+    return "cloud"
 
 
 def rewrite(text: str, instruction: str, app=None, *, backend=None,

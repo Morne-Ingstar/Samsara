@@ -87,7 +87,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _DEFAULTS: dict[str, Any] = {
-    "enabled": True,
+    "enabled": False,
     "key": "left_alt",
     "backend": "ollama",
     "model": "llama3.2:3b",
@@ -95,7 +95,7 @@ _DEFAULTS: dict[str, Any] = {
     "miss_limit": 3,
     "inactivity_timeout_s": 60,
     "shortlist_size": 12,
-    "keep_warm": True,
+    "keep_warm": False,
     "ready_cue_enabled": True,
     "ready_cue_dir": "assets/sounds/ava_cues",
 }
@@ -279,16 +279,22 @@ def _stage_c_llm_fallback(app, utterance: str, shortlist: list[str], generation:
     "become freeform chat", explicitly out of scope for D3), and never
     executes a command the model invented outside the shortlist/ACTION2
     grammar it was given (see _closed_world_selection_ok)."""
+    from samsara import ai_preferences  # noqa: PLC0415
     from plugins.commands import ask_ollama  # noqa: PLC0415
+
+    state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava")
+    if not state.allowed:
+        return False
 
     system = ask_ollama.get_system_prompt(app)
     if "{COMMAND_LIST}" in system:
         system = system.replace("{COMMAND_LIST}", ", ".join(shortlist))
     system += _CLOSED_WORLD_REMINDER
-    model = cfg.get("model", _DEFAULTS["model"]) if cfg.get("backend") != "cloud" else None
+    model = cfg.get("model", _DEFAULTS["model"]) if state.provider.identity == "ollama" else None
     response = ask_ollama.ask_ollama(utterance, app, model=model, system=system)
 
-    if getattr(app, "_ava_cmd_generation", generation) != generation:
+    if (getattr(app, "_ava_cmd_generation", generation) != generation
+            or not ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava").allowed):
         logger.debug(
             f"[AVA-CMD] Stale generation after stage (c) resolution "
             f"({generation} != {app._ava_cmd_generation}) -- dropping"
@@ -588,15 +594,13 @@ def _play_ready_cue(app) -> None:
 
 
 def warm_up(app, on_done=None) -> None:
-    """PRESERVED verbatim from ai_command_mode.py: fire a throwaway
-    resolve call so the model is warm in Ollama's memory before the first
-    real utterance. When backend is 'cloud', skips straight to on_done."""
+    """Warm only the explicitly authorized local provider, never cloud."""
+    from samsara import ai_preferences  # noqa: PLC0415
     cfg = _cfg(app)
-    backend = cfg.get("backend", _DEFAULTS["backend"])
+    state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava")
 
-    if backend == "cloud":
+    if not state.allowed or state.provider.identity != "ollama":
         def _cloud_noop():
-            print("[AVA-CMD] Cloud backend -- skipping Ollama warm-up.")
             if on_done is not None:
                 try:
                     on_done()

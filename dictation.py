@@ -5018,9 +5018,10 @@ class DictationApp:
             logger.info(f"[INIT] Startup complete. (wake: {self.wake_ready_state()})")
             _boot_log("async: startup complete")
             try:
-                from samsara import ava_readiness
-                ava_readiness.schedule_warm_on_boot(
-                    self, lambda name, fn: thread_registry.spawn(name, fn, daemon=True))
+                from samsara import ai_preferences, ava_readiness
+                if ai_preferences.runtime_state(self.config, "ava").allowed:
+                    ava_readiness.schedule_warm_on_boot(
+                        self, lambda name, fn: thread_registry.spawn(name, fn, daemon=True))
             except Exception as exc:
                 logger.debug(f"[AVA-WARM] could not schedule warm-up: {exc}")
 
@@ -6337,7 +6338,7 @@ class DictationApp:
             _play_ready_cue(self)
             self._ava_cmd_ready.set()
 
-        if ava_cfg.get('keep_warm', True):
+        if ava_cfg.get('keep_warm', False):
             try:
                 from samsara.ava_command_session import warm_up  # noqa: PLC0415
                 warm_up(self, on_done=_on_ready)
