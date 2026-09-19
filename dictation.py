@@ -272,6 +272,7 @@ _VK_BY_NAME = {
     'escape': (0x1B,), 'esc': (0x1B,), 'space': (0x20,), 'tab': (0x09,),
     'enter': (0x0D,), 'backspace': (0x08,), 'caps lock': (0x14,),
     'capslock': (0x14,), 'delete': (0x2E,), 'insert': (0x2D,),
+    'pause': (0x13,), 'break': (0x13,), 'pause/break': (0x13,),
     'home': (0x24,), 'end': (0x23,), 'page up': (0x21,), 'page down': (0x22,),
     'up': (0x26,), 'down': (0x28,), 'left': (0x25,), 'right': (0x27,),
 }
@@ -11272,6 +11273,15 @@ class DictationApp:
         if streaming is None:
             streaming = (self.config.get('streaming_mode', False)
                          and self.config.get('mode', 'hold') == 'hold')
+        # The new live surface promises a transcript for ordinary holds too.
+        # Reuse the existing streaming capture/final-delivery owner; no second
+        # microphone or decoder is created. Special-purpose captures stay batch.
+        if (self._live_surface_hold_parking_enabled()
+                and getattr(self, 'live_surface', None) is not None
+                and self.config.get('mode', 'hold') == 'hold'
+                and not any(getattr(self, name, False) for name in
+                            ('command_mode_recording', 'ava_mode_recording', '_memo_recording'))):
+            streaming = True
 
         flight_recorder.record(
             'hold_recording.start',

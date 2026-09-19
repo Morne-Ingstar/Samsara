@@ -16,7 +16,7 @@ REVIEW_SIZE_DIP = (500, 360)
 DRAFT_BADGE_SIZE_DIP = (120, 44)
 ATTACHMENT_GAP_DIP = 4
 IDLE_DELAY_S = 5.0
-RESULT_RECEIPT_S = 3.0
+RESULT_RECEIPT_S = 1.0
 ORDINARY_NOTICE_S = 6.0
 AVA_CAPTION_LINGER_S = 6.0
 
@@ -173,6 +173,11 @@ class LiveSurfaceModel:
         self._last_activity = now
         kind = event.kind
         if kind is EventKind.CAPTURE_STARTED:
+            if self.document is DocumentState.DELIVERED:
+                self.text = ""
+                self.document = DocumentState.EMPTY
+            if self._notice.expires_at is not None:
+                self._notice = Notice(NoticeKind.NONE, "", None)
             self._active_capture = event.capture_id
             self.capture = event.capture or CaptureState.RECORDING
             self.lane = event.lane or self.lane
@@ -216,6 +221,8 @@ class LiveSurfaceModel:
         elif kind is EventKind.DELIVERY_FINISHED:
             self._set_document(event, DocumentState.DELIVERED)
             self._delivered_at = now
+            if self._notice.expires_at is not None:
+                self._notice = Notice(NoticeKind.NONE, "", None)
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.DELIVERY_UNVERIFIED:
             self._set_document(event, DocumentState.DELIVERY_UNVERIFIED)
@@ -226,7 +233,8 @@ class LiveSurfaceModel:
             if self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind):
                 self._notice = candidate
         elif kind is EventKind.NOTICE_CLEARED:
-            self._notice = Notice(NoticeKind.NONE, "", None)
+            if event.notice in (NoticeKind.NONE, self._notice.kind):
+                self._notice = Notice(NoticeKind.NONE, "", None)
         elif kind is EventKind.REVIEW_PINNED:
             self.presentation = PresentationState.PINNED_REVIEW
         elif kind is EventKind.REVIEW_UNPINNED:
@@ -322,18 +330,23 @@ class LiveSurfaceModel:
                                           PresentationState.KEYBOARD_INTERACTION)
         if protected and (self.text or self.presentation is PresentationState.CORRECTION):
             return VisibleForm.REVIEW
-        if self._notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER):
+        if (self._notice.kind in (NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+                or self._notice.kind is NoticeKind.ERROR and self._notice.expires_at is None):
             return VisibleForm.STATUS
         if self.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING):
             return VisibleForm.LIVE if self.text or self.provisional_text else VisibleForm.STATUS
+        if self.provisional_text:
+            return VisibleForm.LIVE
         if self.document in (DocumentState.DELIVERING, DocumentState.DELIVERY_UNVERIFIED):
             return VisibleForm.STATUS
         if self.document is DocumentState.DELIVERED:
-            return VisibleForm.STATUS if not can_collapse else VisibleForm.MARK
+            return VisibleForm.STATUS if not can_collapse or self.capture is CaptureState.HANDS_FREE_LISTENING else VisibleForm.MARK
         if self.text:
             if can_collapse and now - self._last_activity >= IDLE_DELAY_S:
                 return VisibleForm.DRAFT_BADGE
             return VisibleForm.LIVE
         if self._notice.kind is not NoticeKind.NONE:
+            return VisibleForm.STATUS
+        if self.capture is CaptureState.HANDS_FREE_LISTENING:
             return VisibleForm.STATUS
         return VisibleForm.MARK

@@ -113,7 +113,7 @@ class LiveSurfaceWidget(QWidget):
 
     def __init__(self, controller: Any, *, reduced_motion: bool = False) -> None:
         flags = (Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
-                 Qt.WindowType.WindowDoesNotAcceptFocus)
+                 Qt.WindowType.WindowDoesNotAcceptFocus | Qt.WindowType.WindowStaysOnTopHint)
         super().__init__(None, flags)
         self._controller, self._view = controller, _view_from(controller)
         self._reduced_motion, self._rotation, self._animation = reduced_motion, 0.0, None
@@ -161,14 +161,13 @@ class LiveSurfaceWidget(QWidget):
         self._badge.setAccessibleName("Draft pending")
         self._latest = self._button("Read the latest draft text", "Latest", self._latest_clicked)
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
-        self._commit = self._button("Insert pending text", "Insert text", self.commit_requested.emit)
         self._clear = self._button("Clear draft", "Clear", self.clear_requested.emit)
         self._clear.setObjectName("quietClear")
         self._pause = self._button("Pause capture", "Pause", self.pause_requested.emit)
         self._correct = self._button("Correct a word", "Correct", self._request_correct)
         self._edit_receipt = self._button("Edit sent receipt as a new draft", "Edit as new draft", self._request_edit_receipt)
         self._collapse = self._button("Collapse surface", "Collapse", self.collapse_requested.emit)
-        self._controls = (self._commit, self._clear, self._pause, self._correct, self._edit_receipt, self._collapse)
+        self._controls = (self._clear, self._pause, self._correct, self._edit_receipt, self._collapse)
         self._picker_buttons = [self._button("Draft word", "", lambda n=n: self._choose_picker(n))
                                 for n in range(4)]
         self._candidate_buttons = [self._button("Correction candidate", "", lambda n=n: self._choose_candidate(n))
@@ -184,6 +183,12 @@ class LiveSurfaceWidget(QWidget):
         self._editor.setMaxLength(120)
         self._editor.textChanged.connect(self._sanitize_spelling)
         self._apply_view(self._view, animate=False)
+        self._expiry_timer = QTimer(self)
+        self._expiry_timer.setInterval(100)
+        expire = getattr(controller, "refresh_expired", None)
+        if callable(expire):
+            self._expiry_timer.timeout.connect(expire)
+            self._expiry_timer.start()
 
     def _button(self, name: str, label: str, callback) -> QPushButton:
         button = QPushButton(label, self); button.setAccessibleName(name)
@@ -198,6 +203,8 @@ class LiveSurfaceWidget(QWidget):
     @property
     def mark_rect(self) -> QRect: return self._mark.geometry()
     @property
+    def is_dragging(self) -> bool: return self._dragging
+    @property
     def card_rect(self) -> QRect:
         return QRect() if self._view.form is VisibleForm.MARK else self.rect()
     @property
@@ -206,6 +213,10 @@ class LiveSurfaceWidget(QWidget):
 
     def apply_placement(self, placed) -> None:
         """Apply controller-owned, already-clamped geometry without focus."""
+        if self._dragging:
+            return
+        if self._animation is not None:
+            self._animation.stop()
         bounds = placed.bounds
         self.setGeometry(round(bounds.x), round(bounds.y), round(bounds.width), round(bounds.height))
         self._layout_children(); self._update_mask()
@@ -287,7 +298,7 @@ class LiveSurfaceWidget(QWidget):
 
     def _apply_view_content(self, view: SurfaceView, *, animate: bool) -> None:
         previous, previous_text = self._view, self._view.text
-        if view.document_id != previous.document_id or not view.text:
+        if view.document_id != previous.document_id or not (view.text or view.provisional_text):
             self._follow_latest, self._unread_segments = True, 0
         self._view = view; self._rotation = self._rotation if self._reduced_motion else self._rotation + 15.0
         if (view.document is DocumentState.DELIVERED and previous.document is not DocumentState.DELIVERED
@@ -304,9 +315,12 @@ class LiveSurfaceWidget(QWidget):
         self._state.setText(state); self._render_transcript()
         self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
         words = len(view.text.split()); self._badge.setText(f"▤  Draft\n{words} word{'s' if words != 1 else ''}")
-        if previous_text != view.text and previous_text and not self._follow_latest:
+        previous_content = previous_text or previous.provisional_text
+        if previous_content != (view.text or view.provisional_text) and previous_content and not self._follow_latest:
             self._unread_segments += 1
         target = self._form_rect(view.form)
+        if self._dragging:
+            return
         if animate and self.isVisible() and not self._reduced_motion and self.geometry().size() != target.size(): self._animate_geometry(target)
         else: self.resize(target.size()); self._layout_children(); self._update_mask()
         self._restyle(); self._announce_transition(previous, view); self.update()
@@ -335,6 +349,9 @@ class LiveSurfaceWidget(QWidget):
                                            "word": word, "occurrence": occurrence[folded] - 1})
                 parts.append(f'<a href="word:{index}">{escape(word)}</a>'); at = match.end()
             parts.append(escape(text[at:]))
+        if not self._view.text and self._view.provisional_text:
+            parts.append(f'<span style="color: {theme.TEXT_SECONDARY}">⋯ '
+                         + escape(self._view.provisional_text) + '</span>')
         self._transcript.setHtml(
             f"<style>body,a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }}</style><p>"
             + "".join(parts).replace("\n", "<br/>") + "</p>")
@@ -343,7 +360,8 @@ class LiveSurfaceWidget(QWidget):
         if form is VisibleForm.MARK: return QRect(self.x(), self.y(), MARK_SIZE, MARK_SIZE)
         if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), 120, MARK_SIZE)
         if form is VisibleForm.STATUS:
-            return QRect(self.x(), self.y(), STATUS_SIZE[0], 68)
+            blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+            return QRect(self.x(), self.y(), STATUS_SIZE[0] if blocking else 240, 68 if blocking else 60)
         width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
         if self._selection is not None or self._picker_active:
             height = 280
@@ -392,18 +410,19 @@ class LiveSurfaceWidget(QWidget):
         self._recording_dot.show()
         clear_width = 88
         if form is VisibleForm.STATUS:
-            self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-20-clear_width, content.height()); self._state.show()
-            self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
-            self._clear.show(); return
+            blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+            reserve = clear_width + REGION_GAP if blocking else 0
+            self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-12-reserve, content.height()); self._state.show()
+            if blocking:
+                self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
+                self._clear.show()
+            return
         if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
             self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-12, HEADER_HEIGHT)
             self._state.show(); self._layout_correction(content); return
         # Reserve each action's space once. Pending-text recovery is separate
         # from ordinary capture, whose final is inserted automatically.
         actions = [(self._clear, 64)]
-        if (not recording and self._view.text and self._view.document in
-                (DocumentState.EDITABLE_DRAFT, DocumentState.PARKED_DRAFT)):
-            actions.insert(0, (self._commit, 104))
         if not self._follow_latest or self._unread_segments:
             self._latest.setText("Latest" + (f" (+{self._unread_segments})" if self._unread_segments else ""))
             actions.insert(0, (self._latest, 104))
@@ -417,10 +436,20 @@ class LiveSurfaceWidget(QWidget):
         self._state.show()
         y = content.y()+HEADER_HEIGHT+REGION_GAP
         available = content.bottom() - y + 1
-        transcript_h = max(24, available - (24 if self._view.provisional_text else 0))
+        if not self._view.text and self._view.provisional_text:
+            self._transcript.setGeometry(content.x(), y, content.width(), available)
+            self._transcript.show()
+            return
+        partial_lines = ceil(len(self._view.provisional_text) / 50)
+        partial_h = min(available, max(24, partial_lines * 24)) if partial_lines else 0
+        if self._view.text:
+            partial_h = min(partial_h, max(24, available // 2))
+        transcript_h = max(0, available - partial_h)
         self._transcript.setGeometry(content.x(), y, content.width(), transcript_h); self._transcript.show()
         if self._view.provisional_text:
-            self._provisional.setGeometry(content.x(), y+transcript_h, content.width(), 24); self._provisional.show()
+            self._provisional.setWordWrap(True)
+            self._provisional.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            self._provisional.setGeometry(content.x(), y+transcript_h, content.width(), partial_h); self._provisional.show()
 
     def _layout_row(self, controls, x: int, y: int, width: int) -> None:
         available = width - REGION_GAP*(len(controls)-1); base, rem = divmod(available, len(controls))
@@ -483,6 +512,8 @@ class LiveSurfaceWidget(QWidget):
         # The mark/header is the intentional drag handle. Transcript words
         # retain their correction interaction and never start a move.
         if event.button() == Qt.MouseButton.LeftButton and self._mark.geometry().contains(event.position().toPoint()):
+            if self._animation is not None:
+                self._animation.stop()
             self._dragging = True; self._drag_restore = self.geometry()
             self._drag_offset = event.globalPosition().toPoint() - self.pos()
             event.accept(); return
@@ -498,8 +529,12 @@ class LiveSurfaceWidget(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self._dragging and event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
-            center = self.geometry().center()
-            self.move_requested.emit({"center": (center.x(), center.y())})
+            origin = self.mapToGlobal(self._mark.pos())
+            self.move_requested.emit({"center": (origin.x() + MARK_SIZE / 2,
+                                                  origin.y() + MARK_SIZE / 2)})
+            self.refresh(animate=False)
+            place = getattr(self._controller, "_place_widget", None)
+            if callable(place): place()
             event.accept(); return
         super().mouseReleaseEvent(event)
 
@@ -568,10 +603,15 @@ class LiveSurfaceWidget(QWidget):
     def _cancel_correction(self)->None:self._selection=None; self._picker_active=False; self._candidates=[]; self._editor_mode=""; self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
     def _state_text(self,view:SurfaceView)->str:
-        if view.notice.message:return view.notice.message
+        if view.notice.message and (view.notice.expires_at is None or view.capture not in
+                                    (CaptureState.RECORDING, CaptureState.TRANSCRIBING)):
+            return view.notice.message
         if view.capture is CaptureState.RECORDING:return "Recording"
         if view.capture is CaptureState.TRANSCRIBING:return "Transcribing"
         if view.capture is CaptureState.UNAVAILABLE:return "Microphone unavailable"
+        if view.lane is not None and view.capture is CaptureState.HANDS_FREE_LISTENING:
+            return {"command": "Command mode", "ava": "Ava listening",
+                    "hands_free_dictate": "Hands-free dictation"}.get(view.lane.value, "Listening")
         if view.document is DocumentState.PARKED_DRAFT:return "Draft parked"
         if view.document is DocumentState.DELIVERED:return "Inserted"
         if view.document is not DocumentState.EMPTY:return "Draft pending"

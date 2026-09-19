@@ -26,7 +26,7 @@ def test_advanced_live_surface_setting_reflects_opt_in_state(qapp, config, expec
     try:
         checkbox = window._widgets["adv_live_surface_enabled"]
         assert checkbox.isChecked() is expected
-        assert checkbox.text() == (
+        assert checkbox.accessibleName() == (
             "Use the new live surface (experimental — incomplete; the old indicator "
             "and preview are the default)"
         )

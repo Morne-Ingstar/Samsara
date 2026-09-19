@@ -30,7 +30,7 @@ def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp,
     # Owner's 2026-09-18 ruling replaces fixed tall L/R cards with content-fit panels.
     assert (widget.width(), widget.height()) == ((44, 44) if form is VisibleForm.MARK else
         (120, 44) if form is VisibleForm.DRAFT_BADGE else
-        (STATUS_SIZE[0], 68) if form is VisibleForm.STATUS else
+        (240, 60) if form is VisibleForm.STATUS else
         (LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0], widget.height()))
     if form not in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE, VisibleForm.STATUS):
         assert 96 <= widget.height() <= REVIEW_SIZE[1]
@@ -126,7 +126,8 @@ def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
     assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8
     assert widget._transcript.height() >= 24
     assert widget._clear.isVisible() and widget._clear.height() >= MARK_SIZE
-    assert not widget._commit.isVisible() and not widget._pause.isVisible() and not widget._correct.isVisible()
+    assert not widget._pause.isVisible() and not widget._correct.isVisible()
+    assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)))
     # 220-G makes this a scrollable QTextBrowser; its document begins at top.
     assert widget._transcript.document().documentMargin() >= 0
     widget.close()
@@ -140,7 +141,7 @@ def test_show_and_click_do_not_take_focus_but_explicit_review_does(qapp):
     assert widget.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
     widget.focus_review()
     qapp.processEvents()
-    assert widget._commit.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    assert widget._clear.focusPolicy() == Qt.FocusPolicy.StrongFocus
     widget.close()
 
 

@@ -4,12 +4,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton, QTableWidget
 
 from samsara import config_defaults
 from samsara.ui import command_marquee, theme
-from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
+from samsara.ui.dictionary_panel_qt import DictionaryPanelQt, _ss
 from samsara.ui.tutorial_qt import TutorialWindow
 
 
@@ -54,13 +54,21 @@ def test_fresh_install_command_strip_has_a_visible_real_command(qapp, monkeypatc
     strip.close()
 
 
-def test_dictionary_items_use_readable_theme_tokens(qapp):
+@pytest.mark.parametrize("palette", ["dark", "light"])
+def test_dictionary_items_use_readable_theme_tokens(qapp, palette):
+    previous = theme.active_theme()
+    theme.set_theme(palette, refresh=False)
     panel = DictionaryPanelQt.__new__(DictionaryPanelQt)
     table = QTableWidget(0, 3)
-    panel._kv_insert_row(table, "heard", "wake word", "user")
-    assert table.item(0, 0).foreground().color() == QColor(theme.TEXT_PRIMARY)
-    panel._kv_insert_row(table, "seed", "wake word", "default")
-    assert table.item(1, 0).foreground().color() == QColor(theme.TEXT_SECONDARY)
+    try:
+        panel._kv_insert_row(table, "heard", "wake word", "user")
+        panel._kv_insert_row(table, "seed", "wake word", "default")
+        for row in range(table.rowCount()):
+            for col in range(table.columnCount()):
+                assert table.item(row, col).data(Qt.ItemDataRole.ForegroundRole) is None
+        assert f"color:{theme.TEXT_PRIMARY}" in _ss()
+    finally:
+        theme.set_theme(previous, refresh=False)
 
 
 def test_new_install_defaults_keep_tts_opt_in_and_use_edge_ava():

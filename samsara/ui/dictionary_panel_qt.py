@@ -519,8 +519,11 @@ class DictionaryPanelQt(QWidget):
 
         for col, text in enumerate([key, val, src]):
             item = QTableWidgetItem(text)
-            color = theme.TEXT_SECONDARY if is_default else theme.TEXT_PRIMARY
-            item.setForeground(__import__('PySide6.QtGui', fromlist=['QColor']).QColor(color))
+            # Let the table stylesheet own foreground colour. The former
+            # explicit TEXT_SECONDARY brush was built from a CSS rgba() token,
+            # which QColor rejected and painted black; an explicit brush also
+            # stayed stale after a live theme switch. The Source column already
+            # distinguishes built-in rows without making their text harder to read.
             table.setItem(row, col, item)
 
     def _kv_add(self, table, field1, field2, mode, status_lbl):

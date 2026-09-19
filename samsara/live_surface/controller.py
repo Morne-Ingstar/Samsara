@@ -8,9 +8,9 @@ from typing import Any, Callable
 from samsara.live_surface.model import (CaptureState, EventKind, Lane, LiveSurfaceModel,
                                         NoticeKind, SurfaceEvent)
 from samsara.live_surface.caret import CaretLocator
-from samsara.live_surface.placement import (Edge, Placement, Rect, Screen, avoid_caret,
-                                             place_form, placement_for_screens,
-                                             placement_record, snap_edge)
+from samsara.live_surface.placement import (Edge, Placement, Rect, Screen,
+                                             place_inline_form, free_placement_for_mark,
+                                             placement_for_screens, placement_record)
 from samsara.ui import qt_runtime
 
 
@@ -33,6 +33,8 @@ class LiveSurfaceController:
         self._scheduled = False
         self._capture_seq = 0
         self._active_capture: str | None = None
+        self.idle_capture = CaptureState.OFF
+        self.idle_lane = Lane.HOLD
         # The host supplies the platform lookup.  It is intentionally optional
         # on non-Windows and in deterministic tests.
         self._caret_locator = caret_locator or getattr(app, "live_surface_caret_locator", None)
@@ -77,10 +79,18 @@ class LiveSurfaceController:
             if self.model.consume(event):
                 accepted += 1
         if self.widget is not None:
-            self.widget.refresh(self.model.view())
+            self.widget.refresh(self.model.view(), animate=False)
             self._place_widget()
             self.widget.show()
         return accepted
+
+    def refresh_expired(self) -> None:
+        """Expire receipts without another utterance or a forced window show."""
+        if self.widget is not None and not self.widget.is_dragging:
+            view = self.model.view()
+            if view != self.widget.view:
+                self.widget.refresh(view, animate=False)
+                self._place_widget()
 
     def begin_capture(self, lane: Lane, *, capture: CaptureState = CaptureState.RECORDING,
                       capture_id: str | None = None) -> str:
@@ -91,12 +101,15 @@ class LiveSurfaceController:
                                sequence=1, lane=lane, capture=capture))
         return capture_id
 
-    def stop_capture(self, capture: CaptureState = CaptureState.OFF) -> None:
-        if self._active_capture is None:
+    def stop_capture(self, capture: CaptureState | None = None, *,
+                     capture_id: str | None = None) -> None:
+        if self._active_capture is None or (capture_id is not None and capture_id != self._active_capture):
             return
         self.post(SurfaceEvent(EventKind.CAPTURE_STOPPED, capture_id=self._active_capture,
-                               sequence=2 ** 31 - 1, capture=capture))
+                               sequence=2 ** 31 - 1, capture=capture or self.idle_capture))
         self._active_capture = None
+        if self.idle_capture is CaptureState.HANDS_FREE_LISTENING:
+            self.post(SurfaceEvent(EventKind.LANE_CHANGED, lane=self.idle_lane))
 
     def notice(self, kind: NoticeKind, message: str = "") -> None:
         self.post(SurfaceEvent(EventKind.NOTICE, notice=kind, message=message))
@@ -177,7 +190,9 @@ class LiveSurfaceController:
         return result
 
     def _place_widget(self) -> None:
-        if self.widget is None:
+        if self.widget is None or not callable(getattr(self.widget, "apply_placement", None)):
+            return
+        if self.widget.is_dragging:
             return
         screens = self._screens()
         if not screens:
@@ -185,17 +200,28 @@ class LiveSurfaceController:
         raw, records = self._placement_config()
         resolved = placement_for_screens(records, screens,
             preferred_monitor=raw.get("preferred_monitor"))
-        card_w = min(500, resolved.screen.work_area.width)
-        card_h = min(360, max(44, self.widget.height() - 44))
-        placed = place_form(resolved.placement, resolved.screen, card_width=card_w,
-                            card_height=card_h)
-        if self._caret_locator is not None:
+        mark = self.widget.mark_rect
+        dimensions = dict(width=self.widget.width(), height=self.widget.height(),
+                          mark_offset=(mark.x(), mark.y()))
+        placed = place_inline_form(resolved.placement, resolved.screen, **dimensions)
+        # A deliberate free drop wins over automatic caret avoidance.
+        if self._caret_locator is not None and resolved.placement.edge is not Edge.FREE:
             caret = self._caret_locator.request()
             if caret is not None:
                 self._last_caret = caret
             if self._last_caret is not None:
-                placed = avoid_caret(placed, self._last_caret.rect, resolved.screen,
-                                     card_width=card_w, card_height=card_h)
+                from samsara.live_surface.placement import _overlaps, _expand, CARET_PADDING_DIP
+                protected = _expand(self._last_caret.rect, CARET_PADDING_DIP)
+                if _overlaps(placed.bounds, protected):
+                    for edge in (resolved.placement.edge, Edge.TOP, Edge.BOTTOM, Edge.LEFT, Edge.RIGHT):
+                        for t in (.15, .85, 0., 1.):
+                            candidate = place_inline_form(Placement(edge, t), resolved.screen, **dimensions)
+                            if not _overlaps(candidate.bounds, protected):
+                                placed = candidate
+                                break
+                        else:
+                            continue
+                        break
         self.widget.apply_placement(placed)
 
     def _move_requested(self, detail: object) -> None:
@@ -211,19 +237,7 @@ class LiveSurfaceController:
         except (TypeError, ValueError):
             return
         old, records = self._placement_config()
-        previous = Placement()
-        if screen.id in records:
-            from samsara.live_surface.placement import normalize_placement
-            previous = normalize_placement(records[screen.id])
-        snapped = snap_edge((float(cx), float(cy)), screen.work_area, previous=previous.edge)
-        if snapped is None:
-            placement = Placement(Edge.FREE,
-                free_cx=(float(cx) - screen.work_area.x) / max(1, screen.work_area.width),
-                free_cy=(float(cy) - screen.work_area.y) / max(1, screen.work_area.height))
-        else:
-            from samsara.live_surface.placement import normalized_t_for_mark
-            mark = Rect(float(cx) - 22, float(cy) - 22, 44, 44)
-            placement = Placement(snapped, t=normalized_t_for_mark(mark, snapped, screen.work_area))
+        placement = free_placement_for_mark((float(cx), float(cy)), screen.work_area)
         records[screen.id] = placement_record(placement)
         self._save_placement({"preferred_monitor": screen.id, "monitors": records})
         self._place_widget()
@@ -268,7 +282,7 @@ class LiveSurfaceController:
         if not screens:
             return False
         wanted = str(getattr(self.app, "foreground_screen_name", "") or "")
-        screen = next((item for item in screens if item.name == wanted), None)
+        screen = next((item for item in screens if item.id == wanted), None)
         screen = screen or next((item for item in screens if item.primary), screens[0])
         raw, records = self._placement_config()
         current = records.get(screen.id, placement_record(Placement(Edge.BOTTOM, .5)))
@@ -385,35 +399,94 @@ class LiveSurfaceIndicatorAdapter:
     def __init__(self, controller: LiveSurfaceController) -> None:
         self.controller = controller
         self._lane = Lane.HOLD
+        self._session_lane = None
+        self._wake_armed = False
+        self._capture_id = None
 
     def set_mode(self, text: str) -> None:
         lower = str(text).lower()
-        self._lane = Lane.CONTINUOUS if "continuous" in lower else (
-            Lane.HANDS_FREE_DICTATE if "wake" in lower or "dictate" in lower else Lane.HOLD)
+        self._lane = (Lane.AVA if "ava" in lower else Lane.COMMAND if "command" in lower
+                      else Lane.CONTINUOUS if "continuous" in lower else
+                      Lane.HANDS_FREE_DICTATE if "wake" in lower or "dictate" in lower else Lane.HOLD)
+        if self._session_lane is None:
+            self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED, lane=self._lane))
+
+    def set_session_mode(self, name, _color=None) -> None:
+        lower = str(name or "").lower()
+        self._session_lane = (Lane.AVA if "ava" in lower else
+                              Lane.COMMAND if "command" in lower else
+                              Lane.HANDS_FREE_DICTATE) if name else None
+        self.controller.idle_capture = (CaptureState.HANDS_FREE_LISTENING if name else
+                                       CaptureState.WAKE_ARMED if self._wake_armed else CaptureState.OFF)
+        self.controller.idle_lane = self._session_lane or self._lane
+        self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED,
+                                         lane=self._session_lane or self._lane))
+        if self.controller._active_capture is None:
+            self.controller.post(SurfaceEvent(EventKind.CAPTURE_CHANGED,
+                                             capture=self.controller.idle_capture))
+
+    def set_command_mode(self, active: bool) -> None:
+        self.set_session_mode("COMMAND" if active else None)
 
     def set_listening(self, active: bool) -> None:
         if active:
-            self.controller.begin_capture(self._lane)
+            # Streaming producers own their token through the final result.
+            # A delayed legacy indicator call must not retire that producer.
+            if self.controller._active_capture is None:
+                self._capture_id = self.controller.begin_capture(self._session_lane or self._lane)
         else:
-            self.controller.stop_capture()
+            if self._capture_id is not None:
+                self.controller.stop_capture(capture_id=self._capture_id)
+                self._capture_id = None
 
     def set_wake_armed(self, armed: bool) -> None:
-        self.controller.post(SurfaceEvent(EventKind.CAPTURE_CHANGED,
-            capture_id=self.controller._active_capture, sequence=1,
-            capture=CaptureState.WAKE_ARMED if armed else CaptureState.OFF))
+        self._wake_armed = armed
+        if self._session_lane is None:
+            self.controller.idle_capture = CaptureState.WAKE_ARMED if armed else CaptureState.OFF
+            if self.controller._active_capture is None:
+                self.controller.post(SurfaceEvent(EventKind.CAPTURE_CHANGED,
+                                                  capture=self.controller.idle_capture))
+
+    def flash_wake(self) -> None:
+        self.controller.notice(NoticeKind.RESULT, "Wake phrase heard")
+
+    def set_thinking(self, active: bool) -> None:
+        if active:
+            self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.RESULT,
+                                              message="Ava thinking", ttl_s=60.0))
+        else:
+            self.clear_outcome()
+
+    def show_outcome(self, label: str, kind: str, ttl_ms=1000) -> None:
+        if not label:
+            self.clear_outcome()
+            return
+        if kind == "live":
+            return  # Capture already owns the recording indication and token.
+        notice = NoticeKind.ERROR if kind == "error" else NoticeKind.RESULT
+        # These are transient outcome chips, including a refused optional-AI
+        # action. They are not persistent microphone faults or confirmations.
+        ttl = 60.0 if kind == "pending" else min(2.0 if kind == "error" else 1.0,
+                                                  (ttl_ms or 1000) / 1000)
+        self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=notice,
+                                          message=str(label), ttl_s=ttl))
+
+    def clear_outcome(self) -> None:
+        self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, notice=NoticeKind.RESULT))
 
     def flash_success(self) -> None:
         self.controller.notice(NoticeKind.RESULT, "Captured")
 
     def flash_error(self) -> None:
-        self.controller.notice(NoticeKind.ERROR, "Recording failed")
+        self.show_outcome("Recording failed", "error", 2000)
 
     def show(self) -> None:
         if self.controller.widget is not None:
             self.controller.widget.show()
 
     def hide(self) -> None:
-        if self.controller.widget is not None:
+        # Legacy preview/session teardown must not remove the active mode badge.
+        if self._session_lane is None and self.controller.widget is not None:
             self.controller.widget.hide()
 
     def destroy(self) -> None:
