@@ -7,7 +7,7 @@ from samsara.live_surface.controller import LiveSurfaceController
 from samsara.live_surface.model import (CaptureState, DocumentState, EventKind, Lane,
                                         Notice, NoticeKind, PresentationState,
                                         SurfaceEvent, SurfaceView, VisibleForm)
-from samsara.session_modes import SessionMode, SessionModeManager
+from samsara.session_modes import SessionMode, SessionModeManager, UtteranceSignals
 from samsara.ui.live_surface_qt import LiveSurfaceWidget, MARK_SIZE
 
 
@@ -118,3 +118,15 @@ def test_sent_receipt_copy_requires_an_empty_draft():
     assert subject.copy_sent_receipt_as_draft("sent receipt")["ok"]
     assert subject.dictate_pending_buffer == "sent receipt"
     assert subject.copy_sent_receipt_as_draft("another") == {"ok": False, "reason": "draft_pending"}
+
+
+def test_scoped_voice_picker_phrases_are_inert_without_the_surface():
+    signals = UtteranceSignals(has_contiguous_speech=True, transcript_confident=True,
+                               compression_ratios=(1.0,))
+    subject = manager(); calls = []
+    subject.set_surface_review_action_fn(lambda action, value: calls.append((action, value)) or True)
+    assert subject.dispatch_utterance("correct two", signals).kind == "surface_review_action"
+    assert subject.dispatch_utterance("word 2", signals).kind == "surface_review_action"
+    assert calls == [("correct", "two"), ("word", 2)]
+    disabled = manager(live=False)
+    assert disabled.dispatch_utterance("word 2", signals).kind == "dictate_staged"

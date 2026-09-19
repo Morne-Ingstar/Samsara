@@ -1798,6 +1798,7 @@ class SessionModeManager:
         # draft_scroll_fn(where): move the preview's own view. None = the
         # phrases stay ordinary dictation (no preview, nothing to scroll).
         self._draft_scroll_fn: Optional[Callable[[str], None]] = None
+        self._surface_review_action_fn: Optional[Callable[[str, object], bool]] = None
         # correction_undo_fn(): take back the last correction (dictionary entry
         # first, else the newest un-reviewed capture). Returns a dict.
         self._correction_undo_fn: Optional[Callable[[], dict]] = None
@@ -2254,6 +2255,25 @@ class SessionModeManager:
         if correction is not None:
             return correction
 
+        # 220-G: these phrases are only meaningful while the opt-in review
+        # surface has registered its scoped picker.  They never become global
+        # commands and a literal session without that surface still dictates.
+        if self._live_surface_enabled and self._surface_review_action_fn is not None:
+            match = re.fullmatch(r"correct\s+(.+)", normalized)
+            number = re.fullmatch(r"word\s+(\d+)", normalized)
+            if match is None and number is None:
+                handled = False
+            else:
+                action = "correct" if match is not None else "word"
+                value = match.group(1) if match is not None else int(number.group(1))
+                try:
+                    handled = bool(self._surface_review_action_fn(action, value))
+                except Exception as exc:
+                    log.warning("[SESSION] surface review action failed: %s", exc)
+                    handled = False
+            if handled:
+                return DispatchOutcome(kind="surface_review_action")
+
         # 1c-85. "forget that correction": undo the last one by voice. Checked
         # before the lane reads the words, whole-utterance, and gated like the
         # other control phrases.
@@ -2616,6 +2636,10 @@ class SessionModeManager:
     def set_draft_scroll_fn(self, fn) -> None:
         """fn(where): "up" | "down" | "top" | "bottom" on the live preview."""
         self._draft_scroll_fn = fn
+
+    def set_surface_review_action_fn(self, fn) -> None:
+        """Route scoped correction-picker phrases to the opt-in surface."""
+        self._surface_review_action_fn = fn
 
     def set_correction_undo_fn(self, fn) -> None:
         """fn() -> dict: take back the last correction. See correction_queue."""
