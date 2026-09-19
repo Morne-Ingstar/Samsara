@@ -69,6 +69,48 @@ def _write_failing_runner(path, status_path, staged_path):
     )
 
 
+def _write_preflight_failing_runner(path):
+    """Exit during staged preflight without acknowledging staged health."""
+    path.write_text(
+        "@echo off\r\n"
+        "exit /b 1\r\n",
+        encoding="utf-8",
+    )
+
+
+def _write_rollback_source_missing_runner(
+    path, status_path, staged_path, install_path, rollback_path
+):
+    """Pass preflight, then remove the rollback source before failing."""
+    handshake = path.with_name("handshake.ps1")
+    handshake.write_text(
+        f"$p = '{status_path}'\n"
+        f"$staged = '{staged_path}'\n"
+        f"$install = '{install_path}'\n"
+        f"$rollback = '{rollback_path}'\n"
+        "if ([IO.Path]::GetFullPath($PSScriptRoot) -ieq [IO.Path]::GetFullPath($staged)) {\n"
+        "    $j = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json\n"
+        "    $j.state = 'staged_healthy'\n"
+        "    $j.message = 'healthy staged test startup'\n"
+        "    $j | ConvertTo-Json -Compress | "
+        "Set-Content -LiteralPath $p -Encoding UTF8\n"
+        "    exit 0\n"
+        "}\n"
+        "if ([IO.Path]::GetFullPath($PSScriptRoot) -ieq [IO.Path]::GetFullPath($install)) {\n"
+        "    Remove-Item -LiteralPath $rollback -Recurse -Force\n"
+        "    exit 1\n"
+        "}\n",
+        encoding="utf-8-sig",
+    )
+    path.write_text(
+        "@echo off\r\n"
+        "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+        "-File \"%~dp0handshake.ps1\"\r\n"
+        "exit /b %ERRORLEVEL%\r\n",
+        encoding="utf-8",
+    )
+
+
 def _write_relaunch_marker_runner(path, marker_path):
     """A restored/old executable that proves it was actually relaunched by
     writing a marker file -- Start-Process on the rollback branch is
@@ -79,6 +121,138 @@ def _write_relaunch_marker_runner(path, marker_path):
         'exit /b 0\r\n',
         encoding="utf-8",
     )
+
+
+def test_failed_staged_preflight_leaves_current_install_untouched(tmp_path):
+    install = tmp_path / "Samsara"
+    workspace = tmp_path / ".Samsara-update-v0.22.1-preflight-failure"
+    staged = workspace / "payload"
+    rollback = tmp_path / ".Samsara-rollback-v0.22.1-preflight-failure"
+    updates = tmp_path / "updates"
+    status = updates / "last_update.json"
+    helper = updates / "install-v0.22.1-preflight-failure.ps1"
+
+    install.mkdir()
+    staged.mkdir(parents=True)
+    updates.mkdir()
+    (install / "Samsara.exe").write_bytes(b"old executable placeholder")
+    (install / "old-version.txt").write_text("old", encoding="utf-8")
+    (staged / "Samsara.exe").write_bytes(b"new executable placeholder")
+    _write_preflight_failing_runner(staged / "runner.cmd")
+
+    prepared = PreparedUpdate(
+        version="0.22.1",
+        tag="v0.22.1",
+        install_dir=install,
+        staged_dir=staged,
+        rollback_dir=rollback,
+        workspace_dir=workspace,
+        status_path=status,
+        helper_path=helper,
+        executable_name="runner.cmd",
+    )
+    helper.write_text(
+        _helper_script(prepared, current_pid=2_000_000_000),
+        encoding="utf-8-sig",
+    )
+
+    env = dict(os.environ)
+    env["SAMSARA_UPDATE_TEST_NO_DIALOG"] = "1"
+    completed = subprocess.run(
+        [
+            str(_system_powershell_path()),
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(helper),
+        ],
+        cwd=updates,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=30,
+        creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+        check=False,
+    )
+
+    # Exit 4 is the helper's pre-swap failure contract. The known-good tree
+    # must remain in place because preflight never acknowledged staged health.
+    assert completed.returncode == 4, completed.stdout
+    assert (install / "old-version.txt").read_text(encoding="utf-8") == "old"
+    assert not (install / "new-version.txt").exists()
+    assert not rollback.exists()
+    assert json.loads(status.read_text(encoding="utf-8-sig"))["state"] == "failed"
+
+
+def test_missing_rollback_source_preserves_current_installation(tmp_path):
+    install = tmp_path / "Samsara"
+    workspace = tmp_path / ".Samsara-update-v0.22.1-rollback-source"
+    staged = workspace / "payload"
+    rollback = tmp_path / ".Samsara-rollback-v0.22.1-rollback-source"
+    updates = tmp_path / "updates"
+    status = updates / "last_update.json"
+    helper = updates / "install-v0.22.1-rollback-source.ps1"
+
+    install.mkdir()
+    staged.mkdir(parents=True)
+    updates.mkdir()
+    (install / "Samsara.exe").write_bytes(b"old executable placeholder")
+    (install / "old-version.txt").write_text("old", encoding="utf-8")
+    (staged / "Samsara.exe").write_bytes(b"new executable placeholder")
+    (staged / "new-version.txt").write_text("new", encoding="utf-8")
+    _write_rollback_source_missing_runner(
+        staged / "runner.cmd", status, staged, install, rollback
+    )
+
+    prepared = PreparedUpdate(
+        version="0.22.1",
+        tag="v0.22.1",
+        install_dir=install,
+        staged_dir=staged,
+        rollback_dir=rollback,
+        workspace_dir=workspace,
+        status_path=status,
+        helper_path=helper,
+        executable_name="runner.cmd",
+    )
+    helper.write_text(
+        _helper_script(prepared, current_pid=2_000_000_000),
+        encoding="utf-8-sig",
+    )
+
+    env = dict(os.environ)
+    env["SAMSARA_UPDATE_TEST_NO_DIALOG"] = "1"
+    completed = subprocess.run(
+        [
+            str(_system_powershell_path()),
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(helper),
+        ],
+        cwd=updates,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=60,
+        creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+        check=False,
+    )
+
+    # _helper_script documents exit 3 for a failed rollback. The guard runs
+    # before Remove-Item $install, so the failing current tree is preserved.
+    assert completed.returncode == 3, completed.stdout
+    assert (install / "new-version.txt").read_text(encoding="utf-8") == "new"
+    assert not (install / "old-version.txt").exists()
+    assert not rollback.exists()
 
 
 def test_generated_helper_swaps_waits_for_health_and_cleans_staging(tmp_path):
