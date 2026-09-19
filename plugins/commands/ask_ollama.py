@@ -2437,10 +2437,13 @@ def _check_teaching_intent(app, text):
     # capital of france." and never reached DeepSeek).
     forget_phrase = ava_corrections.parse_forget(text)
     if forget_phrase and ava_corrections.get(forget_phrase):
-        if ava_corrections.remove(forget_phrase):
+        result, info = ava_corrections.remove(forget_phrase)
+        if result == 'removed':
             speak(app, f'Forgotten. {forget_phrase} no longer has a saved meaning.')
+        elif result == 'failed':
+            speak(app, f"I couldn't forget {forget_phrase} — {info}.")
         else:
-            speak(app, f"I couldn't forget {forget_phrase}.")
+            speak(app, f"I don't have {forget_phrase} saved anymore.")
         return True
 
     query_phrase = ava_corrections.parse_query(text)

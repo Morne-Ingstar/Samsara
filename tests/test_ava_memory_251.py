@@ -46,6 +46,32 @@ def test_failed_profile_write_is_spoken_as_failure_without_saved_receipt(tmp_pat
     assert "saved" not in app.audio_coordinator.lines[0].lower()
 
 
+def test_failed_alias_write_is_spoken_as_failure_and_rolls_back(monkeypatch):
+    app = _app()
+    monkeypatch.setattr(ava_corrections, "_aliases", {})
+    monkeypatch.setattr(ava_corrections, "_save", lambda: False)
+    monkeypatch.setattr(ava_corrections, "_last_save_error", "the file is locked")
+
+    assert ask_ollama._check_teaching_intent(app, "remember shortcut means open settings") is True
+
+    assert ava_corrections.get("shortcut") is None
+    assert app.audio_coordinator.lines == ["I couldn't save that alias — the file is locked."]
+    assert "saved" not in app.audio_coordinator.lines[0].lower()
+
+
+def test_failed_alias_forget_is_spoken_as_failure_and_rolls_back(monkeypatch):
+    app = _app()
+    original = {"expansion": "open settings", "created": "now", "use_count": 0}
+    monkeypatch.setattr(ava_corrections, "_aliases", {"shortcut": original})
+    monkeypatch.setattr(ava_corrections, "_save", lambda allow_empty=False: False)
+    monkeypatch.setattr(ava_corrections, "_last_save_error", "the file is locked")
+
+    assert ask_ollama._check_teaching_intent(app, "forget shortcut") is True
+
+    assert ava_corrections.get("shortcut") == original
+    assert app.audio_coordinator.lines == ["I couldn't forget shortcut — the file is locked."]
+
+
 def test_forget_removes_the_saved_field_and_gives_a_receipt(tmp_path, monkeypatch):
     _reset_profile(tmp_path, monkeypatch)
     app = _app()

@@ -27,6 +27,7 @@ def _corrections_path() -> Path:
 _aliases = {}
 _aliases_lock = threading.Lock()
 _dirty_count = False
+_last_save_error = "the alias file could not be written"
 
 MAX_ALIASES = 100
 MAX_EXPANSION_LEN = 200
@@ -97,10 +98,12 @@ def _save(allow_empty: bool = False) -> bool:
     _aliases to {} -- is always a deliberate user "forget" action and
     passes allow_empty=True.
     """
+    global _last_save_error
     path = _corrections_path()
     previous = _read_aliases_file(path)
 
     if not _aliases and previous and not allow_empty:
+        _last_save_error = "the alias file could not be written"
         logger.error(
             f"[STORE] refused to overwrite {len(previous)} aliases with "
             f"empty dict -- pass allow_empty=True if intentional"
@@ -120,6 +123,8 @@ def _save(allow_empty: bool = False) -> bool:
             json.dump({'aliases': _aliases}, f, indent=2)
         os.replace(tmp, str(path))
     except Exception as e:
+        _last_save_error = ('the file is locked' if isinstance(e, PermissionError)
+                            else 'the alias file could not be written')
         logger.error(f"[AVA CORRECTIONS] Save failed: {e}")
         try:
             os.remove(tmp)
@@ -127,6 +132,7 @@ def _save(allow_empty: bool = False) -> bool:
             logger.debug(f"_save: {rm_exc}")
         return False
 
+    _last_save_error = ''
     logger.info(f"[STORE] ava_corrections.json saved: {len(_aliases)} aliases")
     return True
 
@@ -179,7 +185,7 @@ def is_list_request(text):
 
 
 def add(phrase, expansion):
-    """Returns ('added', None) | ('replaced', old_expansion) | ('rejected', reason)."""
+    """Return an honest result after the alias has reached disk."""
     phrase = phrase.strip().lower()
     if not phrase or len(phrase) > MAX_PHRASE_LEN:
         return ('rejected', 'invalid phrase')
@@ -194,7 +200,12 @@ def add(phrase, expansion):
             'created': datetime.utcnow().isoformat() + 'Z',
             'use_count': old['use_count'] if old else 0,
         }
-        _save()
+        if not _save():
+            if old is None:
+                del _aliases[phrase]
+            else:
+                _aliases[phrase] = old
+            return ('failed', _last_save_error)
         return ('replaced', old['expansion']) if old else ('added', None)
 
 
@@ -202,12 +213,14 @@ def remove(phrase):
     phrase = phrase.strip().lower()
     with _aliases_lock:
         if phrase in _aliases:
-            del _aliases[phrase]
+            old = _aliases.pop(phrase)
             # Deliberate user "forget X" action -- always allowed to drive
             # the store to empty (e.g. removing the last remaining alias).
-            _save(allow_empty=True)
-            return True
-        return False
+            if not _save(allow_empty=True):
+                _aliases[phrase] = old
+                return ('failed', _last_save_error)
+            return ('removed', old['expansion'])
+        return ('missing', None)
 
 
 def get(phrase):
