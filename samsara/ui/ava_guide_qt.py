@@ -13,11 +13,13 @@ Public API (same wrapper pattern as MicSetupWizardQt):
 """
 
 import json
+import re
 import subprocess
 import urllib.error
 import urllib.request
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QUrl, Qt, QTimer, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QPushButton, QSizePolicy, QStackedWidget,
@@ -124,6 +126,12 @@ _MODELS = [
 
 _OLLAMA_URL = "http://localhost:11434"
 _OLLAMA_DOWNLOAD = "https://ollama.com/download"
+_OLLAMA_RECHECK_INTERVAL_MS = 5_000
+_OLLAMA_RECHECK_LIMIT = 120  # ten minutes at one check every five seconds
+
+_ANSI_RE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
+)
 
 _AVA_KEY_OPTIONS = [
     ("Right Alt (default)", "right_alt"),
@@ -144,6 +152,13 @@ def _ping_ollama(timeout: int = 3) -> tuple[bool, list[str]]:
             return True, models
     except Exception:
         return False, []
+
+
+def _clean_ollama_output(text: str) -> str:
+    """Keep model-pull progress readable without leaking terminal controls."""
+    text = _ANSI_RE.sub("", text).replace("\r", " ")
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +230,10 @@ class _WizardWindow(QDialog):
         self._pulling = False
         self._installed_models: list[str] = []
         self._selected_model_name = _MODELS[0][0]
+        self._ollama_recheck_attempts = 0
+        self._ollama_recheck_timer = QTimer(self)
+        self._ollama_recheck_timer.setInterval(_OLLAMA_RECHECK_INTERVAL_MS)
+        self._ollama_recheck_timer.timeout.connect(self._auto_recheck_ollama)
 
         self.setWindowTitle("Ava Setup Guide")
         self.setFixedSize(580, 500)
@@ -447,10 +466,16 @@ class _WizardWindow(QDialog):
             "Ollama is not running. To install it:"
         ))
 
+        self._download_ollama_btn = QPushButton("Download Ollama")
+        self._download_ollama_btn.setObjectName("primary")
+        self._download_ollama_btn.setFixedWidth(170)
+        self._download_ollama_btn.clicked.connect(self._open_ollama_download)
+        inst_lay.addWidget(self._download_ollama_btn)
+
         steps = [
-            ("1.", f"Go to  {_OLLAMA_DOWNLOAD}  and download Ollama for Windows."),
-            ("2.", "Run the installer — it starts Ollama automatically."),
-            ("3.", 'Click "Check again" above once it\'s installed.'),
+            ("1.", "Click Download Ollama above."),
+            ("2.", "Run the installer."),
+            ("3.", "Come back. This page checks automatically."),
         ]
         for num, text in steps:
             step_row = QHBoxLayout()
@@ -711,6 +736,20 @@ class _WizardWindow(QDialog):
     # Ollama step
     # ----------------------------------------------------------------
 
+    def _open_ollama_download(self):
+        QDesktopServices.openUrl(QUrl(_OLLAMA_DOWNLOAD))
+        self._ollama_recheck_attempts = 0
+        self._ollama_recheck_timer.start()
+
+    def _auto_recheck_ollama(self):
+        if self._ollama_recheck_attempts >= _OLLAMA_RECHECK_LIMIT:
+            self._ollama_recheck_timer.stop()
+            return
+        self._ollama_recheck_attempts += 1
+        self._check_ollama()
+        if self._ollama_recheck_attempts >= _OLLAMA_RECHECK_LIMIT:
+            self._ollama_recheck_timer.stop()
+
     def _check_ollama(self):
         self._ollama_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_HEADING}px;")
         self._ollama_status_lbl.setText("Checking...")
@@ -727,6 +766,7 @@ class _WizardWindow(QDialog):
         self._installed_models = models
 
         if running:
+            self._ollama_recheck_timer.stop()
             self._ollama_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_HEADING}px;")
             if models:
                 self._ollama_status_lbl.setText(
@@ -827,6 +867,8 @@ class _WizardWindow(QDialog):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     creationflags=(
                         subprocess.CREATE_NO_WINDOW
                         if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
@@ -834,17 +876,21 @@ class _WizardWindow(QDialog):
                 )
                 self._pull_proc = proc
                 for raw_line in proc.stdout:
-                    line = raw_line.strip()
+                    line = _clean_ollama_output(raw_line)
                     if line:
                         self._pull_line_sig.emit(line)
                 proc.wait()
                 success = proc.returncode == 0
             except FileNotFoundError:
+                logger.exception("Ava model pull failed: ollama was not found on PATH")
                 self._pull_line_sig.emit(
-                    "ollama not found on PATH — is Ollama installed?"
+                    "Couldn't download the model: Ollama was not found on PATH."
                 )
-            except Exception as exc:
-                self._pull_line_sig.emit(f"Error: {exc}")
+            except Exception:
+                logger.exception("Ava model pull failed")
+                self._pull_line_sig.emit(
+                    "Couldn't download the model: Ollama could not start the download."
+                )
             finally:
                 self._pull_proc = None
                 self._pulling = False
@@ -939,6 +985,7 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def closeEvent(self, e):
+        self._ollama_recheck_timer.stop()
         if self._pull_proc is not None:
             try:
                 self._pull_proc.terminate()
@@ -956,11 +1003,12 @@ def _ava_intro_text(config: dict) -> str:
     cloud_on = bool((config.get("cloud_llm") or {}).get("enabled", False))
     if cloud_on:
         return ("Ava is Samsara's AI assistant. Cloud mode is ON right now, so questions go to "
-                "your configured provider; turn it off in Settings -> Ava / Cloud (or say "
-                "'ava local') to keep everything on this machine.")
-    return ("Ava is Samsara's AI assistant. By default it runs entirely on your machine "
-            "— nothing leaves your computer unless you turn on cloud mode "
-            "(Settings -> Ava / Cloud, or say 'ava cloud').")
+                "your configured provider. Turn it off in Settings -> Ava / Cloud or say "
+                "'ava local' to keep everything on this machine.")
+    return ("Ava is Samsara's AI assistant. Ava is optional. By default, she is not running. "
+            "If you set her up, she runs on this computer, and nothing is sent anywhere unless "
+            "you later choose the cloud option. Until then, cloud mode stays off (Settings -> "
+            "Ava / Cloud, or say 'ava cloud').")
 
 
 def _confirmation_text() -> str:

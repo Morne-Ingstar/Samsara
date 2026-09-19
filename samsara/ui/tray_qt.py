@@ -443,6 +443,13 @@ def mark_svg_path() -> Path:
     return Path(__file__).resolve().parents[2] / "assets" / "icon" / "samsara.svg"
 
 
+def idle_brand_icon_path() -> Path:
+    """The generated, multi-size cyan icon for the still tray/app state."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "assets" / "brand" / "samsara.ico"
+    return Path(__file__).resolve().parents[2] / "assets" / "brand" / "samsara.ico"
+
+
 def mark_colours(capture: str, eye: str, brand: bool = False) -> tuple[str, str]:
     """(ring colour, eye colour) -- one token per state, except the heard
     frame. brand=True uses brand_capture(): never ICON_IDLE."""
@@ -935,6 +942,14 @@ class SamsaraTrayQt(QObject):
         still accepted for callers/tests that pass one."""
         try:
             if isinstance(frame, MarkFrame):
+                # The still state is a deliberately weighted raster generated
+                # from assets/brand/samsara-mark.svg.  Animated/recording/Ava
+                # states retain the live painter below.
+                if frame.capture == "idle" and frame.rotation == 0.0 and frame.opacity == 1.0:
+                    icon_path = idle_brand_icon_path()
+                    if icon_path.exists():
+                        self._tray.setIcon(QIcon(str(icon_path)))
+                        return
                 self._tray.setIcon(mark_icon(frame))
                 return
             rgba = frame.convert("RGBA")
