@@ -151,7 +151,7 @@ class WinRTEngine(TTSEngine):
     Raises EngineUnavailableError at construction if winsdk is not installed.
     """
 
-    def __init__(self, output_device: Optional[int] = None):
+    def __init__(self, output_device: Optional[int] = None, output_device_resolver=None):
         SpeechSynthesizer, VoiceGender, _, _ = _import_winsdk()
         self._SpeechSynthesizer = SpeechSynthesizer
         self._VoiceGender = VoiceGender
@@ -172,6 +172,8 @@ class WinRTEngine(TTSEngine):
         self._tts_stream = None
         self._using_persistent_stream = False
         self._output_device = output_device
+        self._output_device_resolver = output_device_resolver
+        self._stream_output_device = object()
         self._output_sample_rate = _TARGET_SR
         self._open_persistent_stream()
 
@@ -179,10 +181,27 @@ class WinRTEngine(TTSEngine):
     # Persistent stream management
     # ------------------------------------------------------------------
 
-    def _open_persistent_stream(self) -> None:
+    def _playback_device(self):
+        if callable(self._output_device_resolver):
+            try:
+                return self._output_device_resolver()
+            except Exception as exc:
+                logger.warning("TTS output resolver failed; using Windows default: %s", exc)
+                return None
+        return self._output_device
+
+    def _refresh_output_at_play_time(self) -> None:
+        """Reopen only when the live output selection changed since last speech."""
+        device = self._playback_device()
+        if device != self._stream_output_device:
+            self._output_device = device
+            self.restart_stream()
+
+    def _open_persistent_stream(self, force_default: bool = False) -> None:
         """Open the persistent TTS OutputStream. Falls back gracefully."""
         import sounddevice as sd
         try:
+            self._output_device = None if force_default else self._playback_device()
             self._output_sample_rate = output_sample_rate(
                 sd, self._output_device, fallback=_TARGET_SR,
             )
@@ -196,6 +215,7 @@ class WinRTEngine(TTSEngine):
             )
             self._tts_stream.start()
             self._using_persistent_stream = True
+            self._stream_output_device = self._output_device
             logger.info(
                 "TTS persistent stream opened at %d Hz",
                 self._output_sample_rate,
@@ -206,8 +226,7 @@ class WinRTEngine(TTSEngine):
                     "TTS output device %s unavailable (%s); falling back to system default",
                     self._output_device, exc,
                 )
-                self._output_device = None
-                self._open_persistent_stream()
+                self._open_persistent_stream(force_default=True)
                 return
             logger.warning(
                 "TTS persistent stream failed to open (%s). "
@@ -253,6 +272,8 @@ class WinRTEngine(TTSEngine):
         """Synthesize text and play it asynchronously. Returns immediately."""
         if queue_mode != "append":
             logger.debug("queue_mode=%r not implemented; treating as 'append'", queue_mode)
+
+        self._refresh_output_at_play_time()
 
         uid = str(uuid.uuid4())
         handle = SpeechHandle(utterance_id=uid, _state="pending")
@@ -334,6 +355,7 @@ class WinRTEngine(TTSEngine):
         if self._output_device == device_id:
             return
         self._output_device = device_id
+        self._stream_output_device = object()
         self.restart_stream()
 
     def restart_stream(self) -> None:
