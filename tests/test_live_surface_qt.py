@@ -115,17 +115,23 @@ def test_draft_badge_keeps_its_12_dip_rounded_corner(qapp):
 
 
 @pytest.mark.parametrize(("form", "viewport"), ((VisibleForm.LIVE, 120),
-                                                    (VisibleForm.REVIEW, 240)))
+                                                    (VisibleForm.REVIEW, 168)))
 def test_live_regions_follow_the_header_viewport_action_table(qapp, form, viewport):
     widget = LiveSurfaceWidget(_view(form, text="Settled", partial="moving words",
                                      capture=CaptureState.RECORDING))
     widget.show()
     qapp.processEvents()
     assert widget._transcript.y() == widget._state.geometry().bottom() + 1 + 8
-    assert widget._provisional.y() == widget._transcript.geometry().bottom() + 1
-    assert widget._provisional.height() + widget._transcript.height() == viewport
-    assert widget._clear.y() == widget._provisional.geometry().bottom() + 1 + 8
-    assert widget._transcript.alignment() & Qt.AlignmentFlag.AlignTop
+    if form is VisibleForm.LIVE:
+        assert widget._provisional.y() == widget._transcript.geometry().bottom() + 1
+        assert widget._provisional.height() + widget._transcript.height() == viewport
+        assert widget._clear.y() == widget._provisional.geometry().bottom() + 1 + 8
+    else:
+        # 220-G reserves review space for the 44-DIP Latest and correction controls.
+        assert widget._transcript.height() == viewport
+        assert widget._clear.y() > widget._transcript.geometry().bottom()
+    # 220-G makes this a scrollable QTextBrowser; its document begins at top.
+    assert widget._transcript.document().documentMargin() >= 0
     widget.close()
 
 

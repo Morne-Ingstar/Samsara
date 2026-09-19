@@ -401,6 +401,8 @@ DRAFT_SCROLL_PHRASES = {
     "bottom of the draft": "bottom",
     "end of the draft": "bottom",
     "show me the rest of the draft": "bottom",
+    "latest in the draft": "bottom",
+    "show draft": "bottom",
     # Queue 136: whole-utterance placement controls use the existing
     # draft-scoped callback, so ordinary sentences remain dictation.
     "move the draft box to the top left": "move:top-left",
@@ -2667,6 +2669,85 @@ class SessionModeManager:
         self._speak(f'Say the replacement for "{word}".', QUESTION)
         return {"ok": True, "word": word, "occurrence": occurrence,
                 "ttl_s": WORD_CORRECTION_TTL_S}
+
+    def select_live_surface_word(self, selection: object) -> dict:
+        """Validate and park one revisioned surface selection.
+
+        The surface is deliberately not allowed to infer a word from its
+        rendered text.  Its coordinates identify a stable document segment;
+        a new decoder result changes the revision and makes this selection
+        stale.  Parking happens here, under the same document lock as the
+        edit, so review can never trigger an automatic delivery.
+        """
+        if not self._live_surface_enabled or not isinstance(selection, dict):
+            return {"ok": False, "reason": "unavailable"}
+        with self._dispatch_lock:
+            try:
+                document_id = str(selection["document_id"])
+                revision = int(selection["revision"])
+                segment_id = str(selection["segment_id"])
+                start, end = int(selection["start"]), int(selection["end"])
+            except (KeyError, TypeError, ValueError):
+                return {"ok": False, "reason": "invalid_selection"}
+            if document_id != self._draft.document_id or revision != self._draft.revision:
+                return {"ok": False, "reason": "stale"}
+            segment = next((item for item in self._draft.segments if item.id == segment_id), None)
+            if segment is None or start < 0 or end <= start or end > len(segment.text):
+                return {"ok": False, "reason": "stale"}
+            word = segment.text[start:end]
+            if not word:
+                return {"ok": False, "reason": "stale"}
+            self._parked_hold = True
+            self._draft.mark_manual_commit()
+            accepted = dict(selection)
+            accepted.update({"document_id": self._draft.document_id,
+                             "revision": self._draft.revision, "word": word})
+            return {"ok": True, "selection": accepted}
+
+    def apply_live_surface_correction(self, selection: object, replacement: str) -> dict:
+        """Apply one local review edit, refusing stale document coordinates.
+
+        This route intentionally does not create a general replacement rule or
+        attribute a whole capture as a word-level training clip.  The existing
+        correction-capture path remains reserved for its attributable audio.
+        """
+        if not self._live_surface_enabled or not isinstance(selection, dict):
+            return {"ok": False, "reason": "unavailable"}
+        replacement = str(replacement or "").strip()
+        if not replacement:
+            return {"ok": False, "reason": "empty"}
+        with self._dispatch_lock:
+            try:
+                result = self._draft.edit(str(selection["document_id"]), int(selection["revision"]),
+                                          str(selection["segment_id"]), int(selection["start"]),
+                                          int(selection["end"]), replacement)
+            except (KeyError, TypeError, ValueError):
+                return {"ok": False, "reason": "invalid_selection"}
+            if not result.accepted:
+                return {"ok": False, "reason": result.reason}
+            self._parked_hold = True
+            self._last_dictate_ended_terminal = chunk_ends_terminal(self._draft.text)
+            return {"ok": True, "revision": result.revision, "chars": result.chars}
+
+    def copy_sent_receipt_as_draft(self, text: str) -> dict:
+        """Make a deliberate, editable copy of one sent receipt.
+
+        Receipts are otherwise read-only.  Refusing when any draft exists
+        prevents a tap from silently combining old delivered text with a new
+        unsent thought.
+        """
+        if not self._live_surface_enabled:
+            return {"ok": False, "reason": "unavailable"}
+        text = str(text or "")
+        with self._dispatch_lock:
+            if self._draft.text:
+                return {"ok": False, "reason": "draft_pending"}
+            if not text.strip():
+                return {"ok": False, "reason": "empty"}
+            self._draft.append(text)
+            self._draft.mark_manual_commit()
+            self._parked_hold = True
+            return {"ok": True, "revision": self._draft.revision, "chars": self._draft.chars}
 
     def pending_word_correction(self) -> Optional[dict]:
         """The armed correction, or None (also None once it has expired)."""
