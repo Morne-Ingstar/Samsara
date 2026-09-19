@@ -10,7 +10,7 @@ samsara/ui/settings/__init__.py for why that import is cycle-safe.
 import shutil
 import threading
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -31,6 +31,19 @@ from samsara.ui import theme
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
+
+
+class _OutputPageShowFilter(QObject):
+    """Refresh the displayed endpoint whenever the Sounds page is shown."""
+
+    def __init__(self, page, parent):
+        super().__init__(parent)
+        self._page = page
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Show:
+            self._page._refresh_output_description()
+        return False
 
 
 class SoundsPage:
@@ -114,21 +127,12 @@ class SoundsPage:
         # Output selection belongs beside the sound controls, not the mic
         # selector: it affects earcons and speech only and never changes the
         # Windows default endpoint.
-        from samsara.output_devices import output_identity, resolve_playback_device  # noqa: PLC0415
         output_combo = QComboBox()
         try:
             outputs = self.app.get_available_output_devices()
-            live_id = resolve_playback_device(
-                __import__('sounddevice'), cfg.get('output_device_name'),
-                cfg.get('output_device_hostapi'),
-            )
-            live_name, _live_api = output_identity(__import__('sounddevice'), live_id)
         except Exception:
-            outputs, live_name = [], None
-        output_combo.addItem(
-            "Follow Windows default (recommended)" + (f" — now: {live_name}" if live_name else ""),
-            (None, None),
-        )
+            outputs = []
+        output_combo.addItem("Follow Windows default (recommended)", (None, None))
         for output in outputs:
             output_combo.addItem(output['name'], (output['name'], output.get('hostapi')))
         wanted = cfg.get('output_device_name')
@@ -137,11 +141,17 @@ class SoundsPage:
                 output_combo.setCurrentIndex(index)
                 break
         self._widgets['sound_output_combo'] = output_combo
-        layout.addLayout(self._setting_row(
+        output_row = self._setting_row(
             "Output",
-            "Where Samsara plays earcons and speech. It follows Windows’ current default unless you choose a device.",
+            "Follows Windows’ default unless you choose a device.",
             output_combo,
-        ))
+        )
+        output_description = output_row.itemAt(0).widget().layout().itemAt(1).widget()
+        self._widgets['sound_output_description'] = output_description
+        layout.addLayout(output_row)
+        self._refresh_output_description()
+        self._sound_output_refresh_filter = _OutputPageShowFilter(self, scroll)
+        scroll.installEventFilter(self._sound_output_refresh_filter)
         layout.addSpacing(20)
 
         # ---- Section: Sound Theme ----------------------------------------------
@@ -353,6 +363,33 @@ class SoundsPage:
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _refresh_output_description(self) -> None:
+        """Display the endpoint resolved now, without reinitializing PortAudio."""
+        description = self._widgets.get('sound_output_description')
+        if description is None:
+            return
+
+        text = "Follows Windows’ default unless you choose a device."
+        try:
+            from samsara.output_devices import (  # noqa: PLC0415
+                output_identity,
+                resolve_playback_device,
+            )
+
+            cfg = self.app.config
+            sounddevice = __import__('sounddevice')
+            live_id = resolve_playback_device(
+                sounddevice,
+                cfg.get('output_device_name'),
+                cfg.get('output_device_hostapi'),
+            )
+            live_name, _live_api = output_identity(sounddevice, live_id)
+            if live_name:
+                text += f" Currently playing to: {live_name}."
+        except Exception as exc:
+            logger.debug("Could not resolve the current output for Settings: %s", exc)
+        description.setText(text)
     def _test_volume(self) -> "float | None":
         """The Sounds tab slider's CURRENT value (0..1), saved or not."""
         slider = self._widgets.get('sound_volume_slider')
