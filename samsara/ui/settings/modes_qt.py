@@ -30,6 +30,7 @@ from samsara.constants import (
     DEFAULT_WAKE_PHRASE_OPTIONS,
 )
 from samsara.ui import ava_consent_qt, theme
+from samsara.log import get_logger
 
 from samsara.ui.settings_qt import (
     _CMD_BUTTON_KEY_TO_LABEL,
@@ -49,6 +50,7 @@ _AI_CMD_KEY_OPTIONS: dict = {
     **{f'F{n}': f'f{n}' for n in range(1, 25)},
 }
 _AI_CMD_KEY_TO_LABEL: dict = {v: k for k, v in _AI_CMD_KEY_OPTIONS.items()}
+logger = get_logger(__name__)
 
 # Canonical alias map: normalise rctrl/right_ctrl etc. before comparing
 _KEY_NORMALIZE: dict = {
@@ -868,6 +870,11 @@ class ModesPage:
         ai_enabled = QCheckBox()
         ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
         self._widgets['ava_cmd_enabled'] = ai_enabled
+        self._ava_cmd_enabled_initial = ai_enabled.isChecked()
+        self._ava_cmd_enabled_touched = False
+        ai_enabled.toggled.connect(
+            lambda _checked: setattr(self, "_ava_cmd_enabled_touched", True)
+        )
         _add_row(
             ai_layout,
             "Enable Ava command session",
@@ -1014,20 +1021,52 @@ class ModesPage:
             if staged is not None:
                 ava_cfg["consent"] = staged
             effective["ava"] = ava_cfg
-            cloud_checkbox = self._widgets.get("cloud_enabled")
-            cloud_enabled = bool(cloud_checkbox and cloud_checkbox.isChecked())
-            cloud_enabled = cloud_enabled or bool(
-                (self.app.config.get("cloud_llm", {}) or {}).get("enabled", False))
-            if not ava_consent_qt.consent_required(effective, cloud_enabled=cloud_enabled):
-                return
-            was_blocked = checkbox.blockSignals(True)
-            checkbox.setChecked(False)
-            checkbox.blockSignals(was_blocked)
-            consent = ava_consent_qt.request_consent(
-                self, effective, cloud_enabled=cloud_enabled)
-            if consent is not None:
+            policy = (
+                "cloud" if self._widgets["ava_cmd_backend"].currentText() == "Cloud"
+                else "local"
+            )
+            if staged is not None:
+                consent = staged
+            else:
+                needs_consent = ava_consent_qt.consent_required(
+                    effective, cloud_enabled=policy == "cloud"
+                )
+                if needs_consent:
+                    was_blocked = checkbox.blockSignals(True)
+                    checkbox.setChecked(False)
+                    checkbox.blockSignals(was_blocked)
+                consent = ava_consent_qt.request_consent(
+                    self, effective, cloud_enabled=policy == "cloud"
+                )
+                if consent is None:
+                    return
                 self._ava_consent_staged = consent
-                checkbox.setChecked(True)
+
+            try:
+                ava_consent_qt.apply_accepted_ava(
+                    self.app, consent, policy=policy
+                )
+            except Exception:
+                logger.exception("Settings could not activate Ava after consent")
+                blocked = checkbox.blockSignals(True)
+                checkbox.setChecked(False)
+                checkbox.blockSignals(blocked)
+                session_checkbox = self._widgets.get("ava_cmd_enabled")
+                if session_checkbox is not None and session_checkbox is not checkbox:
+                    blocked = session_checkbox.blockSignals(True)
+                    session_checkbox.setChecked(bool(
+                        (self.app.config.get("ava_command_session", {}) or {}).get("enabled", False)
+                    ))
+                    session_checkbox.blockSignals(blocked)
+                return
+
+            session_checkbox = self._widgets.get("ava_cmd_enabled")
+            if session_checkbox is not None:
+                blocked = session_checkbox.blockSignals(True)
+                session_checkbox.setChecked(True)
+                session_checkbox.blockSignals(blocked)
+                self._ava_cmd_enabled_initial = True
+                self._ava_cmd_enabled_touched = False
 
         ava_enabled_cb.clicked.connect(
             lambda checked: _confirm_ava_enable(checked, ava_enabled_cb))
@@ -1320,7 +1359,10 @@ class ModesPage:
             if 'ava_cmd_enabled' in self._widgets:
                 ai_cfg_out = dict(self.app.config.get('ava_command_session', {}) or {})
                 key_label = self._widgets['ava_cmd_key'].currentText()
-                ai_cfg_out['enabled']         = self._widgets['ava_cmd_enabled'].isChecked()
+                current_enabled = ai_cfg_out.get('enabled', _AIMD['enabled'])
+                if (self._ava_cmd_enabled_touched
+                        or current_enabled == self._ava_cmd_enabled_initial):
+                    ai_cfg_out['enabled'] = self._widgets['ava_cmd_enabled'].isChecked()
                 ai_cfg_out['key']             = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'left_alt'))
                 ai_cfg_out['backend']         = 'cloud' if self._widgets['ava_cmd_backend'].currentText() == 'Cloud' else 'ollama'
                 ai_cfg_out['model']           = self._widgets['ava_cmd_model'].text().strip()
