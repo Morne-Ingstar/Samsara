@@ -92,6 +92,7 @@ class SoundsPage:
         vol_slider.setRange(0, 100)
         vol_slider.setValue(int(raw_vol * 100))
         vol_slider.setFixedWidth(200)
+        vol_slider.setMinimumHeight(theme.HIT_TARGET_MIN)
         vol_slider.setStyleSheet(
             "QSlider::groove:horizontal {"
             f"  height: 4px; background: {theme.wash(0.12)}; border-radius: 2px;"
@@ -113,6 +114,7 @@ class SoundsPage:
 
         test_btn = QPushButton("Test")
         test_btn.setMinimumWidth(80)  # sizeHint is 73; a few px of margin
+        test_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(lambda: self._play(sounds_dir, 'success'))
 
@@ -176,6 +178,7 @@ class SoundsPage:
 
         apply_theme_btn = QPushButton("Apply Theme")
         apply_theme_btn.setMinimumWidth(140)  # sizeHint is 132; a few px of margin
+        apply_theme_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
         apply_theme_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         apply_theme_btn.clicked.connect(
             lambda: self._apply_sound_theme(
@@ -263,7 +266,8 @@ class SoundsPage:
             name_lbl = QLabel(label_text)
             name_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
             play_btn = QPushButton("▶")
-            play_btn.setFixedWidth(36)
+            play_btn.setFixedWidth(theme.HIT_TARGET_MIN)
+            play_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
             play_btn.setStyleSheet(
                 f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid {theme.wash(0.14)};"
                 f" border-radius: 5px; color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px; padding: 4px; }}"
@@ -315,7 +319,8 @@ class SoundsPage:
             fname_lbl.setFixedWidth(140)
 
             play_btn = QPushButton("▶")
-            play_btn.setFixedWidth(36)
+            play_btn.setFixedWidth(theme.HIT_TARGET_MIN)
+            play_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
             play_btn.setEnabled(exists)
             play_btn.setStyleSheet(
                 f"QPushButton {{ background-color: {theme.BG2}; border: 1px solid {theme.wash(0.14)};"

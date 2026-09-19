@@ -412,7 +412,7 @@ class _AlarmHotkeyButton(_HotkeyButton):
     def __init__(self, combo: str, action: str):
         self._alarm_action = action
         super().__init__(combo)
-        self.setMinimumHeight(38)
+        self.setMinimumHeight(theme.HIT_TARGET_MIN)
         self.setStyleSheet(self._alarm_idle_qss())
         self._show_idle_text()
 
@@ -500,6 +500,7 @@ QListWidget {{
 }}
 QListWidget::item {{
     padding: 10px 20px;
+    min-height: {theme.HIT_TARGET_MIN}px;
     border: none;
 }}
 QListWidget::item:selected {{
@@ -536,6 +537,7 @@ QComboBox {{
     padding: 8px 12px;
     color: ${{TEXT_PRIMARY}};
     min-width: 200px;
+    min-height: {theme.HIT_TARGET_MIN}px;
 }}
 QComboBox::drop-down {{
     border: none;
@@ -556,6 +558,7 @@ QCheckBox {{
        the row -- the ::indicator sub-control below already paints its own
        background correctly and is untouched. */
     background-color: transparent;
+    min-height: {theme.HIT_TARGET_MIN}px;
 }}
 QCheckBox::indicator {{
     width: 18px;
@@ -567,6 +570,10 @@ QCheckBox::indicator {{
 QCheckBox::indicator:checked {{
     background-color: ${{ACCENT}};
     border-color: ${{ACCENT}};
+    /* The checked circle is a shape cue, so state does not depend on
+       perceiving its accent colour. */
+    border-radius: 9px;
+    border: 4px solid ${{TEXT_ON_ACCENT}};
 }}
 QPushButton {{
     background-color: ${{ACCENT}};
@@ -576,6 +583,7 @@ QPushButton {{
     padding: 10px 24px;
     font-weight: 600;
     font-size: {theme.TYPE_BODY}px;
+    min-height: {theme.HIT_TARGET_MIN}px;
 }}
 QPushButton:hover {{
     background-color: ${{ACCENT_HOVER}};
@@ -600,6 +608,7 @@ QSpinBox, QDoubleSpinBox {{
     padding: 6px 10px;
     color: ${{TEXT_PRIMARY}};
     min-width: 80px;
+    min-height: {theme.HIT_TARGET_MIN}px;
 }}
 QSpinBox::up-button, QDoubleSpinBox::up-button,
 QSpinBox::down-button, QDoubleSpinBox::down-button {{
@@ -622,6 +631,7 @@ QLineEdit {{
     padding: 8px 12px;
     color: ${{TEXT_PRIMARY}};
     font-size: {theme.TYPE_BODY}px;
+    min-height: {theme.HIT_TARGET_MIN}px;
 }}
 QLineEdit:focus {{
     border-color: {theme.tint(theme.ACCENT, 0.5)};
@@ -834,7 +844,7 @@ class _SettingsWindow(
         search_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         search_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         search_scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        search_scroll.setFixedHeight(46)
+        search_scroll.setFixedHeight(theme.HIT_TARGET_MIN + 2)
 
         search_center = QWidget()
         search_center.setMaximumWidth(_CONTENT_MAX_WIDTH)
@@ -930,7 +940,7 @@ class _SettingsWindow(
 
         # Button bar
         btn_bar = QWidget()
-        btn_bar.setFixedHeight(64)
+        btn_bar.setFixedHeight(theme.HIT_TARGET_MIN + 24)
         btn_bar.setStyleSheet(f"background-color: {theme.BG0};")
         btn_layout = QHBoxLayout(btn_bar)
         btn_layout.setContentsMargins(20, 12, 20, 12)
@@ -1335,17 +1345,16 @@ class _SettingsWindow(
         # the same leftover space without adding anything.
         row.addWidget(left_widget, 1)
 
-        interactive_height = 36
+        interactive_height = theme.HIT_TARGET_MIN
         if isinstance(widget, QCheckBox):
-            widget.setMinimumHeight(28)
-            interactive_height = 28
+            widget.setMinimumHeight(theme.HIT_TARGET_MIN)
         elif isinstance(widget, (QPushButton, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QSlider)):
             widget.setMinimumHeight(interactive_height)
         else:
             widget.setMinimumHeight(interactive_height)
 
         if control_width is not None:
-            width = max(170, control_width)
+            width = max(theme.HIT_TARGET_MIN, 170, control_width)
             widget.setMinimumWidth(width)
 
         widget.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)

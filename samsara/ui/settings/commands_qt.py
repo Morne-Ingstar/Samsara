@@ -138,6 +138,11 @@ class CommandsPage:
             cb = QCheckBox()
             cb.setChecked(enabled)
             cb.setEnabled(not always_on)
+            # Pack labels live beside the indicator, so its own natural
+            # width is only the 18px glyph. Reserve the shared square hit
+            # target rather than relying on the label column as a proxy.
+            cb.setMinimumWidth(theme.HIT_TARGET_MIN)
+            cb.setMinimumHeight(theme.HIT_TARGET_MIN)
             cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
             pack_checkboxes[pack_id] = cb
             row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignTop)
