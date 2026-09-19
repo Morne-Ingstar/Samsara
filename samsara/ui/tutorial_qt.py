@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QFrame, QHBoxLayout, QLabel, QLayout, QMainWindow,
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -239,11 +239,16 @@ class TutorialWindow(QMainWindow):
         self._build_step_list()
 
         self.setWindowTitle("Samsara Tutorial")
-        # Tall enough for the done step's content (checklist + 3 guide cards),
-        # the tallest of the four pages -- see _button_min_width's docstring
-        # for why fixed per-widget geometry is avoided; the window itself
-        # still needs a fixed height sized to the tallest page's real content.
-        self.setFixedSize(620, 722)
+        # Keep ordinary steps compact. The done page expands to its content
+        # when the available screen height permits; otherwise its scroll area
+        # keeps the text and guide actions at their natural sizes.
+        self._default_window_height = 722
+        screen = QApplication.primaryScreen()
+        available_height = screen.availableGeometry().height() if screen else 920
+        self.setFixedWidth(620)
+        self.setMinimumHeight(min(620, max(560, available_height - 24)))
+        self.setMaximumHeight(max(self.minimumHeight(), available_height - 24))
+        self.resize(620, min(self._default_window_height, self.maximumHeight()))
         self.setStyleSheet(theme.build_stylesheet())
         # Stay on top so the user can still use the tutorial while interacting
         # with other windows; WindowStaysOnTopHint avoids stealing focus.
@@ -378,6 +383,23 @@ class TutorialWindow(QMainWindow):
         fm = btn.fontMetrics()
         widest = max((fm.horizontalAdvance(t) for t in texts), default=0)
         return widest + h_padding
+
+    def _fit_done_page_height(self) -> None:
+        page = self._current_page
+        if not isinstance(page, QScrollArea):
+            return
+        content = page.widget()
+        layout = content.layout() if content is not None else None
+        if content is None or layout is None:
+            return
+        layout.activate()
+        natural_height = max(
+            content.height(), content.minimumSizeHint().height(),
+            layout.sizeHint().height(),
+        )
+        extra = max(0, natural_height - page.viewport().height())
+        if extra:
+            self.resize(self.width(), min(self.maximumHeight(), self.height() + extra))
 
     # ------------------------------------------------------------------
     # Step configuration
@@ -573,7 +595,7 @@ class TutorialWindow(QMainWindow):
         return w
 
     def _build_done(self) -> QWidget:
-        w, lay = self._padded()
+        content, lay = self._padded()
 
         done_lbl = QLabel("You know the things that matter.")
         done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
@@ -600,13 +622,15 @@ class TutorialWindow(QMainWindow):
                 f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
             )
             icon_lbl.setFixedWidth(24)
+            icon_lbl.setMinimumHeight(theme.HIT_TARGET_MIN)
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text[2:] if text.startswith("✓  ") else text)
             text_lbl.setStyleSheet(
                 f"color:{theme.TEXT_PRIMARY if completed else theme.TEXT_DISABLED};"
                 f"font-size:{theme.TYPE_BODY}px;"
             )
-            row.addWidget(text_lbl)
+            text_lbl.setMinimumHeight(theme.HIT_TARGET_MIN)
+            row.addWidget(text_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
             row.addStretch()
             cl.addLayout(row)
 
@@ -617,16 +641,16 @@ class TutorialWindow(QMainWindow):
             records = _tutorial_catalog(self._app)
         more_lbl = QLabel(_more_text(records))
         more_lbl.setWordWrap(True)
-        more_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        more_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(more_lbl)
 
         pointer_lbl = QLabel(_pointer_text(records))
         pointer_lbl.setWordWrap(True)
-        pointer_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        pointer_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(pointer_lbl)
         hf_lbl = QLabel(_hands_free_text(self._app.config if hasattr(self._app, 'config') else {}))
         hf_lbl.setWordWrap(True)
-        hf_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        hf_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(hf_lbl)
         lay.addSpacing(12)
 
@@ -673,13 +697,14 @@ class TutorialWindow(QMainWindow):
             title_lbl = QLabel(title)
             title_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
             desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
             text_col.addWidget(title_lbl)
             text_col.addWidget(desc_lbl)
             gc_lay.addLayout(text_col, stretch=1)
 
             open_btn = QPushButton("Open →")
             theme.make_secondary(open_btn)
+            open_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
             _m = method  # capture for lambda
             open_btn.clicked.connect(
                 lambda checked=False, m=_m: getattr(self._app, m, lambda: None)()
@@ -692,7 +717,16 @@ class TutorialWindow(QMainWindow):
             lay.addWidget(guide_card)
 
         lay.addStretch()
-        return w
+        lay.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("tutorialDoneScrollArea")
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidgetResizable(True)
+        content.setObjectName("tutorialDoneContent")
+        scroll.setWidget(content)
+        return scroll
 
     # ------------------------------------------------------------------
     # Navigation
@@ -752,6 +786,10 @@ class TutorialWindow(QMainWindow):
         # Focus the dictation box so the hotkey routes text to it
         if key == "dictation" and self._dictation_box:
             QTimer.singleShot(100, self, lambda: self._dictation_box.setFocus())
+        if is_done:
+            QTimer.singleShot(0, self, self._fit_done_page_height)
+        else:
+            self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
 
     def _go_next(self):
         key = self._steps[self._step][0]
