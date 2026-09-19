@@ -137,7 +137,7 @@ def _luminance(pixel: int) -> float:
 #: queue-129 rewrites below used to be absent from both this test and the
 #: shared proof table.
 SURFACES = [
-    "home", "settings_general", "quick_reference", "tutorial",
+    "home", "settings_general", "quick_reference", "command_reference", "tutorial",
     "profile_manager", "voice_training", "ava_guide",
 ]
 

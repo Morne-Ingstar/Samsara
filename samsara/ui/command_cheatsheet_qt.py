@@ -25,7 +25,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, QPoint
 from PySide6.QtGui import QColor, QCursor, QPalette
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QListWidget, QListWidgetItem, QLineEdit,
+    QLabel, QListView, QListWidget, QListWidgetItem, QLineEdit, QPushButton,
     QFrame, QSizeGrip, QSizePolicy, QSlider, QMenu, QAbstractItemView,
 )
 
@@ -177,7 +177,7 @@ def _selected_bg():
     return theme._rgba(theme.ACCENT, _SELECTED_ALPHA)
 #: Queue 78: the default is the width the content actually needs at the
 #: TYPE_BODY floor. 440 px was chosen when every string in here was 14 px.
-_DEFAULT_W = 520
+_DEFAULT_W = 460
 _DEFAULT_H = 560
 #: A list with a filter above it needs this much height to be worth opening.
 _MIN_H = 180
@@ -210,7 +210,8 @@ def _annotate_disabled(rows, disabled: set) -> list:
 
 def _ss():
     return f"""
-QMainWindow, QWidget {{ background: {theme.BG0}; color: {theme.TEXT_PRIMARY}; font-family: {theme.FONT_FAMILY}; font-size: {theme.TYPE_BODY}px; }}
+QMainWindow {{ background: {theme.BG0}; }}
+QWidget {{ color: {theme.TEXT_PRIMARY}; font-family: {theme.FONT_FAMILY}; font-size: {theme.TYPE_BODY}px; }}
 QListWidget {{
     background: {theme.BG1};
     border: none;
@@ -222,12 +223,14 @@ QListWidget::item {{ padding: 6px 10px; }}
 QListWidget::item:hover {{ background: {theme.BG2}; }}
 QListWidget::item:selected {{ background: {_selected_bg()}; color: {theme.ACCENT}; }}
 QLineEdit {{
-    background: {theme.BG1};
-    border: none;
+    background: {theme.BG2};
+    border: 1px solid {theme.BORDER};
+    border-radius: 6px;
     color: {theme.TEXT_PRIMARY};
     font-size: {theme.TYPE_BODY}px;
-    padding: 5px 8px;
+    padding: 6px 10px;
 }}
+QLineEdit:focus {{ border-color: {theme.ACCENT}; }}
 QScrollBar:vertical {{
     background: {theme.BG0};
     width: 6px;
@@ -240,16 +243,17 @@ QScrollBar::handle:vertical {{
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QSlider::groove:horizontal {{
-    height: 3px;
+    height: 4px;
     background: {theme.BORDER};
-    border-radius: 1px;
+    border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    background: {theme.TEXT_SECONDARY};
-    width: 10px;
-    height: 10px;
-    margin: -3px 0;
-    border-radius: 5px;
+    background: {theme.ACCENT};
+    border: 2px solid {theme.BG1};
+    width: 14px;
+    height: 14px;
+    margin: -7px 0;
+    border-radius: 8px;
 }}
 QSlider::sub-page:horizontal {{ background: {theme.ACCENT}; border-radius: 1px; }}
 QMenu {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; }}
@@ -376,31 +380,35 @@ class CommandCheatSheetQt:
 class _TitleBar(QWidget):
     def __init__(self, win: "_CheatSheetWindow"):
         super().__init__(win)
-        # Queue 78: 34 px was sized for 14 px chrome text; the window's own
-        # name is now TYPE_EMPHASIS and needs the room.
-        self.setFixedHeight(40)
+        self.setFixedHeight(48)
         self.setStyleSheet(f"background:{theme.BG1};")
         self._win = win
         self._drag_pos: QPoint | None = None
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 0, 6, 0)
+        lay.setContentsMargins(10, 0, 4, 0)
         lay.setSpacing(6)
 
-        drag_lbl = QLabel("Command Reference")
-        drag_lbl.setStyleSheet(
-            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
-        drag_lbl.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
-        lay.addWidget(drag_lbl, stretch=1)
+        self._title_label = QLabel("Command Reference")
+        self._title_label.setStyleSheet(
+            f"background:transparent;color:{theme.TEXT_PRIMARY};"
+            f"font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
+        self._title_label.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
+        lay.addWidget(self._title_label, stretch=1)
 
-        op_lbl = QLabel("opacity")
-        op_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        lay.addWidget(op_lbl)
+        self._opacity_label = QLabel("Opacity")
+        self._opacity_label.setStyleSheet(
+            f"background:transparent;color:{theme.TEXT_SECONDARY};"
+            f"border-left:1px solid {theme.BORDER};padding-left:10px;"
+            f"font-size:{theme.TYPE_BODY}px;")
+        lay.addWidget(self._opacity_label)
 
         self._opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self._opacity_slider.setRange(35, 100)
         self._opacity_slider.setValue(int(win.windowOpacity() * 100))
-        self._opacity_slider.setFixedWidth(70)
+        self._opacity_slider.setFixedWidth(72)
+        self._opacity_slider.setAccessibleName("Window opacity")
+        self._opacity_slider.setToolTip("Adjust command-reference transparency")
         self._opacity_slider.setStyleSheet(_ss())
         self._opacity_slider.valueChanged.connect(
             lambda v: win.setWindowOpacity(v / 100.0)
@@ -408,17 +416,19 @@ class _TitleBar(QWidget):
         self._opacity_slider.sliderReleased.connect(win._save_palette)
         lay.addWidget(self._opacity_slider)
 
-        close_lbl = QLabel("  x  ")
-        close_lbl.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;padding:2px 4px;"
+        self._close_button = QPushButton("✕")
+        self._close_button.setAccessibleName("Close command reference")
+        self._close_button.setToolTip("Close command reference")
+        self._close_button.setFixedSize(44, 44)
+        self._close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self._close_button.setStyleSheet(
+            f"QPushButton{{background:{theme.BG2};color:{theme.TEXT_SECONDARY};"
+            f"border:1px solid {theme.BORDER};border-radius:6px;font-size:{theme.TYPE_TITLE}px;}}"
+            f"QPushButton:hover{{border-color:{theme.ERROR};color:{theme.ERROR};}}"
+            f"QPushButton:pressed{{background:{_selected_bg()};color:{theme.ERROR};}}"
         )
-        close_lbl.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        close_lbl.mousePressEvent = lambda _e: win.hide()
-        close_lbl.enterEvent  = lambda _e: close_lbl.setStyleSheet(
-            f"color:{theme.ERROR};font-size:{theme.TYPE_MIN}px;padding:2px 4px;")
-        close_lbl.leaveEvent  = lambda _e: close_lbl.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;padding:2px 4px;")
-        lay.addWidget(close_lbl)
+        self._close_button.clicked.connect(win.hide)
+        lay.addWidget(self._close_button)
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -529,7 +539,7 @@ class _CategoryTabBar(QWidget):
         self._on_live_only = on_live_only
         self._pack_ids: List[str] = []
 
-        self.setFixedHeight(38)        # 78: room for TYPE_BODY controls
+        self.setFixedHeight(44)
         self.setStyleSheet(
             f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
         )
@@ -538,11 +548,9 @@ class _CategoryTabBar(QWidget):
         lay.setContentsMargins(8, 0, 8, 0)
         lay.setSpacing(6)
 
-        cat_lbl = QLabel("Category")
-        cat_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(cat_lbl)
-
         self._combo = QComboBox()
+        self._combo.setAccessibleName("Command category")
+        self._combo.setToolTip("Choose a command category")
         self._combo.setStyleSheet(_ss())
         # Queue 78: AdjustToContents made the combo demand the width of its
         # longest pack name, and everything to its right -- "Live here only"
@@ -551,25 +559,30 @@ class _CategoryTabBar(QWidget):
         self._combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
-        self._combo.setMinimumContentsLength(12)
+        self._combo.setMinimumContentsLength(10)
         self._combo.setSizePolicy(QSizePolicy.Policy.Expanding,
                                   QSizePolicy.Policy.Fixed)
         self._combo.currentIndexChanged.connect(self._on_changed)
-        lay.addWidget(self._combo)
-        lay.addStretch()
+        lay.addWidget(self._combo, stretch=1)
 
         # Queue 68: commands scoped to another app / state are hidden by
         # default; the box says how many and lets the user see them all.
-        self._live_only = QCheckBox("Live here only")
+        self._live_only = QCheckBox("Live only")
+        self._live_only.setAccessibleName("Show commands live here only")
         self._live_only.setChecked(True)
         self._live_only.setToolTip(
             "Some commands only work in a particular app or while something is on screen. "
             "Untick to list them all, with when each one works.")
-        self._live_only.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
+        self._live_only.setStyleSheet(
+            f"background:transparent;color:{theme.TEXT_SECONDARY};"
+            f"font-size:{theme.TYPE_BODY}px;")
         self._live_only.toggled.connect(self._on_live_toggled)
         lay.addWidget(self._live_only)
         self._hidden_lbl = QLabel("")
-        self._hidden_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._hidden_lbl.setStyleSheet(
+            f"background:transparent;color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._hidden_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._hidden_lbl.setMinimumWidth(0)
         lay.addWidget(self._hidden_lbl)
 
     def _on_live_toggled(self, checked: bool):
@@ -578,6 +591,8 @@ class _CategoryTabBar(QWidget):
 
     def set_hidden_count(self, count: int):
         self._hidden_lbl.setText(f"({count} not live here)" if count else "")
+        self._hidden_lbl.setToolTip(
+            f"{count} commands are not available in the current app or state" if count else "")
 
     def set_categories(self, pack_ids: List[str], active_id: str, disabled: set = frozenset()):
         """pack_ids are the group ids (catalog plugin stems since queue 15)."""
@@ -610,6 +625,29 @@ class _CategoryTabBar(QWidget):
 # Main window
 # ---------------------------------------------------------------------------
 
+class _VisibleSizeGrip(QSizeGrip):
+    """A normal resize grip with a visible, theme-aware direction cue."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAccessibleName("Resize command reference")
+        self.setToolTip("Drag to resize")
+        self.setFixedSize(32, 32)
+        self.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
+        self.setStyleSheet(
+            f"QSizeGrip{{background:{theme.BG1};border-left:1px solid {theme.BORDER};"
+            f"border-top:1px solid {theme.BORDER};}}")
+        self._cue = QLabel("↘", self)
+        self._cue.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._cue.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._cue.setStyleSheet(
+            f"background:transparent;color:{theme.ACCENT};font-size:{theme.TYPE_HEADING}px;")
+
+    def resizeEvent(self, event):
+        self._cue.setGeometry(self.rect())
+        super().resizeEvent(event)
+
+
 class _CheatSheetWindow(QMainWindow):
 
     def __init__(
@@ -628,6 +666,7 @@ class _CheatSheetWindow(QMainWindow):
         self._live_only = True
         self._active_category = "All"
         self._opacity = 0.85
+        self._most_used_expanded = False
         self._geom = {"x": None, "y": None, "w": _DEFAULT_W, "h": _DEFAULT_H}
 
         self._load_palette()
@@ -676,12 +715,20 @@ class _CheatSheetWindow(QMainWindow):
         self._title_bar = _TitleBar(self)
         lay.addWidget(self._title_bar)
 
-        # Filter
+        # Search. The inset card remains visible on both palettes; the old
+        # borderless white field disappeared into the light window.
+        search_wrap = QWidget()
+        search_wrap.setStyleSheet(f"background:{theme.BG0};")
+        search_layout = QHBoxLayout(search_wrap)
+        search_layout.setContentsMargins(8, 6, 8, 6)
         self._filter = QLineEdit()
-        self._filter.setPlaceholderText("Filter commands...")
+        self._filter.setAccessibleName("Search commands")
+        self._filter.setPlaceholderText("Search commands…")
+        self._filter.setMinimumHeight(44)
         self._filter.setStyleSheet(
-            f"QLineEdit{{background:{theme.BG1};border:none;color:{theme.TEXT_PRIMARY};"
-            f"font-size:{theme.TYPE_BODY}px;padding:7px 10px;}}"
+            f"QLineEdit{{background:{theme.BG2};border:1px solid {theme.BORDER};"
+            f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;"
+            f"padding:7px 10px;}}QLineEdit:focus{{border-color:{theme.ACCENT};}}"
         )
         # Queue 78: Qt paints a placeholder at ~50% of the text colour, which
         # lands under 3:1. The role is set explicitly so it is TEXT_SECONDARY.
@@ -690,7 +737,8 @@ class _CheatSheetWindow(QMainWindow):
                           theme.qcolor(theme.TEXT_SECONDARY))
         self._filter.setPalette(_palette)
         self._filter.textChanged.connect(self._apply_filter)
-        lay.addWidget(self._filter)
+        search_layout.addWidget(self._filter)
+        lay.addWidget(search_wrap)
 
         _sep = lambda: [s := QFrame(), s.setFixedHeight(1),
                         s.setStyleSheet(f"background:{theme.BORDER};")][0]
@@ -713,6 +761,10 @@ class _CheatSheetWindow(QMainWindow):
         self._list = QListWidget()
         self._list.setStyleSheet(_ss())
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.setWordWrap(True)
+        self._list.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self._list.setResizeMode(QListView.ResizeMode.Adjust)
+        self._list.setUniformItemSizes(False)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._list.setSpacing(0)
         self._list.itemClicked.connect(self._on_item_clicked)
@@ -735,9 +787,8 @@ class _CheatSheetWindow(QMainWindow):
         grip_row = QHBoxLayout()
         grip_row.setContentsMargins(0, 0, 0, 0)
         grip_row.addStretch()
-        grip = QSizeGrip(inner)
-        grip.setStyleSheet("background:transparent;")
-        grip_row.addWidget(grip)
+        self._resize_grip = _VisibleSizeGrip(inner)
+        grip_row.addWidget(self._resize_grip)
         lay.addLayout(grip_row)
 
         # Queue 78: the narrowest this window may be is the widest row it
@@ -794,6 +845,7 @@ class _CheatSheetWindow(QMainWindow):
 
     def _apply_filter(self, text: str = ""):
         raw = text.strip().lower()
+        self._static_pane.setVisible(not raw and getattr(self, "_static_has_content", False))
         if raw:
             filtered = [
                 c for c in self._all
@@ -811,8 +863,10 @@ class _CheatSheetWindow(QMainWindow):
         filtered, hidden = live_filter(filtered, self._live_only)
         self._category_bar.set_hidden_count(hidden)
 
-        # Pinned items live in static pane — exclude from scroll list
-        unpinned = [c for c in filtered if c["phrase"] not in self._pinned]
+        # Searching is allowed to find pinned commands too because the static
+        # pane gets out of the way while a query is active.
+        unpinned = (filtered if raw else
+                    [c for c in filtered if c["phrase"] not in self._pinned])
 
         self._list.blockSignals(True)
         self._list.clear()
@@ -855,6 +909,7 @@ class _CheatSheetWindow(QMainWindow):
                 child.widget().deleteLater()
 
         has_content = False
+        self._most_used_button = None
         # Usage stats are keyed by whatever phrase was said: map every alias.
         phrase_to_cmd = {}
         for c in self._all:
@@ -872,21 +927,36 @@ class _CheatSheetWindow(QMainWindow):
             top = []
 
         if top:
-            self._static_layout.addWidget(self._section_label("MOST USED"))
-            for phrase, cnt in top:
-                row = _StaticRow(
-                    phrase_to_cmd[phrase], count=cnt,
-                    pinned=(phrase_to_cmd[phrase]["phrase"] in self._pinned),
-                    execute_cb=self._execute, toggle_pin_cb=self._toggle_pin,
-                    parent=self._static_pane,
-                )
-                self._static_layout.addWidget(row)
+            arrow = "▼" if self._most_used_expanded else "▶"
+            self._most_used_button = QPushButton(f"{arrow}  Most used ({len(top)})")
+            self._most_used_button.setAccessibleName(
+                ("Collapse" if self._most_used_expanded else "Expand") + " most used commands")
+            self._most_used_button.setToolTip(
+                "Hide most used commands" if self._most_used_expanded else "Show most used commands")
+            self._most_used_button.setMinimumHeight(44)
+            self._most_used_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self._most_used_button.setStyleSheet(
+                f"QPushButton{{background:{theme.BG0};color:{theme.TEXT_SECONDARY};border:none;"
+                f"text-align:left;padding:4px 10px;font-size:{theme.TYPE_BODY}px;font-weight:600;}}"
+                f"QPushButton:hover{{background:{theme.BG2};color:{theme.TEXT_PRIMARY};}}"
+            )
+            self._most_used_button.clicked.connect(self._toggle_most_used)
+            self._static_layout.addWidget(self._most_used_button)
+            if self._most_used_expanded:
+                for phrase, cnt in top:
+                    row = _StaticRow(
+                        phrase_to_cmd[phrase], count=cnt,
+                        pinned=(phrase_to_cmd[phrase]["phrase"] in self._pinned),
+                        execute_cb=self._execute, toggle_pin_cb=self._toggle_pin,
+                        parent=self._static_pane,
+                    )
+                    self._static_layout.addWidget(row)
             has_content = True
 
         # ---- Pinned ----
         pinned_cmds = [c for c in self._all if c["phrase"] in self._pinned]
         if pinned_cmds:
-            if has_content:
+            if has_content and self._most_used_expanded:
                 sep = QFrame()
                 sep.setFixedHeight(1)
                 sep.setStyleSheet(f"background:{theme.BORDER};")
@@ -907,6 +977,15 @@ class _CheatSheetWindow(QMainWindow):
             sep.setFixedHeight(1)
             sep.setStyleSheet(f"background:{theme.BORDER};margin:2px 0;")
             self._static_layout.addWidget(sep)
+
+        self._static_has_content = has_content
+        self._static_pane.setVisible(
+            has_content and not bool(self._filter.text().strip()))
+
+    def _toggle_most_used(self):
+        self._most_used_expanded = not self._most_used_expanded
+        self._save_palette()
+        self._rebuild_static_pane()
 
     def _section_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
@@ -1003,6 +1082,7 @@ class _CheatSheetWindow(QMainWindow):
                 self._pinned          = set(data.get("pinned", []))
                 self._opacity         = max(0.35, float(data.get("opacity", 0.85)))
                 self._active_category = data.get("last_category", "All")
+                self._most_used_expanded = bool(data.get("most_used_expanded", False))
                 g = data.get("geometry", {})
                 self._geom = {
                     "x": g.get("x"),
@@ -1019,6 +1099,7 @@ class _CheatSheetWindow(QMainWindow):
                 "pinned":        sorted(self._pinned),
                 "opacity":       round(self.windowOpacity(), 2),
                 "last_category": self._active_category,
+                "most_used_expanded": self._most_used_expanded,
                 "geometry": {
                     "x": self.x(), "y": self.y(),
                     "w": self.width(), "h": self.height(),
