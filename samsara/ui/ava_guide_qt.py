@@ -952,26 +952,24 @@ class _WizardWindow(QDialog):
 
     def _enable_ai_pack(self):
         try:
-            cloud_enabled = bool(
-                (self._app.config.get("cloud_llm", {}) or {}).get("enabled", False))
-            if ava_consent_qt.consent_required(
-                self._app.config, cloud_enabled=cloud_enabled
-            ):
-                consent = ava_consent_qt.request_consent(
-                    self, self._app.config, cloud_enabled=cloud_enabled
-                )
-                if consent is None:
-                    return
-                ava_cfg = dict(self._app.config.get("ava", {}) or {})
-                ava_cfg["consent"] = consent
-                self._app.update_config({"ava": ava_cfg}, save=True)
-            packs = dict(self._app.config.get("command_packs", {}))
-            packs["ai"] = True
-            self._app.update_config({"command_packs": packs}, save=True)
-            self._enable_pack_btn.setText("AI pack enabled — restart to activate")
+            policy = ava_consent_qt.selected_ava_policy(self._app.config)
+            consent = ava_consent_qt.request_consent(
+                self, self._app.config, cloud_enabled=policy == "cloud"
+            )
+            if consent is None:
+                return
+            ava_consent_qt.apply_accepted_ava(
+                self._app, consent, policy=policy
+            )
+            self._enable_pack_btn.setText(
+                "Ava is on. Use the activation key to start."
+            )
             self._enable_pack_btn.setEnabled(False)
-        except Exception as exc:
-            self._enable_pack_btn.setText(f"Error: {exc}")
+        except Exception:
+            logger.exception("Could not activate Ava after consent")
+            self._enable_pack_btn.setText(
+                "Ava setup needs attention in Settings > Modes."
+            )
 
     def _finish(self):
         # Save model choice from combo if not already saved by a pull

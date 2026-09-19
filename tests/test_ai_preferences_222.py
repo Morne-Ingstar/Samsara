@@ -34,6 +34,45 @@ def test_fresh_defaults_only_requested_changes():
     assert ai.migrate_ai_preferences({}) == {"ava": {"provider_policy": "off"}}
 
 
+def test_status_messages_name_the_switch_or_provider_blocking_ava():
+    off = ai.effective_state({}, "ava")
+    assert "Settings > Modes > Ava Command Session" in off.reason
+
+    config = enabled(local_config(), features=("ava",))
+    config["ava_command_session"]["enabled"] = False
+    disabled = ai.effective_state(config, "ava", ready=True)
+    assert "Ava command session is disabled" in disabled.reason
+    assert "Settings > Modes > Ava Command Session" in disabled.reason
+
+    config["ava_command_session"]["enabled"] = True
+    config["ollama"]["enabled"] = False
+    assert "Ollama is disabled" in ai.effective_state(config, "ava", ready=True).reason
+    config["ollama"]["enabled"] = True
+    assert ai.effective_state(config, "ava", ready=False).reason == "Ollama is not running."
+
+
+def test_explicit_local_accept_enables_ava_only_and_preserves_editing_state():
+    config = local_config()
+    config.update({
+        "ava": {"provider_policy": "off"},
+        "ava_command_session": {"enabled": False, "backend": "ollama", "model": "selected-model"},
+        "ava_edit": {"enabled": True, "model": "edit-model"},
+        "cloud_llm": {"enabled": False, "api_key": "fixture-only"},
+    })
+    provider = ai.provider_for(config, "local")
+    record = ai.accept_consent(config, provider=provider, accepted_at="explicit-accept")
+
+    changed = ai.apply_accepted_ava(config, policy="local", consent=record)
+
+    assert changed["ava"]["provider_policy"] == "local"
+    assert changed["ava_command_session"]["enabled"] is True
+    assert changed["command_packs"]["ai"] is True
+    assert changed["cloud_llm"]["enabled"] is False
+    assert changed["ava_edit"] == config["ava_edit"]
+    assert ai.effective_state(changed, "ava", ready=True).allowed
+    assert ai.effective_state(changed, "editing", ready=True).status == "setup-pending"
+
+
 @pytest.mark.parametrize("policy", ["local", "cloud"])
 @pytest.mark.parametrize("features", [("ava",), ("editing",), ("ava", "editing")])
 def test_explicit_opt_in_applies_whole_mapping(policy, features):

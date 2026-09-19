@@ -197,6 +197,34 @@ def apply_preferences(config: dict, *, policy: str, ava: bool = False,
     return result
 
 
+def apply_accepted_ava(config: dict, *, policy: str, consent: dict) -> dict:
+    """Build the full persisted config transaction after explicit Ava consent.
+
+    Enables only the Ava command-session feature. Existing editing preference
+    data is preserved, but its own provider-scoped consent gate remains in
+    force if this acceptance did not grant editing.
+    """
+    session = _section(config, "ava_command_session")
+    local_model = session.get("model") or _section(config, "ollama").get("model")
+    resolved_addresses = ()
+    if policy == "local":
+        try:
+            host = urlsplit(cfg_get(config, "ollama.host")).hostname
+        except (TypeError, ValueError):
+            host = None
+        if host and host.lower() == "localhost":
+            # Same explicit loopback treatment as runtime_state; no DNS/network
+            # lookup is performed by this preference transaction.
+            resolved_addresses = ("127.0.0.1", "::1")
+
+    result = apply_preferences(
+        config, policy=policy, ava=True, editing=False, consent=consent,
+        local_model=local_model, resolved_addresses=resolved_addresses,
+    )
+    result["ava_edit"] = deepcopy(_section(config, "ava_edit"))
+    return result
+
+
 @dataclass(frozen=True)
 class EffectiveState:
     status: str  # allowed / off-by-choice / setup-pending / unavailable
@@ -216,28 +244,48 @@ def effective_state(config: dict, feature: str, *, provider_route: str | None = 
     policy = _section(config, "ava").get("provider_policy", "off")
     pending = _section(config, "onboarding").get("requested_ai", "off") in {"local", "cloud"}
     if policy == "off":
-        return EffectiveState("setup-pending" if pending else "off-by-choice", "Optional AI setup is pending" if pending else "Optional AI is off")
+        reason = (
+            "Ava setup is pending; enable Ava in Settings > Modes to finish setup."
+            if pending else
+            "Ava is disabled in Settings > Modes > Ava Command Session."
+        )
+        return EffectiveState("setup-pending" if pending else "off-by-choice", reason)
     if policy not in POLICIES:
-        return EffectiveState("setup-pending", "Invalid provider policy")
+        return EffectiveState("setup-pending", "Ava's provider selection is invalid in Settings > Modes.")
     if provider_route is not None and provider_route != policy:
-        return EffectiveState("off-by-choice", "Provider fallback is not authorized")
+        return EffectiveState("off-by-choice", "This Ava route is not enabled for the selected provider in Settings > Modes.")
     section = "ava_command_session" if feature == "ava" else "ava_edit"
     if _section(config, section).get("enabled") is not True:
-        return EffectiveState("off-by-choice", "Feature is off")
+        reason = (
+            "Ava command session is disabled in Settings > Modes > Ava Command Session."
+            if feature == "ava" else
+            "Ava editing is disabled in Settings > Ava / Cloud."
+        )
+        return EffectiveState("off-by-choice", reason)
     try:
         provider = provider_for(config, policy, resolved_addresses=resolved_addresses)
     except (ValueError, TypeError):
-        return EffectiveState("setup-pending", "Provider configuration is invalid")
+        location = "Settings > Ava / Cloud" if policy == "cloud" else "Settings > Modes > Ava Command Session"
+        name = "Cloud AI" if policy == "cloud" else "Ollama"
+        return EffectiveState("setup-pending", f"{name} configuration is invalid in {location}.")
     if policy == "local" and provider.location != "loopback":
-        return EffectiveState("setup-pending", "Ollama is remote or not verified as loopback", provider)
+        return EffectiveState("setup-pending", "Ollama must be running on this computer; check Settings > Modes > Ava Command Session.", provider)
     record = _section(config, "ava").get("consent")
     if not consent_covers(record, features=(feature,), provider=provider, cloud=policy == "cloud"):
-        return EffectiveState("setup-pending", "Feature/provider consent is needed", provider)
+        return EffectiveState("setup-pending", "Ava needs consent for this provider; enable Ava in Settings > Modes to review it.", provider)
     provider_config = _section(config, "ollama" if policy == "local" else "cloud_llm")
-    if provider_config.get("enabled") is not True or (policy == "cloud" and not provider_config.get("api_key")):
-        return EffectiveState("setup-pending", "Provider setup is incomplete", provider)
+    if provider_config.get("enabled") is not True:
+        name = "Ollama" if policy == "local" else "Cloud AI"
+        location = "Settings > Modes > Ava Command Session" if policy == "local" else "Settings > Ava / Cloud"
+        return EffectiveState("setup-pending", f"{name} is disabled in {location}.", provider)
+    if policy == "cloud" and not provider_config.get("api_key"):
+        return EffectiveState("setup-pending", "Cloud AI needs its own API key in Settings > Ava / Cloud.", provider)
     if ready is not True:
-        return EffectiveState("unavailable" if ready is False else "setup-pending", "Provider unavailable" if ready is False else "Provider readiness not verified", provider)
+        if policy == "local":
+            reason = "Ollama is not running." if ready is False else "Ollama has not been checked yet."
+        else:
+            reason = "The configured cloud provider is unavailable." if ready is False else "The cloud provider has not been checked yet."
+        return EffectiveState("unavailable" if ready is False else "setup-pending", reason, provider)
     return EffectiveState("allowed", "Ready", provider)
 
 

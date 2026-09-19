@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from samsara.ai_preferences import accept_consent, consent_covers, provider_for
+from copy import deepcopy
+
+from samsara.ai_preferences import (
+    accept_consent,
+    apply_accepted_ava as build_accepted_ava_preferences,
+    consent_covers,
+    provider_for,
+)
+from samsara.log import get_logger
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from samsara.ui import theme
 
+logger = get_logger(__name__)
 
 CONSENT_VERSION = 2
 
@@ -51,6 +60,46 @@ def accepted_consent(
     destination = provider or provider_for(config or {}, "cloud" if cloud_enabled else "local")
     return accept_consent(config or {}, features=features, provider=destination,
                           cloud=cloud_enabled, accepted_at=accepted_at, version=CONSENT_VERSION)
+
+
+def selected_ava_policy(config: dict | None) -> str:
+    """Use Ava Command Session's backend, not the separate Cloud AI toggle."""
+    session = (config or {}).get("ava_command_session", {})
+    backend = session.get("backend") if isinstance(session, dict) else None
+    return "cloud" if backend == "cloud" else "local"
+
+
+def apply_accepted_ava(app, consent: dict, *, policy: str) -> dict:
+    """Persist an accepted Ava choice and all runtime gates in one config save."""
+    old_pack_enabled = bool(
+        (app.config.get("command_packs", {}) or {}).get("ai", False)
+    )
+    try:
+        updated = build_accepted_ava_preferences(
+            app.config, policy=policy, consent=consent
+        )
+    except (TypeError, ValueError):
+        # Consent remains durable even if a provider detail still needs work;
+        # effective_state then reports that concrete blocker without asking
+        # the same consent question again.
+        ava_cfg = dict(app.config.get("ava", {}) or {})
+        ava_cfg["consent"] = deepcopy(consent)
+        app.update_config({"ava": ava_cfg}, save=True)
+        raise
+    keys = (
+        "ava", "ava_command_session", "ava_edit", "command_packs", "ollama",
+        "cloud_llm", "smart_corrections", "smart_actions", "onboarding",
+    )
+    app.update_config({key: updated[key] for key in keys}, save=True)
+    if not old_pack_enabled:
+        executor = getattr(app, "command_executor", None)
+        rebuild = getattr(executor, "rebuild_matcher", None)
+        if callable(rebuild):
+            try:
+                rebuild()
+            except Exception:
+                logger.exception("Could not refresh commands after enabling the AI pack")
+    return updated
 
 
 class AvaConsentDialog(QDialog):
