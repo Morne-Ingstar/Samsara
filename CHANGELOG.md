@@ -4,6 +4,37 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+## [0.30.0-beta.2] - 2026-09-19
+
+A beta for testers. The public download remains v0.22.1 while this build is
+tested on more machines.
+
+### Added
+
+- **Focused browser controls** — browser commands now stay in the focused
+  browser, including Find, numbered tabs, and page zoom.
+- **Ava adapts when asked** — Ava can remember a preferred answer length,
+  pace, repetition tolerance, name, and familiar interests, on this device.
+- **Report a problem** — create a shareable, redacted support bundle.
+
+### Fixed
+
+- **Ava consent now turns Ava on** — accepting the chosen provider enables
+  Ava while preserving the current Settings state.
+- **Live surface feedback is reliable** — it stays on top, drag keeps its size
+  and position, words appear while holding the key, mode and command-result
+  feedback return, Pause parks a draft, notices expire, and the Insert button
+  is gone.
+- **Command Reference is easier to use** — its placement recovers when it is
+  off-screen and its search, resize, close target, and most-used section are
+  easier to read.
+- **Live surface placement is safer** — it can dock and avoids the text caret.
+
+### Changed
+
+- **Live surface review is quieter** — it uses a compact text-first card,
+  plain settled text, and correction controls only while correcting.
+
 ## [0.30.0-beta.1] - 2026-09-17
 
 A beta for testers. The public download remains v0.22.1 while this build is
