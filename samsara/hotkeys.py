@@ -294,7 +294,9 @@ class HotkeyCluster:
             'live_surface', {}).get('pause_hotkey', 'pause'))
 
         if (HotkeyCluster._live_surface_enabled(self) and pause_hotkey
-                and self.check_hotkey_state(pause_hotkey)
+                and (self.check_hotkey_state(pause_hotkey)
+                     or (pause_hotkey.lower() in ('pause', 'break', 'pause/break')
+                         and key_name == 'pause'))
                 and not getattr(self, '_pause_hotkey_down', False)):
             self._pause_hotkey_down = True
             if self._pause_active_hold():

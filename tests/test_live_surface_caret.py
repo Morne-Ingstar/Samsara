@@ -65,6 +65,10 @@ def test_controller_applies_injected_caret_avoidance_without_saving_it():
             "preferred_monitor": "screen", "monitors": {"screen": {"edge": "top", "t": 0}},
         }}}}
     class Widget:
+        from PySide6.QtCore import QRect
+        is_dragging = False
+        mark_rect = QRect(8, 8, 44, 44)
+        def width(self): return 500
         def height(self): return 360
         def apply_placement(self, placed): self.placed = placed
     class Locator:

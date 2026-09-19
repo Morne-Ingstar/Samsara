@@ -2371,6 +2371,18 @@ class _LiveSurfaceDictateOverlay:
     def close(self):
         self._partials.stop()
 
+    def set_paused(self, _finalized_lines):
+        # The foreground hold now owns the shared surface. Do not overwrite
+        # it with the suspended background session's text or capture state.
+        self._partials.stop()
+
+    def resume(self):
+        from samsara.live_surface.model import CaptureState, Lane
+        self._partials.capture_id = self._controller.begin_capture(
+            Lane.HANDS_FREE_DICTATE, capture=CaptureState.HANDS_FREE_LISTENING)
+        self._partials.sequence = 1
+        self._partials.stopped = False
+
     def set_transcript(self, lines, partial, link_words=True):
         text = "\n".join([str(line) for line in lines if line] + ([partial] if partial else []))
         self._partials.partial(text)
@@ -3025,7 +3037,8 @@ class DictatePreviewSession:
         a lookup failure should not silently disable suspension, but
         neither should it ever crash the tick loop."""
         try:
-            if not getattr(self.app, '_hotkey_recording', False):
+            if not (getattr(self.app, '_hotkey_recording', False)
+                    or getattr(self.app, '_streaming_session', None) is not None):
                 return False
             return bool(self.app.config.get('hands_free', {}).get('suspend_on_hold', True))
         except Exception as e:
@@ -3045,6 +3058,9 @@ class DictatePreviewSession:
                 continue   # no reading/decoding at all while suspended
             if was_suspended:
                 was_suspended = False
+                resume = getattr(self._overlay, "resume", None)
+                if callable(resume):
+                    resume()
                 self._render("")
             # DEFECT 1 (2026-09-11): captured BEFORE the (slow, model-lock-
             # bound) decode below. If a commit lands on the cmd-utt thread

@@ -38,4 +38,4 @@ class CapturePartials:
 
     def stop(self) -> None:
         self.stopped = True
-        self.controller.stop_capture()
+        self.controller.stop_capture(capture_id=self.capture_id)

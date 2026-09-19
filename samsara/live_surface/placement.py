@@ -188,6 +188,35 @@ def place_form(placement: Placement, screen: Screen, *, card_width: float = 0.0,
     return PlacedForm(screen.id, item.edge, placed_mark, bounds)
 
 
+def place_inline_form(placement: Placement, screen: Screen, *, width: float,
+                      height: float, mark_offset: tuple[float, float]) -> PlacedForm:
+    """Place the current header-mark layout without inventing extra card space."""
+    area = screen.work_area
+    anchor = edge_mark_rect(placement, area)
+    ox, oy = mark_offset
+    x, y = anchor.x - ox, anchor.y - oy
+    if placement.edge is Edge.TOP:
+        y = area.y + INSET_DIP
+    elif placement.edge is Edge.BOTTOM:
+        y = area.bottom - height - INSET_DIP
+    elif placement.edge is Edge.LEFT:
+        x = area.x + INSET_DIP
+    elif placement.edge is Edge.RIGHT:
+        x = area.right - width - INSET_DIP
+    bounds = _clamp(Rect(x, y, width, height), area)
+    mark = Rect(bounds.x + ox, bounds.y + oy, MARK_SIZE_DIP, MARK_SIZE_DIP)
+    return PlacedForm(screen.id, placement.edge, mark, bounds)
+
+
+def free_placement_for_mark(center: tuple[float, float], area: Rect) -> Placement:
+    """Exact inverse of the usable-area coordinates used by edge_mark_rect."""
+    return Placement(Edge.FREE,
+        free_cx=_unit((center[0] - MARK_SIZE_DIP / 2 - area.x - INSET_DIP)
+                      / max(1, area.width - MARK_SIZE_DIP - 2 * INSET_DIP)),
+        free_cy=_unit((center[1] - MARK_SIZE_DIP / 2 - area.y - INSET_DIP)
+                      / max(1, area.height - MARK_SIZE_DIP - 2 * INSET_DIP)))
+
+
 def free_growth_edge(center: tuple[float, float], work_area: Rect) -> Edge:
     """Side with the most available room; deterministic bottom/top/right/left ties."""
     x, y = center

@@ -77,6 +77,27 @@ def test_busy_start_does_not_overwrite_the_current_destination(capture_app):
     app._dictation_consumer.activate.assert_not_called()
 
 
+@pytest.mark.parametrize("special", [None, "command_mode_recording", "ava_mode_recording", "_memo_recording"])
+def test_live_surface_ordinary_hold_streams_but_special_captures_stay_batch(capture_app, monkeypatch, special):
+    import samsara.streaming as streaming
+    app, _, _ = capture_app
+    app.live_surface = object()
+    app._dictation_consumer.activate_streaming = Mock(return_value=True)
+    if special:
+        setattr(app, special, True)
+    session = Mock()
+    constructor = Mock(return_value=session)
+    monkeypatch.setattr(streaming, "StreamingSession", constructor)
+    assert app._start_recording_impl(streaming=False, play_earcon=False)
+    if special:
+        constructor.assert_not_called()
+        app._dictation_consumer.activate.assert_called_once()
+    else:
+        app._dictation_consumer.activate_streaming.assert_called_once()
+        session.start.assert_called_once()
+        assert app._streaming_session is session
+
+
 def test_parked_holds_have_word_boundaries_and_undo_stays_local():
     manager, inserted, _ = make_manager()
     manager.stage_parked_hold("First sentence.")
@@ -130,7 +151,7 @@ def test_new_parked_draft_is_visible_after_clear_and_stale_updates_are_rejected(
         document_id=old.document_id, revision=old.revision, text="Stale draft."))
 
 
-@pytest.mark.parametrize("outcome", ["insert", "pause", "focus", "failure", "exception"])
+@pytest.mark.parametrize("outcome", ["insert", "insert_ai_off", "pause", "focus", "failure", "exception"])
 def test_streaming_final_inserts_or_preserves_the_whole_pending_document(monkeypatch, outcome):
     import samsara.streaming as streaming
     from samsara.live_surface.model import Lane
@@ -154,12 +175,15 @@ def test_streaming_final_inserts_or_preserves_the_whole_pending_document(monkeyp
     monkeypatch.setattr(streaming, "_user32", SimpleNamespace(GetForegroundWindow=lambda: 42 if outcome == "focus" else 41))
     capture_id = controller.begin_capture(Lane.HOLD)
     session._overlay = streaming._LiveSurfaceStreamingOverlay(CapturePartials(controller, Lane.HOLD, capture_id))
+    if outcome == "insert_ai_off":
+        from samsara.live_surface.controller import LiveSurfaceIndicatorAdapter
+        LiveSurfaceIndicatorAdapter(controller).show_outcome("Optional AI is off", "error", 1800)
     if outcome == "pause":
         manager.stage_parked_hold("Earlier draft.")
     session._deliver_final("Final sentence.", None, 1.0, 0)
     controller.drain()
     assert controller.view().capture is CaptureState.OFF
-    if outcome == "insert":
+    if outcome in ("insert", "insert_ai_off"):
         app._paste_preserving_clipboard.assert_called_once_with("Final sentence.")
         assert controller.view().document is DocumentState.DELIVERED
         assert not manager.has_parked_hold
@@ -196,8 +220,8 @@ def test_scrollback_survives_refresh_and_header_controls_never_overlap(qapp):
         widget.refresh(review("word " * 501), animate=False)
         qapp.processEvents()
         assert bar.value() == position
-        assert widget._latest.isVisible() and widget._commit.isVisible()
-        controls = (widget._state, widget._latest, widget._clear, widget._commit)
+        assert widget._latest.isVisible()
+        controls = (widget._state, widget._latest, widget._clear)
         for i, control in enumerate(controls):
             assert widget.card_content_rect.contains(control.geometry())
             for other in controls[i + 1:]:
@@ -208,18 +232,16 @@ def test_scrollback_survives_refresh_and_header_controls_never_overlap(qapp):
         widget.deleteLater()
 
 
-def test_insert_control_only_appears_for_pending_text_after_capture(qapp):
+def test_surface_never_offers_an_insert_button_for_recording_pending_or_delivered_text(qapp):
     widget = LiveSurfaceWidget(review())
     try:
         widget.show(); qapp.processEvents()
-        assert widget._commit.isVisible() and widget._commit.text() == "Insert text"
-        requested = []; widget.commit_requested.connect(lambda: requested.append(True))
-        widget._commit.click()
-        assert requested == [True]
-        widget.refresh(replace(review(), capture=CaptureState.RECORDING), animate=False)
-        assert not widget._commit.isVisible()
-        widget.refresh(replace(review(), document=DocumentState.DELIVERED), animate=False)
-        assert not widget._commit.isVisible() and widget._state.text() == "Inserted"
+        for view in (review(), replace(review(), capture=CaptureState.RECORDING),
+                     replace(review(), document=DocumentState.EDITABLE_DRAFT),
+                     replace(review(), document=DocumentState.DELIVERED)):
+            widget.refresh(view, animate=False)
+            assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)))
+        assert widget._state.text() == "Inserted"
     finally:
         widget.deleteLater()
 
