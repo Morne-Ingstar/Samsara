@@ -1768,12 +1768,18 @@ class SessionModeManager:
         on_deferred_outcome: Optional[Callable[[DispatchOutcome], None]] = None,
         speak_fn: Optional[Callable[[str, str], None]] = None,
         fragment_clear_gap_s: float = 0.0,
+        live_surface_enabled: bool = False,
     ) -> None:
         # Queue 80: speak_fn(text, category) says the clear-draft question and
         # its result out loud. dictation.py routes it to
         # audio_coordinator.speak with category "confirmation", which queue 58
         # exempts from command_mode.tts_char_limit. None = silent (tests).
         self._speak_fn = speak_fn
+        # 220-F is deliberately inert until the unified surface is enabled.
+        # This is captured when the manager is built, like the other session
+        # policy inputs; Settings changes take effect at the next session.
+        self._live_surface_enabled = bool(live_surface_enabled)
+        self._parked_hold = False
         # Queue 103. The live value of SPOKEN_NOTICES_KEY. Defaults to the
         # schema default, so an app that never sets it gets the intended
         # "questions" behaviour and the incident is fixed with no wiring at
@@ -1937,7 +1943,11 @@ class SessionModeManager:
         self._dictate_target_hwnd = None
         self._last_dictate_ended_terminal = None
         self._stage_buffer = ""
-        self._draft.clear()
+        # A parked hold is process-lifetime state.  Session/lane transitions
+        # must not silently destroy or deliver it; explicit Clear/Commit are
+        # the only operations that resolve the latch.
+        if not (self._parked_hold and self._draft.text):
+            self._draft.clear()
         self._dictate_pending_audio = []
         self._pending_clear = None
         # Queue 99: a new session never inherits an armed "again".
@@ -2068,6 +2078,50 @@ class SessionModeManager:
     def draft_document(self) -> DraftDocument:
         """The authoritative pending document for later live-surface packages."""
         return self._draft
+
+    @property
+    def has_parked_hold(self) -> bool:
+        """Whether the authoritative document is waiting for explicit send."""
+        return self._parked_hold and bool(self._draft.text)
+
+    def pause_draft(self, *, source: str = "pause") -> DispatchOutcome:
+        """Latch manual delivery without making a second parking buffer.
+
+        A key/button may arrive before the final decoder has produced text,
+        so the latch intentionally survives an empty document and is applied
+        to the next appended hold segment.
+        """
+        if not self._live_surface_enabled:
+            return DispatchOutcome(kind="draft_pause_unavailable")
+        with self._dispatch_lock:
+            self._parked_hold = True
+            self._draft.mark_manual_commit()
+        return DispatchOutcome(kind="draft_parked", detail={"source": source,
+                                                               "pending_chars": self._draft.chars})
+
+    def stage_parked_hold(self, text: str, *, source: str = "hold") -> DispatchOutcome:
+        """Append one settled hold result to the shared parked document.
+
+        This is called only after the authoritative final decode.  It never
+        logs the text, invokes a paste callback, or persists it to disk.
+        """
+        if not self._live_surface_enabled:
+            return DispatchOutcome(kind="draft_pause_unavailable")
+        text = str(text or "")
+        with self._dispatch_lock:
+            self._parked_hold = True
+            self._draft.mark_manual_commit()
+            segment_id = self._draft.append(text)
+            if segment_id is not None:
+                self._stack.push(StackItem(
+                    kind="dictation_staged_chunk", payload=text,
+                    mode=SessionMode.DICTATE, timestamp=self._clock(),
+                    extra={"parked_hold": True, "source": source},
+                ))
+        return DispatchOutcome(kind="dictate_staged", detail={
+            "pending_chars": self._draft.chars, "parked_hold": True,
+            "source": source,
+        })
 
     @property
     def _dictate_pending_buffer(self) -> str:
@@ -2245,6 +2299,20 @@ class SessionModeManager:
                 return self._request_clear_draft()
             log.info("[SESSION] clear-draft phrase refused by the anti-hallucination gate for %r; "
                      "treating as ordinary dictation", text)
+
+        # 220-F: an exact, separately-spoken control phrase parks the shared
+        # document.  It is deliberately unavailable in literal mode and does
+        # not try to infer a phrase embedded in ordinary prose; ambiguous
+        # terminal speech remains reviewable text rather than being stripped.
+        if (self._live_surface_enabled
+                and self.mode is SessionMode.DICTATE
+                and normalized == "pause draft"
+                and match_literal_payload(text) is None):
+            if passes_switch_anti_hallucination_gate(signals):
+                return self.pause_draft(source="voice")
+            return DispatchOutcome(kind="draft_pause_refused", detail={
+                "pending_chars": self._draft.chars,
+            })
 
         # Queue 99: counted scratch and "again", checked with the rest of the
         # scratch family and BEFORE the single scratch, so "scratch that
@@ -2537,6 +2605,7 @@ class SessionModeManager:
             self._stack._items.clear()
             self._stack._items.extend(kept)
             self._pending_clear = None
+            self._parked_hold = False
         log.info("[SESSION] staged draft cleared (%d chars)", removed)
         return removed
 
@@ -2584,6 +2653,9 @@ class SessionModeManager:
                 return {"ok": False, "reason": "no_word"}
             if not self._dictate_pending_buffer:
                 return {"ok": False, "reason": "no_draft"}
+            if self._live_surface_enabled:
+                self._parked_hold = True
+                self._draft.mark_manual_commit()
             self._pending_correction = {
                 "word": word, "occurrence": max(0, int(occurrence)),
                 "expected_count": max(0, int(expected_count)),
@@ -2792,7 +2864,8 @@ class SessionModeManager:
         Keyboard/UI callers do not need speech hallucination gating, but they
         must reuse the same transactional focus/paste path as spoken ``end``.
         """
-        if not self._buffer_dictate_until_commit or self.mode is not SessionMode.DICTATE:
+        if (not self._parked_hold
+                and (not self._buffer_dictate_until_commit or self.mode is not SessionMode.DICTATE)):
             return DispatchOutcome(kind="dictate_commit_unavailable", detail={
                 "mode": self.mode,
                 "buffered": self._buffer_dictate_until_commit,
@@ -2845,7 +2918,8 @@ class SessionModeManager:
         if (self._buffer_dictate_until_commit
                 and prior_mode is SessionMode.DICTATE
                 and switch.target_mode is not SessionMode.DICTATE
-                and self._dictate_pending_buffer):
+                and self._dictate_pending_buffer
+                and not self._parked_hold):
             committed = self._commit_dictate_buffer(target_mode=None)
             if committed.kind != "dictate_committed":
                 return committed
@@ -3288,7 +3362,8 @@ class SessionModeManager:
         if "  " in final_text:
             final_text = re.sub(r" {2,}", " ", final_text)
 
-        if self._commit_redecode_fn is not None and not self._draft.edited:
+        if (self._commit_redecode_fn is not None and not self._draft.edited
+                and not self._parked_hold):
             try:
                 redecode_text = self._commit_redecode_fn(
                     final_text, list(self._dictate_pending_audio),
@@ -3368,6 +3443,7 @@ class SessionModeManager:
 
         self._dictate_pending_buffer = ""
         self._dictate_pending_audio = []
+        self._parked_hold = False
         self._stage_buffer = final_text
         self._last_dictate_ended_terminal = None
         if not delivery_unverified:
@@ -3442,6 +3518,21 @@ class SessionModeManager:
              the user right now, so undoing here would delete content in
              the wrong window -- irreversible for a keyboard-unable user.
              We refuse rather than guess or auto-refocus."""
+        # A parked draft is wholly local.  After the higher-priority pending
+        # execution/correction paths in dispatch_utterance have declined it,
+        # undo its newest document operation and never fall through to an
+        # external delete merely because the local stack is empty.
+        if self._parked_hold:
+            operation = self._draft.newest_operation
+            if operation and self._draft.undo():
+                if operation == "append":
+                    top = self._stack.peek()
+                    if top is not None and top.kind == "dictation_staged_chunk":
+                        self._stack.pop()
+                    if self._dictate_pending_audio:
+                        self._dictate_pending_audio.pop()
+                return True
+            return False
         item = self._stack.peek()
         if item is None:
             return False
