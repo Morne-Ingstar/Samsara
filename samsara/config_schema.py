@@ -821,12 +821,20 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
     },
 
-    # Shadow intent gate (samsara/intent/shadow.py): observer only -- records
-    # what the tier-2 gate WOULD have done for each DICTATE utterance to
-    # ~/.samsara/shadow/intent-YYYY-MM-DD.jsonl; changes nothing the app does.
+    # Shadow intent gate (samsara/intent/shadow.py): stores the text of
+    # dictated utterances locally, off by default, and auto-deleted after N
+    # days; it records what the tier-2 gate WOULD have done for each DICTATE
+    # utterance and changes nothing the app does.
     # No settings-UI widget (config-file-editable); intent.shadow_dir, the
     # folder override, is read inline at its point of use.
-    "intent.shadow_enabled": {"type": "bool", "default": True, "tab": "advanced"},
+    "intent.shadow_enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "intent.shadow_retention_days": {
+        "type": "int",
+        "min": 1,
+        "max": 90,
+        "default": 14,
+        "tab": "advanced",
+    },
 
     # Queue 93 escape hatch: a word that, spoken first, forces the rest of the
     # utterance to be read as a command -- "<prefix> copy" runs copy even

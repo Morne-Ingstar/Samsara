@@ -295,8 +295,8 @@ def test_only_dictation_outcomes_are_observed(tmp_path, resolver):
 
 def test_config_key_and_defaults():
     from samsara.config_schema import SETTINGS_SCHEMA
-    assert SETTINGS_SCHEMA["intent.shadow_enabled"] == {"type": "bool", "default": True, "tab": "advanced"}
-    assert sh.shadow_enabled({}) is True and sh.DEFAULT_ENABLED is True
+    assert SETTINGS_SCHEMA["intent.shadow_enabled"] == {"type": "bool", "default": False, "tab": "advanced"}
+    assert sh.shadow_enabled({}) is False and sh.DEFAULT_ENABLED is False
     assert sh.shadow_enabled({"intent": {"shadow_enabled": False}}) is False
     assert sh.shadow_dir({"intent": {"shadow_dir": "D:/x"}}) == Path("D:/x")
     assert sh.shadow_dir({}).name == "shadow"
