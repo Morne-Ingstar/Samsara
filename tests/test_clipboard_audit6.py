@@ -54,6 +54,9 @@ class FakeClipboard:
         self.handle_fmt = {}
         self.next_handle = 5000
         self.owner = 0
+        self.open_attempts = 0
+        self.open_failures_remaining = 0
+        self.no_data_formats = set()
         self.alloc_fail_on = None      # 1-based GlobalAlloc call number that returns NULL
         self.alloc_calls = 0
         self.set_fail_fmts = set()
@@ -65,6 +68,10 @@ class FakeClipboard:
 
     # -- user32 ---------------------------------------------------------
     def OpenClipboard(self, _hwnd):
+        self.open_attempts += 1
+        if self.open_failures_remaining:
+            self.open_failures_remaining -= 1
+            return 0
         if self.is_open:
             return 0
         if self.before_open:
@@ -92,7 +99,7 @@ class FakeClipboard:
 
     def GetClipboardData(self, fmt):
         assert self.is_open
-        if fmt not in self.formats:
+        if fmt not in self.formats or fmt in self.no_data_formats:
             return 0
         h = self._new_handle(bytearray(self.formats[fmt]))
         self.handle_fmt[h] = fmt
@@ -247,6 +254,67 @@ def test_incomplete_file_snapshot_refuses_to_replace_explorer_copy(fake, target)
     assert paste_with_preservation("the dictated sentence", paste_delay=0, restore_delay=0) is False
     assert target.pasted == []
     assert fake.formats == original
+
+
+# ---------------------------------------------------------------------------
+# Issue 8: private owner formats and clipboard contention (queue 292)
+# ---------------------------------------------------------------------------
+
+def test_no_data_private_format_warns_once_but_does_not_block_paste(fake, target, caplog, monkeypatch):
+    private_format = 0xC123
+    original = {CF_UNICODETEXT: _utf16("original selection"), private_format: b"policy marker"}
+    fake.formats = dict(original)
+    fake.no_data_formats.add(private_format)
+    real_label = cb.format_label
+    monkeypatch.setattr(cb, "format_label", lambda fmt: (
+        "Office private marker" if fmt == private_format else real_label(fmt)))
+
+    with caplog.at_level(logging.WARNING):
+        assert paste_with_preservation("dictated retry", paste_delay=0, restore_delay=0) is True
+
+    assert target.pasted == ["dictated retry"]
+    assert fake.formats == {CF_UNICODETEXT: original[CF_UNICODETEXT]}
+    warnings = [r.getMessage() for r in caplog.records if "snapshot omitted formats" in r.getMessage()]
+    assert warnings == [
+        "[CLIP] clipboard snapshot omitted formats that could not be restored: "
+        "Office private marker (owner provided no data)"
+    ]
+
+
+def test_edp_marker_is_private_and_does_not_warn_or_block_paste(fake, target, caplog):
+    edp_format = 49372
+    original = {CF_UNICODETEXT: _utf16("Word selection"), edp_format: b"policy marker"}
+    fake.formats = dict(original)
+    fake.no_data_formats.add(edp_format)
+
+    with caplog.at_level(logging.WARNING):
+        assert paste_with_preservation("dictated retry", paste_delay=0, restore_delay=0) is True
+
+    assert target.pasted == ["dictated retry"]
+    assert fake.formats == {CF_UNICODETEXT: original[CF_UNICODETEXT]}
+    assert not [r for r in caplog.records if "snapshot omitted formats" in r.getMessage()]
+
+
+def test_no_data_text_format_still_refuses_delivery(fake, target):
+    original = {CF_UNICODETEXT: _utf16("must not be replaced")}
+    fake.formats = dict(original)
+    fake.no_data_formats.add(CF_UNICODETEXT)
+
+    assert paste_with_preservation("dictated retry", paste_delay=0, restore_delay=0) is False
+    assert target.pasted == []
+    assert fake.formats == original
+
+
+def test_open_clipboard_busy_retries_then_saves(fake, monkeypatch):
+    fake.formats = {CF_UNICODETEXT: _utf16("clipboard after OleSetClipboard")}
+    fake.open_failures_remaining = 2
+    monkeypatch.setattr(cb, "_OPEN_CLIPBOARD_MAX_RETRIES", 3)
+
+    snapshot = save_clipboard()
+
+    assert snapshot.complete is True
+    assert snapshot[CF_UNICODETEXT] == fake.formats[CF_UNICODETEXT]
+    assert fake.open_attempts == 3
 
 
 # ---------------------------------------------------------------------------

@@ -147,6 +147,16 @@ class TestLabels:
         label, _ = outcome_chip("dictate_commit_failed", {"error": "paste lost"})
         assert label == f"{CHIP_CROSS} paste lost"
 
+    def test_failure_error_key_wins_when_both_values_are_present(self):
+        label, _ = outcome_chip("dictate_commit_failed", {
+            "reason": "generic failure", "error": "paste lost",
+        })
+        assert label == f"{CHIP_CROSS} paste lost"
+
+    def test_dictate_commit_failure_without_detail_uses_clipboard_fallback(self):
+        assert outcome_chip("dictate_commit_failed", {}) == (
+            f"{CHIP_CROSS} Paste blocked - clipboard held by another app", "error")
+
     def test_failure_reason_is_capped_at_24_chars(self):
         label, _ = outcome_chip("ava_entry_failed",
                                 {"reason": "the Ava plugin is disabled in settings"})

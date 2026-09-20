@@ -1191,7 +1191,8 @@ class _StreamingWidget:
                 x, y = clamp(x, y, OVERLAY_W, req_h, scr)
                 self.move(x, y)
 
-            def _on_update(self, text, state, text_format="auto"):
+            @Slot(str, str, str)
+            def _on_update(self, text, state, text_format):
                 if self._idle is not None:
                     # Queue 90: following is NOT re-derived from the scrollbar
                     # here any more. New text always changes the label's height,

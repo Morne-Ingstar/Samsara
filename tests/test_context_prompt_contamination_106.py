@@ -401,6 +401,28 @@ class TestTheLiveIncident:
         assert manager.dispatch_utterance.call_count == 4
         app._show_outcome_chip.assert_not_called()
 
+    def test_commit_failure_allows_the_retained_draft_to_be_spoken_as_a_retry(self):
+        sentence = "Please keep this sentence for Word"
+        app, manager = _make_loop_app(["finish", sentence])
+        manager.buffer = sentence
+
+        def dispatch(text, _signals):
+            if text == "finish":
+                return DispatchOutcome(kind="dictate_commit_failed",
+                                       detail={"pending_chars": len(manager.buffer)})
+            manager.staged.append(text)
+            manager.buffer += " " + text
+            return DispatchOutcome(kind="dictate_staged",
+                                   detail={"pending_chars": len(manager.buffer)})
+
+        manager.dispatch_utterance = Mock(side_effect=dispatch)
+        _speak(app)  # failed delivery retains `sentence` as the next prompt tail
+        _speak(app)  # the same sentence is a deliberate retry, not an echo
+
+        assert manager.dispatch_utterance.call_count == 2
+        assert manager.staged == [sentence]
+        app._show_outcome_chip.assert_not_called()
+
 
 class TestOnlyCleanTextEntersTheTail:
 

@@ -123,6 +123,28 @@ SAFE_FORMATS = {
     CF_DIBV5,
 }
 
+# Windows Information Protection (formerly Enterprise Data Protection) adds
+# this registered marker to Office selections.  It has no clipboard payload:
+# it tells Windows which protection policy owns the selection, not something a
+# user can paste.  Registered-format numbers vary between systems, so the
+# name is the durable policy; the observed Word/Office id is kept as a fast
+# path for the reported machine.
+KNOWN_PRIVATE_FORMAT_IDS = frozenset({49372})  # EnterpriseDataProtectionId
+_KNOWN_PRIVATE_FORMAT_NAMES = frozenset({"EnterpriseDataProtectionId"})
+
+# A failed read is a delivery blocker only for user content.  Registered
+# formats normally remain snapshot-eligible (HTML, RTF and image formats are
+# commonly registered); their names make the exceptional no-handle policy
+# explicit without treating an owner's private marker as user data.
+_USER_CONTENT_FORMATS = frozenset({
+    CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT, CF_BITMAP, CF_DIB, CF_HDROP,
+    CF_DIBV5, CF_ENHMETAFILE,
+})
+_USER_CONTENT_FORMAT_NAMES = frozenset({
+    "HTML Format", "Rich Text Format", "PNG", "JFIF", "GIF", "WebP",
+    "image/svg+xml",
+})
+
 _MAX_FORMAT_BYTES = 100 * 1024 * 1024  # skip anything implausibly large
 _OPEN_CLIPBOARD_MAX_RETRIES = 15
 _OPEN_CLIPBOARD_INITIAL_DELAY = 0.02
@@ -298,6 +320,16 @@ def format_label(fmt: int) -> str:
     return f"format {fmt}"
 
 
+def is_known_private_format(fmt: int) -> bool:
+    """True for an owner-policy marker that is not user clipboard content."""
+    return fmt in KNOWN_PRIVATE_FORMAT_IDS or format_label(fmt) in _KNOWN_PRIVATE_FORMAT_NAMES
+
+
+def is_user_content_format(fmt: int) -> bool:
+    """True when an unreadable format would lose content the user can paste."""
+    return fmt in _USER_CONTENT_FORMATS or format_label(fmt) in _USER_CONTENT_FORMAT_NAMES
+
+
 class ClipboardSnapshot(dict):
     """What save_clipboard() returns: a format-id -> raw-bytes dict, exactly
     like the plain dict this module has always returned, plus:
@@ -321,6 +353,9 @@ class ClipboardSnapshot(dict):
         super().__init__(*args, **kwargs)
         self.seq = seq
         self.lost: Dict[int, str] = {}
+        # Owner-private/no-data formats are reported once but do not make the
+        # snapshot incomplete: there is no user payload to restore.
+        self.omitted: Dict[int, str] = {}
 
     @property
     def complete(self) -> bool:
@@ -330,6 +365,12 @@ class ClipboardSnapshot(dict):
         return ", ".join(
             ("the whole clipboard" if fmt == 0 else format_label(fmt)) + f" ({reason})"
             for fmt, reason in sorted(self.lost.items())
+        )
+
+    def describe_omitted(self) -> str:
+        return ", ".join(
+            format_label(fmt) + f" ({reason})"
+            for fmt, reason in sorted(self.omitted.items())
         )
 
 
@@ -463,16 +504,25 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
                 del saved[legacy_fmt]
                 skipped += 1
 
-    # Completeness (49): a skipped format is only a real loss if Windows will
-    # not re-create it from a format that WAS saved, and an empty handle is
-    # not content.
+    # Completeness (292): an owner that provides no handle for a private
+    # format has supplied no user content to lose.  Keep delivery fail-closed
+    # for actual text/HTML/RTF/file/image content, but preserve every readable
+    # format and warn once about non-content formats we omit.
     for fmt, reason in not_saved.items():
         if reason == "empty" or _SYNTHESIZED_FROM.get(fmt, set()) & set(saved):
             continue
-        saved.lost[fmt] = reason
+        if reason == "owner provided no data" and is_known_private_format(fmt):
+            continue
+        if is_user_content_format(fmt):
+            saved.lost[fmt] = reason
+        else:
+            saved.omitted[fmt] = reason
     if saved.lost:
         _log_error("clipboard snapshot is incomplete -- these cannot be put back after a paste: "
                    + saved.describe_lost())
+    if saved.omitted:
+        logger.warning("[CLIP] clipboard snapshot omitted formats that could not be restored: "
+                       + saved.describe_omitted())
 
     if saved or skipped:
         print(f"[DEBUG] Clipboard saved: {len(saved)} format(s), skipped {skipped} format(s)")
