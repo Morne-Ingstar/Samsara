@@ -34,7 +34,10 @@ def _legacy_config():
     cfg["wake_word_config"]["enabled"] = True
     cfg["wake_targets"] = [{"id": "stale", "phrase": "old"}]
     cfg["command_mode_enabled"] = False
-    cfg["ai_command_mode"] = {"enabled": True, "key": "left_alt", "menu_limit": 9}
+    cfg["ai_command_mode"] = {
+        "enabled": True, "key": "left_alt", "menu_limit": 9,
+        "miss_limit": 3, "queue_depth_cap": 2,
+    }
     cfg.pop("ava_command_session", None)
     return cfg
 
@@ -73,13 +76,16 @@ def test_first_load_migrates_and_the_keys_are_gone_on_disk(home, caplog):
 
     app = _boot_load(home)
 
-    assert len(_migrate_lines(caplog)) == 3
+    assert len(_migrate_lines(caplog)) == 4
     on_disk = json.loads(home.read_text(encoding="utf-8"))
     for key in LEGACY_KEYS:
         assert key not in app.config
         assert key not in on_disk, f"{key} was written back by the migration's own save"
     assert on_disk["command_mode"]["command_matching_enabled"] is False
-    assert on_disk["ava_command_session"]["key"] == "left_alt"
+    assert "key" not in on_disk["ava_command_session"]
+    assert "miss_limit" not in on_disk["ava_command_session"]
+    assert "queue_depth_cap" not in on_disk["ava_command_session"]
+    assert on_disk["ava_command_session"]["interpret_misses"] is False
     assert "enabled" not in on_disk["wake_word_config"]
 
 

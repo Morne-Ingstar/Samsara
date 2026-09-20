@@ -351,11 +351,8 @@ SETTINGS_SCHEMA = {
         "tab": "commands",
         "depends_on": "command_mode.enabled",
     },
-    # Ava Front Door P1: D3 command-first latched session (waterfall
-    # resolver -- exact/alias match, then ACTION2 grammar, then one LLM
-    # fallback pass). Replaces the deleted ai_command_mode.* block; see
-    # dictation.py's _migrate_ai_command_mode_config for the one-time
-    # key-carryover migration from the old block.
+    # Ava's optional closed-world COMMAND-miss interpreter. The section name
+    # remains stable for existing profiles; it no longer represents a session.
     "ava_command_session.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "ava_command_session.backend": {
         "type": "enum",
@@ -368,30 +365,6 @@ SETTINGS_SCHEMA = {
         "default": "llama3.2:3b",
         "tab": "commands",
     },
-    "ava_command_session.queue_depth_cap": {
-        "type": "int",
-        "min": 1,
-        "max": 10,
-        "step": 1,
-        "default": 3,
-        "tab": "commands",
-    },
-    "ava_command_session.miss_limit": {
-        "type": "int",
-        "min": 1,
-        "max": 20,
-        "step": 1,
-        "default": 3,
-        "tab": "commands",
-    },
-    "ava_command_session.inactivity_timeout_s": {
-        "type": "int",
-        "min": 5,
-        "max": 1800,
-        "step": 5,
-        "default": 60,
-        "tab": "commands",
-    },
     "ava_command_session.shortlist_size": {
         "type": "int",
         "min": 1,
@@ -401,12 +374,7 @@ SETTINGS_SCHEMA = {
         "tab": "commands",
     },
     "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands"},
-    "ava_command_session.ready_cue_enabled": {"type": "bool", "default": True, "tab": "commands"},
-    "ava_command_session.ready_cue_dir": {
-        "type": "str",
-        "default": "assets/sounds/ava_cues",
-        "tab": "commands",
-    },
+    "ava_command_session.interpret_misses": {"type": "bool", "default": False, "tab": "commands"},
 
     "click.type": {
         "type": "enum",
@@ -771,6 +739,7 @@ SETTINGS_SCHEMA = {
 
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
     "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "advanced"},
+    "diagnostics.stage_timing": {"type": "bool", "default": False, "tab": "advanced"},
 
     # Opt-in: dump the exact assembled hotkey buffer (post-prepend,
     # pre-fade) to ~/.samsara/debug/hotkey_*.wav on every hotkey

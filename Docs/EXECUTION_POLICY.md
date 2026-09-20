@@ -189,12 +189,14 @@ legacy readers). Single-use: the first resolution wins.
 
 ## Request identity and cancellation
 
-The generation is `app._ava_cmd_generation` -- the counter the D3 waterfall
-already guarded on. There is no second convention.
+The generation is the execution-policy generation captured at utterance end.
+The optional Ava COMMAND-miss resolver also carries a request id, 2.5-second
+deadline and foreground-window handle; a cancelled, expired or focus-changed
+response is discarded before it can reach the executor.
 
 * Captured when a request is CREATED (`capture_generation(app)`), never when
-  a model finishes: `handle_ask_ava(generation=...)`, the AVA session queue
-  (`(generation, text)` items, never bare strings), D3 waterfall items,
+  a model finishes: `handle_ask_ava(generation=...)`, the optional COMMAND-miss
+  resolver,
   staged confirmations, scheduler tasks. `process_text(generation=None)` and
   an exact-route `execute_command(generation=None)` capture at the call --
   that call is where a spoken exact request is created. Every other route
@@ -202,17 +204,15 @@ already guarded on. There is no second convention.
 * The plugin branch of `process_text` re-checks freshness immediately before
   calling the handler, and a confirmed plugin approval re-authorizes.
 * Bumped by `execution_policy.stop_all()` -- called from `handle_ava_cancel`
-  ("ava cancel"), `exit_command_mode`, `exit_ava_command_session`, the
+  ("ava cancel"), `exit_command_mode`, the
   wake-lane "never mind"/sleep, and the spoken stop words.
-* Checked at dequeue (`_on_ava_session_request_done`, `_worker_loop`), when
-  a model response returns (`handle_ask_ava` worker), when a confirmation is
+* Checked when a model response returns, when a confirmation is
   answered, and always in `authorize()` itself.
 
 ### Stop path independent of understanding
 
 `stop_all(app, reason)` bumps the generation FIRST, then clears the pending
-slot, the scheduler, the AVA session queue and the waterfall queue
-(`drain_stale`). It never waits on the inference queue or on a delivery
+slot and the scheduler. It never waits on the inference queue or on a delivery
 adapter. `DictationApp._try_stop_utterance` runs it for an exact
 `stop` / `cancel` / `cancel that` / `stop it` / `stop that` / `ava stop` /
 `ava cancel` / `go to sleep` spoken into any Ava lane, before anything is

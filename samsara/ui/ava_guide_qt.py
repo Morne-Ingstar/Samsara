@@ -962,7 +962,7 @@ class _WizardWindow(QDialog):
                 self._app, consent, policy=policy
             )
             self._enable_pack_btn.setText(
-                "Ava is on. Use the activation key to start."
+                "Ava is on. Hold the Ava key to talk."
             )
             self._enable_pack_btn.setEnabled(False)
         except Exception:
@@ -1019,14 +1019,14 @@ def _confirmation_text() -> str:
 
 
 def _keep_warm_note(config: dict) -> str:
-    """Row 462: ava_command_session.keep_warm (default on) holds the model resident."""
+    """ava_command_session.keep_warm controls Ava readiness, not a session."""
     keep_warm = bool((config.get("ava_command_session") or {}).get("keep_warm", True))
     if keep_warm:
-        return ("Samsara keeps the model loaded while an Ava session is open so replies are quick "
-                "(Settings -> Modes -> Keep model warm, on). Turn it off and Ollama frees the "
+        return ("Samsara keeps the model ready while Ava is on so replies are quick "
+                "(Settings -> Ava -> Keep model warm, on). Turn it off and Ollama frees the "
                 "memory between answers.")
-    return ("Keep model warm is off (Settings -> Modes): Ollama loads the model for each answer "
-            "and frees it afterwards, so the first reply of a session is slower.")
+    return ("Keep model warm is off (Settings -> Ava): Ollama loads the model for each answer "
+            "and frees it afterwards, so the first reply is slower.")
 
 
 def _usage_lines(config: dict, wake: str) -> list:
@@ -1035,9 +1035,6 @@ def _usage_lines(config: dict, wake: str) -> list:
     from samsara import session_modes  # noqa: PLC0415
     ava_mode = next((p for p, m in session_modes._WHOLE_UTTERANCE_SWITCHES.items()
                      if m is session_modes.SessionMode.AVA), "ava mode")
-    cmd = config.get("ava_command_session") or {}
-    cmd_key = str(cmd.get("key", "left_alt")).replace("_", " ").title()
-    cmd_state = "" if cmd.get("enabled", False) else " (off -- enable it in Settings -> Modes)"
     return [
         f'"{wake.title()}, hey Ava" also works — no key needed, fully hands-free.',
         f'"{wake.title()}, Ava local" — turns cloud mode off for this session: Ava answers '
@@ -1045,7 +1042,7 @@ def _usage_lines(config: dict, wake: str) -> list:
         f'"{wake.title()}, Ava cancel" — if Ava asked a question and is waiting '
         f'for your answer, this clears it.',
         f'Say "{ava_mode}" inside a hands-free session to switch to the Ava lane.',
-        f'Hold {cmd_key} for the Ava command session{cmd_state}.',
+        'In COMMAND mode, Ava can optionally interpret an unmatched command.',
     ]
 
 

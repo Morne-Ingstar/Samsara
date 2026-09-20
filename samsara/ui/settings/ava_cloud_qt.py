@@ -68,6 +68,8 @@ _WEB_SEARCH_UNAVAILABLE = (
 )
 
 
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
+
 class AvaCloudPage:
     """Methods of the Ava / Cloud settings page (moved from _SettingsWindow)."""
 
@@ -141,9 +143,26 @@ class AvaCloudPage:
         )
         ava_note.setWordWrap(True)
         ava_note.setStyleSheet(
-            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;"
+            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;"
         )
         layout.addWidget(ava_note)
+        interpret_misses = QCheckBox("Ava interprets commands")
+        interpret_misses.setChecked(bool(
+            (self.app.config.get("ava_command_session", {}) or {}).get("interpret_misses", False)
+        ))
+        interpret_misses.setEnabled(ava_enabled.isChecked())
+        interpret_misses.setAccessibleName("Let Ava interpret unmatched commands")
+        interpret_note = QLabel(
+            "After an ordinary command miss, Ava may choose one available command."
+        )
+        interpret_note.setWordWrap(True)
+        interpret_note.setStyleSheet(
+            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;"
+        )
+        ava_enabled.toggled.connect(interpret_misses.setEnabled)
+        self._widgets["ava_interpret_misses"] = interpret_misses
+        layout.addWidget(interpret_misses)
+        layout.addWidget(interpret_note)
         layout.addSpacing(12)
 
         # ---- Section: Cloud AI (bring your own key) -- always visible ------
@@ -160,7 +179,7 @@ class AvaCloudPage:
             "Free with your own API key."
         )
         enable_note.setWordWrap(True)
-        enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+        enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;")
         layout.addWidget(enable_note)
         consent_btn = QPushButton("Read this again")
         consent_btn.setAccessibleName("Read what turning Ava on means again")
@@ -256,7 +275,7 @@ class AvaCloudPage:
             "Strict: tight persona, 1-3 sentences, stays in character."
         )
         personality_note.setWordWrap(True)
-        personality_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
+        personality_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 4px;")
         layout.addWidget(personality_note)
         layout.addSpacing(8)
 
@@ -279,7 +298,7 @@ class AvaCloudPage:
             "Keep last session: the conversation is restored on next launch."
         )
         memory_note.setWordWrap(True)
-        memory_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
+        memory_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 4px;")
         layout.addWidget(memory_note)
         layout.addSpacing(6)
 
@@ -403,12 +422,12 @@ class AvaCloudPage:
         web_search_note = QLabel(_WEB_SEARCH_NOTE)
         web_search_note.setWordWrap(True)
         web_search_note.setTextFormat(Qt.TextFormat.PlainText)
-        web_search_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+        web_search_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;")
         layout.addWidget(web_search_note)
         web_search_unavailable = QLabel(_WEB_SEARCH_UNAVAILABLE)
         web_search_unavailable.setWordWrap(True)
         web_search_unavailable.setTextFormat(Qt.TextFormat.PlainText)
-        web_search_unavailable.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+        web_search_unavailable.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;")
         self._widgets['cloud_web_search_unavailable'] = web_search_unavailable
         layout.addWidget(web_search_unavailable)
         cloud_enabled.toggled.connect(lambda _checked: self._sync_web_search_availability())
@@ -438,7 +457,7 @@ class AvaCloudPage:
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._run_test_connection)
         test_status = QLabel("")
-        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         self._widgets['cloud_test_status'] = test_status
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)
@@ -468,7 +487,7 @@ class AvaCloudPage:
         )
         edit_note.setWordWrap(True)
         edit_note.setStyleSheet(
-            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;"
+            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;"
         )
         layout.addWidget(edit_note)
 
@@ -583,6 +602,12 @@ class AvaCloudPage:
 
             if 'ava_personality' in self._widgets:
                 updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
+
+            if 'ava_interpret_misses' in self._widgets:
+                session_cfg = dict(_acc.get(
+                    'ava_command_session', self.app.config.get('ava_command_session', {})) or {})
+                session_cfg['interpret_misses'] = self._widgets['ava_interpret_misses'].isChecked()
+                updates['ava_command_session'] = session_cfg
 
             if 'ava_warm_on_boot' in self._widgets and warm_choice_is_explicit['value']:
                 ava_cfg = dict(_acc.get('ava', self.app.config.get('ava', {})) or {})

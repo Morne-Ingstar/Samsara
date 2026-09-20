@@ -63,7 +63,7 @@ logger = get_logger(__name__)
 # Whisper cost bounded regardless of utterance length.
 _PREVIEW_TAIL_S = 8.0
 
-# Ava command session half-duplex guard (2026-07-23 G3 live-test finding):
+# Latched Ava-lane half-duplex guard:
 # how long after AudioCoordinator leaves SPEAKING to keep the session fully
 # deaf. Covers playback-engine tail latency (buffered audio still audible
 # briefly after the coordinator's own state transition) so the mic doesn't
@@ -311,7 +311,7 @@ class WakeConsumer:
         # the ENGAGE/RELEASE transitions, not every 100ms frame.
         self._hotkey_suppressed_last: bool = False
 
-        # Ava command session half-duplex guard (2026-07-23 G3 live-test
+        # Latched Ava-lane half-duplex guard (2026-07-23 G3 live-test
         # finding) -- see _AVA_CMD_TTS_TAIL_S and _process_frame.
         self._ava_cmd_tts_suppressed_last: bool = False
         self._ava_cmd_tts_was_speaking: bool = False
@@ -600,15 +600,6 @@ class WakeConsumer:
         behaviour exactly, for comparison."""
         return bool(app.config.get('hands_free', {}).get('suspend_on_hold', True))
 
-    @staticmethod
-    def _is_ai_cmd_mode(app) -> bool:
-        """True when the Ava command session (D3, Ava Front Door spec v2 --
-        replaces the old "AI command mode") is active. Name kept as-is
-        (not renamed to _is_ava_cmd_session) -- purely internal, and
-        renaming would touch every call site below for no behavior
-        change."""
-        return getattr(app, 'ava_command_session_active', False)
-
     @classmethod
     def _is_toggle_dictate(cls, app) -> bool:
         manager = getattr(app, '_session_mode_manager', None)
@@ -622,9 +613,7 @@ class WakeConsumer:
     def _is_latched_ava_mode(cls, app) -> bool:
         """True only for the AVA lane inside the latched toggle session.
 
-        This is deliberately distinct from ``ava_command_session_active``:
-        that older Ava-command waterfall session already owns the original
-        half-duplex guard.
+        This is the conversational Ava lane inside the toggle session.
         """
         manager = getattr(app, '_session_mode_manager', None)
         return (
@@ -697,7 +686,7 @@ class WakeConsumer:
 
     def _post_wake_admission(self):
         app = self._app
-        if self._is_toggle_cmd(app) or self._is_ai_cmd_mode(app) or app._hotkey_recording:
+        if self._is_toggle_cmd(app) or app._hotkey_recording:
             return None
         if app.app_state not in ('wake_session', 'quick_dictation', 'long_dictation') and not app.wake_word_triggered:
             return None
@@ -793,14 +782,10 @@ class WakeConsumer:
         # Do not consult config during failure cleanup: malformed config may
         # be the very exception that killed the poll loop.
         was_toggle = bool(getattr(app, 'command_mode_active', False))
-        was_ava = bool(getattr(app, 'ava_command_session_active', False))
         if was_toggle:
             if not cleanup('exit_command_mode'):
                 cleanup('_cancel_command_mode_inactivity_timer')
                 cleanup('_release_streaming_preview')
-        if was_ava:
-            if not cleanup('exit_ava_command_session'):
-                cleanup('_cancel_ava_cmd_inactivity_timer')
         if (getattr(app, 'app_state', 'asleep') in ('wake_session', 'quick_dictation', 'long_dictation')
                 or getattr(app, 'wake_word_triggered', False)):
             if not cleanup('_end_wake_session'):
@@ -820,8 +805,6 @@ class WakeConsumer:
                     setattr(app, name, None)
         if was_toggle:
             app.command_mode_active = False
-        if was_ava:
-            app.ava_command_session_active = False
         app.wake_word_active = False
         app.wake_word_triggered = False
         app._oww_wake_detected = False
@@ -864,7 +847,6 @@ class WakeConsumer:
                 if not (
                     app.wake_word_active
                     or self._is_toggle_cmd(app)
-                    or self._is_ai_cmd_mode(app)
                 ):
                     time.sleep(0.005)
                     continue
@@ -1018,9 +1000,7 @@ class WakeConsumer:
         # means something unrelated here (VAD-detected USER speech onset,
         # set just below in the speech-accumulation block).
         latched_ava = self._is_latched_ava_mode(app)
-        half_duplex = self._is_ai_cmd_mode(app) or (
-            latched_ava and self._ava_tts_half_duplex_enabled(app)
-        )
+        half_duplex = latched_ava and self._ava_tts_half_duplex_enabled(app)
         ava_barge_in_hit = False
         # Convert before the guard only because the latched AVA escape needs
         # this exact frame for OpenWakeWord. No RMS/VAD/onset/buffering runs
@@ -1054,14 +1034,14 @@ class WakeConsumer:
                         self.abort_utterance()
                     if not self._ava_cmd_tts_suppressed_last:
                         self._log_frame(logging.DEBUG, 'ava_tts_suppressed',
-                            "[SEAM] Ava command session suppression ENGAGED (session "
+                            "[SEAM] Ava lane suppression ENGAGED (session "
                             "TTS speaking or in its tail) -- speech detection fully "
                             "skipped until playback + tail complete"
                         )
                         self._ava_cmd_tts_suppressed_last = True
                     return   # cursor already advanced (frame already read in _poll_loop)
             if self._ava_cmd_tts_suppressed_last:
-                self._log_frame(logging.DEBUG, 'frame_665', "[SEAM] Ava command session suppression RELEASED (TTS + tail complete)")
+                self._log_frame(logging.DEBUG, 'frame_665', "[SEAM] Ava lane suppression RELEASED (TTS + tail complete)")
                 self._ava_cmd_tts_suppressed_last = False
         elif self._ava_cmd_tts_was_speaking or self._ava_cmd_tts_speaking_end is not None:
             # Left the session without a clean SPEAKING->tail->RELEASE
@@ -1251,7 +1231,7 @@ class WakeConsumer:
                 # (toggle / AI-command mode). In passive wake-word mode, the
                 # wake phrase itself must remain at idle-duck (0.8) audibility,
                 # and deep ducking is deferred until wake confirmation.
-                if self._is_toggle_cmd(app) or self._is_ai_cmd_mode(app):
+                if self._is_toggle_cmd(app):
                     self._hands_free_capture_duck_token = self._open_hands_free_duck_safe(app)
                 # Ring prebuffer rewind: replaces the legacy _prebuffer deque drain.
                 # Rewind PREBUFFER_FRAMES and re-read them into the utterance buffer.
@@ -1456,17 +1436,6 @@ class WakeConsumer:
         # close the owner of an utterance still waiting for Whisper.
         if owner_token is not None and self._hands_free_capture_duck_token == owner_token:
             self._hands_free_capture_duck_token = None
-
-        # Ava command session (D3): route utterance to the waterfall queue.
-        if self._is_ai_cmd_mode(app):
-            flight_recorder.record('session.dispatch', op='enqueued', kind='ava_command', thread='ava-cmd-utt')
-            thread_registry.spawn(
-                'ava-cmd-utt',
-                self._wrap_with_duck_close(app, app._handle_ava_command_utterance, owner_token, kind='ava_command'),
-                args=(buffer_copy, SAMPLE_RATE),
-                daemon=True,
-            )
-            return
 
         # Toggle command mode: bypass OWW gate and execute as a single command
         # utterance.  The WakeConsumer re-arms automatically for the next
