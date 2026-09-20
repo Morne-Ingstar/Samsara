@@ -8,7 +8,7 @@ Samsara is a Windows voice-control and dictation app for people who cannot easil
 - This is not about capability. The queue is reconciled as one body of work, and the owner needs to know which model produced which commit. A session that starts work without declaring its model has broken this rule even if the work is good.
 
 ## Non-negotiables
-- Branch is `feature/v0.22` (verify with `git rev-parse --abbrev-ref HEAD` before and after). Never checkout/switch/merge/rebase/stash/reset. Do not commit unless the prompt says so; commits use `git commit -F <tempfile>`.
+- Branch is `master` (verify with `git rev-parse --abbrev-ref HEAD` before and after). Never checkout/switch/merge/rebase/stash/reset. Do not commit unless the prompt says so; commits use `git commit -F <tempfile>`.
 - The app is usually RUNNING while you work. Never close it. Never edit `C:\Users\Morne\.samsara\config.json`. Never `import dictation` in a live process or at module level in tests — it attaches a second log handler to the live log. Tests that need the app use `SAMSARA_HOME_DIR` pointed at a temp copy.
 - Python: `F:\envs\sami\python.exe`. One pytest process at a time. Never run the full suite unless the prompt's GATE is the full suite; targeted files only (`-q -p no:cacheprovider`).
 - Touch only the files the prompt's ALLOWED line names. Another session may be editing other files in this tree at the same time; do not "helpfully" stage, format or fix them, and do not stage anything you did not change.
