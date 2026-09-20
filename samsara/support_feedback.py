@@ -71,6 +71,8 @@ def build_safe_diagnostic_summary(
         ("HANDS FREE enabled", bool(command_mode.get("enabled", False))),
         ("Wake listener enabled", bool(cfg.get("wake_word_enabled", False))),
         ("Interface scale", cfg.get("ui_scale", 1.0)),
+        ("Start at sign-in", bool(cfg.get("launch_at_login", False))),
+        ("Start hidden", bool(cfg.get("start_hidden", False))),
     )
     lines = ["Samsara safe diagnostic summary"]
     lines.extend(f"{label}: {value}" for label, value in values)

@@ -33,3 +33,31 @@ def test_previously_conflicting_keys_are_now_in_the_table():
         "hyperion_host",
     ):
         assert key in DEFAULTS, f"{key} dropped out of config_defaults.DEFAULTS"
+
+
+def test_startup_options_default_off():
+    from samsara.config_defaults import DEFAULTS
+
+    assert DEFAULTS["launch_at_login"] is False
+    assert DEFAULTS["start_hidden"] is False
+
+
+def test_support_bundle_config_retains_startup_flags():
+    from samsara.support_bundle import scrub_config
+
+    flags = {"launch_at_login": True, "start_hidden": True}
+    assert scrub_config(flags) == flags
+
+
+def test_safe_diagnostics_include_startup_flags():
+    from samsara.support_feedback import build_safe_diagnostic_summary
+
+    summary = build_safe_diagnostic_summary(
+        {"launch_at_login": True, "start_hidden": True},
+        frozen=False,
+        platform_text="Windows-test",
+        python_version="3.11.test",
+    )
+
+    assert "Start at sign-in: True" in summary
+    assert "Start hidden: True" in summary

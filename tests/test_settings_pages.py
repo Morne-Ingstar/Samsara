@@ -52,6 +52,7 @@ KEYS_BEFORE_SPLIT = {
     "_build_general_tab": [
         'add_trailing_space', 'auto_capitalize', 'auto_paste', 'cleanup_mode', 'format_numbers',
         'hints_enabled', 'language', 'microphone', 'microphone_name', 'model_size',
+        'launch_at_login', 'start_hidden',
         # Queue 129: the theme control. The page writes the whole `ui` section
         # so a sibling key set elsewhere (ui.idle_animation) survives a save
         # rather than being dropped, which is why both appear here.
@@ -190,6 +191,12 @@ class _StubApp:
 
     def _load_sound_cache(self):
         pass
+
+
+@pytest.fixture(autouse=True)
+def _settings_tests_never_touch_windows_registry(monkeypatch):
+    from samsara import autostart
+    monkeypatch.setattr(autostart, "sync_run_entry", lambda enabled, **kwargs: None)
 
 
 def _registry_builders():
@@ -344,6 +351,53 @@ def test_apply_and_close_writes_through_the_page_save_fns(qapp):
             if key in ("microphone", "microphone_name"):
                 continue          # routed through switch_microphone only when it changes
             assert key in written, key
+
+
+def test_general_page_startup_options_round_trip(qapp):
+    from samsara.ui import settings_qt
+
+    window = settings_qt._SettingsWindow(_StubApp(_schema_defaults()))
+    try:
+        login = window._widgets["launch_at_login"]
+        hidden = window._widgets["start_hidden"]
+        assert not login.isChecked()
+        assert not hidden.isChecked()
+        assert login.accessibleName() == "Start Samsara when I sign in to Windows"
+        assert hidden.accessibleName() == "Start hidden (tray only)"
+
+        login.setChecked(True)
+        hidden.setChecked(True)
+        updates = window._save_fns[0]({})
+        assert updates["launch_at_login"] is True
+        assert updates["start_hidden"] is True
+    finally:
+        window.deleteLater()
+
+
+def test_registry_failure_reverts_login_checkbox_and_notifies_once(qapp, monkeypatch):
+    from samsara import autostart
+    from samsara.ui import settings_qt
+
+    notices = []
+    monkeypatch.setattr(
+        autostart, "sync_run_entry",
+        lambda enabled, **kwargs: (_ for _ in ()).throw(PermissionError("policy")),
+    )
+    monkeypatch.setattr(
+        settings_qt.QMessageBox, "warning",
+        lambda *args: notices.append(args[2]),
+    )
+    window = settings_qt._SettingsWindow(_StubApp(_schema_defaults()))
+    try:
+        checkbox = window._widgets["launch_at_login"]
+        checkbox.setChecked(True)
+        updates = window._save_fns[0]({})
+        assert checkbox.isChecked() is False
+        assert updates["launch_at_login"] is False
+        assert len(notices) == 1
+        assert "Windows could not update" in notices[0]
+    finally:
+        window.deleteLater()
 
 
 # ---------------------------------------------------------------------------

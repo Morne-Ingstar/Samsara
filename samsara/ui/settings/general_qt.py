@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from datetime import datetime
 
 from samsara.audio_devices import pick_index_by_name
+from samsara import autostart
 from samsara.config_transfer import (
     ConfigTransferError,
     export_config,
@@ -511,6 +512,35 @@ class GeneralPage:
             width=180,
         )
 
+        # ---- Card: Startup -----------------------------------------------
+        startup_card, startup_layout = self._section_card(
+            "Startup",
+            "Choose how Samsara opens when you sign in or launch it.",
+        )
+        layout.addWidget(startup_card)
+
+        launch_at_login = QCheckBox()
+        launch_at_login.setChecked(bool(self.app.config.get('launch_at_login', False)))
+        launch_at_login.setAccessibleName("Start Samsara when I sign in to Windows")
+        self._widgets['launch_at_login'] = launch_at_login
+        _add_row(
+            startup_layout,
+            "Start Samsara when I sign in to Windows",
+            "Launch this installation for your Windows account. No administrator access is needed.",
+            launch_at_login,
+        )
+
+        start_hidden = QCheckBox()
+        start_hidden.setChecked(bool(self.app.config.get('start_hidden', False)))
+        start_hidden.setAccessibleName("Start hidden (tray only)")
+        self._widgets['start_hidden'] = start_hidden
+        _add_row(
+            startup_layout,
+            "Start hidden (tray only)",
+            "The tray icon, hotkeys, and wake word remain active. This applies to every start.",
+            start_hidden,
+        )
+
         # ---- Card: Profiles and backup -----------------------------------
         profile_card, profile_layout = self._section_card(
             "Profiles and backup",
@@ -582,6 +612,24 @@ class GeneralPage:
         backup_layout.addLayout(backup_buttons)
 
         def _save(_acc):
+            previous_launch_at_login = bool(
+                self.app.config.get('launch_at_login', False)
+            )
+            requested_launch_at_login = self._widgets['launch_at_login'].isChecked()
+            try:
+                # Keep the registry operation behind samsara.autostart's
+                # injectable seam; a blocked write leaves config and control
+                # at their previous value.
+                autostart.sync_run_entry(requested_launch_at_login)
+            except Exception:
+                self._widgets['launch_at_login'].setChecked(previous_launch_at_login)
+                QMessageBox.warning(
+                    self,
+                    "Startup setting unavailable",
+                    "Windows could not update the sign-in startup setting. Check device policy and try again.",
+                )
+                requested_launch_at_login = previous_launch_at_login
+
             stored_updates = self.app.config.get('updates', {})
             if not isinstance(stored_updates, dict):
                 stored_updates = {}
@@ -611,6 +659,8 @@ class GeneralPage:
                 'language':           self._widgets['lang_name_to_code'].get(
                                           self._widgets['lang_combo'].currentText(), 'en'),
                 'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
+                'launch_at_login':    requested_launch_at_login,
+                'start_hidden':       self._widgets['start_hidden'].isChecked(),
                 'updates': {
                     **stored_updates,
                     'automatic_checks': self._widgets[

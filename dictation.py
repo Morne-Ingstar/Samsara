@@ -383,6 +383,7 @@ from samsara.smart_corrections import (
     smart_correct, warm_up as smart_corrections_warm_up, is_enabled as smart_corrections_is_enabled,
 )
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
+from samsara import autostart
 from samsara import config_defaults
 from samsara import injection_safety
 from samsara import diagnostics
@@ -13025,7 +13026,9 @@ class DictationApp:
                 _boot_log("tray icon created")
 
         QTimer.singleShot(0, qt_app, _create)
-        QTimer.singleShot(0, qt_app, self.show_main_window)
+        show_main_window = autostart.should_show_main_window(self.config)
+        if show_main_window:
+            QTimer.singleShot(0, qt_app, self.show_main_window)
         # This method intentionally blocks below for the application's
         # lifetime.  Signal the model-loading lane only after the UI work has
         # been queued; otherwise a fast model load can close the splash while
@@ -13034,7 +13037,7 @@ class DictationApp:
         if shell_ready is not None:
             shell_ready.set()
         if _boot_log is not None:
-            _boot_log("shell ready (tray + main window scheduled)")
+            _boot_log("shell ready (tray and main window policy applied)")
 
         while self._running:
             import time as _t

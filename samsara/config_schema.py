@@ -65,6 +65,8 @@ SETTINGS_SCHEMA = {
     "auto_capitalize":      {"type": "bool", "default": True,  "tab": "general"},
     "format_numbers":       {"type": "bool", "default": True,  "tab": "general"},
     "hints_enabled":        {"type": "bool", "default": True,  "tab": "general"},
+    "launch_at_login":      {"type": "bool", "default": False, "tab": "general"},
+    "start_hidden":         {"type": "bool", "default": False, "tab": "general"},
     "updates.automatic_checks": {
         "type": "bool",
         "default": False,

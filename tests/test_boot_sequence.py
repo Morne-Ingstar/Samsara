@@ -176,7 +176,30 @@ def test_tray_and_shell_ready_log_boot_markers(monkeypatch):
     """tools/boot_profile.py --full-boot reads these two [BOOT] lines."""
     src = inspect.getsource(dictation.DictationApp.create_tray_icon)
     assert '_boot_log("tray icon created")' in src
-    assert '_boot_log("shell ready (tray + main window scheduled)")' in src
+    assert '_boot_log("shell ready (tray and main window policy applied)")' in src
+
+
+@pytest.mark.parametrize(
+    ("config", "expected_callbacks"),
+    [
+        ({"first_run_complete": True, "microphone": "device-1", "start_hidden": True}, 1),
+        ({"first_run_complete": False, "start_hidden": True}, 2),
+    ],
+)
+def test_tray_startup_applies_hidden_window_policy(monkeypatch, config, expected_callbacks):
+    from PySide6.QtCore import QTimer
+
+    app = dictation.DictationApp.__new__(dictation.DictationApp)
+    app.config = config
+    app._running = False
+    app._startup_shell_ready = threading.Event()
+    callbacks = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda _delay, _app, callback: callbacks.append(callback))
+
+    app.create_tray_icon()
+
+    assert len(callbacks) == expected_callbacks  # tray is always queued; wizard may force the window
+    assert app._startup_shell_ready.is_set()
 
 
 # ── Fix 1: lazy wake load, pending start, wake_ready ─────────────────────────
@@ -485,3 +508,105 @@ def test_background_refresh_updates_threshold_and_cache(tmp_path, monkeypatch):
     assert app.measure_calls == 1
     stored = json.loads((tmp_path / "mic_calibration.json").read_text())
     assert stored["threshold"] == pytest.approx(_threshold(app))
+
+
+# ── Queue 276: per-user startup command and hidden-start policy ──────────────
+
+def test_autostart_command_is_quoted_for_frozen_and_source_runs():
+    from samsara.autostart import compose_run_command
+
+    assert compose_run_command(
+        frozen=True, executable=r"C:\Program Files\Samsara\Samsara.exe"
+    ) == r'"C:\Program Files\Samsara\Samsara.exe"'
+
+    frozen_with_home = compose_run_command(
+        frozen=True,
+        executable=r"C:\Program Files\Samsara\Samsara.exe",
+        home_dir=r"C:\Users\Morne\.samsara-daily",
+        comspec=r"C:\Windows\System32\cmd.exe",
+    )
+    assert frozen_with_home.startswith(r'"C:\Windows\System32\cmd.exe" /d /s /c ')
+    assert 'SAMSARA_HOME_DIR=C:\\Users\\Morne\\.samsara-daily' in frozen_with_home
+    assert 'start "" /b' in frozen_with_home
+    assert 'C:\\Program Files\\Samsara\\Samsara.exe' in frozen_with_home
+
+    source = compose_run_command(
+        frozen=False,
+        executable=r"F:\envs\sami\python.exe",
+        pythonw_executable=r"F:\envs\sami\pythonw.exe",
+        script_path=r"C:\Users\Morne\Projects\Samsara-dev\dictation.py",
+    )
+    assert source == (
+        r'"F:\envs\sami\pythonw.exe" '
+        r'"C:\Users\Morne\Projects\Samsara-dev\dictation.py"'
+    )
+
+
+def test_start_hidden_policy_keeps_wizard_visible():
+    from samsara.autostart import should_show_main_window
+
+    ready = {"first_run_complete": True, "microphone": "device-1", "start_hidden": True}
+    assert should_show_main_window(ready) is False
+    assert should_show_main_window({**ready, "start_hidden": False}) is True
+    assert should_show_main_window({"start_hidden": True}) is True
+    assert should_show_main_window({**ready, "microphone": None}) is True
+
+
+def test_run_entry_update_and_removal_use_only_injected_registry():
+    from samsara import autostart
+
+    class _Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class _Registry:
+        HKEY_CURRENT_USER = object()
+        REG_SZ = 1
+        KEY_SET_VALUE = 2
+
+        def __init__(self):
+            self.values = {"OtherApp": "keep"}
+            self.key = _Key()
+
+        def CreateKey(self, root, path):
+            assert root is self.HKEY_CURRENT_USER
+            assert path == autostart.RUN_KEY
+            return self.key
+
+        def OpenKey(self, root, path, reserved, access):
+            assert root is self.HKEY_CURRENT_USER
+            assert path == autostart.RUN_KEY
+            assert access == self.KEY_SET_VALUE
+            return self.key
+
+        def SetValueEx(self, key, name, reserved, value_type, value):
+            assert key is self.key and value_type == self.REG_SZ
+            self.values[name] = value
+
+        def DeleteValue(self, key, name):
+            assert key is self.key
+            del self.values[name]
+
+    registry = _Registry()
+    autostart.sync_run_entry(True, command='"C:\\Program Files\\Samsara.exe"', registry=registry)
+    assert registry.values["Samsara"] == '"C:\\Program Files\\Samsara.exe"'
+    autostart.sync_run_entry(True, command='"D:\\Updated\\Samsara.exe"', registry=registry)
+    assert registry.values["Samsara"] == '"D:\\Updated\\Samsara.exe"'
+    autostart.sync_run_entry(False, registry=registry)
+    assert registry.values == {"OtherApp": "keep"}
+
+
+def test_run_entry_registry_failure_is_reported_to_the_caller():
+    from samsara import autostart
+
+    class _Denied:
+        HKEY_CURRENT_USER = object()
+
+        def CreateKey(self, *_args):
+            raise PermissionError("policy locked")
+
+    with pytest.raises(PermissionError):
+        autostart.sync_run_entry(True, command="app.exe", registry=_Denied())

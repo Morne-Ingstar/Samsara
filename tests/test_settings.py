@@ -683,6 +683,8 @@ class TestApplyAndCloseSnapshot:
         expected['command_packs'].pop('mouse', None)
         expected['tts']['engine'] = 'edge'
         expected['ducking'].pop('enabled', None)
+        expected['launch_at_login'] = False
+        expected['start_hidden'] = False
         expected['tasks'] = {'todoist': {'enabled': False, 'api_token': ''}}        # 284: dead controls are deliberately not persisted.
         for key in ('pitch', 'use_for_agent_responses', 'use_for_confirmations',
                     'use_for_warnings', 'use_for_status_updates',
