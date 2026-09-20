@@ -20766,3 +20766,9 @@
 {"id": "word.undo_in_word", "kind": "sentence", "polarity": "negative", "reject": "word.undo_in_word", "text": "I will undo in word after this sentence"}
 {"accept": ["word.word_count"], "id": "word.word_count", "kind": "exact", "polarity": "positive", "text": "word count"}
 {"id": "word.word_count", "kind": "sentence", "polarity": "negative", "reject": "word.word_count", "text": "I will word count after this sentence"}
+{"accept": ["video_memo.record_video_memo"], "id": "video_memo.record_video_memo", "kind": "alias", "polarity": "positive", "text": "record video memo"}
+{"accept": ["video_memo.record_video_memo"], "id": "video_memo.record_video_memo", "kind": "determiner", "polarity": "positive", "text": "record the video memo"}
+{"id": "video_memo.record_video_memo", "kind": "sentence", "polarity": "negative", "reject": "video_memo.record_video_memo", "text": "last night he wrote in the notes that you can record video memo whenever it feels right"}
+{"accept": ["video_memo.stop_memo"], "id": "video_memo.stop_memo", "kind": "alias", "polarity": "positive", "text": "stop memo"}
+{"accept": ["video_memo.stop_memo"], "id": "video_memo.stop_memo", "kind": "determiner", "polarity": "positive", "text": "stop the memo"}
+{"id": "video_memo.stop_memo", "kind": "sentence", "polarity": "negative", "reject": "video_memo.stop_memo", "text": "last night he wrote in the notes that you can stop video memo whenever it feels right"}
