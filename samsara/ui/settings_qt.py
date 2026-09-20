@@ -1430,6 +1430,11 @@ class _SettingsWindow(
             self.app.config.update(updates)
             self.app.save_config()
 
+        if "feedback" in updates:
+            setter = getattr(getattr(self.app, "_session_mode_manager", None), "set_spoken_notices", None)
+            if callable(setter):
+                setter((updates["feedback"] or {}).get("spoken_notices"))
+
         now_ai_pack_enabled = bool(
             (self.app.config.get('command_packs', {}) or {}).get('ai', False)
         )

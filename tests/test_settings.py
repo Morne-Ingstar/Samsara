@@ -200,7 +200,7 @@ class TestSettingsWindowConstruction:
             'memo_hotkey', 'correction_hotkey', 'hotkeys', 'continuous_commit_hotkey',
             'continuous_commit_trigger',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
-            'ava_command_session',
+            'ava_command_session', 'accessibility',
         }
         assert set(produced.keys()) == expected_keys
 
@@ -676,6 +676,21 @@ class TestApplyAndCloseSnapshot:
             'hands_free_level': 0.15,
             'hands_free_idle_level': 0.8,
         })
+        # Current post-284 snapshot: retain only live keys and current defaults.
+        expected['ui'] = {'live_surface': {'enabled': False}}
+        expected['accessibility'] = {'speech_pace': 'standard'}
+        expected['ava_command_session']['keep_warm'] = False
+        expected['command_packs'].pop('mouse', None)
+        expected['tts']['engine'] = 'edge'
+        expected['ducking'].pop('enabled', None)
+        expected['tasks'] = {'todoist': {'enabled': False, 'api_token': ''}}        # 284: dead controls are deliberately not persisted.
+        for key in ('pitch', 'use_for_agent_responses', 'use_for_confirmations',
+                    'use_for_warnings', 'use_for_status_updates',
+                    'use_for_dictation_readback', 'use_for_errors'):
+            expected.get('tts', {}).pop(key, None)
+        expected.get('audio_coordinator', {}).pop('enabled', None)
+        for key in ('backend', 'allow_cloud_fallback'):
+            expected.get('smart_corrections', {}).pop(key, None)
 
         stub = _StubApp()
         win = _SettingsWindow(stub)
@@ -1104,3 +1119,4 @@ class TestModesTabClaims:
         for key in sq._MODES_CONFIG_ONLY_KEYS:
             assert key in note
             assert key not in win._widgets, f"{key} now has a control -- drop it from the note"
+

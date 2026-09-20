@@ -477,41 +477,6 @@ class AdvancedPage:
         layout.addSpacing(8)
         self._refresh_sc_status()
 
-        sc_backend_options = ['auto', 'ollama', 'cloud']
-        sc_backend_combo = QComboBox()
-        sc_backend_combo.addItems(sc_backend_options)
-        current_sc_backend = sc_cfg.get('backend', 'auto')
-        if current_sc_backend in sc_backend_options:
-            sc_backend_combo.setCurrentText(current_sc_backend)
-        self._widgets['sc_backend'] = sc_backend_combo
-        layout.addLayout(self._setting_row(
-            "Backend",
-            "auto prefers local Ollama; falls back to Cloud AI if configured",
-            sc_backend_combo,
-        ))
-        layout.addSpacing(4)
-
-        sc_cloud_hint = QLabel("Cloud AI status")
-        sc_cloud_hint.setWordWrap(True)
-        sc_cloud_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
-
-        self._widgets['sc_cloud_hint'] = sc_cloud_hint
-
-        def _update_sc_cloud_hint(_text=None):
-            self._refresh_sc_cloud_hint()
-
-        sc_backend_combo.currentTextChanged.connect(_update_sc_cloud_hint)
-        layout.addWidget(sc_cloud_hint)
-        _update_sc_cloud_hint()
-        layout.addSpacing(8)
-
-        sc_fallback_cb = _add_checkbox_row(
-            'sc_allow_cloud_fallback',
-            "Allow cloud fallback when local AI is unavailable (sends dictated text to your cloud provider)",
-            bool(sc_cfg.get('allow_cloud_fallback', False)),
-        )
-        layout.addSpacing(8)
-
         sc_model_edit = QLineEdit()
         sc_model_edit.setText(sc_cfg.get('ollama_model', 'qwen2.5:3b'))
         self._widgets['sc_model'] = sc_model_edit
@@ -655,12 +620,8 @@ class AdvancedPage:
                 if 'sc_enabled' in self._widgets:
                     sc_cfg_out = dict(self.app.config.get('smart_corrections', {}) or {})
                     sc_cfg_out['enabled'] = self._widgets['sc_enabled'].isChecked()
-                    sc_cfg_out['backend'] = self._widgets['sc_backend'].currentText()
                     sc_cfg_out['ollama_model'] = (
                         self._widgets['sc_model'].text().strip() or 'qwen2.5:3b'
-                    )
-                    sc_cfg_out['allow_cloud_fallback'] = (
-                        self._widgets['sc_allow_cloud_fallback'].isChecked()
                     )
                     sc_cfg_out['modes'] = {
                         'hotkey':    self._widgets['sc_mode_hotkey'].isChecked(),

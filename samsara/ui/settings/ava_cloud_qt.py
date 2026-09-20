@@ -478,7 +478,7 @@ class AvaCloudPage:
         edit_options_layout.setSpacing(8)
 
         from samsara.config_schema import SETTINGS_SCHEMA
-        timeout_schema = SETTINGS_SCHEMA["ava_edit.timeout_s"]
+        timeout_schema = SETTINGS_SCHEMA["ava_edit.timeout_seconds"]
         edit_timeout = QDoubleSpinBox()
         edit_timeout.setRange(
             float(timeout_schema.get("min", 1.0)),
@@ -488,7 +488,7 @@ class AvaCloudPage:
         edit_timeout.setDecimals(1)
         edit_timeout.setSuffix(" s")
         edit_timeout.setValue(float(edit_cfg.get(
-            "timeout_s", config_defaults.DEFAULTS["ava_edit.timeout_s"])))
+            "timeout_seconds", config_defaults.DEFAULTS["ava_edit.timeout_seconds"])))
         self._widgets["ava_edit_timeout"] = edit_timeout
         timeout_row = QWidget()
         timeout_row.setLayout(self._setting_row(
@@ -552,7 +552,7 @@ class AvaCloudPage:
 
         edit_enabled.toggled.connect(lambda checked: (
             _mark_edit_touched("enabled"), _sync_edit_options(checked)))
-        edit_timeout.valueChanged.connect(lambda _value: _mark_edit_touched("timeout_s"))
+        edit_timeout.valueChanged.connect(lambda _value: _mark_edit_touched("timeout_seconds"))
         edit_model.currentIndexChanged.connect(lambda _index: _mark_edit_touched("model"))
         demo_pacing.toggled.connect(lambda _checked: _mark_edit_touched("demo_pacing"))
         _sync_edit_options(edit_enabled.isChecked())
@@ -611,8 +611,8 @@ class AvaCloudPage:
                 if "enabled" in edit_touched:
                     ava_edit_cfg["enabled"] = self._widgets[
                         "ava_edit_enabled"].isChecked()
-                if "timeout_s" in edit_touched:
-                    ava_edit_cfg["timeout_s"] = self._widgets[
+                if "timeout_seconds" in edit_touched:
+                    ava_edit_cfg["timeout_seconds"] = self._widgets[
                         "ava_edit_timeout"].value()
                 if "model" in edit_touched:
                     ava_edit_cfg["model"] = self._widgets[

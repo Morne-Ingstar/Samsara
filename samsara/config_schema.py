@@ -489,14 +489,6 @@ SETTINGS_SCHEMA = {
         "default": 1.0,
         "tab": "tts",
     },
-    "tts.pitch": {
-        "type": "float",
-        "min": 0.5,
-        "max": 2.0,
-        "step": 0.1,
-        "default": 1.0,
-        "tab": "tts",
-    },
     "tts.volume": {
         "type": "float",
         "min": 0.0,
@@ -504,20 +496,12 @@ SETTINGS_SCHEMA = {
         "default": 0.8,
         "tab": "tts",
     },
-    "tts.use_for_agent_responses":   {"type": "bool", "default": True,  "tab": "tts"},
-    "tts.use_for_confirmations":     {"type": "bool", "default": True,  "tab": "tts"},
-    "tts.use_for_warnings":          {"type": "bool", "default": True,  "tab": "tts"},
-    "tts.use_for_status_updates":    {"type": "bool", "default": True,  "tab": "tts"},
-    "tts.use_for_dictation_readback":{"type": "bool", "default": False, "tab": "tts"},
-    "tts.use_for_errors":            {"type": "bool", "default": True,  "tab": "tts"},
-    "audio_coordinator.enabled":     {"type": "bool", "default": True,  "tab": "tts"},
     "audio_coordinator.duck_factor": {
         "type": "float",
         "min": 0.0,
         "max": 1.0,
         "default": 0.7,
         "tab": "tts",
-        "depends_on": "audio_coordinator.enabled",
     },
 
     # -------------------------------------------------------------------------
@@ -734,7 +718,7 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
         "depends_on": "ava_edit.enabled",
     },
-    "ava_edit.timeout_s": {
+    "ava_edit.timeout_seconds": {
         "type": "float",
         "default": 12.0,
         "tab": "advanced",
@@ -744,13 +728,6 @@ SETTINGS_SCHEMA = {
     # Smart Corrections: optional LLM post-processing pass over dictation
     # output (homophones/misrecognitions/punctuation). Off by default.
     "smart_corrections.enabled": {"type": "bool", "default": False, "tab": "advanced"},
-    "smart_corrections.backend": {
-        "type": "enum",
-        "options": ["auto", "ollama", "cloud"],
-        "default": "auto",
-        "tab": "advanced",
-        "depends_on": "smart_corrections.enabled",
-    },
     "smart_corrections.ollama_model": {
         "type": "str",
         "default": "qwen2.5:3b",
@@ -771,12 +748,6 @@ SETTINGS_SCHEMA = {
         "min": 1,
         "max": 20,
         "default": 3,
-        "tab": "advanced",
-        "depends_on": "smart_corrections.enabled",
-    },
-    "smart_corrections.allow_cloud_fallback": {
-        "type": "bool",
-        "default": False,
         "tab": "advanced",
         "depends_on": "smart_corrections.enabled",
     },
@@ -960,3 +931,25 @@ SETTINGS_SCHEMA = {
         "tab": "music",
     },
 }
+
+
+# Prompt 284: pure, idempotent removal/mapping before defaults merge.
+_REMOVED_SETTING_KEYS = {
+    "tts": {"pitch", "use_for_agent_responses", "use_for_confirmations", "use_for_warnings", "use_for_status_updates", "use_for_dictation_readback", "use_for_errors"},
+    "audio_coordinator": {"enabled"},
+    "smart_corrections": {"backend", "allow_cloud_fallback"},
+}
+def migrate_removed_settings(config: dict) -> bool:
+    changed = False
+    for section, keys in _REMOVED_SETTING_KEYS.items():
+        value = config.get(section)
+        if isinstance(value, dict):
+            for key in keys:
+                if key in value:
+                    value.pop(key); changed = True
+    if "streaming_hotkey" in config:
+        config.pop("streaming_hotkey"); changed = True
+    edit = config.get("ava_edit")
+    if isinstance(edit, dict) and "timeout_s" in edit:
+        edit.setdefault("timeout_seconds", edit.pop("timeout_s")); changed = True
+    return changed

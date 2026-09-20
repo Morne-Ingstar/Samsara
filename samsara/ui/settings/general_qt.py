@@ -653,6 +653,7 @@ class GeneralPage:
                 self.app.config.get('output_device_name'),
             )
             if (output_id, output_name) != saved_output:
+                # Keep the recovered runtime id with the stable device name.
                 updates['output_device'] = output_id
                 updates['output_device_name'] = output_name
             return updates

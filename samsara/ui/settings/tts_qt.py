@@ -130,19 +130,6 @@ class TTSPage:
         ))
         layout.addSpacing(8)
 
-        pitch_spin = QDoubleSpinBox()
-        pitch_spin.setRange(0.5, 2.0)
-        pitch_spin.setSingleStep(0.1)
-        pitch_spin.setDecimals(2)
-        pitch_spin.setValue(float(cfg.get('pitch', 1.0)))
-        self._widgets['tts_pitch'] = pitch_spin
-        layout.addLayout(self._setting_row(
-            "Pitch",
-            "1.0 = normal pitch, lower values deepen, higher values raise",
-            pitch_spin,
-        ))
-        layout.addSpacing(8)
-
         raw_vol = float(cfg.get('volume', 0.8))
         vol_slider = QSlider(Qt.Orientation.Horizontal)
         vol_slider.setRange(0, 100)
@@ -185,12 +172,6 @@ class TTSPage:
         layout.addWidget(duck_desc)
         layout.addSpacing(6)
 
-        duck_enabled = QCheckBox("Duck audio while Ava is speaking")
-        duck_enabled.setChecked(bool(ac_cfg.get('enabled', True)))
-        self._widgets['tts_duck_enabled'] = duck_enabled
-        layout.addWidget(duck_enabled)
-        layout.addSpacing(8)
-
         raw_duck = float(ac_cfg.get('duck_factor', 0.7))
         duck_slider = QSlider(Qt.Orientation.Horizontal)
         duck_slider.setRange(0, 100)
@@ -216,7 +197,7 @@ class TTSPage:
         duck_h.addWidget(duck_pct)
         layout.addLayout(self._setting_row(
             "Duck level",
-            "How much to reduce other audio (100% = silent others, 0% = no reduction)",
+            "Remaining Ava speech volume during earcons (100% = full volume, 0% = silent).",
             duck_container,
         ))
         layout.addSpacing(16)
@@ -238,53 +219,6 @@ class TTSPage:
         layout.addLayout(test_row)
         layout.addSpacing(16)
 
-        # ---- When to speak (collapsible) ------------------------------------
-        when_toggle = QPushButton("When should Samsara speak?  ▶")
-        when_toggle.setMinimumHeight(theme.HIT_TARGET_MIN)
-        when_toggle.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{theme.ICON_IDLE};border:none;"
-            f"font-size:{theme.TYPE_BODY}px;text-align:left;padding:0;}}"
-            f"QPushButton:hover{{color:{theme.TEXT_PRIMARY};}}"
-        )
-        layout.addWidget(when_toggle)
-
-        when_widget = QWidget()
-        when_widget.setVisible(False)
-        when_layout = QVBoxLayout(when_widget)
-        when_layout.setContentsMargins(0, 8, 0, 0)
-        when_layout.setSpacing(6)
-
-        phase_note = QLabel(
-            "Some of these categories aren't wired up yet — saved now, applied when they are."
-        )
-        phase_note.setWordWrap(True)
-        phase_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
-        when_layout.addWidget(phase_note)
-
-        _WHEN_TOGGLES = [
-            ('tts_use_agent',    "Speak agent responses",           'use_for_agent_responses',    True),
-            ('tts_use_confirm',  "Speak confirmations",             'use_for_confirmations',      True),
-            ('tts_use_warnings', "Speak warnings",                  'use_for_warnings',           True),
-            ('tts_use_status',   "Speak status updates (Thinking)", 'use_for_status_updates',     True),
-            ('tts_use_readback', "Speak dictation readback",        'use_for_dictation_readback', False),
-            ('tts_use_errors',   "Speak errors",                    'use_for_errors',             True),
-        ]
-        for wkey, label_text, cfg_key, default in _WHEN_TOGGLES:
-            cb = QCheckBox(label_text)
-            cb.setChecked(bool(cfg.get(cfg_key, default)))
-            self._widgets[wkey] = cb
-            when_layout.addWidget(cb)
-
-        layout.addWidget(when_widget)
-
-        def _toggle_when():
-            vis = not when_widget.isVisible()
-            when_widget.setVisible(vis)
-            when_toggle.setText(
-                "When should Samsara speak?  " + ("▼" if vis else "▶")
-            )
-        when_toggle.clicked.connect(_toggle_when)
-
         def _save(_acc):
             updates = {}
             if 'tts_enabled' in self._widgets:
@@ -296,15 +230,10 @@ class TTSPage:
                 if voice_id:
                     tts_cfg['voice_id'] = voice_id
                 tts_cfg['speed']  = self._widgets['tts_speed'].value()
-                tts_cfg['pitch']  = self._widgets['tts_pitch'].value()
                 tts_cfg['volume'] = self._widgets['tts_volume_slider'].value() / 100.0
-                for wkey, _label, cfg_key, _default in _WHEN_TOGGLES:
-                    if wkey in self._widgets:
-                        tts_cfg[cfg_key] = self._widgets[wkey].isChecked()
                 updates['tts'] = tts_cfg
                 # Audio coordinator duck settings
                 ac_cfg = dict(self.app.config.get('audio_coordinator', {}) or {})
-                ac_cfg['enabled']     = self._widgets['tts_duck_enabled'].isChecked()
                 ac_cfg['duck_factor'] = self._widgets['tts_duck_slider'].value() / 100.0
                 updates['audio_coordinator'] = ac_cfg
             return updates

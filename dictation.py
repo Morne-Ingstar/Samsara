@@ -3171,6 +3171,9 @@ class DictationApp:
                 self._migrate_command_matching_enabled_flag()
                 self._migrate_ai_command_mode_config()
                 self._migrate_recording_media_mode()
+                from samsara.config_schema import migrate_removed_settings
+                if migrate_removed_settings(self.config):
+                    self.save_config()
             finally:
                 self._config_migration_save = False
 
@@ -5685,6 +5688,9 @@ class DictationApp:
             live_surface_enabled=bool((self.config.get('ui', {}) or {}).get(
                 'live_surface', {}).get('enabled', False)),
         )
+        from samsara.config_defaults import cfg_get
+        self._session_mode_manager.set_spoken_notices(
+            cfg_get(self.config, "feedback.spoken_notices"))
         return self._session_mode_manager
 
     def _speak_session_notice(self, text: str, category: str = "confirmation") -> None:

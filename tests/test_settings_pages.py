@@ -99,10 +99,9 @@ KEYS_BEFORE_SPLIT = {
     "_build_sounds_tab": ['audio_feedback', 'feedback.spoken_notices', 'sound_theme',
                           'sound_volume'],
     "_build_tts_tab": [
-        'audio_coordinator.duck_factor', 'audio_coordinator.enabled', 'tts.enabled', 'tts.engine',
-        'tts.pitch', 'tts.rate', 'tts.speed', 'tts.use_for_agent_responses',
-        'tts.use_for_confirmations', 'tts.use_for_dictation_readback', 'tts.use_for_errors',
-        'tts.use_for_status_updates', 'tts.use_for_warnings', 'tts.volume',
+        'audio_coordinator.duck_factor', 'tts.enabled', 'tts.engine',
+        'tts.rate', 'tts.speed',
+        'tts.volume',
     ],
     "_build_ava_cloud_tab": [
         # Queue 183's consent record and queue 175e's warm choice are both
@@ -130,7 +129,7 @@ KEYS_BEFORE_SPLIT = {
         # dropped -- hence both keys here, only one of them editable.
         'intent.command_prefix', 'intent.shadow_enabled', 'listening_indicator_enabled',
         'listening_indicator_position', 'min_speech_duration', 'performance_mode',
-        'silence_threshold', 'smart_corrections.allow_cloud_fallback', 'smart_corrections.backend',
+        'silence_threshold',
         'smart_corrections.enabled', 'smart_corrections.keep_alive', 'smart_corrections.min_words',
         'smart_corrections.modes.hotkey', 'smart_corrections.modes.streaming',
         'smart_corrections.modes.wake', 'smart_corrections.ollama_model',
