@@ -50,6 +50,32 @@ _AI_CMD_KEY_OPTIONS: dict = {
 }
 _AI_CMD_KEY_TO_LABEL: dict = {v: k for k, v in _AI_CMD_KEY_OPTIONS.items()}
 
+
+def _normalised_binding(combo: str) -> frozenset:
+    """The collision form of a captured hotkey, including legacy aliases."""
+    return frozenset(
+        _KEY_NORMALIZE.get(token.strip().lower(), token.strip().lower())
+        for token in str(combo or '').split('+') if token.strip()
+    )
+
+
+def _valid_ava_session_chord(combo: str) -> bool:
+    """Allow one old single key, or modifiers plus one release key."""
+    tokens = _normalised_binding(combo)
+    modifiers = {
+        'ctrl', 'shift', 'alt', 'altgr', 'win',
+        'left_ctrl', 'right_ctrl', 'left_shift', 'right_shift', 'left_alt', 'right_alt',
+    }
+    return bool(tokens) and (len(tokens) == 1 or len(tokens - modifiers) == 1)
+
+
+class _AvaSessionHotkeyButton(_HotkeyButton):
+    """The captured-hotkey editor with a settings refresh compatibility seam."""
+
+    def setCurrentText(self, value: str) -> None:
+        self._combo = _AI_CMD_KEY_OPTIONS.get(str(value), str(value))
+        self.setText(self._idle_text(self._combo))
+
 # Canonical alias map: normalise rctrl/right_ctrl etc. before comparing
 _KEY_NORMALIZE: dict = {
     'right_ctrl':  'right_ctrl', 'rctrl':  'right_ctrl',
@@ -875,21 +901,35 @@ class ModesPage:
         self._widgets['ava_master_status'] = ava_status
         ai_layout.addWidget(ava_status)
 
-        key_val = ai_cfg.get('key', _AIMD['key'])
-        key_label = _AI_CMD_KEY_TO_LABEL.get(key_val, list(_AI_CMD_KEY_OPTIONS.keys())[0])
-        ai_key_combo = QComboBox()
-        ai_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
-        if key_label in _AI_CMD_KEY_OPTIONS:
-            ai_key_combo.setCurrentText(key_label)
-        self._widgets['ava_cmd_key'] = ai_key_combo
+        key_val = str(ai_cfg.get('key', _AIMD['key']))
+        last_valid_ava_key = [key_val]
+
+        def _ava_key_changed() -> None:
+            candidate = ai_key_button.combo
+            conflicts = self._ava_session_key_conflicts(candidate)
+            if not _valid_ava_session_chord(candidate):
+                reason = "use one key, or modifiers plus one key"
+            elif conflicts:
+                reason = "it duplicates " + ", ".join(conflicts)
+            else:
+                last_valid_ava_key[0] = candidate
+                self._ava_cmd_key_rejection = ""
+                self._check_modes_collisions()
+                return
+            ai_key_button._combo = last_valid_ava_key[0]
+            ai_key_button.setText(ai_key_button._idle_text(last_valid_ava_key[0]))
+            self._ava_cmd_key_rejection = f"Ava Command Session key was not changed: {reason}."
+            self._check_modes_collisions()
+
+        ai_key_button = _AvaSessionHotkeyButton(key_val, on_change=_ava_key_changed)
+        self._widgets['ava_cmd_key'] = ai_key_button
         _add_row(
             ai_layout,
             "Activation key",
-            "Key that latches the Ava command session (default Left Alt).",
-            ai_key_combo,
+            "Press a key, or modifiers plus one key, to latch the Ava command session.",
+            ai_key_button,
             width=260,
         )
-        ai_key_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
 
         ai_adv_button = _disclosure_button("Show AI backend options")
         ai_adv = QWidget()
@@ -1279,8 +1319,8 @@ class ModesPage:
 
             if 'ava_cmd_key' in self._widgets:
                 ai_cfg_out = dict(self.app.config.get('ava_command_session', {}) or {})
-                key_label = self._widgets['ava_cmd_key'].currentText()
-                ai_cfg_out['key']             = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'left_alt'))
+                ai_key = self._widgets['ava_cmd_key']
+                ai_cfg_out['key']             = ai_key.combo if isinstance(ai_key, _HotkeyButton) else _AIMD['key']
                 ai_cfg_out['backend']         = 'cloud' if self._widgets['ava_cmd_backend'].currentText() == 'Cloud' else 'ollama'
                 ai_cfg_out['model']           = self._widgets['ava_cmd_model'].text().strip()
                 ai_cfg_out['keep_warm']       = self._widgets['ava_cmd_keep_warm'].isChecked()
@@ -1300,6 +1340,24 @@ class ModesPage:
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _ava_session_key_conflicts(self, candidate: str) -> list[str]:
+        """Exact active-binding collisions that reject Ava's captured chord."""
+        candidate_norm = _normalised_binding(candidate)
+        if not candidate_norm:
+            return []
+        watched = (
+            ('hotkey', 'Record'),
+            ('command_hotkey', 'Command only'),
+            ('wake_word_hotkey', 'Toggle wake word'),
+        )
+        conflicts = []
+        for config_key, label in watched:
+            widget = self._widgets.get(config_key)
+            if isinstance(widget, _HotkeyButton) and _normalised_binding(widget.combo) == candidate_norm:
+                conflicts.append(label)
+        return conflicts
+
     def _check_modes_collisions(self) -> None:
         """Tab-wide activation-binding collision checker for the Modes tab.
 
@@ -1314,6 +1372,11 @@ class ModesPage:
         """
         warn = self._widgets.get('modes_collision_warn')
         if warn is None:
+            return
+        rejection = getattr(self, '_ava_cmd_key_rejection', '')
+        if rejection:
+            warn.setText("Key collision: " + rejection)
+            warn.setVisible(True)
             return
 
         hotkey_labels = {
@@ -1349,15 +1412,10 @@ class ModesPage:
             bindings.append(("Command Mode button", raw))
 
         ai_key_widget = self._widgets.get('ava_cmd_key')
-        if ai_key_widget is not None:
-            raw = _AI_CMD_KEY_OPTIONS.get(ai_key_widget.currentText(), ai_key_widget.currentText())
-            bindings.append(("Ava Command Session key", raw))
+        if isinstance(ai_key_widget, _HotkeyButton) and ai_key_widget.combo:
+            bindings.append(("Ava Command Session key", ai_key_widget.combo))
 
-        def _normalize(combo: str) -> frozenset:
-            tokens = [t for t in combo.split('+') if t]
-            return frozenset(_KEY_NORMALIZE.get(t, t) for t in tokens)
-
-        normed = [(label, combo, _normalize(combo)) for label, combo in bindings]
+        normed = [(label, combo, _normalised_binding(combo)) for label, combo in bindings]
 
         # Exact duplicates: group labels sharing an identical normalized set.
         by_norm: dict = {}

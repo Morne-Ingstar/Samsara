@@ -26,6 +26,22 @@ _OTHER_HOTKEY_KEYS = (
     ('cancel_hotkey', 'escape'),
 )
 _AVA_CMD_TAP_DEBOUNCE_MS = 40
+_AVA_CHORD_MODIFIERS = frozenset({
+    'ctrl', 'shift', 'alt', 'altgr', 'win',
+    'left_ctrl', 'right_ctrl', 'left_shift', 'right_shift', 'left_alt', 'right_alt',
+})
+_AVA_CHORD_ALIASES = {
+    'control': 'ctrl',
+    'lctrl': 'left_ctrl', 'ctrl_l': 'left_ctrl', 'control_l': 'left_ctrl',
+    'rctrl': 'right_ctrl', 'ctrl_r': 'right_ctrl', 'control_r': 'right_ctrl',
+    'lshift': 'left_shift', 'shift_l': 'left_shift',
+    'rshift': 'right_shift', 'shift_r': 'right_shift',
+    'lalt': 'left_alt', 'alt_l': 'left_alt',
+    'ralt': 'right_alt', 'alt_r': 'right_alt',
+    'super': 'win', 'cmd': 'win', 'meta': 'win',
+    'esc': 'escape', 'page_up': 'page up', 'page_down': 'page down',
+    'caps_lock': 'caps lock', 'num_lock': 'num lock', 'scroll_lock': 'scroll lock',
+}
 _host_module = None
 _listener_error_types = set()
 _listener_error_lock = threading.Lock()
@@ -85,6 +101,52 @@ def _get_pynput_command_key(button_name):
 
 def _matches_pynput_key(key, target):
     return _dictation_helper('_matches_pynput_key')(key, target)
+
+
+def _ava_chord_spec(value) -> tuple[frozenset[str], str] | None:
+    """Return ``(tokens, release_trigger)`` for a persisted Ava binding.
+
+    Old single-key values are valid.  A multi-key binding must have exactly
+    one non-modifier key: its release is the deliberate toggle edge, provided
+    every modifier was held when that key went down and remains held when it
+    comes up.
+    """
+    if not isinstance(value, str):
+        return None
+    tokens = frozenset(
+        _AVA_CHORD_ALIASES.get(part.strip().lower(), part.strip().lower())
+        for part in value.split('+') if part.strip()
+    )
+    if not tokens or 'mouse4' in tokens or 'mouse5' in tokens:
+        return None
+    ordinary = tokens - _AVA_CHORD_MODIFIERS
+    if len(tokens) == 1:
+        return tokens, next(iter(tokens))
+    if len(ordinary) != 1:
+        return None
+    return tokens, next(iter(ordinary))
+
+
+def _ava_event_tokens(key) -> frozenset[str]:
+    """Normalised names represented by one pynput key event.
+
+    Side-specific modifier bindings retain their side while generic bindings
+    match either side.  This intentionally does not consult global keyboard
+    state; the listener's event stream is the source of truth for an edge.
+    """
+    raw = str(getattr(key, 'name', '') or '').lower()
+    char = str(getattr(key, 'char', '') or '').lower()
+    names = set()
+    if raw:
+        normalized = _AVA_CHORD_ALIASES.get(raw, raw)
+        names.add(normalized)
+        if normalized.startswith('left_'):
+            names.add(normalized.removeprefix('left_'))
+        elif normalized.startswith('right_'):
+            names.add(normalized.removeprefix('right_'))
+    if char:
+        names.add(_AVA_CHORD_ALIASES.get(char, char))
+    return frozenset(names)
 
 
 class HotkeyCluster:
@@ -1096,10 +1158,10 @@ class HotkeyCluster:
         Called from on_key_press / on_key_release for every key event.
         No-ops unless command_mode.button is a keyboard source.
         """
-        # SURGICAL ALT GUARD (Ava Front Door spec v2, D3 "Windows Alt-key
-        # guard" -- Auditor catch): Left-Alt is the OS menu key. Any
-        # keypress that is NOT the Ava command session's own toggle key,
-        # while that session is latched, drops the latch IMMEDIATELY.
+        # SURGICAL AVA LATCH GUARD: while the session is latched, any key
+        # outside the configured chord drops it immediately.  The chord's
+        # own modifiers must be ignored here: pressing Ctrl then Alt before
+        # its final key is the normal activation gesture, not an escape.
         # This keyboard listener has never suppressed OS-level key
         # delivery (pynput_keyboard.Listener is constructed without
         # suppress=True -- see its construction site), so Alt+<key>
@@ -1112,18 +1174,33 @@ class HotkeyCluster:
         # per-feature branch below, and deliberately does not `return` --
         # the key event still falls through to every other handler this
         # method and on_key_press/on_key_release already run for it.
+        ava_cmd_cfg = self.config.get('ava_command_session', {})
+        ava_cmd_key_value = ava_cmd_cfg.get('key', 'left_alt')
+        ava_chord = _ava_chord_spec(ava_cmd_key_value)
+        event_tokens = _ava_event_tokens(key)
+        if getattr(self, '_ava_cmd_chord_config', None) != ava_cmd_key_value:
+            self._ava_cmd_chord_config = ava_cmd_key_value
+            self._ava_cmd_chord_held = set()
+            self._ava_cmd_chord_armed = False
+        chord_held = getattr(self, '_ava_cmd_chord_held', set())
+        if pressed:
+            chord_held.update(event_tokens)
+        self._ava_cmd_chord_held = chord_held
+
         if self.ava_command_session_active:
-            ava_cmd_cfg = self.config.get('ava_command_session', {})
-            ava_cmd_key_name = ava_cmd_cfg.get('key', 'left_alt')
-            ava_cmd_target = _get_pynput_command_key(ava_cmd_key_name)
-            is_own_key = (
-                ava_cmd_target is not None and _matches_pynput_key(key, ava_cmd_target)
-            )
-            if not is_own_key:
+            is_own_chord_key = bool(ava_chord and event_tokens & ava_chord[0])
+            if pressed and not is_own_chord_key:
                 logger.info(
                     "[AVA-CMD] Surgical latch-drop: non-session key pressed while latched"
                 )
+                self._ava_cmd_chord_armed = False
                 self.exit_ava_command_session()
+
+        # Non-final releases can never toggle, so clear them before a later
+        # command-mode/Ava-mode branch can return early.  The final key stays
+        # present until the Ava block below verifies its modifiers.
+        if not pressed and not (ava_chord and ava_chord[1] in event_tokens):
+            chord_held.difference_update(event_tokens)
 
         cfg = self.config.get('command_mode', {})
         cmd_enabled = cfg.get('enabled', False)
@@ -1198,21 +1275,33 @@ class HotkeyCluster:
         # UNCHANGED. A press only arms and timestamps the key; the toggle
         # itself fires on release, and only if held for at least the tap
         # floor -- symmetric for BOTH activation and deactivation presses.
-        ava_cmd_cfg = self.config.get('ava_command_session', {})
-        if ava_cmd_cfg.get('enabled', True):
-            ava_cmd_key_name = ava_cmd_cfg.get('key', 'left_alt')
-            ava_cmd_target = _get_pynput_command_key(ava_cmd_key_name)
-            if ava_cmd_target is not None and _matches_pynput_key(key, ava_cmd_target):
-                if pressed:
-                    if self._ava_cmd_key_held:
-                        return  # auto-repeat -- already armed by the real press
-                    self._ava_cmd_key_held = True
+        if ava_cmd_cfg.get('enabled', True) and ava_chord is not None:
+            required, final_key = ava_chord
+            is_final_key = final_key in event_tokens
+            if pressed and is_final_key:
+                if self._ava_cmd_chord_armed:
+                    return  # auto-repeat -- already armed by the real press
+                # A chord is only armed when all of its modifiers already
+                # were down as the final key was pressed.  The old single-key
+                # values naturally satisfy this with their one token.
+                if required.issubset(chord_held):
+                    self._ava_cmd_chord_armed = True
+                    self._ava_cmd_key_held = True  # compatibility state for existing diagnostics
                     self._ava_cmd_key_press_time = time.monotonic()
-                    return
-                # Release
-                if not self._ava_cmd_key_held:
+                return
+            if not pressed and is_final_key:
+                if not getattr(self, '_ava_cmd_chord_armed', False):
+                    chord_held.difference_update(event_tokens)
                     return  # phantom release with no matching real press
+                self._ava_cmd_chord_armed = False
                 self._ava_cmd_key_held = False
+                # The key-up still appears in chord_held here.  A released
+                # modifier has already been removed, so this rejects Ctrl+Alt
+                # +A when Ctrl or Alt is released before A.
+                still_complete = required.issubset(chord_held)
+                chord_held.difference_update(event_tokens)
+                if not still_complete:
+                    return
                 hold_ms = (time.monotonic() - self._ava_cmd_key_press_time) * 1000
                 if hold_ms < _AVA_CMD_TAP_DEBOUNCE_MS:
                     logger.debug(f"[AVA-CMD] Ghost tap ({hold_ms:.0f}ms) — ignored")
@@ -1221,3 +1310,4 @@ class HotkeyCluster:
                     self.exit_ava_command_session()
                 else:
                     self.enter_ava_command_session()
+                return

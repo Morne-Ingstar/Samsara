@@ -4,6 +4,9 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+- **Ava activation supports key chords** — the Ava Command Session key now
+  captures modifiers plus one key, triggers when that final key is released,
+  and rejects collisions with dictation, command, and wake bindings.
 - **Short sign-off hallucinations are discarded** — isolated Whisper-style
   sign-offs now need weak audio evidence before they are kept out of
   dictation; normal sentences and cleanly spoken words still pass through.
