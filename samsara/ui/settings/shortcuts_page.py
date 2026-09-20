@@ -16,12 +16,6 @@ BASE = [
         "command_mode.button,command_mode.mode"
     ],
     [
-        "Ava command session",
-        "Tap a key or chord to start a command session.",
-        "ava_cmd_key",
-        "ava_command_session.key"
-    ],
-    [
         "Ava held key",
         "Hold a key while speaking to Ava.",
         "ava_mode_key",

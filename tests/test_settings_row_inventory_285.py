@@ -29,11 +29,9 @@ AUDITED_KEYS = set([
     "ava.warm_on_boot",
     "ava_command_session.backend",
     "ava_command_session.enabled",
+    "ava_command_session.interpret_misses",
     "ava_command_session.keep_warm",
-    "ava_command_session.key",
-    "ava_command_session.miss_limit",
     "ava_command_session.model",
-    "ava_command_session.queue_depth_cap",
     "ava_edit.demo_pacing",
     "ava_edit.enabled",
     "ava_edit.model",
@@ -177,6 +175,7 @@ def window(qapp, monkeypatch):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
+    assert len(AUDITED_KEYS) == 149
     bindings = window.config_row_inventory()
     counts = Counter(key for key, _page, _widget in bindings)
     assert AUDITED_KEYS <= counts.keys(), sorted(AUDITED_KEYS - counts.keys())
@@ -190,7 +189,7 @@ def test_every_audited_key_has_one_reachable_editor(window):
 
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
-    assert [len(window._pages[name].base_rows) for name in settings_qt._TAB_NAMES] == [5, 6, 7, 4, 11, 5]
+    assert [len(window._pages[name].base_rows) for name in settings_qt._TAB_NAMES] == [5, 6, 7, 5, 10, 5]
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}
 
 

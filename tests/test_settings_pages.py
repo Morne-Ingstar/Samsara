@@ -67,11 +67,8 @@ KEYS_BEFORE_SPLIT = {
         'accessibility.ava_captions_linger_s', 'accessibility.ava_captions_position',
     ],
     "_build_modes_tab": [
-        'ava_command_session.backend',
-        'ava_command_session.inactivity_timeout_s', 'ava_command_session.keep_warm',
-        'ava_command_session.key', 'ava_command_session.miss_limit', 'ava_command_session.model',
-        'ava_command_session.queue_depth_cap', 'ava_command_session.ready_cue_dir',
-        'ava_command_session.ready_cue_enabled', 'ava_command_session.shortlist_size',
+        'ava_command_session.backend', 'ava_command_session.keep_warm',
+        'ava_command_session.model',
         'ava_mode_key', 'cancel_hotkey', 'command_hotkey',
         'command_mode.abort_phrases', 'command_mode.ava_tts_half_duplex',  # 9dc560f
         'command_mode.button',

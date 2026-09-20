@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from samsara import ai_preferences, config_defaults, session_modes
+from samsara import config_defaults, session_modes
 from samsara.constants import (
     DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
@@ -59,23 +59,6 @@ def _normalised_binding(combo: str) -> frozenset:
         for token in str(combo or '').split('+') if token.strip()
     )
 
-
-def _valid_ava_session_chord(combo: str) -> bool:
-    """Allow one old single key, or modifiers plus one release key."""
-    tokens = _normalised_binding(combo)
-    modifiers = {
-        'ctrl', 'shift', 'alt', 'altgr', 'win',
-        'left_ctrl', 'right_ctrl', 'left_shift', 'right_shift', 'left_alt', 'right_alt',
-    }
-    return bool(tokens) and (len(tokens) == 1 or len(tokens - modifiers) == 1)
-
-
-class _AvaSessionHotkeyButton(_HotkeyButton):
-    """The captured-hotkey editor with a settings refresh compatibility seam."""
-
-    def setCurrentText(self, value: str) -> None:
-        self._combo = _AI_CMD_KEY_OPTIONS.get(str(value), str(value))
-        self.setText(self._idle_text(self._combo))
 
 # Canonical alias map: normalise rctrl/right_ctrl etc. before comparing
 _KEY_NORMALIZE: dict = {
@@ -384,8 +367,6 @@ class ModesPage:
         return wrap
 
     def _build_modes_tab(self):
-        from samsara.ava_command_session import _DEFAULTS as _AIMD  # noqa: PLC0415
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -403,8 +384,7 @@ class ModesPage:
         ww_cfg = cfg.get('wake_word_config', {}) or {}
         ww_audio = ww_cfg.get('audio', {}) or {}
         cmd_cfg = cfg.get('command_mode', {}) or {}
-        ai_cfg = cfg.get('ava_command_session', {}) or {}
-
+        ava_cfg = cfg.get('ava_command_session', {}) or {}
         def _add_row(card_layout, label, description, widget, width=280):
             card_layout.addLayout(
                 self._setting_row(
@@ -435,6 +415,40 @@ class ModesPage:
                 "}"
             )
             return button
+
+        # These controls are assembled into Ava destination rows below.  They
+        # remain source controls here so their existing runtime wiring and
+        # save callback stay intact, without retaining a Modes card.
+        backend_combo = QComboBox()
+        backend_combo.addItems(['Local (Ollama)', 'Cloud'])
+        backend_combo.setCurrentText(
+            'Cloud' if ava_cfg.get('backend', 'ollama') == 'cloud' else 'Local (Ollama)'
+        )
+        self._widgets['ava_cmd_backend'] = backend_combo
+        layout.addLayout(self._setting_row(
+            'Backend',
+            'Local uses Ollama; Cloud uses your configured Ava provider.',
+            backend_combo,
+            control_width=260,
+        ))
+
+        model_edit = QLineEdit()
+        model_edit.setText(str(ava_cfg.get('model', 'llama3.2:3b')))
+        model_edit.setPlaceholderText('e.g. llama3.2:3b')
+        self._widgets['ava_cmd_model'] = model_edit
+        layout.addLayout(self._setting_row(
+            'Model', 'Only used for Local backend.', model_edit, control_width=340,
+        ))
+
+        keep_warm = QCheckBox()
+        keep_warm.setChecked(bool(ava_cfg.get('keep_warm', False)))
+        self._widgets['ava_cmd_keep_warm'] = keep_warm
+        layout.addLayout(self._setting_row(
+            'Keep model warm',
+            'Keep the local model ready between requests.',
+            keep_warm,
+            control_width=220,
+        ))
 
         # One tab-wide collision banner, shown above every section.
         collision_warn = QLabel("")
@@ -876,161 +890,6 @@ class ModesPage:
             self._setting_row("Streaming preview", _STREAMING_PREVIEW_DESC, streaming_cb, control_width=220)
         )
 
-        # ---- Card 4: Ava Command Session ---------------------------------
-        ai_card, ai_layout = self._section_card(
-            "Ava Command Session",
-            "Command-first latched voice session: speak short commands, Ava resolves and confirms.",
-        )
-        layout.addWidget(ai_card)
-
-        ai_intro = QLabel(
-            "Latch into a hands-free session and speak commands directly. Falls back to "
-            "AI resolution (local or cloud) only when no exact command matches."
-        )
-        ai_intro.setWordWrap(True)
-        ai_intro.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
-        ai_layout.addWidget(ai_intro)
-
-        ava_status = QLabel(
-            ("Ava is on. " if ai_preferences.ava_master_enabled(cfg) else "Ava is off. ")
-            + "Turn it on or off in Settings > Ava / Cloud."
-        )
-        ava_status.setWordWrap(True)
-        ava_status.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-        )
-        self._widgets['ava_master_status'] = ava_status
-        ai_layout.addWidget(ava_status)
-
-        key_val = str(ai_cfg.get('key', _AIMD['key']))
-        last_valid_ava_key = [key_val]
-
-        def _ava_key_changed() -> None:
-            candidate = ai_key_button.combo
-            conflicts = self._ava_session_key_conflicts(candidate)
-            if not _valid_ava_session_chord(candidate):
-                reason = "use one key, or modifiers plus one key"
-            elif conflicts:
-                reason = "it duplicates " + ", ".join(conflicts)
-            else:
-                last_valid_ava_key[0] = candidate
-                self._ava_cmd_key_rejection = ""
-                self._check_modes_collisions()
-                return
-            ai_key_button._combo = last_valid_ava_key[0]
-            ai_key_button.setText(ai_key_button._idle_text(last_valid_ava_key[0]))
-            self._ava_cmd_key_rejection = f"Ava Command Session key was not changed: {reason}."
-            self._check_modes_collisions()
-
-        ai_key_button = _AvaSessionHotkeyButton(key_val, on_change=_ava_key_changed)
-        self._widgets['ava_cmd_key'] = ai_key_button
-        _add_row(
-            ai_layout,
-            "Activation key",
-            "Press a key, or modifiers plus one key, to latch the Ava command session.",
-            ai_key_button,
-            width=260,
-        )
-
-        ai_adv_button = _disclosure_button("Show AI backend options")
-        ai_adv = QWidget()
-        # Same cascade cause as the QCheckBox/QLabel fixes: a bare QWidget
-        # used purely as a disclosure-panel container has no background-
-        # color of its own, so it otherwise paints the QMainWindow, QWidget
-        # rule's BG0 across every row inside it when expanded, on top
-        # of this card. Scoped by objectName rather than a bare/unqualified
-        # "background: transparent;" -- confirmed (see mic_row_widget above)
-        # that the unqualified form leaks into the ancestor stylesheet
-        # cascade and strips a child QPushButton's app-level background-
-        # color, leaving it rendered unstyled/grey; scoping by objectName
-        # avoids that regardless of which control types end up in here.
-        ai_adv.setObjectName("aiAdvancedPanel")
-        ai_adv.setStyleSheet("QWidget#aiAdvancedPanel { background-color: transparent; }")
-        ai_adv_layout = QVBoxLayout(ai_adv)
-        ai_adv_layout.setContentsMargins(0, 0, 0, 0)
-        ai_adv_layout.setSpacing(8)
-        ai_adv.setVisible(False)
-
-        def _toggle_ai_adv(checked: bool) -> None:
-            ai_adv.setVisible(checked)
-            ai_adv_button.setText(
-                "Hide AI backend options" if checked else "Show AI backend options"
-            )
-        ai_adv_button.toggled.connect(_toggle_ai_adv)
-
-        backend_val = ai_cfg.get('backend', _AIMD['backend'])
-        backend_combo = QComboBox()
-        backend_combo.addItems(['Local (Ollama)', 'Cloud'])
-        backend_combo.setCurrentText('Cloud' if backend_val == 'cloud' else 'Local (Ollama)')
-        self._widgets['ava_cmd_backend'] = backend_combo
-        ai_adv_layout.addLayout(
-            self._setting_row(
-            "Backend",
-            "Local uses Ollama; Cloud uses your configured Ava / Cloud provider.",
-            backend_combo,
-            control_width=260,
-            )
-        )
-
-        model_edit = QLineEdit()
-        model_edit.setText(ai_cfg.get('model', _AIMD['model']))
-        model_edit.setPlaceholderText("e.g. llama3.2:3b")
-        model_edit.setEnabled(backend_val != 'cloud')
-        self._widgets['ava_cmd_model'] = model_edit
-        ai_adv_layout.addLayout(
-            self._setting_row(
-            "Model",
-            "Only used for Local backend.",
-            model_edit,
-            control_width=340,
-            )
-        )
-
-        def _update_model_enabled():
-            model_edit.setEnabled(backend_combo.currentText() == 'Local (Ollama)')
-        backend_combo.currentIndexChanged.connect(lambda _: _update_model_enabled())
-
-        keep_warm = QCheckBox()
-        keep_warm.setChecked(bool(ai_cfg.get('keep_warm', _AIMD['keep_warm'])))
-        self._widgets['ava_cmd_keep_warm'] = keep_warm
-        ai_adv_layout.addLayout(
-            self._setting_row(
-            "Keep model warm",
-            "Pre-load local model when the session latches to reduce first-utterance latency.",
-            keep_warm,
-            control_width=220,
-            )
-        )
-
-        queue_spin = QSpinBox()
-        queue_spin.setRange(1, 10)
-        queue_spin.setValue(int(ai_cfg.get('queue_depth_cap', _AIMD['queue_depth_cap'])))
-        self._widgets['ava_cmd_queue_depth'] = queue_spin
-        ai_adv_layout.addLayout(
-            self._setting_row(
-            "Queue depth",
-            "Max queued utterances before dropping oldest entries.",
-            queue_spin,
-            control_width=180,
-            )
-        )
-
-        miss_limit_spin = QSpinBox()
-        miss_limit_spin.setRange(1, 20)
-        miss_limit_spin.setValue(int(ai_cfg.get('miss_limit', _AIMD['miss_limit'])))
-        self._widgets['ava_cmd_miss_limit'] = miss_limit_spin
-        ai_adv_layout.addLayout(
-            self._setting_row(
-            "Miss limit",
-            "Consecutive unresolved utterances before the session exits with feedback.",
-            miss_limit_spin,
-            control_width=180,
-            )
-        )
-
-        ai_layout.addWidget(ai_adv_button)
-        ai_layout.addWidget(ai_adv)
-
         # ---- Card 5: Ava shortcut ---------------------------------------
         ava_card, ava_layout = self._section_card(
             "Ava Assistant",
@@ -1040,7 +899,7 @@ class ModesPage:
 
         # 08d: the runtime resolves ava_mode_key with _get_pynput_command_key
         # (single named keys only) -- a captured combo used to disable Ava
-        # silently. Same option list as the Ava Command Session key.
+        # silently. Same option list as the retired command-session key.
         ava_key_combo = QComboBox()
         ava_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
         stored_ava_key = str(cfg.get('ava_mode_key', 'right_alt'))
@@ -1318,16 +1177,15 @@ class ModesPage:
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
 
-            if 'ava_cmd_key' in self._widgets:
-                ai_cfg_out = dict(self.app.config.get('ava_command_session', {}) or {})
-                ai_key = self._widgets['ava_cmd_key']
-                ai_cfg_out['key']             = ai_key.combo if isinstance(ai_key, _HotkeyButton) else _AIMD['key']
-                ai_cfg_out['backend']         = 'cloud' if self._widgets['ava_cmd_backend'].currentText() == 'Cloud' else 'ollama'
-                ai_cfg_out['model']           = self._widgets['ava_cmd_model'].text().strip()
-                ai_cfg_out['keep_warm']       = self._widgets['ava_cmd_keep_warm'].isChecked()
-                ai_cfg_out['queue_depth_cap'] = self._widgets['ava_cmd_queue_depth'].value()
-                ai_cfg_out['miss_limit']      = self._widgets['ava_cmd_miss_limit'].value()
-                updates['ava_command_session'] = ai_cfg_out
+            if 'ava_cmd_backend' in self._widgets:
+                session_cfg = dict(self.app.config.get('ava_command_session', {}) or {})
+                session_cfg['backend'] = (
+                    'cloud' if self._widgets['ava_cmd_backend'].currentText() == 'Cloud'
+                    else 'ollama'
+                )
+                session_cfg['model'] = self._widgets['ava_cmd_model'].text().strip()
+                session_cfg['keep_warm'] = self._widgets['ava_cmd_keep_warm'].isChecked()
+                updates['ava_command_session'] = session_cfg
 
             staged_consent = getattr(self, "_ava_consent_staged", None)
             if staged_consent is not None:
@@ -1342,28 +1200,11 @@ class ModesPage:
         scroll.setWidget(container)
         return scroll
 
-    def _ava_session_key_conflicts(self, candidate: str) -> list[str]:
-        """Exact active-binding collisions that reject Ava's captured chord."""
-        candidate_norm = _normalised_binding(candidate)
-        if not candidate_norm:
-            return []
-        watched = (
-            ('hotkey', 'Record'),
-            ('command_hotkey', 'Command only'),
-            ('wake_word_hotkey', 'Toggle wake word'),
-        )
-        conflicts = []
-        for config_key, label in watched:
-            widget = self._widgets.get(config_key)
-            if isinstance(widget, _HotkeyButton) and _normalised_binding(widget.combo) == candidate_norm:
-                conflicts.append(label)
-        return conflicts
-
     def _check_modes_collisions(self) -> None:
         """Tab-wide activation-binding collision checker for the Modes tab.
 
-        Collects every _HotkeyButton combo plus the command-mode button and
-        the AI-command key, normalizes each into a set of per-token keys
+        Collects every _HotkeyButton combo plus the command-mode button,
+        normalizes each into a set of per-token keys
         (so multi-key combos like 'ctrl+shift' compare correctly), then
         flags exact-duplicate sets as errors and strict-subset relationships
         (e.g. 'ctrl+shift' vs 'ctrl+shift+a') as "may shadow" warnings.
@@ -1374,12 +1215,6 @@ class ModesPage:
         warn = self._widgets.get('modes_collision_warn')
         if warn is None:
             return
-        rejection = getattr(self, '_ava_cmd_key_rejection', '')
-        if rejection:
-            warn.setText("Key collision: " + rejection)
-            warn.setVisible(True)
-            return
-
         hotkey_labels = {
             'hotkey':            'Record',
             'continuous_hotkey': 'Toggle continuous',
@@ -1411,10 +1246,6 @@ class ModesPage:
         if cmd_btn_widget is not None:
             raw = _CMD_BUTTON_OPTIONS.get(cmd_btn_widget.currentText(), cmd_btn_widget.currentText())
             bindings.append(("Command Mode button", raw))
-
-        ai_key_widget = self._widgets.get('ava_cmd_key')
-        if isinstance(ai_key_widget, _HotkeyButton) and ai_key_widget.combo:
-            bindings.append(("Ava Command Session key", ai_key_widget.combo))
 
         normed = [(label, combo, _normalised_binding(combo)) for label, combo in bindings]
 

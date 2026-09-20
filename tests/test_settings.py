@@ -252,8 +252,7 @@ class TestSettingsWindowConstruction:
         win = _SettingsWindow(_StubApp())
         rows = {row.title: row for row in win._pages['Shortcuts'].base_rows}
         for title, keys in [('Session button', ['cmd_mode', 'cmd_tab_button']),
-                            ('Primary dictation', ['mode', 'hotkey']),
-                            ('Ava command session', ['ava_cmd_key'])]:
+                            ('Primary dictation', ['mode', 'hotkey'])]:
             assert all(rows[title].isAncestorOf(win._widgets[key]) for key in keys)
 
 
@@ -320,20 +319,6 @@ class TestSidebarGrouping:
 class TestModesCollisionDetection:
     """Generalized Modes-tab-wide activation-binding collision checker."""
 
-    def test_exact_duplicate_shows_banner_naming_both(self, qapp):
-        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
-        win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))  # non-current stack pages report not-visible
-
-        win._widgets['ava_mode_key'].setCurrentText('Right Ctrl')     # 08d: named-key combo
-        win._widgets['ava_cmd_key'].setCurrentText('Right Ctrl')
-        win._check_modes_collisions()
-
-        warn = win._widgets['modes_collision_warn']
-        assert warn.isVisibleTo(win)
-        assert 'Ava mode' in warn.text()
-        assert 'Ava Command Session key' in warn.text()
-
     def test_staged_thought_binding_participates_in_collision_warning(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
@@ -370,25 +355,6 @@ class TestModesCollisionDetection:
         assert 'may shadow' in warn.text()
         assert 'Record' in warn.text()
         assert 'Toggle continuous' in warn.text()
-
-    def test_hotkey_capture_triggers_recheck(self, qapp):
-        """_HotkeyButton's on_change hook fires the collision check without
-        the caller needing to call it manually."""
-        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
-        win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
-
-        undo_btn = win._widgets['undo_hotkey']          # a real _HotkeyButton (Ava's is a combo since 08d)
-        ai_key_combo = win._widgets['ava_cmd_key']
-        ai_key_combo.setCurrentText('Right Ctrl')
-
-        undo_btn._held = {'right_ctrl'}
-        undo_btn._finish_capture()
-
-        warn = win._widgets['modes_collision_warn']
-        assert warn.isVisibleTo(win)
-        assert 'Undo' in warn.text() and 'Ava Command Session key' in warn.text()
-
 
 class TestMouseMainHotkeyCapture:
     """The primary dictation key may be Mouse 4/5; every other hotkey stays keyboard-only."""
@@ -558,6 +524,12 @@ class TestApplyAndCloseSnapshot:
         })
         expected.pop('ava_mode_enabled', None)
         expected.setdefault('ava_command_session', {}).pop('enabled', None)
+        for key in (
+            'key', 'miss_limit', 'queue_depth_cap', 'inactivity_timeout_s',
+            'ready_cue_dir', 'ready_cue_enabled', 'shortlist_size',
+        ):
+            expected['ava_command_session'].pop(key, None)
+        expected['ava_command_session']['interpret_misses'] = False
         # Queue 57 delta: command_mode.tts_char_limit gained a Settings
         # control, so Apply now writes its effective value (default 50).
         expected.setdefault('command_mode', {})['tts_char_limit'] = 50
