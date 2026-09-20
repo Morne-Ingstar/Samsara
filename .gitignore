@@ -101,3 +101,6 @@ transcript_session.md
 /_internal/
 /ui_proof/
 /perf_artifacts/
+
+reports/
+AVA_MEMORY_PLAN.md
