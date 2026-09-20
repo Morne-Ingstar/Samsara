@@ -4,6 +4,9 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+- **Short sign-off hallucinations are discarded** — isolated Whisper-style
+  sign-offs now need weak audio evidence before they are kept out of
+  dictation; normal sentences and cleanly spoken words still pass through.
 - **Todoist tasks are opt-in** — the local task list remains the durable default. When you turn on Todoist and enter your own token, only task text you add by voice is sent to Todoist's servers.
 
 ## [0.30.0-beta.2] - 2026-09-19

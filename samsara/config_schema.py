@@ -119,6 +119,10 @@ SETTINGS_SCHEMA = {
         "default": "clean",
         "tab": "general",
     },
+    # Final text-only backstop for short Whisper sign-off hallucinations.
+    # No Settings row: this stays on by default and is only an escape hatch
+    # while its real-world false-positive rate is dogfooded.
+    "dictation.signoff_filter": {"type": "bool", "default": True, "tab": "advanced"},
 
     # -------------------------------------------------------------------------
     # Hotkeys tab

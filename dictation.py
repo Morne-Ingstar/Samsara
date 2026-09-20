@@ -443,6 +443,7 @@ from samsara.transcript_gates import (
     _is_quality_exhausted, _keep_low_confidence_long_chunk,
     _apply_segment_quality_gates,
 )
+from samsara.hallucination_filter import SignoffContext, is_signoff_hallucination
 # Queue 151: these audio helpers are pure module-level code. Re-export them
 # so existing dictation.<name> users retain their compatibility path.
 from samsara.audio_tools import (
@@ -7009,6 +7010,23 @@ class DictationApp:
                 logger.debug(f"[DIAG] hands-free record failed: {_diag_exc}")
             text = self.voice_training_window.apply_corrections(text)
 
+            _dropped, _reason = is_signoff_hallucination(
+                text,
+                SignoffContext(
+                    seg_list, audio_duration_s=audio_duration,
+                    enabled=config_defaults.cfg_get(self.config, 'dictation.signoff_filter'),
+                ),
+            )
+            if _dropped:
+                logger.info('[HALLUCINATION] dropped: %s (%s)', text, _reason)
+                self._log_cmd_utt_dropped('signoff_hallucination', _capture_mode, audio_duration)
+                try:
+                    from samsara.session_modes import CHIP_CROSS
+                    self._show_outcome_chip(f'{CHIP_CROSS} no speech', 'error')
+                except Exception as exc:
+                    logger.debug(f'[CMD-UTT] sign-off chip failed: {exc}')
+                return
+
             if not text:
                 logger.debug('[CMD-UTT] Empty transcription')
                 self._log_cmd_utt_dropped('empty_transcription', _capture_mode, audio_duration)
@@ -11675,6 +11693,18 @@ class DictationApp:
 
                 is_command_mode = ownership.is_command
                 is_ava_mode = ownership.is_ava
+
+                if text:
+                    _dropped, _reason = is_signoff_hallucination(
+                        text,
+                        SignoffContext(
+                            _diag_all_segs, audio_duration_s=audio_duration,
+                            enabled=config_defaults.cfg_get(self.config, 'dictation.signoff_filter'),
+                        ),
+                    )
+                    if _dropped:
+                        logger.info('[HALLUCINATION] dropped: %s (%s)', text, _reason)
+                        text = ''
 
                 if text:
                     text_lower = text.lower().strip()
