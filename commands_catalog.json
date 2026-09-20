@@ -8686,7 +8686,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "write",
-      "source": "plugins/commands/tasks.py:57",
+      "source": "plugins/commands/tasks.py:73",
       "undoable": true,
       "verb": "add",
       "whole_utterance": false
@@ -8705,7 +8705,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "destructive",
-      "source": "plugins/commands/tasks.py:146",
+      "source": "plugins/commands/tasks.py:207",
       "undoable": false,
       "verb": "clear",
       "whole_utterance": false
@@ -8732,7 +8732,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "write",
-      "source": "plugins/commands/tasks.py:100",
+      "source": "plugins/commands/tasks.py:161",
       "undoable": false,
       "verb": "complete",
       "whole_utterance": false
@@ -8751,7 +8751,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "ui",
-      "source": "plugins/commands/tasks.py:87",
+      "source": "plugins/commands/tasks.py:148",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -8771,7 +8771,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "read",
-      "source": "plugins/commands/tasks.py:163",
+      "source": "plugins/commands/tasks.py:224",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -8795,7 +8795,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "destructive",
-      "source": "plugins/commands/tasks.py:123",
+      "source": "plugins/commands/tasks.py:184",
       "undoable": false,
       "verb": "remove",
       "whole_utterance": false
@@ -8816,9 +8816,46 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "ui",
-      "source": "plugins/commands/tasks.py:75",
+      "source": "plugins/commands/tasks.py:136",
       "undoable": true,
       "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "sync my tasks",
+        "sync tasks"
+      ],
+      "args": [],
+      "canonical_id": "tasks.sync_tasks",
+      "description": "sync tasks",
+      "kind": "plugin",
+      "object": "tasks",
+      "pack": "tasks",
+      "plugin": "tasks",
+      "risk": "write",
+      "source": "plugins/commands/tasks.py:95",
+      "undoable": false,
+      "verb": "sync",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read today",
+        "todays tasks",
+        "whats on today"
+      ],
+      "args": [],
+      "canonical_id": "tasks.whats_on_today",
+      "description": "whats on today",
+      "kind": "plugin",
+      "object": "on_today",
+      "pack": "tasks",
+      "plugin": "tasks",
+      "risk": "read",
+      "source": "plugins/commands/tasks.py:117",
+      "undoable": true,
+      "verb": "whats",
       "whole_utterance": false
     },
     {

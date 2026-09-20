@@ -1,8 +1,8 @@
 """Tasks plugin — local task list with voice management.
 
-Tasks are stored locally only in samsara/tasks_store.py. This plugin contains
-no network, account-sync, or background-delivery path; see CHANGELOG.md for
-the v0.21.1 removal of the obsolete Arcana forwarding code.
+Tasks are stored locally in samsara/tasks_store.py first. Todoist delivery is
+strictly opt-in: when both its Settings toggle and personal token are present,
+the spoken task text is sent to Todoist's servers in a background thread.
 
 Voice commands:
   "Jarvis, add to list buy groceries"
@@ -54,6 +54,22 @@ def _parse_position(remainder):
     return int(m.group()) if m else None
 
 
+def _todoist_token(app):
+    todoist = ((getattr(app, "config", {}) or {}).get("tasks", {}) or {}).get("todoist", {}) or {}
+    token = str(todoist.get("api_token", "")).strip()
+    return token if todoist.get("enabled") and token else ""
+
+
+def _deliver(app, task):
+    from samsara import todoist_client
+    try:
+        tasks_store.set_todoist_result(task["id"], todoist_id=todoist_client.quick_add(_todoist_token(app), task["text"]))
+        _speak(app, f"Added to Todoist: {task['text']}.")
+    except Exception:
+        tasks_store.set_todoist_result(task["id"], pending=True)
+        _speak(app, "Saved locally; Todoist didn't take it.")
+
+
 @command(
     "add to list",
     aliases=["add to tasks", "todo", "add to the list", "add task", "new task"],
@@ -66,9 +82,54 @@ def handle_add_to_list(app, remainder="", **kwargs):
         _speak(app, "What should I add to your list?")
         return True
     text = remainder.strip()
-    tasks_store.add_task(text)
+    task = tasks_store.add_task(text)
     _refresh_overlay()
-    _speak(app, f"Added: {text}.")
+    if token := _todoist_token(app):
+        from samsara.runtime import thread_registry
+        thread_registry.spawn("tasks-todoist-add", _deliver, args=(app, task), daemon=True)
+    else:
+        _speak(app, f"Added: {text}.")
+    return True
+
+
+@command("sync tasks", aliases=["sync my tasks"], pack="tasks", risk_class="write")
+def handle_sync_tasks(app, remainder="", **kwargs):
+    token = _todoist_token(app)
+    if not token:
+        _speak(app, "Todoist is off.")
+        return True
+    pending = tasks_store.get_todoist_pending()
+    def _sync():
+        from samsara import todoist_client
+        sent = 0
+        for task in pending:
+            try:
+                tasks_store.set_todoist_result(task["id"], todoist_id=todoist_client.quick_add(token, task["text"]))
+                sent += 1
+            except Exception:
+                pass
+        _speak(app, f"Synced {sent} task{'s' if sent != 1 else ''} to Todoist.")
+    from samsara.runtime import thread_registry
+    thread_registry.spawn("tasks-todoist-sync", _sync, daemon=True)
+    return True
+
+
+@command("what's on today", aliases=["today's tasks", "read today"], pack="tasks", risk_class="read")
+def handle_today_tasks(app, remainder="", **kwargs):
+    token = _todoist_token(app)
+    if not token:
+        _speak(app, "Todoist is off.", category="readback")
+        return True
+    def _read():
+        from samsara import todoist_client
+        try:
+            items = todoist_client.today(token)
+            if not items: _speak(app, "Nothing is due today.", category="readback")
+            else: _speak(app, "Today: " + ". ".join(items[:READBACK_ITEM_LIMIT]) + ".", category="readback")
+        except Exception:
+            _speak(app, "I couldn't read Todoist today.", category="readback")
+    from samsara.runtime import thread_registry
+    thread_registry.spawn("tasks-todoist-today", _read, daemon=True)
     return True
 
 

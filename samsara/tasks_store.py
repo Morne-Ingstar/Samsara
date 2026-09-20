@@ -51,6 +51,24 @@ def add_task(text: str) -> dict:
         return dict(task)
 
 
+def set_todoist_result(task_id: int, *, todoist_id: str | None = None, pending: bool = False) -> bool:
+    """Record delivery state without ever replacing the durable local task."""
+    with _lock:
+        for task in _data["tasks"]:
+            if task["id"] == task_id:
+                if todoist_id is not None:
+                    task["todoist_id"] = str(todoist_id)
+                task["todoist_pending"] = bool(pending)
+                _save()
+                return True
+        return False
+
+
+def get_todoist_pending() -> list:
+    with _lock:
+        return [dict(task) for task in _data["tasks"] if task.get("todoist_pending")]
+
+
 def complete_task(task_id: int) -> bool:
     with _lock:
         for t in _data["tasks"]:

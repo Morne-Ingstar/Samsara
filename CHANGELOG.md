@@ -4,6 +4,8 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
+- **Todoist tasks are opt-in** — the local task list remains the durable default. When you turn on Todoist and enter your own token, only task text you add by voice is sent to Todoist's servers.
+
 ## [0.30.0-beta.2] - 2026-09-19
 
 A beta for testers. The public download remains v0.22.1 while this build is

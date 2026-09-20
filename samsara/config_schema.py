@@ -28,6 +28,8 @@ Cross-field dependencies use one of two forms:
 """
 
 SETTINGS_SCHEMA = {
+    "tasks.todoist.enabled": {"type": "bool", "default": False, "tab": "commands"},
+    "tasks.todoist.api_token": {"type": "str", "default": "", "tab": "commands"},
     # -------------------------------------------------------------------------
     # General tab
     # -------------------------------------------------------------------------

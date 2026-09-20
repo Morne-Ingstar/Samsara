@@ -186,6 +186,61 @@ class CommandsPage:
         layout.addWidget(restart_lbl)
         layout.addSpacing(4)
 
+        # ---- Todoist ------------------------------------------------------
+        layout.addWidget(self._section_title("Todoist"))
+        todoist_cfg = (cfg.get("tasks", {}) or {}).get("todoist", {}) or {}
+        todoist_note = QLabel("When on, tasks you add by voice are sent to Todoist's servers.")
+        todoist_note.setWordWrap(True)
+        todoist_note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(todoist_note)
+        todoist_enabled = QCheckBox("Send new voice tasks to Todoist")
+        todoist_enabled.setChecked(bool(todoist_cfg.get("enabled", False)))
+        todoist_enabled.setMinimumHeight(theme.HIT_TARGET_MIN)
+        layout.addWidget(todoist_enabled)
+        token_row = QHBoxLayout()
+        token_edit = QLineEdit(str(todoist_cfg.get("api_token", "")))
+        token_edit.setObjectName("todoistTokenField")
+        token_edit.setPlaceholderText("Todoist API token")
+        token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        token_edit.setMinimumHeight(theme.HIT_TARGET_MIN)
+        show_token = QPushButton("Show")
+        show_token.setMinimumHeight(theme.HIT_TARGET_MIN)
+        show_token.setMinimumWidth(theme.HIT_TARGET_MIN)
+        def _toggle_token():
+            shown = token_edit.echoMode() == QLineEdit.EchoMode.Normal
+            token_edit.setEchoMode(QLineEdit.EchoMode.Password if shown else QLineEdit.EchoMode.Normal)
+            show_token.setText("Show" if shown else "Hide")
+        show_token.clicked.connect(_toggle_token)
+        token_row.addWidget(token_edit, stretch=1)
+        token_row.addWidget(show_token)
+        layout.addLayout(token_row)
+        todoist_result = QLabel("")
+        todoist_result.setWordWrap(True)
+        todoist_result.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        test_todoist = QPushButton("Test connection")
+        test_todoist.setMinimumHeight(theme.HIT_TARGET_MIN)
+        def _test_todoist():
+            token = token_edit.text().strip()
+            if not token:
+                todoist_result.setText("Enter a Todoist token first.")
+                todoist_result.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px;")
+                return
+            todoist_result.setText("Testing Todoist…")
+            def _run():
+                from samsara import todoist_client
+                try:
+                    todoist_client.today(token)
+                    msg, color = "Todoist connection works.", theme.ACCENT
+                except Exception:
+                    msg, color = "Todoist connection failed.", theme.ERROR
+                qt_runtime.post(lambda: (todoist_result.setText(msg), todoist_result.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_MIN}px;")))
+            thread_registry.spawn("settings-todoist-test", _run, daemon=True)
+        test_todoist.clicked.connect(_test_todoist)
+        layout.addWidget(test_todoist)
+        layout.addWidget(todoist_result)
+        self._widgets.update(todoist_enabled=todoist_enabled, todoist_token=token_edit)
+        layout.addSpacing(8)
+
         # ---- Command Profiles ---------------------------------------------
         layout.addWidget(self._section_title("Command Profiles"))
         profile_entry = QWidget()
@@ -338,6 +393,10 @@ class CommandsPage:
                     if not meta.get('always_on'):
                         new_packs[pack_id] = cb.isChecked()
                 updates['command_packs'] = new_packs
+            updates['tasks'] = {**(self.app.config.get('tasks', {}) or {}), 'todoist': {
+                'enabled': self._widgets['todoist_enabled'].isChecked(),
+                'api_token': self._widgets['todoist_token'].text().strip(),
+            }}
             return updates
         self._save_fns.append(_save)
 
