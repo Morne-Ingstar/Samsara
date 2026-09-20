@@ -243,8 +243,13 @@
         "ctrl",
         "a"
       ],
-      "description": "Selects all text.",
-      "pack": "core"
+      "description": "Selects all text in focused Microsoft Word.",
+      "pack": "core",
+      "scope": {
+        "apps": [
+          "winword.exe"
+        ]
+      }
     },
     "copy": {
       "type": "hotkey",
@@ -1768,8 +1773,13 @@
         "alt",
         "1"
       ],
-      "description": "Applies Heading 1 style (Google Docs/Word).",
-      "pack": "text-editing"
+      "description": "Applies Heading 1 style in focused Microsoft Word.",
+      "pack": "text-editing",
+      "scope": {
+        "apps": [
+          "winword.exe"
+        ]
+      }
     },
     "heading two": {
       "type": "hotkey",
@@ -1779,7 +1789,12 @@
         "2"
       ],
       "description": "Applies Heading 2 style.",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "scope": {
+        "apps": [
+          "winword.exe"
+        ]
+      }
     },
     "heading three": {
       "type": "hotkey",
@@ -1789,7 +1804,12 @@
         "3"
       ],
       "description": "Applies Heading 3 style.",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "scope": {
+        "apps": [
+          "winword.exe"
+        ]
+      }
     },
     "normal text": {
       "type": "hotkey",
@@ -1799,7 +1819,12 @@
         "0"
       ],
       "description": "Applies Normal/Body text style.",
-      "pack": "text-editing"
+      "pack": "text-editing",
+      "scope": {
+        "apps": [
+          "winword.exe"
+        ]
+      }
     },
     "record screen": {
       "type": "hotkey",

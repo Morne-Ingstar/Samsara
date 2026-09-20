@@ -20718,3 +20718,51 @@
 {"id": "workflow_capture.stop_capture", "kind": "sentence", "polarity": "negative", "reject": "workflow_capture.stop_capture", "text": "last night he wrote in the notes that you can end capture whenever it feels right"}
 {"id": "workflow_capture.stop_capture", "kind": "other_command", "polarity": "negative", "reject": "workflow_capture.stop_capture", "text": "end recording"}
 {"id": "workflow_capture.stop_capture", "kind": "nonsense", "polarity": "negative", "reject": "workflow_capture.stop_capture", "text": "banana purple capture quartz noodle"}
+{"accept": ["word.align_center"], "id": "word.align_center", "kind": "exact", "polarity": "positive", "text": "align center"}
+{"id": "word.align_center", "kind": "sentence", "polarity": "negative", "reject": "word.align_center", "text": "I will align center after this sentence"}
+{"accept": ["word.align_left"], "id": "word.align_left", "kind": "exact", "polarity": "positive", "text": "align left"}
+{"id": "word.align_left", "kind": "sentence", "polarity": "negative", "reject": "word.align_left", "text": "I will align left after this sentence"}
+{"accept": ["word.align_right"], "id": "word.align_right", "kind": "exact", "polarity": "positive", "text": "align right"}
+{"id": "word.align_right", "kind": "sentence", "polarity": "negative", "reject": "word.align_right", "text": "I will align right after this sentence"}
+{"accept": ["word.bold_that"], "id": "word.bold_that", "kind": "exact", "polarity": "positive", "text": "bold that"}
+{"id": "word.bold_that", "kind": "sentence", "polarity": "negative", "reject": "word.bold_that", "text": "I will bold that after this sentence"}
+{"accept": ["word.bullet_list"], "id": "word.bullet_list", "kind": "exact", "polarity": "positive", "text": "bullet list"}
+{"id": "word.bullet_list", "kind": "sentence", "polarity": "negative", "reject": "word.bullet_list", "text": "I will bullet list after this sentence"}
+{"accept": ["word.double_spacing"], "id": "word.double_spacing", "kind": "exact", "polarity": "positive", "text": "double spacing"}
+{"id": "word.double_spacing", "kind": "sentence", "polarity": "negative", "reject": "word.double_spacing", "text": "I will double spacing after this sentence"}
+{"accept": ["word.font_bigger"], "id": "word.font_bigger", "kind": "exact", "polarity": "positive", "text": "font bigger"}
+{"id": "word.font_bigger", "kind": "sentence", "polarity": "negative", "reject": "word.font_bigger", "text": "I will font bigger after this sentence"}
+{"accept": ["word.font_size"], "id": "word.font_size", "kind": "exact", "polarity": "positive", "text": "font size 18"}
+{"id": "word.font_size", "kind": "sentence", "polarity": "negative", "reject": "word.font_size", "text": "I will font size 18 after this sentence"}
+{"accept": ["word.font_smaller"], "id": "word.font_smaller", "kind": "exact", "polarity": "positive", "text": "font smaller"}
+{"id": "word.font_smaller", "kind": "sentence", "polarity": "negative", "reject": "word.font_smaller", "text": "I will font smaller after this sentence"}
+{"accept": ["word.italic_that"], "id": "word.italic_that", "kind": "exact", "polarity": "positive", "text": "italic that"}
+{"id": "word.italic_that", "kind": "sentence", "polarity": "negative", "reject": "word.italic_that", "text": "I will italic that after this sentence"}
+{"accept": ["word.justify_text"], "id": "word.justify_text", "kind": "exact", "polarity": "positive", "text": "justify text"}
+{"id": "word.justify_text", "kind": "sentence", "polarity": "negative", "reject": "word.justify_text", "text": "I will justify text after this sentence"}
+{"accept": ["word.line_spacing"], "id": "word.line_spacing", "kind": "exact", "polarity": "positive", "text": "line spacing 1.5"}
+{"id": "word.line_spacing", "kind": "sentence", "polarity": "negative", "reject": "word.line_spacing", "text": "I will line spacing 1.5 after this sentence"}
+{"accept": ["word.numbered_list"], "id": "word.numbered_list", "kind": "exact", "polarity": "positive", "text": "numbered list"}
+{"id": "word.numbered_list", "kind": "sentence", "polarity": "negative", "reject": "word.numbered_list", "text": "I will numbered list after this sentence"}
+{"accept": ["word.one_and_a_half_spacing"], "id": "word.one_and_a_half_spacing", "kind": "exact", "polarity": "positive", "text": "one and a half spacing"}
+{"id": "word.one_and_a_half_spacing", "kind": "sentence", "polarity": "negative", "reject": "word.one_and_a_half_spacing", "text": "I will one and a half spacing after this sentence"}
+{"accept": ["word.redo_in_word"], "id": "word.redo_in_word", "kind": "exact", "polarity": "positive", "text": "redo in word"}
+{"id": "word.redo_in_word", "kind": "sentence", "polarity": "negative", "reject": "word.redo_in_word", "text": "I will redo in word after this sentence"}
+{"accept": ["word.select_line"], "id": "word.select_line", "kind": "exact", "polarity": "positive", "text": "select line"}
+{"id": "word.select_line", "kind": "sentence", "polarity": "negative", "reject": "word.select_line", "text": "I will select line after this sentence"}
+{"accept": ["word.select_paragraph_in_word"], "id": "word.select_paragraph_in_word", "kind": "exact", "polarity": "positive", "text": "select paragraph in word"}
+{"id": "word.select_paragraph_in_word", "kind": "sentence", "polarity": "negative", "reject": "word.select_paragraph_in_word", "text": "I will select paragraph in word after this sentence"}
+{"accept": ["word.select_sentence"], "id": "word.select_sentence", "kind": "exact", "polarity": "positive", "text": "select sentence"}
+{"id": "word.select_sentence", "kind": "sentence", "polarity": "negative", "reject": "word.select_sentence", "text": "I will select sentence after this sentence"}
+{"accept": ["word.select_word"], "id": "word.select_word", "kind": "exact", "polarity": "positive", "text": "select word"}
+{"id": "word.select_word", "kind": "sentence", "polarity": "negative", "reject": "word.select_word", "text": "I will select word after this sentence"}
+{"accept": ["word.set_font"], "id": "word.set_font", "kind": "exact", "polarity": "positive", "text": "set font Aptos"}
+{"id": "word.set_font", "kind": "sentence", "polarity": "negative", "reject": "word.set_font", "text": "I will set font Aptos after this sentence"}
+{"accept": ["word.single_spacing"], "id": "word.single_spacing", "kind": "exact", "polarity": "positive", "text": "single spacing"}
+{"id": "word.single_spacing", "kind": "sentence", "polarity": "negative", "reject": "word.single_spacing", "text": "I will single spacing after this sentence"}
+{"accept": ["word.underline_that"], "id": "word.underline_that", "kind": "exact", "polarity": "positive", "text": "underline that"}
+{"id": "word.underline_that", "kind": "sentence", "polarity": "negative", "reject": "word.underline_that", "text": "I will underline that after this sentence"}
+{"accept": ["word.undo_in_word"], "id": "word.undo_in_word", "kind": "exact", "polarity": "positive", "text": "undo in word"}
+{"id": "word.undo_in_word", "kind": "sentence", "polarity": "negative", "reject": "word.undo_in_word", "text": "I will undo in word after this sentence"}
+{"accept": ["word.word_count"], "id": "word.word_count", "kind": "exact", "polarity": "positive", "text": "word count"}
+{"id": "word.word_count", "kind": "sentence", "polarity": "negative", "reject": "word.word_count", "text": "I will word count after this sentence"}

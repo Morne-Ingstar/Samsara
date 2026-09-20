@@ -53,6 +53,13 @@ PACKS = {
             'opera.exe', 'vivaldi.exe',
         ]},
     },
+    'word': {
+        'label': 'Microsoft Word',
+        'description': 'Focused Word formatting, selection, and word count',
+        'always_on': False,
+        # Match the established browsers-pack default (265).
+        'default_enabled': True,
+    },
     'media': {
         'label': 'Media & Music',
         'description': 'Spotify, play/pause, volume, next/previous track',
@@ -172,7 +179,7 @@ EXE_TO_PACK = {
     "code.exe": "text-editing",
     "notepad++.exe": "text-editing",
     "notepad.exe": "text-editing",
-    "winword.exe": "text-editing",
+    "winword.exe": "word",
     "discord.exe": "discord",
     "flashprint.exe": "3d-printing",
     "hyperion.ng.exe": "smart-home",

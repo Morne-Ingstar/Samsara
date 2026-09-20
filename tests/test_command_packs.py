@@ -21,7 +21,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from samsara.command_registry import CommandEntry, CommandMatcher
-from samsara.command_packs import PACKS, get_enabled_packs, default_pack_config
+from samsara.command_packs import PACKS, get_enabled_packs, default_pack_config, pack_for_exe
 from samsara.command_scope import MatchContext
 
 
@@ -183,6 +183,10 @@ class TestDefaultEnabled:
         for pack_id in PACKS:
             assert pack_id in cfg
 
+    def test_word_pack_matches_the_browser_default_and_focused_app_map(self):
+        assert PACKS['word']['default_enabled'] is PACKS['browsers']['default_enabled'] is True
+        assert pack_for_exe('WINWORD.EXE') == 'word'
+
 
 # =============================================================================
 # commands.json pack coverage
@@ -309,6 +313,15 @@ class TestBrowserPackScope:
     def test_browser_launch_rows_explicitly_opt_out_of_the_focus_scope(self, browser_matcher):
         hit, _remainder = browser_matcher.match("open chrome", MatchContext.for_app("notepad.exe"))
         assert hit is not None and hit.phrase == "open chrome"
+
+    def test_word_style_shortcuts_resolve_only_in_word(self, browser_matcher):
+        word = MatchContext.for_app("winword.exe")
+        other = MatchContext.for_app("notepad.exe")
+        for phrase in ("heading one", "heading two", "heading three", "normal text", "select all"):
+            hit, _remainder = browser_matcher.match(phrase, word)
+            assert hit is not None and hit.phrase == phrase
+            miss, _remainder = browser_matcher.match(phrase, other)
+            assert miss is None
 
     def test_generated_catalog_keeps_browser_scope_and_close_tab_recovery(self):
         from samsara import command_catalog

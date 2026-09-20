@@ -681,6 +681,7 @@ class TestApplyAndCloseSnapshot:
         expected['accessibility'] = {'speech_pace': 'standard'}
         expected['ava_command_session']['keep_warm'] = False
         expected['command_packs'].pop('mouse', None)
+        expected['command_packs']['word'] = True
         expected['tts']['engine'] = 'edge'
         expected['ducking'].pop('enabled', None)
         expected['launch_at_login'] = False
