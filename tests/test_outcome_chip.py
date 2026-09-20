@@ -111,16 +111,20 @@ class TestEveryKindIsMapped:
 # ---------------------------------------------------------------------------
 
 class TestLabels:
-    def test_miss(self):
-        assert outcome_chip("command_miss") == ("MISS", "error")
+    def test_miss_shows_what_was_heard(self):
+        assert outcome_chip("command_miss", {"heard": "switch windy"}) == (
+            "heard: switch windy — not a command", "error")
 
     @pytest.mark.parametrize("kind", ["command_executed", "hands_free_command_executed"])
-    def test_executed_uses_the_first_two_words(self, kind):
-        assert outcome_chip(kind, {"phrase": "switch window now"}) == (
-            f"{CHIP_CHECK} switch window", "success")
+    def test_executed_shows_heard_and_canonical_phrase(self, kind):
+        assert outcome_chip(kind, {"heard": "switch windy", "phrase": "switch window now"}) == (
+            "heard: switch windy — ran switch window", "success")
 
-    def test_executed_without_a_phrase(self):
-        assert outcome_chip("command_executed", {}) == (CHIP_CHECK, "success")
+    def test_suggestion_stays_up_for_its_eight_second_reply_window(self):
+        assert outcome_chip("command_suggestion_pending", {
+            "heard": "switch windy", "phrase": "switch window",
+        }) == ("heard: switch windy — did you mean switch window? say yes or no", "warning")
+        assert chip_ttl_ms("command_suggestion_pending", "warning") == 8000
 
     @pytest.mark.parametrize("mode,label", [
         (SessionMode.COMMAND, "COMMAND"),
@@ -201,7 +205,8 @@ class TestLabels:
             "nothing to correct", "warning")
 
     def test_non_dict_detail_is_tolerated(self):
-        assert outcome_chip("command_executed", None) == (CHIP_CHECK, "success")
+        assert outcome_chip("command_executed", None) == (
+            "heard: (nothing) — ran that", "success")
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +219,7 @@ class TestTtl:
         assert chip_ttl_ms("dictate_staged", chip_kind) is None
 
     def test_default_ttl(self):
-        assert chip_ttl_ms("command_miss", "error") == CHIP_TTL_MS == 1800
+        assert chip_ttl_ms("command_miss", "error") == 4000
 
     @pytest.mark.parametrize("kind", ["dictate_committed", "dictate_injected"])
     def test_typed_is_brief(self, kind):
@@ -405,8 +410,10 @@ def _app():
 class TestWiring:
     def test_dispatch_outcome_reaches_the_indicator(self):
         app = _app()
-        app._show_dispatch_outcome_chip(sm.DispatchOutcome(kind="command_miss"))
-        assert app.listening_indicator.calls == [("show", "MISS", "error", 1800)]
+        app._show_dispatch_outcome_chip(sm.DispatchOutcome(
+            kind="command_miss", detail={"heard": "switch windy"}))
+        assert app.listening_indicator.calls == [(
+            "show", "heard: switch windy — not a command", "error", 4000)]
 
     def test_pending_outcome_is_scheduled_without_a_ttl(self):
         app = _app()
@@ -461,6 +468,9 @@ class TestTestButtonVolume:
 
         class _Stub:
             play_sound = _d.DictationApp.play_sound
+            _resolve_playback_output = _d.DictationApp._resolve_playback_output
+            stop_sound_stream = lambda self: None
+            _start_sound_stream = lambda self: None
 
             def __init__(self):
                 self.config = {"sound_volume": saved, "audio_feedback": True}

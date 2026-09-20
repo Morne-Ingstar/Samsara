@@ -5332,6 +5332,28 @@ class DictationApp:
         except Exception as exc:  # never block the session on a config read
             logger.warning("[SESSION] commit word not applied: %s", exc)
 
+        _suggestion_cache = {"matcher": None, "resolver": None}
+
+        def _command_suggestion_fn(text: str):
+            """Resolve a miss over the current matcher; never build an executor."""
+            matcher = self.command_executor._matcher
+            if _suggestion_cache["matcher"] is not matcher:
+                from samsara.intent.resolve import IntentResolver
+                _suggestion_cache.update(matcher=matcher,
+                                         resolver=IntentResolver(rows=matcher.list_commands()))
+            resolver = _suggestion_cache["resolver"]
+            resolution = resolver.resolve(text)
+            if resolution.kind != "suggest":
+                return None
+            record = resolver.by_id.get(resolution.canonical_id)
+            if not record or record.get("risk") == "destructive":
+                return None
+            if any(bool(arg.get("required")) for arg in record.get("args", ())):
+                return None
+            from samsara.command_catalog import canonical_phrase
+            from samsara.session_modes import CommandSuggestionCandidate
+            return CommandSuggestionCandidate(canonical_phrase(record), record.get("risk", "ui"))
+
         def _command_dispatch_fn(text: str) -> CommandDispatchResult:
             audio_duration = getattr(self, '_current_utterance_duration_s', 0.0)
             # SessionModeManager calls this only after committing an utterance
@@ -5625,6 +5647,7 @@ class DictationApp:
             remove_chars_fn=_remove_chars_fn,
             window_integrity_fn=injection_safety.window_integrity,
             command_dispatch_fn=_command_dispatch_fn,
+            command_suggestion_fn=_command_suggestion_fn,
             agent_dispatch_fn=self._ava_session_agent_dispatch_fn,
             on_mode_change=_on_mode_change,
             on_focus_lock_revert=_on_focus_lock_revert,
@@ -9849,42 +9872,25 @@ class DictationApp:
             return
 
         if intent["type"] == "command_text":
-            # Show what we're doing on the indicator
-            if hasattr(self, 'listening_indicator'):
-                display = text.title() if len(text) < 25 else text[:22].title() + "..."
-                self._schedule_ui(self.listening_indicator.set_mode, display)
-
-            # Try regular command execution (pass original text for word-boundary matching)
-            result, was_command = self.command_executor.process_text(
-                text, self, force_commands=True)
-            if was_command:
-                _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
-                if (result and not _is_repeat_blacklisted(result, _store_cmd)
-                        and self.command_executor.find_command(result) == result):
-                    self._last_command = _store_cmd
-                    self._last_command_name = result
-                if result:
-                    increment_command_count(result)
-                self.wake_word_triggered = False
-                self.app_state = 'asleep'
-                # Arm Layer 3: the wake callback suppresses buffering for the
-                # next 2s so a Chrome launch chime / notification doesn't get
-                # mistaken for a new utterance.
-                self._command_executed_at = time.time()
-                logger.debug("[STATE] command_window -> asleep (command executed)")
-                self._indicator_success_and_reset()
+            # The wake window shares the command lane's dispatcher, outcome
+            # chip and pending suggestion reply. It never creates an executor.
+            outcome = self._ensure_session_mode_manager().dispatch_command_utterance(text)
+            self._handle_session_dispatch_outcome(outcome, text)
+            if outcome.kind == "command_suggestion_pending":
+                # Keep this wake window open solely for its eight-second
+                # yes/no reply; a different utterance returns to normal dispatch.
+                self.wake_word_triggered = True
+                self._start_wake_timeout(8.0)
                 return
-
-            # Not a recognized command -- silently go back to sleep.
-            # DO NOT paste unrecognized text after wake word. If the user
-            # wanted dictation, they'd say "jarvis, type ..." or "jarvis,
-            # dictate". This prevents false wake triggers (e.g. "service"
-            # corrected to "jarvis") from typing garbage into the focused app.
-            logger.info(f"[SKIP] No command match for '{text}' — back to sleep")
             self.wake_word_triggered = False
             self.app_state = 'asleep'
-            logger.debug("[STATE] command_window -> asleep (no match)")
-            self._indicator_reset()
+            if outcome.kind != "command_miss":
+                self._command_executed_at = time.time()
+                logger.debug("[STATE] command_window -> asleep (command dispatched)")
+                self._indicator_success_and_reset()
+            else:
+                logger.info("[SKIP] No command match -- outcome chip shown")
+                self._indicator_reset()
             return
 
         # type == "unknown" -- noise/garbage, back to asleep
@@ -10580,7 +10586,7 @@ class DictationApp:
                     delay_s=2.0,
                 )
 
-    def _start_wake_timeout(self):
+    def _start_wake_timeout(self, timeout_s=None):
         """Start timeout for wake word command.
         
         This is the window for the user to speak a command after saying just the wake word.
@@ -10593,7 +10599,8 @@ class DictationApp:
         # Use a separate, longer timeout for waiting for command after wake word
         ww_config = self.config.get('wake_word_config', {})
         from samsara.speech_pace import effective_value
-        timeout = effective_value(self.config, 'wake_word_config.audio.wake_command_timeout', WAKE_COMMAND_TIMEOUT)
+        timeout = (float(timeout_s) if timeout_s is not None else effective_value(
+            self.config, 'wake_word_config.audio.wake_command_timeout', WAKE_COMMAND_TIMEOUT))
         self.wake_word_timer = thread_registry.timer(
             "dictation.wake_word_reset", timeout, self.reset_wake_word)
     

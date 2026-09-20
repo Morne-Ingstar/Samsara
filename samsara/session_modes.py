@@ -1287,6 +1287,14 @@ class UnitOfWorkStack:
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
+class CommandSuggestionCandidate:
+    """A safe, canonical phrase offered after a command-lane miss."""
+
+    phrase: str
+    risk: str = "ui"
+
+
+@dataclass(frozen=True)
 class CommandDispatchResult:
     """matched: a command CLAIMED the utterance (any state but miss).
     state: the command_registry.DispatchState value -- "completed", "queued",
@@ -1392,7 +1400,25 @@ CHIP_TTL_MS = 1800
 _CHIP_TTL_OVERRIDES = {
     "dictate_committed": 900,
     "dictate_injected": 900,
+    # A miss or a suggested correction must remain long enough to read.
+    "command_miss": 4000,
+    "command_suggestion_pending": 8000,
 }
+
+# OWNER COPY — placeholder. Command-lane wording belongs in this one table so
+# the owner can revise it without hunting through dispatch logic.
+COMMAND_CHIP_COPY = {
+    "miss": "heard: {heard} — not a command",
+    "pack_off": "heard: {heard} — {pack} is off",
+    "suggestion": "heard: {heard} — did you mean {phrase}? say yes or no",
+    "awaiting": "heard: {heard} — {phrase}? yes or no",
+    "executed": "heard: {heard} — ran {phrase}",
+    "working": "heard: {heard} — {phrase}…",
+    "failed": "heard: {heard} — {reason}",
+    "declined": "heard: {heard} — suggestion cancelled",
+}
+_COMMAND_HEARD_MAX = 72
+_COMMAND_SUGGESTION_TIMEOUT_S = 8.0
 
 #: Outcomes that deliberately show NOTHING. "empty" is a discarded
 #: near-silence decode (never activity); "abort" has its own loud session-exit
@@ -1470,6 +1496,14 @@ def _first_two_words(phrase) -> str:
     return " ".join(str(phrase or "").split()[:2])
 
 
+def _heard(detail: dict) -> str:
+    return _short(detail.get("heard"), _COMMAND_HEARD_MAX) or "(nothing)"
+
+
+def _command_copy(key: str, **values) -> str:
+    return COMMAND_CHIP_COPY[key].format(**values)
+
+
 def _command_chip_label(text: str, phrase) -> str:
     """Visible command text plus its catalog id for the outcome ring.
 
@@ -1511,17 +1545,26 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return None
 
     if kind == "command_miss":
+        heard = _heard(detail)
         if detail.get("pack"):
-            return (f"pack off: {_short(detail['pack'])}", "warning")
-        return ("MISS", "error")
+            return (_command_copy("pack_off", heard=heard, pack=_short(detail["pack"])), "warning")
+        return (_command_copy("miss", heard=heard), "error")
+    if kind == "command_suggestion_pending":
+        phrase = _short(detail.get("phrase"), _COMMAND_HEARD_MAX)
+        return (_command_chip_label(
+            _command_copy("suggestion", heard=_heard(detail), phrase=phrase), detail.get("phrase")),
+            "warning")
+    if kind == "command_suggestion_declined":
+        return (_command_copy("declined", heard=_heard(detail)), "warning")
     if kind == "personal_alias_offer":
         missed = _short(detail.get("miss"))
         canonical = _short(detail.get("canonical"))
         return (f"Save '{missed}' as another way to say '{canonical}'? — say save alias", "pending")
     if kind == "command_awaiting_confirmation":
-        verb = _first_two_words(detail.get("phrase"))
-        text = f"{verb}? yes or no" if verb else "yes or no?"
-        return (_command_chip_label(text, detail.get("phrase")), "pending")
+        phrase = _first_two_words(detail.get("phrase"))
+        return (_command_chip_label(
+            _command_copy("awaiting", heard=_heard(detail), phrase=phrase or "that"),
+            detail.get("phrase")), "pending")
     if kind == "command_cancel_window":
         verb = _first_two_words(detail.get("phrase"))
         text = (f"running {verb}{CHIP_ELLIPSIS} say no" if verb else f"running{CHIP_ELLIPSIS} say no")
@@ -1539,27 +1582,30 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         why = answer.split(":", 1)[1] if answer.startswith("refused:") else answer
         return (f"refused: {_short(why)}", "warning")
     if kind in ("command_executed", "hands_free_command_executed"):
-        verb = _first_two_words(detail.get("phrase"))
+        phrase = _first_two_words(detail.get("phrase"))
+        heard = _heard(detail)
         if detail.get("state") in ("queued", "matched"):
-            # Accepted, outcome still to come: an honest "working on it",
-            # never a success tick for work that has not finished.
-            text = f"{verb}{CHIP_ELLIPSIS}" if verb else CHIP_ELLIPSIS
-            return (_command_chip_label(text, detail.get("phrase")), "accent")
-        text = f"{CHIP_CHECK} {verb}" if verb else CHIP_CHECK
-        return (_command_chip_label(text, detail.get("phrase")), "success")
+            return (_command_chip_label(
+                _command_copy("working", heard=heard, phrase=phrase or "working"), detail.get("phrase")),
+                "accent")
+        return (_command_chip_label(
+            _command_copy("executed", heard=heard, phrase=phrase or "that"), detail.get("phrase")),
+            "success")
     if kind == "command_failed" or (kind == "hands_free_command_failed"
                                     and detail.get("state") in ("rejected", "cancelled")):
         state = detail.get("state")
         verb = _first_two_words(detail.get("phrase"))
         if state == "rejected":
-            text = f"refused: {verb}" if verb else "refused"
-            return (_command_chip_label(text, detail.get("phrase")), "warning")
-        if state == "cancelled":
-            text = f"cancelled: {verb}" if verb else "cancelled"
-            return (_command_chip_label(text, detail.get("phrase")), "warning")
-        if not detail.get("reason") and not detail.get("error") and verb:
-            return (_command_chip_label(f"{CHIP_CROSS} {verb}", detail.get("phrase")), "error")
-        return (_command_chip_label(f"{CHIP_CROSS} {_reason(kind, detail)}", detail.get("phrase")), "error")
+            reason = f"refused: {verb}" if verb else "refused"
+        elif state == "cancelled":
+            reason = f"cancelled: {verb}" if verb else "cancelled"
+        elif not detail.get("reason") and not detail.get("error") and verb:
+            reason = f"{CHIP_CROSS} {verb}"
+        else:
+            reason = f"{CHIP_CROSS} {_reason(kind, detail)}"
+        return (_command_chip_label(
+            _command_copy("failed", heard=_heard(detail), reason=reason), detail.get("phrase")),
+            "error" if state not in ("rejected", "cancelled") else "warning")
     if kind == "mode_switch":
         if detail.get("sleep"):
             return ("asleep", "accent")
@@ -1592,6 +1638,15 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
             text = _command_chip_label(text, detail.get("phrase"))
         return (text, "warning")
     # Found in source, not named in the queue-41 brief -- mapped on purpose.
+    if kind == "draft_parked":
+        return ("draft parked", "pending")
+    if kind == "draft_pause_refused":
+        return ("can't park: unclear", "warning")
+    if kind == "draft_pause_unavailable":
+        return ("nothing to park", "warning")
+    if kind == "surface_review_action":
+        return ("review", "accent")
+
     if kind == "dictate_commit_unavailable":
         return ("refused: nothing staged", "warning")
     if kind == "scratch_refuse":
@@ -1715,6 +1770,7 @@ ForegroundHwndResolver = Callable[[], Optional[int]]
 InjectFn = Callable[..., Union[bool, str, InjectionDelivery, None]]
 RemoveCharsFn = Callable[[int], None]
 CommandDispatchFn = Callable[[str], CommandDispatchResult]
+CommandSuggestionFn = Callable[[str], Optional[CommandSuggestionCandidate]]
 HandsFreeCommandProbeFn = Callable[[str], Optional[HandsFreeCommandMatch]]
 # (utterance_text, stage_buffer_context_or_None) -> None. Fire-and-forget from
 # this module's perspective -- the manager never blocks on or observes the
@@ -1747,6 +1803,7 @@ class SessionModeManager:
         remove_chars_fn: RemoveCharsFn,
         command_dispatch_fn: CommandDispatchFn,
         agent_dispatch_fn: AgentDispatchFn,
+        command_suggestion_fn: Optional[CommandSuggestionFn] = None,
         foreground_hwnd_resolver: Optional[ForegroundHwndResolver] = None,
         format_dictate_fn: Optional[FormatDictateFn] = None,
         on_mode_change: Optional[Callable[[SessionMode], None]] = None,
@@ -1789,6 +1846,9 @@ class SessionModeManager:
         # current; a bad value is treated as the default by should_speak().
         self._spoken_notices = SPOKEN_NOTICES_QUESTIONS
         self._pending_clear: Optional[dict] = None
+        # One model-free command correction at a time. It shares the ordinary
+        # pending-answer stage below, so a stray follow-up is never swallowed.
+        self._pending_command_suggestion: Optional[dict] = None
         # Queue 85: {"word", "occurrence", "expected_count", "expires", "source"}
         # while a word clicked in the preview is waiting for its replacement.
         self._pending_correction: Optional[dict] = None
@@ -1880,6 +1940,7 @@ class SessionModeManager:
         # (fail-closed -- apply_edit and the edit_apply undo both refuse).
         self._raw_inject_fn = None
         self._command_dispatch_fn = command_dispatch_fn
+        self._command_suggestion_fn = command_suggestion_fn
         self._agent_dispatch_fn = agent_dispatch_fn
         self._on_mode_change = on_mode_change
         self._on_focus_lock_revert = on_focus_lock_revert
@@ -1953,6 +2014,7 @@ class SessionModeManager:
             self._draft.clear()
         self._dictate_pending_audio = []
         self._pending_clear = None
+        self._pending_command_suggestion = None
         # Queue 99: a new session never inherits an armed "again".
         self._last_scratch_at = None
         self._last_dictate_dispatch_at = None
@@ -2306,6 +2368,10 @@ class SessionModeManager:
             answer = self._pending_reply_fn(text)
             if answer is not None:
                 return DispatchOutcome(kind="pending_reply", detail={"answer": answer})
+
+        suggestion_reply = self._answer_pending_command_suggestion(text)
+        if suggestion_reply is not None:
+            return suggestion_reply
 
         # 1c-84. "bring back my draft": put back what an abort or a confirmed
         # clear set aside. Checked before the lane reads the words, and gated
@@ -3127,19 +3193,95 @@ class SessionModeManager:
             return self._dispatch_ava(text)
         raise AssertionError(f"unhandled SessionMode {self.mode!r}")  # pragma: no cover
 
-    def _dispatch_command(self, text: str) -> DispatchOutcome:
+    def _answer_pending_command_suggestion(self, text: str) -> Optional[DispatchOutcome]:
+        """Answer the command lane's existing pending-answer stage.
+
+        This is deliberately before lane dispatch but after an execution-policy
+        reply: a real staged action keeps ownership of its confirmation.  A
+        non-answer simply drops the suggestion and proceeds normally, so a
+        new command is never eaten by a stale "did you mean" prompt.
+        """
+        pending = self._pending_command_suggestion
+        if pending is None:
+            return None
+        if self._clock() > pending["expires"]:
+            self._pending_command_suggestion = None
+            return None
+        try:
+            from samsara.execution_policy import REPLY_NO, REPLY_YES, classify_reply
+            reply = classify_reply(text)
+        except Exception:  # pragma: no cover - policy import is always available in app
+            return None
+        if reply == REPLY_NO:
+            self._pending_command_suggestion = None
+            return DispatchOutcome(kind="command_suggestion_declined", detail={
+                "heard": pending["heard"], "phrase": pending["phrase"],
+            })
+        if reply != REPLY_YES:
+            self._pending_command_suggestion = None
+            return None
+        self._pending_command_suggestion = None
+        # The only fuzzy step was the offer. The accepted phrase is passed to
+        # the ordinary command dispatcher as a literal whole utterance.
+        outcome = self._dispatch_command(
+            pending["phrase"], heard=pending["heard"], allow_suggestion=False,
+        )
+        outcome.detail["suggested"] = pending["phrase"]
+        return outcome
+
+    def _offer_command_suggestion(self, text: str) -> Optional[DispatchOutcome]:
+        if self._command_suggestion_fn is None:
+            return None
+        try:
+            candidate = self._command_suggestion_fn(text)
+        except Exception as exc:
+            log.warning("[SESSION] command suggestion failed: %s", exc)
+            return None
+        if candidate is None or str(getattr(candidate, "risk", "")) == "destructive":
+            return None
+        phrase = " ".join(str(getattr(candidate, "phrase", "")).split())
+        if not phrase:
+            return None
+        self._pending_command_suggestion = {
+            "heard": _short(text, _COMMAND_HEARD_MAX),
+            "phrase": phrase,
+            "expires": self._clock() + _COMMAND_SUGGESTION_TIMEOUT_S,
+        }
+        return DispatchOutcome(kind="command_suggestion_pending", detail={
+            "heard": self._pending_command_suggestion["heard"], "phrase": phrase,
+        })
+
+    def dispatch_command_utterance(self, text: str) -> DispatchOutcome:
+        """Run a complete command-lane utterance without session switches.
+
+        The wake one-command window uses this same pending-answer and command
+        dispatcher path as a latched COMMAND session. It deliberately does
+        not examine switch or dictation phrases.
+        """
+        with self._dispatch_lock:
+            if self._pending_reply_fn is not None:
+                answer = self._pending_reply_fn(text)
+                if answer is not None:
+                    return DispatchOutcome(kind="pending_reply", detail={"answer": answer})
+            answer = self._answer_pending_command_suggestion(text)
+            return answer if answer is not None else self._dispatch_command(text)
+
+    def _dispatch_command(
+        self, text: str, *, heard: Optional[str] = None, allow_suggestion: bool = True,
+    ) -> DispatchOutcome:
+        heard = _short(text if heard is None else heard, _COMMAND_HEARD_MAX)
         result = self._command_dispatch_fn(text)
         state = _command_state(result)
         if result.matched and state in COMMAND_UNSUCCESSFUL_STATES:
             # Recognised but not carried out: say so, but it is still a
             # command -- not a miss, not dictation, nothing to undo.
             return DispatchOutcome(kind="command_failed", detail={
-                "phrase": result.phrase, "state": state,
+                "phrase": result.phrase, "state": state, "heard": heard,
             })
         if result.matched and getattr(result, "awaiting_confirmation", False):
             # Nothing has run: no undo entry, and never "command_executed".
             return DispatchOutcome(kind="command_awaiting_confirmation", detail={
-                "phrase": result.phrase, "state": state,
+                "phrase": result.phrase, "state": state, "heard": heard,
             })
         if result.matched:
             self._stack.push(StackItem(
@@ -3147,14 +3289,17 @@ class SessionModeManager:
                 mode=SessionMode.COMMAND, timestamp=self._clock(),
             ))
             return DispatchOutcome(kind="command_executed", detail={
-                "phrase": result.phrase, "state": state,
+                "phrase": result.phrase, "state": state, "heard": heard,
             })
         pack = getattr(result, "disabled_pack", None)
         if pack:
             return DispatchOutcome(kind="command_miss", detail={
-                "reason": "pack_disabled", "pack": pack,
+                "reason": "pack_disabled", "pack": pack, "heard": heard,
             })
-        return DispatchOutcome(kind="command_miss")
+        suggested = self._offer_command_suggestion(text) if allow_suggestion else None
+        if suggested is not None:
+            return suggested
+        return DispatchOutcome(kind="command_miss", detail={"heard": heard})
 
     def _dispatch_hands_free_command(
         self, match: HandsFreeCommandMatch, *, deferred: bool = False,
@@ -3170,6 +3315,7 @@ class SessionModeManager:
                 return DispatchOutcome(kind="command_cancel_window", detail={
                     "phrase": match.phrase,
                     "dispatch_text": match.dispatch_text,
+                    "heard": _short(match.dispatch_text, _COMMAND_HEARD_MAX),
                     "delay_s": float(delay),
                     "pending_chars": len(self._dictate_pending_buffer),
                     "mode_retained": self.mode,
@@ -3191,6 +3337,7 @@ class SessionModeManager:
             return DispatchOutcome(kind="hands_free_command_failed", detail={
                 "phrase": match.phrase,
                 "dispatch_text": match.dispatch_text,
+                "heard": _short(match.dispatch_text, _COMMAND_HEARD_MAX),
                 "committed": commit_detail,
                 "state": state,
             })
@@ -3199,6 +3346,7 @@ class SessionModeManager:
             return DispatchOutcome(kind="command_awaiting_confirmation", detail={
                 "phrase": result.phrase or match.phrase,
                 "dispatch_text": match.dispatch_text,
+                "heard": _short(match.dispatch_text, _COMMAND_HEARD_MAX),
                 "committed": commit_detail,
                 "mode_retained": self.mode,
                 "state": state,

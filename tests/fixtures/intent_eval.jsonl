@@ -18078,6 +18078,86 @@
 {"id": "tasks.show_tasks", "kind": "sentence", "polarity": "negative", "reject": "tasks.show_tasks", "text": "during the lecture she explained how to open tasks without breaking anything"}
 {"id": "tasks.show_tasks", "kind": "other_command", "polarity": "negative", "reject": "tasks.show_tasks", "text": "list tasks"}
 {"id": "tasks.show_tasks", "kind": "nonsense", "polarity": "negative", "reject": "tasks.show_tasks", "text": "quartz thunderous tasks purple zeppelin"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "alias", "polarity": "positive", "text": "sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "determiner", "polarity": "positive", "text": "sync the tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "go ahead and sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "punct", "polarity": "positive", "text": "Sync my tasks."}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "reorder", "polarity": "positive", "text": "tasks sync"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "alias", "polarity": "positive", "text": "sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "could you sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "punct", "polarity": "positive", "text": "Sync tasks."}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "okay sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "punct", "polarity": "positive", "text": "Sync, my tasks?"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync my tasks right now"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "punct", "polarity": "positive", "text": "Sync, tasks?"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync tasks right now"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "please sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "um sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "uh sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync tasks for me"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "could you just sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "uh sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "i need you to sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync my tasks for me"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "hey sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "can you sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "would you please sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "so sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "could you sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync tasks thanks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync tasks please"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync my tasks thanks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "can you please sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync my tasks for me please"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "go ahead and sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "could you just sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "can you please sync my tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "sync my tasks now"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "can you sync tasks"}
+{"accept": ["tasks.sync_tasks"], "id": "tasks.sync_tasks", "kind": "filler", "polarity": "positive", "text": "um sync my tasks"}
+{"id": "tasks.sync_tasks", "kind": "sentence", "polarity": "negative", "reject": "tasks.sync_tasks", "text": "during the lecture she explained how to sync my tasks without breaking anything"}
+{"id": "tasks.sync_tasks", "kind": "other_command", "polarity": "negative", "reject": "tasks.sync_tasks", "text": "read my tasks"}
+{"id": "tasks.sync_tasks", "kind": "nonsense", "polarity": "negative", "reject": "tasks.sync_tasks", "text": "octopus pickle tasks quartz purple"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "alias", "polarity": "positive", "text": "read today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "determiner", "polarity": "positive", "text": "read the today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "can you please whats on today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "mishear", "polarity": "positive", "text": "red today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "punct", "polarity": "positive", "text": "Todays, tasks?"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "reorder", "polarity": "positive", "text": "tasks todays"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "synonym", "polarity": "positive", "text": "say today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "alias", "polarity": "positive", "text": "todays tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "determiner", "polarity": "positive", "text": "todays the tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "could you todays tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "punct", "polarity": "positive", "text": "Todays tasks."}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "reorder", "polarity": "positive", "text": "today read"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "synonym", "polarity": "positive", "text": "read out today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "alias", "polarity": "positive", "text": "whats on today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "determiner", "polarity": "positive", "text": "whats the on today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "whats on today please"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "punct", "polarity": "positive", "text": "Read today."}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "would you please read today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "punct", "polarity": "positive", "text": "Whats, on today?"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "uh read today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "punct", "polarity": "positive", "text": "Whats on today."}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "whats on today thanks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "punct", "polarity": "positive", "text": "Read, today?"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "todays tasks right now"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "okay todays tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "please read today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "read today thanks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "so todays tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "read today for me"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "go ahead and whats on today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "can you todays tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "whats on today for me please"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "so whats on today"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "read today please"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "todays tasks for me please"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "please todays tasks"}
+{"accept": ["tasks.whats_on_today"], "id": "tasks.whats_on_today", "kind": "filler", "polarity": "positive", "text": "um whats on today"}
+{"id": "tasks.whats_on_today", "kind": "sentence", "polarity": "negative", "reject": "tasks.whats_on_today", "text": "my grandmother never understood why people would read today on a sunday"}
+{"id": "tasks.whats_on_today", "kind": "other_command", "polarity": "negative", "reject": "tasks.whats_on_today", "text": "read tasks"}
+{"id": "tasks.whats_on_today", "kind": "nonsense", "polarity": "negative", "reject": "tasks.whats_on_today", "text": "cobalt sideways today marmalade zeppelin"}
 {"accept": ["text_marker.mark_here"], "id": "text_marker.mark_here", "kind": "alias", "polarity": "positive", "text": "start selection"}
 {"accept": ["text_marker.mark_here"], "id": "text_marker.mark_here", "kind": "determiner", "polarity": "positive", "text": "start the selection"}
 {"accept": ["text_marker.mark_here"], "id": "text_marker.mark_here", "kind": "filler", "polarity": "positive", "text": "i need you to set marker"}

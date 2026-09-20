@@ -16,6 +16,8 @@ from samsara.session_modes import (
     StackItem,
     UnitOfWorkStack,
     SessionModeManager,
+    CommandDispatchResult,
+    CommandSuggestionCandidate,
     InjectionDelivery,
     normalize_utterance,
     is_scratch_that,
@@ -655,7 +657,8 @@ def manager_factory():
     """Returns a (manager, mocks) builder so each test can override callables."""
     def _build(foreground="notepad.exe", foreground_hwnd=12345, abort_phrases=None,
                command_matches=None, format_dictate_fn=None, commit_redecode_fn=None,
-               buffer_dictate_until_commit=False, ava_invocations=None):
+               buffer_dictate_until_commit=False, ava_invocations=None,
+               command_suggestion_fn=None, pending_reply_fn=None, clock=None):
         mocks = {
             "foreground": Mock(return_value=foreground),
             "foreground_hwnd": Mock(return_value=foreground_hwnd),
@@ -678,6 +681,8 @@ def manager_factory():
             remove_chars_fn=mocks["remove_chars"],
             command_dispatch_fn=mocks["command_dispatch"],
             agent_dispatch_fn=mocks["agent_dispatch"],
+            command_suggestion_fn=command_suggestion_fn,
+            pending_reply_fn=pending_reply_fn,
             on_mode_change=mocks["on_mode_change"],
             on_focus_lock_revert=mocks["on_focus_lock_revert"],
             on_scratch_result=mocks["on_scratch_result"],
@@ -686,7 +691,7 @@ def manager_factory():
             commit_redecode_fn=commit_redecode_fn,
             buffer_dictate_until_commit=buffer_dictate_until_commit,
             ava_invocations=ava_invocations,
-            clock=lambda: 1000.0,
+            clock=clock or (lambda: 1000.0),
         )
         return mgr, mocks
     return _build
@@ -698,6 +703,80 @@ def CommandDispatchResultFor(matched):
     if matched is None:
         return CommandDispatchResult(matched=False)
     return CommandDispatchResult(matched=True, phrase=matched)
+
+
+class TestCommandLaneHeardAndSuggestions:
+    def test_every_command_result_keeps_the_heard_text(self, manager_factory):
+        cases = [
+            (CommandDispatchResult(matched=True, phrase="switch window"), "command_executed"),
+            (CommandDispatchResult(matched=True, phrase="switch window", state="failed"), "command_failed"),
+            (CommandDispatchResult(matched=True, phrase="switch window", awaiting_confirmation=True),
+             "command_awaiting_confirmation"),
+            (CommandDispatchResult(matched=False, disabled_pack="media"), "command_miss"),
+        ]
+        for result, expected in cases:
+            mgr, mocks = manager_factory()
+            mocks["command_dispatch"].return_value = result
+            outcome = mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
+            assert outcome.kind == expected
+            assert outcome.detail["heard"] == "switch windy"
+
+    def test_suggestion_runs_only_after_yes_as_the_canonical_phrase(self, manager_factory):
+        candidate = CommandSuggestionCandidate("switch window")
+        mgr, mocks = manager_factory(command_suggestion_fn=Mock(return_value=candidate))
+        mocks["command_dispatch"].side_effect = [CommandDispatchResult(False),
+                                                   CommandDispatchResult(True, "switch window")]
+        offered = mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
+        approved = mgr.dispatch_utterance("yes", GOOD_SIGNALS)
+        assert offered.kind == "command_suggestion_pending"
+        assert approved.kind == "command_executed"
+        assert approved.detail["heard"] == "switch windy"
+        assert mocks["command_dispatch"].call_args_list == [call("switch windy"), call("switch window")]
+
+    def test_suggestion_no_cancels_without_dispatching_the_canonical_phrase(self, manager_factory):
+        mgr, mocks = manager_factory(command_suggestion_fn=Mock(
+            return_value=CommandSuggestionCandidate("switch window")))
+        mocks["command_dispatch"].return_value = CommandDispatchResult(False)
+        mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("no", GOOD_SIGNALS)
+        assert outcome.kind == "command_suggestion_declined"
+        assert mocks["command_dispatch"].call_args_list == [call("switch windy")]
+
+    def test_new_utterance_drops_suggestion_and_is_dispatched_normally(self, manager_factory):
+        suggest = Mock(side_effect=[CommandSuggestionCandidate("switch window"), None])
+        mgr, mocks = manager_factory(command_suggestion_fn=suggest)
+        mocks["command_dispatch"].return_value = CommandDispatchResult(False)
+        mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("open calendar", GOOD_SIGNALS)
+        assert outcome.kind == "command_miss"
+        assert mocks["command_dispatch"].call_args_list == [call("switch windy"), call("open calendar")]
+
+    def test_expired_suggestion_leaves_yes_for_the_normal_command_lane(self, manager_factory):
+        now = [1000.0]
+        mgr, mocks = manager_factory(command_suggestion_fn=Mock(
+            side_effect=[CommandSuggestionCandidate("switch window"), None]), clock=lambda: now[0])
+        mocks["command_dispatch"].return_value = CommandDispatchResult(False)
+        mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
+        now[0] += 8.1
+        outcome = mgr.dispatch_utterance("yes", GOOD_SIGNALS)
+        assert outcome.kind == "command_miss"
+        assert mocks["command_dispatch"].call_args_list == [call("switch windy"), call("yes")]
+
+    def test_destructive_suggestion_is_not_offered(self, manager_factory):
+        mgr, _ = manager_factory(command_suggestion_fn=Mock(
+            return_value=CommandSuggestionCandidate("delete everything", "destructive")))
+        outcome = mgr.dispatch_utterance("delete every", GOOD_SIGNALS)
+        assert outcome.kind == "command_miss"
+
+    def test_execution_policy_reply_keeps_priority_over_suggestion_yes(self, manager_factory):
+        pending = Mock(side_effect=lambda text: "approved" if text == "yes" else None)
+        mgr, mocks = manager_factory(command_suggestion_fn=Mock(
+            return_value=CommandSuggestionCandidate("switch window")), pending_reply_fn=pending)
+        mocks["command_dispatch"].return_value = CommandDispatchResult(False)
+        mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
+        outcome = mgr.dispatch_utterance("yes", GOOD_SIGNALS)
+        assert outcome.kind == "pending_reply"
+        assert mocks["command_dispatch"].call_args_list == [call("switch windy")]
 
 
 class TestSessionModeManagerDispatch:
