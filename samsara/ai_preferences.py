@@ -166,8 +166,6 @@ def apply_preferences(config: dict, *, policy: str, ava: bool = False,
         record = consent if consent is not None else _section(config, "ava").get("consent")
         if not consent_covers(record, features=selected, provider=provider, cloud=policy == "cloud"):
             raise ValueError("explicit feature/provider consent required")
-        if policy == "cloud" and not _section(config, "cloud_llm").get("api_key"):
-            raise ValueError("cloud setup needs a credential from the existing settings path")
         if policy == "local" and (not isinstance(local_model, str) or not local_model.strip()):
             raise ValueError("local setup needs an explicitly selected model")
     result = deepcopy(config)
@@ -179,6 +177,10 @@ def apply_preferences(config: dict, *, policy: str, ava: bool = False,
                                           keep_warm=ava and policy == "local")
     result["ava_edit"]["enabled"] = editing
     result["command_packs"]["ai"] = ava
+    # Legacy shortcut gate: the Ava master now owns both access gestures.
+    # Keeping this key synchronized preserves old runtimes/configs without
+    # leaving a second user-visible switch that can silently block Ava.
+    result["ava_mode_enabled"] = ava
     result["ollama"]["enabled"] = active and policy == "local"
     result["cloud_llm"].update(enabled=active and policy == "cloud", web_search=False)
     result["smart_corrections"].update(enabled=False, allow_cloud_fallback=False)
@@ -205,7 +207,11 @@ def apply_accepted_ava(config: dict, *, policy: str, consent: dict) -> dict:
     force if this acceptance did not grant editing.
     """
     session = _section(config, "ava_command_session")
-    local_model = session.get("model") or _section(config, "ollama").get("model")
+    local_model = (
+        session.get("model")
+        or _section(config, "ollama").get("model")
+        or cfg_get(config, "ava_command_session.model")
+    )
     resolved_addresses = ()
     if policy == "local":
         try:
@@ -236,6 +242,14 @@ class EffectiveState:
         return self.status == "allowed"
 
 
+def ava_master_enabled(config: dict) -> bool:
+    """Canonical Settings master state after the two old switches are folded in."""
+    return (
+        _section(config, "ava").get("provider_policy", "off") in {"local", "cloud"}
+        and _section(config, "ava_command_session").get("enabled") is True
+    )
+
+
 def effective_state(config: dict, feature: str, *, provider_route: str | None = None,
                     ready: bool | None = None, resolved_addresses=()) -> EffectiveState:
     """Fail closed; caller passes readiness for THIS provider, never probes here."""
@@ -245,19 +259,19 @@ def effective_state(config: dict, feature: str, *, provider_route: str | None = 
     pending = _section(config, "onboarding").get("requested_ai", "off") in {"local", "cloud"}
     if policy == "off":
         reason = (
-            "Ava setup is pending; enable Ava in Settings > Modes to finish setup."
+            "Ava setup is pending; turn on Ava in Settings > Ava / Cloud."
             if pending else
-            "Ava is disabled in Settings > Modes > Ava Command Session."
+            "Ava is off in Settings > Ava / Cloud."
         )
         return EffectiveState("setup-pending" if pending else "off-by-choice", reason)
     if policy not in POLICIES:
-        return EffectiveState("setup-pending", "Ava's provider selection is invalid in Settings > Modes.")
+        return EffectiveState("setup-pending", "Ava's provider selection is invalid in Settings > Ava / Cloud.")
     if provider_route is not None and provider_route != policy:
-        return EffectiveState("off-by-choice", "This Ava route is not enabled for the selected provider in Settings > Modes.")
+        return EffectiveState("off-by-choice", "This Ava route is not enabled for the selected provider in Settings > Ava / Cloud.")
     section = "ava_command_session" if feature == "ava" else "ava_edit"
     if _section(config, section).get("enabled") is not True:
         reason = (
-            "Ava command session is disabled in Settings > Modes > Ava Command Session."
+            "Ava is off in Settings > Ava / Cloud."
             if feature == "ava" else
             "Ava editing is disabled in Settings > Ava / Cloud."
         )
@@ -265,18 +279,18 @@ def effective_state(config: dict, feature: str, *, provider_route: str | None = 
     try:
         provider = provider_for(config, policy, resolved_addresses=resolved_addresses)
     except (ValueError, TypeError):
-        location = "Settings > Ava / Cloud" if policy == "cloud" else "Settings > Modes > Ava Command Session"
+        location = "Settings > Ava / Cloud"
         name = "Cloud AI" if policy == "cloud" else "Ollama"
         return EffectiveState("setup-pending", f"{name} configuration is invalid in {location}.")
     if policy == "local" and provider.location != "loopback":
-        return EffectiveState("setup-pending", "Ollama must be running on this computer; check Settings > Modes > Ava Command Session.", provider)
+        return EffectiveState("setup-pending", "Ollama must be running on this computer; check Settings > Ava / Cloud.", provider)
     record = _section(config, "ava").get("consent")
     if not consent_covers(record, features=(feature,), provider=provider, cloud=policy == "cloud"):
-        return EffectiveState("setup-pending", "Ava needs consent for this provider; enable Ava in Settings > Modes to review it.", provider)
+        return EffectiveState("setup-pending", "Ava needs consent for this provider; turn on Ava in Settings > Ava / Cloud.", provider)
     provider_config = _section(config, "ollama" if policy == "local" else "cloud_llm")
     if provider_config.get("enabled") is not True:
         name = "Ollama" if policy == "local" else "Cloud AI"
-        location = "Settings > Modes > Ava Command Session" if policy == "local" else "Settings > Ava / Cloud"
+        location = "Settings > Ava / Cloud"
         return EffectiveState("setup-pending", f"{name} is disabled in {location}.", provider)
     if policy == "cloud" and not provider_config.get("api_key"):
         return EffectiveState("setup-pending", "Cloud AI needs its own API key in Settings > Ava / Cloud.", provider)
@@ -325,6 +339,10 @@ def migrate_ai_preferences(persisted: dict) -> dict:
     if "provider_policy" in result["ava"]:
         if result["ava"]["provider_policy"] not in POLICIES:
             raise ValueError("invalid persisted provider policy")
+        # `ava_command_session.enabled` was already the effective-state gate;
+        # `ava_mode_enabled` only hid the direct shortcut. Canonicalize that
+        # subordinate legacy key to the preserved effective state.
+        result["ava_mode_enabled"] = ava_master_enabled(result)
         return result
     # A partial legacy profile also inherited True runtime fallbacks. Empty
     # input and already-v2 setup are fresh/off; key values must precede merge.
@@ -344,6 +362,7 @@ def migrate_ai_preferences(persisted: dict) -> dict:
         result["ava_command_session"] = {**deepcopy(session), "enabled": a,
             "keep_warm": session.get("keep_warm", True)}
         result["ava_edit"] = {**deepcopy(editing), "enabled": e}
+    result["ava_mode_enabled"] = policy != "off" and a
     record = result["ava"].get("consent")
     if (policy != "off" and isinstance(record, dict) and record.get("version") == 1
             and isinstance(record.get("accepted_at"), str) and record["accepted_at"].strip()

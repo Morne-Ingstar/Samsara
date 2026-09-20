@@ -60,6 +60,19 @@ def test_supporter_widgets_are_gone_and_saved_key_survives(qapp):
         window.deleteLater()
 
 
+def test_ava_master_is_the_first_control_on_the_page(qapp):
+    _app, window, _save = _window({}, qapp)
+    try:
+        master = window._widgets["ava_enabled"]
+        cloud = window._widgets["cloud_enabled"]
+        assert master.accessibleName() == "Turn Ava on or off"
+        assert master.mapTo(window, master.rect().topLeft()).y() < (
+            cloud.mapTo(window, cloud.rect().topLeft()).y()
+        )
+    finally:
+        window.deleteLater()
+
+
 def test_ava_edit_controls_round_trip_and_depend_on_checkbox(qapp):
     app, window, save = _window({
         "ava_edit": {"enabled": False},

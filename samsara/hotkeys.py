@@ -11,7 +11,7 @@ import time
 
 import keyboard
 
-from samsara import flight_recorder
+from samsara import ai_preferences, flight_recorder
 from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY, DEFAULT_CONTINUOUS_COMMIT_TRIGGER
 from samsara.runtime import thread_registry
 from samsara.session_modes import SessionMode
@@ -1161,7 +1161,7 @@ class HotkeyCluster:
                 return
 
         # Right Alt → Ava mode (mutual exclusion with command mode)
-        if not self.config.get('ava_mode_enabled', True):
+        if not ai_preferences.ava_master_enabled(self.config):
             return
         ava_key_name = self.config.get('ava_mode_key', 'right_alt')
         ava_target = _get_pynput_command_key(ava_key_name)

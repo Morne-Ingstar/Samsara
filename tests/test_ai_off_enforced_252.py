@@ -86,6 +86,26 @@ def test_off_blocks_the_local_vision_model_route(monkeypatch):
     assert bridge.is_available() is False
 
 
+def test_old_shortcut_flag_cannot_bypass_the_ava_master():
+    from samsara.hotkeys import HotkeyCluster
+
+    app = SimpleNamespace(
+        config={
+            "ava": {"provider_policy": "off"},
+            "ava_command_session": {"enabled": False},
+            "ava_mode_enabled": True,
+        },
+        ava_command_session_active=False,
+        command_mode_active=False,
+        ava_mode_active=False,
+        enter_ava_mode=lambda: (_ for _ in ()).throw(
+            AssertionError("legacy shortcut bypassed master")
+        ),
+    )
+
+    HotkeyCluster._check_command_mode_key(app, object(), True)
+
+
 def test_local_route_never_falls_back_to_cloud(monkeypatch):
     app = _app(_enabled_local())
     monkeypatch.setattr(ask_ollama, "_check_ollama_available", lambda *_args, **_kwargs: False)
@@ -152,7 +172,9 @@ def test_legacy_migration_preserves_prior_choice_without_enabling_fresh_config()
 
     assert migrated["ava"]["provider_policy"] == "local"
     assert migrated["ava_command_session"]["enabled"] is True
-    assert ai_preferences.migrate_ai_preferences({}) == {"ava": {"provider_policy": "off"}}
+    assert ai_preferences.migrate_ai_preferences({}) == {
+        "ava": {"provider_policy": "off"}, "ava_mode_enabled": False,
+    }
 
 
 def test_dictation_boot_warmup_is_guarded_without_importing_dictation():

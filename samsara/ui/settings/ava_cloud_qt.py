@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.runtime import thread_registry
-from samsara import ava_readiness, config_defaults
+from samsara import ai_preferences, ava_readiness, config_defaults
 from samsara.ui import ava_consent_qt, theme
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
@@ -86,6 +86,65 @@ class AvaCloudPage:
         layout.setSpacing(12)
 
         cfg = self.app.config.get('cloud_llm', {}) or {}
+        master_touched = {"value": False}
+        route_touched = {"value": False}
+
+        def _staged_ava_config():
+            """Current page choices as one config, without persisting them."""
+            effective = dict(self.app.config)
+            cloud_cfg = dict(effective.get("cloud_llm", {}) or {})
+            cloud_checkbox = self._widgets.get("cloud_enabled")
+            if cloud_checkbox is not None:
+                cloud_cfg["enabled"] = cloud_checkbox.isChecked()
+            provider_widget = self._widgets.get("cloud_provider")
+            if provider_widget is not None:
+                cloud_cfg["provider"] = _DISPLAY_TO_CODE.get(
+                    provider_widget.currentText(), "deepseek"
+                )
+            key_widget = self._widgets.get("cloud_api_key")
+            if key_widget is not None:
+                cloud_cfg["api_key"] = key_widget.text().strip()
+            model_widget = self._widgets.get("cloud_model")
+            if model_widget is not None:
+                model = model_widget.text().strip()
+                if model:
+                    cloud_cfg["model"] = model
+                else:
+                    cloud_cfg.pop("model", None)
+            effective["cloud_llm"] = cloud_cfg
+
+            session = dict(effective.get("ava_command_session", {}) or {})
+            session["backend"] = "cloud" if cloud_cfg.get("enabled") else "ollama"
+            modes_model = self._widgets.get("ava_cmd_model")
+            if modes_model is not None and modes_model.text().strip():
+                session["model"] = modes_model.text().strip()
+            effective["ava_command_session"] = session
+
+            staged = getattr(self, "_ava_consent_staged", None)
+            if staged is not None:
+                ava_cfg = dict(effective.get("ava", {}) or {})
+                ava_cfg["consent"] = staged
+                effective["ava"] = ava_cfg
+            return effective
+
+        # ---- Master switch: the one place Ava is turned on or off ---------
+        layout.addWidget(self._section_title("Ava"))
+        layout.addSpacing(4)
+        ava_enabled = QCheckBox("Ava")
+        ava_enabled.setChecked(ai_preferences.ava_master_enabled(self.app.config))
+        ava_enabled.setAccessibleName("Turn Ava on or off")
+        self._widgets["ava_enabled"] = ava_enabled
+        layout.addWidget(ava_enabled)
+        ava_note = QLabel(
+            "Turns Ava on for both assistant and command-session shortcuts. "
+            "Cloud stays separate and needs its own API key."
+        )
+        ava_note.setWordWrap(True)
+        ava_note.setStyleSheet(
+            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;"
+        )
+        layout.addWidget(ava_note)
+        layout.addSpacing(12)
 
         # ---- Section: Cloud AI (bring your own key) -- always visible ------
         layout.addWidget(self._section_title("Cloud AI (bring your own key)"))
@@ -142,25 +201,43 @@ class AvaCloudPage:
         cloud_enabled.toggled.connect(_default_warm_for_provider)
 
         def _confirm_cloud_enable(checked):
-            if not checked:
+            route_touched["value"] = True
+            if not ava_enabled.isChecked() and not checked:
                 return
-            effective = dict(self.app.config)
-            ava_cfg = dict(effective.get("ava", {}) or {})
-            staged = getattr(self, "_ava_consent_staged", None)
-            if staged is not None:
-                ava_cfg["consent"] = staged
-            effective["ava"] = ava_cfg
-            if not ava_consent_qt.consent_required(effective, cloud_enabled=True):
+            effective = _staged_ava_config()
+            if not ava_consent_qt.consent_required(
+                effective, cloud_enabled=checked
+            ):
                 return
-            was_blocked = cloud_enabled.blockSignals(True)
-            cloud_enabled.setChecked(False)
-            cloud_enabled.blockSignals(was_blocked)
-            consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=True)
+            consent = ava_consent_qt.request_consent(
+                self, effective, cloud_enabled=checked
+            )
             if consent is not None:
                 self._ava_consent_staged = consent
-                cloud_enabled.setChecked(True)
+                return
+            was_blocked = cloud_enabled.blockSignals(True)
+            cloud_enabled.setChecked(not checked)
+            cloud_enabled.blockSignals(was_blocked)
 
         cloud_enabled.clicked.connect(_confirm_cloud_enable)
+
+        def _confirm_ava_enable(checked):
+            master_touched["value"] = True
+            if not checked:
+                return
+            effective = _staged_ava_config()
+            cloud = bool((effective.get("cloud_llm", {}) or {}).get("enabled"))
+            consent = ava_consent_qt.request_consent(
+                self, effective, cloud_enabled=cloud
+            )
+            if consent is None:
+                blocked = ava_enabled.blockSignals(True)
+                ava_enabled.setChecked(False)
+                ava_enabled.blockSignals(blocked)
+                return
+            self._ava_consent_staged = consent
+
+        ava_enabled.clicked.connect(_confirm_ava_enable)
         self._widgets['ava_warm_on_boot'] = warm_on_boot
         layout.addWidget(warm_on_boot)
         layout.addSpacing(8)
@@ -545,6 +622,37 @@ class AvaCloudPage:
                         "cinematic" if self._widgets[
                             "ava_edit_demo_pacing"].isChecked() else "instant")
                 updates["ava_edit"] = ava_edit_cfg
+
+            reconcile_master = master_touched["value"] or (
+                ava_enabled.isChecked() and route_touched["value"]
+            )
+            if reconcile_master:
+                effective = dict(self.app.config)
+                effective.update(_acc)
+                effective.update(updates)
+                ava_cfg = dict(effective.get("ava", {}) or {})
+                staged = getattr(self, "_ava_consent_staged", None)
+                if staged is not None:
+                    ava_cfg["consent"] = staged
+                effective["ava"] = ava_cfg
+
+                if ava_enabled.isChecked():
+                    policy = (
+                        "cloud"
+                        if (effective.get("cloud_llm", {}) or {}).get("enabled")
+                        else "local"
+                    )
+                    consent = ava_cfg.get("consent")
+                    preferred = ava_consent_qt.apply_accepted_ava(
+                        self.app, consent, policy=policy,
+                        config=effective, persist=False,
+                    )
+                else:
+                    preferred = ava_consent_qt.apply_disabled_ava(
+                        self.app, config=effective, persist=False,
+                    )
+                for key in ava_consent_qt._PREFERENCE_KEYS:
+                    updates[key] = preferred[key]
             return updates
         self._save_fns.append(_save)
 

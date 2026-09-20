@@ -22,15 +22,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from samsara import config_defaults, session_modes
+from samsara import ai_preferences, config_defaults, session_modes
 from samsara.constants import (
     DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
     DEFAULT_WAKE_PHRASE,
     DEFAULT_WAKE_PHRASE_OPTIONS,
 )
-from samsara.ui import ava_consent_qt, theme
-from samsara.log import get_logger
+from samsara.ui import theme
 
 from samsara.ui.settings_qt import (
     _CMD_BUTTON_KEY_TO_LABEL,
@@ -50,7 +49,6 @@ _AI_CMD_KEY_OPTIONS: dict = {
     **{f'F{n}': f'f{n}' for n in range(1, 25)},
 }
 _AI_CMD_KEY_TO_LABEL: dict = {v: k for k, v in _AI_CMD_KEY_OPTIONS.items()}
-logger = get_logger(__name__)
 
 # Canonical alias map: normalise rctrl/right_ctrl etc. before comparing
 _KEY_NORMALIZE: dict = {
@@ -82,7 +80,6 @@ _PASTE_STAGED_DESC = "Toggle hands-free only; same as saying '{commit}'."
 _CMD_DEBOUNCE_DESC = "Taps shorter than this are ignored (audio discarded)."
 _CMD_TIMEOUT_DESC = "Exit after this much inactivity (max 30 min) (toggle mode only)."
 _CMD_MISS_LIMIT_DESC = "Exit after this many unmatched command utterances (toggle mode only)."
-_AVA_MODE_ENABLED_DESC = "Hold the key below to talk to Ava (conversation assistant mode)."
 _AVA_MODE_KEY_DESC = (
     "A single named key -- the runtime cannot bind a combination "
     "(dictation.py _get_pynput_command_key)."
@@ -867,21 +864,16 @@ class ModesPage:
         ai_intro.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         ai_layout.addWidget(ai_intro)
 
-        ai_enabled = QCheckBox()
-        ai_enabled.setChecked(bool(ai_cfg.get('enabled', _AIMD['enabled'])))
-        self._widgets['ava_cmd_enabled'] = ai_enabled
-        self._ava_cmd_enabled_initial = ai_enabled.isChecked()
-        self._ava_cmd_enabled_touched = False
-        ai_enabled.toggled.connect(
-            lambda _checked: setattr(self, "_ava_cmd_enabled_touched", True)
+        ava_status = QLabel(
+            ("Ava is on. " if ai_preferences.ava_master_enabled(cfg) else "Ava is off. ")
+            + "Turn it on or off in Settings > Ava / Cloud."
         )
-        _add_row(
-            ai_layout,
-            "Enable Ava command session",
-            "Master switch for the command-first latched session.",
-            ai_enabled,
-            width=220,
+        ava_status.setWordWrap(True)
+        ava_status.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;"
         )
+        self._widgets['ava_master_status'] = ava_status
+        ai_layout.addWidget(ava_status)
 
         key_val = ai_cfg.get('key', _AIMD['key'])
         key_label = _AI_CMD_KEY_TO_LABEL.get(key_val, list(_AI_CMD_KEY_OPTIONS.keys())[0])
@@ -1004,74 +996,6 @@ class ModesPage:
             "Direct access to the conversational assistant path."
         )
         layout.addWidget(ava_card)
-
-        ava_enabled_cb = QCheckBox()
-        ava_enabled_cb.setChecked(bool(cfg.get('ava_mode_enabled', True)))
-        self._widgets['ava_mode_enabled'] = ava_enabled_cb
-        ava_layout.addLayout(
-            self._setting_row("Enable Ava mode", _AVA_MODE_ENABLED_DESC, ava_enabled_cb, control_width=220)
-        )
-
-        def _confirm_ava_enable(checked, checkbox):
-            if not checked:
-                return
-            effective = dict(self.app.config)
-            ava_cfg = dict(effective.get("ava", {}) or {})
-            staged = getattr(self, "_ava_consent_staged", None)
-            if staged is not None:
-                ava_cfg["consent"] = staged
-            effective["ava"] = ava_cfg
-            policy = (
-                "cloud" if self._widgets["ava_cmd_backend"].currentText() == "Cloud"
-                else "local"
-            )
-            if staged is not None:
-                consent = staged
-            else:
-                needs_consent = ava_consent_qt.consent_required(
-                    effective, cloud_enabled=policy == "cloud"
-                )
-                if needs_consent:
-                    was_blocked = checkbox.blockSignals(True)
-                    checkbox.setChecked(False)
-                    checkbox.blockSignals(was_blocked)
-                consent = ava_consent_qt.request_consent(
-                    self, effective, cloud_enabled=policy == "cloud"
-                )
-                if consent is None:
-                    return
-                self._ava_consent_staged = consent
-
-            try:
-                ava_consent_qt.apply_accepted_ava(
-                    self.app, consent, policy=policy
-                )
-            except Exception:
-                logger.exception("Settings could not activate Ava after consent")
-                blocked = checkbox.blockSignals(True)
-                checkbox.setChecked(False)
-                checkbox.blockSignals(blocked)
-                session_checkbox = self._widgets.get("ava_cmd_enabled")
-                if session_checkbox is not None and session_checkbox is not checkbox:
-                    blocked = session_checkbox.blockSignals(True)
-                    session_checkbox.setChecked(bool(
-                        (self.app.config.get("ava_command_session", {}) or {}).get("enabled", False)
-                    ))
-                    session_checkbox.blockSignals(blocked)
-                return
-
-            session_checkbox = self._widgets.get("ava_cmd_enabled")
-            if session_checkbox is not None:
-                blocked = session_checkbox.blockSignals(True)
-                session_checkbox.setChecked(True)
-                session_checkbox.blockSignals(blocked)
-                self._ava_cmd_enabled_initial = True
-                self._ava_cmd_enabled_touched = False
-
-        ava_enabled_cb.clicked.connect(
-            lambda checked: _confirm_ava_enable(checked, ava_enabled_cb))
-        ai_enabled.clicked.connect(
-            lambda checked: _confirm_ava_enable(checked, ai_enabled))
 
         # 08d: the runtime resolves ava_mode_key with _get_pynput_command_key
         # (single named keys only) -- a captured combo used to disable Ava
@@ -1280,9 +1204,6 @@ class ModesPage:
                     updates['ava_mode_key'] = _AI_CMD_KEY_OPTIONS[label]
                 else:
                     updates['ava_mode_key'] = ava_combo.currentData() or self.app.config.get('ava_mode_key', 'right_alt')
-            if 'ava_mode_enabled' in self._widgets:
-                updates['ava_mode_enabled'] = self._widgets['ava_mode_enabled'].isChecked()
-
             # Streaming preview goes through the SAME path as the tray toggle
             # (set_streaming_mode installs/uninstalls the CapsLock hook and
             # saves the flag itself), never through the bulk config write.
@@ -1356,13 +1277,9 @@ class ModesPage:
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
 
-            if 'ava_cmd_enabled' in self._widgets:
+            if 'ava_cmd_key' in self._widgets:
                 ai_cfg_out = dict(self.app.config.get('ava_command_session', {}) or {})
                 key_label = self._widgets['ava_cmd_key'].currentText()
-                current_enabled = ai_cfg_out.get('enabled', _AIMD['enabled'])
-                if (self._ava_cmd_enabled_touched
-                        or current_enabled == self._ava_cmd_enabled_initial):
-                    ai_cfg_out['enabled'] = self._widgets['ava_cmd_enabled'].isChecked()
                 ai_cfg_out['key']             = _AI_CMD_KEY_OPTIONS.get(key_label, ai_cfg_out.get('key', 'left_alt'))
                 ai_cfg_out['backend']         = 'cloud' if self._widgets['ava_cmd_backend'].currentText() == 'Cloud' else 'ollama'
                 ai_cfg_out['model']           = self._widgets['ava_cmd_model'].text().strip()

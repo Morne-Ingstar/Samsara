@@ -193,12 +193,12 @@ class TestSettingsWindowConstruction:
         # 08d: streaming_hotkey is gone (dead key -- the hook hardcodes CapsLock
         # and streaming_mode is set through set_streaming_mode, not the bulk
         # write); memo / correction / capture (nested `hotkeys`) / continuous
-        # commit + trigger and ava_mode_enabled are new.
+        # commit + trigger are new. Ava's master now lives on Ava / Cloud.
         expected_keys = {
             'hotkey', 'continuous_hotkey', 'wake_word_hotkey', 'command_hotkey',
             'cancel_hotkey', 'undo_hotkey', 'dictate_commit_hotkey', 'ava_mode_key',
             'memo_hotkey', 'correction_hotkey', 'hotkeys', 'continuous_commit_hotkey',
-            'continuous_commit_trigger', 'ava_mode_enabled',
+            'continuous_commit_trigger',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
             'ava_command_session',
         }
@@ -306,8 +306,8 @@ class TestSettingsWindowConstruction:
             'Command-only key',
             'Wake activation key',
             'Primary dictation key behavior',
-            'Enable Ava command session',
         } <= labels
+        assert 'Enable Ava command session' not in labels
 
 
 class TestSidebarGrouping:
@@ -611,8 +611,9 @@ class TestApplyAndCloseSnapshot:
             'memo_hotkey': 'ctrl+alt+m', 'correction_hotkey': 'ctrl+alt+r',
             'hotkeys': {'capture_correction': 'ctrl+alt+x'},
             'continuous_commit_hotkey': 'ctrl+space', 'continuous_commit_trigger': 'silence',
-            'ava_mode_enabled': True,
         })
+        expected.pop('ava_mode_enabled', None)
+        expected.setdefault('ava_command_session', {}).pop('enabled', None)
         # Queue 57 delta: command_mode.tts_char_limit gained a Settings
         # control, so Apply now writes its effective value (default 50).
         expected.setdefault('command_mode', {})['tts_char_limit'] = 50
@@ -1000,14 +1001,14 @@ class TestModesTabClaims:
         combo.setCurrentText('Right Ctrl')
         assert win._save_fns[1]({})['ava_mode_key'] == 'right_ctrl'
 
-    def test_ava_mode_enabled_checkbox_round_trips(self, qapp):
+    def test_ava_master_exists_only_on_ava_cloud(self, qapp):
         _stub, win = self._win({})
-        cb = win._widgets['ava_mode_enabled']
-        assert cb.isChecked() is True                    # dictation.py default True
-        cb.setChecked(False)
-        assert win._save_fns[1]({})['ava_mode_enabled'] is False
-        _stub2, win2 = self._win({"ava_mode_enabled": False})
-        assert win2._widgets['ava_mode_enabled'].isChecked() is False
+        assert 'ava_enabled' in win._widgets
+        assert 'ava_mode_enabled' not in win._widgets
+        assert 'ava_cmd_enabled' not in win._widgets
+        modes_updates = win._save_fns[1]({})
+        assert 'ava_mode_enabled' not in modes_updates
+        assert 'enabled' not in modes_updates['ava_command_session']
 
     # 4. button behaviour note --------------------------------------------
     def test_button_behavior_note_is_built_from_session_modes_constants(self, qapp):

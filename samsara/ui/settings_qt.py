@@ -1422,10 +1422,23 @@ class _SettingsWindow(
         was_sc_enabled = bool(
             self.app.config.get('smart_corrections', {}).get('enabled', False)
         )
+        was_ai_pack_enabled = bool(
+            (self.app.config.get('command_packs', {}) or {}).get('ai', False)
+        )
 
         with self.app._config_lock:
             self.app.config.update(updates)
             self.app.save_config()
+
+        now_ai_pack_enabled = bool(
+            (self.app.config.get('command_packs', {}) or {}).get('ai', False)
+        )
+        if now_ai_pack_enabled and not was_ai_pack_enabled:
+            rebuild = getattr(
+                getattr(self.app, 'command_executor', None), 'rebuild_matcher', None
+            )
+            if callable(rebuild):
+                rebuild()
 
         if 'ui' in updates:
             theme.set_theme(updates['ui'].get('theme'), refresh=True)

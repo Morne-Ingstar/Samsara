@@ -42,13 +42,13 @@ def test_decline_produces_no_record_and_leaves_ava_off(qapp, monkeypatch):
     from tests.test_settings import _StubApp
 
     app = _StubApp()
-    app.config = {"ava_mode_enabled": False}
+    app.config = {"ava": {"provider_policy": "off"}}
     window = _SettingsWindow(app)
     shown = []
     monkeypatch.setattr(
         consent, "request_consent", lambda *_args, **_kwargs: shown.append(True) or None)
     try:
-        checkbox = window._widgets["ava_mode_enabled"]
+        checkbox = window._widgets["ava_enabled"]
         checkbox.click()
         assert shown == [True]
         assert checkbox.isChecked() is False
@@ -70,10 +70,10 @@ def _configured_local_app():
     }
 
 
-def test_settings_accept_enables_immediately_once_and_survives_close_reload(
+def test_ava_page_accept_and_apply_enables_once_and_survives_reload(
     qapp, monkeypatch, tmp_path
 ):
-    """ACCEPT must durably activate AI now; Settings close cannot discard it."""
+    """The Ava page alone activates AI; no Modes interaction is required."""
     from samsara.ui.settings_qt import _SettingsWindow
     from tests.test_settings import _StubApp
 
@@ -83,24 +83,25 @@ def test_settings_accept_enables_immediately_once_and_survives_close_reload(
     state_file.write_text(json.dumps(app.config), encoding="utf-8")
     saves = []
 
-    def update_config(changes, save=True):
-        app.config.update(changes)
-        if save:
-            saves.append(dict(changes))
-            state_file.write_text(json.dumps(app.config), encoding="utf-8")
+    def save_config():
+        saves.append(dict(app.config))
+        state_file.write_text(json.dumps(app.config), encoding="utf-8")
 
-    app.update_config = update_config
+    app.save_config = save_config
     monkeypatch.setattr(consent, "AvaConsentDialog", _AcceptedDialog)
     _AcceptedDialog.shown = 0
     window = _SettingsWindow(app)
     try:
-        checkbox = window._widgets["ava_cmd_enabled"]
+        checkbox = window._widgets["ava_enabled"]
         checkbox.click()
         assert checkbox.isChecked() is True
         assert _AcceptedDialog.shown == 1
+        assert len(saves) == 0
+        window._apply_and_close()
         assert len(saves) == 1
         assert app.config["ava"]["provider_policy"] == "local"
         assert app.config["ava_command_session"]["enabled"] is True
+        assert app.config["ava_mode_enabled"] is True
         assert app.config["command_packs"]["ai"] is True
         assert ai_preferences.runtime_state(app.config, "ava").allowed
         assert json.loads(state_file.read_text(encoding="utf-8"))[
@@ -116,15 +117,9 @@ def test_settings_accept_enables_immediately_once_and_survives_close_reload(
         app2 = _StubApp()
         app2.config = reloaded
 
-        def update_reloaded_config(changes, save=True):
-            app2.config.update(changes)
-            if save:
-                state_file.write_text(json.dumps(app2.config), encoding="utf-8")
-
-        app2.update_config = update_reloaded_config
         window2 = _SettingsWindow(app2)
         try:
-            checkbox2 = window2._widgets["ava_cmd_enabled"]
+            checkbox2 = window2._widgets["ava_enabled"]
             assert checkbox2.isChecked() is True
             checkbox2.click()
             checkbox2.click()
@@ -135,8 +130,8 @@ def test_settings_accept_enables_immediately_once_and_survives_close_reload(
         window.deleteLater()
 
 
-def test_modes_save_does_not_restore_a_stale_disabled_session(qapp):
-    """Untouched Settings state must not overwrite a newer config transaction."""
+def test_modes_has_no_ava_enable_switch_and_preserves_master_state(qapp):
+    """Modes cannot overwrite or silently block the Ava-page master."""
     from samsara.ui.settings_qt import _SettingsWindow
     from tests.test_settings import _StubApp
 
@@ -144,12 +139,94 @@ def test_modes_save_does_not_restore_a_stale_disabled_session(qapp):
     app.config = _configured_local_app()
     window = _SettingsWindow(app)
     try:
-        assert window._widgets["ava_cmd_enabled"].isChecked() is False
+        assert "ava_cmd_enabled" not in window._widgets
+        assert "ava_mode_enabled" not in window._widgets
         app.config["ava_command_session"]["enabled"] = True
         modes_save = next(save for save in window._save_fns
                           if "_build_modes_tab" in save.__qualname__)
         updates = modes_save({})
         assert updates["ava_command_session"]["enabled"] is True
+        assert "ava_mode_enabled" not in updates
+    finally:
+        window.deleteLater()
+
+
+def test_fresh_config_master_on_local_is_ready_without_modes(qapp, monkeypatch):
+    from samsara.ui.settings_qt import _SettingsWindow
+    from tests.test_settings import _StubApp
+
+    app = _StubApp()
+    app.config = {}
+    monkeypatch.setattr(consent, "AvaConsentDialog", _AcceptedDialog)
+    _AcceptedDialog.shown = 0
+    window = _SettingsWindow(app)
+    try:
+        window._widgets["ava_enabled"].click()
+        window._apply_and_close()
+
+        assert _AcceptedDialog.shown == 1
+        assert app.config["ava"]["provider_policy"] == "local"
+        assert app.config["ava_command_session"]["enabled"] is True
+        assert app.config["ava_mode_enabled"] is True
+        assert ai_preferences.runtime_state(app.config, "ava").allowed
+    finally:
+        window.deleteLater()
+
+
+def test_fresh_config_master_on_cloud_is_ready_without_modes(qapp, monkeypatch):
+    from samsara.ui.settings_qt import _SettingsWindow
+    from tests.test_settings import _StubApp
+
+    app = _StubApp()
+    app.config = {}
+    monkeypatch.setattr(consent, "AvaConsentDialog", _AcceptedDialog)
+    _AcceptedDialog.shown = 0
+    window = _SettingsWindow(app)
+    try:
+        window._widgets["cloud_api_key"].setText("fixture-only")
+        window._widgets["cloud_enabled"].click()
+        window._widgets["ava_enabled"].click()
+        window._apply_and_close()
+
+        assert _AcceptedDialog.shown == 1
+        assert app.config["ava"]["provider_policy"] == "cloud"
+        assert app.config["ava_command_session"]["enabled"] is True
+        assert app.config["cloud_llm"]["enabled"] is True
+        assert ai_preferences.runtime_state(app.config, "ava").allowed
+    finally:
+        window.deleteLater()
+
+
+def test_master_off_turns_every_ava_route_off(qapp):
+    from samsara.ui.settings_qt import _SettingsWindow
+    from tests.test_settings import _StubApp
+
+    app = _StubApp()
+    app.config = _configured_local_app()
+    provider = ai_preferences.provider_for(app.config, "local")
+    app.config["ava"]["consent"] = ai_preferences.accept_consent(
+        app.config, features=("ava",), provider=provider, accepted_at="fixture"
+    )
+    app.config = ai_preferences.apply_accepted_ava(
+        app.config, policy="local", consent=app.config["ava"]["consent"]
+    )
+    app.config["ava_edit"]["enabled"] = True
+    window = _SettingsWindow(app)
+    try:
+        master = window._widgets["ava_enabled"]
+        assert master.isChecked()
+        master.click()
+        window._apply_and_close()
+
+        assert app.config["ava"]["provider_policy"] == "off"
+        assert app.config["ava_command_session"]["enabled"] is False
+        assert app.config["ava_edit"]["enabled"] is False
+        assert app.config["ava_mode_enabled"] is False
+        assert app.config["command_packs"]["ai"] is False
+        assert app.config["ollama"]["enabled"] is False
+        assert app.config["cloud_llm"]["enabled"] is False
+        assert not ai_preferences.runtime_state(app.config, "ava").allowed
+        assert not ai_preferences.runtime_state(app.config, "editing").allowed
     finally:
         window.deleteLater()
 

@@ -7,6 +7,7 @@ from copy import deepcopy
 from samsara.ai_preferences import (
     accept_consent,
     apply_accepted_ava as build_accepted_ava_preferences,
+    apply_preferences,
     consent_covers,
     provider_for,
 )
@@ -69,29 +70,42 @@ def selected_ava_policy(config: dict | None) -> str:
     return "cloud" if backend == "cloud" else "local"
 
 
-def apply_accepted_ava(app, consent: dict, *, policy: str) -> dict:
-    """Persist an accepted Ava choice and all runtime gates in one config save."""
+_PREFERENCE_KEYS = (
+    "ava", "ava_command_session", "ava_edit", "command_packs", "ollama",
+    "cloud_llm", "smart_corrections", "smart_actions", "onboarding",
+    "ava_mode_enabled",
+)
+
+
+def apply_accepted_ava(
+    app,
+    consent: dict,
+    *,
+    policy: str,
+    config: dict | None = None,
+    persist: bool = True,
+) -> dict:
+    """Build or persist an accepted Ava choice through the one policy path."""
     old_pack_enabled = bool(
         (app.config.get("command_packs", {}) or {}).get("ai", False)
     )
+    base = app.config if config is None else config
     try:
         updated = build_accepted_ava_preferences(
-            app.config, policy=policy, consent=consent
+            base, policy=policy, consent=consent
         )
     except (TypeError, ValueError):
         # Consent remains durable even if a provider detail still needs work;
         # effective_state then reports that concrete blocker without asking
         # the same consent question again.
-        ava_cfg = dict(app.config.get("ava", {}) or {})
+        ava_cfg = dict(base.get("ava", {}) or {})
         ava_cfg["consent"] = deepcopy(consent)
-        app.update_config({"ava": ava_cfg}, save=True)
+        if persist:
+            app.update_config({"ava": ava_cfg}, save=True)
         raise
-    keys = (
-        "ava", "ava_command_session", "ava_edit", "command_packs", "ollama",
-        "cloud_llm", "smart_corrections", "smart_actions", "onboarding",
-    )
-    app.update_config({key: updated[key] for key in keys}, save=True)
-    if not old_pack_enabled:
+    if persist:
+        app.update_config({key: updated[key] for key in _PREFERENCE_KEYS}, save=True)
+    if persist and not old_pack_enabled:
         executor = getattr(app, "command_executor", None)
         rebuild = getattr(executor, "rebuild_matcher", None)
         if callable(rebuild):
@@ -99,6 +113,14 @@ def apply_accepted_ava(app, consent: dict, *, policy: str) -> dict:
                 rebuild()
             except Exception:
                 logger.exception("Could not refresh commands after enabling the AI pack")
+    return updated
+
+
+def apply_disabled_ava(app, *, config: dict | None = None, persist: bool = True) -> dict:
+    """Turn every Ava route off through 252's validated preference transaction."""
+    updated = apply_preferences(app.config if config is None else config, policy="off")
+    if persist:
+        app.update_config({key: updated[key] for key in _PREFERENCE_KEYS}, save=True)
     return updated
 
 

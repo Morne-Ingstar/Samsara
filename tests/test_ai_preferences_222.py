@@ -31,24 +31,33 @@ def test_fresh_defaults_only_requested_changes():
     assert DEFAULTS["ava.provider_policy"] == "off"
     assert DEFAULTS["tts.engine"] == "edge" and DEFAULTS["tts.enabled"] is False
     assert ai.effective_state({}, "ava").status == "off-by-choice"
-    assert ai.migrate_ai_preferences({}) == {"ava": {"provider_policy": "off"}}
+    assert ai.migrate_ai_preferences({}) == {
+        "ava": {"provider_policy": "off"}, "ava_mode_enabled": False,
+    }
 
 
 def test_status_messages_name_the_switch_or_provider_blocking_ava():
     off = ai.effective_state({}, "ava")
-    assert "Settings > Modes > Ava Command Session" in off.reason
+    assert "Settings > Ava / Cloud" in off.reason
 
     config = enabled(local_config(), features=("ava",))
     config["ava_command_session"]["enabled"] = False
     disabled = ai.effective_state(config, "ava", ready=True)
-    assert "Ava command session is disabled" in disabled.reason
-    assert "Settings > Modes > Ava Command Session" in disabled.reason
+    assert "Ava is off" in disabled.reason
+    assert "Settings > Ava / Cloud" in disabled.reason
 
     config["ava_command_session"]["enabled"] = True
     config["ollama"]["enabled"] = False
     assert "Ollama is disabled" in ai.effective_state(config, "ava", ready=True).reason
     config["ollama"]["enabled"] = True
     assert ai.effective_state(config, "ava", ready=False).reason == "Ollama is not running."
+
+
+def test_no_user_copy_points_to_the_removed_modes_switch():
+    root = Path(__file__).resolve().parents[1] / "samsara"
+    removed_location = "Settings > Modes > " + "Ava Command Session"
+    for path in root.rglob("*.py"):
+        assert removed_location not in path.read_text(encoding="utf-8-sig"), path
 
 
 def test_explicit_local_accept_enables_ava_only_and_preserves_editing_state():
@@ -84,6 +93,7 @@ def test_explicit_opt_in_applies_whole_mapping(policy, features):
     assert config["ava_command_session"]["enabled"] == ("ava" in features)
     assert config["ava_edit"]["enabled"] == ("editing" in features)
     assert config["command_packs"]["ai"] == ("ava" in features)
+    assert config["ava_mode_enabled"] == ("ava" in features)
     assert config["ollama"]["enabled"] == (policy == "local")
     assert config["cloud_llm"]["enabled"] == (policy == "cloud")
     assert config["ava_command_session"]["keep_warm"] == (policy == "local" and "ava" in features)
@@ -111,6 +121,24 @@ def test_opt_out_keeps_models_credentials_and_consent_without_accepting_again():
     assert off["ava"]["consent"] == config["ava"]["consent"]
     assert ai.effective_state(off, "ava", ready=True).status == "off-by-choice"
     assert not off["ava_edit"]["enabled"] and not off["ollama"]["enabled"]
+    assert off["ava_mode_enabled"] is False
+
+
+def test_cloud_accept_without_key_persists_choice_but_reports_real_blocker():
+    config = {"cloud_llm": {"provider": "deepseek", "api_key": ""}}
+    provider = ai.provider_for(config, "cloud")
+    consent = ai.accept_consent(
+        config, features=("ava",), provider=provider, cloud=True,
+        accepted_at="explicit-cloud-accept",
+    )
+
+    changed = ai.apply_preferences(
+        config, policy="cloud", ava=True, consent=consent,
+    )
+
+    state = ai.effective_state(changed, "ava", ready=True)
+    assert state.status == "setup-pending"
+    assert "API key" in state.reason
 
 
 def test_cancelled_and_deferred_never_manufacture_acceptance():
@@ -205,6 +233,24 @@ def test_partial_legacy_profile_keeps_old_fallbacks_but_v2_deferred_is_off():
     assert "consent" not in old["ava"]
     deferred = ai.migrate_ai_preferences({"onboarding": {"version": 2, "requested_ai": "cloud"}})
     assert deferred["ava"]["provider_policy"] == "off"
+
+
+def test_two_old_switches_migrate_to_the_previous_effective_state():
+    ready = ai.migrate_ai_preferences({
+        "ava": {"provider_policy": "local"},
+        "ava_command_session": {"enabled": True},
+        "ava_mode_enabled": False,
+    })
+    off = ai.migrate_ai_preferences({
+        "ava": {"provider_policy": "local"},
+        "ava_command_session": {"enabled": False},
+        "ava_mode_enabled": True,
+    })
+
+    assert ai.ava_master_enabled(ready) is True
+    assert ready["ava_mode_enabled"] is True
+    assert ai.ava_master_enabled(off) is False
+    assert off["ava_mode_enabled"] is False
 
 
 def test_v1_cloud_scope_keeps_timestamp_but_changed_provider_needs_acceptance():
