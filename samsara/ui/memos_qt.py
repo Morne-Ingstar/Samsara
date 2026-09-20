@@ -6,8 +6,8 @@ in Notepad cannot play a recording, cannot be searched by category, and
 cannot delete one entry. This page can.
 
 What it does: reads samsara.quick_memo's store, shows every memo newest
-first with its date, its category and its transcript, and plays the audio
-where it was retained. Read, play, copy, delete, search, re-categorise.
+first with its date, its category and its transcript, and plays retained audio
+or opens a saved video. Read, play, copy, delete, search, re-categorise.
 
 Operable with no mouse, by design, not by accident:
   * Every control is a real focusable widget in a deliberate tab order, and
@@ -24,8 +24,7 @@ Type sizes come from theme tokens only (queue 83's floor): nothing here is
 smaller than the body size the rest of the hub reads at.
 
 Audio playback reuses sounddevice, already a hard dependency of the capture
-path, so nothing new is installed for it. Playback is asynchronous and one
-memo at a time; starting another stops the first.
+path. Video opens in the user's default media player.
 """
 from __future__ import annotations
 
@@ -33,11 +32,12 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
 )
+from PySide6.QtGui import QDesktopServices
 
 from samsara import quick_memo
 from samsara.log import get_logger
@@ -49,6 +49,7 @@ TITLE = "Memos"
 SEARCH_LABEL = "Search memos (Ctrl+F)"
 SEARCH_PLACEHOLDER = "Search what you said..."
 PLAY = "Play (Enter)"
+OPEN_VIDEO = "Open video (Enter)"
 STOP = "Stop"
 COPY = "Copy"
 COPIED = "Copied."
@@ -61,6 +62,7 @@ UNCATEGORISED = "Uncategorised"
 NO_MEMOS = "No memos yet. Hold Ctrl+Alt+M, or say \"take a memo\", and talk."
 NO_MATCHES = "No memo matches that search."
 NO_AUDIO = "No audio kept for this one."
+NO_VIDEO = "This video's file is missing."
 AUDIO_EXPIRED = "Audio expired; the transcript is kept."
 MIN_TARGET = 44
 GRID = 12
@@ -76,7 +78,10 @@ def summarise(record: dict, width: int = 96) -> str:
         text = text[: width - 1].rstrip() + chr(0x2026)
     category = record.get("category")
     middle = f"  {MIDDLE_DOT} {category}" if category else ""
-    return f"{stamp}{middle}  {EM_DASH}  {text}"
+    media = "Video  " if record.get("video") else ""
+    if record.get("partial"):
+        media = "Partial video  "
+    return f"{stamp}{middle}  {EM_DASH}  {media}{text}"
 
 
 def playable(record: dict, home=None) -> Optional[Path]:
@@ -338,7 +343,10 @@ class MemosPage(QWidget):
     def _spoken(self, record) -> str:
         stamp = str(record.get("at", "")).replace("T", " ")[:16]
         category = record.get("category") or UNCATEGORISED
-        return f"{stamp}, {category}. {record.get('text', '')}"
+        media = "Video memo. " if record.get("video") else ""
+        if record.get("partial"):
+            media = "Partial video memo. "
+        return f"{stamp}, {category}. {media}{record.get('text', '')}"
 
     # ---- Selection ------------------------------------------------------
 
@@ -352,7 +360,12 @@ class MemosPage(QWidget):
     def _on_selection(self, _row=None):
         record = self.selected
         has = record is not None
-        self._play_btn.setEnabled(has and playable(record, self._home) is not None)
+        video_path = quick_memo.video_path_for(record, self._home) if has else None
+        has_video = bool(video_path and video_path.exists())
+        has_audio = has and playable(record, self._home) is not None
+        self._play_btn.setText(OPEN_VIDEO if has_video else PLAY)
+        self._play_btn.setAccessibleName(OPEN_VIDEO if has_video else PLAY)
+        self._play_btn.setEnabled(bool(has_video or has_audio))
         self._copy_btn.setEnabled(has)
         self._delete_btn.setEnabled(has)
         self._category.setEnabled(has)
@@ -360,14 +373,22 @@ class MemosPage(QWidget):
             self._detail.setText("")
             self._status.setText(NO_MATCHES if self._records else NO_MEMOS)
             return
-        self._detail.setText(record.get("text", ""))
+        detail = record.get("text", "")
+        if has_video:
+            detail = ("Partial video memo. " if record.get("partial") else "Video memo. ") + detail
+        self._detail.setText(detail)
         self._category.blockSignals(True)
         self._category.setCurrentText(record.get("category") or "")
         self._category.blockSignals(False)
-        if playable(record, self._home) is not None:
+        if has_video:
+            self._status.setText("Partial recording kept." if record.get("partial")
+                                 else "Open video to play this memo.")
+        elif playable(record, self._home) is not None:
             self._status.setText("")
         elif record.get("audio_pruned"):
             self._status.setText(AUDIO_EXPIRED)
+        elif record.get("video"):
+            self._status.setText(NO_VIDEO)
         else:
             self._status.setText(NO_AUDIO)
 
@@ -376,6 +397,14 @@ class MemosPage(QWidget):
     def play_selected(self):
         record = self.selected
         if record is None:
+            return False
+        video_path = quick_memo.video_path_for(record, self._home)
+        if video_path is not None and video_path.exists():
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(video_path)))
+            self._status.setText("" if opened else "That video could not be opened.")
+            return bool(opened)
+        if record.get("video"):
+            self._status.setText(NO_VIDEO)
             return False
         path = playable(record, self._home)
         if path is None:
@@ -431,7 +460,7 @@ class MemosPage(QWidget):
         self._confirm_btn.setVisible(True)
         self._cancel_btn.setVisible(True)
         self._confirm_btn.setFocus()
-        self._status.setText(f"{CONFIRM_DELETE} This also deletes its audio.")
+        self._status.setText(f"{CONFIRM_DELETE} This also deletes its audio or video.")
 
     def cancel_delete(self):
         self._pending_delete = None

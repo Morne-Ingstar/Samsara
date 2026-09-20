@@ -5694,6 +5694,10 @@ class DictationApp:
             cfg_get(self.config, "feedback.spoken_notices"))
         return self._session_mode_manager
 
+    def register_active_capture_interceptor(self, callback):
+        """Expose the generic session hook to optional capture plugins."""
+        return self._ensure_session_mode_manager().register_active_capture_interceptor(callback)
+
     def _speak_session_notice(self, text: str, category: str = "confirmation") -> None:
         """Queue 80: session questions and their results, spoken. Category
         "confirmation" is exempt from command_mode.tts_char_limit (queue 58).

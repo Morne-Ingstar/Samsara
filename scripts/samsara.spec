@@ -47,8 +47,10 @@ _runtime_import_hook = app_dir / 'build' / 'samsara_runtime_import_check.py'
 _runtime_import_hook.parent.mkdir(parents=True, exist_ok=True)
 _runtime_import_hook.write_text(r'''
 import importlib
+import importlib.util
 import os
 import pkgutil
+import tempfile
 import traceback
 
 def _pass():
@@ -85,6 +87,8 @@ if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
 
 if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "missing":
     try:
+        if importlib.util.find_spec("av") is not None:
+            raise RuntimeError("PyAV unexpectedly present in core build")
         from samsara.components import ComponentNotInstalled
         from samsara.vision.camera_service import CameraService
         CameraService().start()
@@ -100,6 +104,7 @@ if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "missing":
 
 if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "installed":
     try:
+        import av
         import cv2  # noqa: F401
         import mediapipe  # noqa: F401
         from samsara.vision.gesture_loop import GestureLoop
@@ -117,7 +122,21 @@ if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "installed":
         loop = GestureLoop(object(), _Camera(), {})
         loop.start()
         loop.stop()
-        print("[GESTURE-CHECK] installed component imports and gesture loop starts")
+        with tempfile.TemporaryDirectory(prefix="samsara-video-smoke-") as directory:
+            output = os.path.join(directory, "writer.mp4")
+            container = av.open(output, mode="w", format="mp4")
+            try:
+                video = container.add_stream("libx264", rate=30)
+                video.width = 16
+                video.height = 16
+                video.pix_fmt = "yuv420p"
+                audio = container.add_stream("aac", rate=16000)
+                audio.layout = "mono"
+            finally:
+                container.close()
+            if not os.path.isfile(output) or os.path.getsize(output) == 0:
+                raise RuntimeError("PyAV did not create an MP4 writer output")
+        print("[GESTURE-CHECK] installed component imports, gesture loop and MP4 writer pass")
     except BaseException:
         _fail()
     _pass()
@@ -566,7 +585,7 @@ _CV2_DISTRIBUTION = next(iter(metadata.packages_distributions().get('cv2', ())),
 if _CV2_DISTRIBUTION is None:
     raise SystemExit('samsara.spec: cv2 has no installed distribution metadata')
 _GESTURE_DISTRIBUTIONS = (
-    'mediapipe', _CV2_DISTRIBUTION, 'absl-py', 'protobuf',
+    'mediapipe', _CV2_DISTRIBUTION, 'av', 'absl-py', 'protobuf',
     'flatbuffers', 'attrs', 'six', 'packaging',
     # MediaPipe's current solutions API imports drawing_utils, which imports
     # matplotlib.  These are its wheel dependencies that are not core.
@@ -605,6 +624,8 @@ def _write_gesture_component(output: Path) -> None:
         raise SystemExit('samsara.spec: gesture component has no mediapipe files')
     if not any(name.startswith('cv2/') for name in seen):
         raise SystemExit('samsara.spec: gesture component has no cv2 files')
+    if not any(name.startswith('av/') for name in seen):
+        raise SystemExit('samsara.spec: gesture component has no PyAV files')
     os.replace(temporary, output)
 
 

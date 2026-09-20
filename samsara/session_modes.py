@@ -1538,6 +1538,11 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     purpose, so it gets noticed and mapped; the caller logs it at WARNING.
     """
     detail = detail if isinstance(detail, dict) else {}
+    if kind in ("active_capture_stopped", "active_capture_cancelled",
+                "active_capture_failed"):
+        default_kind = "success" if kind == "active_capture_stopped" else "warning"
+        return (_short(detail.get("label") or kind.replace("_", " "), 56),
+                detail.get("chip_kind") or default_kind)
 
     if kind == "abort":
         return _abort_chip(detail)
@@ -1874,6 +1879,12 @@ class SessionModeManager:
         # on its timer thread). Re-entrant: a window can be flushed from inside
         # a dispatch on the same thread.
         self._dispatch_lock = threading.RLock()
+        # A temporary, domain-neutral interception point for captures that
+        # own the whole utterance "finish" or "cancel" while they are active.
+        # Callbacks return a DispatchOutcome when they consume the phrase, or
+        # None to leave the existing session routing untouched.
+        self._active_capture_interceptors = {}
+        self._active_capture_interceptor_id = 0
         self._session_epoch = 0
         # window_integrity_fn(): an injection_safety.IntegrityVerdict for the
         # foreground window (queue 50). A `blocked` verdict (the window runs at
@@ -2231,6 +2242,42 @@ class SessionModeManager:
 
     # -- dispatch -----------------------------------------------------------
 
+    def register_active_capture_interceptor(self, callback):
+        """Register a handler for exact dictation-commit/cancel utterances.
+
+        The returned callable unregisters this handler. The callback receives
+        ``(normalized, raw_text, signals)`` and returns a DispatchOutcome only
+        when an active capture consumes the utterance; returning None preserves
+        the ordinary routing path.
+        """
+        if not callable(callback):
+            raise TypeError("active capture interceptor must be callable")
+        self._active_capture_interceptor_id += 1
+        token = self._active_capture_interceptor_id
+        self._active_capture_interceptors[token] = callback
+
+        def unregister():
+            return self._active_capture_interceptors.pop(token, None) is not None
+
+        return unregister
+
+    def _intercept_active_capture(self, text, normalized, signals):
+        # Keep this seam deliberately narrow: arbitrary dictated words never
+        # reach an interceptor, and inactive captures can decline unchanged.
+        if normalized not in ("finish", "cancel") and not is_dictate_commit(text):
+            return None
+        for callback in tuple(self._active_capture_interceptors.values()):
+            try:
+                outcome = callback(normalized, text, signals)
+            except Exception as exc:
+                log.warning("[SESSION] active capture interceptor failed: %s", exc)
+                continue
+            if isinstance(outcome, DispatchOutcome):
+                return outcome
+            if outcome is not None:
+                log.warning("[SESSION] active capture interceptor returned an invalid outcome")
+        return None
+
     def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
         with self._dispatch_lock:
             return self._dispatch_utterance_locked(raw_text, signals)
@@ -2262,6 +2309,10 @@ class SessionModeManager:
         # aside BEFORE on_abort ends the session (whose reset() would
         # otherwise discard it) -- sleep stops capture, it never discards.
         normalized = normalize_utterance(text)
+
+        active_capture = self._intercept_active_capture(text, normalized, signals)
+        if active_capture is not None:
+            return active_capture
 
         # 0. Stop: same no-gate rule as abort. Generation first (inside
         # stop_fn), draft untouched, mode and microphone unchanged.

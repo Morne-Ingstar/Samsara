@@ -198,7 +198,7 @@ if errorlevel 1 (
     exit /b 1
 )
 del "%GESTURE_MARKER%" >nul 2>nul
-echo [CHECK-16] PASS -- frozen component import and gesture loop start
+echo [CHECK-16] PASS -- frozen component, gesture loop and PyAV MP4 writer
 
 echo.
 echo [3/3] Running frozen_smoke.py against the fresh build...

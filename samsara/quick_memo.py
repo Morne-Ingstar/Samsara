@@ -55,7 +55,7 @@ def append_memo(text, source, audio_path=None, home=None, category=None) -> Path
     return memo_file(home)
 
 
-def _write_markdown(text, audio_path=None, home=None) -> Path:
+def _write_markdown(text, audio_path=None, home=None, video_path=None, partial=False) -> Path:
     """The queue 07 markdown append, unchanged: the durable, human-readable
     copy, written under a file lock and fsynced."""
     path = memo_file(home)
@@ -64,6 +64,11 @@ def _write_markdown(text, audio_path=None, home=None) -> Path:
     if audio_path is not None:
         relative = os.path.relpath(Path(audio_path), path.parent).replace(os.sep, "/")
         entry += f"[audio: {relative}]\n"
+    if video_path is not None:
+        relative = os.path.relpath(Path(video_path), path.parent).replace(os.sep, "/")
+        entry += f"[video: {relative}]\n"
+    if partial:
+        entry += "[partial: true]\n"
     entry += "\n"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,6 +200,14 @@ def audio_path_for(record, home=None) -> Optional[Path]:
     return (memo_file(home).parent / relative).resolve()
 
 
+def video_path_for(record, home=None) -> Optional[Path]:
+    """The absolute MP4 path for a record, or None when it has no video."""
+    relative = (record or {}).get("video")
+    if not relative:
+        return None
+    return (memo_file(home).parent / relative).resolve()
+
+
 def _read_index(home=None) -> list:
     path = index_file(home)
     try:
@@ -256,6 +269,8 @@ _MD_ENTRY = re.compile(
     r"^## (?P<when>\d{4}-\d{2}-\d{2} \d{2}:\d{2})\n(?P<body>.*?)(?=\n## |\Z)",
     re.S | re.M)
 _MD_AUDIO = re.compile(r"^\[audio: (?P<path>.+?)\]$", re.M)
+_MD_VIDEO = re.compile(r"^\[video: (?P<path>.+?)\]$", re.M)
+_MD_PARTIAL = re.compile(r"^\[partial: true\]$", re.M)
 
 
 def parse_markdown(text: str) -> list:
@@ -272,6 +287,14 @@ def parse_markdown(text: str) -> list:
         if found:
             audio = found.group("path")
             body = _MD_AUDIO.sub("", body)
+        video = None
+        found = _MD_VIDEO.search(body)
+        if found:
+            video = found.group("path")
+            body = _MD_VIDEO.sub("", body)
+        partial = bool(_MD_PARTIAL.search(body))
+        if partial:
+            body = _MD_PARTIAL.sub("", body)
         body = body.strip()
         if not body:
             continue
@@ -279,11 +302,13 @@ def parse_markdown(text: str) -> list:
             when = datetime.strptime(match.group("when"), "%Y-%m-%d %H:%M")
         except ValueError:
             continue
-        out.append(_record(body, SOURCE_VOICE, audio=audio, now=when))
+        out.append(_record(body, SOURCE_VOICE, audio=audio, video=video,
+                           partial=partial, now=when))
     return out
 
 
-def _record(text, source, audio=None, category=None, category_source=None, now=None) -> dict:
+def _record(text, source, audio=None, category=None, category_source=None, now=None,
+            video=None, partial=False) -> dict:
     moment = now or datetime.now()
     return {
         "id": new_memo_id(moment),
@@ -291,6 +316,8 @@ def _record(text, source, audio=None, category=None, category_source=None, now=N
         "text": text,
         "source": source,
         "audio": audio,
+        "video": video,
+        "partial": bool(partial),
         "audio_pruned": False,
         "category": category,
         "category_source": category_source,
@@ -327,7 +354,8 @@ def load_memos(home=None) -> list:
 
 
 def add_memo(text, source=SOURCE_VOICE, audio_path=None, home=None,
-             category=None, category_source=None) -> dict:
+             category=None, category_source=None, video_path=None,
+             partial=False) -> dict:
     """Store one memo and return its record.
 
     The markdown file is written FIRST and its failure is the one that
@@ -336,9 +364,11 @@ def add_memo(text, source=SOURCE_VOICE, audio_path=None, home=None,
     """
     if not isinstance(text, str) or not text.strip():
         raise ValueError("memo text must not be empty")
-    _write_markdown(text.strip(), audio_path=audio_path, home=home)
+    _write_markdown(text.strip(), audio_path=audio_path, home=home,
+                    video_path=video_path, partial=partial)
     record = _record(text.strip(), source, audio=_relative_audio(audio_path, home),
-                     category=category, category_source=category_source)
+                     category=category, category_source=category_source,
+                     video=_relative_audio(video_path, home), partial=partial)
     _append_index(record, home)
     return record
 
@@ -388,6 +418,10 @@ def _rewrite_markdown(records, home=None) -> None:
         body.append(f"## {stamp}\n{record.get('text', '')}\n")
         if record.get("audio"):
             body.append(f"[audio: {record['audio']}]\n")
+        if record.get("video"):
+            body.append(f"[video: {record['video']}]\n")
+        if record.get("partial"):
+            body.append("[partial: true]\n")
         body.append("\n")
     text = "".join(body)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -407,7 +441,7 @@ def _rewrite_markdown(records, home=None) -> None:
 
 
 def delete_memo(memo_id, home=None) -> bool:
-    """Remove one memo, its audio, and its line in the markdown mirror.
+    """Remove one memo, its media, and its line in the markdown mirror.
 
     The mirror is rewritten too, not just the index: the page offers "open
     the raw file" a click away, and a memo the user deleted -- possibly
@@ -427,12 +461,13 @@ def delete_memo(memo_id, home=None) -> bool:
     except OSError as exc:
         logger.warning("[MEMO] Could not rewrite %s: %s", memo_file(home), exc)
     for record in gone:
-        path = audio_path_for(record, home)
-        if path is not None:
+        for path in (audio_path_for(record, home), video_path_for(record, home)):
+            if path is None:
+                continue
             try:
                 path.unlink()
             except OSError as exc:
-                logger.debug("[MEMO] Could not delete audio %s: %s", path, exc)
+                logger.debug("[MEMO] Could not delete media %s: %s", path, exc)
     return True
 
 

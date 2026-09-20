@@ -19,6 +19,7 @@ from samsara.session_modes import (
     CommandDispatchResult,
     CommandSuggestionCandidate,
     InjectionDelivery,
+    DispatchOutcome,
     normalize_utterance,
     is_scratch_that,
     is_dictate_commit,
@@ -720,6 +721,68 @@ class TestCommandLaneHeardAndSuggestions:
             outcome = mgr.dispatch_utterance("switch windy", GOOD_SIGNALS)
             assert outcome.kind == expected
             assert outcome.detail["heard"] == "switch windy"
+
+
+class TestActiveCaptureInterceptor:
+    def test_finish_stops_active_capture_and_preserves_pending_dictation(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.dispatch_utterance("dictate mode", GOOD_SIGNALS)
+        mgr.dispatch_utterance("keep this sentence", GOOD_SIGNALS)
+        handled = []
+
+        def intercept(normalized, raw, _signals):
+            if normalized == "finish":
+                handled.append((normalized, raw))
+                return DispatchOutcome("active_capture_stopped", {"label": "saved"})
+            return None
+
+        unregister = mgr.register_active_capture_interceptor(intercept)
+        outcome = mgr.dispatch_utterance("Finish.", GOOD_SIGNALS)
+
+        assert outcome.kind == "active_capture_stopped"
+        assert handled == [("finish", "Finish.")]
+        assert mgr._dictate_pending_buffer
+        mocks["inject"].assert_not_called()
+        assert unregister() is True
+        assert unregister() is False
+
+    def test_inactive_capture_leaves_finish_on_ordinary_commit_path(self, manager_factory, monkeypatch):
+        from samsara import session_modes
+        monkeypatch.setattr(session_modes, "_DICTATE_COMMIT_HOMOPHONES", frozenset({"finish"}))
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.dispatch_utterance("dictate mode", GOOD_SIGNALS)
+        mgr.dispatch_utterance("commit this sentence", GOOD_SIGNALS)
+        seen = []
+        mgr.register_active_capture_interceptor(lambda normalized, raw, signals: (
+            seen.append(normalized) or None
+        ))
+
+        outcome = mgr.dispatch_utterance("finish", GOOD_SIGNALS)
+
+        assert outcome.kind == "dictate_committed"
+        assert seen == ["finish"]
+        mocks["inject"].assert_called_once()
+
+    def test_active_cancel_discards_capture_without_aborting_dictation(self, manager_factory):
+        mgr, mocks = manager_factory(buffer_dictate_until_commit=True)
+        mgr.dispatch_utterance("dictate mode", GOOD_SIGNALS)
+        mgr.dispatch_utterance("keep this sentence", GOOD_SIGNALS)
+        cancelled = []
+
+        def intercept(normalized, _raw, _signals):
+            if normalized == "cancel":
+                cancelled.append(True)
+                return DispatchOutcome("active_capture_cancelled")
+            return None
+
+        mgr.register_active_capture_interceptor(intercept)
+        outcome = mgr.dispatch_utterance("cancel", GOOD_SIGNALS)
+
+        assert outcome.kind == "active_capture_cancelled"
+        assert cancelled == [True]
+        assert mgr._dictate_pending_buffer
+        mocks["on_abort"].assert_not_called()
+        mocks["inject"].assert_not_called()
 
     def test_suggestion_runs_only_after_yes_as_the_canonical_phrase(self, manager_factory):
         candidate = CommandSuggestionCandidate("switch window")
