@@ -4,9 +4,17 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
-- **Ava activation supports key chords** — the Ava Command Session key now
-  captures modifiers plus one key, triggers when that final key is released,
-  and rejects collisions with dictation, command, and wake bindings.
+- **Clipboard delivery tolerates Office protection markers** — private
+  no-data formats no longer block a dictation paste; readable text, rich
+  content, files, and images remain fail-closed if they cannot be restored.
+- **Retained dictation can be retried** — repeating a draft after a failed
+  paste is treated as a retry rather than a prompt echo, and the failure chip
+  now says when another app is holding the clipboard.
+- **Settings simplified** — six focused pages with contextual Advanced sections, cleaner dropdowns and accessible inline help. Record managers and opt-in integrations open separately from Tools; existing configuration keys and defaults are preserved.
+- **Stage timing diagnostics are opt-in** — per-utterance capture, transcription, dispatch, action, and feedback timings are written locally and summarized by a report tool.
+- **Ava can interpret unmatched commands** — opt in on the Ava page to let a
+  closed-world Ava resolver select one available COMMAND-mode action after an
+  ordinary miss. The separate Ava command-session key and latch are retired.
 - **Short sign-off hallucinations are discarded** — isolated Whisper-style
   sign-offs now need weak audio evidence before they are kept out of
   dictation; normal sentences and cleanly spoken words still pass through.

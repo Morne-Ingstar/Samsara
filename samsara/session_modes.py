@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Callable, Optional, Union
 
 from samsara.draft_document import DraftDocument
+from samsara.stage_timing import current_stage_timing as _current_stage_timing
 
 log = logging.getLogger("Samsara.session_modes")
 
@@ -1485,7 +1486,7 @@ def _stopped_chip(detail: dict) -> "tuple[str, str]":
 
 
 def _reason(kind: str, detail: dict) -> str:
-    for key in ("reason", "error"):
+    for key in ("error", "reason"):
         value = detail.get(key) if isinstance(detail, dict) else None
         if value:
             return _short(value)
@@ -1589,6 +1590,8 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind in ("command_executed", "hands_free_command_executed"):
         phrase = _first_two_words(detail.get("phrase"))
         heard = _heard(detail)
+        if detail.get("origin") == "model" and detail.get("state") == "completed":
+            return (f"{CHIP_CHECK} {phrase or 'command'} (Ava)", "success")
         if detail.get("state") in ("queued", "matched"):
             return (_command_chip_label(
                 _command_copy("working", heard=heard, phrase=phrase or "working"), detail.get("phrase")),
@@ -1620,8 +1623,14 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
             return (f"{CHIP_ARROW} {mode}: display error" if mode else f"{CHIP_ARROW} display error", "warning")
         return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
 
+    if kind == "dictate_commit_failed":
+        detail = detail or {}
+        reason = _reason(kind, detail) if detail.get("reason") or detail.get("error") \
+            else "Paste blocked - clipboard held by another app"
+        return (f"{CHIP_CROSS} {reason}", "error")
+
     if kind in ("ava_entry_failed", "hands_free_command_failed",
-                "dictate_commit_failed", "mode_switch_failed", "prefix_switch_failed"):
+                "mode_switch_failed", "prefix_switch_failed"):
         text = f"{CHIP_CROSS} {_reason(kind, detail)}"
         if kind == "hands_free_command_failed":
             text = _command_chip_label(text, detail.get("phrase"))
@@ -2279,8 +2288,12 @@ class SessionModeManager:
         return None
 
     def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
+        timing = _current_stage_timing()
+        timing.mark("dispatch_start")
         with self._dispatch_lock:
-            return self._dispatch_utterance_locked(raw_text, signals)
+            outcome = self._dispatch_utterance_locked(raw_text, signals)
+        timing.mark("action_done")
+        return outcome
 
     def _dispatch_utterance_locked(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
         # Queue 50: suppressed dictation past its retype TTL leaves memory at
@@ -3723,7 +3736,7 @@ class SessionModeManager:
                     "target_hwnd": current_hwnd,
                     "foreground_hwnd": after_hwnd,
                 })
-            error = RuntimeError("dictation paste was not delivered")
+            error = RuntimeError("Paste blocked - clipboard held by another app")
             log.error("[SESSION] DICTATE commit retained: paste callback reported failure")
             if self._on_switch_dispatch_error:
                 self._on_switch_dispatch_error(error)

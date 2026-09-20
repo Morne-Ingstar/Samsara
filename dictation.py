@@ -79,6 +79,12 @@ if _STARTUP_ARGUMENT_CODE is not None:
 # Before every heavy/native import below (torch guard, sounddevice, scipy,
 # faster-whisper, Qt) so a crash during boot also leaves a dump.
 from samsara.paths import samsara_home_dir as _fh_home_dir
+from samsara.stage_timing import (
+    StageTiming,
+    current_stage_timing,
+    reset_current_stage_timing,
+    set_current_stage_timing,
+)
 import samsara.boot as _samsara_boot
 _FAULTHANDLER_FILE = _samsara_boot._enable_faulthandler(_fh_home_dir() / "logs")
 
@@ -1765,16 +1771,7 @@ class DictationApp:
         # Ava command session (D3, Ava Front Door spec v2) -- Left-Alt
         # latched, command-first waterfall session. Replaces the old
         # ai_command_mode.py/"AI command mode" (deleted).
-        self.ava_command_session_active = False
-        self._ava_cmd_mode_lock = threading.Lock()
-        self._ava_cmd_key_held = False            # edge-trigger guard vs OS key auto-repeat
-        self._ava_cmd_key_press_time = 0.0        # set on press; toggle-on-release ghost-tap check reads this
-        self._ava_cmd_ready = threading.Event()
-        self._ava_cmd_ready.set()  # starts set; cleared during entry until cue finishes
-        self._ava_cmd_miss_count = 0              # consecutive unresolved utterances (see ava_command_session._process_utterance)
-        self._ava_cmd_generation = 0              # bumped on every enter AND exit; staleness guard for async work in flight across an exit (see enter/exit_ava_command_session)
-        self._ava_cmd_inactivity_timer = None     # spec D3: 60s inactivity exit (config ava_command_session.inactivity_timeout_s)
-        self._ava_cmd_timer_lock = threading.Lock()
+        self._ava_interpret_request = 0
 
         self._mouse_hook = None
         # Which input drove the current main-hotkey press: 'key' (combo) or
@@ -3171,6 +3168,7 @@ class DictationApp:
 
                 self._migrate_command_matching_enabled_flag()
                 self._migrate_ai_command_mode_config()
+                self._migrate_retired_ava_command_session_config()
                 self._migrate_recording_media_mode()
                 from samsara.config_schema import migrate_removed_settings
                 if migrate_removed_settings(self.config):
@@ -3210,6 +3208,9 @@ class DictationApp:
             self.save_config()
 
         # Record the on-disk state so save_config can do three-way merging.
+        self._stage_timing_enabled = bool(
+            (self.config.get("diagnostics", {}) or {}).get("stage_timing", False)
+        )
         logger.debug("[CONFIG] load_config: starting deepcopy snapshot")
         self._config_last_disk_snapshot = copy.deepcopy(self.config)
         logger.debug("[CONFIG] load_config: done")
@@ -3559,6 +3560,28 @@ class DictationApp:
             f"dropped {dropped}"
         )
 
+    def _migrate_retired_ava_command_session_config(self):
+        """Drop keys that only configured the retired Ava capture session.
+
+        The section remains the stable home for Ava's provider/model and the
+        opt-in COMMAND-miss interpreter. This migration is idempotent and
+        writes only when an existing profile actually changes.
+        """
+        cfg = self.config.get('ava_command_session')
+        if not isinstance(cfg, dict):
+            return
+        removed = ('key', 'miss_limit', 'queue_depth_cap', 'inactivity_timeout_s',
+                   'ready_cue_enabled', 'ready_cue_dir')
+        changed = [key for key in removed if key in cfg]
+        for key in changed:
+            cfg.pop(key, None)
+        if 'interpret_misses' not in cfg:
+            cfg['interpret_misses'] = False
+            changed.append('interpret_misses')
+        if changed:
+            self.save_config()
+            logger.info('[MIGRATE] ava_command_session retired keys=%s', sorted(changed))
+
     def _maybe_announce_ava_command_session_migration(self) -> None:
         """One-time first-run-after-update notice (Ava Front Door spec v2
         "Migration"): toast + one spoken line, exactly once ever (per
@@ -3763,8 +3786,6 @@ class DictationApp:
             changes: dict of key-value pairs to update
             save: whether to persist to disk (default True)
         """
-        old_ava_cmd_cfg = self.config.get('ava_command_session') if 'ava_command_session' in changes else None
-
         with self._config_lock:
             self.config.update(changes)
             if save:
@@ -3797,42 +3818,6 @@ class DictationApp:
                     changes['wake_word_config'].get('oww_threshold', 0.2)
                 )
                 self._wake_detector = WakeWordDetector(new_phrase, threshold=oww_threshold)
-        if 'ava_command_session' in changes:
-            self._maybe_exit_ava_command_session_on_config_change(
-                old_ava_cmd_cfg or {}, changes['ava_command_session'],
-            )
-
-    def _maybe_exit_ava_command_session_on_config_change(self, old_cfg: dict, new_cfg) -> None:
-        """Force-exit the Ava command session if a config change made
-        while it's active would disable the feature or change its
-        activation key out from under the user.
-
-        2026-07-19 incident report item 3 (carried over per Ava Front
-        Door spec v2's "2026-07-19 exclusive-ownership + generation
-        guards carry over"): previously no runtime side effect existed
-        for these config changes at all -- disabling the feature or
-        changing its key while the session was active removed the user's
-        only exit binding while ava_command_session_active stayed True.
-        Shared by update_config() and _apply_disk_config() (external file
-        edits) -- both funnel here so the check and its logging exist in
-        exactly one place.
-        """
-        if not self.ava_command_session_active:
-            return
-        if not isinstance(new_cfg, dict):
-            return
-        old_cfg = old_cfg or {}
-        was_enabled = old_cfg.get('enabled', True)
-        now_enabled = new_cfg.get('enabled', True)
-        old_key = old_cfg.get('key', 'left_alt')
-        new_key = new_cfg.get('key', 'left_alt')
-        if (was_enabled and not now_enabled) or (old_key != new_key):
-            logger.info(
-                f"[AVA-CMD] Config change while active (enabled {was_enabled}->{now_enabled}, "
-                f"key {old_key!r}->{new_key!r}) -- force-exiting"
-            )
-            self.exit_ava_command_session()
-
     def reload_config_from_disk(self) -> int:
         """Re-read config.json from disk and apply any changes to the running app.
 
@@ -3926,15 +3911,6 @@ class DictationApp:
                         )
             except Exception as e:
                 logger.exception(f"[CONFIG] wake_word_config update error: {e}")
-        if 'ava_command_session' in changed:
-            try:
-                old_v, new_v = changed['ava_command_session']
-                self._maybe_exit_ava_command_session_on_config_change(
-                    old_v if isinstance(old_v, dict) else {}, new_v,
-                )
-            except Exception as e:
-                logger.exception(f"[CONFIG] ava_command_session update error: {e}")
-
         return len(changed)
 
     def set_app_state(self, **kwargs):
@@ -5413,15 +5389,9 @@ class DictationApp:
                 logger.info(f'[CMD] "{text}" is a command in the disabled pack {disabled_pack!r}')
             else:
                 logger.info(f'[CMD] No command matched: "{text}"')
-            if (self.command_mode_active
-                    and (self._session_mode_manager is None
-                         or self._session_mode_manager.mode is SessionMode.COMMAND)):
-                self._command_mode_miss_count += 1
-                cm_cfg = self.config.get('command_mode', {})
-                miss_limit = cm_cfg.get('miss_limit', 5)
-                if self._command_mode_miss_count >= miss_limit:
-                    logger.info(f'[CMD MODE] Miss limit ({miss_limit}) reached')
-                    self.exit_command_mode()
+            # The outcome owner accounts for a miss only after optional Ava
+            # resolution finishes. Counting here could end a toggle COMMAND
+            # session while its one permitted fallback is still in flight.
             return CommandDispatchResult(matched=False, phrase=None, disabled_pack=disabled_pack)
 
         def _inject_fn(text: str, commit_focus_guard=None):
@@ -5702,13 +5672,30 @@ class DictationApp:
         """Queue 80: session questions and their results, spoken. Category
         "confirmation" is exempt from command_mode.tts_char_limit (queue 58).
         Never raises: speech must not break dispatch."""
+        timing = current_stage_timing()
+        timing_done = threading.Event()
+        timing_done_lock = threading.Lock()
+
+        def _finish_timing_feedback():
+            with timing_done_lock:
+                if timing_done.is_set():
+                    return
+                timing_done.set()
+            timing.feedback_finished()
+
         try:
             coordinator = getattr(self, 'audio_coordinator', None)
             if coordinator is not None:
-                coordinator.speak(text, category=category)
+                timing.feedback_started()
+                handle = coordinator.speak(
+                    text, category=category, on_done=_finish_timing_feedback,
+                )
+                if str(getattr(handle, "utterance_id", "")).startswith("noop-"):
+                    _finish_timing_feedback()
             else:
                 logger.warning(f'[SESSION] no audio coordinator; not spoken: {text!r}')
         except Exception as exc:
+            _finish_timing_feedback()
             logger.warning(f'[SESSION] session notice not spoken ({exc}): {text!r}')
 
     def clear_dictation_draft(self):
@@ -6058,12 +6045,15 @@ class DictationApp:
         latch in place instead of resolving it. Called unlocked, before
         acquiring _command_mode_lock, so exit_ava_command_session's own
         locking/async work never nests under this lock."""
-        if self.ava_command_session_active:
-            self.exit_ava_command_session()
         with self._command_mode_lock:
             if self.command_mode_active or self.ava_mode_active:
                 return
             self.command_mode_active = True
+        try:
+            from samsara import ava_command_session  # noqa: PLC0415
+            ava_command_session.reset_cancellations()
+        except Exception:
+            pass
         self._command_mode_miss_count = 0
         self._command_mode_session_start = time.monotonic()
         self._command_mode_ghost_tap = False
@@ -6187,6 +6177,9 @@ class DictationApp:
         # this session (queued, in flight, or staged for "yes") is now stale
         # and Denied at the execution-policy choke point. Drafts untouched.
         try:
+            if self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle':
+                from samsara import ava_command_session  # noqa: PLC0415
+                ava_command_session.cancel_all()
             from samsara import execution_policy  # noqa: PLC0415
             execution_policy.stop_all(self, 'session exit', chip=False)
         except Exception as exc:
@@ -6263,8 +6256,6 @@ class DictationApp:
         unlocked, before acquiring _ava_mode_lock, so
         exit_ava_command_session's own locking/async work never nests
         under this lock."""
-        if self.ava_command_session_active:
-            self.exit_ava_command_session()
         with self._ava_mode_lock:
             if self.ava_mode_active or self.command_mode_active:
                 return
@@ -6880,6 +6871,13 @@ class DictationApp:
         is just: transcribe, compute the hallucination-gate signals the
         switch matcher needs, and hand the text off.
         """
+        _active_mode = getattr(getattr(self, "_session_mode_manager", None), "mode", None)
+        stage_timing = StageTiming.create(
+            "handsfree", getattr(_active_mode, "value", "unknown"),
+            enabled=getattr(self, "_stage_timing_enabled", False),
+        )
+        stage_timing.mark("speech_end")
+        timing_token = set_current_stage_timing(stage_timing)
         token = self._transcription_owners.claim('toggle')
         # 2026-09-14 (queue 54): every capture logs its session mode, and
         # every return before dispatch_utterance names why -- a user must
@@ -6896,6 +6894,7 @@ class DictationApp:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
+            stage_timing.mark("capture_finalised", audio_s=audio_duration)
 
             if audio_duration < 0.3:
                 self._log_cmd_utt_dropped('too_short', _capture_mode, audio_duration)
@@ -6979,11 +6978,18 @@ class DictationApp:
                 if context_tail:
                     transcribe_params['initial_prompt'] = context_tail
 
+            stage_timing.mark(
+                "transcribe_start",
+                audio_s=audio_duration,
+                model=self.config.get("model_size", config_defaults.DEFAULTS["model_size"]),
+                beam=transcribe_params.get("beam_size"),
+            )
             transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
                 seg_list = list(segments)
             text = ''.join(s.text for s in seg_list).strip()
+            stage_timing.mark("transcribe_end", words=len(text.split()))
             transcribe_time = time.time() - transcribe_start
             # Hands-free uses this VAD-bounded per-utterance path instead of
             # the hold-to-dictate finalizer. Keep the same diagnostic record
@@ -7126,7 +7132,9 @@ class DictationApp:
             # way anything reaches the next utterance's context tail. That is
             # what keeps the loop from closing: an echo is neither pasted nor
             # allowed to become the prompt that produces the next one.
-            if self._is_dictate_context_echo(text, context_tail):
+            retry_context = getattr(self, "_dictate_commit_retry_context", None)
+            is_retained_commit_retry = retry_context == context_tail and retry_context is not None
+            if self._is_dictate_context_echo(text, context_tail) and not is_retained_commit_retry:
                 logger.info(f'[GUARD] Refused context echo: {text!r} '
                             f'(tail ends {context_tail[-60:]!r})')
                 self._log_cmd_utt_dropped('context_echo', _capture_mode, audio_duration)
@@ -7150,8 +7158,17 @@ class DictationApp:
             if _cancel_windows is not None:
                 _cancel_windows.note_utterance_start()
             outcome = manager.dispatch_utterance(text, signals)
+            outcome = self._resolve_command_miss(outcome, text)
             _dispatched = True
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
+            # A failed commit keeps the draft deliberately.  Its tail is then
+            # the next decoder prompt, but repeating that exact sentence is a
+            # user's retry, not a hallucinated prompt echo.  Clear the one-shot
+            # exception after the next dispatched utterance; another failure
+            # refreshes it with the retained tail below.
+            self._dictate_commit_retry_context = (
+                context_tail if outcome.kind == "dictate_commit_failed" else None
+            )
             self._handle_session_dispatch_outcome(outcome, text)
             if _cancel_windows is not None:
                 # Queue 69: a window HELD by this utterance's speech onset is
@@ -7207,6 +7224,8 @@ class DictationApp:
             except Exception as e:
                 logger.debug(f'[CMD-UTT] Error earcon failed: {e}')
         finally:
+            reset_current_stage_timing(timing_token)
+            stage_timing.complete()
             self._transcription_owners.release('toggle', token)
             self._vad_reset()
 
@@ -7288,6 +7307,59 @@ class DictationApp:
             if self._intent_shadow_errors == 1:
                 logger.warning(f"[INTENT-SHADOW] observe failed ({type(exc).__name__}: {exc}); "
                                f"further failures this session are counted, not logged")
+
+    def _resolve_command_miss(self, outcome: "DispatchOutcome", text: str) -> "DispatchOutcome":
+        """Resolve one eligible normal-command miss, then execute once.
+
+        Suggestions, pending confirmations, disabled packs and ordinary
+        deterministic results are terminal. Only the final unclaimed miss may
+        reach Ava, and a proposal carries Route.MODEL into the normal executor.
+        """
+        if outcome.kind != "command_miss" or outcome.detail.get("pack"):
+            return outcome
+        cfg = self.config.get("ava_command_session", {}) or {}
+        if not cfg.get("interpret_misses", False) or len((text or "").split()) > 8:
+            return outcome
+        try:
+            from samsara import ai_preferences, ava_command_session, execution_policy
+            from samsara.handlers import _get_foreground_hwnd
+            from samsara.execution_policy import Route
+            from samsara.session_modes import DispatchOutcome
+            if (not ai_preferences.ava_master_enabled(self.config)
+                    or execution_policy.pending_operation() is not None):
+                return outcome
+            self._ava_interpret_request += 1
+            request_id = str(self._ava_interpret_request)
+            capture_hwnd = _get_foreground_hwnd()
+            generation = execution_policy.capture_generation(self)
+            deadline = time.monotonic() + 2.5
+            proposal = ava_command_session.resolve(self, text, request_id, deadline)
+            if (proposal is None or time.monotonic() > deadline
+                    or ava_command_session.is_cancelled(request_id)
+                    or _get_foreground_hwnd() != capture_hwnd):
+                return outcome
+            result = self.command_executor.execute_canonical(
+                proposal.command_id, self, route=Route.MODEL,
+                generation=generation,
+                args=proposal.args, source_text=text,
+            )
+            state = getattr(getattr(result, "state", None), "value", "failed")
+            if state == "completed":
+                self._command_mode_miss_count = 0
+                return DispatchOutcome(kind="command_executed", detail={
+                    "phrase": result.phrase, "state": state, "heard": outcome.detail.get("heard", ""),
+                    "origin": proposal.origin,
+                })
+            if state == "queued":
+                return DispatchOutcome(kind="command_awaiting_confirmation", detail={
+                    "phrase": result.phrase, "state": state, "heard": outcome.detail.get("heard", ""),
+                })
+            # A known/refused/disabled command is a terminal MISS; never ask a
+            # model again for an alternative action.
+            return outcome
+        except Exception as exc:
+            logger.warning("[AVA-RESOLVE] request failed: %s", type(exc).__name__)
+            return outcome
 
     def _handle_session_dispatch_outcome(self, outcome: "DispatchOutcome", text: str) -> None:
         """Side effects keyed on the unified session's dispatch outcome that
@@ -9363,6 +9435,12 @@ class DictationApp:
         its owner before enqueueing so a queued decode cannot keep media low.
         """
         src_rate = self.capture_rate if src_rate is None else src_rate
+        _session_mode = getattr(getattr(self, "_session_mode_manager", None), "mode", None)
+        stage_timing = StageTiming.create(
+            "wake", getattr(_session_mode, "value", self.app_state),
+            enabled=getattr(self, "_stage_timing_enabled", False),
+        )
+        stage_timing.mark("speech_end")
         with self._wake_session_lock:
             session_started_at = (
                 getattr(self, '_wake_session_started_at', None)
@@ -9376,6 +9454,7 @@ class DictationApp:
             self._close_hands_free_capture_duck(owner_token)
 
         def finish():
+            stage_timing.complete()
             if tracked:
                 with self._dictation_finalize_lock:
                     self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
@@ -9395,16 +9474,22 @@ class DictationApp:
                         flight_recorder.record('wake.dispatch_dropped', reason='session_ended')
                         return
             flight_recorder.record('session.dispatch', op='started', kind='wake_buffer')
+            timing_token = set_current_stage_timing(stage_timing)
             try:
-                self._decode_wake_word_buffer(buffer, src_rate, oww_confirmed=oww_confirmed)
+                self._decode_wake_word_buffer(
+                    buffer, src_rate, oww_confirmed=oww_confirmed,
+                    stage_timing=stage_timing,
+                )
             finally:
+                reset_current_stage_timing(timing_token)
                 flight_recorder.record('session.dispatch', op='completed', kind='wake_buffer')
 
         flight_recorder.record('session.dispatch', op='enqueued', kind='wake_buffer',
                                thread='wake-utt-queue', oww_confirmed=oww_confirmed)
         self._wake_dispatch_queue.enqueue(decode, finish)
 
-    def _decode_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False):
+    def _decode_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False,
+                                 stage_timing=None):
         """Process audio — check for wake word, commands, or dictation content.
 
         src_rate: sample rate of audio in buffer (default: self.capture_rate).
@@ -9421,6 +9506,8 @@ class DictationApp:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
+            if stage_timing is not None:
+                stage_timing.mark("capture_finalised", audio_s=audio_duration)
 
             # DEBUG: dump raw audio before Whisper for onset-clipping diagnosis.
             # Enable with config key debug_dump_wake_audio: true
@@ -9473,6 +9560,13 @@ class DictationApp:
                 transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', 'balanced')
 
+            if stage_timing is not None:
+                stage_timing.mark(
+                    "transcribe_start",
+                    audio_s=audio_duration,
+                    model=self.config.get("model_size", config_defaults.DEFAULTS["model_size"]),
+                    beam=transcribe_params.get("beam_size"),
+                )
             transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
@@ -9480,6 +9574,8 @@ class DictationApp:
                 # consumed, so the cross-lane lock must cover iteration too.
                 _seg_list = list(segments)
             text = "".join([segment.text for segment in _seg_list]).strip()
+            if stage_timing is not None:
+                stage_timing.mark("transcribe_end", words=len(text.split()))
             transcribe_time = time.time() - transcribe_start
 
             if session_started_at is not None:
@@ -9903,7 +9999,13 @@ class DictationApp:
         if intent["type"] == "command_text":
             # The wake window shares the command lane's dispatcher, outcome
             # chip and pending suggestion reply. It never creates an executor.
+            timing = current_stage_timing()
+            if timing is not None:
+                timing.mark("dispatch_start", words=len(text.split()))
             outcome = self._ensure_session_mode_manager().dispatch_command_utterance(text)
+            outcome = self._resolve_command_miss(outcome, text)
+            if timing is not None:
+                timing.mark("action_done")
             self._handle_session_dispatch_outcome(outcome, text)
             if outcome.kind == "command_suggestion_pending":
                 # Keep this wake window open solely for its eight-second
@@ -10487,6 +10589,7 @@ class DictationApp:
 
     def _output_dictation(self, text):
         """Output dictated text"""
+        stage_timing = current_stage_timing() if getattr(self, "_stage_timing_enabled", False) else None
         _diag_entry = time.perf_counter()
         # Whisper signals accumulated across every process_wake_word_buffer
         # chunk feeding this utterance (quick/long dictation can flush the
@@ -10536,6 +10639,8 @@ class DictationApp:
             # was actually typed (see _apply_formatting_tokens).
             text = self._apply_formatting_tokens(text)
 
+        if stage_timing is not None:
+            stage_timing.mark("dispatch_start", words=len(text.split()))
         logger.info(f"[OK] {text}")
         self.play_sound("success")
         if hasattr(self, 'listening_indicator'):
@@ -10598,6 +10703,8 @@ class DictationApp:
                     self._paste_preserving_clipboard(' ' + text)
             else:
                 self._paste_preserving_clipboard(text)
+        if stage_timing is not None:
+            stage_timing.mark("action_done")
 
         if hasattr(self, 'hints'):
             self.hints.maybe_show(
@@ -10950,21 +11057,29 @@ class DictationApp:
 
     def _sound_stream_callback(self, outdata, frames, time_info, status):
         """Callback for the persistent output stream. Feeds audio from buffer."""
+        timing_done = None
         try:
             with self._buffer_lock:
                 n_buffered = len(self._playback_buffer)
                 if n_buffered >= frames:
                     outdata[:] = self._playback_buffer[:frames]
                     self._playback_buffer = self._playback_buffer[frames:]
+                    if n_buffered == frames:
+                        timing_done = getattr(self, "_stage_timing_playback", None)
+                        self._stage_timing_playback = None
                 elif n_buffered > 0:
                     outdata[:n_buffered] = self._playback_buffer
                     outdata[n_buffered:] = 0
                     self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
+                    timing_done = getattr(self, "_stage_timing_playback", None)
+                    self._stage_timing_playback = None
                 else:
                     outdata[:] = 0  # Silence when nothing to play
         except (sd.PortAudioError, OSError) as e:
             logger.exception(f"[AUDIO] Sound stream error: {e}")
             return
+        if timing_done is not None:
+            timing_done.feedback_finished()
 
     def reload_sounds(self):
         """Reload sounds from disk (call after changing sound files)"""
@@ -11026,8 +11141,15 @@ class DictationApp:
 
         # Scale volume and write to buffer — the stream callback handles the rest
         scaled = (cached * volume).astype(np.float32)
+        timing = current_stage_timing()
+        timing.feedback_started()
+        replaced_timing = None
         with self._buffer_lock:
+            replaced_timing = getattr(self, "_stage_timing_playback", None)
+            self._stage_timing_playback = timing
             self._playback_buffer = scaled  # Replace buffer (new sound wins)
+        if replaced_timing is not None:
+            replaced_timing.feedback_finished()
 
     def stop_sound_stream(self):
         """Stop the persistent sound stream (call on app shutdown)"""
@@ -11417,14 +11539,31 @@ class DictationApp:
         is itself a no-op when nothing was ducked, so this is always safe
         to call unconditionally.
         """
+        mode = (
+            "command" if getattr(self, "command_mode_recording", False)
+            else "ava" if getattr(self, "ava_mode_recording", False)
+            else "dictate"
+        )
+        stage_timing = StageTiming.create(
+            "hold", mode,
+            enabled=(getattr(self, "_stage_timing_enabled", False) and self.recording
+                     and getattr(self, "_streaming_session", None) is None),
+        )
+        stage_timing.mark("speech_end")
         with self._hold_capture_lifecycle_lock:
+            timing_token = set_current_stage_timing(stage_timing)
             try:
-                self._stop_recording_impl()
+                self._stop_recording_impl(stage_timing=stage_timing)
             finally:
+                reset_current_stage_timing(timing_token)
                 try:
                     self._restore_audio()
                 finally:
-                    self._close_hold_capture_duck()
+                    try:
+                        self._close_hold_capture_duck()
+                    finally:
+                        if not stage_timing.handed_off:
+                            stage_timing.complete()
 
     def _take_recording_ownership(self):
         """Return and synchronously clear ownership for the recording being stopped.
@@ -11444,7 +11583,7 @@ class DictationApp:
         self._ava_mode_ghost_tap = False
         return ownership
 
-    def _stop_recording_impl(self):
+    def _stop_recording_impl(self, stage_timing=None):
         """Stop recording and transcribe"""
         if not self.recording:
             return
@@ -11551,6 +11690,11 @@ class DictationApp:
                     logger.exception(f"[STREAM] finalize failed: {e}")
                 return
 
+        if stage_timing is not None:
+            stage_timing.mark(
+                "capture_finalised",
+                audio_s=(len(audio) / self.model_rate if "audio" in locals() else None),
+            )
         logger.info("[...] Transcribing...")
 
         # Discard sub-debounce mode taps before gate/model work. Ownership
@@ -11565,6 +11709,9 @@ class DictationApp:
 
         # Transcribe in background to not block hotkey listener
         def transcribe():
+            _timing_token = (
+                set_current_stage_timing(stage_timing) if stage_timing is not None else None
+            )
             try:
                 audio_duration = len(audio) / self.model_rate
 
@@ -11627,6 +11774,13 @@ class DictationApp:
                         logger.debug(f"[DIAG] gated record failed: {_diag_exc}")
                     return
 
+                if stage_timing is not None:
+                    stage_timing.mark(
+                        "transcribe_start",
+                        audio_s=audio_duration,
+                        model=self.config.get("model_size", config_defaults.DEFAULTS["model_size"]),
+                        beam=transcribe_params.get("beam_size"),
+                    )
                 transcribe_start = time.time()
 
                 # Resource-guard fallback ONLY -- see _LONG_DECODE_CEILING_S
@@ -11673,6 +11827,8 @@ class DictationApp:
                 _diag_all_segs = list(_decode_result.seg_list)
                 _detected_lang = _decode_result.detected_lang
                 _diag_path = _decode_result.diag_path
+                if stage_timing is not None:
+                    stage_timing.mark("transcribe_end", words=len(text.split()))
 
                 flight_recorder.record(
                     'hold_recording.decoded',
@@ -11761,7 +11917,11 @@ class DictationApp:
                         except Exception as _diag_exc:
                             logger.debug(f"[DIAG] command-mode record failed: {_diag_exc}")
 
+                        if stage_timing is not None:
+                            stage_timing.mark("dispatch_start", words=len(text.split()))
                         result, was_command = self.command_executor.process_text(text, self)
+                        if stage_timing is not None:
+                            stage_timing.mark("action_done")
 
                         if was_command:
                             _tut_cmd = self._tutorial_hooks.pop('command', None)
@@ -11799,7 +11959,24 @@ class DictationApp:
                                         self._rearm_command_recording, daemon=True)
                             return
 
-                        # No command matched in command mode — don't output text
+                        # No command matched in command mode. The hold capture
+                        # route does not use SessionModeManager, so feed its
+                        # final miss through the same optional resolver.
+                        from samsara.session_modes import DispatchOutcome
+                        resolved_outcome = self._resolve_command_miss(
+                            DispatchOutcome(kind="command_miss", detail={"heard": text}), text)
+                        if resolved_outcome.kind != "command_miss":
+                            self._handle_session_dispatch_outcome(resolved_outcome, text)
+                            self.add_to_history(text, is_command=True)
+                            self._log_history(
+                                raw_text=text, duration_ms=int(audio_duration * 1000),
+                                mode="command", status="success",
+                                entry_type="command",
+                                matched_command=str(resolved_outcome.detail.get("phrase") or ""),
+                            )
+                            return
+
+                        # Ordinary MISS: do not output text.
                         logger.info(f"[CMD] No command matched: '{text}'")
                         if self.command_mode_active:
                             self._command_mode_miss_count += 1
@@ -11967,6 +12144,8 @@ class DictationApp:
                         return
 
                     logger.info(f"[OK] {text}")
+                    if stage_timing is not None:
+                        stage_timing.mark("dispatch_start", words=len(text.split()))
                     # Queue 50: this success sound used to play before the
                     # paste below, even into an elevated window that drops
                     # every keystroke. Check first; never claim success there.
@@ -12061,6 +12240,8 @@ class DictationApp:
                             if controller is not None:
                                 controller.sync_draft(manager)
                             self._park_hold_feedback('Delivery failed; draft kept')
+                    if stage_timing is not None:
+                        stage_timing.mark("action_done")
 
                     if hasattr(self, 'hints'):
                         self.hints.maybe_show(
@@ -12161,6 +12342,9 @@ class DictationApp:
                     self._hold_park_requested = False
                 if live_hold_finalizing:
                     self._hold_park_finalizing = False
+                if stage_timing is not None:
+                    reset_current_stage_timing(_timing_token)
+                    stage_timing.complete()
 
         def _transcribe_with_chip_watchdog():
             try:
@@ -12172,6 +12356,8 @@ class DictationApp:
         thread = thread_registry.spawn(
             "dictation.transcribe", _transcribe_with_chip_watchdog, daemon=True,
         )
+        if stage_timing is not None:
+            stage_timing.handoff()
 
     def cancel_recording(self):
         """Escape and failed startup must release the hold even if cancel raises."""
@@ -12514,8 +12700,7 @@ class DictationApp:
         snoozed = bool(getattr(self, 'snoozed', False))
         if getattr(self, 'recording', False):
             capture = 'recording'
-        elif (getattr(self, 'ava_mode_active', False)
-                or getattr(self, 'ava_command_session_active', False)):
+        elif getattr(self, 'ava_mode_active', False):
             capture = 'ava'
         elif (getattr(self, 'command_mode_active', False)
                 or getattr(self, 'continuous_active', False) or wake_armed):
