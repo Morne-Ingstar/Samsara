@@ -7221,7 +7221,7 @@
       ],
       "args": [
         {
-          "name": "name",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -7244,7 +7244,7 @@
       ],
       "args": [
         {
-          "name": "name",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -7383,7 +7383,7 @@
       ],
       "args": [
         {
-          "name": "name",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -8349,7 +8349,7 @@
       ],
       "args": [
         {
-          "name": "name",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -8380,7 +8380,7 @@
       "pack": "text-editing",
       "plugin": "snippets",
       "risk": "ui",
-      "source": "plugins/commands/snippets.py:187",
+      "source": "plugins/commands/snippets.py:185",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -8393,7 +8393,7 @@
       ],
       "args": [
         {
-          "name": "name",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -8405,7 +8405,7 @@
       "pack": "text-editing",
       "plugin": "snippets",
       "risk": "write",
-      "source": "plugins/commands/snippets.py:143",
+      "source": "plugins/commands/snippets.py:141",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -8627,7 +8627,7 @@
       ],
       "args": [
         {
-          "name": "text",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -8661,9 +8661,9 @@
       ],
       "args": [
         {
-          "name": "number",
+          "name": "remainder",
           "required": true,
-          "type": "int"
+          "type": "text"
         }
       ],
       "canonical_id": "tab_finder.tab_number",
@@ -10369,9 +10369,9 @@
       ],
       "args": [
         {
-          "name": "size",
+          "name": "remainder",
           "required": true,
-          "type": "int"
+          "type": "text"
         }
       ],
       "canonical_id": "word.font_size",
@@ -10443,7 +10443,7 @@
       ],
       "args": [
         {
-          "name": "spacing",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }
@@ -10585,7 +10585,7 @@
       ],
       "args": [
         {
-          "name": "name",
+          "name": "remainder",
           "required": true,
           "type": "text"
         }

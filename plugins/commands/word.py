@@ -269,7 +269,7 @@ def numbered_list(app, remainder=""):
 
 @command("font size", pack="word", risk_class="ui", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"],
-         param_schema={"size": {"type": "int", "required": True, "min": 6, "max": 72}})
+         param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def font_size(app, remainder=""):
     """Sets selected Word text to a font size from 6 through 72."""
     try:
@@ -289,7 +289,7 @@ _SPACING_RULES = {"1": 0, "1.0": 0, "1.5": 1, "2": 2, "2.0": 2}
 
 @command("line spacing", pack="word", risk_class="ui", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"],
-         param_schema={"spacing": {"type": "number", "required": True, "enum": [1, 1.5, 2]}})
+         param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def line_spacing(app, remainder=""):
     """Sets selected Word paragraphs to 1, 1.5, or 2 line spacing."""
     raw = str(remainder).strip()
@@ -304,7 +304,7 @@ def line_spacing(app, remainder=""):
 
 @command("set font", pack="word", risk_class="ui", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"],
-         param_schema={"name": {"type": "text", "required": True}})
+         param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def set_font(app, remainder=""):
     """Sets selected Word text to an installed font by name."""
     heard = str(remainder).strip()

@@ -90,10 +90,8 @@ def last_dictation(app) -> str:
     aliases=["insert snippet", "paste snippet"],
     pack="text-editing",
     risk_class="write",
-    # A DECLARED, required, named argument -- not an undeclared remainder
-    # string. Queue 107: an undeclared argument is what makes a command
-    # invisible to Ava, because the menu cannot say what to pass it.
-    param_schema={"name": {"type": "str", "required": True}},
+    # The exact voice route supplies the spoken suffix as ``remainder``.
+    param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}},
     side_effects=_SIDE_EFFECTS,
     reversible=True,          # it is an ordinary paste: "undo that" undoes it
     ai_composable=False,
@@ -145,7 +143,7 @@ def insert_snippet(app, remainder):
     aliases=["save as snippet", "name that snippet"],
     pack="text-editing",
     risk_class="write",
-    param_schema={"name": {"type": "str", "required": True}},
+    param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}},
     side_effects=["file"],
     reversible=True,          # delete it on the Snippets page
     ai_composable=False,

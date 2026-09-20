@@ -468,14 +468,14 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `music.album` | `album` | name:text* | ui | yes |  | Play a named Spotify album from the user's Music library. | `plugins/commands/music.py:576` |
-| `music.artist` | `artist` | name:text* | ui | yes |  | Play a named Spotify artist from the user's Music library. | `plugins/commands/music.py:584` |
+| `music.album` | `album` | remainder:text* | ui | yes |  | Play a named Spotify album from the user's Music library. | `plugins/commands/music.py:576` |
+| `music.artist` | `artist` | remainder:text* | ui | yes |  | Play a named Spotify artist from the user's Music library. | `plugins/commands/music.py:584` |
 | `music.mute` | `mute`, `mute spotify` | - | ui | yes |  | Mutes or unmutes Spotify without touching the system volume. | `plugins/commands/music.py:606` |
 | `music.next` | `next`, `skip`, `skip track` | - | ui | yes |  | Skips to the next track. | `plugins/commands/music.py:599` |
 | `music.pause` | `pause` | - | ui | yes |  | Pauses whatever is playing. | `plugins/commands/music.py:592` |
 | `music.play` | `play`, `resume` | name:text | ui | yes |  | Resumes whatever was playing. | `plugins/commands/music.py:558` |
 | `music.play_music` | `place music`, `place of music`, `place some music`, `play me`, `play me some`, `play me some music`, `play music`, `play of music`, `play some`, `play some music`, `playing me some`, `playing some`, `plays music`, `plays some music`, `put on`, `put on some` | playlist:playlist | ui | yes |  | Plays what you name on Spotify, such as play music by Nick Cave. | `plugins/commands/music.py:497` |
-| `music.playlist` | `playlist` | name:text* | ui | yes |  | Play a named Spotify playlist from the user's Music library. | `plugins/commands/music.py:568` |
+| `music.playlist` | `playlist` | remainder:text* | ui | yes |  | Play a named Spotify playlist from the user's Music library. | `plugins/commands/music.py:568` |
 | `music.search` | `search` | - | ui | yes |  | Search Spotify only after a named-library miss asked for it. | `plugins/commands/music.py:537` |
 
 ## quick_ask (1)
@@ -566,9 +566,9 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `snippets.insert` | `insert`, `insert snippet`, `paste snippet` | name:text* | write | yes |  | Types a snippet you saved earlier, such as insert sign off. | `plugins/commands/snippets.py:88` |
-| `snippets.open_snippets` | `open snippets`, `show my snippets`, `snippet list` | - | ui | yes |  | Opens the Snippets page, where your saved snippets are kept. | `plugins/commands/snippets.py:187` |
-| `snippets.save_snippet` | `name that snippet`, `save as snippet`, `save snippet` | name:text* | write | no |  | Saves what you just dictated under a name, such as save snippet sign off. | `plugins/commands/snippets.py:143` |
+| `snippets.insert` | `insert`, `insert snippet`, `paste snippet` | remainder:text* | write | yes |  | Types a snippet you saved earlier, such as insert sign off. | `plugins/commands/snippets.py:88` |
+| `snippets.open_snippets` | `open snippets`, `show my snippets`, `snippet list` | - | ui | yes |  | Opens the Snippets page, where your saved snippets are kept. | `plugins/commands/snippets.py:185` |
+| `snippets.save_snippet` | `name that snippet`, `save as snippet`, `save snippet` | remainder:text* | write | no |  | Saves what you just dictated under a name, such as save snippet sign off. | `plugins/commands/snippets.py:141` |
 
 ## stremio (8)
 
@@ -588,8 +588,8 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
 | `tab_finder.find_tab` | `find my`, `find tab`, `find the tab`, `switch to tab`, `where is` | query:text | ui | yes |  | Finds the browser tab matching what you say and switches to it. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:80` |
-| `tab_finder.find_text` | `find`, `find text` | text:text* | ui | yes |  | Open the browser find bar and enter the requested page text. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:115` |
-| `tab_finder.tab_number` | `tab`, `tab number` | number:int* | ui | yes |  | Switch to browser tab 1 through 8; tab 9 means the last tab. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:130` |
+| `tab_finder.find_text` | `find`, `find text` | remainder:text* | ui | yes |  | Open the browser find bar and enter the requested page text. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:115` |
+| `tab_finder.tab_number` | `tab`, `tab number` | remainder:text* | ui | yes |  | Switch to browser tab 1 through 8; tab 9 means the last tab. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:130` |
 
 ## tasks (9)
 
@@ -728,11 +728,11 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `word.bullet_list` | `bullet list` | - | ui | yes |  | Toggles the selected Word paragraphs as a bulleted list. | `plugins/commands/word.py:228` |
 | `word.double_spacing` | `double spacing` | - | ui | yes |  | Applies double line spacing in Word. | `plugins/commands/word.py:193` |
 | `word.font_bigger` | `font bigger` | - | ui | yes |  | Increases the selected Word text's font size. | `plugins/commands/word.py:144` |
-| `word.font_size` | `font size` | size:int* | ui | yes |  | Sets selected Word text to a font size from 6 through 72. | `plugins/commands/word.py:270` |
+| `word.font_size` | `font size` | remainder:text* | ui | yes |  | Sets selected Word text to a font size from 6 through 72. | `plugins/commands/word.py:270` |
 | `word.font_smaller` | `font smaller` | - | ui | yes |  | Decreases the selected Word text's font size. | `plugins/commands/word.py:151` |
 | `word.italic_that` | `italic that` | - | ui | yes |  | Toggles italics for the selected Word text. | `plugins/commands/word.py:165` |
 | `word.justify_text` | `justify text` | - | ui | yes |  | Justifies the current Word paragraph. | `plugins/commands/word.py:221` |
-| `word.line_spacing` | `line spacing` | spacing:text* | ui | yes |  | Sets selected Word paragraphs to 1, 1.5, or 2 line spacing. | `plugins/commands/word.py:290` |
+| `word.line_spacing` | `line spacing` | remainder:text* | ui | yes |  | Sets selected Word paragraphs to 1, 1.5, or 2 line spacing. | `plugins/commands/word.py:290` |
 | `word.numbered_list` | `numbered list` | - | ui | yes |  | Toggles numbering on the current Word selection. | `plugins/commands/word.py:256` |
 | `word.one_and_a_half_spacing` | `one and a half spacing` | - | ui | yes |  | Applies one-and-a-half line spacing in Word. | `plugins/commands/word.py:186` |
 | `word.redo_in_word` | `redo in word` | - | ui | yes |  | Redoes the last Word edit without invoking Samsara dictation history. | `plugins/commands/word.py:249` |
@@ -740,7 +740,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `word.select_paragraph_in_word` | `select paragraph in word` | - | ui | yes |  | Extends the Word selection through the current paragraph. | `plugins/commands/word.py:235` |
 | `word.select_sentence` | `select sentence` | - | ui | yes |  | Selects the current Word sentence. | `plugins/commands/word.py:338` |
 | `word.select_word` | `select word` | - | ui | yes |  | Selects the current Word word. | `plugins/commands/word.py:352` |
-| `word.set_font` | `set font` | name:text* | ui | yes |  | Sets selected Word text to an installed font by name. | `plugins/commands/word.py:305` |
+| `word.set_font` | `set font` | remainder:text* | ui | yes |  | Sets selected Word text to an installed font by name. | `plugins/commands/word.py:305` |
 | `word.single_spacing` | `single spacing` | - | ui | yes |  | Applies single line spacing in Word. | `plugins/commands/word.py:179` |
 | `word.underline_that` | `underline that` | - | ui | yes |  | Toggles underline for the selected Word text. | `plugins/commands/word.py:172` |
 | `word.undo_in_word` | `undo in word` | - | ui | yes |  | Undoes the last Word edit without invoking Samsara dictation history. | `plugins/commands/word.py:242` |

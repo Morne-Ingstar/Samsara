@@ -114,7 +114,7 @@ def find_tab(app, remainder):
 
 @command(
     "find text", aliases=["find"], pack="browsers", risk_class="ui",
-    param_schema={"text": {"type": "text", "required": True}},
+    param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}},
 )
 def find_text(app, remainder):
     """Open the browser find bar and enter the requested page text."""
@@ -129,7 +129,7 @@ def find_text(app, remainder):
 
 @command(
     "tab number", aliases=["tab"], pack="browsers", risk_class="ui",
-    param_schema={"number": {"type": "int", "required": True, "min": 1, "max": 9}},
+    param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}},
 )
 def tab_number(app, remainder):
     """Switch to browser tab 1 through 8; tab 9 means the last tab."""

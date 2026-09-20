@@ -592,7 +592,7 @@ def validate_args(schema, args: dict, *, route: Route = Route.EXACT) -> Optional
     * NO_ARGS_SCHEMA: any argument at all -> "invalid_args".
     * a declared schema: missing required, extra keys (the spoken remainder
       is tolerated on user routes only), wrong types (no coercion), out of
-      range, not in choices, and strings longer than max_len (default
+      range, not in choices, blank required strings, and strings longer than max_len (default
       DEFAULT_MAX_STR_LEN) -> "invalid_args".
     """
     args = dict(args or {})
@@ -633,6 +633,8 @@ def validate_args(schema, args: dict, *, route: Route = Route.EXACT) -> Optional
         if not _type_ok(typ, value):
             return "invalid_args", f"argument '{name}' must be a {typ}"
         if typ == "str":
+            if spec.get("required") and not value.strip():
+                return "invalid_args", f"missing required argument '{name}'"
             limit = spec.get("max_len", DEFAULT_MAX_STR_LEN)
             if len(value) > limit:
                 return "invalid_args", f"argument '{name}' longer than {limit} characters"

@@ -567,7 +567,7 @@ def handle_media_play(app, remainder):
 
 @command("playlist", pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'],
-         param_schema={"name": {"type": "str", "required": True, "max_len": 120}})
+         param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_playlist(app, remainder):
     """Play a named Spotify playlist from the user's Music library."""
     return handle_play(app, f"playlist {remainder}")
@@ -575,7 +575,7 @@ def handle_playlist(app, remainder):
 
 @command("album", pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'],
-         param_schema={"name": {"type": "str", "required": True, "max_len": 120}})
+         param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_album(app, remainder):
     """Play a named Spotify album from the user's Music library."""
     return handle_play(app, f"album {remainder}")
@@ -583,7 +583,7 @@ def handle_album(app, remainder):
 
 @command("artist", pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'],
-         param_schema={"name": {"type": "str", "required": True, "max_len": 120}})
+         param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_artist(app, remainder):
     """Play a named Spotify artist from the user's Music library."""
     return handle_play(app, f"artist {remainder}")

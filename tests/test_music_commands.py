@@ -114,7 +114,9 @@ def test_named_music_grammar_is_registered_in_the_media_catalog():
         entry = plugin_commands._REGISTRY[phrase]
         assert entry['pack'] == 'media'
         assert entry['ai_composable'] is True
-        assert entry['param_schema']['name']['type'] == 'str'
+    assert plugin_commands._REGISTRY['play']['param_schema']['name']['type'] == 'str'
+    for phrase in ('playlist', 'album', 'artist'):
+        assert plugin_commands._REGISTRY[phrase]['param_schema']['remainder']['type'] == 'str'
 
 
 def test_bare_play_unchanged(monkeypatch):
