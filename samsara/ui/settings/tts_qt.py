@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import theme
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
 
@@ -57,7 +58,7 @@ class TTSPage:
         layout.addWidget(tts_enabled)
 
         restart_note = QLabel("Restart Samsara to apply enable/disable changes.")
-        restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(restart_note)
         layout.addSpacing(16)
 
@@ -75,7 +76,7 @@ class TTSPage:
             engine_combo,
         ))
         edge_note = QLabel("Edge uses Microsoft’s online voices; WinRT is the offline option.")
-        edge_note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
+        edge_note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(edge_note)
         layout.addSpacing(8)
 
@@ -168,7 +169,7 @@ class TTSPage:
             "Reduce background audio while Ava is speaking so her voice is clearly audible."
         )
         duck_desc.setWordWrap(True)
-        duck_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        duck_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(duck_desc)
         layout.addSpacing(6)
 
@@ -211,7 +212,7 @@ class TTSPage:
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._test_tts)
         test_status = QLabel("")
-        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        test_status.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         self._widgets['tts_test_status'] = test_status
         test_row.addWidget(test_btn)
         test_row.addWidget(test_status)

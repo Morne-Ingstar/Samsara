@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import theme
+from .presentation import Disclosure
 
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
@@ -53,68 +54,45 @@ class HealthPage:
             "Health entries are logged automatically by voice command."
         )
         instant_note.setWordWrap(True)
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(8)
 
         # ---- Section: Voice Command Reference ----
+        main_layout = layout
+        reference = Disclosure('Voice command reference')
+        main_layout.addWidget(reference)
+        layout = reference.rows
         layout.addWidget(self._section_title("Voice Commands"))
         layout.addSpacing(4)
 
-        commands_info = [
-            ("Pain tracking",    [
-                ('"pain level 6"', "Log pain 1-10 with timestamp"),
-                ('"pain level 4 knees"', "Log pain + body location"),
-            ]),
-            ("Medication",       [
-                ('"took ibuprofen 400mg"', "Log medication + dose"),
-                ('"took paracetamol"', "Log medication name only"),
-            ]),
-            ("Symptoms",         [
-                ('"symptom hands are stiff"', "Freeform symptom note"),
-                ('"I feel nauseous"', "Also triggers symptom log"),
-            ]),
-            ("Summaries",        [
-                ('"health summary"', "Last 24h pain avg, meds, symptoms"),
-                ('"how was my week"', "Spoken 7-day summary."),
-                ('"read health log"', "Read today's entries aloud"),
-            ]),
-            ("Management",       [
-                ('"export health log"', "Save to CSV file"),
-                ('"undo health log"', "Remove last entry"),
-            ]),
-        ]
-
-        for group_name, cmds in commands_info:
-            group_lbl = QLabel(group_name)
-            group_lbl.setStyleSheet(
-                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; "
-                "margin-top: 6px;"
-            )
-            layout.addWidget(group_lbl)
-            for phrase, desc in cmds:
-                row = QHBoxLayout()
-                row.setContentsMargins(12, 1, 0, 1)
-                p = QLabel(phrase)
-                p.setStyleSheet(
-                    f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px; "
-                    "font-family: 'Consolas', 'Courier New', monospace;"
-                )
-                p.setMinimumWidth(240)
-                d = QLabel(desc)
-                d.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
-                row.addWidget(p)
-                row.addWidget(d, stretch=1)
-                layout.addLayout(row)
+        # Read the same effective command catalog used by Command library.
+        # No plugin import/registration or private health data is needed here.
+        from .shared_qt import _collect_command_rows
+        entries = [entry for entry in _collect_command_rows(
+            getattr(self.app, 'command_executor', None)) if entry['pack'] == 'health']
+        if not entries:
+            empty = QLabel('No health commands are loaded in the current catalog.')
+            empty.setWordWrap(True)
+            layout.addWidget(empty)
+        for entry in entries:
+            label = QLabel(entry['phrase'])
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            description = QLabel(entry['description'])
+            description.setWordWrap(True)
+            description.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+            layout.addWidget(description)
 
         layout.addSpacing(20)
 
         # ---- Section: Today's Log ----
+        layout = main_layout
         layout.addWidget(self._section_title("Today's Log"))
         layout.addSpacing(4)
 
         self._health_count_label = QLabel("Loading...")
-        self._health_count_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        self._health_count_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(self._health_count_label)
         layout.addSpacing(4)
 
@@ -179,7 +157,7 @@ class HealthPage:
         layout.addLayout(export_row)
 
         self._health_export_label = QLabel("")
-        self._health_export_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        self._health_export_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(self._health_export_label)
         layout.addSpacing(20)
 
@@ -192,7 +170,7 @@ class HealthPage:
             "is heard correctly."
         )
         dict_desc.setWordWrap(True)
-        dict_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        dict_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(dict_desc)
         layout.addSpacing(6)
 
@@ -206,7 +184,7 @@ class HealthPage:
         layout.addLayout(dict_row)
 
         self._med_dict_label = QLabel("")
-        self._med_dict_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        self._med_dict_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(self._med_dict_label)
 
         layout.addStretch()
@@ -334,7 +312,7 @@ class HealthPage:
             dict_path = Path(_SETTINGS_QT_FILE).parent.parent.parent / "dictionaries" / "medications.json"
             if not dict_path.exists():
                 self._med_dict_label.setText("Dictionary file not found.")
-                self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px;")
+                self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_BODY}px;")
                 return
 
             with open(dict_path, "r", encoding="utf-8") as f:
@@ -363,7 +341,7 @@ class HealthPage:
             self._med_dict_label.setText(
                 f"Added {added} new terms ({total} total medication words in vocabulary)."
             )
-            self._med_dict_label.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px;")
+            self._med_dict_label.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px;")
         except Exception as ex:
             self._med_dict_label.setText(f"Error: {ex}")
-            self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px;")
+            self._med_dict_label.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_BODY}px;")

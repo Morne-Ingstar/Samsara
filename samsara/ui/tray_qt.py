@@ -1256,6 +1256,14 @@ class SamsaraTrayQt(QObject):
 
         # ---- Tools submenu: setup toggles, overlays, one-off tools ----
         tools_sub = QMenu("Tools")
+        # 285: independent managers, separate from Settings' edit transaction.
+        from samsara.ui.settings_qt import SettingsQt
+        if not hasattr(self, '_settings_tools'):
+            self._settings_tools = SettingsQt(app)
+        for tool_name in ("Command library", "Alarms", "Health", "Music", "Components", "Integrations"):
+            add(tools_sub, tool_name,
+                lambda name=tool_name: self._settings_tools.show_tool(name))
+        tools_sub.addSeparator()
         window_recovery = QMenu("Window recovery")
         add(window_recovery, "Reset dictation preview", self._reset_preview_position,
             report_as="Reset dictation preview")

@@ -162,20 +162,12 @@ class TestSettingsWindowConstruction:
         assert general_updates['output_device'] is None
         assert general_updates['output_device_name'] is None
 
-    def test_modes_tab_replaces_hotkeys_and_ai_commands(self, qapp):
-        """Modes tab consolidates Hotkeys + AI Commands + the Commands tab's
-        button picker -- those source tabs are gone."""
+    def test_six_preferences_replace_legacy_tabs(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        assert 'Modes' in _TAB_NAMES
-        assert 'Hotkeys' not in _TAB_NAMES
-        assert 'AI Commands' not in _TAB_NAMES
-        assert len(_TAB_NAMES) == 11
+        assert _TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
+        assert [win._sidebar.item(i).text() for i in range(win._sidebar.count())] == _TAB_NAMES
 
-        sidebar_labels = {win._sidebar.item(i).text() for i in range(win._sidebar.count())}
-        assert 'Modes' in sidebar_labels
-        assert 'Hotkeys' not in sidebar_labels
-        assert 'AI Commands' not in sidebar_labels
 
     def test_modes_tab_save_fn_key_union(self, qapp):
         """Firing the Modes tab's save fn must produce the same key set the
@@ -187,7 +179,7 @@ class TestSettingsWindowConstruction:
 
         # _save_fns[1] is the Modes tab's fn -- General is [0], Modes is next
         # (registration order == _stack.addWidget order in __init__).
-        modes_save_fn = win._save_fns[1]
+        modes_save_fn = win._source_saves['modes'][0]
         produced = modes_save_fn({})
 
         # 08d: streaming_hotkey is gone (dead key -- the hook hardcodes CapsLock
@@ -209,7 +201,7 @@ class TestSettingsWindowConstruction:
         tab's single save fn (previously split across Hotkeys + Commands)."""
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
-        modes_save_fn = win._save_fns[1]
+        modes_save_fn = win._source_saves['modes'][0]
         produced = modes_save_fn({})
         assert 'button' in produced['command_mode']
         assert 'suppress_button' in produced['command_mode']
@@ -220,7 +212,7 @@ class TestSettingsWindowConstruction:
         emits, both off->on and on->off."""
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
-        modes_save_fn = win._save_fns[1]
+        modes_save_fn = win._source_saves['modes'][0]
 
         # Default (empty config) construction: unchecked.
         assert win._widgets['cmd_tab_enabled'].isChecked() is False
@@ -250,64 +242,27 @@ class TestSettingsWindowConstruction:
         from samsara.ui.settings_qt import _SettingsWindow, _CMD_BUTTON_OPTIONS
         win = _SettingsWindow(_StubApp())
         assert win._widgets['cmd_tab_button'].currentText() == 'Right Ctrl (default)'
-        modes_save_fn = win._save_fns[1]
+        modes_save_fn = win._source_saves['modes'][0]
         produced = modes_save_fn({})
         assert produced['command_mode']['button'] == 'rctrl'
         assert _CMD_BUTTON_OPTIONS['Mouse 4'] == 'mouse4'  # still selectable, just not default
 
-    def test_modes_tab_has_one_voice_control_card_with_subordinate_hold_behavior(self, qapp):
-        """Ordinary Command Mode and Hands-Free are one activation system,
-        while the Ava Command Session remains a separate card."""
-        from PySide6.QtWidgets import QFrame
-        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
-
+    def test_related_shortcut_controls_share_semantic_rows(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
-        page = win._stack.widget(_TAB_NAMES.index('Modes'))
-        cards = [
-            frame for frame in page.findChildren(QFrame)
-            if frame.objectName() == 'settingsSectionCard'
-        ]
-        titles = [card.layout().itemAt(0).widget().text() for card in cards]
+        rows = {row.title: row for row in win._pages['Shortcuts'].base_rows}
+        for title, keys in [('Session button', ['cmd_mode', 'cmd_tab_button']),
+                            ('Primary dictation', ['mode', 'hotkey']),
+                            ('Ava command session', ['ava_cmd_key'])]:
+            assert all(rows[title].isAncestorOf(win._widgets[key]) for key in keys)
 
-        assert titles == [
-            'Hands-Free / Voice Control',
-            'Dictation bindings',
-            'Ava Command Session',
-            'Ava Assistant',
-            'Advanced tuning',
-        ]
-        assert 'Voice Commands' not in titles
 
-        def containing_card(widget):
-            parent = widget.parentWidget()
-            while parent is not None and parent.objectName() != 'settingsSectionCard':
-                parent = parent.parentWidget()
-            return parent
-
-        voice_card = cards[0]
-        assert containing_card(win._widgets['cmd_mode']) is voice_card
-        assert containing_card(win._widgets['command_hotkey']) is voice_card
-        assert containing_card(win._widgets['wake_word_hotkey']) is voice_card
-        assert containing_card(win._widgets['mode']) is cards[1]
-
-    def test_modes_voice_control_rows_remain_search_registered(self, qapp):
+    def test_voice_control_rows_remain_search_registered(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
-
         win = _SettingsWindow(_StubApp())
-        modes_index = _TAB_NAMES.index('Modes')
-        labels = {
-            label for label, _desc, tab, *_widgets in win._search_rows
-            if tab == modes_index
-        }
-
-        assert {
-            'Enable voice control',
-            'Button behavior',
-            'Command-only key',
-            'Wake activation key',
-            'Primary dictation key behavior',
-        } <= labels
-        assert 'Enable Ava command session' not in labels
+        labels = {label for label, _desc, tab, *_ in win._search_rows
+                  if tab == _TAB_NAMES.index('Shortcuts')}
+        assert {'Session button', 'Command-only key', 'Wake toggle', 'Primary dictation'} <= labels
 
 
 class TestSidebarGrouping:
@@ -328,38 +283,26 @@ class TestSidebarGrouping:
             else:
                 headers.append(item.text())
 
-        assert len(headers) == 3
-        assert len(selectable) == 11
-        assert set(headers) == {'SETTINGS', 'TOOLS', 'SUPPORT'}
+        assert headers == []
+        assert selectable == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
 
-    def test_tab_indices_unchanged(self, qapp):
-        """Stack widget order/indices must be untouched by the regrouping --
-        only the sidebar's visual row order changed. Modes occupies the old
-        Hotkeys slot (index 1); AI Commands (old index 9) is gone."""
-        from samsara.ui.settings_qt import _SettingsWindow
+    def test_sidebar_matches_new_page_registry(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        expected = {
-            'General': 0, 'Modes': 1, 'Commands': 2, 'Sounds': 3, 'TTS': 4,
-            'Ava / Cloud': 5, 'Alarms': 6, 'Health': 7, 'Advanced': 8,
-            'Help & Support': 9, 'Music': 10,
-        }
-        for row, stack_index in win._sidebar_row_to_stack_index.items():
-            name = win._sidebar.item(row).text()
-            assert expected[name] == stack_index
+        for row, index in win._sidebar_row_to_stack_index.items():
+            assert win._sidebar.item(row).text() == _TAB_NAMES[index]
 
-    def test_clicking_a_header_does_nothing(self, qapp):
+
+    def test_invalid_sidebar_selection_does_nothing(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
         before = win._stack.currentIndex()
-        header_row = next(
-            i for i in range(win._sidebar.count())
-            if i not in win._sidebar_row_to_stack_index
-        )
-        win._on_sidebar_row_changed(header_row)
+        win._on_sidebar_row_changed(-1)
         assert win._stack.currentIndex() == before
 
+
     @pytest.mark.parametrize("tab_name,stack_index,expected_substring", [
-        ("Commands", 2, "apply immediately"),
+        ("Command library", 2, "apply immediately"),
         ("Alarms",   6, "apply immediately"),
         ("Health",   7, "read-only"),
     ])
@@ -367,8 +310,7 @@ class TestSidebarGrouping:
         from PySide6.QtWidgets import QLabel
         from samsara.ui.settings_qt import _SettingsWindow
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(stack_index)
-        tab_widget = win._stack.widget(stack_index)
+        tab_widget = win._tool_pages[tab_name]
         all_text = " ".join(lbl.text() for lbl in tab_widget.findChildren(QLabel)).lower()
         assert expected_substring in all_text, (
             f"{tab_name} tab has no caption containing {expected_substring!r}"
@@ -381,7 +323,7 @@ class TestModesCollisionDetection:
     def test_exact_duplicate_shows_banner_naming_both(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))  # non-current stack pages report not-visible
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))  # non-current stack pages report not-visible
 
         win._widgets['ava_mode_key'].setCurrentText('Right Ctrl')     # 08d: named-key combo
         win._widgets['ava_cmd_key'].setCurrentText('Right Ctrl')
@@ -395,7 +337,7 @@ class TestModesCollisionDetection:
     def test_staged_thought_binding_participates_in_collision_warning(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
 
         win._widgets['dictate_commit_hotkey']._combo = (
             win._widgets['undo_hotkey'].combo
@@ -417,7 +359,7 @@ class TestModesCollisionDetection:
     def test_superset_combo_shows_may_shadow_note(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
 
         win._widgets['hotkey']._combo = 'ctrl+shift'
         win._widgets['continuous_hotkey']._combo = 'ctrl+shift+a'
@@ -434,7 +376,7 @@ class TestModesCollisionDetection:
         the caller needing to call it manually."""
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
 
         undo_btn = win._widgets['undo_hotkey']          # a real _HotkeyButton (Ava's is a combo since 08d)
         ai_key_combo = win._widgets['ava_cmd_key']
@@ -519,7 +461,7 @@ class TestMouseMainHotkeyCapture:
     def test_main_hotkey_equal_to_command_mode_button_is_a_collision(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
 
         win._widgets['hotkey']._combo = 'mouse4'
         win._widgets['cmd_tab_button'].setCurrentText('Mouse 4')
@@ -552,9 +494,11 @@ class TestAvaCloudTabNoLicenseGate:
     def test_cloud_settings_visible_without_any_key(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Ava / Cloud'))
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Ava'))
+        win._widgets['cloud_enabled'].setChecked(True)
+        win._pages['Ava'].advanced.reveal()
 
-        for widget_key in ('cloud_enabled', 'cloud_provider', 'cloud_api_key',
+        for widget_key in ('providerRoute', 'cloud_provider', 'cloud_api_key',
                             'cloud_model', 'cloud_timeout', 'ava_personality',
                             'ava_memory_mode', 'ava_memory_max_turns'):
             widget = win._widgets[widget_key]
@@ -581,7 +525,7 @@ class TestAvaCloudTabNoLicenseGate:
         win._widgets['cloud_enabled'].setChecked(True)
         win._widgets['cloud_api_key'].setText('sk-test-key')
 
-        ava_cloud_save_fn = win._save_fns[_TAB_NAMES.index('Ava / Cloud')]
+        ava_cloud_save_fn = win._source_saves['ava'][0]
         produced = ava_cloud_save_fn({})
         assert produced['cloud_llm']['enabled'] is True
         assert produced['cloud_llm']['api_key'] == 'sk-test-key'
@@ -695,10 +639,15 @@ class TestApplyAndCloseSnapshot:
         for key in ('backend', 'allow_cloud_fallback'):
             expected.get('smart_corrections', {}).pop(key, None)
 
+        # 285: separate Tools own their preferences; Settings must not initialize them.
+        for key in ('tasks', 'music_library', 'gesture'):
+            expected.pop(key, None)
+        expected.pop('command_packs', None)  # Ava master persists via its consent-aware setter.
+        expected['alarms'] = {key: value for key, value in expected['alarms'].items()
+                              if key in ('complete_hotkey', 'dismiss_hotkey')}
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()
-
         assert stub.config == expected
 
     def test_microphone_switch_happens_before_bulk_config_update(self, qapp):
@@ -971,7 +920,7 @@ class TestModesTabClaims:
         assert 'streaming_hotkey' not in win._widgets
         assert win._widgets['streaming_key_display'].text() == sq._STREAMING_KEY_LABEL == "CapsLock (fixed)"
         assert win._widgets['streaming_key_display'].isReadOnly()
-        assert 'streaming_hotkey' not in win._save_fns[1]({})
+        assert 'streaming_hotkey' not in win._source_saves['modes'][0]({})
         assert sq._STREAMING_KEY_DESC in self._labels(win)
 
     def test_streaming_checkbox_calls_set_streaming_mode_like_the_tray(self, qapp):
@@ -981,13 +930,13 @@ class TestModesTabClaims:
         cb = win._widgets['streaming_mode']
         assert cb.isChecked() is False
         cb.setChecked(True)
-        produced = win._save_fns[1]({})
+        produced = win._source_saves['modes'][0]({})
         stub.set_streaming_mode.assert_called_once_with(True)
         assert 'streaming_mode' not in produced          # the setter saves the flag itself
         # unchanged state -> no call
         stub.set_streaming_mode.reset_mock()
         stub.config['streaming_mode'] = True
-        win._save_fns[1]({})
+        win._source_saves['modes'][0]({})
         stub.set_streaming_mode.assert_not_called()
 
     # 2. enable voice control ---------------------------------------------
@@ -1008,23 +957,23 @@ class TestModesTabClaims:
         assert [combo.itemText(i) for i in range(combo.count())] == list(sq._AI_CMD_KEY_OPTIONS)
         assert combo.currentText() == 'Right Alt'
         combo.setCurrentText('F13')
-        assert win._save_fns[1]({})['ava_mode_key'] == 'f13'
+        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'f13'
 
     def test_ava_key_combo_migration_keeps_unsupported_value_until_picked(self, qapp):
         from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
         _stub, win = self._win({"ava_mode_key": "ctrl+alt+a"})
         combo = win._widgets['ava_mode_key']
         assert combo.currentText() == sq._AVA_KEY_UNSUPPORTED.format(combo="ctrl+alt+a")
-        assert win._save_fns[1]({})['ava_mode_key'] == 'ctrl+alt+a'      # kept, not silently replaced
+        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'ctrl+alt+a'      # kept, not silently replaced
         combo.setCurrentText('Right Ctrl')
-        assert win._save_fns[1]({})['ava_mode_key'] == 'right_ctrl'
+        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'right_ctrl'
 
     def test_ava_master_exists_only_on_ava_cloud(self, qapp):
         _stub, win = self._win({})
         assert 'ava_enabled' in win._widgets
         assert 'ava_mode_enabled' not in win._widgets
         assert 'ava_cmd_enabled' not in win._widgets
-        modes_updates = win._save_fns[1]({})
+        modes_updates = win._source_saves['modes'][0]({})
         assert 'ava_mode_enabled' not in modes_updates
         assert 'enabled' not in modes_updates['ava_command_session']
 
@@ -1067,7 +1016,7 @@ class TestModesTabClaims:
         win._widgets['capture_correction_hotkey']._combo = 'ctrl+alt+y'
         win._widgets['continuous_commit_hotkey']._combo = 'ctrl+alt+k'
         win._widgets['continuous_commit_trigger'].setCurrentText('key')
-        produced = win._save_fns[1]({})
+        produced = win._source_saves['modes'][0]({})
         assert produced['memo_hotkey'] == 'ctrl+alt+q'
         assert produced['correction_hotkey'] == 'ctrl+alt+e'
         assert produced['hotkeys'] == {"capture_correction": "ctrl+alt+y", "other": "keep-me"}   # read-merge-write
@@ -1077,7 +1026,7 @@ class TestModesTabClaims:
     def test_collision_checker_sees_the_new_keys(self, qapp):
         from samsara.ui.settings_qt import _TAB_NAMES
         _stub, win = self._win()
-        win._stack.setCurrentIndex(_TAB_NAMES.index('Modes'))
+        win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
         win._widgets['memo_hotkey']._combo = win._widgets['undo_hotkey'].combo
         win._check_modes_collisions()
         warn = win._widgets['modes_collision_warn']
@@ -1107,7 +1056,7 @@ class TestModesTabClaims:
     def test_tts_char_limit_control_saves_into_command_mode(self, qapp):
         _stub, win = self._win({"command_mode": {"tts_char_limit": 50}})
         win._widgets['cmd_tts_char_limit'].setValue(0)
-        produced = win._save_fns[1]({})
+        produced = win._source_saves['modes'][0]({})
         assert produced['command_mode']['tts_char_limit'] == 0
 
     # 8. config-only note -------------------------------------------------

@@ -124,7 +124,7 @@ class MusicPage:
                 f"background-color: {theme.tint(theme.ACCENT, 0.16)}; "
                 f"border: 1px solid {theme.tint(theme.ACCENT, 0.45)}; "
                 f"border-radius: 8px; color: {theme.ACCENT}; "
-                f"font-size: {theme.TYPE_MIN}px; font-weight: 600; padding: 4px 8px;"
+                f"font-size: {theme.TYPE_BODY}px; font-weight: 600; padding: 4px 8px;"
             )
             table.setCellWidget(row, 1, chip)
             table.setItem(row, 2, QTableWidgetItem(entry['uri']))

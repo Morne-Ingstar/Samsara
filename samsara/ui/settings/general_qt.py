@@ -37,6 +37,7 @@ from samsara.config_transfer import (
 )
 from samsara.ui import ava_captions_qt
 from samsara.ui import theme
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 from samsara.ui_scale import UI_SCALE_OPTIONS, ui_scale_label
 
 #: The three values `ui.theme` may hold, in the words the user reads. "System"
@@ -216,7 +217,7 @@ class GeneralPage:
         mic_row_layout.addWidget(mic_refresh_btn)
 
         mic_refresh_hint = QLabel("Stop dictation to refresh devices.")
-        mic_refresh_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px;")
+        mic_refresh_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")
         mic_refresh_hint.setVisible(False)
 
         def _on_refresh_mics():
@@ -385,7 +386,7 @@ class GeneralPage:
 
         model_lang_hint = QLabel("")
         model_lang_hint.setWordWrap(True)
-        model_lang_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
+        model_lang_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px; margin-left: 4px;")
         model_lang_hint.setVisible(False)
         model_layout.addWidget(model_lang_hint)
 

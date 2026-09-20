@@ -30,6 +30,7 @@ from samsara.constants import (
     DEFAULT_WAKE_PHRASE_OPTIONS,
 )
 from samsara.ui import theme
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import (
     _CMD_BUTTON_KEY_TO_LABEL,
@@ -896,7 +897,7 @@ class ModesPage:
         )
         ava_status.setWordWrap(True)
         ava_status.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
         )
         self._widgets['ava_master_status'] = ava_status
         ai_layout.addWidget(ava_status)

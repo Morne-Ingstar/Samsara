@@ -37,6 +37,8 @@ from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, _collect_command_rows, logger
 
 
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
+
 class CommandsPage:
     """Methods of the Commands settings page (moved from _SettingsWindow)."""
 
@@ -69,7 +71,7 @@ class CommandsPage:
             "Enable the packs you use. Disabling unused packs improves recognition accuracy."
         )
         desc1.setWordWrap(True)
-        desc1.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        desc1.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(desc1)
         layout.addSpacing(4)
 
@@ -118,7 +120,7 @@ class CommandsPage:
             logger.debug(f"_build_commands_tab: {e}")
 
         restart_lbl = QLabel("Restart Samsara to apply pack changes.")
-        restart_lbl.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_MIN}px;")
+        restart_lbl.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")
         restart_lbl.setVisible(False)
         self._widgets['_pack_restart_lbl'] = restart_lbl
 
@@ -146,6 +148,8 @@ class CommandsPage:
             cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
             pack_checkboxes[pack_id] = cb
             row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignTop)
+            if always_on:
+                cb.hide()  # The adjacent manifest label is a capability badge, not a preference.
 
             text_col = QVBoxLayout()
             text_col.setContentsMargins(0, 0, 0, 0)
@@ -187,6 +191,11 @@ class CommandsPage:
         layout.addSpacing(4)
 
         # ---- Todoist ------------------------------------------------------
+        command_layout = layout
+        todoist_section = QWidget()
+        todoist_section.setObjectName('todoistSection')
+        layout = QVBoxLayout(todoist_section)
+        command_layout.addWidget(todoist_section)
         layout.addWidget(self._section_title("Todoist"))
         todoist_cfg = (cfg.get("tasks", {}) or {}).get("todoist", {}) or {}
         todoist_note = QLabel("When on, tasks you add by voice are sent to Todoist's servers.")
@@ -197,6 +206,11 @@ class CommandsPage:
         todoist_enabled.setChecked(bool(todoist_cfg.get("enabled", False)))
         todoist_enabled.setMinimumHeight(theme.HIT_TARGET_MIN)
         layout.addWidget(todoist_enabled)
+        todoist_layout = layout
+        credentials = QWidget()
+        credentials.setObjectName('todoistCredentials')
+        layout = QVBoxLayout(credentials)
+        todoist_layout.addWidget(credentials)
         token_row = QHBoxLayout()
         token_edit = QLineEdit(str(todoist_cfg.get("api_token", "")))
         token_edit.setObjectName("todoistTokenField")
@@ -216,14 +230,14 @@ class CommandsPage:
         layout.addLayout(token_row)
         todoist_result = QLabel("")
         todoist_result.setWordWrap(True)
-        todoist_result.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        todoist_result.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         test_todoist = QPushButton("Test connection")
         test_todoist.setMinimumHeight(theme.HIT_TARGET_MIN)
         def _test_todoist():
             token = token_edit.text().strip()
             if not token:
                 todoist_result.setText("Enter a Todoist token first.")
-                todoist_result.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_MIN}px;")
+                todoist_result.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_BODY}px;")
                 return
             todoist_result.setText("Testing Todoist…")
             def _run():
@@ -233,13 +247,15 @@ class CommandsPage:
                     msg, color = "Todoist connection works.", theme.ACCENT
                 except Exception:
                     msg, color = "Todoist connection failed.", theme.ERROR
-                qt_runtime.post(lambda: (todoist_result.setText(msg), todoist_result.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_MIN}px;")))
+                qt_runtime.post(lambda: (todoist_result.setText(msg), todoist_result.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_BODY}px;")))
             thread_registry.spawn("settings-todoist-test", _run, daemon=True)
         test_todoist.clicked.connect(_test_todoist)
         layout.addWidget(test_todoist)
         layout.addWidget(todoist_result)
         self._widgets.update(todoist_enabled=todoist_enabled, todoist_token=token_edit)
         layout.addSpacing(8)
+
+        layout = command_layout
 
         # ---- Command Profiles ---------------------------------------------
         layout.addWidget(self._section_title("Command Profiles"))
@@ -291,7 +307,7 @@ class CommandsPage:
         # (528px here vs a 530px viewport) drags the whole page wider. Wrapping
         # does not change how it renders where it already fits on one line.
         instant_note.setWordWrap(True)
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
@@ -380,7 +396,7 @@ class CommandsPage:
         # single-line minimum is the widest thing on the page and is what the
         # horizontal scrollbar was tracking.
         footer.setWordWrap(True)
-        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(footer)
 
         def _save(acc):
@@ -645,7 +661,7 @@ class CommandsPage:
         keys_edit.setPlaceholderText("e.g. ctrl+shift+a")
         pl0.addRow("Keys:", keys_edit)
         hint0 = QLabel("Use + to combine keys: ctrl, shift, alt, a-z, 0-9, f1-f12, etc.")
-        hint0.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        hint0.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         pl0.addRow("", hint0)
         stack.addWidget(p_hotkey)   # 0
 

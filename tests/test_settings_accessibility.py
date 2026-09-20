@@ -95,11 +95,9 @@ def test_scaled_settings_window_uses_work_area_friendly_minimum_and_refresh_fits
 
 
 def test_commands_page_scrolls_vertically_without_horizontal_overflow(qapp):
-    window = settings_qt._SettingsWindow(_SettingsApp(1.30))
+    window = settings_qt._SettingsWindow(_SettingsApp(1.30), tool="Command library")
     try:
-        commands_page = window._stack.widget(
-            settings_qt._TAB_NAMES.index("Commands")
-        )
+        commands_page = window._tool_pages["Command library"]
         assert isinstance(commands_page, QScrollArea)
         assert commands_page.objectName() == "commandsPageScroll"
         assert commands_page.horizontalScrollBarPolicy() == (
@@ -161,7 +159,8 @@ def test_commands_page_scrolls_vertically_without_horizontal_overflow(qapp):
         # scrolls horizontally" rather than a pixel count from one font.
         window.resize(720, 480)
         window.show()
-        window._stack.setCurrentIndex(settings_qt._TAB_NAMES.index("Commands"))
+        from samsara.ui.settings.presentation import Disclosure
+        commands_page.findChild(Disclosure).reveal()
         qapp.processEvents()
         # Chrome (sidebar + margins + scrollbar) is only final once shown.
         chrome = window.width() - commands_page.viewport().width()

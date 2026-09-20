@@ -245,7 +245,7 @@ def test_settings_qt_imports_without_dictation():
 
 
 def test_every_page_module_on_disk_is_registered():
-    on_disk = {p.stem for p in PAGES_DIR.glob("*_qt.py")}
+    on_disk = {p.stem for p in PAGES_DIR.glob("*_qt.py")} - {"shared_qt", "preview_285_qt"}
     assert on_disk == set(PAGE_MODULES.values())
 
 
@@ -255,14 +255,14 @@ def test_every_page_module_on_disk_is_registered():
 
 def test_every_registry_entry_resolves_to_its_page_module():
     from samsara.ui import settings_qt
-    builders = _registry_builders()
-    assert len(builders) == len(settings_qt._TAB_NAMES)
-    for tab_name, builder in zip(settings_qt._TAB_NAMES, builders):
-        expected = f"samsara.ui.settings.{PAGE_MODULES[tab_name]}"
-        method = getattr(settings_qt._SettingsWindow, builder)
-        assert method.__module__ == expected, (tab_name, builder, method.__module__)
-        # lives on the page mixin, not re-defined on the window
-        assert builder not in vars(settings_qt._SettingsWindow), builder
+    assert len(settings_qt.PAGE_MODULES) == 6
+    for module, name in zip(settings_qt.PAGE_MODULES, settings_qt._TAB_NAMES):
+        assert module.TITLE == name
+        assert module.build.__module__ == module.__name__
+        assert Path(module.__file__).parent == PAGES_DIR
+    assert {p.stem for p in PAGES_DIR.glob("*_page.py")} == {
+        m.__name__.rsplit(".", 1)[-1] for m in settings_qt.PAGE_MODULES
+    } | {"tools_page"}
 
 
 def test_window_keeps_the_shared_surface():
@@ -270,17 +270,17 @@ def test_window_keeps_the_shared_surface():
     own = vars(settings_qt._SettingsWindow)
     for name in ("__init__", "_apply_and_close", "_section_card", "_section_title", "_setting_row",
                  "_build_search_registry", "_apply_search_filter", "show_tab"):
-        assert name in own, name
+        assert hasattr(settings_qt._SettingsWindow, name), name
     for name in ("_HotkeyButton", "_AlarmHotkeyButton", "_HeightForWidthWidget", "stylesheet",
                  "_TAB_NAMES", "_SIDEBAR_GROUPS", "_CMD_BUTTON_OPTIONS", "_format_alarm_next",
                  "_collect_command_rows"):
         assert hasattr(settings_qt, name), name
 
 
-def test_page_mixins_are_in_tab_order():
+def test_source_factory_mixins_remain_registered():
     from samsara.ui import settings_qt
-    bases = [b.__module__.rsplit(".", 1)[-1] for b in settings_qt._SettingsWindow.__bases__[:-1]]
-    assert bases == [PAGE_MODULES[name] for name in settings_qt._TAB_NAMES]
+    bases = {b.__module__.rsplit(".", 1)[-1] for b in settings_qt._SettingsWindow.__bases__}
+    assert set(PAGE_MODULES.values()) <= bases
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ def test_page_mixins_are_in_tab_order():
 def _keys_by_builder(window):
     produced: dict = {}
     updates: dict = {}
-    for fn in window._save_fns:
+    for fn in (save for saves in window._source_saves.values() for save in saves):
         builder = next(part for part in fn.__qualname__.split(".") if part.startswith("_build_"))
         part = fn(dict(updates))
         produced.setdefault(builder, set()).update(_flatten(part))
@@ -307,7 +307,12 @@ def test_every_key_written_before_the_split_is_still_written(qapp):
         expected = dict(KEYS_BEFORE_SPLIT, _build_commands_tab=_commands_keys_before_split())
         assert set(produced) == set(expected)            # no page lost (or gained) a save fn
         for builder, keys in expected.items():
-            assert sorted(produced[builder]) == sorted(keys), builder
+            # Nested dictionaries preserve newer sibling defaults. Their addition
+            # is not a lost-key regression; all former keys must still survive.
+            assert set(keys) <= produced[builder], (builder, set(keys) - produced[builder])
+            from tests.test_settings_row_inventory_285 import AUDITED_KEYS
+            known = set(_flatten(_schema_defaults())) | set(AUDITED_KEYS)
+            assert produced[builder] - set(keys) <= known, builder
     finally:
         window.deleteLater()
 
@@ -348,7 +353,7 @@ def test_apply_and_close_writes_through_the_page_save_fns(qapp):
     window._apply_and_close()
     for keys in KEYS_BEFORE_SPLIT.values():
         for key in keys:
-            if key in ("microphone", "microphone_name"):
+            if key in ("microphone", "microphone_name", "gesture.enabled") or key.startswith(("alarms.", "music_library.", "tasks.", "command_packs.")):
                 continue          # routed through switch_microphone only when it changes
             assert key in written, key
 

@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara.ui import theme
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import (
     _AlarmHotkeyButton,
@@ -109,7 +110,7 @@ class AlarmsPage:
         # ---- Section: Alarm List --------------------------------------------
         layout.addWidget(self._section_title("Your Alarms"))
         instant_note = QLabel("Changes to alarms below apply immediately.")
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 

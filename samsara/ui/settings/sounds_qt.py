@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara.ui import theme
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
@@ -172,7 +173,7 @@ class SoundsPage:
         layout.addLayout(apply_row)
 
         theme_instant_note = QLabel("\"Apply Theme\" copies the theme's sounds immediately.")
-        theme_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        theme_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(theme_instant_note)
 
         # Queue 103: which of the session's own spoken notices are spoken.
@@ -204,7 +205,7 @@ class SoundsPage:
         # ---- Section: Earcon Preview -------------------------------------------
         layout.addWidget(self._section_title("Earcon Preview"))
         desc = QLabel("Preview the audio cues for the active theme.")
-        desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(desc)
         layout.addSpacing(6)
 
@@ -261,7 +262,7 @@ class SoundsPage:
         files_desc = QLabel(
             f"Active sound files from: {sounds_dir}"
         )
-        files_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        files_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         files_desc.setWordWrap(True)
         layout.addWidget(files_desc)
         layout.addSpacing(6)
@@ -284,7 +285,7 @@ class SoundsPage:
 
             fname_lbl = QLabel(wav.name if exists else "not found")
             fname_lbl.setStyleSheet(
-                f"color: {theme.ICON_IDLE if exists else theme.ERROR}; font-size: {theme.TYPE_MIN}px;"
+                f"color: {theme.ICON_IDLE if exists else theme.ERROR}; font-size: {theme.TYPE_BODY}px;"
             )
             fname_lbl.setFixedWidth(140)
 

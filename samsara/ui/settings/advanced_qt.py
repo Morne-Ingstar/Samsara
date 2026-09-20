@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import theme
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
 
@@ -237,7 +238,7 @@ class AdvancedPage:
             "evaluating. Restart required; Windows only."
         )
         aec_note.setWordWrap(True)
-        aec_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+        aec_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;")
         layout.addWidget(aec_note)
         layout.addSpacing(8)
 
@@ -338,7 +339,7 @@ class AdvancedPage:
         indicator_desc = QLabel(
             "An always-on-top pill that shows your current mode and pulses while recording."
         )
-        indicator_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        indicator_desc.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(indicator_desc)
         layout.addSpacing(6)
 
@@ -385,7 +386,7 @@ class AdvancedPage:
                 "Position set by dragging the indicator. Pick a preset "
                 "above to replace it."
             )
-            custom_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 26px;")
+            custom_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;")
             layout.addWidget(custom_note)
 
         layout.addSpacing(20)
@@ -399,7 +400,7 @@ class AdvancedPage:
             "and is fully released when off."
         )
         gesture_note.setWordWrap(True)
-        gesture_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        gesture_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(gesture_note)
         layout.addSpacing(6)
 
@@ -417,7 +418,7 @@ class AdvancedPage:
             "and coming-soon components are shown here."
         )
         components_note.setWordWrap(True)
-        components_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        components_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(components_note)
 
         from samsara.ui.first_run_qt import ComponentsPage  # noqa: PLC0415
@@ -460,7 +461,7 @@ class AdvancedPage:
             "rephrasing you. Off by default."
         )
         sc_note.setWordWrap(True)
-        sc_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        sc_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(sc_note)
         layout.addSpacing(6)
 
@@ -471,7 +472,7 @@ class AdvancedPage:
 
         sc_status_label = QLabel("Active backend: --")
         sc_status_label.setWordWrap(True)
-        sc_status_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px; margin-left: 4px;")
+        sc_status_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 4px;")
         self._widgets['sc_status_label'] = sc_status_label
         layout.addWidget(sc_status_label)
         layout.addSpacing(8)
@@ -520,7 +521,7 @@ class AdvancedPage:
             "Nothing leaves this machine."
         )
         bench_note.setWordWrap(True)
-        bench_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        bench_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(bench_note)
         layout.addSpacing(6)
 
@@ -541,7 +542,7 @@ class AdvancedPage:
             "\"copy\" to actually copy. Leave it empty to turn this off."
         )
         intent_note.setWordWrap(True)
-        intent_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_MIN}px;")
+        intent_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(intent_note)
         layout.addSpacing(6)
 
