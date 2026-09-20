@@ -4,7 +4,7 @@ Before this module the writer (``DictationApp._show_outcome_chip``) appended
 plain tuples ``(label, kind, time)`` while ``home_signals.recent_misses``
 counted only dicts, so the command-miss diagnostic could never fire: feeding
 the real writer's three MISS outcomes to the real reader returned ``(0, 3)``
-(Astra F11, ``astra_review/SAMSARA_REVIEW_2026-09-15.md``). Neither side was
+(Astra F11, as documented in an internal review). Neither side was
 wrong on its own; there was no schema for either of them to be wrong about.
 
 ``OutcomeRecord`` is a NamedTuple on purpose. The ring's other reader,

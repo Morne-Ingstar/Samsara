@@ -975,7 +975,7 @@ This release bundles all work since v0.9.5: the new main hub window, dictation h
   - Splash screen with animated loading progress
   - Setup wizard (microphone, hotkey, model selection)
 - **Launcher System**
-  - `_launcher.vbs` for silent background launch
+  - `scripts/_launcher.vbs` for silent background launch
   - `install.bat` and `build.bat` scripts
 - **Dictation Modes** — Hold, Toggle, Continuous, Wake Word
 - **Voice Commands** — 41 predefined commands in `commands.json`

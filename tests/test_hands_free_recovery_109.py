@@ -1,6 +1,6 @@
 """Queue 109 -- losing hands-free must be explained, recoverable and countable.
 
-Three defects from Astra's review (astra_review/SAMSARA_REVIEW_2026-09-15.md),
+Three defects from Astra's review,
 all of which cost a user who cannot type their way back in:
 
   F6   the poll loop's fatal path had cleanup but no recovery. Production

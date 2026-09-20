@@ -97,3 +97,7 @@ samsara-config-backup-*.json
 samsara-vocabulary*.json
 transcript_session.md
 .tmp
+# Internal working documents and local visual/performance evidence
+/_internal/
+/ui_proof/
+/perf_artifacts/
