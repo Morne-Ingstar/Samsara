@@ -599,7 +599,9 @@ class AdvancedPage:
                 updates['listening_indicator_enabled']  = (
                     self._widgets['adv_indicator_enabled'].isChecked()
                 )
-                ui_out = dict(self.app.config.get('ui', {}) or {})
+                # General has already staged the theme; keep that update when
+                # adding the live-surface preference to the shared ui section.
+                ui_out = dict(acc.get('ui', self.app.config.get('ui', {})) or {})
                 live_surface_out = dict(ui_out.get('live_surface', {}) or {})
                 live_surface_out['enabled'] = self._widgets[
                     'adv_live_surface_enabled'

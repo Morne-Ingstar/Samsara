@@ -15,8 +15,16 @@ from samsara.ui import theme
 
 
 @pytest.fixture
-def dark_again():
+def dark_again(qapp):
     """Always hand the process back in the shipped palette, whatever fails."""
+    from PySide6.QtCore import QEvent
+
+    # Earlier Settings cases leave hide-on-close windows alive. Retire their
+    # native widget trees before processing events for a fresh palette case.
+    for widget in qapp.topLevelWidgets():
+        widget.hide()
+        widget.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     yield
     theme.set_theme("dark", refresh=False)
 
@@ -190,3 +198,48 @@ def test_the_combo_arrow_is_rewritten_per_palette(dark_again):
     dark_path = theme.ARROW_PATH
     theme.set_theme("light", refresh=False)
     assert theme.ARROW_PATH != dark_path
+
+
+@pytest.mark.parametrize("initial, requested, live_enabled", [
+    ("dark", "light", True),
+    ("light", "dark", False),
+])
+def test_settings_apply_keeps_selected_theme_and_live_surface(
+        qapp, dark_again, tmp_path, initial, requested, live_enabled):
+    """General's theme and Advanced's live-surface edit must both survive Apply."""
+    import json
+
+    from samsara.ui.settings_qt import _SettingsWindow
+    from tests.test_settings import _StubApp
+
+    config_path = tmp_path / "config.json"
+
+    class App(_StubApp):
+        def save_config(self):
+            config_path.write_text(json.dumps(self.config), encoding="utf-8")
+
+    theme.set_theme(initial, refresh=False)
+    app = App()
+    app.config = {
+        "ui": {"theme": initial, "live_surface": {"enabled": not live_enabled}},
+    }
+    window = _SettingsWindow(app)
+    observed = []
+    signal = theme.theme_change_signal().changed
+    signal.connect(observed.append)
+    try:
+        picker = window._widgets["theme_combo"]
+        picker.setCurrentIndex(picker.findData(requested))
+        window._widgets["adv_live_surface_enabled"].setChecked(live_enabled)
+
+        window._apply_and_close()
+
+        assert theme.active_theme() == requested
+        assert observed == [requested]
+        saved = json.loads(config_path.read_text(encoding="utf-8"))
+        assert saved["ui"]["theme"] == requested
+        assert saved["ui"]["live_surface"]["enabled"] is live_enabled
+    finally:
+        signal.disconnect(observed.append)
+        window.close()
+        window.deleteLater()
