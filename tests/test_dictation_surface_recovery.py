@@ -266,7 +266,8 @@ def test_correction_editor_replaces_choices_and_survives_refresh(qapp):
     widget = LiveSurfaceWidget(review())
     try:
         widget.show()
-        widget.show_candidates({"word": "two", "revision": 1}, [])
+        # 263: production correction selections carry document identity as well as revision.
+        widget.show_candidates({"word": "two", "document_id": "d", "revision": 1}, [])
         widget._open_editor("edit")
         widget._editor.setText("replacement")
         widget.refresh(animate=False); qapp.processEvents()

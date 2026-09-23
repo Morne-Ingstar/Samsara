@@ -342,12 +342,14 @@ class LiveSurfaceController:
                                         (int(selection["start"]), int(selection["end"])),
                                         language="en", snapshot=snapshot)
         self.sync_draft(manager)
+        self.drain()
         # Selection is a deliberate review operation, so it owns the R form
         # even if no audio capture happens to be active.
         self.model.consume(SurfaceEvent(EventKind.CORRECTION_OPENED))
         if self.widget is not None:
             self.widget.refresh(self.model.view(), animate=False)
             self.widget.show_candidates(selection, candidates)
+            self._place_widget()
 
     def _apply_correction(self, selection: object, replacement: str) -> None:
         manager = self._manager()
@@ -366,6 +368,7 @@ class LiveSurfaceController:
             self.widget.correction_refused("Correction applied")
 
     def _cancel_correction(self) -> None:
+        self.post(SurfaceEvent(EventKind.CORRECTION_CLOSED))
         manager = self._manager()
         cancel = getattr(manager, "cancel_word_correction", None)
         if callable(cancel):

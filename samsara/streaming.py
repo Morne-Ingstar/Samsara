@@ -1872,11 +1872,23 @@ class _LiveSurfaceStreamingOverlay:
 
     def __init__(self, partials) -> None:
         self._partials = partials
+        self.idle_hints = []
 
     def show(self):
         return None
 
-    def update_text(self, text, state=None):
+    def update_text(self, text, state=None, *, rich=False):
+        if rich:
+            # Legacy rich transcript formatting is not part of the document.
+            from html.parser import HTMLParser
+            class PlainText(HTMLParser):
+                def __init__(self):
+                    super().__init__(); self.parts = []
+                def handle_data(self, data): self.parts.append(data)
+                def handle_starttag(self, tag, attrs):
+                    if tag in ("br", "p"): self.parts.append("\n")
+            parser = PlainText(); parser.feed(text or "")
+            text = "".join(parser.parts).strip()
         if state == StreamingOverlayQt.STATE_PROCESSING:
             self._partials.partial(text)
         else:
@@ -1892,6 +1904,39 @@ class _LiveSurfaceStreamingOverlay:
         self._partials.stop()
         if on_complete:
             on_complete()
+
+    def set_transcript(self, finalized_lines, partial, link_words=False):
+        # Stable draft ownership stays with the session manager.
+        self._partials.partial(" ".join([str(line) for line in finalized_lines if line]
+                                       + ([partial] if partial else [])))
+
+    def set_paused(self, finalized_lines):
+        # Suspension relinquishes capture; it must not publish over a new hold.
+        self._partials.stop()
+
+    def scroll_draft(self, where):
+        self._partials.controller.scroll_draft(where)
+
+    def set_interaction_callbacks(self, on_word_clicked, on_clear):
+        """No-op: controller owns identity-bound word and Clear intents."""
+
+    def set_correction_choice_callbacks(self, on_choice, on_dismiss):
+        """No-op: controller owns the shared correction pane's callbacks."""
+
+    def set_literal_badge(self, on):
+        """No-op: legacy decoration must not add persistent surface chrome."""
+
+    def set_prompt(self, text):
+        """No-op: correction prompts belong to the shared review pane."""
+
+    def show_correction_choices(self, word, candidates, no_match=False):
+        """No-op: unversioned legacy choices cannot edit the shared document."""
+
+    def hide_correction_choices(self):
+        """No-op: only the controller may dismiss its correction transaction."""
+
+    def move_draft(self, position):
+        """No-op: legacy presets cannot overwrite per-monitor surface placement."""
 
 
 class StreamingSession:
@@ -2372,7 +2417,18 @@ class _LiveSurfaceDictateOverlay:
     def close(self):
         self._partials.stop()
 
-    def set_paused(self, _finalized_lines):
+    def update_text(self, text, state=None, *, rich=False):
+        # Reuse the plain/rich conversion but never create a legacy window.
+        adapter = _LiveSurfaceStreamingOverlay(self._partials)
+        adapter.update_text(text, StreamingOverlayQt.STATE_PROCESSING, rich=rich)
+
+    def flash_done_and_fade(self, on_complete):
+        # Shared surface lifetime belongs to the controller, not this session.
+        self._partials.stop()
+        if on_complete:
+            on_complete()
+
+    def set_paused(self, finalized_lines):
         # The foreground hold now owns the shared surface. Do not overwrite
         # it with the suspended background session's text or capture state.
         self._partials.stop()
@@ -2384,30 +2440,30 @@ class _LiveSurfaceDictateOverlay:
         self._partials.sequence = 1
         self._partials.stopped = False
 
-    def set_transcript(self, lines, partial, link_words=True):
-        text = "\n".join([str(line) for line in lines if line] + ([partial] if partial else []))
+    def set_transcript(self, finalized_lines, partial, link_words=False):
+        text = " ".join([str(line) for line in finalized_lines if line] + ([partial] if partial else []))
         self._partials.partial(text)
 
-    def set_interaction_callbacks(self, *_args):
-        pass
+    def set_interaction_callbacks(self, on_word_clicked, on_clear):
+        """No-op: controller owns identity-bound word and Clear intents."""
 
-    def set_correction_choice_callbacks(self, *_args):
-        pass
+    def set_correction_choice_callbacks(self, on_choice, on_dismiss):
+        """No-op: controller owns the shared correction pane's callbacks."""
 
-    def set_literal_badge(self, _on):
-        pass
+    def set_literal_badge(self, on):
+        """No-op: legacy decoration must not add persistent surface chrome."""
 
-    def set_prompt(self, _text):
-        pass
+    def set_prompt(self, text):
+        """No-op: correction prompts belong to the shared review pane."""
 
-    def show_correction_choices(self, *_args):
-        pass
+    def show_correction_choices(self, word, candidates, no_match=False):
+        """No-op: unversioned legacy choices cannot edit the shared document."""
 
     def hide_correction_choices(self):
-        pass
+        """No-op: only the controller may dismiss its correction transaction."""
 
-    def move_draft(self, _placement):
-        pass
+    def move_draft(self, position):
+        """No-op: legacy presets cannot overwrite per-monitor surface placement."""
 
     def scroll_draft(self, where):
         self._controller.scroll_draft(where)

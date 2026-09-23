@@ -10,6 +10,18 @@ from PySide6.QtCore import QObject
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent
 
 
+def system_reduced_motion() -> bool:
+    """Read Windows' client-area animation preference, with Qt fallback."""
+    import sys
+    if sys.platform == "win32":
+        import ctypes
+        enabled = ctypes.c_int(1)
+        if ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0):
+            return not bool(enabled.value)
+    from samsara.ui.splash_qt import _system_reduced_motion
+    return _system_reduced_motion()
+
+
 class LiveSurfaceAnnouncer(QObject):
     """Send one announcement for each semantic transition.
 
@@ -35,4 +47,3 @@ class LiveSurfaceAnnouncer(QObject):
     def reset(self) -> None:
         """Allow the next genuine transition to be announced."""
         self._last_transition = None
-

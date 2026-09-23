@@ -18,12 +18,13 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWid
 from samsara.live_surface.model import (CaptureState, DocumentState, NoticeKind,
                                         PresentationState, SurfaceView, VisibleForm)
 from samsara.ui import theme
-from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer, system_reduced_motion
 from samsara.ui.tray_qt import paint_mark
 
 
 MARK_SIZE = 44
-MARK_ART_SIZE = 24
+MARK_ART_SIZE = 34
+COMPACT_WIDTH = 152
 CONNECTOR = 4
 CARD_RADIUS = 12
 CARD_INSET = 8
@@ -47,10 +48,8 @@ def _capture_mark(view: SurfaceView) -> tuple[str, str]:
     capture = {
         CaptureState.OFF: "idle", CaptureState.WAKE_ARMED: "listening",
         CaptureState.HANDS_FREE_LISTENING: "listening", CaptureState.RECORDING: "recording",
-        CaptureState.TRANSCRIBING: "recording", CaptureState.UNAVAILABLE: "idle",
+        CaptureState.TRANSCRIBING: "idle", CaptureState.UNAVAILABLE: "idle",
     }[view.capture]
-    if view.lane is not None and view.lane.value == "ava":
-        capture = "ava"
     eye = "armed" if view.capture in (CaptureState.WAKE_ARMED,
                                        CaptureState.HANDS_FREE_LISTENING) else "asleep"
     return capture, eye
@@ -65,6 +64,11 @@ def render_device_mark(capture: str, eye: str, *, dpr: float,
     try:
         paint_mark(painter, QRectF(0, 0, pixels, pixels), capture, eye, rotation,
                    small_max=None, brand=True)
+        if capture != "recording":
+            # Keep the brand geometry while the surface's idle/listening mark
+            # uses its neutral token. Other presentations keep their palette.
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(image.rect(), theme.qcolor(theme.ICON_IDLE))
     finally:
         painter.end()
     image.setDevicePixelRatio(dpr)
@@ -88,6 +92,10 @@ class _Mark(QWidget):
                                    rotation=self.rotation)
         painter = QPainter(self)
         try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(theme.qcolor(theme.TEXT_SECONDARY), 1))
+            painter.setBrush(theme.qcolor(theme.BG1))
+            painter.drawEllipse(QRectF(self.rect()).adjusted(1, 1, -1, -1))
             painter.drawImage(QRectF((self.width() - MARK_ART_SIZE) / 2,
                                      (self.height() - MARK_ART_SIZE) / 2,
                                      MARK_ART_SIZE, MARK_ART_SIZE), image,
@@ -111,12 +119,21 @@ class LiveSurfaceWidget(QWidget):
     move_requested = Signal(object)
     show_requested = Signal()
 
-    def __init__(self, controller: Any, *, reduced_motion: bool = False) -> None:
+    def __init__(self, controller: Any, *, reduced_motion: bool | None = None) -> None:
         flags = (Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
                  Qt.WindowType.WindowDoesNotAcceptFocus | Qt.WindowType.WindowStaysOnTopHint)
         super().__init__(None, flags)
         self._controller, self._view = controller, _view_from(controller)
-        self._reduced_motion, self._rotation, self._animation = reduced_motion, 0.0, None
+        self._motion_override = reduced_motion
+        self._reduced_motion = system_reduced_motion() if reduced_motion is None else reduced_motion
+        self._rotation, self._animation = 0.0, None
+        self._spin_timer = QTimer(self)
+        self._spin_timer.setInterval(50)
+        self._spin_timer.timeout.connect(self._advance_mark)
+        self._motion_timer = QTimer(self)
+        self._motion_timer.setInterval(1000)
+        self._motion_timer.timeout.connect(self._check_motion_preference)
+        self._motion_timer.start()
         self._announcer = LiveSurfaceAnnouncer(self)
         self._follow_latest, self._unread_segments = True, 0
         self._word_targets: list[dict[str, object]] = []
@@ -137,10 +154,10 @@ class LiveSurfaceWidget(QWidget):
 
         self._mark = _Mark(self)
         self._mark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._recording_dot = QLabel(self)
-        self._recording_dot.setAccessibleName("Recording indicator")
         self._state = QLabel(self); self._state.setWordWrap(True)
         self._state.setAccessibleName("Live surface state")
+        self._correction_hint = QLabel(self); self._correction_hint.setWordWrap(True)
+        self._correction_hint.setAccessibleName("Correction choices")
         self._transcript = QTextBrowser(self)
         self._transcript.setOpenLinks(False); self._transcript.setOpenExternalLinks(False)
         self._transcript.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -172,7 +189,7 @@ class LiveSurfaceWidget(QWidget):
                                 for n in range(4)]
         self._candidate_buttons = [self._button("Correction candidate", "", lambda n=n: self._choose_candidate(n))
                                    for n in range(4)]
-        self._keep = self._button("Keep original word", "Keep", self._cancel_correction)
+        self._keep = self._button("Keep original word", "Keep original", self._cancel_correction)
         self._spell = self._button("Spell replacement", "Spell", lambda: self._open_editor("spell"))
         self._edit = self._button("Edit replacement", "Edit", lambda: self._open_editor("edit"))
         self._more = self._button("More correction choices", "More", self._more_clicked)
@@ -206,7 +223,7 @@ class LiveSurfaceWidget(QWidget):
     def is_dragging(self) -> bool: return self._dragging
     @property
     def card_rect(self) -> QRect:
-        return QRect() if self._view.form is VisibleForm.MARK else self.rect()
+        return self.rect()
     @property
     def card_content_rect(self) -> QRect: return self.card_rect.adjusted(CARD_INSET, CARD_INSET, -CARD_INSET, -CARD_INSET)
     def hit_region(self) -> QRegion: return self.mask()
@@ -225,8 +242,36 @@ class LiveSurfaceWidget(QWidget):
         self._apply_view(_view_from(self._controller) if view is None else view, animate=animate)
 
     def set_reduced_motion(self, enabled: bool) -> None:
+        self._motion_override = enabled
+        self._apply_motion_preference(enabled)
+
+    def _apply_motion_preference(self, enabled: bool) -> None:
         self._reduced_motion = enabled
         if enabled and self._animation is not None: self._animation.stop(); self._animation = None
+        self._update_mark()
+
+    def _check_motion_preference(self) -> None:
+        if self._motion_override is None:
+            self._apply_motion_preference(system_reduced_motion())
+
+    def _update_mark(self) -> None:
+        recording = self._view.capture is CaptureState.RECORDING
+        if recording and not self._reduced_motion:
+            if not self._spin_timer.isActive(): self._spin_timer.start()
+        else:
+            self._spin_timer.stop()
+            self._rotation = 0.0
+        capture, eye = _capture_mark(self._view)
+        self._mark.set_state(capture, eye, self._rotation)
+
+    def _advance_mark(self) -> None:
+        self._rotation = (self._rotation + 12.0) % 360.0
+        self._mark.set_state(self._mark.capture, self._mark.eye, self._rotation)
+
+    def _display_form(self) -> VisibleForm:
+        # Correction is local UI intent; queued producer updates must never
+        # leave its header visible without the body or a way to dismiss it.
+        return VisibleForm.REVIEW if self._selection is not None or self._picker_active else self._view.form
 
     def focus_review(self) -> None:
         self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False); self.show()
@@ -234,6 +279,15 @@ class LiveSurfaceWidget(QWidget):
                       *self.findChildren(QTextBrowser)):
             child.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._transcript.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _restore_passive(self) -> None:
+        if self.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus:
+            return
+        visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, True)
+        for child in (*self.findChildren(QPushButton), self._editor, self._transcript):
+            child.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        if visible: self.show()
 
     def scroll_draft(self, where: str) -> None:
         """Use the same draft-scoped scroll route as existing voice phrases."""
@@ -285,6 +339,7 @@ class LiveSurfaceWidget(QWidget):
     def correction_refused(self, message: str = "That word changed. Select it again.") -> None:
         self._editor_mode = ""
         self._selection = None; self._picker_active = False; self._candidates = []
+        self._restore_passive()
         self._apply_view(self._view, animate=False); self._announce("stale", message)
 
     def _apply_view(self, view: SurfaceView, *, animate: bool) -> None:
@@ -300,25 +355,28 @@ class LiveSurfaceWidget(QWidget):
         previous, previous_text = self._view, self._view.text
         if view.document_id != previous.document_id or not (view.text or view.provisional_text):
             self._follow_latest, self._unread_segments = True, 0
-        self._view = view; self._rotation = self._rotation if self._reduced_motion else self._rotation + 15.0
+        if self._selection is not None and (view.document_id != self._selection.get("document_id")
+                or view.revision != self._selection.get("revision")):
+            self._selection = None; self._candidates = []; self._editor_mode = ""
+            self._restore_passive()
+            self.correction_cancel_requested.emit()
+        self._view = view
         if (view.document is DocumentState.DELIVERED and previous.document is not DocumentState.DELIVERED
                 and view.text):
             self._sent_receipts.append(view.text)
             while len(self._sent_receipts) > 20 or sum(map(len, self._sent_receipts)) > 10_000:
                 self._sent_receipts.pop(0)
-        capture, eye = _capture_mark(view); self._mark.set_state(capture, eye, self._rotation)
+        self._update_mark()
         state = self._state_text(view)
-        if self._selection is not None:
-            state = f"Correct “{self._selection.get('word', '')}” — choose a replacement"
-        elif self._picker_active:
-            state = "Choose a word to correct"
+        if self._display_form() is VisibleForm.MARK and view.capture is CaptureState.OFF:
+            state = "Idle"
         self._state.setText(state); self._render_transcript()
         self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
         words = len(view.text.split()); self._badge.setText(f"▤  Draft\n{words} word{'s' if words != 1 else ''}")
         previous_content = previous_text or previous.provisional_text
         if previous_content != (view.text or view.provisional_text) and previous_content and not self._follow_latest:
             self._unread_segments += 1
-        target = self._form_rect(view.form)
+        target = self._form_rect(self._display_form())
         if self._dragging:
             return
         if animate and self.isVisible() and not self._reduced_motion and self.geometry().size() != target.size(): self._animate_geometry(target)
@@ -357,14 +415,17 @@ class LiveSurfaceWidget(QWidget):
             + "".join(parts).replace("\n", "<br/>") + "</p>")
 
     def _form_rect(self, form: VisibleForm) -> QRect:
-        if form is VisibleForm.MARK: return QRect(self.x(), self.y(), MARK_SIZE, MARK_SIZE)
+        if form is VisibleForm.MARK: return QRect(self.x(), self.y(), COMPACT_WIDTH, MARK_SIZE)
         if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), 120, MARK_SIZE)
         if form is VisibleForm.STATUS:
             blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
             return QRect(self.x(), self.y(), STATUS_SIZE[0] if blocking else 240, 68 if blocking else 60)
         width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
         if self._selection is not None or self._picker_active:
-            height = 280
+            source = self._candidates if self._selection is not None else self._word_targets
+            page = self._candidate_page if self._selection is not None else self._picker_page
+            rows = 1 if self._editor_mode else ceil(min(4, max(0, len(source)-page*4))/2)
+            height = 2*CARD_INSET + 2*(MARK_SIZE+REGION_GAP) + rows*(MARK_SIZE+REGION_GAP) + MARK_SIZE
         else:
             # A live panel grows for content, but does not retain a blank
             # review-sized slab for a one-line draft.
@@ -385,7 +446,7 @@ class LiveSurfaceWidget(QWidget):
         self._animation = animation; animation.start()
 
     def _hide_children(self) -> None:
-        for child in (self._recording_dot, self._state, self._transcript, self._provisional, self._badge, self._latest,
+        for child in (self._state, self._correction_hint, self._transcript, self._provisional, self._badge, self._latest,
                       *self._controls, *self._picker_buttons, *self._candidate_buttons,
                       self._keep, self._spell, self._edit, self._more, self._apply, self._cancel, self._editor): child.hide()
 
@@ -397,17 +458,14 @@ class LiveSurfaceWidget(QWidget):
             bar.setValue(bar.maximum() if self._follow_latest else position)
 
     def _layout_content(self) -> None:
-        form = self._view.form; self._mark.setGeometry((self.width()-MARK_SIZE)//2, 0, MARK_SIZE, MARK_SIZE); self._hide_children()
-        if form is VisibleForm.MARK: return
+        form = self._display_form(); self._mark.setGeometry(0, 0, MARK_SIZE, MARK_SIZE); self._hide_children()
+        if form is VisibleForm.MARK:
+            self._state.setGeometry(MARK_SIZE+REGION_GAP, 0, self.width()-MARK_SIZE-2*REGION_GAP, MARK_SIZE)
+            self._state.show(); return
         if form is VisibleForm.DRAFT_BADGE:
             self._mark.setGeometry(0, 0, MARK_SIZE, MARK_SIZE); self._badge.setGeometry(MARK_SIZE, 0, 76, MARK_SIZE); self._badge.show(); return
         content = self.card_content_rect
         self._mark.setGeometry(content.x(), content.y(), MARK_SIZE, MARK_SIZE)
-        self._recording_dot.setGeometry(content.x() + MARK_SIZE - 4, content.y() + 18, 12, 12)
-        recording = self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
-        self._recording_dot.setText("●" if recording else "○")
-        self._recording_dot.setAccessibleDescription("Recording" if recording else "Not recording")
-        self._recording_dot.show()
         clear_width = 88
         if form is VisibleForm.STATUS:
             blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
@@ -458,30 +516,39 @@ class LiveSurfaceWidget(QWidget):
 
     def _layout_correction(self, content: QRect) -> None:
         y=content.y()+HEADER_HEIGHT+REGION_GAP
+        hint = (f'Correct “{self._selection.get("word", "") }” — choose a replacement'
+                if self._selection is not None else "Choose a word to correct")
+        if self._selection is not None and not self._candidates:
+            hint = f'No suggestions for “{self._selection.get("word", "") }”. Keep original, spell or edit.'
+        self._correction_hint.setText(hint)
+        self._correction_hint.setGeometry(content.x(), y, content.width(), MARK_SIZE)
+        self._correction_hint.show(); y += MARK_SIZE + REGION_GAP
         if self._editor_mode:
             self._editor.setGeometry(content.x(), y, content.width(), MARK_SIZE)
             self._editor.show()
             self._layout_row((self._apply, self._cancel), content.x(), y+MARK_SIZE+REGION_GAP, content.width())
             return
-        buttons = self._candidate_buttons if self._candidates else self._picker_buttons
-        page = self._candidate_page if self._candidates else self._picker_page
-        source = self._candidates if self._candidates else self._word_targets
+        selecting = self._selection is not None
+        buttons = self._candidate_buttons if selecting else self._picker_buttons
+        page = self._candidate_page if selecting else self._picker_page
+        source = self._candidates if selecting else self._word_targets
         start=page*4
         for index, button in enumerate(buttons):
             choice = source[start+index] if start+index < len(source) else None
             if choice is None: button.hide(); continue
-            label = getattr(choice, "replacement", None) if self._candidates else choice["word"]
+            label = getattr(choice, "replacement", None) if selecting else choice["word"]
             button.setText(f"{start+index+1}. {label}"); button.setAccessibleName(f"Choice {start+index+1}: {label}")
             button.setGeometry(content.x()+(index%2)*(content.width()//2+REGION_GAP//2), y+(index//2)*(MARK_SIZE+REGION_GAP), content.width()//2-REGION_GAP//2, MARK_SIZE); button.show()
-        y += MARK_SIZE*2+REGION_GAP*2
+        y += (MARK_SIZE+REGION_GAP) * ceil(min(4, max(0, len(source)-start))/2)
         if self._selection is not None:
-            self._layout_row((self._keep,self._spell,self._edit), content.x(), y, content.width()); y += MARK_SIZE+REGION_GAP
-        if len(source)>start+4:
-            self._more.setText("More"); self._more.setGeometry(content.x(), y, content.width(), MARK_SIZE); self._more.show()
+            self._layout_row((self._keep,self._spell,self._edit,self._more), content.x(), y, content.width())
+        else:
+            self._cancel.setText("Cancel")
+            self._layout_row((self._cancel,self._more), content.x(), y, content.width())
+        self._more.setEnabled(len(source)>4)
 
     def _update_mask(self) -> None:
-        if self._view.form is VisibleForm.MARK: region=QRegion(self._mark.geometry(), QRegion.RegionType.Ellipse)
-        elif self._view.form is VisibleForm.DRAFT_BADGE:
+        if self._display_form() in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE):
             path=QPainterPath(); path.addRoundedRect(QRectF(0,0,self.width(),MARK_SIZE),CARD_RADIUS,CARD_RADIUS); region=QRegion(path.toFillPolygon().toPolygon())
         else:
             path=QPainterPath(); path.addRoundedRect(QRectF(self.card_rect),CARD_RADIUS,CARD_RADIUS); region=QRegion(path.toFillPolygon().toPolygon())
@@ -490,15 +557,12 @@ class LiveSurfaceWidget(QWidget):
     def _restyle(self) -> None:
         self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QTextBrowser a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }} QPushButton#quietClear {{ background: transparent; border: 0; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; }}")
         self._state.setFont(theme.qfont(theme.TYPE_HEADING)); self._transcript.setFont(theme.qfont(theme.TYPE_BODY))
-        dot_color = theme.RECORDING if self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING) else theme.TEXT_SECONDARY
-        self._recording_dot.setStyleSheet(f"color: {dot_color};")
         self._provisional.setFont(theme.qfont(theme.TYPE_MIN)); self._badge.setFont(theme.qfont(theme.TYPE_MIN))
         self._provisional.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
-        if self._view.form in (VisibleForm.MARK,VisibleForm.DRAFT_BADGE):
-            if self._view.form is VisibleForm.MARK:return
+        if self._display_form() in (VisibleForm.MARK,VisibleForm.DRAFT_BADGE):
             painter=QPainter(self)
             try: painter.setPen(QPen(theme.qcolor(theme.BORDER),1)); painter.setBrush(theme.qcolor(theme.BG1)); painter.drawRoundedRect(QRectF(.5,.5,self.width()-1,MARK_SIZE-1),CARD_RADIUS,CARD_RADIUS)
             finally:painter.end()
@@ -543,7 +607,7 @@ class LiveSurfaceWidget(QWidget):
             if self._dragging:
                 self._dragging=False; self.setGeometry(self._drag_restore); event.accept(); return
             if self._editor_mode:self._cancel_editor()
-            elif self._selection is not None:self._cancel_correction()
+            elif self._selection is not None or self._picker_active:self._cancel_correction()
             else:self._transcript.setFocus()
             event.accept(); return
         if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and event.modifiers() & Qt.KeyboardModifier.ControlModifier: self.commit_requested.emit(); event.accept(); return
@@ -576,8 +640,8 @@ class LiveSurfaceWidget(QWidget):
         number=self._candidate_page*4+index
         if self._selection is not None and number<len(self._candidates):self.correction_apply_requested.emit(dict(self._selection),str(getattr(self._candidates[number],"replacement","")))
     def _more_clicked(self)->None:
-        if self._candidates:self._candidate_page+=1
-        else:self._picker_page+=1
+        if self._selection is not None:self._candidate_page=(self._candidate_page+1)%max(1,ceil(len(self._candidates)/4))
+        else:self._picker_page=(self._picker_page+1)%max(1,ceil(len(self._word_targets)/4))
         self._apply_view(self._view,animate=False)
     def _latest_clicked(self)->None:self._follow_latest=True; self._unread_segments=0; self._scroll_to_latest(); self._layout_children()
     def _scroll_value_changed(self,value:int)->None:
@@ -599,8 +663,13 @@ class LiveSurfaceWidget(QWidget):
     def _apply_editor(self)->None:
         text=self._editor.text().strip()
         if text and self._selection is not None:self.correction_apply_requested.emit(dict(self._selection),text)
-    def _cancel_editor(self)->None:self._editor_mode=""; self._editor.hide(); self._apply.hide(); self._cancel.hide(); self._layout_children()
-    def _cancel_correction(self)->None:self._selection=None; self._picker_active=False; self._candidates=[]; self._editor_mode=""; self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
+    def _cancel_editor(self)->None:
+        if not self._editor_mode:self._cancel_correction(); return
+        self._editor_mode=""; self._apply_view(self._view,animate=False)
+    def _cancel_correction(self)->None:
+        self._selection=None; self._picker_active=False; self._candidates=[]; self._editor_mode=""
+        self._restore_passive()
+        self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
     def _state_text(self,view:SurfaceView)->str:
         if view.notice.message and (view.notice.expires_at is None or view.capture not in

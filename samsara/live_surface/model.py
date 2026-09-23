@@ -170,6 +170,7 @@ class LiveSurfaceModel:
         if not self._accept_event(event):
             return False
         now = self._clock()
+        correcting = self.presentation is PresentationState.CORRECTION
         self._last_activity = now
         kind = event.kind
         if kind is EventKind.CAPTURE_STARTED:
@@ -247,6 +248,8 @@ class LiveSurfaceModel:
             self.presentation = PresentationState.KEYBOARD_INTERACTION
         elif kind is EventKind.KEYBOARD_INTERACTION_ENDED:
             self.presentation = PresentationState.PINNED_REVIEW
+        if correcting and kind in (EventKind.PARTIAL, EventKind.DOCUMENT_UPDATED, EventKind.DOCUMENT_PARKED):
+            self.presentation = PresentationState.CORRECTION
         return True
 
     def view(self) -> SurfaceView:

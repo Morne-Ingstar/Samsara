@@ -130,3 +130,76 @@ def test_scoped_voice_picker_phrases_are_inert_without_the_surface():
     assert calls == [("correct", "two"), ("word", 2)]
     disabled = manager(live=False)
     assert disabled.dispatch_utterance("word 2", signals).kind == "dictate_staged"
+
+
+def test_correction_survives_queued_draft_sync_and_cancel_closes_it(qapp, monkeypatch):
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt
+    from samsara.live_surface.model import PresentationState
+    subject = manager(); subject.pause_draft(); subject.stage_parked_hold('stop here ')
+    app = SimpleNamespace(_session_mode_manager=subject, voice_training_window=None)
+    c = LiveSurfaceController(app)
+    c.sync_draft(subject); c.drain(); c.start()
+    segment = subject.draft_document.segments[0]
+    c._correct({'document_id': subject.draft_document.document_id,
+        'revision': subject.draft_document.revision, 'segment_id': segment.id, 'start': 0, 'end': 4})
+    c.sync_draft(subject); c.drain(); QTest.qWait(150)
+    assert c.view().presentation is PresentationState.CORRECTION
+    assert c.widget._keep.isVisible() and c.widget._spell.isVisible() and c.widget._edit.isVisible()
+    QTest.keyClick(c.widget, Qt.Key.Key_Escape); c.drain()
+    assert c.widget._selection is None
+    assert c.view().presentation is not PresentationState.CORRECTION
+    c.close(); qapp.processEvents()
+
+
+def test_candidate_and_empty_panes_remain_visible_in_every_source_form(qapp):
+    from dataclasses import replace
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    selection = {'document_id': 'd', 'revision': 1, 'word': 'stop'}
+    for form in VisibleForm:
+        for candidates in ([], [SimpleNamespace(replacement=f'choice {n}') for n in range(6)]):
+            w = LiveSurfaceWidget(replace(review(), form=form))
+            w.show(); w.show_candidates(selection, candidates); qapp.processEvents()
+            for control in (w._keep, w._spell, w._edit, w._more):
+                assert control.isVisible() and w.rect().contains(control.geometry())
+                assert control.width() >= 44 and control.height() >= 44
+            if candidates:
+                assert all(b.isVisible() for b in w._candidate_buttons)
+                w._more.click(); assert w._candidate_buttons[0].text().startswith('5.')
+                w._more.click(); assert w._candidate_buttons[0].text().startswith('1.')
+            else:
+                assert 'no suggestions' in w._correction_hint.text().lower()
+                assert not any(b.isVisible() for b in w._picker_buttons)
+                assert not any(b.isVisible() for b in w._candidate_buttons)
+            w._keep.click(); assert w._selection is None
+            w.show_word_picker(); qapp.processEvents()
+            assert w._picker_buttons[0].isVisible() and w._cancel.isVisible()
+            QTest.keyClick(w, Qt.Key.Key_Escape)
+            assert not w._picker_active
+            w.hide(); w.deleteLater()
+
+
+def test_finishing_keyboard_correction_restores_passive_window(qapp):
+    from PySide6.QtCore import Qt
+    w = LiveSurfaceWidget(review())
+    w.show(); w.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'two'}, [])
+    w._open_editor('edit')
+    assert not (w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus)
+    w._cancel_editor(); w._keep.click()
+    assert w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+    assert w.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+    w.hide(); w.deleteLater()
+
+
+def test_changed_document_closes_editor_and_restores_passive_capture(qapp):
+    from dataclasses import replace
+    from PySide6.QtCore import Qt
+    w = LiveSurfaceWidget(review())
+    w.show(); w.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'two'}, [])
+    w._open_editor('edit')
+    cancelled = []; w.correction_cancel_requested.connect(lambda: cancelled.append(True))
+    w.refresh(replace(review(), revision=2), animate=False)
+    assert w._selection is None and not w._editor.isVisible() and cancelled == [True]
+    assert w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+    w.hide(); w.deleteLater()

@@ -28,7 +28,8 @@ def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp,
     widget.show()
     qapp.processEvents()
     # Owner's 2026-09-18 ruling replaces fixed tall L/R cards with content-fit panels.
-    assert (widget.width(), widget.height()) == ((44, 44) if form is VisibleForm.MARK else
+    # 263: the compact mark includes a visible non-colour state label.
+    assert (widget.width(), widget.height()) == ((152, 44) if form is VisibleForm.MARK else
         (120, 44) if form is VisibleForm.DRAFT_BADGE else
         (240, 60) if form is VisibleForm.STATUS else
         (LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0], widget.height()))
@@ -42,7 +43,8 @@ def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp,
 
 def test_150_percent_mark_has_36_pixel_source_image() -> None:
     image = render_device_mark("idle", "asleep", dpr=1.5)
-    assert image.width() == 36
+    # 263: 34 DIP artwork replaces the nearly invisible 24 DIP mark (51 pixels at 150%).
+    assert image.width() == 51
     assert image.devicePixelRatio() == 1.5
 
 
@@ -112,8 +114,9 @@ def test_draft_badge_keeps_its_12_dip_rounded_corner(qapp):
     widget.ensurePolished()
     qapp.processEvents()
     image = widget.grab().toImage()
-    assert image.pixelColor(widget.width() - 1, 0).alpha() == 0
-    assert image.pixelColor(widget.width() - 1, widget.height() // 2).alpha() > 0
+    # 263 native Windows proof: pixel checks use physical grab dimensions at any DPR.
+    assert image.pixelColor(image.width() - 1, 0).alpha() == 0
+    assert image.pixelColor(image.width() - 1, image.height() // 2).alpha() > 0
     widget.close()
 
 
@@ -158,3 +161,96 @@ def test_all_states_have_a_non_colour_text_or_symbol_cue(qapp):
         widget.refresh(view, animate=False)
         assert widget._state.text() or widget._badge.text()
     widget.close()
+
+@pytest.mark.parametrize('capture', list(CaptureState))
+def test_only_recording_is_red_and_spins(qapp, capture):
+    from PySide6.QtTest import QTest
+    w = LiveSurfaceWidget(_view(VisibleForm.STATUS, capture=capture), reduced_motion=False)
+    w.show(); qapp.processEvents()
+    angle = w._mark.rotation
+    QTest.qWait(160)
+    if capture is CaptureState.RECORDING:
+        assert w._mark.capture == 'recording'
+        assert w._spin_timer.isActive() and w._mark.rotation != angle
+    else:
+        assert w._mark.capture != 'recording'
+        assert not w._spin_timer.isActive() and w._mark.rotation == 0
+    assert not hasattr(w, '_recording_dot')
+    w.hide(); w.deleteLater()
+
+
+def test_reduced_motion_reads_system_and_keeps_static_recording_text(qapp, monkeypatch):
+    from PySide6.QtTest import QTest
+    monkeypatch.setattr('samsara.ui.live_surface_qt.system_reduced_motion', lambda: True)
+    w = LiveSurfaceWidget(_view(VisibleForm.STATUS, capture=CaptureState.RECORDING))
+    w.show(); QTest.qWait(160)
+    assert w._mark.capture == 'recording' and w._mark.rotation == 0
+    assert not w._spin_timer.isActive()
+    assert w._state.isVisible() and w._state.text() == 'Recording'
+    w.hide(); w.deleteLater()
+
+
+def test_compact_mark_has_opaque_backing_and_visible_state(qapp):
+    for palette in ('dark', 'light'):
+        theme.set_theme(palette)
+        w = LiveSurfaceWidget(_view(VisibleForm.MARK))
+        w.show(); qapp.processEvents()
+        assert w._state.isVisible() and w._state.text() == 'Idle'
+        assert w._mark.grab().toImage().pixelColor(22, 22).alpha() == 255
+        w.hide(); w.deleteLater()
+
+
+def test_no_persistent_commit_or_extra_state_control(qapp):
+    from PySide6.QtWidgets import QPushButton
+    w = LiveSurfaceWidget(_view(VisibleForm.LIVE, text='Synthetic settled text'))
+    w.show(); qapp.processEvents()
+    assert [b.text() for b in w.findChildren(QPushButton) if b.isVisible()] == ['Clear']
+    assert not any(b.text().lower() in ('commit', 'insert text') for b in w.findChildren(QPushButton))
+    w.hide(); w.deleteLater()
+
+
+def test_mark_position_persists_across_controller_rebuild(qapp, monkeypatch):
+    from types import SimpleNamespace
+    from samsara.live_surface.controller import LiveSurfaceController
+    from samsara.live_surface.placement import Rect, Screen
+    monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
+    app = SimpleNamespace(config={})
+    def build():
+        c = LiveSurfaceController(app)
+        c._screens = lambda: [Screen('synthetic', Rect(0, 0, 1600, 1000), True)]
+        c.start()
+        return c
+    c = build(); c._move_requested({'center': (420, 310)})
+    original = c.widget.mapToGlobal(c.widget.mark_rect.center())
+    c.close(); qapp.processEvents()
+    c = build()
+    assert c.widget.mapToGlobal(c.widget.mark_rect.center()) == original
+    assert app.config['ui']['live_surface']['placement']['monitors']['synthetic']['edge'] == 'free'
+    c.close(); qapp.processEvents()
+
+
+def test_drag_freezes_form_and_escape_restores_geometry(qapp, monkeypatch):
+    from types import SimpleNamespace
+    from PySide6.QtCore import QPointF, QEvent
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtTest import QTest
+    from samsara.live_surface.controller import LiveSurfaceController
+    from samsara.live_surface.model import Lane, EventKind, SurfaceEvent
+    from samsara.live_surface.placement import Rect, Screen
+    monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
+    c = LiveSurfaceController(SimpleNamespace(config={}))
+    c._screens = lambda: [Screen('synthetic', Rect(0, 0, 1600, 1000), True)]
+    c.start(); w = c.widget; initial = w.geometry()
+    local = QPointF(w.mark_rect.center()); start = QPointF(w.mapToGlobal(local.toPoint()))
+    target = start + QPointF(-150, -150)
+    w.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, local, start,
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+    w.mouseMoveEvent(QMouseEvent(QEvent.Type.MouseMove, local, target,
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+    dropped = w.geometry()
+    c.begin_capture(Lane.HOLD); c.post(SurfaceEvent(EventKind.PARTIAL, text='Synthetic incoming partial')); c.drain()
+    assert w.geometry() == dropped and w.size() == initial.size()
+    QTest.keyClick(w, Qt.Key.Key_Escape)
+    assert not w.is_dragging and w.geometry() == initial
+    assert 'ui' not in c.app.config
+    c.close(); qapp.processEvents()
