@@ -231,14 +231,17 @@ def render_brand(size: int) -> QImage:
 
 
 def brand_outputs(directory: Path) -> dict[Path, bytes]:
-    """Deterministic ICO/PNG bytes, rooted at either the checkout or a temp dir."""
+    """Deterministic generated brand PNG bytes, rooted at checkout or a temp dir.
+
+    The owner-supplied samsara.ico and samsara_1024.png are source artwork and
+    are deliberately outside this generator's output set.
+    """
     pngs: list[tuple[int, bytes]] = []
     output: dict[Path, bytes] = {}
     for size in BRAND_SIZES:
         data = png_bytes(render_brand(size))
         output[directory / f"samsara_{size}.png"] = data
         pngs.append((size, data))
-    output[directory / "samsara.ico"] = build_ico(pngs)
     return output
 
 
@@ -252,7 +255,7 @@ def write_brand_assets(directory: Path = BRAND_DIR) -> list[Path]:
 
 
 def stale_brand_assets() -> list[Path]:
-    """Regenerate in a temporary directory, then byte-compare committed output."""
+    """Regenerate generated brand PNGs in a temp dir, then compare committed output."""
     if not BRAND_SVG_PATH.exists():
         return [BRAND_SVG_PATH]
     with tempfile.TemporaryDirectory(prefix="samsara-icons-") as temp:

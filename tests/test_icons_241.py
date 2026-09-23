@@ -8,13 +8,21 @@ from PySide6.QtGui import QImage
 
 REPO = Path(__file__).resolve().parents[1]
 BRAND = REPO / "assets" / "brand"
-SIZES = (16, 20, 24, 32, 48, 256)
+REQUIRED_OWNER_ICO_SIZES = (16, 24, 32, 48, 256)
 
 
 def _ico_sizes(path: Path) -> list[int]:
     data = path.read_bytes()
     reserved, kind, count = struct.unpack_from("<HHH", data)
     assert (reserved, kind) == (0, 1)
+    assert count > 1
+    assert len(data) >= 6 + 16 * count
+    for index in range(count):
+        size = struct.unpack_from("<I", data, 6 + index * 16 + 8)[0]
+        offset = struct.unpack_from("<I", data, 6 + index * 16 + 12)[0]
+        assert size > 0
+        assert offset >= 6 + 16 * count
+        assert offset + size <= len(data)
     return [256 if (width := data[6 + index * 16]) == 0 else width
             for index in range(count)]
 
@@ -47,9 +55,19 @@ def _right_ring_width(image: QImage) -> int:
     return max(runs, default=0)
 
 
-def test_ico_contains_exact_taskbar_and_app_sizes():
-    assert _ico_sizes(BRAND / "samsara.ico") == list(SIZES)
-    assert all((BRAND / f"samsara_{size}.png").is_file() for size in SIZES)
+def test_owner_supplied_ico_contains_required_taskbar_and_app_sizes():
+    sizes = _ico_sizes(BRAND / "samsara.ico")
+    assert set(REQUIRED_OWNER_ICO_SIZES).issubset(sizes)
+
+
+def test_brand_generator_does_not_emit_owner_supplied_artwork(tmp_path):
+    from tools.gen_icons import write_brand_assets
+
+    outputs = write_brand_assets(tmp_path)
+    assert (tmp_path / "samsara.ico") not in outputs
+    assert (tmp_path / "samsara_1024.png") not in outputs
+    assert not (tmp_path / "samsara.ico").exists()
+    assert not (tmp_path / "samsara_1024.png").exists()
 
 
 def test_small_icons_keep_a_two_pixel_ring_and_a_solid_eye():
@@ -62,7 +80,7 @@ def test_small_icons_keep_a_two_pixel_ring_and_a_solid_eye():
 
 
 def test_outline_or_cyan_pixels_clear_three_to_one_on_dark_and_light_taskbars():
-    for size in SIZES:
+    for size in (*REQUIRED_OWNER_ICO_SIZES, 20):
         image = QImage(str(BRAND / f"samsara_{size}.png"))
         pixels = [image.pixel(x, y) for y in range(size) for x in range(size)
                   if (image.pixel(x, y) >> 24) & 0xFF == 255]
