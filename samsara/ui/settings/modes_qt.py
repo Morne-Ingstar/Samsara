@@ -809,13 +809,18 @@ class ModesPage:
                  matching_cb, width=220)
 
         mode_combo = QComboBox()
-        mode_combo.addItems(['hold', 'toggle', 'continuous'])
-        mode_combo.setCurrentText(cfg.get('mode', 'hold'))
+        mode_combo.addItems(['hold', 'toggle'])
+        legacy_continuous = cfg.get('mode') == 'continuous'
+        mode_combo.setCurrentText(cfg.get('mode', 'hold') if not legacy_continuous else 'hold')
+        mode_combo._preserve_legacy_continuous = legacy_continuous
+        mode_combo.currentTextChanged.connect(
+            lambda _text: setattr(mode_combo, '_preserve_legacy_continuous', False)
+        )
         self._widgets['mode'] = mode_combo
         _add_row(
             dictation_layout,
             "Primary dictation key behavior",
-            "Hold: record while held. Toggle: press to start/stop. Continuous: finish on silence.",
+            "The primary keyboard method of dictating has two modes, either hold or toggle. If you hold, then it records your speech until you let go of the button, and then it transcribes into the text box which you have clicked on. If you toggle, then you just tap the button, talk for as long as you like, and then tap it again when you're done.",
             mode_combo,
             width=240,
         )
@@ -1115,7 +1120,11 @@ class ModesPage:
                     setter(wanted)
 
             if 'mode' in self._widgets:
-                updates['mode'] = self._widgets['mode'].currentText()
+                mode = self._widgets['mode']
+                updates['mode'] = (
+                    'continuous' if getattr(mode, '_preserve_legacy_continuous', False)
+                    else mode.currentText()
+                )
             if 'speech_pace' in self._widgets:
                 accessibility = dict(updates.get('accessibility', self.app.config.get('accessibility', {})) or {})
                 accessibility['speech_pace'] = next(

@@ -1,5 +1,5 @@
 """Shared Settings presentation. Copy is provisional per owner-approved 285."""
-from PySide6.QtCore import Qt, QRectF, Signal
+from PySide6.QtCore import Qt, QPoint, QRectF, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QComboBox, QCheckBox, QListView,
@@ -89,7 +89,7 @@ class CleanComboBox(QComboBox):
 
 
 class HelpButton(QPushButton):
-    """In-window help: same content for hover, focus and tap; Escape closes."""
+    """Explicit, keyboard-accessible help disclosure; Escape closes it."""
     def __init__(self, title, description, window):
         super().__init__("?")
         self.setObjectName("helpButton")
@@ -110,17 +110,11 @@ class HelpButton(QPushButton):
     def reveal(self):
         self.host.show_help(self.title, self.description)
 
-    def enterEvent(self, event):
-        self.reveal()
-        super().enterEvent(event)
-
-    def focusInEvent(self, event):
-        self.reveal()
-        super().focusInEvent(event)
-
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
-            self.host.help_panel.hide()
+            self.host.hide_help()
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.reveal()
         else:
             super().keyPressEvent(event)
 
@@ -156,7 +150,7 @@ class SettingRow(QFrame):
         self.setProperty("role", "row")
         self.title = title
         self.description = description
-        self.full_help = full_help or description
+        self.full_help = full_help
         self.grid = QGridLayout(self)
         self.grid.setContentsMargins(0, 10, 0, 10)
         self.grid.setHorizontalSpacing(12)
@@ -172,7 +166,7 @@ class SettingRow(QFrame):
         self.detail.setWordWrap(True)
         text_layout.addWidget(self.heading)
         text_layout.addWidget(self.detail)
-        self.help = HelpButton(title, self.full_help, self)
+        self.help = HelpButton(title, self.full_help, self) if self.full_help else None
         self.value = QWidget()
         self.values = QHBoxLayout(self.value)
         self.values.setContentsMargins(0, 0, 0, 0)
@@ -181,35 +175,58 @@ class SettingRow(QFrame):
             self.values.addWidget(control, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if not control.accessibleName():
                 control.setAccessibleName(title)
-            control.setAccessibleDescription(self.full_help)
+            control.setAccessibleDescription(self.full_help or description)
             control.show()
         self.values.addStretch()
         self.grid.addWidget(self.text, 0, 0)
-        self.grid.addWidget(self.help, 0, 1)
+        if self.help is not None:
+            self.grid.addWidget(self.help, 0, 1)
         self.grid.addWidget(self.value, 0, 2)
         self.grid.setColumnStretch(0, 1)
-        self.help_panel = QFrame()
-        self.help_panel.setObjectName("helpPanel")
-        help_layout = QVBoxLayout(self.help_panel)
-        self.help_copy = QLabel(self.full_help)
-        self.help_copy.setWordWrap(True)
-        help_layout.addWidget(self.help_copy)
-        close = QPushButton("Close help")
-        close.setMinimumHeight(44)
-        close.clicked.connect(self.help_panel.hide)
-        help_layout.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
-        self.grid.addWidget(self.help_panel, 2, 0, 1, 3)
-        self.help_panel.hide()
+        self.help_panel = None
         self._narrow = False
 
     def show_help(self, title, description):
-        # Hover/focus should not accumulate long explanations down the page.
+        """Overlay a compact panel without changing the page's row layout."""
         window = self.window()
         previous = getattr(window, '_active_setting_help', None)
         if previous is not None and previous is not self:
-            previous.help_panel.hide()
+            previous.hide_help()
+        if self.help_panel is None:
+            self.help_panel = QFrame(window)
+            self.help_panel.setObjectName("helpPanel")
+            help_layout = QVBoxLayout(self.help_panel)
+            help_layout.setContentsMargins(14, 12, 14, 12)
+            help_layout.setSpacing(8)
+            self.help_copy = QLabel(description)
+            self.help_copy.setWordWrap(True)
+            help_layout.addWidget(self.help_copy)
+            close = QPushButton("Close help")
+            close.setMinimumHeight(44)
+            close.setAccessibleName(f"Close help: {title}")
+            close.clicked.connect(self.hide_help)
+            help_layout.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
+        panel_width = min(480, max(260, self.text.width()))
+        self.help_copy.setFixedWidth(panel_width - 28)
+        self.help_panel.setFixedWidth(panel_width)
+        self.help_panel.adjustSize()
+        bounds = window.rect().adjusted(12, 12, -12, -12)
+        anchor = self.text.mapTo(window, QPoint(0, self.text.height() + 4))
+        x = max(bounds.left(), min(anchor.x(), bounds.right() - self.help_panel.width()))
+        y = anchor.y()
+        if y + self.help_panel.height() > bounds.bottom():
+            y = max(bounds.top(), self.help.mapTo(window, QPoint(0, -self.help_panel.height() - 4)).y())
+        self.help_panel.move(x, y)
         window._active_setting_help = self
         self.help_panel.show()
+        self.help_panel.raise_()
+
+    def hide_help(self):
+        if self.help_panel is not None:
+            self.help_panel.hide()
+        window = self.window()
+        if getattr(window, '_active_setting_help', None) is self:
+            window._active_setting_help = None
 
     def resizeEvent(self, event):
         narrow = event.size().width() < 730

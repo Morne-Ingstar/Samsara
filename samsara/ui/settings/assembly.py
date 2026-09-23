@@ -76,11 +76,19 @@ class PageAssembly:
         page = Page(title, subtitle)
         self._pages[title] = page
         for is_advanced, specs in ((False, base), (True, advanced)):
-            for label, description, names, config in specs:
+            for spec in specs:
+                label, description, names, config, *help_copy = spec
                 keys = names.split(',') if names else []
                 controls = [self._take_control(key) for key in keys]
-                explanations = [d for _l, d, w, _r in self._source_rows if any(w == c or w.isAncestorOf(c) for c in controls) and d]
-                full = "\n\n".join(dict.fromkeys([description] + explanations))
+                explanations = [
+                    text for _label, text, widget, _row in self._source_rows
+                    if any(widget == control or widget.isAncestorOf(control) for control in controls)
+                    and text and text != description
+                ]
+                # A grouped row can inherit a short source label for each of
+                # its controls.  Use its most informative distinct explanation
+                # rather than repeating those labels inside the help panel.
+                full = help_copy[0] if help_copy else max(explanations, key=len, default="")
                 row = SettingRow(label, description, controls, full)
                 row.config_keys = tuple(filter(None, config.split(',')))
                 row.widget_keys = tuple(keys)
