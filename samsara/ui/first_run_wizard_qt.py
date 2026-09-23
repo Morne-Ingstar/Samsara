@@ -428,7 +428,7 @@ def _hands_free_tip(config: dict) -> str:
     sleep_word = session_modes.SESSION_SLEEP_PHRASES[0]
     exit_word = session_modes.GLOBAL_SESSION_EXIT_PHRASES[0]
     return (
-        f"Tap {button} once to start a {minutes}-minute hands-free session. "
+        f"Tap {button} once to start hands-free dictation. It closes after {minutes} minutes without activity. "
         f"Say '{cmd_word}', '{dictate_word}' or '{ava_word}' to switch lanes. In Dictate, "
         f"say '{session_modes.DICTATE_COMMIT_PHRASE}' by itself to paste your thought and keep dictating. "
         f"Say '{stop_word}' to stop what is running (your draft is kept); say '{sleep_word}' "

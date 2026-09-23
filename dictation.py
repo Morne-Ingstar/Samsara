@@ -429,6 +429,7 @@ from samsara.echo_cancel import EchoCanceller
 from samsara import audio_ducking
 from samsara.audio_devices import force_rescan, list_microphones
 from samsara import wake_profiles
+from samsara.onboarding.guidance_facts import facts_from_config
 from samsara import voice_memo
 from samsara import quick_memo
 from samsara import paste as _paste
@@ -8517,10 +8518,11 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_wake_armed, True)
 
         if hasattr(self, 'hints'):
+            facts = facts_from_config(self.config)
             self.hints.maybe_show(
                 'wake_mode_activated',
-                "Wake word active. Say 'Jarvis' followed by a command."
-                " Try 'Jarvis, show numbers' to click by voice.",
+                f"Wake word active. Say '{facts.wake_phrase}' followed by a command."
+                f" Try '{facts.wake_phrase}, show numbers' to click by voice.",
                 delay_s=2.0,
             )
 
@@ -10715,9 +10717,10 @@ class DictationApp:
             )
             n = self.hints.increment('wake_dictations')
             if n == 3:
+                facts = facts_from_config(self.config)
                 self.hints.maybe_show(
                     'wake_dictation_end_word',
-                    "Tip: say an end word like 'over' after dictating to finish"
+                    f"Tip: say an end word like '{facts.end_words[0]}' after dictating to finish"
                     " immediately instead of waiting for silence.",
                     delay_s=2.0,
                 )
@@ -12250,9 +12253,10 @@ class DictationApp:
                         )
                         n = self.hints.increment('hold_dictations')
                         if n == 3:
+                            facts = facts_from_config(self.config)
                             self.hints.maybe_show(
                                 'wake_word_suggestion',
-                                "Tip: try wake word mode — say 'Jarvis, [command]'"
+                                f"Tip: try wake word mode — say '{facts.wake_phrase}, [command]'"
                                 " without holding any keys. Enable it in Settings.",
                                 delay_s=2.0,
                             )

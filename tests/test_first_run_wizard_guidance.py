@@ -60,7 +60,7 @@ class TestHandsFreeTip:
         assert f"'{session_modes.SESSION_STOP_PHRASES[0]}'" in tip
         assert f"'{session_modes.SESSION_SLEEP_PHRASES[0]}'" in tip
         assert f"'{session_modes.GLOBAL_SESSION_EXIT_PHRASES[0]}'" in tip
-        assert "15-minute" in tip                       # inactivity_timeout_s 900
+        assert "15 minutes without activity" in tip      # inactivity_timeout_s 900
 
     def test_static_table_no_longer_hardcodes_the_chronic_pain_tip(self):
         assert "chronic_pain" not in frw._USE_CASE_TIPS
