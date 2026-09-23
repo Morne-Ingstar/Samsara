@@ -7,7 +7,7 @@ import pytest
 
 from plugins.commands import music
 from samsara import plugin_commands
-from samsara.command_registry import DispatchState
+from samsara.command_registry import DispatchResult, DispatchState
 
 
 @pytest.fixture
@@ -124,6 +124,24 @@ def test_bare_play_unchanged(monkeypatch):
     monkeypatch.setattr(music, '_media_transport', transport)
     assert music.handle_media_play(SimpleNamespace(), '') is True
     transport.assert_called_once_with('play')
+
+
+def test_pause_music_returns_a_claimed_failure_when_transport_refuses(monkeypatch):
+    failed = DispatchResult(
+        DispatchState.FAILED, phrase='pause', detail={'reason': 'nothing is playing'},
+    )
+    transport = Mock(return_value=failed)
+    monkeypatch.setattr(music, '_media_transport', transport)
+
+    assert music.handle_media_pause(SimpleNamespace(), '') is failed
+    transport.assert_called_once_with('pause')
+
+
+def test_music_transport_aliases_are_not_foreground_scoped():
+    plugin_commands._reinstall_module_commands(music)
+    assert plugin_commands._REGISTRY['pause music']['phrase'] == 'pause'
+    assert plugin_commands._REGISTRY['next song']['phrase'] == 'next'
+    assert plugin_commands._REGISTRY['previous song']['phrase'] == 'previous music'
 
 
 def test_spotify_absent_launch_then_play(playback):

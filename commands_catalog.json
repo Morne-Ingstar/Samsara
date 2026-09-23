@@ -7063,11 +7063,8 @@
     },
     {
       "aliases": [
-        "next song",
         "next this",
-        "next track",
         "next track this",
-        "skip song",
         "skip this"
       ],
       "args": [],
@@ -7078,7 +7075,7 @@
       "pack": "media",
       "plugin": "media_keys",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:166",
+      "source": "plugins/commands/media_keys.py:171",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -7087,10 +7084,7 @@
       "aliases": [
         "pause active",
         "pause focused",
-        "pause music",
-        "pause this",
-        "play pause",
-        "stop music"
+        "pause this"
       ],
       "args": [],
       "canonical_id": "media_keys.pause_this",
@@ -7100,7 +7094,7 @@
       "pack": "media",
       "plugin": "media_keys",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:133",
+      "source": "plugins/commands/media_keys.py:144",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -7119,19 +7113,15 @@
       "pack": "media",
       "plugin": "media_keys",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:144",
+      "source": "plugins/commands/media_keys.py:153",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
     },
     {
       "aliases": [
-        "back a song",
         "back this",
-        "previous",
-        "previous song",
         "previous this",
-        "previous track",
         "previous track this"
       ],
       "args": [],
@@ -7142,7 +7132,7 @@
       "pack": "media",
       "plugin": "media_keys",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:177",
+      "source": "plugins/commands/media_keys.py:180",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -7160,7 +7150,7 @@
       "pack": "media",
       "plugin": "media_keys",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:155",
+      "source": "plugins/commands/media_keys.py:162",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -7217,52 +7207,6 @@
     },
     {
       "aliases": [
-        "album"
-      ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": true,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "music.album",
-      "description": "Play a named Spotify album from the user's Music library.",
-      "kind": "plugin",
-      "object": "",
-      "pack": "media",
-      "plugin": "music",
-      "risk": "ui",
-      "source": "plugins/commands/music.py:576",
-      "undoable": true,
-      "verb": "album",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "artist"
-      ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": true,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "music.artist",
-      "description": "Play a named Spotify artist from the user's Music library.",
-      "kind": "plugin",
-      "object": "",
-      "pack": "media",
-      "plugin": "music",
-      "risk": "ui",
-      "source": "plugins/commands/music.py:584",
-      "undoable": true,
-      "verb": "artist",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
         "mute",
         "mute spotify"
       ],
@@ -7274,7 +7218,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:606",
+      "source": "plugins/commands/music.py:634",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -7282,7 +7226,10 @@
     {
       "aliases": [
         "next",
+        "next song",
+        "next track",
         "skip",
+        "skip song",
         "skip track"
       ],
       "args": [],
@@ -7293,14 +7240,17 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:599",
+      "source": "plugins/commands/music.py:620",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
     },
     {
       "aliases": [
-        "pause"
+        "pause",
+        "pause music",
+        "play pause",
+        "stop music"
       ],
       "args": [],
       "canonical_id": "music.pause",
@@ -7310,7 +7260,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:592",
+      "source": "plugins/commands/music.py:613",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -7334,7 +7284,55 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:558",
+      "source": "plugins/commands/music.py:579",
+      "undoable": true,
+      "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "album",
+        "play album"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "music.play_album",
+      "description": "Play a named Spotify album from the user's Music library.",
+      "kind": "plugin",
+      "object": "album",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:597",
+      "undoable": true,
+      "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "artist",
+        "play artist"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "music.play_artist",
+      "description": "Play a named Spotify artist from the user's Music library.",
+      "kind": "plugin",
+      "object": "artist",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:605",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7372,13 +7370,14 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:497",
+      "source": "plugins/commands/music.py:518",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
     },
     {
       "aliases": [
+        "play playlist",
         "playlist"
       ],
       "args": [
@@ -7388,31 +7387,53 @@
           "type": "text"
         }
       ],
-      "canonical_id": "music.playlist",
+      "canonical_id": "music.play_playlist",
       "description": "Play a named Spotify playlist from the user's Music library.",
       "kind": "plugin",
-      "object": "",
+      "object": "playlist",
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:568",
+      "source": "plugins/commands/music.py:589",
       "undoable": true,
-      "verb": "playlist",
+      "verb": "play",
       "whole_utterance": false
     },
     {
       "aliases": [
-        "search"
+        "back a song",
+        "previous",
+        "previous music",
+        "previous song",
+        "previous track"
       ],
       "args": [],
-      "canonical_id": "music.search",
-      "description": "Search Spotify only after a named-library miss asked for it.",
+      "canonical_id": "music.previous_music",
+      "description": "Skips back in the current media session.",
       "kind": "plugin",
-      "object": "",
+      "object": "music",
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:537",
+      "source": "plugins/commands/music.py:627",
+      "undoable": true,
+      "verb": "previous",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "search",
+        "search music"
+      ],
+      "args": [],
+      "canonical_id": "music.search_music",
+      "description": "Search Spotify only after a named-library miss asked for it.",
+      "kind": "plugin",
+      "object": "music",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:558",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -10204,7 +10225,7 @@
         },
         {
           "name": "monitor",
-          "required": false,
+          "required": true,
           "type": "monitor"
         }
       ],

@@ -21,6 +21,7 @@ import win32gui
 import win32process
 
 from samsara.plugin_commands import command
+from samsara.command_registry import DispatchResult, DispatchState
 
 logger = logging.getLogger(__name__)
 
@@ -130,15 +131,23 @@ async def _send_action(action_name):
 # Voice commands
 # ---------------------------------------------------------------------------
 
-@command("pause this", aliases=["pause focused", "pause active", "pause music", "stop music", "play pause"],
+def _handle_foreground_action(action_name):
+    """Return a claimed result so an SMTC refusal reaches the outcome chip."""
+    ok, message = _run_async(_send_action(action_name)) or (False, "no media app found")
+    print(f"[MEDIA KEYS] {message}")
+    if ok:
+        return DispatchResult(DispatchState.COMPLETED, phrase=action_name)
+    return DispatchResult(
+        DispatchState.FAILED, phrase=action_name, detail={"reason": message},
+    )
+
+@command("pause this", aliases=["pause focused", "pause active"],
          pack="media", debounce=1.5,
          risk_class="ui",
 )
 def handle_pause_this(app, remainder):
     """Pauses whatever is playing, using the keyboard's media keys."""
-    ok, msg = _run_async(_send_action('pause')) or (False, "error")
-    print(f"[MEDIA KEYS] {msg}")
-    return True
+    return _handle_foreground_action('pause')
 
 
 @command("play this", aliases=["play focused", "resume this"],
@@ -147,9 +156,7 @@ def handle_pause_this(app, remainder):
 )
 def handle_play_this(app, remainder):
     """Resumes whatever was playing, using the keyboard's media keys."""
-    ok, msg = _run_async(_send_action('play')) or (False, "error")
-    print(f"[MEDIA KEYS] {msg}")
-    return True
+    return _handle_foreground_action('play')
 
 
 @command("toggle this", aliases=["toggle focused"],
@@ -158,28 +165,22 @@ def handle_play_this(app, remainder):
 )
 def handle_toggle_this(app, remainder):
     """Plays or pauses whatever is playing, whichever it is not doing now."""
-    ok, msg = _run_async(_send_action('toggle')) or (False, "error")
-    print(f"[MEDIA KEYS] {msg}")
-    return True
+    return _handle_foreground_action('toggle')
 
 
-@command("next track this", aliases=["next this", "skip this", "next track", "next song", "skip song"],
+@command("next track this", aliases=["next this", "skip this"],
          pack="media", debounce=0.8,
          risk_class="ui",
 )
 def handle_next_this(app, remainder):
     """Skips to the next track in whatever is playing."""
-    ok, msg = _run_async(_send_action('next')) or (False, "error")
-    print(f"[MEDIA KEYS] {msg}")
-    return True
+    return _handle_foreground_action('next')
 
 
-@command("previous track this", aliases=["previous this", "back this", "previous track", "previous song", "back a song", "previous"],
+@command("previous track this", aliases=["previous this", "back this"],
          pack="media", debounce=0.8,
          risk_class="ui",
 )
 def handle_prev_this(app, remainder):
     """Goes back to the previous track in whatever is playing."""
-    ok, msg = _run_async(_send_action('previous')) or (False, "error")
-    print(f"[MEDIA KEYS] {msg}")
-    return True
+    return _handle_foreground_action('previous')

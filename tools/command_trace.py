@@ -93,25 +93,24 @@ def _load_app_runtime():
             default_pack_config, get_enabled_packs, CommandExecutor)
 
 
-def _pause_failure_probe(media_keys) -> str:
-    """Prove whether a failed SMTC result can still look successful, no I/O."""
-    original_run = media_keys._run_async
+def _pause_failure_probe(music) -> str:
+    """Prove that a failed global SMTC pause remains a claimed failure, no I/O."""
+    from samsara.command_registry import DispatchResult, DispatchState
+    original_transport = music._media_transport
 
-    def fail_without_running(coro):
-        coro.close()
-        return False, "simulated SMTC failure (no session)"
-
-    media_keys._run_async = fail_without_running
+    failure = DispatchResult(
+        DispatchState.FAILED, phrase="pause",
+        detail={"reason": "no media app found"},
+    )
+    music._media_transport = lambda action: failure
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            handler_return = media_keys.handle_pause_this(None, "")
+            handler_return = music.handle_media_pause(None, "")
     finally:
-        media_keys._run_async = original_run
-    executor_state = "completed" if handler_return else "miss"
-    return (f"Fake SMTC failure returned `False`, but `handle_pause_this` returned "
-            f"`{handler_return}`; the executor adapter therefore treats it as "
-            f"`{executor_state}`. This is a false-success path, not proof of the "
-            "owner's specific runtime session failure.")
+        music._media_transport = original_transport
+    return (f"Fake SMTC failure returns `{handler_return.state.value}` with reason "
+            f"`{handler_return.detail['reason']}`; the executor preserves that as "
+            "a claimed command failure rather than reporting success or falling through.")
 
 
 def run(output: Path) -> int:
@@ -228,13 +227,12 @@ def run(output: Path) -> int:
         "",
         "## Pause failure diagnostic",
         "",
-        _pause_failure_probe(__import__("plugins.commands.media_keys", fromlist=["media_keys"])),
+        _pause_failure_probe(__import__("plugins.commands.music", fromlist=["music"])),
         "",
-        "For pause, the registered alias resolves to `media_keys.pause_this` and the "
-        "plugin declares/catalogs `ui`. Its handler targets the foreground process's "
-        "SMTC session (`try_pause_async`), not a synthetic media key. The task report "
-        "contains source-line evidence and distinguishes the dictation cancel window "
-        "from the risk-policy confirmation path.",
+        "For pause, `pause music` resolves to `music.pause` and targets Windows' current "
+        "SMTC session. `pause this` remains `media_keys.pause_this` and targets the "
+        "foreground process's session. The report distinguishes this routing from the "
+        "dictation cancel window and risk-policy confirmation path.",
         "",
     ]
     output.parent.mkdir(parents=True, exist_ok=True)

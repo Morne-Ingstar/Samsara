@@ -667,7 +667,7 @@ def _place_one(app_name, dest_text, app, monitors, extra_ignore):
 
 
 @command("send", aliases=["move", "put", "throw"], pack="window-management",
-         risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}, "monitor": {"type": "monitor", "required": False}})
+         risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}, "monitor": {"type": "monitor", "required": True}})
 def handle_send(app, remainder):
     """Moves the app you name to the screen you name, such as the left one.
 

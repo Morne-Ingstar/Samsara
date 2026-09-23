@@ -569,7 +569,8 @@ class CommandExecutor:
             remainder = str((args or {}).get('remainder', '') or '')
             logger.info("[PLUGIN] Executing: %s", canonical)
             try:
-                state = adapt_handler_return(entry.handler(effective_app, remainder))
+                handler_result = entry.handler(effective_app, remainder)
+                state = adapt_handler_return(handler_result)
             except Exception as e:
                 logger.exception("[ERROR] Plugin '%s' failed", canonical)
                 return DispatchResult(DispatchState.FAILED, canonical, canonical, {'error': str(e)})
@@ -580,7 +581,8 @@ class CommandExecutor:
                                       {'declined_by': canonical})
             if state in (DispatchState.COMPLETED, DispatchState.QUEUED):
                 self._matcher.record_execution(entry)
-            return DispatchResult(state, canonical, canonical)
+            detail = handler_result.detail if isinstance(handler_result, DispatchResult) else None
+            return DispatchResult(state, canonical, canonical, detail)
 
         if builtin is None:
             # Authorized (a registry row exists) but nothing here can run it.

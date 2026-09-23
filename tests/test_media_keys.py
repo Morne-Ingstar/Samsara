@@ -341,25 +341,25 @@ class TestCommandHandlers:
             run_async.assert_called_once_with(send_action.return_value)
             return handled
 
-    def test_pause_handler_returns_true(self):
-        assert self._call(mk.handle_pause_this, 'pause') is True
+    def test_pause_handler_returns_completed_result(self):
+        assert self._call(mk.handle_pause_this, 'pause').state.value == 'completed'
 
-    def test_play_handler_returns_true(self):
-        assert self._call(mk.handle_play_this, 'play') is True
+    def test_play_handler_returns_completed_result(self):
+        assert self._call(mk.handle_play_this, 'play').state.value == 'completed'
 
-    def test_toggle_handler_returns_true(self):
-        assert self._call(mk.handle_toggle_this, 'toggle') is True
+    def test_toggle_handler_returns_completed_result(self):
+        assert self._call(mk.handle_toggle_this, 'toggle').state.value == 'completed'
 
-    def test_next_handler_returns_true(self):
-        assert self._call(mk.handle_next_this, 'next') is True
+    def test_next_handler_returns_completed_result(self):
+        assert self._call(mk.handle_next_this, 'next').state.value == 'completed'
 
-    def test_prev_handler_returns_true(self):
-        assert self._call(mk.handle_prev_this, 'previous') is True
+    def test_prev_handler_returns_completed_result(self):
+        assert self._call(mk.handle_prev_this, 'previous').state.value == 'completed'
 
-    def test_handler_returns_true_even_when_action_fails(self):
-        # Commands always return True (handled=True) even on failure,
-        # so they don't fall through to dictation output.
-        assert self._call(mk.handle_pause_this, 'pause', result=None) is True
+    def test_foreground_handler_returns_claimed_failure_when_action_fails(self):
+        result = self._call(mk.handle_pause_this, 'pause', result=None)
+        assert result.state.value == 'failed'
+        assert result.detail['reason'] == 'no media app found'
 
     def test_pause_debounce_is_1_5(self):
         import importlib
@@ -398,6 +398,18 @@ class TestCommandHandlers:
                 entry = pc._REGISTRY.get(phrase)
                 assert entry is not None, f"'{phrase}' not registered"
                 assert entry['pack'] == 'media', f"'{phrase}' wrong pack"
+        finally:
+            pc._REGISTRY.clear()
+            pc._REGISTRY.update(saved)
+
+    def test_music_wording_is_not_registered_on_foreground_pause(self):
+        import importlib
+        from samsara import plugin_commands as pc
+        saved = dict(pc._REGISTRY)
+        try:
+            importlib.reload(mk)
+            assert 'pause music' not in pc._REGISTRY['pause this']['aliases']
+            assert 'next song' not in pc._REGISTRY['next track this']['aliases']
         finally:
             pc._REGISTRY.clear()
             pc._REGISTRY.update(saved)

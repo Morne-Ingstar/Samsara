@@ -37,7 +37,8 @@ def _media_transport(action):
     Acts on whatever session currently holds SMTC foreground — identical
     behavior to a hardware media key / Bluetooth earbud button. Not
     Spotify-bound by design; works with browsers, VLC, Spotify, etc.
-    Returns True if the command was sent, False if no session or on error.
+    Returns a completed or failed DispatchResult. A transport refusal is a
+    claimed command failure, not a dictation fall-through.
     """
     try:
         from winsdk.windows.media.control import (
@@ -49,19 +50,36 @@ def _media_transport(action):
                 mgr = await SessionManager.request_async()
                 session = mgr.get_current_session()
                 if not session:
-                    print("[MEDIA] no active media session")
-                    return False
+                    return DispatchResult(
+                        DispatchState.FAILED, phrase=action,
+                        detail={"reason": "no media app found"},
+                    )
                 if action == "play":
-                    await session.try_play_async()
+                    ok = await session.try_play_async()
                 elif action == "pause":
-                    await session.try_pause_async()
+                    ok = await session.try_pause_async()
                 elif action == "next":
-                    await session.try_skip_next_async()
+                    ok = await session.try_skip_next_async()
+                elif action == "previous":
+                    ok = await session.try_skip_previous_async()
+                else:
+                    return DispatchResult(
+                        DispatchState.FAILED, phrase=action,
+                        detail={"reason": "unknown media action"},
+                    )
+                if not ok:
+                    return DispatchResult(
+                        DispatchState.FAILED, phrase=action,
+                        detail={"reason": "nothing is playing"},
+                    )
                 print(f"[MEDIA] transport: {action}")
-                return True
+                return DispatchResult(DispatchState.COMPLETED, phrase=action)
             except Exception as e:
                 print(f"[MEDIA] transport {action} failed: {e}")
-                return False
+                return DispatchResult(
+                    DispatchState.FAILED, phrase=action,
+                    detail={"reason": "media transport unavailable"},
+                )
 
         loop = asyncio.new_event_loop()
         try:
@@ -70,7 +88,10 @@ def _media_transport(action):
             loop.close()
     except Exception as e:
         print(f"[MEDIA] transport init failed: {e}")
-        return False
+        return DispatchResult(
+            DispatchState.FAILED, phrase=action,
+            detail={"reason": "media transport unavailable"},
+        )
 
 
 def _spotify_mute_toggle():
@@ -534,7 +555,7 @@ def handle_play(app, remainder):
                              f"Spotify playback failed: {type(exc).__name__}: {exc}")
 
 
-@command("search", pack="media", risk_class='safe', ai_composable=True,
+@command("search music", aliases=["search"], pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'])
 def handle_music_search(app, remainder):
     """Search Spotify only after a named-library miss asked for it."""
@@ -565,7 +586,7 @@ def handle_media_play(app, remainder):
     return _media_transport("play")
 
 
-@command("playlist", pack="media", risk_class='safe', ai_composable=True,
+@command("play playlist", aliases=["playlist"], pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_playlist(app, remainder):
@@ -573,7 +594,7 @@ def handle_playlist(app, remainder):
     return handle_play(app, f"playlist {remainder}")
 
 
-@command("album", pack="media", risk_class='safe', ai_composable=True,
+@command("play album", aliases=["album"], pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_album(app, remainder):
@@ -581,7 +602,7 @@ def handle_album(app, remainder):
     return handle_play(app, f"album {remainder}")
 
 
-@command("artist", pack="media", risk_class='safe', ai_composable=True,
+@command("play artist", aliases=["artist"], pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_artist(app, remainder):
@@ -589,18 +610,25 @@ def handle_artist(app, remainder):
     return handle_play(app, f"artist {remainder}")
 
 
-@command("pause", pack="media",
+@command("pause", aliases=["pause music", "stop music", "play pause"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_pause(app, remainder):
     """Pauses whatever is playing."""
     return _media_transport("pause")
 
 
-@command("next", aliases=["skip", "skip track"], pack="media",
+@command("next", aliases=["skip", "skip track", "next track", "next song", "skip song"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_next(app, remainder):
     """Skips to the next track."""
     return _media_transport("next")
+
+
+@command("previous music", aliases=["previous", "previous track", "previous song", "back a song"], pack="media",
+         risk_class='safe', ai_composable=True, side_effects=['audio'])
+def handle_media_previous(app, remainder):
+    """Skips back in the current media session."""
+    return _media_transport("previous")
 
 
 @command("mute", aliases=["mute spotify"], pack="media",
