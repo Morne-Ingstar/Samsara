@@ -1,4 +1,6 @@
-"""Help Settings destination (285; placeholder copy)."""
+"""Help Settings destination, including opt-in local diagnostics."""
+
+from PySide6.QtWidgets import QLabel
 
 TITLE = "Help"
 SUBTITLE = "Set up, practise and recover when you need to."
@@ -36,6 +38,22 @@ BASE = [
 ]
 ADVANCED = [
     [
+        "Stage timing",
+        "Record how long each dictation step takes in a local file.",
+        "diagnostics_stage_timing",
+        "diagnostics.stage_timing",
+        "Turn this on to measure delays when tuning dictation performance. "
+        "It saves timings locally without dictated text; leave it off unless you are debugging."
+    ],
+    [
+        "Diagnostic event log",
+        "Save dictation results and troubleshooting details to a local file.",
+        "diagnostics_write_jsonl",
+        "diagnostics.write_jsonl",
+        "Turn this on when investigating missing or unexpected dictation results. "
+        "The local file can include dictated text, so leave it off unless you are debugging."
+    ],
+    [
         "Benchmark recording",
         "Save dictation audio and transcripts locally for review.",
         "adv_bench_collect",
@@ -44,4 +62,8 @@ ADVANCED = [
 ]
 
 def build(owner):
-    return owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    heading = QLabel('Diagnostics')
+    heading.setProperty('role', 'label')
+    page.advanced.rows.insertWidget(0, heading)
+    return page

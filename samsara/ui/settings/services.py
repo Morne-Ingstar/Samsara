@@ -432,6 +432,12 @@ class SettingsServices:
         with self.app._config_lock:
             self.app.config.update(updates)
             self.app.save_config()
+            if 'diagnostics' in updates:
+                # Recording paths use this cached flag; Apply takes effect on
+                # the next utterance without restarting the running app.
+                self.app._stage_timing_enabled = bool(
+                    (self.app.config.get('diagnostics', {}) or {}).get('stage_timing', False)
+                )
 
         if "feedback" in updates:
             setter = getattr(getattr(self.app, "_session_mode_manager", None), "set_spoken_notices", None)

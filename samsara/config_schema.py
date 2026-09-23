@@ -11,7 +11,9 @@ Format per entry:
     options:    allowed values list (enum only)
     item_type:  element type for 'list' entries (currently always 'str')
     default:    app default when key absent from config
-    tab:        settings tab where this appears
+    tab:        historical schema group (not the current destination page)
+    settings_ui: False explicitly excludes a key from Settings/Tools coverage
+    ui_less_reason: required explanation for each settings_ui=False entry
     depends_on: string condition for cross-field dependency (optional)
                 e.g. "echo_cancellation.enabled" means the setting is
                 only active when that key is True.
@@ -72,7 +74,11 @@ SETTINGS_SCHEMA = {
         "default": False,
         "tab": "general",
     },
-    "formatting_tokens.enabled": {"type": "bool", "default": True, "tab": "general"},
+    "formatting_tokens.enabled": {
+        "settings_ui": False,
+        "ui_less_reason": "Config-only escape hatch for spoken formatting-token interpretation; normal dictation keeps formatting tokens enabled.",
+        "type": "bool", "default": True, "tab": "general",
+    },
     # Queue 176 -- Ava captions, the first of the ROADMAP's disability-support
     # modes. Ava's speech is shown on screen so a deaf user can hold the same
     # conversation; audio stays ON unless the second key is set. Both are
@@ -105,6 +111,8 @@ SETTINGS_SCHEMA = {
         "default": 6.0,
         "tab": "general",
         "depends_on": "accessibility.ava_captions",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only caption timing override; the existing captions UI deliberately exposes enable and mute, not timing tuning.",
     },
     # A preset name or a dragged `custom|<screen>|<cx>|<cy>` center -- the
     # same one-string scheme as command_mode.preview_position, so a monitor
@@ -114,6 +122,8 @@ SETTINGS_SCHEMA = {
         "default": "bottom-center",
         "tab": "general",
         "depends_on": "accessibility.ava_captions",
+        "settings_ui": False,
+        "ui_less_reason": "Placement state written by dragging the caption window; not a separate Settings preference.",
     },
     "cleanup_mode": {
         "type": "enum",
@@ -124,7 +134,11 @@ SETTINGS_SCHEMA = {
     # Final text-only backstop for short Whisper sign-off hallucinations.
     # No Settings row: this stays on by default and is only an escape hatch
     # while its real-world false-positive rate is dogfooded.
-    "dictation.signoff_filter": {"type": "bool", "default": True, "tab": "advanced"},
+    "dictation.signoff_filter": {
+        "settings_ui": False,
+        "ui_less_reason": "Developer escape hatch for the default-on hallucinated-signoff filter during false-positive evaluation.",
+        "type": "bool", "default": True, "tab": "advanced",
+    },
 
     # -------------------------------------------------------------------------
     # Hotkeys tab
@@ -179,6 +193,8 @@ SETTINGS_SCHEMA = {
         "default": False,
         "tab": "hotkeys",
         "depends_on": "wake_word_enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only opt-in to the alternative latched wake route, which also requires command_mode.mode=toggle.",
     },
     "wake_word_config.oww_threshold": {
         "type": "float",
@@ -197,6 +213,8 @@ SETTINGS_SCHEMA = {
         "options": ["hold", "toggle", "continuous"],
         "default": "hold",
         "tab": "hotkeys",
+        "settings_ui": False,
+        "ui_less_reason": "Phase 2A compatibility key; command_mode.mode is the current Settings control.",
     },
 
     # -------------------------------------------------------------------------
@@ -207,6 +225,8 @@ SETTINGS_SCHEMA = {
         "options": ["mouse4", "mouse5", "rctrl", "lctrl", "ralt", "lalt", "rshift", "lshift"],
         "default": "rctrl",
         "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Phase 2A compatibility key; command_mode.button is the current Settings control.",
     },
     "command_mode.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "command_mode.button": {
@@ -255,6 +275,8 @@ SETTINGS_SCHEMA = {
         "default": "finish",
         "tab": "commands",
         "depends_on": "command_mode.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only single-word session protocol override; changing the commit vocabulary needs the session token validation, not an unrestricted text field.",
     },
     "command_mode.stop_phrases": {
         # Queue 116. The emergency stop's whole-utterance phrases. REPLACES
@@ -303,6 +325,8 @@ SETTINGS_SCHEMA = {
         "step": 1,
         "default": 8,
         "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only tuning for the specialist spoken alias-offer flow, separate from ordinary session inactivity.",
     },
     # Live streaming-partials overlay preview for the toggle-DICTATE lane
     # (hands-free session). Preview only -- injection stays per-utterance
@@ -313,6 +337,8 @@ SETTINGS_SCHEMA = {
         "default": True,
         "tab": "commands",
         "depends_on": "command_mode.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only legacy session-preview switch; separate from the dedicated CapsLock streaming-capture preference.",
     },
     # Queue 75: that preview fades to this opacity after this many seconds
     # with no speech and no new text, and lets clicks through while faded.
@@ -341,6 +367,8 @@ SETTINGS_SCHEMA = {
         "type": "str",
         "default": "bottom-center",
         "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Placement state owned by the draggable preview and its Settings reset action.",
     },
     # Queue 140: during a latched AVA reply, suppress the session capture
     # path (including an already-open capture) while keeping OpenWakeWord
@@ -350,6 +378,8 @@ SETTINGS_SCHEMA = {
         "default": True,
         "tab": "commands",
         "depends_on": "command_mode.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Developer override for echo suppression while Ava speaks; keep the default protection for ordinary use.",
     },
     # Ava's optional closed-world COMMAND-miss interpreter. The section name
     # remains stable for existing profiles; it no longer represents a session.
@@ -372,6 +402,8 @@ SETTINGS_SCHEMA = {
         "step": 1,
         "default": 12,
         "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Interpreter candidate-budget tuning; the supported user choice is whether command-miss interpretation is enabled.",
     },
     "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands"},
     "ava_command_session.interpret_misses": {"type": "bool", "default": False, "tab": "commands"},
@@ -381,12 +413,16 @@ SETTINGS_SCHEMA = {
         "options": ["click", "double_click"],
         "default": "click",
         "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Compatibility command metadata; actual click actions belong to command records, not global preferences.",
     },
     "click.button": {
         "type": "enum",
         "options": ["left", "right", "middle"],
         "default": "left",
         "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Compatibility command metadata; actual mouse buttons belong to command records, not global preferences.",
     },
 
     # -------------------------------------------------------------------------
@@ -458,6 +494,8 @@ SETTINGS_SCHEMA = {
         "max": 5.0,
         "default": 1.0,
         "tab": "tts",
+        "settings_ui": False,
+        "ui_less_reason": "Phase 2A compatibility name; tts.speed is the current speech-speed preference.",
     },
     "tts.volume": {
         "type": "float",
@@ -576,7 +614,11 @@ SETTINGS_SCHEMA = {
     # while dictating instead of subtracting echo after capture (the
     # echo_cancellation entries above). Off by default -- opt-in, like
     # echo_cancellation. See samsara/audio_ducking.py.
-    "ducking.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "ducking.enabled": {
+        "settings_ui": False,
+        "ui_less_reason": "Legacy fallback for configurations without ducking.recording_mode; the Audio recording-mode selector owns the current behavior.",
+        "type": "bool", "default": False, "tab": "advanced",
+    },
     "ducking.recording_mode": {
         "type": "enum", "options": ["duck", "pause", "off"],
         "default": "duck", "tab": "advanced",
@@ -620,26 +662,60 @@ SETTINGS_SCHEMA = {
     "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced"},
     # Idle blink/glance on the listening indicator's mark (queue 09b3). Only
     # the idle motion -- state animation (spin, pulse, heard flash) always runs.
-    "ui.idle_animation": {"type": "bool", "default": True, "tab": "advanced"},
+    "ui.idle_animation": {
+        "settings_ui": False,
+        "ui_less_reason": "Config-only animation override for the legacy listening indicator, separate from indicator visibility.",
+        "type": "bool", "default": True, "tab": "advanced",
+    },
     "ui.live_surface.enabled": {"type": "bool", "default": False, "tab": "advanced"},
     # Live surface contracts (220 A). These are additive only; package I
     # later wires migration and Settings controls. Placement's nested map is
     # validated by samsara.live_surface.config, not treated as a Qt widget.
-    "ui.live_surface.schema_version": {"type": "int", "min": 1, "max": 1, "default": 1, "tab": "advanced"},
+    "ui.live_surface.schema_version": {
+        "settings_ui": False,
+        "ui_less_reason": "Internal live-surface migration version, not a user preference.",
+        "type": "int", "min": 1, "max": 1, "default": 1, "tab": "advanced",
+    },
     "ui.live_surface.idle_delay_s": {
         "type": "float", "min": 1.0, "max": 60.0, "step": 0.5, "default": 5.0, "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Experimental live-surface tuning; its public Settings surface remains the opt-in switch until the replacement UI is released.",
     },
-    "ui.live_surface.show_idle_mark": {"type": "bool", "default": True, "tab": "advanced"},
+    "ui.live_surface.show_idle_mark": {
+        "settings_ui": False,
+        "ui_less_reason": "Experimental live-surface tuning; its public Settings surface remains the opt-in switch until the replacement UI is released.",
+        "type": "bool", "default": True, "tab": "advanced",
+    },
     "ui.live_surface.partials": {
         "type": "enum", "options": ["auto", "on", "off"], "default": "auto", "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Experimental partial-transcription policy; not a second control for the existing streaming capture path.",
     },
-    "ui.live_surface.focus_hotkey": {"type": "str", "default": "ctrl+alt+f10", "tab": "advanced"},
-    "ui.live_surface.reset_hotkey": {"type": "str", "default": "ctrl+alt+shift+f10", "tab": "advanced"},
-    "ui.live_surface.pause_hotkey": {"type": "str", "default": "pause", "tab": "advanced"},
+    "ui.live_surface.focus_hotkey": {
+        "settings_ui": False,
+        "ui_less_reason": "Experimental live-surface binding; config-only until it joins the validated Settings shortcut/collision editor.",
+        "type": "str", "default": "ctrl+alt+f10", "tab": "advanced",
+    },
+    "ui.live_surface.reset_hotkey": {
+        "settings_ui": False,
+        "ui_less_reason": "Experimental live-surface binding; config-only until it joins the validated Settings shortcut/collision editor.",
+        "type": "str", "default": "ctrl+alt+shift+f10", "tab": "advanced",
+    },
+    "ui.live_surface.pause_hotkey": {
+        "settings_ui": False,
+        "ui_less_reason": "Experimental live-surface binding; config-only until it joins the validated Settings shortcut/collision editor.",
+        "type": "str", "default": "pause", "tab": "advanced",
+    },
     "ui.live_surface.placement": {
         "type": "dict", "default": {"preferred_monitor": None, "monitors": {}}, "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Per-monitor geometry written by the live surface itself, not a text-editable preference.",
     },
-    "ui.live_surface.legacy": {"type": "dict", "default": {}, "tab": "advanced"},
+    "ui.live_surface.legacy": {
+        "settings_ui": False,
+        "ui_less_reason": "Internal migration backup of previous floating-window settings; never a preference editor.",
+        "type": "dict", "default": {}, "tab": "advanced",
+    },
     "listening_indicator_position": {
         "type": "enum",
         "options": ["top-left", "top-center", "top-right",
@@ -659,12 +735,16 @@ SETTINGS_SCHEMA = {
         "max": 1.0,
         "default": 0.3,
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Compatibility schema value with no current capture consumer; microphone calibration and speech threshold are the active controls.",
     },
     "transcription.mode": {
         "type": "enum",
         "options": ["clean", "verbatim"],
         "default": "clean",
         "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Compatibility schema value; cleanup_mode is the current dictation cleanup preference.",
     },
 
     # Ava's edit proposals (queue 102): "make that more formal" over the text
@@ -712,6 +792,8 @@ SETTINGS_SCHEMA = {
         "default": 6.0,
         "tab": "advanced",
         "depends_on": "smart_corrections.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only correction-backend deadline tuning; retain the bounded runtime default for ordinary use.",
     },
     "smart_corrections.min_words": {
         "type": "int",
@@ -720,12 +802,16 @@ SETTINGS_SCHEMA = {
         "default": 3,
         "tab": "advanced",
         "depends_on": "smart_corrections.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only correction eligibility threshold; the visible controls choose correction modes and repair behavior.",
     },
     "smart_corrections.keep_alive": {
         "type": "str",
         "default": "30m",
         "tab": "advanced",
         "depends_on": "smart_corrections.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only Ollama duration override; it accepts backend duration syntax, not an ordinary Settings on/off value.",
     },
     "smart_corrections.modes.hotkey":    {"type": "bool", "default": True,  "tab": "advanced", "depends_on": "smart_corrections.enabled"},
     "smart_corrections.modes.wake":      {"type": "bool", "default": True,  "tab": "advanced", "depends_on": "smart_corrections.enabled"},
@@ -738,13 +824,17 @@ SETTINGS_SCHEMA = {
     },
 
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
-    "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "advanced"},
-    "diagnostics.stage_timing": {"type": "bool", "default": False, "tab": "advanced"},
+    "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "help"},
+    "diagnostics.stage_timing": {"type": "bool", "default": False, "tab": "help"},
 
     # Opt-in: dump the exact assembled hotkey buffer (post-prepend,
     # pre-fade) to ~/.samsara/debug/hotkey_*.wav on every hotkey
     # transcription. 2026-07-10 hotkey word-loss investigation.
-    "debug.dump_hotkey_buffers": {"type": "bool", "default": False, "tab": "advanced"},
+    "debug.dump_hotkey_buffers": {
+        "settings_ui": False,
+        "ui_less_reason": "Developer-only raw audio capture for buffer investigations; deliberately excluded from everyday Settings.",
+        "type": "bool", "default": False, "tab": "advanced",
+    },
 
     # Personal WER benchmark: opt-in local sample collection for the
     # offline accuracy harness (samsara/benchmark_store.py, tools/benchmark_eval.py).
@@ -756,6 +846,8 @@ SETTINGS_SCHEMA = {
         "default": 200,
         "tab": "advanced",
         "depends_on": "benchmark.collect_samples",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only benchmark storage cap; Help exposes collection consent while retaining the bounded default cap.",
     },
 
     # Correction capture: hotkey-triggered "fix my last dictation" flow
@@ -767,6 +859,8 @@ SETTINGS_SCHEMA = {
         "step": 0.05,
         "default": 0.5,
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only correction-training rejection threshold; not an ordinary text-editing preference.",
     },
 
     # Shadow intent gate (samsara/intent/shadow.py): stores the text of
@@ -775,13 +869,19 @@ SETTINGS_SCHEMA = {
     # utterance and changes nothing the app does.
     # No settings-UI widget (config-file-editable); intent.shadow_dir, the
     # folder override, is read inline at its point of use.
-    "intent.shadow_enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "intent.shadow_enabled": {
+        "settings_ui": False,
+        "ui_less_reason": "Developer-only shadow execution experiment that records dictated text without changing actions; kept config-only.",
+        "type": "bool", "default": False, "tab": "advanced",
+    },
     "intent.shadow_retention_days": {
         "type": "int",
         "min": 1,
         "max": 90,
         "default": 14,
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Retention tuning for the config-only shadow execution experiment, not general log retention.",
     },
 
     # Queue 93 escape hatch: a word that, spoken first, forces the rest of the
@@ -848,20 +948,34 @@ SETTINGS_SCHEMA = {
         "type": "enum", "options": ["off", "local", "cloud"],
         "default": "off", "tab": "ava",
     },
-    "onboarding.version": {"type": "int", "default": 2, "min": 2, "max": 2, "tab": "general"},
+    "onboarding.version": {
+        "settings_ui": False,
+        "ui_less_reason": "Setup workflow version owned by onboarding migrations.",
+        "type": "int", "default": 2, "min": 2, "max": 2, "tab": "general",
+    },
     "onboarding.setup_status": {
         "type": "enum", "options": ["in_progress", "ready", "deferred"],
         "default": "in_progress", "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Setup progress owned by the first-run workflow; not a manually editable readiness claim.",
     },
     "onboarding.next_step": {
         "type": "enum", "options": ["microphone", "ai", "home"],
         "default": "microphone", "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Resume location owned by the first-run workflow.",
     },
     "onboarding.requested_ai": {
         "type": "enum", "options": ["off", "local", "cloud"],
         "default": "off", "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Pending provider choice owned by setup; the Ava page owns the active consent-aware provider policy.",
     },
-    "onboarding.lessons": {"type": "dict", "default": {}, "tab": "general"},
+    "onboarding.lessons": {
+        "settings_ui": False,
+        "ui_less_reason": "Practice progress recorded by onboarding lessons; not a free-form Settings dictionary.",
+        "type": "dict", "default": {}, "tab": "general",
+    },
     "ava_invocations": {
         # Exact whole-utterance phrases that switch into Ava mode -- see
         # samsara/session_modes.py's match_ava_invocation(). No settings-UI
@@ -873,6 +987,8 @@ SETTINGS_SCHEMA = {
         "item_type": "str",
         "default": ["hey ava", "so ava", "oracle"],
         "tab": "ava",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only whole-utterance invocation vocabulary; kept outside Settings until an editor can validate session phrase collisions.",
     },
     "ava_memory.mode": {
         "type": "enum",
@@ -890,12 +1006,36 @@ SETTINGS_SCHEMA = {
     },
 
     # Ollama / local LLM (also in Ava tab)
-    "ollama.enabled":             {"type": "bool", "default": True,                        "tab": "ava"},
-    "ollama.host":                {"type": "str",  "default": "http://localhost:11434",     "tab": "ava"},
-    "ollama.model":               {"type": "str",  "default": "llama3",                    "tab": "ava"},
-    "ollama.timeout_seconds":     {"type": "int",  "min": 5,   "max": 300,  "default": 30, "tab": "ava"},
-    "ollama.max_response_length": {"type": "int",  "min": 100, "max": 4000, "default": 800,"tab": "ava"},
-    "ollama.safety_gate_enabled": {"type": "bool", "default": True,                        "tab": "ava"},
+    "ollama.enabled":             {
+        "settings_ui": False,
+        "ui_less_reason": "Legacy provider flag; the Ava master and consent-aware provider policy own current activation.",
+        "type": "bool", "default": True,                        "tab": "ava",
+    },
+    "ollama.host":                {
+        "settings_ui": False,
+        "ui_less_reason": "Config-only local-server endpoint override; normal setup uses the local default and provider consent checks.",
+        "type": "str",  "default": "http://localhost:11434",     "tab": "ava",
+    },
+    "ollama.model":               {
+        "settings_ui": False,
+        "ui_less_reason": "Local conversational model selection is owned by the Ava setup guide; distinct from the command-miss model in Settings.",
+        "type": "str",  "default": "llama3",                    "tab": "ava",
+    },
+    "ollama.timeout_seconds":     {
+        "settings_ui": False,
+        "ui_less_reason": "Config-only local conversational request deadline; separate from cloud and editing timeouts.",
+        "type": "int",  "min": 5,   "max": 300,  "default": 30, "tab": "ava",
+    },
+    "ollama.max_response_length": {
+        "settings_ui": False,
+        "ui_less_reason": "Config-only conversational response-length cap; not the spoken acknowledgement character limit.",
+        "type": "int",  "min": 100, "max": 4000, "default": 800,"tab": "ava",
+    },
+    "ollama.safety_gate_enabled": {
+        "settings_ui": False,
+        "ui_less_reason": "Developer compatibility override for local-model safety checks; not an ordinary user preference.",
+        "type": "bool", "default": True,                        "tab": "ava",
+    },
     "music_library": {
         "type": "dict",
         "default": {},

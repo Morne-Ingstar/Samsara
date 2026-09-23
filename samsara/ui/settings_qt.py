@@ -181,6 +181,7 @@ class _SettingsWindow(
         query = self._search_edit.text().strip().casefold()
         self._refresh_conditions()
         matched = set()
+        name_matches = {}
         for row in self._destination_rows:
             if row.page_name not in _TAB_NAMES:
                 continue
@@ -188,10 +189,18 @@ class _SettingsWindow(
             row.setVisible(match and row.property('conditionVisible') is not False)
             if query and match:
                 matched.add(row.page_name)
+                title = row.title.casefold()
+                rank = 3 if title == query else 2 if title.startswith(query) else 1 if query in title else 0
+                name_matches[row.page_name] = max(name_matches.get(row.page_name, 0), rank)
                 if row.disclosure:
                     row.disclosure.reveal()
-        if query and matched and _TAB_NAMES[self._stack.currentIndex()] not in matched:
-            self._sidebar.setCurrentRow(next(i for i, name in enumerate(_TAB_NAMES) if name in matched))
+        if query and matched:
+            # A setting's name outranks an incidental mention in help, e.g.
+            # "Stage timing" before "staged thought" when searching "stage".
+            best_rank = max(name_matches.values())
+            best_pages = {name for name, rank in name_matches.items() if rank == best_rank}
+            if _TAB_NAMES[self._stack.currentIndex()] not in best_pages:
+                self._sidebar.setCurrentRow(next(i for i, name in enumerate(_TAB_NAMES) if name in best_pages))
 
     def _on_sidebar_row_changed(self, row):
         if row in self._sidebar_row_to_stack_index:

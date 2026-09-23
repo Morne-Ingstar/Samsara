@@ -319,6 +319,25 @@ class HelpPage:
             automatic_updates,
         ))
 
+        diagnostics = self.app.config.get('diagnostics', {}) or {}
+        for key, label in (
+            ('stage_timing', 'Stage timing'),
+            ('write_jsonl', 'Diagnostic event log'),
+        ):
+            checkbox = QCheckBox()
+            checkbox.setChecked(bool(diagnostics.get(key, False)))
+            checkbox.setAccessibleName(label)
+            self._widgets['diagnostics_' + key] = checkbox
+            layout.addLayout(self._setting_row(label, '', checkbox))
+
+        def _save(acc):
+            # Retain sibling diagnostics options, including future additions.
+            current = dict(acc.get('diagnostics', self.app.config.get('diagnostics', {})) or {})
+            for key in ('stage_timing', 'write_jsonl'):
+                current[key] = self._widgets['diagnostics_' + key].isChecked()
+            return {'diagnostics': current}
+        self._save_fns.append(_save)
+
         layout.addStretch()
         scroll.setWidget(container)
         return scroll

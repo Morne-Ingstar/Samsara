@@ -38,9 +38,11 @@ def test_schema_declares_opt_in_bounded_retention():
     from samsara.config_schema import SETTINGS_SCHEMA
 
     assert SETTINGS_SCHEMA["intent.shadow_enabled"]["default"] is False
-    assert SETTINGS_SCHEMA["intent.shadow_retention_days"] == {
+    spec = SETTINGS_SCHEMA["intent.shadow_retention_days"]
+    assert {key: spec[key] for key in ('type', 'min', 'max', 'default', 'tab')} == {
         "type": "int", "min": 1, "max": 90, "default": 14, "tab": "advanced",
     }
+    assert spec['settings_ui'] is False and spec['ui_less_reason']
 
 
 def test_old_shadow_files_are_deleted_younger_and_unrelated_files_kept(tmp_path):
