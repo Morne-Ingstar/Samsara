@@ -131,6 +131,7 @@ class AvaConsentDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Turning Ava on")
         self.setAccessibleName("Ava consent")
+        self.setAccessibleDescription(CONSENT_TEXT)
         self.setModal(True)
         self.setMinimumWidth(560)
         self.setStyleSheet(
@@ -145,7 +146,7 @@ class AvaConsentDialog(QDialog):
         text = QLabel(CONSENT_TEXT)
         text.setWordWrap(True)
         text.setTextFormat(Qt.TextFormat.PlainText)
-        text.setAccessibleName("What turning Ava on means")
+        text.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         text.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(text)
 
@@ -157,8 +158,6 @@ class AvaConsentDialog(QDialog):
             theme.make_secondary(close)
             close.clicked.connect(self.reject)
             buttons.addWidget(close)
-            close.setFocus(Qt.FocusReason.OtherFocusReason)
-            self._initial_focus = close
         else:
             not_now = QPushButton("Not now")
             not_now.setAccessibleName("Not now")
@@ -171,9 +170,13 @@ class AvaConsentDialog(QDialog):
             theme.make_primary(accept)
             accept.clicked.connect(self.accept)
             buttons.addWidget(accept)
-            not_now.setFocus(Qt.FocusReason.OtherFocusReason)
-            self._initial_focus = not_now
         layout.addLayout(buttons)
+        if read_only:
+            self.setTabOrder(text, close)
+        else:
+            self.setTabOrder(text, not_now)
+            self.setTabOrder(not_now, accept)
+        self._initial_focus = text
 
     def showEvent(self, event):
         super().showEvent(event)

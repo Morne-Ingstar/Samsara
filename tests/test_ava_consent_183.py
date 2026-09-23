@@ -3,11 +3,38 @@
 from types import SimpleNamespace
 import json
 
-from PySide6.QtWidgets import QDialog, QPushButton
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAccessible
+from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
 from samsara import config_schema
 from samsara import ai_preferences
 from samsara.ui import ava_consent_qt as consent
+
+
+@pytest.mark.parametrize("read_only", [False, True])
+def test_consent_copy_is_announced_before_buttons(qapp, read_only):
+    dialog = consent.AvaConsentDialog(read_only=read_only)
+    try:
+        body = dialog.findChild(QLabel)
+        buttons = dialog.findChildren(QPushButton)
+        assert body.text() == consent.CONSENT_TEXT
+        name = QAccessible.queryAccessibleInterface(body).text(QAccessible.Text.Name)
+        assert "She can get things wrong" in name
+        assert "What turning Ava on means" not in name
+        assert dialog.accessibleDescription() == consent.CONSENT_TEXT
+        assert body.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        assert body.nextInFocusChain() is buttons[0]
+        if not read_only:
+            assert buttons[0].nextInFocusChain() is buttons[1]
+
+        dialog.show()
+        qapp.processEvents()
+        assert dialog.focusWidget() is body
+    finally:
+        dialog.close()
+        dialog.deleteLater()
 
 
 class _AcceptedDialog:
@@ -296,7 +323,7 @@ def test_dialog_has_accessible_actions_and_safe_initial_focus(qapp):
     assert buttons["I understand, turn Ava on"].accessibleName() == "I understand, turn Ava on"
     dialog.show()
     qapp.processEvents()
-    assert dialog.focusWidget() is buttons["Not now"]
+    assert dialog.focusWidget() is dialog.findChild(QLabel)
     assert dialog.isModal() is True
     dialog.close()
 
