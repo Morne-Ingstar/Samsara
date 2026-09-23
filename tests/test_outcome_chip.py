@@ -12,12 +12,9 @@ sounded like the same beep, and a deaf user got nothing. These tests pin:
   * the dictation.py wiring -- without a module-level `import dictation`.
 """
 import ast
-import os
 import pathlib
 import time
 import types
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
@@ -260,7 +257,7 @@ def indicator(qapp):
 class TestChipRendering:
     def test_show_outcome_paints_the_chip_in_its_colour(self, qapp, indicator):
         from samsara.ui import theme
-        from PySide6.QtGui import QColor
+        from PySide6.QtGui import QColor, QImage
 
         indicator.show()
         indicator.show_outcome("MISS", "error", ttl_ms=None)
@@ -268,7 +265,9 @@ class TestChipRendering:
 
         _, _, _, chip_rect = indicator._layout()
         assert chip_rect is not None
-        image = indicator.grab().toImage()
+        image = QImage(indicator.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(0)
+        indicator.render(image)
         # Sample just inside the chip's left edge, clear of the label text.
         px = image.pixelColor(int(chip_rect.x() + 4), int(chip_rect.center().y()))
         expected = QColor(theme.ERROR)
