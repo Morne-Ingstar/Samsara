@@ -43,11 +43,33 @@ PAGE_MODULES = {
     "Music": "music_qt",
 }
 
+
+def test_dictation_rows_supply_distinct_plain_language_help(qapp):
+    from samsara.ui.settings import dictation_page
+    from samsara.ui.settings_qt import _SettingsWindow
+
+    specs = dictation_page.BASE + dictation_page.ADVANCED
+    assert all(len(spec) == 5 for spec in specs)
+    for _title, description, _names, _config, help_copy in specs:
+        assert help_copy != description
+        sentences = [sentence for sentence in help_copy.split('.') if sentence.strip()]
+        assert 2 <= len(sentences) <= 4, help_copy
+
+    window = _SettingsWindow(_StubApp())
+    try:
+        rows = [row for row in window._destination_rows if row.page_name == 'Dictation']
+        assert len(rows) == len(specs)
+        assert all(row.help is not None and row.full_help for row in rows)
+        continuous = window._rows_by_widget['continuous_commit_trigger']
+        assert 'existing continuous dictation session' in continuous.full_help
+    finally:
+        window.deleteLater()
+
 #: Flattened config keys each page's save fn wrote BEFORE the split, captured
 #: from the monolithic settings_qt.py (aa948d3) with every schema default
 #: loaded. Commands' pack keys are derived from PACKS below instead of pinned,
-#: so adding a pack is not a split regression. Health and Help & Support
-#: register no save fn.
+#: so adding a pack is not a split regression. Health registers no save fn;
+#: queue 300 added diagnostics to Help & Support after the split.
 KEYS_BEFORE_SPLIT = {
     "_build_general_tab": [
         'add_trailing_space', 'auto_capitalize', 'auto_paste', 'cleanup_mode', 'format_numbers',
@@ -302,6 +324,7 @@ def test_every_key_written_before_the_split_is_still_written(qapp):
     try:
         produced, _updates = _keys_by_builder(window)
         expected = dict(KEYS_BEFORE_SPLIT, _build_commands_tab=_commands_keys_before_split())
+        expected['_build_support_tab'] = ['diagnostics.stage_timing', 'diagnostics.write_jsonl']
         assert set(produced) == set(expected)            # no page lost (or gained) a save fn
         for builder, keys in expected.items():
             # Nested dictionaries preserve newer sibling defaults. Their addition

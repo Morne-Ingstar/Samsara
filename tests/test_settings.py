@@ -255,6 +255,29 @@ class TestSettingsWindowConstruction:
                             ('Primary dictation', ['mode', 'hotkey'])]:
             assert all(rows[title].isAncestorOf(win._widgets[key]) for key in keys)
 
+    def test_primary_dictation_keeps_legacy_continuous_without_offering_it(self, qapp):
+        from samsara.ui.settings_qt import _SettingsWindow
+
+        stub = _StubApp()
+        stub.config = {'mode': 'continuous'}
+        win = _SettingsWindow(stub)
+        try:
+            mode = win._widgets['mode']
+            assert [mode.itemText(index) for index in range(mode.count())] == ['hold', 'toggle']
+            assert mode.currentText() == 'hold'
+            assert win._source_saves['modes'][0]({})['mode'] == 'continuous'
+            mode.setCurrentText('toggle')
+            assert win._source_saves['modes'][0]({})['mode'] == 'toggle'
+            row = win._rows_by_widget['mode']
+            assert row.full_help == (
+                'The primary keyboard method of dictating has two modes, either hold or toggle. '
+                'If you hold, then it records your speech until you let go of the button, and then '
+                'it transcribes into the text box which you have clicked on. If you toggle, then you '
+                'just tap the button, talk for as long as you like, and then tap it again when you\'re done.'
+            )
+        finally:
+            win.deleteLater()
+
 
     def test_voice_control_rows_remain_search_registered(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
@@ -593,7 +616,8 @@ class TestApplyAndCloseSnapshot:
             'hands_free_idle_level': 0.8,
         })
         # Current post-284 snapshot: retain only live keys and current defaults.
-        expected['ui'] = {'live_surface': {'enabled': False}}
+        # 298: Advanced adds its preference without discarding General's theme.
+        expected['ui']['live_surface'] = {'enabled': False}
         expected['accessibility'] = {'speech_pace': 'standard'}
         expected['ava_command_session']['keep_warm'] = False
         expected['command_packs'].pop('mouse', None)
@@ -617,6 +641,8 @@ class TestApplyAndCloseSnapshot:
         expected.pop('command_packs', None)  # Ava master persists via its consent-aware setter.
         expected['alarms'] = {key: value for key, value in expected['alarms'].items()
                               if key in ('complete_hotkey', 'dismiss_hotkey')}
+        # 300: Help now owns both explicit, default-off diagnostics choices.
+        expected['diagnostics'] = {'stage_timing': False, 'write_jsonl': False}
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()

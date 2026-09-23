@@ -5,6 +5,7 @@ and 276 startup additions are explicitly reconciled. No external files needed.
 """
 from collections import Counter
 import copy
+import json
 import pytest
 from PySide6.QtWidgets import QWidget
 from samsara.ui import settings_qt
@@ -187,6 +188,23 @@ def test_every_audited_key_has_one_reachable_editor(window):
     assert window._source_store.isHidden()
 
 
+def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
+    """New schema keys must not silently fall outside the pinned 285 audit."""
+    from samsara.config_schema import SETTINGS_SCHEMA
+
+    counts = Counter(key for key, _page, _widget in window.config_row_inventory())
+    missing = []
+    for key, spec in SETTINGS_SCHEMA.items():
+        if spec.get('settings_ui') is False:
+            assert spec.get('ui_less_reason', '').strip(), key
+            assert counts[key] == 0, (key, 'UI-less key has a Settings row')
+        else:
+            assert 'ui_less_reason' not in spec, (key, 'missing explicit opt-out')
+            if counts[key] != 1:
+                missing.append((key, counts[key]))
+    assert not missing, f'Schema keys need exactly one Settings/Tools home: {missing}'
+
+
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
     assert [len(window._pages[name].base_rows) for name in settings_qt._TAB_NAMES] == [5, 6, 7, 5, 10, 5]
@@ -232,12 +250,56 @@ def test_search_reveals_advanced_setting(window):
     assert not window._rows_by_widget['launch_at_login'].isHidden()
 
 
+@pytest.mark.parametrize('query, keys', [
+    ('stage', ('stage_timing',)),
+    ('diagnostics', ('stage_timing', 'write_jsonl')),
+])
+def test_search_reveals_diagnostics_in_help(window, query, keys):
+    window._search_edit.setText(query)
+    window._apply_search_filter()
+    page = window._pages['Help']
+    assert window._stack.currentWidget() is page
+    assert page.advanced.toggle.isChecked()
+    for key in keys:
+        row = window._rows_by_widget['diagnostics_' + key]
+        assert not row.isHidden()
+        assert page.isAncestorOf(row)
+        assert 'leave it off unless you are debugging' in row.full_help
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_diagnostics_apply_saves_and_refreshes_timing_cache(window, tmp_path, enabled):
+    from samsara.stage_timing import StageTiming
+
+    app = window.app
+    app.config['diagnostics'] = {'stage_timing': not enabled, 'write_jsonl': not enabled,
+                                 'future_option': 'preserved'}
+    app._stage_timing_enabled = not enabled
+    saved_config = tmp_path / 'config.json'
+    app.save_config = lambda: saved_config.write_text(json.dumps(app.config), encoding='utf-8')
+    for key in ('stage_timing', 'write_jsonl'):
+        window._widgets['diagnostics_' + key].setChecked(enabled)
+    # A checkbox alone must not start recording before Apply.
+    assert app._stage_timing_enabled is not enabled
+    window._apply_and_close()
+    assert app._stage_timing_enabled is enabled
+    assert json.loads(saved_config.read_text(encoding='utf-8'))['diagnostics'] == {
+        'stage_timing': enabled, 'write_jsonl': enabled, 'future_option': 'preserved',
+    }
+    recorder = StageTiming.create(route='hotkey', mode='dictate',
+                                  enabled=app._stage_timing_enabled, home_dir=tmp_path)
+    recorder.mark('speech_end')
+    recorder.complete()
+    assert (tmp_path / 'perf' / 'stage_timing.jsonl').exists() is enabled
+
+
 def test_help_keeps_accessible_text_and_large_target(window):
     row = window._rows_by_widget['launch_at_login']
     assert row.help.width() >= 44 and row.help.height() >= 44
     assert row.help.accessibleDescription() == row.full_help
     row.help.click()
     assert not row.help_panel.isHidden()
+    assert row.grid.indexOf(row.help_panel) == -1
 
 
 def test_precision_metadata_is_read_only(window):
@@ -274,8 +336,37 @@ def test_keyboard_help_and_disclosure(window, qapp):
     row = window._rows_by_widget['launch_at_login']
     row.help.setFocus()
     qapp.processEvents()
+    assert row.help_panel is None
+    QTest.keyClick(row.help, Qt.Key.Key_Return)
     assert row.help_panel.isVisibleTo(window)
     QTest.keyClick(row.help, Qt.Key.Key_Escape)
     assert row.help_panel.isHidden()
     assert window._widgets['launch_at_login'].accessibleName()
     window.hide()
+
+
+def test_help_is_click_only_and_one_panel_at_a_time(window, qapp):
+    from PySide6.QtTest import QTest
+
+    window.show()
+    first = window._rows_by_widget['launch_at_login']
+    second = window._rows_by_widget['start_hidden']
+    QTest.mouseMove(first.help, first.help.rect().center())
+    qapp.processEvents()
+    assert first.help_panel is None
+    first.help.click()
+    assert first.help_panel.isVisibleTo(window)
+    second.help.click()
+    assert first.help_panel.isHidden()
+    assert second.help_panel.isVisibleTo(window)
+    window.hide()
+
+
+def test_rows_without_distinct_help_omit_the_button(qapp):
+    from PySide6.QtWidgets import QPushButton
+    from samsara.ui.settings.presentation import SettingRow
+
+    row = SettingRow('Plain setting', 'Short explanation.', [QPushButton('Change')])
+    assert row.help is None
+    assert row.help_panel is None
+    assert row.values.itemAt(0).widget().accessibleDescription() == 'Short explanation.'
