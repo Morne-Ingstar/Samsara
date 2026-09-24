@@ -47,6 +47,7 @@ import datetime as _dt
 import random
 import re
 import time
+import weakref
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -1074,6 +1075,34 @@ def _post_after(fn) -> None:
         fn()
 
 
+def _subscribe_ava_readiness(widget: QWidget) -> None:
+    """Refresh a capability surface on the Qt thread when Ava changes."""
+    try:
+        from samsara import ava_readiness  # noqa: PLC0415
+        from samsara.ui import qt_runtime  # noqa: PLC0415
+        import shiboken6  # noqa: PLC0415
+
+        tracker = ava_readiness.tracker
+        widget_ref = weakref.ref(widget)
+
+        def changed(_old, _new):
+            def refresh_if_alive():
+                page = widget_ref()
+                if page is None or not shiboken6.isValid(page):
+                    tracker.remove_listener(changed)
+                    return
+                page.refresh()
+
+            qt_runtime.post(refresh_if_alive)
+
+        widget._ava_readiness_tracker = tracker
+        widget._ava_readiness_listener = changed
+        tracker.add_listener(changed)
+        widget.destroyed.connect(lambda *_: tracker.remove_listener(changed))
+    except Exception as exc:
+        logger.debug(f"[HOME] Ava readiness listener unavailable: {exc}")
+
+
 def open_cheatsheet_filtered(app, needle: str) -> bool:
     """Show the command reference with its text filter set to `needle` and
     the category on All (the sheet's own filter path). The sheet's window
@@ -1610,7 +1639,25 @@ class HomePage(QWidget):
         self._hint = None
         self._whats_new = None
         self._build()
+        _subscribe_ava_readiness(self)
         self.refresh()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        window = self.window()
+        if window is not self:
+            window.installEventFilter(self)
+        self.refresh()
+
+    def eventFilter(self, watched, event):
+        if watched is self.window() and event.type() == QEvent.Type.WindowActivate:
+            self.refresh()
+        return super().eventFilter(watched, event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.refresh()
 
     # ---- Build ----------------------------------------------------------
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
@@ -31,7 +31,7 @@ from samsara.log import get_logger
 from samsara.ui import home_signals, theme
 from samsara.ui.home_qt import (
     GRID, GRID_LG, CONTENT_MAX_W, _button, _card, _label, _label_css, _px, _section_label,
-    listening_state_id, pause_hands_free, resume_hands_free,
+    _subscribe_ava_readiness, listening_state_id, pause_hands_free, resume_hands_free,
 )
 
 logger = get_logger(__name__)
@@ -183,7 +183,25 @@ class VoiceHelpPage(QWidget):
         self._stage_labels = {}
         self._pending = []
         self._build()
+        _subscribe_ava_readiness(self)
         self.refresh()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        window = self.window()
+        if window is not self:
+            window.installEventFilter(self)
+        self.refresh()
+
+    def eventFilter(self, watched, event):
+        if watched is self.window() and event.type() == QEvent.Type.WindowActivate:
+            self.refresh()
+        return super().eventFilter(watched, event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.refresh()
 
     def _build(self):
         self.setStyleSheet(
