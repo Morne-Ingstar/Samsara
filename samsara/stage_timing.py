@@ -19,6 +19,7 @@ from samsara.paths import samsara_home_dir
 
 
 STAGES = (
+    "last_voice",
     "speech_end",
     "capture_finalised",
     "transcribe_start",
@@ -28,6 +29,7 @@ STAGES = (
     "feedback_done",
 )
 DELTA_STAGES = {
+    "endpoint_wait_ms": ("last_voice", "speech_end"),
     "capture_finalize_ms": ("speech_end", "capture_finalised"),
     "pre_transcribe_ms": ("capture_finalised", "transcribe_start"),
     "transcribe_ms": ("transcribe_start", "transcribe_end"),
@@ -36,6 +38,25 @@ DELTA_STAGES = {
     "feedback_ms": ("action_done", "feedback_done"),
     "total_ms": ("speech_end", "feedback_done"),
 }
+
+
+def outcome_label(kind: str) -> str:
+    """Bound dispatch details to the journal's fixed, non-text vocabulary."""
+    if kind in {"dictate_injected", "dictate_committed"}:
+        return "typed"
+    if kind in {"dictate_staged", "dictation_staged_chunk"}:
+        return "buffered"
+    if kind in {"empty"}:
+        return "empty"
+    if kind in {"command_miss"}:
+        return "miss"
+    if "blocked" in kind or "refused" in kind or "suppressed" in kind:
+        return "gated"
+    if "failed" in kind or "unavailable" in kind:
+        return "error"
+    if kind in {"abort", "stopped", "scratch_success", "dictate_draft_cleared"}:
+        return "discarded"
+    return "command"
 
 class _NoopTiming:
     """A zero-output recorder so instrumentation never forks app behavior."""
@@ -106,6 +127,8 @@ class StageTiming:
         self.model: str | None = None
         self.beam: int | None = None
         self.outcome: str | None = None
+        self.segment_index: int | None = None
+        self.last_voice_source: str | None = None
         self._monotonic_ns: dict[str, int | None] = dict.fromkeys(STAGES)
         self._utc: dict[str, str | None] = dict.fromkeys(STAGES)
         self._pending_feedback = 0
@@ -143,7 +166,8 @@ class StageTiming:
             if self._monotonic_ns[stage] is None:
                 self._monotonic_ns[stage] = now_ns
                 self._utc[stage] = now_utc
-            for key in ("audio_s", "words", "model", "beam", "outcome"):
+            for key in ("audio_s", "words", "model", "beam", "outcome",
+                        "segment_index", "last_voice_source"):
                 if key in fields and fields[key] is not None:
                     setattr(self, key, fields[key])
 
@@ -198,6 +222,8 @@ class StageTiming:
             "model": self.model,
             "beam": self.beam,
             "outcome": self.outcome,
+            "segment_index": self.segment_index,
+            "last_voice_source": self.last_voice_source,
             "timestamps_ns": dict(marks),
             "timestamps_utc": dict(self._utc),
             "deltas_ms": deltas,

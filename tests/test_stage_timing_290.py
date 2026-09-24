@@ -41,12 +41,27 @@ def test_flag_on_writes_one_line_with_all_timestamps_and_fields(tmp_path):
     assert (row["model"], row["beam"], row["outcome"]) == ("small", 5, "ok")
     assert set(row["timestamps_ns"]) == set(STAGES)
     assert set(row["timestamps_utc"]) == set(STAGES)
-    assert all(row["timestamps_ns"][stage] is not None for stage in STAGES)
+    assert all(row["timestamps_ns"][stage] is not None for stage in STAGES
+               if stage != "last_voice")
     assert set(row["deltas_ms"]) == {
-        "capture_finalize_ms", "pre_transcribe_ms", "transcribe_ms",
+        "endpoint_wait_ms", "capture_finalize_ms", "pre_transcribe_ms", "transcribe_ms",
         "post_transcribe_ms", "action_ms", "feedback_ms", "total_ms",
     }
-    assert all(value is not None for value in row["deltas_ms"].values())
+    assert row["deltas_ms"]["endpoint_wait_ms"] is None
+    assert all(value is not None for key, value in row["deltas_ms"].items()
+               if key != "endpoint_wait_ms")
+
+
+def test_endpoint_wait_outcome_and_segment_index_serialize(tmp_path):
+    timing = StageTiming.create("hold", "dictate", enabled=True, home_dir=tmp_path)
+    timing.mark("last_voice", last_voice_source="key_release")
+    timing.mark("speech_end", segment_index=2)
+    timing.complete(outcome="typed")
+    row = json.loads((tmp_path / "perf" / "stage_timing.jsonl").read_text(encoding="utf-8"))
+    assert row["deltas_ms"]["endpoint_wait_ms"] >= 0
+    assert row["last_voice_source"] == "key_release"
+    assert row["segment_index"] == 2
+    assert row["outcome"] == "typed"
 
 
 def test_feedback_completion_waits_for_nonblocking_audio_callback(tmp_path):
@@ -80,5 +95,20 @@ def test_report_parses_fixture_jsonl_and_prints_route_stage_statistics(tmp_path)
     report = render_report(records)
     assert "hold" in report and "transcribe_ms" in report
     assert "handsfree" in report
+    assert "outcomes: ok=1" in report
+    assert "endpoint_wait_ms" in report  # old fixture has no last_voice mark
     assert "Top stages by share of total observed latency:" in report
     assert len(records) == 2
+
+
+def test_report_fixture_endpoint_wait_and_outcome_counts(tmp_path):
+    path = tmp_path / "stage_timing.jsonl"
+    rows = [
+        {"route": "wake", "outcome": "typed", "deltas_ms": {"endpoint_wait_ms": 750, "total_ms": 900}},
+        {"route": "wake", "outcome": "typed", "deltas_ms": {"endpoint_wait_ms": 1000, "total_ms": 1200}},
+        {"route": "wake", "outcome": "miss", "deltas_ms": {"endpoint_wait_ms": None, "total_ms": 500}},
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    report = render_report(load_records(path))
+    assert "endpoint_wait_ms" in report
+    assert "outcomes: miss=1, typed=2" in report

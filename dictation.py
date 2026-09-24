@@ -82,6 +82,7 @@ from samsara.paths import samsara_home_dir as _fh_home_dir
 from samsara.stage_timing import (
     StageTiming,
     current_stage_timing,
+    outcome_label,
     reset_current_stage_timing,
     set_current_stage_timing,
 )
@@ -6873,11 +6874,18 @@ class DictationApp:
         switch matcher needs, and hand the text off.
         """
         _active_mode = getattr(getattr(self, "_session_mode_manager", None), "mode", None)
+        if getattr(self, "_stage_timing_enabled", False):
+            _timing_session = getattr(self, "_command_mode_session_start", None)
+            if getattr(self, "_stage_timing_segment_session", None) != _timing_session:
+                self._stage_timing_segment_session = _timing_session
+                self._stage_timing_segment_index = 0
+            self._stage_timing_segment_index += 1
         stage_timing = StageTiming.create(
             "handsfree", getattr(_active_mode, "value", "unknown"),
             enabled=getattr(self, "_stage_timing_enabled", False),
         )
-        stage_timing.mark("speech_end")
+        stage_timing.mark("speech_end", segment_index=getattr(self, "_stage_timing_segment_index", None),
+                          last_voice_source="vad_unavailable")
         timing_token = set_current_stage_timing(stage_timing)
         token = self._transcription_owners.claim('toggle')
         # 2026-09-14 (queue 54): every capture logs its session mode, and
@@ -6886,6 +6894,7 @@ class DictationApp:
         _capture_mode = 'unknown'
         audio_duration = 0.0
         _dispatched = False
+        _timing_outcome = "discarded"
         try:
             _mgr = self._session_mode_manager
             _capture_mode = _mgr.mode.value if _mgr is not None else 'no_session'
@@ -7046,6 +7055,7 @@ class DictationApp:
                 return
 
             if not text:
+                _timing_outcome = "empty"
                 logger.debug('[CMD-UTT] Empty transcription')
                 self._log_cmd_utt_dropped('empty_transcription', _capture_mode, audio_duration)
                 return
@@ -7158,8 +7168,10 @@ class DictationApp:
             _cancel_windows = _cancel_window_module()
             if _cancel_windows is not None:
                 _cancel_windows.note_utterance_start()
+            stage_timing.mark("dispatch_start", words=len(text.split()))
             outcome = manager.dispatch_utterance(text, signals)
             outcome = self._resolve_command_miss(outcome, text)
+            _timing_outcome = outcome_label(outcome.kind)
             _dispatched = True
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
             # A failed commit keeps the draft deliberately.  Its tail is then
@@ -7171,6 +7183,7 @@ class DictationApp:
                 context_tail if outcome.kind == "dictate_commit_failed" else None
             )
             self._handle_session_dispatch_outcome(outcome, text)
+            stage_timing.mark("action_done")
             if _cancel_windows is not None:
                 # Queue 69: a window HELD by this utterance's speech onset is
                 # decided by what the utterance became (after its own chip,
@@ -7217,6 +7230,7 @@ class DictationApp:
             # session ALIVE in its current mode -- never propagate and kill
             # this utterance's thread silently. Mode/command_mode_active
             # are untouched, so the next utterance dispatches normally.
+            _timing_outcome = "error"
             logger.exception(f'[CMD-UTT] Error: {exc}')
             if not _dispatched:
                 self._log_cmd_utt_dropped(f'error:{type(exc).__name__}', _capture_mode, audio_duration)
@@ -7226,7 +7240,7 @@ class DictationApp:
                 logger.debug(f'[CMD-UTT] Error earcon failed: {e}')
         finally:
             reset_current_stage_timing(timing_token)
-            stage_timing.complete()
+            stage_timing.complete(outcome=_timing_outcome)
             self._transcription_owners.release('toggle', token)
             self._vad_reset()
 
@@ -9442,7 +9456,7 @@ class DictationApp:
             "wake", getattr(_session_mode, "value", self.app_state),
             enabled=getattr(self, "_stage_timing_enabled", False),
         )
-        stage_timing.mark("speech_end")
+        stage_timing.mark("speech_end", last_voice_source="vad_unavailable")
         with self._wake_session_lock:
             session_started_at = (
                 getattr(self, '_wake_session_started_at', None)
@@ -9456,7 +9470,8 @@ class DictationApp:
             self._close_hands_free_capture_duck(owner_token)
 
         def finish():
-            stage_timing.complete()
+            if not stage_timing.handed_off:
+                stage_timing.complete(outcome=stage_timing.outcome or "discarded")
             if tracked:
                 with self._dictation_finalize_lock:
                     self._pending_transcriptions = max(0, self._pending_transcriptions - 1)
@@ -9538,6 +9553,8 @@ class DictationApp:
             # the audio energy is not meaningfully above the ambient noise floor.
             audio_rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
             if self._wake_audio_is_below_gate(audio_rms, oww_confirmed=oww_confirmed):
+                if stage_timing is not None:
+                    stage_timing.mark("capture_finalised", outcome="gated")
                 return
 
             # The wake FIFO preserves capture order; model_lock serializes
@@ -9643,6 +9660,8 @@ class DictationApp:
             
             if not text:
                 logger.info(f"[HEAR] (nothing — Whisper returned empty for {audio_duration:.1f}s of audio)")
+                if stage_timing is not None:
+                    stage_timing.mark("transcribe_end", outcome="empty")
                 # Only log when the user actually spoke (>0.5s of audio) but
                 # Whisper returned nothing. Don't spam history with every
                 # silent buffer the wake-word callback flushes.
@@ -9811,6 +9830,10 @@ class DictationApp:
                             return
 
                 # Accumulate text
+                if isinstance(stage_timing, StageTiming):
+                    self._wake_pending_stage_timings = (
+                        getattr(self, "_wake_pending_stage_timings", []) + [stage_timing])
+                    stage_timing.handoff()
                 self.wake_dictation_buffer.append(text)
                 logger.info(f"[DICTATE] Buffered: {text}")
                 self._emit_wake_trace({"stage": "dictation_buffered", "text": text,
@@ -9926,6 +9949,8 @@ class DictationApp:
                 
         except Exception as e:
             logger.exception(f"[ERROR] Transcription failed: {e}")
+            if stage_timing is not None:
+                stage_timing.mark("feedback_done", outcome="error")
             self._log_history(
                 raw_text="",
                 display_text=f"[FAILED] {e}",
@@ -10007,7 +10032,7 @@ class DictationApp:
             outcome = self._ensure_session_mode_manager().dispatch_command_utterance(text)
             outcome = self._resolve_command_miss(outcome, text)
             if timing is not None:
-                timing.mark("action_done")
+                timing.mark("action_done", outcome=outcome_label(outcome.kind))
             self._handle_session_dispatch_outcome(outcome, text)
             if outcome.kind == "command_suggestion_pending":
                 # Keep this wake window open solely for its eight-second
@@ -10139,6 +10164,9 @@ class DictationApp:
 
     def _reset_wake_dictation(self):
         """Return to asleep state, clearing all dictation state."""
+        for timing in getattr(self, "_wake_pending_stage_timings", []):
+            timing.complete(outcome="discarded")
+        self._wake_pending_stage_timings = []
         with self._wake_session_lock:
             # Restore audio ducked by _duck_audio() at _start_wake_session().
             # This is the single common exit chokepoint for every wake-session
@@ -10592,6 +10620,8 @@ class DictationApp:
     def _output_dictation(self, text):
         """Output dictated text"""
         stage_timing = current_stage_timing() if getattr(self, "_stage_timing_enabled", False) else None
+        pending_timings = getattr(self, "_wake_pending_stage_timings", [])
+        self._wake_pending_stage_timings = []
         _diag_entry = time.perf_counter()
         # Whisper signals accumulated across every process_wake_word_buffer
         # chunk feeding this utterance (quick/long dictation can flush the
@@ -10643,6 +10673,8 @@ class DictationApp:
 
         if stage_timing is not None:
             stage_timing.mark("dispatch_start", words=len(text.split()))
+        for timing in pending_timings:
+            timing.mark("dispatch_start", words=len(text.split()))
         logger.info(f"[OK] {text}")
         self.play_sound("success")
         if hasattr(self, 'listening_indicator'):
@@ -10690,6 +10722,7 @@ class DictationApp:
         except Exception as _diag_exc:
             logger.debug(f"[DIAG] wake record failed: {_diag_exc}")
 
+        delivered = None
         if self.config['auto_paste']:
             logger.info(
                 f"[WS-DIAG] _output_dictation: wake_profile_active="
@@ -10699,14 +10732,19 @@ class DictationApp:
             )
             if getattr(self, '_wake_profile_active', False):
                 if getattr(self, '_wake_session_first_chunk', True):
-                    self._deliver_text_to_focused_editor(text)
+                    delivered = self._deliver_text_to_focused_editor(text)
                     self._wake_session_first_chunk = False
                 else:
-                    self._paste_preserving_clipboard(' ' + text)
+                    delivered = self._paste_preserving_clipboard(' ' + text)
             else:
-                self._paste_preserving_clipboard(text)
+                delivered = self._paste_preserving_clipboard(text)
+        timing_outcome = ("error" if delivered is False else
+                          "typed" if self.config['auto_paste'] else "buffered")
         if stage_timing is not None:
-            stage_timing.mark("action_done")
+            stage_timing.mark("action_done", outcome=timing_outcome)
+        for timing in pending_timings:
+            timing.mark("action_done", outcome=timing_outcome)
+            timing.complete(outcome=timing_outcome)
 
         if hasattr(self, 'hints'):
             self.hints.maybe_show(
@@ -11552,6 +11590,7 @@ class DictationApp:
             enabled=(getattr(self, "_stage_timing_enabled", False) and self.recording
                      and getattr(self, "_streaming_session", None) is None),
         )
+        stage_timing.mark("last_voice", last_voice_source="key_release")
         stage_timing.mark("speech_end")
         with self._hold_capture_lifecycle_lock:
             timing_token = set_current_stage_timing(stage_timing)
@@ -11566,7 +11605,7 @@ class DictationApp:
                         self._close_hold_capture_duck()
                     finally:
                         if not stage_timing.handed_off:
-                            stage_timing.complete()
+                            stage_timing.complete(outcome=stage_timing.outcome or "discarded")
 
     def _take_recording_ownership(self):
         """Return and synchronously clear ownership for the recording being stopped.
@@ -11924,7 +11963,7 @@ class DictationApp:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
                         result, was_command = self.command_executor.process_text(text, self)
                         if stage_timing is not None:
-                            stage_timing.mark("action_done")
+                            stage_timing.mark("action_done", outcome="command" if was_command else "miss")
 
                         if was_command:
                             _tut_cmd = self._tutorial_hooks.pop('command', None)
@@ -12244,7 +12283,9 @@ class DictationApp:
                                 controller.sync_draft(manager)
                             self._park_hold_feedback('Delivery failed; draft kept')
                     if stage_timing is not None:
-                        stage_timing.mark("action_done")
+                        stage_timing.mark("action_done", outcome=(
+                            "error" if self.config['auto_paste'] and delivered is False
+                            else "typed" if self.config['auto_paste'] else "buffered"))
 
                     if hasattr(self, 'hints'):
                         self.hints.maybe_show(
@@ -12276,6 +12317,8 @@ class DictationApp:
                             )
                 else:
                     logger.info("No speech detected")
+                    if stage_timing is not None:
+                        stage_timing.mark("transcribe_end", outcome="empty")
                     if hasattr(self, 'listening_indicator'):
                         from samsara.session_modes import CHIP_CROSS
                         self._show_outcome_chip(f"{CHIP_CROSS} no speech", "error")
@@ -12323,6 +12366,8 @@ class DictationApp:
 
             except Exception as e:
                 logger.exception(f"[ERROR] Transcription failed: {e}")
+                if stage_timing is not None:
+                    stage_timing.mark("feedback_done", outcome="error")
                 self.play_sound("error")
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
@@ -12348,7 +12393,7 @@ class DictationApp:
                     self._hold_park_finalizing = False
                 if stage_timing is not None:
                     reset_current_stage_timing(_timing_token)
-                    stage_timing.complete()
+                    stage_timing.complete(outcome=stage_timing.outcome or "discarded")
 
         def _transcribe_with_chip_watchdog():
             try:

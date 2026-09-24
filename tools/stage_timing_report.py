@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import math
 from pathlib import Path
@@ -12,6 +13,7 @@ from samsara.paths import samsara_home_dir
 
 
 STAGES = (
+    "endpoint_wait_ms",
     "capture_finalize_ms",
     "pre_transcribe_ms",
     "transcribe_ms",
@@ -61,10 +63,15 @@ def render_report(records: list[dict]) -> str:
                 if isinstance(value, (int, float)) and math.isfinite(value):
                     values.append(float(value))
             if not values:
+                if stage == "endpoint_wait_ms":
+                    lines.append(f"{route:<10} {stage:<21}   0           -          -")
                 continue
             lines.append(
                 f"{route:<10} {stage:<21} {len(values):>3} {statistics.median(values):>11.1f} {_p90(values):>10.1f}"
             )
+        outcomes = Counter(str(row.get("outcome") or "unknown") for row in route_rows)
+        lines.append(f"{route:<10} outcomes: " + ", ".join(
+            f"{name}={count}" for name, count in sorted(outcomes.items())))
 
     all_total = sum(
         float(row["deltas_ms"]["total_ms"])
