@@ -7,12 +7,10 @@ lands on exactly the same screen pixels it always did, whether or not a chip
 is showing, for every preset corner and for a custom drag position. The chip
 grows away from the edge the pill is anchored to.
 
-Offscreen Qt; the session-scoped `qapp` fixture from conftest.py.
+Qt widgets use the session-scoped `qapp` fixture; screen-dependent placement
+tests inject deterministic screen geometry.
 """
-import os
 import time
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
@@ -37,6 +35,28 @@ def indicator(qapp):
     widget = ListeningIndicator()
     yield widget
     widget.destroy()
+
+
+@pytest.fixture
+def fake_screen(qapp, monkeypatch):
+    """Stable screen identity/geometry for persisted-position tests."""
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QApplication
+
+    class Screen:
+        def name(self):
+            return "test-screen"
+
+        def geometry(self):
+            return QRect(0, 0, 1920, 1080)
+
+        def availableGeometry(self):
+            return self.geometry()
+
+    screen = Screen()
+    monkeypatch.setattr(QApplication, "screens", staticmethod(lambda: [screen]))
+    monkeypatch.setattr(QApplication, "primaryScreen", staticmethod(lambda: screen))
+    return screen
 
 
 def _pill_screen_rect(widget):
@@ -142,8 +162,8 @@ class TestExistingContract:
         indicator.set_custom_position("screen", bad, 0.5)
         assert indicator._custom_position is None
 
-    def test_custom_position_is_clamped(self, indicator):
-        indicator.set_custom_position("screen", 5.0, -3.0)
+    def test_custom_position_is_clamped(self, indicator, fake_screen):
+        indicator.set_custom_position(fake_screen.name(), 5.0, -3.0)
         assert indicator._custom_position["cx"] == 1.0
         assert indicator._custom_position["cy"] == 0.0
 
@@ -242,11 +262,13 @@ class TestStateGlyphIsTheMark:
         mixes = {theme._mix(token, theme.BG0, t)
                  for token in (theme.ACCENT, theme.SUCCESS, theme.ERROR, theme.AVA)
                  for t in (0.62, 0.70, 0.80)}
-        for name in ("_TEAL", "_TEAL_DIM", "_TEAL_BRIGHT", "_IDLE_BG", "_IDLE_FG", "_LISTENING_FG",
-                     "_SNOOZE_BG", "_SNOOZE_FG", "_CMD_BG", "_CMD_FG", "_CMD_ACTIVE_BG",
-                     "_CMD_ACTIVE_FG", "_FLASH_SUCCESS_BG", "_FLASH_SUCCESS_FG", "_FLASH_ERROR_BG",
-                     "_FLASH_ERROR_FG", "_VISION_BG", "_VISION_BG_BRIGHT", "_VISION_FG"):
-            assert getattr(li, name) in allowed | mixes, name
+        # Legacy color constants were replaced by theme-token helper functions.
+        pill_backgrounds = (
+            li._teal_dim(), li._teal_bright(), li._cmd_bg(), li._cmd_active_bg(),
+            li._flash_success_bg(), li._flash_error_bg(), li._vision_bg(),
+            li._vision_bg_bright(),
+        )
+        assert all(color in allowed | mixes for color in pill_backgrounds)
 
 
 # ---------------------------------------------------------------------------
@@ -459,6 +481,7 @@ class TestArmedIsNotRecording:
     @staticmethod
     def _assert_armed(indicator):
         import samsara.ui.listening_indicator as li
+        from samsara.ui import theme
 
         assert indicator.display_state() == li.STATE_ARMED
         assert indicator.display_state() not in li.CAPTURE_STATES
@@ -467,7 +490,8 @@ class TestArmedIsNotRecording:
         for step in range(li._PULSE_STEPS + 1):
             indicator._pulse_step = step
             bg, fg, _label, _dot = indicator._resolve_colors()
-            assert (bg, fg) == (li._IDLE_BG, li._IDLE_FG)
+            # Idle colors are theme tokens now; the old _IDLE_* constants were removed.
+            assert (bg, fg) == (theme.BG1, theme.ICON_IDLE)
         capture, eye, _rotation, opacity = indicator._glyph_mark()
         assert (capture, eye, opacity) == ("listening", "armed", 1.0)   # eye open
         assert indicator._capture_pace() == "armed"                     # slow turn, not recording
@@ -475,11 +499,13 @@ class TestArmedIsNotRecording:
     @staticmethod
     def _assert_capture(indicator):
         import samsara.ui.listening_indicator as li
+        from samsara.ui import theme
 
         assert indicator.display_state() in li.CAPTURE_STATES
         assert indicator._capture_pace() == "recording"
         indicator._pulse_step = li._PULSE_STEPS
-        assert indicator._resolve_colors()[0] != li._IDLE_BG
+        # Capture fill must differ from the current token-based idle fill.
+        assert indicator._resolve_colors()[0] != theme.BG1
 
     def test_after_arm_the_indicator_is_armed(self, wired):
         indicator, _app, arm, _disarm, _press, _release = wired
