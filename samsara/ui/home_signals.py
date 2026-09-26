@@ -176,16 +176,17 @@ def mic_available(app) -> Optional[bool]:
 
 def dictation_state(app) -> CapabilityState:
     if getattr(app, "snoozed", False):
-        return CapabilityState(DICTATION, PAUSED, "You paused listening.",
-                               "app.snoozed is set")
+        return CapabilityState(DICTATION, PAUSED, "You paused listening.")
     mic = mic_available(app)
     if mic is None:
-        return CapabilityState(DICTATION, UNKNOWN, "No microphone check has run yet.",
-                               "the app has not listed microphones")
+        return CapabilityState(
+            DICTATION, UNKNOWN, "Samsara has not checked your microphone yet.",
+            "You can review the selected device in Settings > General > Microphone")
     if not mic:
-        return CapabilityState(DICTATION, UNAVAILABLE, "Microphone unavailable.",
-                               "the selected microphone is not in the device list")
-    return CapabilityState(DICTATION, READY, "", "a microphone is selected and present")
+        return CapabilityState(
+            DICTATION, UNAVAILABLE,
+            "Your selected device is unavailable. Choose another in Settings > General > Microphone.")
+    return CapabilityState(DICTATION, READY, "", "Samsara has a microphone selected")
 
 
 def hands_free_fault(app):
@@ -249,82 +250,86 @@ def hands_free_state(app) -> CapabilityState:
     """
     cfg = _cfg(app)
     if not cfg.get("wake_word_enabled", False):
-        return CapabilityState(HANDS_FREE, OFF, "The wake word is switched off.",
-                               "wake_word_enabled is false")
+        return CapabilityState(
+            HANDS_FREE, OFF,
+            "To start a session by voice, turn it on in Settings > Dictation > Wake activation.")
     fault = hands_free_fault(app)
     if fault is not None:
-        detail = str(fault.reason)
-        if getattr(fault, "retrying", False):
-            detail = f"{detail} Trying again."
         return CapabilityState(
-            HANDS_FREE, UNAVAILABLE, detail,
-            getattr(fault, "evidence", "") or "the wake listener stopped with an error",
+            HANDS_FREE, UNAVAILABLE,
+            "Hands-free stopped listening. Select Restart hands-free below to try again.",
+            "Wake activation is on in Settings > Dictation > Wake activation",
             action_label=RESTART_HANDS_FREE_LABEL, action=ACTION_RESTART_HANDS_FREE)
     if getattr(app, "snoozed", False):
-        return CapabilityState(HANDS_FREE, PAUSED, "You paused listening.",
-                               "app.snoozed is set")
+        return CapabilityState(HANDS_FREE, PAUSED, "You paused listening.")
     mic = mic_available(app)
     if mic is None:
-        return CapabilityState(HANDS_FREE, UNKNOWN, "No microphone check has run yet.",
-                               "the app has not listed microphones")
+        return CapabilityState(
+            HANDS_FREE, UNKNOWN, "Samsara has not checked your microphone yet.",
+            "You can review the selected device in Settings > General > Microphone")
     if not mic:
-        return CapabilityState(HANDS_FREE, UNAVAILABLE, "Microphone unavailable.",
-                               "the selected microphone is not in the device list")
+        return CapabilityState(
+            HANDS_FREE, UNAVAILABLE,
+            "Your selected device is unavailable. Choose another in Settings > General > Microphone.")
 
     models = wake_models_state(app)
     running = wake_consumer_running(app)
     armed = bool(getattr(app, "wake_word_active", False))
     starting = bool(getattr(app, "_wake_start_pending", False))
     if models == "loading" or starting:
-        return CapabilityState(HANDS_FREE, UNKNOWN, "The wake word is still starting up.",
-                               f"the wake models report {models!r} and listening is pending")
+        return CapabilityState(
+            HANDS_FREE, UNKNOWN,
+            "Your wake phrase is starting. Wait a moment, then try again.")
     if models == "off":
         # Requested in settings, never asked for at runtime: hands-free is
         # not up, and this is not evidence of a fault either.
-        return CapabilityState(HANDS_FREE, UNKNOWN, "The wake word has not started yet.",
-                               "the wake models have not been requested")
+        return CapabilityState(
+            HANDS_FREE, UNKNOWN,
+            "Samsara has not started listening for your wake phrase yet.",
+            "Check that this is on in Settings > Dictation > Wake activation")
     if running is None:
-        return CapabilityState(HANDS_FREE, UNKNOWN, "The wake listener has not been checked.",
-                               "there is no wake consumer to ask")
+        return CapabilityState(
+            HANDS_FREE, UNKNOWN, "Samsara has not checked hands-free listening yet.",
+            "Run a check in Voice help to refresh this status")
     if not running or not armed:
         # Enabled, loaded, a microphone is present -- and nothing is
         # listening. This is the state Home used to call "ready".
         return CapabilityState(
-            HANDS_FREE, UNAVAILABLE, "Hands-free is not listening.",
-            f"the wake consumer is {'running' if running else 'stopped'} and "
-            f"wake detection is {'armed' if armed else 'not armed'}",
+            HANDS_FREE, UNAVAILABLE,
+            "Hands-free stopped listening. Select Restart hands-free below to try again.",
+            "Wake activation is on in Settings > Dictation > Wake activation",
             action_label=RESTART_HANDS_FREE_LABEL, action=ACTION_RESTART_HANDS_FREE)
     return CapabilityState(HANDS_FREE, READY, "",
-                           "the wake models are loaded and the wake listener is running")
+                           "Samsara is listening for your wake phrase")
 
 
 def ava_state(app) -> CapabilityState:
     cfg = _cfg(app)
     enabled = bool(_cfg_get(cfg, "ollama.enabled")) or bool(_cfg_get(cfg, "cloud_llm.enabled"))
     if not enabled:
-        return CapabilityState(AVA, OFF, "Ava is switched off.",
-                               "no Ava provider is enabled")
+        return CapabilityState(
+            AVA, OFF,
+            "To ask questions by voice, turn it on in Settings > Ava > Ava.")
     try:
         from samsara import ava_readiness            # noqa: PLC0415
         readiness = ava_readiness.readiness_for(app)
     except Exception as exc:                          # never break Home
         logger.debug(f"[HOME] Ava readiness unavailable: {exc}")
-        return CapabilityState(AVA, UNKNOWN, "Ava has not been checked yet.",
-                               "the readiness check could not run")
+        return CapabilityState(
+            AVA, UNKNOWN,
+            "Samsara could not check whether Ava can answer right now. Try asking again shortly.")
     state = getattr(readiness, "state", None)
     if state == getattr(ava_readiness, "READY", "ready"):
-        return CapabilityState(AVA, READY, "", "the provider answered its readiness check")
+        return CapabilityState(AVA, READY, "", "You can ask Ava a question now")
     if state == getattr(ava_readiness, "WARMING", "warming"):
-        return CapabilityState(AVA, WARMING, readiness.sentence(),
-                               "a background warm-up completion is in progress")
+        return CapabilityState(AVA, WARMING, "Ava is getting ready. Try again in a moment.")
     if state == getattr(ava_readiness, "OFFLINE", "offline"):
-        try:
-            detail = readiness.sentence()
-        except Exception:
-            detail = "Ava is offline."
-        return CapabilityState(AVA, UNAVAILABLE, detail, "the provider failed its readiness check")
-    return CapabilityState(AVA, UNKNOWN, "Ava has not been checked yet.",
-                           "no readiness result yet")
+        return CapabilityState(
+            AVA, UNAVAILABLE,
+            "Check your connection or account, then try asking Ava again.")
+    return CapabilityState(
+        AVA, UNKNOWN,
+        "Samsara has not checked whether Ava can answer yet.")
 
 
 def capability_states(app) -> dict:
@@ -433,8 +438,7 @@ def diagnostic_hints(app) -> list:
             id="diag.corrections_waiting", tier=TIER_DIAGNOSTIC,
             text=f"{waiting} {word} are waiting for you to review.",
             action_label="Open Dictionary", action="page", arg="Dictionary",
-            evidence=f"{waiting} pending entries in the correction queue "
-                     f"(threshold {CORRECTIONS_WAITING_MIN})"))
+            evidence=f"Open Dictionary to review your {waiting} saved words."))
 
     empty, examined = no_text_captures(app)
     if empty >= NO_TEXT_MIN and examined:
@@ -442,8 +446,7 @@ def diagnostic_hints(app) -> list:
             id="diag.no_text", tier=TIER_DIAGNOSTIC,
             text=f"{empty} of your last {examined} recordings produced no text.",
             action_label="Open Voice help", action="page", arg="Voice help",
-            evidence=f"{empty}/{examined} recent captures recorded outcome empty or gated "
-                     f"(threshold {NO_TEXT_MIN})"))
+            evidence="If you were speaking, open Voice troubleshooting to investigate."))
 
     misses, seen = recent_misses(app)
     if misses >= MISS_MIN and seen:
@@ -451,7 +454,7 @@ def diagnostic_hints(app) -> list:
             id="diag.misses", tier=TIER_DIAGNOSTIC,
             text=f"{misses} of your last {seen} commands were not recognised.",
             action_label="View window commands", action="cheatsheet", arg="",
-            evidence=f"{misses}/{seen} recent outcomes were misses (threshold {MISS_MIN})"))
+            evidence="Open the command list to review what Samsara can hear in this window."))
 
     return hints
 

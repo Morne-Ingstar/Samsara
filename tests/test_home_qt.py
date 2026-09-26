@@ -296,7 +296,7 @@ class TestConditionalSlot:
             "diag.no_text", home_signals.TIER_DIAGNOSTIC,
             "4 of your last 20 recordings produced no text.",
             "Open Voice help", "page", "Voice help",
-            evidence="4/20 recent captures recorded outcome empty or gated (threshold 3)")
+            evidence="If you were speaking, open Voice troubleshooting to investigate.")
         monkeypatch.setattr(home_signals, "diagnostic_hints", lambda app: [hint])
         home = page()
         assert home.hint is hint
@@ -320,7 +320,7 @@ class TestConditionalSlot:
                             lambda a: home_signals.CORRECTIONS_WAITING_MIN)
         hint = home_signals.diagnostic_hints(app)[0]
         assert hint.tier == home_signals.TIER_DIAGNOSTIC
-        assert "threshold" in hint.evidence and "correction queue" in hint.evidence
+        assert hint.evidence == "Open Dictionary to review your 3 saved words."
 
     def test_no_text_diagnostic_reads_real_records(self, monkeypatch):
         app = _app()
@@ -496,7 +496,9 @@ class TestProblemNotice:
         home = page(_app(available_mics=[]))
         notice = home.notice
         assert notice.capability == home_signals.DICTATION
-        assert notice.text == "Microphone unavailable. Dictation cannot hear you."
+        assert notice.text == (
+            "Your selected device is unavailable. Choose another in Settings > "
+            "General > Microphone. Dictation cannot hear you.")
         assert home._notice_card.isVisibleTo(home)
 
     def test_ava_offline_does_not_declare_dictation_broken(self, page, monkeypatch):
@@ -602,7 +604,8 @@ class TestStoppedHandsFreeIsRecoverable:
         assert home_signals.mic_available(app) is True
         state = home_signals.capability_states(app)[home_signals.HANDS_FREE]
         assert state.status == home_signals.UNAVAILABLE
-        assert state.detail == "Hands-free is not listening."
+        assert state.detail == (
+            "Hands-free stopped listening. Select Restart hands-free below to try again.")
 
     def test_a_microphone_fault_still_offers_voice_help(self, page, monkeypatch):
         """Only a fault with a repair names one; nothing reconnects a mic."""
@@ -1073,7 +1076,7 @@ HINT = home_signals.Hint(
     "diag.no_text", home_signals.TIER_DIAGNOSTIC,
     "4 of your last 20 recordings produced no text.",
     "Open Voice help", "page", "Voice help",
-    evidence="4/20 recent captures recorded outcome empty or gated (threshold 3)")
+    evidence="If you were speaking, open Voice troubleshooting to investigate.")
 
 
 class TestCommandOutcomeRendering:
@@ -1285,7 +1288,7 @@ class TestOneDoorToTheCommandList:
             id="diag.misses", tier=home_signals.TIER_DIAGNOSTIC,
             text="9 of your last 20 commands were not recognised.",
             action_label="View window commands", action="cheatsheet", arg="",
-            evidence="9/20 recent outcomes were misses (threshold 3)")
+            evidence="Open the command list to review what Samsara can hear in this window.")
         monkeypatch.setattr(home_signals, "diagnostic_hints", lambda app: [hint])
         home = page()
         home.refresh()
@@ -1419,7 +1422,7 @@ NO_TEXT_HINT = home_signals.Hint(
     "diag.no_text", home_signals.TIER_DIAGNOSTIC,
     "4 of your last 8 recordings produced no text.",
     "Open Voice help", "page", "Voice help",
-    evidence="4/8 recent captures recorded outcome empty or gated (threshold 3)")
+    evidence="If you were speaking, open Voice troubleshooting to investigate.")
 
 
 class TestTheSuggestionSpeaksPlainly:
@@ -1469,7 +1472,7 @@ class TestTheSuggestionSpeaksPlainly:
     def test_the_evidence_is_present_but_disclosed(self, page, monkeypatch):
         home = self._home(page, monkeypatch)
         assert home._hint_evidence.text() == NO_TEXT_HINT.evidence
-        assert "threshold 3" in home._hint_evidence.text()
+        assert "Voice troubleshooting" in home._hint_evidence.text()
 
     def test_details_is_collapsed_by_default(self, page, monkeypatch):
         home = self._home(page, monkeypatch)
@@ -1491,7 +1494,7 @@ class TestTheSuggestionSpeaksPlainly:
         btn.click()
         qapp.processEvents()
         assert home._hint_evidence.isVisibleTo(home)
-        assert "threshold 3" in home._hint_evidence.text()
+        assert "Voice troubleshooting" in home._hint_evidence.text()
         btn.click()
         qapp.processEvents()
         assert not home._hint_evidence.isVisibleTo(home)
@@ -1504,7 +1507,7 @@ class TestTheSuggestionSpeaksPlainly:
             "diag.misses", home_signals.TIER_DIAGNOSTIC,
             "9 of your last 20 commands were not recognised.",
             "View window commands", "cheatsheet", "",
-            evidence="9/20 recent outcomes were misses (threshold 3)")
+            evidence="Open the command list to review what Samsara can hear in this window.")
         monkeypatch.setattr(home_signals, "diagnostic_hints",
                             lambda app: [NO_TEXT_HINT, other])
         home = page()
