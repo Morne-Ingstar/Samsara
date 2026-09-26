@@ -42,7 +42,7 @@ class TestCommandCount:
 
 class TestHandsFreeText:
     def test_reads_config_and_constants(self):
-        text = tut._hands_free_text({"command_mode": {"enabled": True, "button": "f13"},
+        text = tut._hands_free_text({"command_mode": {"enabled": True, "button": "f13", "mode": "toggle"},
                                      "undo_hotkey": "ctrl+alt+u", "cancel_hotkey": "escape"})
         assert "tap F13" in text
         assert f'"{session_modes.DICTATE_COMMIT_PHRASE}"' in text

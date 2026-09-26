@@ -104,13 +104,18 @@ def _catalog_phrase(records, canonical_id: str):
     return None
 
 
-def _command_instruction(examples, hotkey: str, wake: str, wake_enabled: bool) -> str:
+def _command_instruction(examples, hotkey: str, wake: str, wake_enabled: bool,
+                         opens_session: bool = False) -> str:
     if not examples:
         return "Say a voice command. " + EXAMPLES_UNAVAILABLE
     first, rest = examples[0], examples[1:]
     bullets = [f'  • Hold  {hotkey.upper()}  and say  "{first}"']
     if wake_enabled:
-        bullets.append(f'  • Say  "{wake}, {first}"  (wake word mode)')
+        # OWNER COPY: distinguish session-opening wake from one-command wake.
+        bullets.append(
+            f'  • Say "{wake}", then say "{first}" after the session opens'
+            if opens_session else f'  • Say  "{wake}, {first}"  (wake word mode)'
+        )
     if rest:
         bullets.append("  • Or any command you know — " + ", ".join(f"'{p}'" for p in rest) + ", etc.")
     return "Say a voice command. Try one of:\n" + "\n".join(bullets)
@@ -127,30 +132,37 @@ def _command_hint(examples) -> str:
 def _more_text(records) -> str:
     phrase = _catalog_phrase(records, _HELP_COMMAND_ID)
     if phrase:
-        return (f'Say "{phrase}" anytime for the full command list, '
-                "or open the Command Reference from the tray menu.")
+        # OWNER COPY: command voice help requires a capture route.
+        return (f'Say "{phrase}" while a command route is listening, or open '
+                "the Command Reference from the tray menu.")
     return "Open the Command Reference from the tray menu for the full command list."
 
 
 def _pointer_text(records) -> str:
     phrase = _catalog_phrase(records, _NUMBERS_COMMAND_ID)
+    # OWNER COPY: provider and numbered targets vary with readiness and scope.
     if phrase:
-        return (f'Ava (your on-device voice assistant) and "{phrase}" '
-                "(click anything by saying its number) are also here once you set them up.")
-    return "Ava (your on-device voice assistant) is also here once you set it up."
+        return (f'Ava availability follows Settings > Ava. "{phrase}" labels exposed '
+                "controls when Show Numbers is available.")
+    return "Ava availability follows Settings > Ava."
 
 
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def _dictation_instruction(hotkey: str, mode: str) -> str:
+def _dictation_instruction(hotkey: str, mode: str,
+                           continuous_commit_trigger: str = "silence") -> str:
     """Audit row 335: the wording must follow the configured `mode`."""
     key = (hotkey or 'ctrl+shift').upper()
     if mode == 'toggle':
         return (f"Press  {key}  once to start, say anything — 'hello world' works fine — "
                 f"then press it again to transcribe. Text will appear in the box below.")
     if mode == 'continuous':
+        if continuous_commit_trigger == 'key':
+            # OWNER COPY: name the configured manual commit key.
+            return (f"Press {key} to start continuous dictation. "
+                    "Use the configured commit key to deliver text; press the record key again to stop.")
         return (f"Press  {key}  to start continuous dictation and say anything — 'hello world' "
                 f"works fine. Each pause is transcribed on its own; press it again to stop. "
                 f"Text will appear in the box below.")
@@ -190,7 +202,8 @@ def _hands_free_text(config: dict) -> str:
     undo = _pretty_key_combo(config.get('undo_hotkey', _HOTKEY_FALLBACKS['undo_hotkey']))
     cancel = _pretty_key_combo(config.get('cancel_hotkey', _HOTKEY_FALLBACKS['cancel_hotkey']))
     state = '' if cm.get('enabled', False) else ' (turn it on in Settings -> Modes)'
-    return (f"Hands-free{state}: tap {button} to latch a session, say "
+    action = "tap" if cm.get('mode', 'hold') == 'toggle' else "hold"
+    return (f"Hands-free{state}: {action} {button} to start a session, say "
             f"\"{session_modes.DICTATE_COMMIT_PHRASE}\" to paste a thought and "
             f"\"{session_modes.SCRATCH_THAT_PHRASE}\" to undo it. Undo the last dictation with {undo}; "
             f"cancel a recording with {cancel}.")
@@ -410,7 +423,7 @@ class TutorialWindow(QMainWindow):
             ("welcome",   "Welcome to Samsara"),
             ("dictation", "Talk → It Types"),
             ("command",   "Say a Command"),
-            ("done",      "You're Ready"),
+            ("done",      "Tutorial complete"),
         ]
 
     # ------------------------------------------------------------------
@@ -516,7 +529,8 @@ class TutorialWindow(QMainWindow):
         cfg = self._app.config if hasattr(self._app, 'config') else {}
         hotkey = cfg.get('hotkey', 'ctrl+shift')
         lay.addWidget(self._instruction_box(
-            _dictation_instruction(hotkey, cfg.get('mode', 'hold'))
+            _dictation_instruction(hotkey, cfg.get('mode', 'hold'),
+                                   cfg.get('continuous_commit_trigger', 'silence'))
         ))
 
         self._dictation_box = QTextEdit()
@@ -528,8 +542,8 @@ class TutorialWindow(QMainWindow):
 
         # Success banner (hidden until success)
         self._dict_success = self._success_banner(
-            "That's dictation. Anything you say becomes text — in any app, "
-            "not just here."
+            # OWNER COPY: qualify editable targets and blocked windows.
+            "Dictation practice complete. Text goes to the active editable target."
         )
         self._dict_success.setVisible(False)
         lay.addWidget(self._dict_success)
@@ -557,7 +571,8 @@ class TutorialWindow(QMainWindow):
         self._catalog = _tutorial_catalog(self._app)
         self._examples = _command_examples(self._catalog, cfg)
         box = self._instruction_box(_command_instruction(
-            self._examples, cmd_hotkey, wake, bool(cfg.get('wake_word_enabled', False))))
+            self._examples, cmd_hotkey, wake, bool(cfg.get('wake_word_enabled', False)),
+            bool((cfg.get('wake_word_config') or {}).get('opens_session', False))))
         self._link_help(box.findChild(QLabel))
         lay.addWidget(box)
 
@@ -597,7 +612,8 @@ class TutorialWindow(QMainWindow):
     def _build_done(self) -> QWidget:
         content, lay = self._padded()
 
-        done_lbl = QLabel("You know the things that matter.")
+        # OWNER COPY: review the neutral completion heading.
+        done_lbl = QLabel("Tutorial complete.")
         done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
         lay.addWidget(done_lbl)
         lay.addSpacing(4)
@@ -613,10 +629,13 @@ class TutorialWindow(QMainWindow):
         cl.setContentsMargins(18, 14, 18, 14)
         cl.setSpacing(8)
 
+        self._done_checks = {}
         for step_idx, text in checklist_items:
             row = QHBoxLayout()
-            icon_lbl = QLabel("✓")
+            icon_lbl = QLabel()
+            icon_lbl.setObjectName(f"tutorialDoneCheck{step_idx}")
             completed = step_idx in self._completed
+            icon_lbl.setText("✓" if completed else "—")
             icon_lbl.setStyleSheet(
                 f"color:{theme.ACCENT if completed else theme.TEXT_DISABLED};"
                 f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
@@ -633,6 +652,7 @@ class TutorialWindow(QMainWindow):
             row.addWidget(text_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
             row.addStretch()
             cl.addLayout(row)
+            self._done_checks[step_idx] = (icon_lbl, text_lbl)
 
         lay.addWidget(card)
 
@@ -767,6 +787,7 @@ class TutorialWindow(QMainWindow):
         self._next_btn.setVisible(True)
 
         if is_done:
+            self._refresh_done_checks()
             self._next_btn.setText("Start using Samsara")
             self._next_btn.setEnabled(True)
             self._skip_all_btn.setVisible(False)
@@ -790,6 +811,20 @@ class TutorialWindow(QMainWindow):
             QTimer.singleShot(0, self, self._fit_done_page_height)
         else:
             self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
+
+    def _refresh_done_checks(self):
+        for step_idx, (icon, label) in self._done_checks.items():
+            completed = step_idx in self._completed
+            icon.setText("✓" if completed else "—")
+            icon.setAccessibleName("Completed" if completed else "Skipped")
+            icon.setStyleSheet(
+                f"color:{theme.ACCENT if completed else theme.TEXT_DISABLED};"
+                f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
+            )
+            label.setStyleSheet(
+                f"color:{theme.TEXT_PRIMARY if completed else theme.TEXT_DISABLED};"
+                f"font-size:{theme.TYPE_BODY}px;"
+            )
 
     def _go_next(self):
         key = self._steps[self._step][0]

@@ -20,8 +20,8 @@ def test_intro_does_not_say_ava_runs_by_default():
     text = ag._ava_intro_text({"cloud_llm": {"enabled": False}})
 
     assert "Ava is optional" in text
-    assert "If you set her up, she runs on this computer" in text
-    assert "nothing is sent anywhere unless you later choose the cloud option" in text
+    assert "Ava is off" in text
+    assert "Settings > Ava" in text
     assert "By default it runs entirely on your machine" not in text
     assert "—" not in text
 

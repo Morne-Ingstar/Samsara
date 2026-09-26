@@ -776,7 +776,9 @@ def render_outcome(app, outcome) -> tuple:
     removed commands keep their stored human text. Chips outside the three
     kinds show their own label as the kind and no content."""
     label, kind = str(outcome[0]), str(outcome[1])
-    cls = classify_outcome(label, kind)
+    record = outcome_ring_schema.as_record(outcome)
+    command_id = record.canonical_id if record is not None else ""
+    cls = "command" if command_id and kind == "success" else classify_outcome(label, kind)
     if cls == "typed":
         text = last_typed_text(app).replace('\n', ' ').strip()
         return (KIND_DICTATED, text)
@@ -784,9 +786,7 @@ def render_outcome(app, outcome) -> tuple:
         heard = str(getattr(app, '_last_miss_text', '') or '').strip()
         return (KIND_MISSED, quoted(heard) if heard else "")
     if cls == "command":
-        fragment = label[len(CHIP_CHECK):].strip()
-        record = outcome_ring_schema.as_record(outcome)
-        command_id = record.canonical_id if record is not None else ""
+        fragment = label[len(CHIP_CHECK):].strip() if label.startswith(CHIP_CHECK) else label
         text = outcome_ring_schema.canonical_command_label(command_id, fragment)
         return (KIND_RAN, quoted(text) if text else "")
     return (label, "")

@@ -17,6 +17,7 @@ import re
 import subprocess
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 from PySide6.QtCore import QUrl, Qt, QTimer, Signal
 from PySide6.QtGui import QDesktopServices
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
+from samsara import ai_preferences
 from samsara.runtime import thread_registry
 from samsara.ui import ava_consent_qt, qt_runtime
 
@@ -142,10 +144,10 @@ _AVA_KEY_OPTIONS = [
 ]
 
 
-def _ping_ollama(timeout: int = 3) -> tuple[bool, list[str]]:
+def _ping_ollama(timeout: int = 3, host: str = _OLLAMA_URL) -> tuple[bool, list[str]]:
     """Return (is_running, list_of_installed_model_names)."""
     try:
-        req = urllib.request.Request(f"{_OLLAMA_URL}/api/tags")
+        req = urllib.request.Request(f"{host.rstrip('/')}/api/tags")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
             models = [m["name"] for m in data.get("models", [])]
@@ -220,7 +222,7 @@ class _WizardWindow(QDialog):
         "Meet Ava",
         "Install Ollama",
         "Choose a model",
-        "You're ready",
+        "Setup status",
     ]
 
     def __init__(self, app):
@@ -229,7 +231,12 @@ class _WizardWindow(QDialog):
         self._pull_proc: "subprocess.Popen | None" = None
         self._pulling = False
         self._installed_models: list[str] = []
-        self._selected_model_name = _MODELS[0][0]
+        self._ollama_running: bool | None = None
+        configured_model = (app.config.get("ollama") or {}).get("model")
+        self._selected_model_name = (
+            configured_model if configured_model in {name for name, _, _ in _MODELS}
+            else _MODELS[0][0]
+        )
         self._ollama_recheck_attempts = 0
         self._ollama_recheck_timer = QTimer(self)
         self._ollama_recheck_timer.setInterval(_OLLAMA_RECHECK_INTERVAL_MS)
@@ -428,8 +435,8 @@ class _WizardWindow(QDialog):
         lay.setSpacing(14)
 
         lay.addWidget(_body(
-            "Ollama is the runtime that lets AI models run locally. "
-            "It installs as a background service and Samsara connects to it automatically."
+            # OWNER COPY: explain local runtime setup without promising automatic service startup.
+            "Ollama runs local AI models. This guide checks whether Samsara can reach it."
         ))
 
         # Status card
@@ -463,7 +470,8 @@ class _WizardWindow(QDialog):
         inst_lay.setSpacing(8)
 
         inst_lay.addWidget(_body(
-            "Ollama is not running. To install it:"
+            # OWNER COPY: a failed HTTP check cannot prove Ollama is absent.
+            "Samsara cannot connect to Ollama. To check its installation:"
         ))
 
         self._download_ollama_btn = QPushButton("Download Ollama")
@@ -506,8 +514,8 @@ class _WizardWindow(QDialog):
         lay.setSpacing(14)
 
         lay.addWidget(_body(
-            "Ava needs a language model to understand you. "
-            "Pick one below and click Pull — it downloads once and runs offline forever."
+            # OWNER COPY: qualify local model availability and route selection.
+            "Choose a local model below. Pull downloads it for use when the local Ava route is enabled."
         ))
 
         # Model selector
@@ -521,12 +529,14 @@ class _WizardWindow(QDialog):
         )
         for name, size, desc in _MODELS:
             self._model_combo.addItem(f"{name}  ({size})", userData=name)
+        selected_index = self._model_combo.findData(self._selected_model_name)
+        self._model_combo.setCurrentIndex(selected_index)
         self._model_combo.currentIndexChanged.connect(self._on_model_selected)
         model_row.addWidget(self._model_combo, stretch=1)
         lay.addLayout(model_row)
 
         # Description label
-        self._model_desc = QLabel(_MODELS[0][2])
+        self._model_desc = QLabel(_MODELS[selected_index][2])
         self._model_desc.setStyleSheet(
             f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;"
         )
@@ -579,7 +589,9 @@ class _WizardWindow(QDialog):
         lay.setContentsMargins(32, 24, 32, 16)
         lay.setSpacing(12)
 
-        title = QLabel("Ava is ready.")
+        # OWNER COPY: review the incomplete setup heading.
+        title = QLabel("Ava is not ready.")
+        self._done_title = title
         title.setStyleSheet(
             f"color:{theme.SUCCESS};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
         )
@@ -657,7 +669,8 @@ class _WizardWindow(QDialog):
         lay.addWidget(usage_frame)
 
         # Enable pack button (shown if AI pack is disabled)
-        self._enable_pack_btn = QPushButton("Enable AI commands pack")
+        # OWNER COPY: consent activates Ava, not the retired pack switch.
+        self._enable_pack_btn = QPushButton("Enable Ava")
         self._enable_pack_btn.setStyleSheet(_primary_ss())
         self._enable_pack_btn.setFixedWidth(220)
         self._enable_pack_btn.clicked.connect(self._enable_ai_pack)
@@ -698,7 +711,9 @@ class _WizardWindow(QDialog):
 
         if step == self._STEP_DONE:
             self._skip_btn.hide()
-            self._next_btn.setText("Finish")
+            self._ollama_running = None
+            self._installed_models = []
+            self._next_btn.setText("Set up later")
             self._next_btn.setEnabled(True)
         else:
             self._skip_btn.show()
@@ -716,6 +731,7 @@ class _WizardWindow(QDialog):
 
         elif step == self._STEP_DONE:
             self._build_done_summary()
+            self._check_ollama()
 
     def _go_next(self):
         if self._current_step == self._STEP_DONE:
@@ -756,14 +772,16 @@ class _WizardWindow(QDialog):
         self._ollama_check_btn.setEnabled(False)
 
         def _run():
-            running, models = _ping_ollama()
+            host = self._app.config.get("ollama", {}).get("host") or _OLLAMA_URL
+            running, models = _ping_ollama(host=host)
             self._ollama_status_sig.emit(running, models)
 
         thread_registry.spawn("ava-ping", _run, daemon=True)
 
     def _on_ollama_status(self, running: bool, models: list):
         self._ollama_check_btn.setEnabled(True)
-        self._installed_models = models
+        self._ollama_running = running
+        self._installed_models = models if running else []
 
         if running:
             self._ollama_recheck_timer.stop()
@@ -780,8 +798,10 @@ class _WizardWindow(QDialog):
             self._install_instructions.setVisible(False)
         else:
             self._ollama_dot.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_HEADING}px;")
-            self._ollama_status_lbl.setText("Ollama is not running")
+            self._ollama_status_lbl.setText("Cannot connect to Ollama")
             self._install_instructions.setVisible(True)
+        if self._current_step == self._STEP_DONE:
+            self._build_done_summary()
 
     # ----------------------------------------------------------------
     # Model step
@@ -800,7 +820,8 @@ class _WizardWindow(QDialog):
         self._next_btn.setEnabled(False)
 
         def _run():
-            running, models = _ping_ollama()
+            host = self._app.config.get("ollama", {}).get("host") or _OLLAMA_URL
+            running, models = _ping_ollama(host=host)
             self._ollama_status_sig.emit(running, models)   # reuse signal
             # also fire model refresh via same signal path
             self._pull_line_sig.emit("")  # sentinel to trigger _refresh_model_status
@@ -811,21 +832,25 @@ class _WizardWindow(QDialog):
 
     def _refresh_model_status(self):
         sel = self._selected_model_name
-        # A model is "installed" if any installed name starts with the base name
-        base = sel.split(":")[0]
-        matched = [m for m in self._installed_models if m.startswith(base)]
+        matched = sel in self._installed_models and self._ollama_running is True
 
         if matched:
             self._model_status_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_BODY}px;")
-            self._model_status_lbl.setText(f"Installed: {matched[0]}")
+            self._model_status_lbl.setText(f"Installed: {sel}")
             self._pull_btn.setEnabled(True)
             self._pull_btn.setText("Re-pull")
             self._next_btn.setEnabled(True)
+            self._next_btn.setText("Next  ->")
         else:
             self._model_status_dot.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
-            self._model_status_lbl.setText("Not installed — click Pull to download")
-            self._pull_btn.setEnabled(True)
+            self._model_status_lbl.setText(
+                "Not installed — click Pull to download" if self._ollama_running
+                else "Cannot connect to Ollama"
+            )
+            self._pull_btn.setEnabled(self._ollama_running is True)
             self._pull_btn.setText("Pull model")
+            self._next_btn.setEnabled(True)
+            self._next_btn.setText("Set up later")
 
         # Show any installed models as a note
         if self._installed_models and not matched:
@@ -833,8 +858,6 @@ class _WizardWindow(QDialog):
             if len(self._installed_models) > 4:
                 others += f" +{len(self._installed_models) - 4} more"
             self._installed_note.setText(f"You already have: {others}")
-            # Any installed model means Ava can work — enable Next
-            self._next_btn.setEnabled(True)
         elif not self._installed_models:
             self._installed_note.setText("")
 
@@ -903,10 +926,7 @@ class _WizardWindow(QDialog):
         self._pull_btn.setText("Pull model")
         if success:
             self._pull_progress.setText("Download complete.")
-            self._model_status_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_BODY}px;")
-            self._model_status_lbl.setText(f"Installed: {self._selected_model_name}")
-            self._next_btn.setEnabled(True)
-            # Save model choice to config
+            self._check_installed_models()
             self._save_model_choice(self._selected_model_name)
         else:
             self._model_status_dot.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_BODY}px;")
@@ -925,22 +945,34 @@ class _WizardWindow(QDialog):
     # ----------------------------------------------------------------
 
     def _build_done_summary(self):
-        cfg_model = self._app.config.get("ollama", {}).get("model", "llama3")
-        base = cfg_model.split(":")[0]
-        matched = [m for m in self._installed_models if m.startswith(base)]
-        model_line = matched[0] if matched else cfg_model
-
-        ai_enabled = self._app.config.get(
-            "command_packs", {}
-        ).get("ai", True)
-
+        selected = self._selected_model_name
+        installed = self._ollama_running is True and selected in self._installed_models
+        configured_model = self._app.config.get("ollama", {}).get("model")
+        configured_and_installed = installed and selected == configured_model
+        host = self._app.config.get("ollama", {}).get("host") or _OLLAMA_URL
+        try:
+            resolved_addresses = ("127.0.0.1", "::1") if urlsplit(host).hostname == "localhost" else ()
+        except (TypeError, ValueError):
+            resolved_addresses = ()
+        state = ai_preferences.effective_state(
+            self._app.config, "ava", provider_route="local", ready=configured_and_installed,
+            resolved_addresses=resolved_addresses,
+        )
+        ready = configured_and_installed and state.allowed
+        self._done_title.setText("Ava is ready." if ready else "Ava is not ready.")
+        self._done_title.setStyleSheet(
+            f"color:{theme.SUCCESS if ready else theme.WARNING};"
+            f"font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
+        )
         parts = [
-            f"Ollama:   running",
-            f"Model:    {model_line}",
-            f"AI pack:  {'enabled' if ai_enabled else 'disabled (see button below)'}",
+            "Ollama: " + ("reachable" if self._ollama_running is True else
+                          "not reachable" if self._ollama_running is False else "not checked yet"),
+            f"Model: {selected} ({'installed' if installed else 'not installed'})",
+            f"Ava: {'enabled' if ready else 'needs setup'}",
         ]
         self._done_summary.setText("\n".join(parts))
-        self._enable_pack_btn.setVisible(not ai_enabled)
+        self._enable_pack_btn.setVisible(not ready)
+        self._next_btn.setText("Finish" if ready else "Set up later")
 
     def _on_ava_key_changed(self, index: int):
         if 0 <= index < len(_AVA_KEY_OPTIONS):
@@ -961,14 +993,14 @@ class _WizardWindow(QDialog):
             ava_consent_qt.apply_accepted_ava(
                 self._app, consent, policy=policy
             )
-            self._enable_pack_btn.setText(
-                "Ava is on. Hold the Ava key to talk."
-            )
+            self._build_done_summary()
+            # OWNER COPY: consent is saved, but readiness still depends on the live probe.
+            self._enable_pack_btn.setText("Ava preferences saved")
             self._enable_pack_btn.setEnabled(False)
         except Exception:
             logger.exception("Could not activate Ava after consent")
             self._enable_pack_btn.setText(
-                "Ava setup needs attention in Settings > Modes."
+                "Ava setup needs attention in Settings > Ava / Cloud."
             )
 
     def _finish(self):
@@ -997,52 +1029,44 @@ class _WizardWindow(QDialog):
 # ---------------------------------------------------------------------------
 
 def _ava_intro_text(config: dict) -> str:
-    """Row 341: true only while cloud mode is off -- say so."""
-    cloud_on = bool((config.get("cloud_llm") or {}).get("enabled", False))
-    if cloud_on:
-        return ("Ava is Samsara's AI assistant. Cloud mode is ON right now, so questions go to "
-                "your configured provider. Turn it off in Settings -> Ava / Cloud or say "
-                "'ava local' to keep everything on this machine.")
-    return ("Ava is Samsara's AI assistant. Ava is optional. By default, she is not running. "
-            "If you set her up, she runs on this computer, and nothing is sent anywhere unless "
-            "you later choose the cloud option. Until then, cloud mode stays off (Settings -> "
-            "Ava / Cloud, or say 'ava cloud').")
+    """Describe authoritative Ava policy without guessing provider readiness."""
+    state = ai_preferences.effective_state(config, "ava", ready=None)
+    # OWNER COPY: replace this state-derived provider explanation.
+    return f"Ava is optional. {state.reason} Check Settings > Ava for the current provider route."
 
 
 def _confirmation_text() -> str:
-    """Row 345: a model-chosen action that changes something asks first."""
+    """Describe model-proposed actions without promising every UI action asks."""
     from samsara.session_modes import SCRATCH_THAT_PHRASE  # noqa: PLC0415
-    return ("Anything that changes something — sending, closing, deleting — is confirmed "
-            "first: Ava asks, you say <b>\"yes\"</b> to go ahead, or <b>\"ava cancel\"</b> / "
-            f"<b>\"{SCRATCH_THAT_PHRASE}\"</b> to drop it. Commands nobody has classified are "
-            "not offered to Ava at all.")
+    # OWNER COPY: explain the exact model-proposed action policy.
+    return ("Ava may ask before a model-proposed action. Review the action, then say "
+            "<b>\"yes\"</b> to continue or <b>\"ava cancel\"</b> / "
+            f"<b>\"{SCRATCH_THAT_PHRASE}\"</b> to drop it.")
 
 
 def _keep_warm_note(config: dict) -> str:
-    """ava_command_session.keep_warm controls Ava readiness, not a session."""
+    """Describe the warm request without claiming Ollama memory residency."""
     keep_warm = bool((config.get("ava_command_session") or {}).get("keep_warm", True))
+    # OWNER COPY: explain request and server retention separately.
     if keep_warm:
-        return ("Samsara keeps the model ready while Ava is on so replies are quick "
-                "(Settings -> Ava -> Keep model warm, on). Turn it off and Ollama frees the "
-                "memory between answers.")
-    return ("Keep model warm is off (Settings -> Ava): Ollama loads the model for each answer "
-            "and frees it afterwards, so the first reply is slower.")
+        return ("Keep model warm is on in Settings > Ava > Advanced. Samsara requests warming; "
+                "Ollama controls how long the model stays loaded.")
+    return ("Keep model warm is off in Settings > Ava > Advanced. "
+            "Ollama controls how long the model stays loaded.")
 
 
 def _usage_lines(config: dict, wake: str) -> list:
-    """Rows 616 ('Ava local' is a mode switch, not a question), 125 (the second
-    Ava key and the 'ava mode' switch word) and 618."""
+    """Show supported controls without promising a legacy provider switch."""
     from samsara import session_modes  # noqa: PLC0415
     ava_mode = next((p for p, m in session_modes._WHOLE_UTTERANCE_SWITCHES.items()
                      if m is session_modes.SessionMode.AVA), "ava mode")
+    key = config.get("ava_mode_key", "right_alt")
+    key_label = next((label for label, value in _AVA_KEY_OPTIONS if value == key), str(key))
+    # OWNER COPY: qualify these controls against live Ava and Wake readiness.
     return [
-        f'"{wake.title()}, hey Ava" also works — no key needed, fully hands-free.',
-        f'"{wake.title()}, Ava local" — turns cloud mode off for this session: Ava answers '
-        f'from local Ollama only. ("Ava cloud" turns it back on.)',
-        f'"{wake.title()}, Ava cancel" — if Ava asked a question and is waiting '
-        f'for your answer, this clears it.',
-        f'Say "{ava_mode}" inside a hands-free session to switch to the Ava lane.',
-        'In COMMAND mode, Ava can optionally interpret an unmatched command.',
+        f"Ava key: {key_label}. Its availability follows Settings > Ava.",
+        f'If Ava is enabled, say "{ava_mode}" inside a hands-free session to switch lanes.',
+        "Use an active command route for Ava questions and cancellation.",
     ]
 
 

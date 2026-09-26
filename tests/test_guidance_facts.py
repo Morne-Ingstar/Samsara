@@ -17,6 +17,7 @@ def test_custom_controls_are_exposed_without_mutating_config():
         "dictate_commit_hotkey": "ctrl+enter",
         "mode": "toggle",
         "command_mode": {
+            "mode": "toggle",
             "dictate_commit_word": "submit",
             "stop_phrases": ["pause now"],
             "inactivity_timeout_s": 420,
@@ -31,8 +32,8 @@ def test_custom_controls_are_exposed_without_mutating_config():
     }
     facts = facts_from_config(config)
     assert facts.wake_phrase == "hello orbit"
-    assert facts.wake_aliases == ("orbit",)
-    assert facts.wake_phrases == ("hello orbit", "orbit", "write report")
+    assert facts.wake_aliases == ()
+    assert facts.wake_phrases == ("hello orbit", "write report")
     assert facts.wake_profile_send_words[0].send_word == "deliver"
     assert facts.end_words == ("wrap up",)
     assert facts.dictation_hotkey == "alt+space"

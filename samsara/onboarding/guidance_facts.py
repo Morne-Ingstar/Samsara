@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from samsara.config_defaults import DEFAULTS
-from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY, DEFAULT_WAKE_PHRASE_OPTIONS
+from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY
 from samsara import session_modes
 
 
@@ -26,7 +26,7 @@ def _words(value: Any, fallback: tuple[str, ...]) -> tuple[str, ...]:
         phrase = item.strip() if isinstance(item, str) else ""
         if phrase and phrase not in result:
             result.append(phrase)
-    return tuple(result) or fallback
+    return tuple(result)
 
 
 def _word(value: Any, fallback: str) -> str:
@@ -84,8 +84,7 @@ def facts_from_config(config: dict[str, Any] | None) -> GuidanceFacts:
     command_mode = command_mode if isinstance(command_mode, dict) else {}
 
     wake_phrase = _word(wake.get("phrase"), str(DEFAULTS["wake_word_config.phrase"]))
-    configured_aliases = _words(wake.get("phrase_options"), tuple(DEFAULT_WAKE_PHRASE_OPTIONS))
-    wake_aliases = tuple(word for word in configured_aliases if word != wake_phrase)
+    wake_aliases: tuple[str, ...] = ()
 
     profiles: list[WakeProfileFacts] = []
     for profile in config.get("wake_profiles", ()):
@@ -99,8 +98,9 @@ def facts_from_config(config: dict[str, Any] | None) -> GuidanceFacts:
     profile_phrases = tuple(profile.phrase for profile in profiles if profile.phrase != wake_phrase)
     wake_phrases = (wake_phrase, *wake_aliases, *profile_phrases)
     mode = _word(config.get("mode"), str(DEFAULTS["mode"]))
+    session_mode = _word(command_mode.get("mode"), str(DEFAULTS["command_mode.mode"]))
     requested_session = bool(wake.get("opens_session", False))
-    activation = "hands_free_session" if requested_session and mode == "toggle" else "one_command_window"
+    activation = "hands_free_session" if requested_session and session_mode == "toggle" else "one_command_window"
     timeout = command_mode.get("inactivity_timeout_s", DEFAULTS["command_mode.inactivity_timeout_s"])
     try:
         idle_timeout_s = max(0, int(timeout))
@@ -108,6 +108,11 @@ def facts_from_config(config: dict[str, Any] | None) -> GuidanceFacts:
         idle_timeout_s = int(DEFAULTS["command_mode.inactivity_timeout_s"])
 
     stop_words = _words(command_mode.get("stop_phrases"), tuple(session_modes.SESSION_STOP_PHRASES))
+    commit_word = session_modes.normalize_utterance(
+        _word(command_mode.get("dictate_commit_word"), session_modes.DEFAULT_DICTATE_COMMIT_PHRASE)
+    )
+    if len(commit_word.split()) != 1:
+        commit_word = session_modes.DEFAULT_DICTATE_COMMIT_PHRASE
     return GuidanceFacts(
         wake_phrase=wake_phrase,
         wake_aliases=wake_aliases,
@@ -125,7 +130,7 @@ def facts_from_config(config: dict[str, Any] | None) -> GuidanceFacts:
         wake_activation=activation,
         wake_activation_requested_session=requested_session,
         session_end=SessionEndFacts(
-            commit_word=_word(command_mode.get("dictate_commit_word"), session_modes.DEFAULT_DICTATE_COMMIT_PHRASE),
+            commit_word=commit_word,
             stop_words=stop_words,
             discard_words=tuple(session_modes.CLEAR_DRAFT_PHRASES),
         ),
