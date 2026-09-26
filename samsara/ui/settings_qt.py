@@ -194,6 +194,8 @@ class _SettingsWindow(
                 name_matches[row.page_name] = max(name_matches.get(row.page_name, 0), rank)
                 if row.disclosure:
                     row.disclosure.reveal()
+        for page in self._pages.values():
+            page.advanced.refresh_filter_state(query)
         if query and matched:
             # A setting's name outranks an incidental mention in help, e.g.
             # "Stage timing" before "staged thought" when searching "stage".
@@ -266,11 +268,22 @@ class _SettingsWindow(
                 part = save(updates)
                 part.pop('gesture', None)
                 updates.update(part)
+        if 'wake_profile_controls' in self._widgets:
+            updates['wake_profiles'] = self._edited_wake_profiles()
         alarms = dict(self.app.config.get('alarms', {}) or {})
         alarms['complete_hotkey'] = self._widgets['alarms_complete_key'].combo
         alarms['dismiss_hotkey'] = self._widgets['alarms_dismiss_key'].combo
         updates['alarms'] = alarms
         return updates
+
+    def _edited_wake_profiles(self):
+        profiles = copy.deepcopy(self.app.config.get('wake_profiles', []))
+        for profile, controls in zip(profiles, self._widgets['wake_profile_controls']):
+            profile['phrase'] = controls['phrase'].text().strip()
+            profile['target_process'] = controls['target_process'].text().strip()
+            profile['send_word'] = controls['send_word'].text().strip()
+            profile['enabled'] = controls['enabled'].isChecked()
+        return profiles
 
     def _apply_and_close(self):
         previous_sound = self.app.config.get('sound_theme', 'cute')

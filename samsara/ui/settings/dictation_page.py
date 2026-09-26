@@ -1,5 +1,9 @@
 """Dictation Settings destination."""
 
+import copy
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from .presentation import SettingRow
+
 TITLE = "Dictation"
 SUBTITLE = "Choose how you start speaking and deliver text."
 BASE = [
@@ -232,4 +236,74 @@ ADVANCED = [
 ]
 
 def build(owner):
-    return owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    profiles = copy.deepcopy(owner.app.config.get("wake_profiles", []))
+    if "wake_profiles" not in owner.app.config:
+        from samsara.config_schema import SETTINGS_SCHEMA
+        profiles = copy.deepcopy(SETTINGS_SCHEMA["wake_profiles"]["default"])
+
+    editor = QWidget()
+    columns = QVBoxLayout(editor)
+    columns.setContentsMargins(0, 0, 0, 0)
+    columns.setSpacing(6)
+    editor.setMinimumHeight(44 * (len(profiles) + 1))
+    header = QHBoxLayout()
+    header.addWidget(QLabel("Profile"), 1)
+    header.addWidget(QLabel("Phrase"), 2)
+    header.addWidget(QLabel("Target app (.exe)"), 2)
+    header.addWidget(QLabel("Send word"), 1)
+    header.addWidget(QLabel("On / Off"), 0)
+    columns.addLayout(header)
+    controls = []
+    for profile in profiles:
+        profile = profile if isinstance(profile, dict) else {}
+        line = QHBoxLayout()
+        line.addWidget(QLabel(str(profile.get("id", "Profile"))), 1)
+        phrase = QLineEdit(str(profile.get("phrase", "")))
+        phrase.setMinimumHeight(44)
+        phrase.setAccessibleName(f"{profile.get('id', 'Profile')} wake phrase")
+        line.addWidget(phrase, 2)
+        target = QLineEdit(str(profile.get("target_process", "")))
+        target.setMinimumHeight(44)
+        target.setAccessibleName(f"{profile.get('id', 'Profile')} target app executable")
+        line.addWidget(target, 2)
+        send_word = QLineEdit(str(profile.get("send_word", "")))
+        send_word.setMinimumHeight(44)
+        send_word.setAccessibleName(f"{profile.get('id', 'Profile')} send word")
+        line.addWidget(send_word, 1)
+        enabled = QCheckBox("On" if profile.get("enabled", True) else "Off")
+        enabled.setMinimumHeight(44)
+        enabled.setAccessibleName(f"{profile.get('id', 'Profile')} wake profile")
+        enabled.setChecked(profile.get("enabled", True))
+        enabled.toggled.connect(lambda checked, button=enabled: button.setText("On" if checked else "Off"))
+        line.addWidget(enabled)
+        columns.addLayout(line)
+        controls.append({"id": profile.get("id"), "phrase": phrase, "target_process": target,
+                         "send_word": send_word, "enabled": enabled})
+
+    description = "Edit the wake phrase, target app, and send word for each profile. Turn a profile off when you do not want Samsara to respond to it."
+    row = SettingRow("Wake profiles", "Choose the phrases that open your target apps.", [editor],
+                     "Edit the wake phrase you say, the app executable Samsara opens, and the word you use to send. Turn each profile on when you want Samsara to listen for it, or off when you do not.")
+    row.config_keys = ("wake_profiles",)
+    row.widget_keys = ("wake_profiles",)
+    row.page_name = TITLE
+    row.disclosure = page.advanced
+    row._wake_profile_controls = controls
+    owner._widgets["wake_profile_controls"] = controls
+    page.add_row(row, advanced=True)
+    owner._destination_rows.append(row)
+    owner._rows_by_widget["wake_profiles"] = row
+
+    def update_search_text(*_args):
+        values = " ".join(
+            " ".join(control[key].text() for key in ("phrase", "target_process", "send_word"))
+            for control in controls
+        )
+        row.full_help = f"{description} {values} profile wake"
+
+    for control in controls:
+        control["phrase"].textChanged.connect(update_search_text)
+        control["target_process"].textChanged.connect(update_search_text)
+        control["send_word"].textChanged.connect(update_search_text)
+    update_search_text()
+    return page

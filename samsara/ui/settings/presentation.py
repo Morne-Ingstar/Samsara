@@ -134,13 +134,31 @@ class Disclosure(QWidget):
         self.rows = QVBoxLayout(self.content)
         self.rows.setContentsMargins(0, 0, 0, 0)
         self.rows.setSpacing(0)
+        self.no_match = QLabel("No advanced settings match")
+        self.no_match.setProperty("role", "description")
+        self.no_match.setMinimumHeight(44)
+        self.no_match.hide()
+        self.filter_query = ""
+        self.rows.addWidget(self.no_match)
         self.column.addWidget(self.content)
         self.content.hide()
         self.toggle.toggled.connect(self.content.setVisible)
         self.toggle.toggled.connect(lambda on: self.toggle.setText(title + ("  ▾" if on else "  ▸")))
+        self.toggle.toggled.connect(lambda _on: self.refresh_filter_state())
 
     def reveal(self):
         self.toggle.setChecked(True)
+
+    def refresh_filter_state(self, query=None):
+        if query is not None:
+            self.filter_query = query
+        visible_rows = any(
+            item.widget() is not None and item.widget() is not self.no_match
+            and item.widget().isVisible()
+            for index in range(self.rows.count())
+            if (item := self.rows.itemAt(index)) is not None
+        )
+        self.no_match.setVisible(bool(self.filter_query) and self.toggle.isChecked() and not visible_rows)
 
 
 class SettingRow(QFrame):

@@ -9,7 +9,7 @@ Format per entry:
     min, max:   numeric bounds (int/float only)
     step:       increment step (numeric, optional)
     options:    allowed values list (enum only)
-    item_type:  element type for 'list' entries (currently always 'str')
+    item_type:  element type for 'list' entries ('str' or 'dict')
     default:    app default when key absent from config
     tab:        historical schema group (not the current destination page)
     settings_ui: False explicitly excludes a key from Settings/Tools coverage
@@ -18,11 +18,10 @@ Format per entry:
                 e.g. "echo_cancellation.enabled" means the setting is
                 only active when that key is True.
 
-'list' entries (e.g. ava_invocations) have no settings-UI widget yet --
-config-file-editable only. Most other list-valued config (wake_abort_phrase)
-is intentionally NOT represented here at all; it lives as an inline default
-at its point of use instead, which remains the pattern for anything that
-doesn't need this schema's cross-field/AI-capability introspection.
+String-list entries such as ava_invocations remain config-file-editable only.
+The structured wake_profiles list has a Settings editor on the Dictation page.
+Most other list-valued config (wake_abort_phrase) is intentionally NOT
+represented here; it lives as an inline default at its point of use instead.
 
 Cross-field dependencies use one of two forms:
     "some.key"            -- active when some.key is truthy
@@ -46,6 +45,23 @@ SETTINGS_SCHEMA = {
         "type": "str",
         "default": "en",
         "tab": "general",
+    },
+    "wake_profiles": {
+        "type": "list",
+        "item_type": "dict",
+        "default": [
+            {
+                "id": "claude", "phrase": "activate claude",
+                "oww_model": "activate_claude.onnx", "target_process": "claude.exe",
+                "enabled": True, "mode": "focus_dictate", "send_word": "over",
+            },
+            {
+                "id": "hermes", "phrase": "activate hermes",
+                "oww_model": "activate_hermes.onnx", "target_process": "Hermes.exe",
+                "enabled": True, "mode": "stage_send", "send_word": "send",
+            },
+        ],
+        "tab": "dictation",
     },
     # Queue 129. Dark is not universally accessible: astigmatism, some
     # low-vision conditions and a bright room all read light-on-dark worse,
