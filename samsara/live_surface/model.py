@@ -39,6 +39,12 @@ class Lane(str, Enum):
     AVA = "ava"
 
 
+def initial_capture_state(lane: Lane) -> CaptureState:
+    """A hold starts capturing immediately; hands-free starts waiting for speech."""
+    return (CaptureState.RECORDING if lane in (Lane.HOLD, Lane.TOGGLE)
+            else CaptureState.HANDS_FREE_LISTENING)
+
+
 class DocumentState(str, Enum):
     EMPTY = "empty"
     PROVISIONAL_ONLY = "provisional_only"
@@ -122,6 +128,7 @@ class Notice:
     kind: NoticeKind
     message: str
     expires_at: Optional[float]
+    lane: Optional[Lane] = None
 
 
 @dataclass(frozen=True)
@@ -180,8 +187,8 @@ class LiveSurfaceModel:
             if self._notice.expires_at is not None:
                 self._notice = Notice(NoticeKind.NONE, "", None)
             self._active_capture = event.capture_id
-            self.capture = event.capture or CaptureState.RECORDING
-            self.lane = event.lane or self.lane
+            self.lane = event.lane or Lane.HOLD
+            self.capture = event.capture or initial_capture_state(self.lane)
             self.provisional_text = ""
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.CAPTURE_CHANGED:
@@ -195,11 +202,18 @@ class LiveSurfaceModel:
             self.provisional_text = ""
         elif kind is EventKind.LANE_CHANGED:
             self.lane = event.lane
+            if event.capture is not None:
+                self.capture = event.capture
+            self._clear_receipt()
+            if self._notice.kind is NoticeKind.RESULT:
+                self._notice = Notice(NoticeKind.NONE, "", None)
             self.provisional_text = ""
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.PARTIAL:
             self.provisional_text = event.text or ""
-            self.document = DocumentState.PROVISIONAL_ONLY if not self.text else self.document
+            if not self.text:
+                self.document = (DocumentState.PROVISIONAL_ONLY if self.provisional_text
+                                 else DocumentState.EMPTY)
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.DOCUMENT_UPDATED:
             self._set_document(event, DocumentState.EDITABLE_DRAFT)
@@ -230,12 +244,15 @@ class LiveSurfaceModel:
             self.presentation = PresentationState.PINNED_REVIEW
         elif kind is EventKind.NOTICE:
             ttl = event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice)
-            candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl)
+            candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
+                               event.lane or self.lane)
             if self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind):
                 self._notice = candidate
         elif kind is EventKind.NOTICE_CLEARED:
             if event.notice in (NoticeKind.NONE, self._notice.kind):
                 self._notice = Notice(NoticeKind.NONE, "", None)
+            if event.notice in (NoticeKind.NONE, NoticeKind.RESULT):
+                self._clear_receipt()
         elif kind is EventKind.REVIEW_PINNED:
             self.presentation = PresentationState.PINNED_REVIEW
         elif kind is EventKind.REVIEW_UNPINNED:
@@ -257,6 +274,8 @@ class LiveSurfaceModel:
         now = self._clock()
         if self._notice.expires_at is not None and now >= self._notice.expires_at:
             self._notice = Notice(NoticeKind.NONE, "", None)
+        if self._delivered_at is not None and now >= self._delivered_at + RESULT_RECEIPT_S:
+            self._clear_receipt()
         can_collapse = self._can_collapse(now)
         form = self._form(now, can_collapse)
         return SurfaceView(
@@ -265,6 +284,13 @@ class LiveSurfaceModel:
             revision=self.revision, text=self.text, provisional_text=self.provisional_text,
             can_collapse=can_collapse,
         )
+
+    def _clear_receipt(self) -> None:
+        """An expired delivery is history, never the next idle/lane status."""
+        if self.document is DocumentState.DELIVERED:
+            self.document = DocumentState.EMPTY
+            self.text = ""
+        self._delivered_at = None
 
     def _accept_event(self, event: SurfaceEvent) -> bool:
         if event.capture_id is not None:
@@ -350,6 +376,6 @@ class LiveSurfaceModel:
             return VisibleForm.LIVE
         if self._notice.kind is not NoticeKind.NONE:
             return VisibleForm.STATUS
-        if self.capture is CaptureState.HANDS_FREE_LISTENING:
+        if self.capture in (CaptureState.HANDS_FREE_LISTENING, CaptureState.WAKE_ARMED):
             return VisibleForm.STATUS
         return VisibleForm.MARK

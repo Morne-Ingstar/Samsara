@@ -30,8 +30,9 @@ def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp,
     # Owner's 2026-09-18 ruling replaces fixed tall L/R cards with content-fit panels.
     # 263: the compact mark includes a visible non-colour state label.
     assert (widget.width(), widget.height()) == ((152, 44) if form is VisibleForm.MARK else
-        (120, 44) if form is VisibleForm.DRAFT_BADGE else
-        (240, 60) if form is VisibleForm.STATUS else
+        # Finish2: badge explains delivery; status reserves lane + activity + Clear.
+        (500, 112) if form is VisibleForm.DRAFT_BADGE else
+        (360, 60) if form is VisibleForm.STATUS else
         (LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0], widget.height()))
     if form not in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE, VisibleForm.STATUS):
         assert 96 <= widget.height() <= REVIEW_SIZE[1]
@@ -102,9 +103,9 @@ def test_draft_badge_uses_a_document_glyph_and_word_count(qapp):
     widget = LiveSurfaceWidget(_view(VisibleForm.DRAFT_BADGE, text="one two three",
                                      document=DocumentState.PARKED_DRAFT))
     assert "Ⅱ" not in widget._badge.text()
-    assert "▤" in widget._badge.text()
-    assert "Draft" in widget._badge.text()
-    assert "3 words" in widget._badge.text()
+    # Finish2 R4 replaces the unexplained glyph with count and a real next action.
+    assert "3 words waiting" in widget._state.text()
+    assert widget._badge.text() == "Tap Insert text to send."
     widget.close()
 
 
@@ -130,7 +131,8 @@ def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
     assert widget._transcript.height() >= 24
     assert widget._clear.isVisible() and widget._clear.height() >= MARK_SIZE
     assert not widget._pause.isVisible() and not widget._correct.isVisible()
-    assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)))
+    # Finish2 R4 permits Insert text only in the waiting-draft form.
+    assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)) if button.isVisible())
     # 220-G makes this a scrollable QTextBrowser; its document begins at top.
     assert widget._transcript.document().documentMargin() >= 0
     widget.close()
@@ -186,7 +188,8 @@ def test_reduced_motion_reads_system_and_keeps_static_recording_text(qapp, monke
     w.show(); QTest.qWait(160)
     assert w._mark.capture == 'recording' and w._mark.rotation == 0
     assert not w._spin_timer.isActive()
-    assert w._state.isVisible() and w._state.text() == 'Recording'
+    # Finish2 R1 names the capture lane before its activity.
+    assert w._state.isVisible() and w._state.text() == 'Hold — recording'
     w.hide(); w.deleteLater()
 
 
@@ -205,7 +208,8 @@ def test_no_persistent_commit_or_extra_state_control(qapp):
     w = LiveSurfaceWidget(_view(VisibleForm.LIVE, text='Synthetic settled text'))
     w.show(); qapp.processEvents()
     assert [b.text() for b in w.findChildren(QPushButton) if b.isVisible()] == ['Clear']
-    assert not any(b.text().lower() in ('commit', 'insert text') for b in w.findChildren(QPushButton))
+    # Finish2 R4's waiting-draft action is hidden on the ordinary live card.
+    assert not any(b.text().lower() in ('commit', 'insert text') for b in w.findChildren(QPushButton) if b.isVisible())
     w.hide(); w.deleteLater()
 
 

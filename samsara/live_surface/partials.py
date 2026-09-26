@@ -21,7 +21,7 @@ class CapturePartials:
     stopped: bool = False
 
     def partial(self, text: str) -> bool:
-        if self.cpu_only or self.stopped or not text:
+        if self.cpu_only or self.stopped:
             return False
         self.sequence += 1
         self.controller.post(SurfaceEvent(EventKind.PARTIAL, capture_id=self.capture_id,

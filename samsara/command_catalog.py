@@ -105,6 +105,7 @@ CATALOG_SCHEMA = {
                             "apps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
                             "title": {"type": "string", "minLength": 1},
                             "tags": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                            "argument_tags": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
                         },
                     },
                 },

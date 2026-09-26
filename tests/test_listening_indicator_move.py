@@ -170,7 +170,10 @@ class TestCustomPositionFallback:
         assert geom.y() <= indicator.y() <= geom.y() + geom.height()
 
     def test_cx_cy_are_clamped_to_unit_range(self, indicator):
-        indicator.set_custom_position("SOME-SCREEN", 1.5, -0.5)
+        # Clamp coordinates only after a saved monitor identity has resolved;
+        # missing-monitor fallback is covered by the tests above.
+        screen = QApplication.primaryScreen()
+        indicator.set_custom_position(screen.name(), 1.5, -0.5)
         assert indicator._custom_position["cx"] == 1.0
         assert indicator._custom_position["cy"] == 0.0
 
@@ -481,7 +484,8 @@ class TestSettingsCustomPosition:
         combo = win._widgets["adv_indicator_pos"]
         combo.setCurrentText("bottom-center")
 
-        advanced_save_fn = win._save_fns[7]
+        # Settings now exposes one aggregate save callback at index zero.
+        advanced_save_fn = win._save_fns[0]
         produced = advanced_save_fn({})
 
         assert produced["listening_indicator_position"] == "bottom-center"
@@ -495,7 +499,7 @@ class TestSettingsCustomPosition:
         })
         win = _SettingsWindow(stub)
         # Combo already shows "custom"; leave it untouched.
-        advanced_save_fn = win._save_fns[7]
+        advanced_save_fn = win._save_fns[0]
         produced = advanced_save_fn({})
 
         assert produced["listening_indicator_position"] == "custom"
@@ -508,6 +512,6 @@ class TestSettingsCustomPosition:
         from samsara.ui.settings_qt import _SettingsWindow
         stub = _SettingsStubApp({"listening_indicator_position": "bottom-center"})
         win = _SettingsWindow(stub)
-        advanced_save_fn = win._save_fns[7]
+        advanced_save_fn = win._save_fns[0]
         produced = advanced_save_fn({})
         assert "listening_indicator_custom_position" not in produced

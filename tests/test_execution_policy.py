@@ -480,8 +480,29 @@ def _capture_spawn(monkeypatch):
     return captured
 
 
+def _enable_local_ava_for_test(app):
+    """Give async-route tests the current explicit local-Ava consent state."""
+    from samsara import ai_preferences
+
+    config = {
+        "ollama": {
+            "host": "http://127.0.0.1:11434",
+            "model": "fixture-model",
+        },
+    }
+    provider = ai_preferences.provider_for(config, "local")
+    consent = ai_preferences.accept_consent(
+        config, features=("ava",), provider=provider,
+        accepted_at="2026-09-23T00:00:00Z",
+    )
+    app.config = ai_preferences.apply_accepted_ava(
+        config, policy="local", consent=consent,
+    )
+
+
 class TestCancelThenLateResponse:
     def test_late_model_response_after_cancel_runs_nothing(self, app, effects, monkeypatch):
+        _enable_local_ava_for_test(app)
         workers = _capture_spawn(monkeypatch)
         monkeypatch.setattr(ask_ollama, "ask_ollama",
                             lambda prompt, app_: "CONFIRM Switching.\nACTION switch window")
@@ -493,6 +514,7 @@ class TestCancelThenLateResponse:
         assert ask_ollama.get_pending_action() is None
 
     def test_late_model_confirmation_after_cancel_stages_nothing(self, app, effects, monkeypatch):
+        _enable_local_ava_for_test(app)
         workers = _capture_spawn(monkeypatch)
         monkeypatch.setattr(ask_ollama, "ask_ollama", lambda prompt, app_: "CONFIRM Close it.\nACTION close window")
         ask_ollama.handle_ask_ava(app, "close the window")
@@ -501,6 +523,7 @@ class TestCancelThenLateResponse:
         assert effects == [] and ask_ollama.get_pending_action() is None
 
     def test_same_generation_response_still_works(self, app, effects, monkeypatch):
+        _enable_local_ava_for_test(app)
         workers = _capture_spawn(monkeypatch)
         monkeypatch.setattr(ask_ollama, "ask_ollama", lambda prompt, app_: "CONFIRM Switching.\nACTION switch window")
         ask_ollama.handle_ask_ava(app, "switch window")
@@ -561,6 +584,7 @@ class TestStopPath:
 
     def test_stop_does_not_wait_on_a_stalled_model(self, executor, effects, monkeypatch):
         app = _dictation_app(executor)
+        _enable_local_ava_for_test(app)
         release = threading.Event()
         started = threading.Event()
 
@@ -637,11 +661,16 @@ class TestStopPath:
 
     def test_waterfall_drain_stale_keeps_current_items(self, executor):
         app = _dictation_app(executor)
-        ava_command_session.drain_stale(app)               # start empty
-        ava_command_session._task_queue.put_nowait((2, "old"))
-        ava_command_session._task_queue.put_nowait((3, "new"))
-        assert ava_command_session.drain_stale(app) == 1
-        assert ava_command_session._task_queue.get_nowait() == (3, "new")
+        # The waterfall queue is app-owned now; stale generations are skipped
+        # by the completion drain rather than a module-level queue helper.
+        app._ava_session_request_in_flight = True
+        app._ava_session_dispatch_queue.extend([
+            (2, "close the window"),
+            (3, "switch window"),
+        ])
+        app._start_ava_session_worker = Mock()
+        app._on_ava_session_request_done()
+        app._start_ava_session_worker.assert_called_once_with((3, "switch window"))
 
     def test_scheduled_tick_from_an_old_generation_stops(self, app, effects):
         ask_ollama._execute_safe(app, {"command": "switch window", "generation": 2})

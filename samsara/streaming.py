@@ -2083,6 +2083,10 @@ class StreamingSession:
 
     def _deliver_final(self, text, raw_text, duration_s, elapsed_ms):
         with self._state_lock:
+            # A live-surface Clear may cancel after on_final queued this callback.
+            # Do not revive that cancelled session at the UI delivery boundary.
+            if self._parking_enabled and self.cancel_event.is_set():
+                return
             self._state = self.STATE_PASTING
         if not text or not text.strip():
             logger.info("[STREAM] No speech detected")
@@ -2441,8 +2445,11 @@ class _LiveSurfaceDictateOverlay:
         self._partials.stopped = False
 
     def set_transcript(self, finalized_lines, partial, link_words=False):
-        text = " ".join([str(line) for line in finalized_lines if line] + ([partial] if partial else []))
-        self._partials.partial(text)
+        # The shared document already owns finalized_lines. Publishing them
+        # here repeats the entire settled draft as provisional on every tick.
+        # The preview snapshot is current-utterance audio, not cumulative audio;
+        # its generation guard rejects decodes that straddle a final boundary.
+        self._partials.partial(partial or "")
 
     def set_interaction_callbacks(self, on_word_clicked, on_clear):
         """No-op: controller owns identity-bound word and Clear intents."""

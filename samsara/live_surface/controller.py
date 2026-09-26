@@ -6,7 +6,7 @@ import threading
 from typing import Any, Callable
 
 from samsara.live_surface.model import (CaptureState, EventKind, Lane, LiveSurfaceModel,
-                                        NoticeKind, SurfaceEvent)
+                                        NoticeKind, SurfaceEvent, initial_capture_state)
 from samsara.live_surface.caret import CaretLocator
 from samsara.live_surface.placement import (Edge, Placement, Rect, Screen,
                                              place_inline_form, free_placement_for_mark,
@@ -33,6 +33,7 @@ class LiveSurfaceController:
         self._scheduled = False
         self._capture_seq = 0
         self._active_capture: str | None = None
+        self._active_lane: Lane | None = None
         self.idle_capture = CaptureState.OFF
         self.idle_lane = Lane.HOLD
         # The host supplies the platform lookup.  It is intentionally optional
@@ -86,17 +87,35 @@ class LiveSurfaceController:
 
     def refresh_expired(self) -> None:
         """Expire receipts without another utterance or a forced window show."""
+        self._refresh_capture_activity()
         if self.widget is not None and not self.widget.is_dragging:
             view = self.model.view()
             if view != self.widget.view:
                 self.widget.refresh(view, animate=False)
                 self._place_widget()
 
-    def begin_capture(self, lane: Lane, *, capture: CaptureState = CaptureState.RECORDING,
+    def _refresh_capture_activity(self) -> None:
+        # WakeConsumer owns this plain VAD flag, including silence closure.
+        # Poll it on the existing 100ms surface timer, never infer speech from
+        # a slow decoder's partial or touch audio from the UI thread.
+        if self._active_capture is None or self._active_lane is not Lane.HANDS_FREE_DICTATE:
+            return
+        if self.model._active_capture != self._active_capture:
+            return  # The queued start still owns ordering.
+        state = (CaptureState.RECORDING if getattr(self.app, "is_speaking", False)
+                 else CaptureState.HANDS_FREE_LISTENING)
+        if self.model.capture is not state:
+            self.model.consume(SurfaceEvent(EventKind.CAPTURE_CHANGED, capture=state))
+
+    def begin_capture(self, lane: Lane, *, capture: CaptureState | None = None,
                       capture_id: str | None = None) -> str:
         self._capture_seq += 1
         capture_id = capture_id or f"surface-{self._capture_seq}"
         self._active_capture = capture_id
+        self._active_lane = lane
+        capture = initial_capture_state(lane) if capture is None else capture
+        if lane is Lane.HANDS_FREE_DICTATE and getattr(self.app, "is_speaking", False):
+            capture = CaptureState.RECORDING
         self.post(SurfaceEvent(EventKind.CAPTURE_STARTED, capture_id=capture_id,
                                sequence=1, lane=lane, capture=capture))
         return capture_id
@@ -108,6 +127,7 @@ class LiveSurfaceController:
         self.post(SurfaceEvent(EventKind.CAPTURE_STOPPED, capture_id=self._active_capture,
                                sequence=2 ** 31 - 1, capture=capture or self.idle_capture))
         self._active_capture = None
+        self._active_lane = None
         if self.idle_capture is CaptureState.HANDS_FREE_LISTENING:
             self.post(SurfaceEvent(EventKind.LANE_CHANGED, lane=self.idle_lane))
 
@@ -303,11 +323,36 @@ class LiveSurfaceController:
             self.sync_draft(manager)
 
     def _clear(self) -> None:
+        hold = self._active_lane is Lane.HOLD
+        generation = self._capture_seq
+        if hold:
+            # Use the existing capture owner: it cancels audio, releases ducking
+            # and closes the stream. Retiring the token rejects delayed partials.
+            cancel = getattr(self.app, "cancel_recording", None)
+            if callable(cancel):
+                cancel()
+            else:
+                session = getattr(self.app, "_streaming_session", None)
+                if session is not None:
+                    session.cancel()
+            self.stop_capture()
         manager = self._manager()
         clear = getattr(manager, "confirm_clear_draft", None)
         if callable(clear):
             clear("live surface")
             self.sync_draft(manager)
+        if hold:
+            self.post(SurfaceEvent(EventKind.DOCUMENT_CLEARED))
+            # Host cancellation queues its legacy error chip. Place the explicit
+            # discard receipt after those callbacks, without letting it overwrite
+            # a newer capture. No widget/lane may revive the discarded token.
+            def cleared():
+                if generation != self._capture_seq:
+                    return
+                self.post(SurfaceEvent(EventKind.NOTICE_CLEARED))
+                self.post(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.RESULT,
+                                      message="cleared; nothing inserted", lane=Lane.HOLD, ttl_s=2.0))
+            qt_runtime.post(cleared)
 
     def _pause(self) -> None:
         pause_hold = getattr(self.app, "pause_hold_capture", None)
@@ -422,8 +467,11 @@ class LiveSurfaceIndicatorAdapter:
         self.controller.idle_capture = (CaptureState.HANDS_FREE_LISTENING if name else
                                        CaptureState.WAKE_ARMED if self._wake_armed else CaptureState.OFF)
         self.controller.idle_lane = self._session_lane or self._lane
+        self.clear_outcome()
         self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED,
-                                         lane=self._session_lane or self._lane))
+                                         lane=self._session_lane or self._lane,
+                                         capture=self.controller.idle_capture
+                                         if self.controller._active_capture is None else None))
         if self.controller._active_capture is None:
             self.controller.post(SurfaceEvent(EventKind.CAPTURE_CHANGED,
                                              capture=self.controller.idle_capture))
@@ -444,10 +492,13 @@ class LiveSurfaceIndicatorAdapter:
 
     def set_wake_armed(self, armed: bool) -> None:
         self._wake_armed = armed
+        self.clear_outcome()
         if self._session_lane is None:
             self.controller.idle_capture = CaptureState.WAKE_ARMED if armed else CaptureState.OFF
+            self.controller.idle_lane = Lane.HANDS_FREE_DICTATE if armed else self._lane
             if self.controller._active_capture is None:
-                self.controller.post(SurfaceEvent(EventKind.CAPTURE_CHANGED,
+                self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED,
+                                                  lane=self.controller.idle_lane,
                                                   capture=self.controller.idle_capture))
 
     def flash_wake(self) -> None:

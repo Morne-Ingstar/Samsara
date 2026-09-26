@@ -240,8 +240,10 @@ def test_surface_never_offers_an_insert_button_for_recording_pending_or_delivere
                      replace(review(), document=DocumentState.EDITABLE_DRAFT),
                      replace(review(), document=DocumentState.DELIVERED)):
             widget.refresh(view, animate=False)
-            assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)))
-        assert widget._state.text() == "Inserted"
+            # Finish2 R4 permits the separate waiting-draft action, hidden here.
+            assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)) if button.isVisible())
+        # Finish2 R1 includes the lane even on a current delivery receipt.
+        assert widget._state.text() == "Hold — inserted"
     finally:
         widget.deleteLater()
 

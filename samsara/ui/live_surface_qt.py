@@ -180,6 +180,7 @@ class LiveSurfaceWidget(QWidget):
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
         self._clear = self._button("Clear draft", "Clear", self.clear_requested.emit)
         self._clear.setObjectName("quietClear")
+        self._insert = self._button("Insert waiting text", "Insert text", self.commit_requested.emit)
         self._pause = self._button("Pause capture", "Pause", self.pause_requested.emit)
         self._correct = self._button("Correct a word", "Correct", self._request_correct)
         self._edit_receipt = self._button("Edit sent receipt as a new draft", "Edit as new draft", self._request_edit_receipt)
@@ -368,11 +369,9 @@ class LiveSurfaceWidget(QWidget):
                 self._sent_receipts.pop(0)
         self._update_mark()
         state = self._state_text(view)
-        if self._display_form() is VisibleForm.MARK and view.capture is CaptureState.OFF:
-            state = "Idle"
         self._state.setText(state); self._render_transcript()
         self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
-        words = len(view.text.split()); self._badge.setText(f"▤  Draft\n{words} word{'s' if words != 1 else ''}")
+        self._badge.setText("Tap Insert text to send.")
         previous_content = previous_text or previous.provisional_text
         if previous_content != (view.text or view.provisional_text) and previous_content and not self._follow_latest:
             self._unread_segments += 1
@@ -416,10 +415,10 @@ class LiveSurfaceWidget(QWidget):
 
     def _form_rect(self, form: VisibleForm) -> QRect:
         if form is VisibleForm.MARK: return QRect(self.x(), self.y(), COMPACT_WIDTH, MARK_SIZE)
-        if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), 120, MARK_SIZE)
+        if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), LIVE_SIZE[0], 112)
         if form is VisibleForm.STATUS:
             blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
-            return QRect(self.x(), self.y(), STATUS_SIZE[0] if blocking else 240, 68 if blocking else 60)
+            return QRect(self.x(), self.y(), STATUS_SIZE[0], 68 if blocking else 60)
         width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
         if self._selection is not None or self._picker_active:
             source = self._candidates if self._selection is not None else self._word_targets
@@ -446,7 +445,7 @@ class LiveSurfaceWidget(QWidget):
         self._animation = animation; animation.start()
 
     def _hide_children(self) -> None:
-        for child in (self._state, self._correction_hint, self._transcript, self._provisional, self._badge, self._latest,
+        for child in (self._state, self._correction_hint, self._transcript, self._provisional, self._badge, self._latest, self._insert,
                       *self._controls, *self._picker_buttons, *self._candidate_buttons,
                       self._keep, self._spell, self._edit, self._more, self._apply, self._cancel, self._editor): child.hide()
 
@@ -463,15 +462,20 @@ class LiveSurfaceWidget(QWidget):
             self._state.setGeometry(MARK_SIZE+REGION_GAP, 0, self.width()-MARK_SIZE-2*REGION_GAP, MARK_SIZE)
             self._state.show(); return
         if form is VisibleForm.DRAFT_BADGE:
-            self._mark.setGeometry(0, 0, MARK_SIZE, MARK_SIZE); self._badge.setGeometry(MARK_SIZE, 0, 76, MARK_SIZE); self._badge.show(); return
+            self._mark.setGeometry(8, 8, MARK_SIZE, MARK_SIZE)
+            self._state.setGeometry(64, 8, self.width()-152, MARK_SIZE); self._state.show()
+            self._clear.setGeometry(self.width()-72, 8, 64, MARK_SIZE); self._clear.show()
+            self._badge.setGeometry(16, 60, self.width()-164, MARK_SIZE); self._badge.show()
+            self._insert.setGeometry(self.width()-140, 60, 132, MARK_SIZE); self._insert.show(); return
         content = self.card_content_rect
         self._mark.setGeometry(content.x(), content.y(), MARK_SIZE, MARK_SIZE)
         clear_width = 88
         if form is VisibleForm.STATUS:
             blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
-            reserve = clear_width + REGION_GAP if blocking else 0
+            clearable = blocking or self._view.capture is CaptureState.RECORDING
+            reserve = clear_width + REGION_GAP if clearable else 0
             self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-12-reserve, content.height()); self._state.show()
-            if blocking:
+            if clearable:
                 self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
                 self._clear.show()
             return
@@ -548,7 +552,7 @@ class LiveSurfaceWidget(QWidget):
         self._more.setEnabled(len(source)>4)
 
     def _update_mask(self) -> None:
-        if self._display_form() in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE):
+        if self._display_form() is VisibleForm.MARK:
             path=QPainterPath(); path.addRoundedRect(QRectF(0,0,self.width(),MARK_SIZE),CARD_RADIUS,CARD_RADIUS); region=QRegion(path.toFillPolygon().toPolygon())
         else:
             path=QPainterPath(); path.addRoundedRect(QRectF(self.card_rect),CARD_RADIUS,CARD_RADIUS); region=QRegion(path.toFillPolygon().toPolygon())
@@ -562,7 +566,7 @@ class LiveSurfaceWidget(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
-        if self._display_form() in (VisibleForm.MARK,VisibleForm.DRAFT_BADGE):
+        if self._display_form() is VisibleForm.MARK:
             painter=QPainter(self)
             try: painter.setPen(QPen(theme.qcolor(theme.BORDER),1)); painter.setBrush(theme.qcolor(theme.BG1)); painter.drawRoundedRect(QRectF(.5,.5,self.width()-1,MARK_SIZE-1),CARD_RADIUS,CARD_RADIUS)
             finally:painter.end()
@@ -672,20 +676,25 @@ class LiveSurfaceWidget(QWidget):
         self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
     def _state_text(self,view:SurfaceView)->str:
+        labels = {"hold": "Hold", "toggle": "Hold", "hands_free_dictate": "Hands-free",
+                  "continuous": "Hands-free", "command": "Command", "ava": "Ava"}
+        lane = view.lane
         if view.notice.message and (view.notice.expires_at is None or view.capture not in
                                     (CaptureState.RECORDING, CaptureState.TRANSCRIBING)):
-            return view.notice.message
-        if view.capture is CaptureState.RECORDING:return "Recording"
-        if view.capture is CaptureState.TRANSCRIBING:return "Transcribing"
-        if view.capture is CaptureState.UNAVAILABLE:return "Microphone unavailable"
-        if view.lane is not None and view.capture is CaptureState.HANDS_FREE_LISTENING:
-            return {"command": "Command mode", "ava": "Ava listening",
-                    "hands_free_dictate": "Hands-free dictation"}.get(view.lane.value, "Listening")
-        if view.document is DocumentState.PARKED_DRAFT:return "Draft parked"
-        if view.document is DocumentState.DELIVERED:return "Inserted"
-        if view.document is not DocumentState.EMPTY:return "Draft pending"
-        if view.capture in (CaptureState.WAKE_ARMED,CaptureState.HANDS_FREE_LISTENING):return "Listening"
-        return "Microphone idle"
+            activity = view.notice.message
+            lane = view.notice.lane or lane
+        elif view.capture is CaptureState.RECORDING: activity = "recording"
+        elif view.capture is CaptureState.TRANSCRIBING: activity = "transcribing"
+        elif view.capture is CaptureState.UNAVAILABLE: activity = "microphone unavailable"
+        elif view.form is VisibleForm.DRAFT_BADGE:
+            words = len(view.text.split())
+            activity = f"{words} word{'s' if words != 1 else ''} waiting"
+        elif view.document is DocumentState.DELIVERED: activity = "inserted"
+        elif view.text: activity = "staged"
+        elif view.capture in (CaptureState.WAKE_ARMED,CaptureState.HANDS_FREE_LISTENING): activity = "listening"
+        else: return "Idle"
+        label = labels.get(lane.value if lane is not None else "", "Hold")
+        return f"{label} — {activity}"
     def _announce_transition(self,previous:SurfaceView,current:SurfaceView)->None:
         if previous.capture is not current.capture:self._announce(("capture",current.capture),self._state_text(current))
         elif previous.document is not current.document and current.document is DocumentState.PARKED_DRAFT:self._announce(("parked",current.document_id,current.revision),"Draft parked")

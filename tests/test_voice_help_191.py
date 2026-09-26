@@ -109,8 +109,13 @@ def test_status_bar_suspends_wake_only_during_hands_free():
     assert main_window_qt.theme.TEXT_PRIMARY in target._lbl_wake.styleSheet()
 
 
-def test_wake_phrase_dropdown_lists_models_and_saves_selection(qapp):
+def test_wake_phrase_dropdown_lists_models_and_saves_selection(qapp, monkeypatch):
     from samsara.ui.settings_qt import _SettingsWindow
+    from samsara.ui.first_run_qt import ComponentsPage
+
+    # Settings embeds ComponentsPage, but this test does not start qt_runtime's
+    # event loop; run its manifest refresh synchronously instead of dropping the post.
+    monkeypatch.setattr(ComponentsPage, "refresh_async", ComponentsPage.refresh)
 
     class StubApp:
         def __init__(self):
@@ -149,7 +154,8 @@ def test_wake_phrase_dropdown_lists_models_and_saves_selection(qapp):
     assert combo.currentText() == "jarvis"
 
     combo.setCurrentText("computer")
-    updates = window._save_fns[1]({})
+    # Settings now has one aggregate destination-save callback at index zero.
+    updates = window._save_fns[0]({})
     assert updates["wake_word_config"]["phrase"] == "computer"
     labels = " ".join(label.text() for label in window.findChildren(QLabel))
     assert "Wake phrases are trained models. Custom phrases need a custom model." in labels
