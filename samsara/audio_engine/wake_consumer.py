@@ -304,6 +304,7 @@ class WakeConsumer:
         # Local utterance buffer (replaces app.speech_buffer for wake path)
         self._utterance_frames: list = []   # float32 arrays at SAMPLE_RATE
         self._buffer_rms_history: list = []
+        self._last_voice_ns: int | None = None
         self._last_epoch: int | None  = None
 
         # FIX 1 (2026-07-10 hotkey word-loss investigation): tracks the
@@ -354,6 +355,7 @@ class WakeConsumer:
                 return False
             self._utterance_frames = []
             self._buffer_rms_history = []
+            self._last_voice_ns = None
             self._last_epoch = None
             self._await_wake_onset = False
             self._silero_was_speech = False
@@ -424,6 +426,7 @@ class WakeConsumer:
         app = self._app
         self._utterance_frames   = []
         self._buffer_rms_history = []
+        self._last_voice_ns = None
         app.is_speaking   = False
         app.silence_start = None
         try:
@@ -664,10 +667,17 @@ class WakeConsumer:
             and not cls._is_toggle_dictate(app)
         )
 
-    def _enqueue_toggle_utterance(self, buffer_copy: list, owner_token: int | None) -> None:
+    def _enqueue_toggle_utterance(
+        self, buffer_copy: list, owner_token: int | None,
+        last_voice_ns: int | None = None, speech_end_ns: int | None = None,
+    ) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
         with self._toggle_queue_lock:
-            self._toggle_queue.append((buffer_copy, owner_token))
+            if last_voice_ns is None or speech_end_ns is None:
+                queued = (buffer_copy, owner_token)
+            else:
+                queued = (buffer_copy, owner_token, last_voice_ns, speech_end_ns)
+            self._toggle_queue.append(queued)
             if self._toggle_worker_active:
                 return
             self._toggle_worker_active = True
@@ -727,7 +737,9 @@ class WakeConsumer:
                 if not self._toggle_queue:
                     self._toggle_worker_active = False
                     return
-                buffer_copy, owner_token = self._toggle_queue.popleft()
+                queued = self._toggle_queue.popleft()
+                buffer_copy, owner_token = queued[:2]
+                endpoint = queued[2:] if len(queued) > 2 else ()
 
             if not self._is_toggle_cmd(self._app):
                 logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
@@ -736,7 +748,13 @@ class WakeConsumer:
                 continue
             flight_recorder.record('session.dispatch', op='started', kind='toggle_command', thread='cmd-utt-queue')
             try:
-                self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
+                if endpoint:
+                    self._app._handle_command_mode_utterance(
+                        buffer_copy, SAMPLE_RATE,
+                        last_voice_ns=endpoint[0], speech_end_ns=endpoint[1],
+                    )
+                else:
+                    self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
                 flight_recorder.record('session.dispatch', op='completed', kind='toggle_command', exc=True)
@@ -765,7 +783,8 @@ class WakeConsumer:
         with self._toggle_queue_lock:
             queued = list(self._toggle_queue)
             self._toggle_queue.clear()
-        for _frames, token in queued:
+        for item in queued:
+            token = item[1]
             if token is not None:
                 self._close_hands_free_duck_safe(app, token)
 
@@ -880,6 +899,7 @@ class WakeConsumer:
             self._log_frame(logging.WARNING, 'frame_562', "[ACE] Wake path: epoch change — aborting utterance, resetting state")
             self._utterance_frames   = []
             self._buffer_rms_history = []
+            self._last_voice_ns = None
             app.is_speaking   = False
             app.silence_start = None
             self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
@@ -1216,6 +1236,7 @@ class WakeConsumer:
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
+            self._last_voice_ns = int(frame.t_capture * 1_000_000_000)
             speech_onset   = not app.is_speaking
             app.is_speaking   = True
             app.silence_start = None
@@ -1330,6 +1351,7 @@ class WakeConsumer:
                     )
                     self._utterance_frames   = []
                     self._buffer_rms_history = []
+                    self._last_voice_ns = None
                     app.is_speaking   = False
                     app.silence_start = None
                     try:
@@ -1349,6 +1371,7 @@ class WakeConsumer:
                 )
                 self._utterance_frames   = []
                 self._buffer_rms_history = []
+                self._last_voice_ns = None
                 app.is_speaking   = False
                 app.silence_start = None
                 try:
@@ -1368,6 +1391,8 @@ class WakeConsumer:
                 if app.silence_start is None:
                     app.silence_start = time.time()
                 elif time.time() - app.silence_start >= silence_threshold:
+                    speech_end_ns = time.perf_counter_ns()
+                    last_voice_ns = self._last_voice_ns
                     # Enough silence — flush if sufficient speech
                     speech_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
                     if speech_s >= min_speech:
@@ -1376,6 +1401,7 @@ class WakeConsumer:
                         buffer_copy = None
                     self._utterance_frames   = []
                     self._buffer_rms_history = []
+                    self._last_voice_ns = None
                     app.is_speaking   = False
                     app.silence_start = None
 
@@ -1384,7 +1410,10 @@ class WakeConsumer:
                             'wake.session_close', reason='silence_flush',
                             speech_s=speech_s,
                         )
-                        self._flush(buffer_copy, self._hands_free_capture_duck_token)
+                        self._flush(
+                            buffer_copy, self._hands_free_capture_duck_token,
+                            last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns,
+                        )
                     else:
                         # Too short to count as a real utterance -- the
                         # capture window this onset opened closes here
@@ -1429,9 +1458,13 @@ class WakeConsumer:
                 WakeConsumer._close_hands_free_duck_safe(app, owner_token)
         return _wrapped
 
-    def _flush(self, buffer_copy: list, owner_token: int | None = None) -> None:
+    def _flush(
+        self, buffer_copy: list, owner_token: int | None = None, *,
+        last_voice_ns: int | None = None, speech_end_ns: int | None = None,
+    ) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
+        has_endpoint = last_voice_ns is not None and speech_end_ns is not None
         # Dispatch now owns this token. A later short capture/abort must not
         # close the owner of an utterance still waiting for Whisper.
         if owner_token is not None and self._hands_free_capture_duck_token == owner_token:
@@ -1444,7 +1477,12 @@ class WakeConsumer:
         # point), not here (enqueueing is not processing).
         if self._is_toggle_cmd(app):
             flight_recorder.record('session.dispatch', op='enqueued', kind='toggle_command')
-            self._enqueue_toggle_utterance(buffer_copy, owner_token)
+            if has_endpoint:
+                self._enqueue_toggle_utterance(
+                    buffer_copy, owner_token, last_voice_ns, speech_end_ns,
+                )
+            else:
+                self._enqueue_toggle_utterance(buffer_copy, owner_token)
             return
 
         if getattr(app, '_wake_rearm_needs_onset', False) is True:
@@ -1504,10 +1542,14 @@ class WakeConsumer:
         )
         # The app queue owns passive dispatch tokens too; never publish them
         # back into the consumer's next capture window.
-        app.process_wake_word_buffer(
-            buffer_copy, SAMPLE_RATE, oww_confirmed=oww_confirmed,
-            owner_token=owner_token, tracked=app.app_state == 'long_dictation',
-        )
+        kwargs = {
+            'oww_confirmed': oww_confirmed,
+            'owner_token': owner_token,
+            'tracked': app.app_state == 'long_dictation',
+        }
+        if has_endpoint:
+            kwargs.update(last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns)
+        app.process_wake_word_buffer(buffer_copy, SAMPLE_RATE, **kwargs)
 
     def __repr__(self) -> str:
         return (

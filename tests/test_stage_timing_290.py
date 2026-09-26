@@ -1,11 +1,17 @@
 """Focused tests for the opt-in stage timing journal and report CLI."""
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
+import threading
 import time
+import types
 
 from samsara.config_schema import SETTINGS_SCHEMA
-from samsara.stage_timing import STAGES, StageTiming
+from samsara.stage_timing import (
+    STAGES, StageTiming, reset_current_stage_timing, set_current_stage_timing,
+)
 from tools.stage_timing_report import load_records, render_report
 
 
@@ -24,6 +30,9 @@ def _write_complete_record(root, route: str, mode: str, audio_s: float, words: i
 def test_stage_timing_defaults_off_and_creates_no_file(tmp_path):
     assert SETTINGS_SCHEMA["diagnostics.stage_timing"]["default"] is False
     timing = StageTiming.create("hold", "dictate", enabled=False, home_dir=tmp_path)
+    assert timing.outcome is None
+    assert timing.last_voice_source is None
+    assert timing.endpoint_wait_ms is None
     timing.mark("speech_end")
     timing.complete()
     assert not (tmp_path / "perf" / "stage_timing.jsonl").exists()
@@ -62,6 +71,44 @@ def test_endpoint_wait_outcome_and_segment_index_serialize(tmp_path):
     assert row["last_voice_source"] == "key_release"
     assert row["segment_index"] == 2
     assert row["outcome"] == "typed"
+
+
+def test_mark_at_records_known_endpoint_wait(tmp_path):
+    timing = StageTiming.create("wake", "dictate", enabled=True, home_dir=tmp_path)
+    timing.mark_at("last_voice", 1_000_000_000, last_voice_source="vad")
+    timing.mark_at("speech_end", 1_875_000_000)
+    assert timing.endpoint_wait_ms == 875.0
+    timing.complete()
+    row = json.loads((tmp_path / "perf" / "stage_timing.jsonl").read_text(encoding="utf-8"))
+    assert row["deltas_ms"]["endpoint_wait_ms"] == 875.0
+    assert row["last_voice_source"] == "vad"
+
+
+def test_stop_recording_with_disabled_timing_uses_noop_surface():
+    """Exercise the real stop wrapper body without importing dictation.py."""
+    source = Path(__file__).resolve().parents[1] / "dictation.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    app_class = next(node for node in tree.body
+                     if isinstance(node, ast.ClassDef) and node.name == "DictationApp")
+    stop_method = next(node for node in app_class.body
+                       if isinstance(node, ast.FunctionDef) and node.name == "stop_recording")
+    module = types.ModuleType("dictation_stop_recording_test")
+    module.__dict__.update(
+        StageTiming=StageTiming,
+        set_current_stage_timing=set_current_stage_timing,
+        reset_current_stage_timing=reset_current_stage_timing,
+    )
+    exec(compile(ast.Module(body=[stop_method], type_ignores=[]), str(source), "exec"), module.__dict__)
+    app = types.SimpleNamespace(
+        recording=False,
+        _stage_timing_enabled=False,
+        _streaming_session=None,
+        _hold_capture_lifecycle_lock=threading.RLock(),
+        _stop_recording_impl=lambda **kwargs: None,
+        _restore_audio=lambda: None,
+        _close_hold_capture_duck=lambda: None,
+    )
+    module.stop_recording(app)
 
 
 def test_feedback_completion_waits_for_nonblocking_audio_callback(tmp_path):

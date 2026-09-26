@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import threading
@@ -62,8 +62,22 @@ class _NoopTiming:
     """A zero-output recorder so instrumentation never forks app behavior."""
 
     handed_off = False
+    audio_s: float | None = None
+    words: int | None = None
+    model: str | None = None
+    beam: int | None = None
+    outcome: str | None = None
+    segment_index: int | None = None
+    last_voice_source: str | None = None
 
     def mark(self, stage: str, **fields) -> None:
+        return None
+
+    def mark_at(self, stage: str, monotonic_ns: int, **fields) -> None:
+        return None
+
+    @property
+    def endpoint_wait_ms(self) -> float | None:
         return None
 
     def feedback_started(self) -> None:
@@ -158,18 +172,32 @@ class StageTiming:
         self._handed_off = True
 
     def mark(self, stage: str, **fields) -> None:
+        self.mark_at(stage, time.perf_counter_ns(), **fields)
+
+    def mark_at(self, stage: str, monotonic_ns: int, **fields) -> None:
+        """Record a stage using a timestamp captured earlier on this clock."""
         if stage not in self._monotonic_ns:
             raise ValueError(f"unknown timing stage: {stage}")
-        now_ns = time.perf_counter_ns()
-        now_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        mark_ns = int(monotonic_ns)
+        utc_now = datetime.now(timezone.utc)
+        offset_s = (time.perf_counter_ns() - mark_ns) / 1_000_000_000
+        mark_utc = (utc_now - timedelta(seconds=offset_s)).isoformat(timespec="milliseconds")
         with self._lock:
             if self._monotonic_ns[stage] is None:
-                self._monotonic_ns[stage] = now_ns
-                self._utc[stage] = now_utc
+                self._monotonic_ns[stage] = mark_ns
+                self._utc[stage] = mark_utc
             for key in ("audio_s", "words", "model", "beam", "outcome",
                         "segment_index", "last_voice_source"):
                 if key in fields and fields[key] is not None:
                     setattr(self, key, fields[key])
+
+    @property
+    def endpoint_wait_ms(self) -> float | None:
+        last_voice_ns = self._monotonic_ns["last_voice"]
+        speech_end_ns = self._monotonic_ns["speech_end"]
+        if last_voice_ns is None or speech_end_ns is None:
+            return None
+        return round((speech_end_ns - last_voice_ns) / 1_000_000, 3)
 
     def feedback_started(self) -> None:
         with self._lock:

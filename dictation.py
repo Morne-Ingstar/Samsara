@@ -6849,7 +6849,10 @@ class DictationApp:
         if self.command_mode_active and not self.recording:
             self.command_mode_recording = True
             self.start_recording(streaming=False, play_earcon=False)
-    def _handle_command_mode_utterance(self, buffer: list, src_rate: int) -> None:
+    def _handle_command_mode_utterance(
+        self, buffer: list, src_rate: int, *,
+        last_voice_ns: int | None = None, speech_end_ns: int | None = None,
+    ) -> None:
         """Transcribe and dispatch one queued VAD-gated utterance in the
         unified toggle-command-mode session (COMMAND <-> DICTATE).
 
@@ -6884,8 +6887,13 @@ class DictationApp:
             "handsfree", getattr(_active_mode, "value", "unknown"),
             enabled=getattr(self, "_stage_timing_enabled", False),
         )
-        stage_timing.mark("speech_end", segment_index=getattr(self, "_stage_timing_segment_index", None),
-                          last_voice_source="vad_unavailable")
+        segment_index = getattr(self, "_stage_timing_segment_index", None)
+        if last_voice_ns is not None and speech_end_ns is not None:
+            stage_timing.mark_at("last_voice", last_voice_ns, last_voice_source="vad")
+            stage_timing.mark_at("speech_end", speech_end_ns, segment_index=segment_index)
+        else:
+            stage_timing.mark("speech_end", segment_index=segment_index,
+                              last_voice_source="vad_unavailable")
         timing_token = set_current_stage_timing(stage_timing)
         token = self._transcription_owners.claim('toggle')
         # 2026-09-14 (queue 54): every capture logs its session mode, and
@@ -9444,7 +9452,8 @@ class DictationApp:
         return False
 
     def process_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False,
-                                 owner_token=None, tracked=False):
+                                 owner_token=None, tracked=False,
+                                 last_voice_ns=None, speech_end_ns=None):
         """Transfer one utterance to the bounded wake FIFO.
 
         The capture duck protects recording, not Whisper decoding. Release
@@ -9456,7 +9465,11 @@ class DictationApp:
             "wake", getattr(_session_mode, "value", self.app_state),
             enabled=getattr(self, "_stage_timing_enabled", False),
         )
-        stage_timing.mark("speech_end", last_voice_source="vad_unavailable")
+        if last_voice_ns is not None and speech_end_ns is not None:
+            stage_timing.mark_at("last_voice", last_voice_ns, last_voice_source="vad")
+            stage_timing.mark_at("speech_end", speech_end_ns)
+        else:
+            stage_timing.mark("speech_end", last_voice_source="vad_unavailable")
         with self._wake_session_lock:
             session_started_at = (
                 getattr(self, '_wake_session_started_at', None)
