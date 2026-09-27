@@ -7,13 +7,15 @@ Shared names are imported back from samsara.ui.settings_qt; see
 samsara/ui/settings/__init__.py for why that import is cycle-safe.
 """
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -25,6 +27,8 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara import ai_preferences, ava_readiness, config_defaults
+from samsara.ava_memory import PersonalMemory
+from samsara.paths import samsara_home_dir
 from samsara.log import get_logger
 from samsara.ui import ava_consent_qt, theme
 
@@ -243,21 +247,37 @@ class AvaCloudPage:
         mem_cfg = self.app.config.get("ava_memory", {})
 
         memory_combo = QComboBox()
-        memory_combo.addItems(["Clear on close", "Keep last session"])
+        memory_combo.addItems(["Clear on close", "Keep last session", "Ava remembers me"])
         mem_mode = mem_cfg.get("mode", "clear")
         memory_combo.setCurrentText(
-            "Keep last session" if mem_mode == "last" else "Clear on close"
+            {"last": "Keep last session", "assistant": "Ava remembers me"}.get(mem_mode, "Clear on close")
         )
         self._widgets['ava_memory_mode'] = memory_combo
         layout.addWidget(memory_combo)
 
         memory_note = QLabel(
-            "Clear on close: Ava forgets the conversation when Samsara exits. "
-            "Keep last session: the conversation is restored on next launch."
-        )
+            "Clear on close: your conversation ends when Samsara closes. "
+            "Keep last session: your last conversation returns next time. "
+            "Ava remembers me: Ava saves facts you tell her and short session summaries "
+            "in a file you can read and erase. Say 'what do you remember about me' or 'forget ...'. "
+            "Switching modes leaves that file in place until you erase it."
+        )  # OWNER COPY
         memory_note.setWordWrap(True)
         memory_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 4px;")
         layout.addWidget(memory_note)
+        memory_actions = QHBoxLayout()
+        open_memory = QPushButton("Open memory file")
+        open_memory.setAccessibleName("Open Ava memory file")
+        theme.make_secondary(open_memory)
+        open_memory.clicked.connect(self._open_ava_memory_file)
+        memory_actions.addWidget(open_memory)
+        erase_memory = QPushButton("Erase memory")
+        erase_memory.setAccessibleName("Erase Ava memory")
+        theme.make_secondary(erase_memory)
+        erase_memory.clicked.connect(self._erase_ava_memory_file)
+        memory_actions.addWidget(erase_memory)
+        memory_actions.addStretch()
+        layout.addLayout(memory_actions)
         layout.addSpacing(6)
 
         turns_spin = QSpinBox()
@@ -585,7 +605,7 @@ class AvaCloudPage:
             if 'ava_memory_mode' in self._widgets:
                 mem_updates = dict(self.app.config.get('ava_memory', {}))
                 mode_text = self._widgets['ava_memory_mode'].currentText()
-                mem_updates['mode'] = 'last' if mode_text == 'Keep last session' else 'clear'
+                mem_updates['mode'] = {"Keep last session": "last", "Ava remembers me": "assistant"}.get(mode_text, "clear")
                 if 'ava_memory_max_turns' in self._widgets:
                     mem_updates['max_turns'] = int(
                         self._widgets['ava_memory_max_turns'].value()
@@ -634,12 +654,70 @@ class AvaCloudPage:
                 for key in ava_consent_qt._PREFERENCE_KEYS:
                     if key in preferred:
                         updates[key] = preferred[key]
+            # OWNER COPY: acknowledge sending the optional memory block on
+            # cloud requests, including when cloud was enabled before memory.
+            mem_choice = updates.get("ava_memory", {}).get("mode")
+            cloud_choice = (updates.get("ava", self.app.config.get("ava", {})) or {}).get("provider_policy")
+            if mem_choice == "assistant" and cloud_choice == "cloud":
+                ava_cfg = dict(updates.get("ava", self.app.config.get("ava", {})) or {})
+                consent = dict(ava_cfg.get("consent", {}) or {})
+                if not consent.get("memory_cloud_accepted"):
+                    answer = QMessageBox.question(
+                        self, "Ava memory in cloud requests",
+                        "When you use cloud AI, Ava sends your saved facts and recent session summaries "
+                        "with each request. Turn on remembered facts for cloud requests?",  # OWNER COPY
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if answer == QMessageBox.StandardButton.Yes:
+                        consent["memory_cloud_accepted"] = True
+                        ava_cfg["consent"] = consent
+                        updates["ava"] = ava_cfg
+                    else:
+                        previous = (self.app.config.get("ava_memory", {}) or {}).get("mode", "clear")
+                        updates["ava_memory"]["mode"] = previous
+                        self._widgets["ava_memory_mode"].setCurrentText(
+                            {"last": "Keep last session", "assistant": "Ava remembers me"}.get(
+                                previous, "Clear on close"))
             return updates
         self._save_fns.append(_save)
 
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _open_ava_memory_file(self):
+        memory = PersonalMemory()
+        try:
+            memory.ensure_file()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(memory.path)))
+        except (OSError, ValueError) as exc:
+            logger.warning("[AVA MEMORY] open failed: %s", type(exc).__name__)
+            QMessageBox.warning(self, "Ava memory", "I couldn't open your memory file.")  # OWNER COPY
+
+    def _erase_ava_memory_file(self):
+        answer = QMessageBox.question(
+            self, "Erase Ava memory",
+            "Erase the facts and session summaries Ava saved about you?",  # OWNER COPY
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.app._ava_memory_generation = getattr(self.app, "_ava_memory_generation", 0) + 1
+            PersonalMemory().erase()
+            legacy = samsara_home_dir() / "ava_memory.json"
+            if legacy.exists():
+                legacy.unlink()
+            if hasattr(self.app, "_ava_memory"):
+                self.app._ava_memory.clear()
+                self.app._ava_memory._legacy_path = None
+            self.app._ava_summary_pending = []
+            self.app._ava_legacy_history = []
+        except (OSError, ValueError) as exc:
+            logger.warning("[AVA MEMORY] erase failed: %s", type(exc).__name__)
+            QMessageBox.warning(self, "Ava memory", "I couldn't erase your memory file.")  # OWNER COPY
 
     def _configure_ava_route_master(self, route):
         route.addItem("Off", "off")

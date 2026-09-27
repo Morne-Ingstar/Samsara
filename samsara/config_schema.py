@@ -1113,7 +1113,7 @@ SETTINGS_SCHEMA = {
     },
     "ava_memory.mode": {
         "type": "enum",
-        "options": ["clear", "last"],
+        "options": ["clear", "last", "assistant"],
         "default": "clear",
         "tab": "ava",
     },
@@ -1124,6 +1124,16 @@ SETTINGS_SCHEMA = {
         "step": 5,
         "default": 20,
         "tab": "ava",
+    },
+    "ava_memory.sessions_kept": {
+        "type": "int", "min": 0, "max": 365, "default": 30, "tab": "ava",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only limit for dated summaries in assistant memory.",
+    },
+    "ava_memory.recall_sessions": {
+        "type": "int", "min": 0, "max": 30, "default": 3, "tab": "ava",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only limit for summaries recalled in a reply.",
     },
 
     # Ollama / local LLM (also in Ava tab)

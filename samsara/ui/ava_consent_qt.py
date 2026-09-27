@@ -33,6 +33,9 @@ She can get things wrong. Samsara can undo the last thing she typed, but not eve
 If you use a cloud AI, what you say to Ava is sent to that provider on your own account and your own key.
 Local AI never leaves this computer.
 
+If you turn on Ava's assistant memory, you can read or erase its local memory file.
+When you choose a cloud AI, its remembered facts and recent session summaries are also sent with your requests.
+
 You're in charge. Turn Ava off any time."""
 
 

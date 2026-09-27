@@ -6341,6 +6341,8 @@ class DictationApp:
             self.stop_recording()
         elif not self._ava_mode_ghost_tap:
             self.play_sound('stop')
+        from plugins.commands.ask_ollama import _finish_ava_session  # noqa: PLC0415
+        _finish_ava_session(self)
 
     # ------------------------------------------------------------------
     # Ava command session (D3, Ava Front Door spec v2) -- replaces the
@@ -6480,6 +6482,8 @@ class DictationApp:
             logger.debug(f"[AVA-CMD] Queue cancel on exit failed: {e}")
         self._release_wake_consumer('ava_command_session')
         self.play_sound('stop')
+        from plugins.commands.ask_ollama import _finish_ava_session  # noqa: PLC0415
+        _finish_ava_session(self)
 
     def _reset_ava_cmd_inactivity_timer(self, timeout_s):
         """Spec D3 "Timeouts": inactivity exit after timeout_s of silence
@@ -13655,6 +13659,8 @@ class DictationApp:
         if not self._resolve_parked_draft_before_quit():
             return
         logger.info("[EXIT] Shutting down Samsara...")
+        from plugins.commands.ask_ollama import _finish_ava_session  # noqa: PLC0415
+        _finish_ava_session(self, wait=True)
 
         # Release the Win32 mouse hook FIRST (32): nothing below may hold the
         # user's mouse hostage, and this method ends in os._exit, which skips

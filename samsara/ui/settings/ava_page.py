@@ -17,7 +17,7 @@ BASE = [
     ],
     [
         "Memory retention",
-        "Choose whether conversations survive closing Samsara.",
+        "Choose whether Ava starts fresh, keeps the last conversation, or remembers facts you tell her.",  # OWNER COPY
         "ava_memory_mode",
         "ava_memory.mode"
     ],

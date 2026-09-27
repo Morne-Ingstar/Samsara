@@ -1,4 +1,6 @@
 import re
+import os
+import json
 import threading
 import time
 from dataclasses import dataclass
@@ -12,7 +14,8 @@ from samsara import ava_profile
 from samsara import ava_readiness
 from samsara import cloud_llm
 from samsara import teach_patterns
-from samsara.ava_memory import AvaMemory
+from samsara.ava_memory import AvaMemory, PersonalMemory
+from samsara.paths import samsara_home_dir
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
@@ -234,18 +237,189 @@ def _build_ava_memory(app):
     max_turns = int(mem_cfg.get("max_turns", 20))
 
     if mode == "last":
-        return AvaMemory(max_turns=max_turns, persist_path=_ava_memory_path(app))
+        memory = AvaMemory(max_turns=max_turns, persist_path=_ava_memory_path(app))
+        memory._mode = mode
+        return memory
+
+    if mode == "assistant":
+        # Read the old last-session JSON once; the Markdown store becomes the
+        # sole durable authority after a successful local summary.
+        legacy = str(samsara_home_dir() / "ava_memory.json")
+        memory = AvaMemory(max_turns=max_turns)
+        memory._legacy_path = None
+        memory._mode = mode
+        personal = _personal_memory(app)
+        personal.ensure_file()
+        if os.path.exists(legacy):
+            try:
+                with open(legacy, encoding="utf-8") as handle:
+                    old_turns = json.load(handle)
+                if not isinstance(old_turns, list) or any(
+                        not isinstance(turn, dict) or turn.get("role") not in ("user", "assistant")
+                        or not isinstance(turn.get("content"), str) for turn in old_turns):
+                    raise ValueError("Invalid legacy history")
+                app._ava_legacy_history = old_turns
+                memory._legacy_path = legacy
+                for turn in old_turns:
+                    if turn["role"] == "user":
+                        personal.remember(turn["content"])
+            except (OSError, ValueError) as exc:
+                logger.warning("[AVA MEMORY] legacy history left unchanged: %s", type(exc).__name__)
+        return memory
 
     # "clear" (or unknown): session-only, no disk. Remove any stale file so a
     # previous "last" session doesn't linger after switching back to clear.
     try:
-        import os
         stale = _ava_memory_path(app)
         if os.path.exists(stale):
             os.remove(stale)
     except OSError as e:
         logger.debug(f"_build_ava_memory: {e}")
-    return AvaMemory(max_turns=max_turns)
+    memory = AvaMemory(max_turns=max_turns)
+    memory._mode = "clear"
+    return memory
+
+
+def _personal_memory(app):
+    memory = getattr(app, "_ava_personal_memory", None)
+    cfg = getattr(app, "config", {}).get("ava_memory", {}) or {}
+    if memory is None:
+        memory = PersonalMemory(
+            path=samsara_home_dir() / "ava_memory.md",
+            sessions_kept=cfg.get("sessions_kept", 30),
+            recall_sessions=cfg.get("recall_sessions", 3),
+        )
+        app._ava_personal_memory = memory
+    else:
+        memory.sessions_kept = max(0, int(cfg.get("sessions_kept", 30)))
+        memory.recall_sessions = max(0, int(cfg.get("recall_sessions", 3)))
+    return memory
+
+
+def _memory_mode(app):
+    return (getattr(app, "config", {}).get("ava_memory", {}) or {}).get("mode", "clear")
+
+
+def _assistant_recall_allowed(app, state):
+    if _memory_mode(app) != "assistant":
+        return False
+    if state.provider.identity == "ollama":
+        return True
+    config = getattr(app, "config", {})
+    return bool((config.get("ava", {}) or {}).get("provider_policy") == "cloud"
+                and (config.get("cloud_llm", {}) or {}).get("enabled")
+                and ((config.get("ava", {}) or {}).get("consent", {}) or {}).get("memory_cloud_accepted"))
+
+
+def _handle_personal_memory_intent(app, utterance):
+    """Handle voice inspection and edits before any provider request."""
+    if _memory_mode(app) != "assistant":
+        return False
+    memory = _personal_memory(app)
+    phrase = " ".join(utterance.split()).strip().rstrip(".?!")
+    lower = phrase.casefold()
+    try:
+        if lower in {"what do you remember about me", "what do you remember"}:
+            facts = memory.about()
+            speak(app, "I remember: " + "; ".join(facts) if facts else "I don't have any facts about you saved.")
+            return True
+        if lower == "forget everything":
+            app._ava_erase_pending_until = time.monotonic() + 30
+            speak(app, "This will erase your Ava memory file. Say yes, forget everything to confirm.")
+            return True
+        if lower == "yes, forget everything" or lower == "yes forget everything":
+            if time.monotonic() > getattr(app, "_ava_erase_pending_until", 0):
+                speak(app, "That confirmation expired. Say forget everything to start again.")
+                return True
+            app._ava_erase_pending_until = 0
+            app._ava_memory_generation = getattr(app, "_ava_memory_generation", 0) + 1
+            memory.erase()
+            legacy = samsara_home_dir() / "ava_memory.json"
+            if legacy.exists():
+                legacy.unlink()
+            if hasattr(app, "_ava_memory"):
+                app._ava_memory.clear()
+                app._ava_memory._legacy_path = None
+            app._ava_summary_pending = []
+            app._ava_legacy_history = []
+            speak(app, "Your Ava memory is erased.")
+            return True
+        if lower.startswith("forget "):
+            app._ava_memory_generation = getattr(app, "_ava_memory_generation", 0) + 1
+            removed = memory.forget(phrase[7:])
+            speak(app, "I removed it and won't remember it again." if removed else
+                  "I added that to your do-not-remember list.")
+            return True
+        if memory.remember(phrase):
+            speak(app, "I'll remember that. You can ask what I remember or tell me to forget it.")
+            return True
+        if lower.startswith("remember that "):
+            speak(app, "I couldn't save that. Check the do-not-remember section of your memory file.")
+            return True
+    except (OSError, ValueError) as exc:
+        logger.warning("[AVA MEMORY] local update failed: %s", type(exc).__name__)
+        speak(app, "I couldn't update your memory file.")
+        return True
+    return False
+
+
+def _finish_ava_session(app, *, wait=False):
+    """Summarize completed turns through Ollama only, after Ava exits."""
+    if _memory_mode(app) != "assistant" or not hasattr(app, "_ava_memory"):
+        return
+    history = app._ava_memory.take_session()
+    if not hasattr(app, "_ava_summary_lock"):
+        app._ava_summary_lock = threading.Lock()
+        app._ava_summary_worker_lock = threading.Lock()
+    with app._ava_summary_lock:
+        pending = getattr(app, "_ava_summary_pending", [])
+        pending.extend(getattr(app, "_ava_legacy_history", []))
+        app._ava_legacy_history = []
+        pending.extend(history)
+        app._ava_summary_pending = pending
+    if not pending:
+        return
+
+    def _summarize():
+        with app._ava_summary_worker_lock:
+            with app._ava_summary_lock:
+                batch = list(app._ava_summary_pending)
+                generation = getattr(app, "_ava_memory_generation", 0)
+            if not batch:
+                return
+            memory = _personal_memory(app)
+            try:
+                safe = [f"{row['role']}: {part}" for row in batch[-16:]
+                        if (part := memory.safe_for_summary(row.get("content", "")))]
+                if not safe:
+                    return
+                response = ai_transport.post_local(
+                    f"{get_host(app)}/api/chat",
+                    json={"model": get_model(app), "stream": False, "messages": [
+                        {"role": "system", "content": "Summarize this Ava session in one plain sentence. "
+                         "Do not quote the person. Do not include sensitive details or identifiers. "
+                         "Return only the sentence."},
+                        {"role": "user", "content": "\n".join(safe)[:2400]},
+                    ]}, timeout=min(get_timeout(app), 15),
+                )
+                response.raise_for_status()
+                summary = ava_readiness.ollama_response_content(response)
+                with app._ava_summary_lock:
+                    if (summary and generation == getattr(app, "_ava_memory_generation", 0)
+                            and memory.add_summary(summary)):
+                        if app._ava_summary_pending[:len(batch)] == batch:
+                            del app._ava_summary_pending[:len(batch)]
+                        legacy = getattr(app._ava_memory, "_legacy_path", None)
+                        if legacy:
+                            os.remove(legacy)
+                            app._ava_memory._legacy_path = None
+            except Exception as exc:
+                logger.warning("[AVA MEMORY] local summary unavailable: %s", type(exc).__name__)
+
+    if wait:
+        _summarize()
+    else:
+        thread_registry.spawn("ask_ollama.memory_summary", _summarize, daemon=True)
 
 # ── Unsafe commands — require confirmation before executing ───────────────────
 # Anything destructive, irreversible, or context-sensitive in a way that
@@ -1364,6 +1538,14 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             print(f"[AVA PROMPT] Relevant aliases injected: {aliases_ctx.count(chr(10) + '-')}")
     _remember_alias_turn(app, prompt)
 
+    # Assistant memory is opt-in. Cloud receives the same bounded block only
+    # when the owner selected the cloud route and enabled that provider.
+    if _assistant_recall_allowed(app, state):
+        try:
+            system = _personal_memory(app).prompt_block() + "\n" + system
+        except (OSError, ValueError) as exc:
+            logger.warning("[AVA MEMORY] recall unavailable: %s", type(exc).__name__)
+
     # Language awareness: ask Ava to respond in the user's language
     lang = getattr(app, 'config', {}).get('language', 'en')
     if lang != 'en':
@@ -1376,7 +1558,8 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         )
 
     # ── Conversation memory ──
-    if not hasattr(app, "_ava_memory"):
+    if (not hasattr(app, "_ava_memory") or
+            getattr(app._ava_memory, "_mode", _memory_mode(app)) != _memory_mode(app)):
         app._ava_memory = _build_ava_memory(app)
     app._ava_memory.add_user(prompt)
 
@@ -2699,6 +2882,10 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         return
     if not remainder:
         speak(app, "Yes? How can I help?")
+        _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
+        _done()
+        return
+    if _handle_personal_memory_intent(app, remainder):
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
         _done()
         return
