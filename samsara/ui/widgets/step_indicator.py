@@ -10,7 +10,7 @@ from samsara.ui import theme
 
 
 def _upcoming_ink() -> QColor:
-    background = theme.BG1
+    background = theme.BG0
     disabled = QColor(*theme.composite(theme.TEXT_DISABLED, background))
     primary = QColor(*theme.composite(theme.TEXT_PRIMARY, background))
     lower, upper = 0.0, 1.0
@@ -21,7 +21,7 @@ def _upcoming_ink() -> QColor:
             round(disabled.green() + (primary.green() - disabled.green()) * fraction),
             round(disabled.blue() + (primary.blue() - disabled.blue()) * fraction),
         )
-        if min(theme.contrast_ratio(candidate.name(), surface) for surface in (theme.BG1, theme.BG2)) >= 4.5:
+        if min(theme.contrast_ratio(candidate.name(), surface) for surface in (theme.BG0, theme.BG1, theme.BG2)) >= 4.5:
             upper = fraction
         else:
             lower = fraction
@@ -70,7 +70,7 @@ class _StepDelegate(QStyledItemDelegate):
 
     def _marker(self, painter, center, radius, step, state, accent, upcoming, scale) -> None:
         outline = accent if state in ("done", "current") else upcoming
-        fill = accent if state == "done" else theme.qcolor(theme.BG1)
+        fill = accent if state == "done" else theme.qcolor(theme.BG0)
         painter.setBrush(fill)
         painter.setPen(QPen(outline, theme.TYPE_MIN * scale / 7))
         painter.drawEllipse(center, radius, radius)
@@ -206,7 +206,7 @@ class StepIndicator(QListWidget):
         height = round(max(theme.HIT_TARGET_MIN, theme.TYPE_TITLE + theme.TYPE_BODY + theme.TYPE_MIN) * self.ui_scale)
         self.setMinimumHeight(height)
         self.setFixedHeight(height)
-        self.setStyleSheet(f"QListWidget{{background:{theme.BG1};border:none;}}")
+        self.setStyleSheet(f"QListWidget{{background:{theme.BG0};border:none;}}")
         for index, step in enumerate(self.steps):
             item = self.item(index)
             item.setData(

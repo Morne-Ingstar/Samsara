@@ -169,6 +169,7 @@ class _SettingsWindow(
         self._search_edit.textChanged.connect(lambda _: self._search_debounce.start())
         self._build_search_registry()
         self._apply_metric_minimum_widths()
+        theme.apply_design_scale(self)
         self._save_fns = [self._collect_destination_updates]
 
     def _build_search_registry(self):
@@ -239,6 +240,7 @@ class _SettingsWindow(
         for widget in self.findChildren(QWidget):
             if widget.styleSheet():
                 widget.setStyleSheet(theme.retheme_stylesheet(widget.styleSheet()))
+        theme.apply_design_scale(self)
 
     def _collect_destination_updates(self, _acc):
         updates = {}

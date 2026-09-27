@@ -578,26 +578,36 @@ def contrast_ratio(foreground, background_hex: str) -> float:
 #   Weight: regular (400) or heavier. No Light/Semilight/Thin faces or
 #     font-weight below 400: a thin stroke at 14 px reads smaller than a
 #     regular stroke at 13 (the owner: "small AND thin").
-# Headings keep their step above body so hierarchy survives the floor.
-TYPE_FLOOR_ABSOLUTE = 14
-TYPE_FLOOR_BODY = 16
-FONT_WEIGHT_MIN = 400
+# Headings keep their step above body so hierarchy survives the floor. Queue
+# 314 keeps the raw scales in design_scale.py; theme re-exports them so every
+# existing Settings and guide consumer resolves the same token contract.
+from samsara.ui.design_scale import SPACE_SCALE, TAP_TARGET, TYPE_SCALE, WEIGHT_SCALE
 
-TYPE_MIN = TYPE_FLOOR_ABSOLUTE   # captions, badges, metadata, chips
-TYPE_BODY = TYPE_FLOOR_BODY      # body copy, buttons, inputs, list rows
-TYPE_EMPHASIS = 17               # nav rows, card titles, row titles
-TYPE_HEADING = 18                # section headings, the one state line
-TYPE_TITLE = 22                  # window/page titles
-TYPE_DISPLAY = 26                # display wordmark, large labels
-TYPE_FIGURE = 28                 # usage figures
-TYPE_HERO = 40                   # splash title, the biggest in-window text
+TYPE_FLOOR_ABSOLUTE = TYPE_SCALE["caption"]
+TYPE_FLOOR_BODY = TYPE_SCALE["body"]
+FONT_WEIGHT_MIN = WEIGHT_SCALE["regular"]
+
+TYPE_MIN = TYPE_SCALE["caption"]       # captions, badges, metadata, chips
+TYPE_BODY = TYPE_SCALE["body"]          # body copy, buttons, inputs, list rows
+TYPE_EMPHASIS = TYPE_SCALE["label"]     # nav rows, card titles, row titles
+TYPE_HEADING = TYPE_SCALE["heading"]    # section headings, the one state line
+TYPE_TITLE = TYPE_SCALE["title"]        # window/page titles
+TYPE_DISPLAY = TYPE_SCALE["display"]    # display wordmark, large labels
+TYPE_FIGURE = TYPE_TITLE                 # usage figures
+TYPE_HERO = TYPE_DISPLAY                 # splash title, the biggest in-window text
 TYPE_BANNER = 56                 # full-screen demo banners
 TYPE_GLYPH = 96                  # single decorative glyphs (not reading text)
 
 # Minimum logical-pixel hit area for an interactive control. This is a
 # physical-accessibility metric rather than decoration: Settings reuses it
 # for every button, selector, checkbox and text input.
-HIT_TARGET_MIN = 44
+HIT_TARGET_MIN = TAP_TARGET
+
+# Named spacing/radius tokens for Settings and guide mechanics.  The module
+# keeps these aliases rather than leaking tuple indexes into page code.
+SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_4, SPACE_5, SPACE_6, SPACE_7 = SPACE_SCALE
+CONTROL_RADIUS = SPACE_1
+CARD_RADIUS = 12
 
 FONT_FAMILY = "'Segoe UI', system-ui, sans-serif"
 # The four shared-scale names predate the hub scale; kept for importers, now
@@ -713,7 +723,8 @@ def _write_arrow_svg() -> str:
 def primary_button_qss() -> str:
     return (
         f"QPushButton{{background:{ACCENT};color:{TEXT_ON_ACCENT};"
-        f"border:none;border-radius:6px;font-weight:600;padding:10px 24px;}}"
+        f"border:1px solid {ACCENT};border-radius:{CONTROL_RADIUS}px;font-weight:600;"
+        f"min-height:{HIT_TARGET_MIN}px;padding:0 {SPACE_2}px;}}"
         f"QPushButton:hover{{background:{ACCENT_HOVER};color:{TEXT_ON_ACCENT};}}"
         f"QPushButton:pressed{{background:{ACCENT_PRESSED};color:{TEXT_ON_ACCENT};}}"
         f"QPushButton:disabled{{background:{ACCENT_DISABLED};color:{TEXT_DISABLED};}}"
@@ -722,8 +733,9 @@ def primary_button_qss() -> str:
 
 def secondary_button_qss() -> str:
     return (
-        f"QPushButton{{background:transparent;color:{TEXT_PRIMARY};"
-        f"border:1px solid {BORDER};border-radius:6px;padding:10px 24px;}}"
+        f"QPushButton{{background:{BG2};color:{TEXT_PRIMARY};"
+        f"border:1px solid {BORDER};border-radius:{CONTROL_RADIUS}px;"
+        f"min-height:{HIT_TARGET_MIN}px;padding:0 {SPACE_2}px;}}"
         f"QPushButton:hover{{background:{HOVER_WASH};color:{TEXT_PRIMARY};"
         f"border-color:{BORDER};}}"
         f"QPushButton:pressed{{background:{PRESS_WASH};color:{TEXT_PRIMARY};}}"
@@ -771,6 +783,17 @@ def make_ghost(btn: QPushButton) -> None:
     btn.setStyleSheet(ghost_button_qss())
     btn.style().unpolish(btn)
     btn.style().polish(btn)
+
+
+def apply_design_scale(widget: QWidget) -> None:
+    """Apply queue 314's approved B treatment to a completed Settings/guide tree.
+
+    The import is local because design_scale supplies the metric constants that
+    this module re-exports.  Calling this after construction keeps its card and
+    button rules above legacy per-window QSS without creating an import cycle.
+    """
+    from samsara.ui import design_scale  # noqa: PLC0415
+    design_scale.apply(widget, "B")
 
 
 def footer_qss() -> str:
@@ -963,8 +986,9 @@ QLabel {{ background: transparent; color: {TEXT_PRIMARY}; }}
 QPushButton[class="primary"] {{
     background-color: {ACCENT};
     color: {TEXT_ON_ACCENT};
-    border: none;
-    border-radius: 6px;
+    border: 1px solid {ACCENT};
+    border-radius: {CONTROL_RADIUS}px;
+    min-height: {HIT_TARGET_MIN}px;
     font-weight: 600;
     padding: 10px 24px;
 }}
@@ -973,11 +997,12 @@ QPushButton[class="primary"]:pressed {{ background-color: {ACCENT_PRESSED}; colo
 QPushButton[class="primary"]:disabled {{ background-color: {ACCENT_DISABLED}; color: {TEXT_DISABLED}; }}
 
 QPushButton[class="secondary"] {{
-    background-color: transparent;
+    background-color: {BG2};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER};
-    border-radius: 6px;
-    padding: 10px 24px;
+    border-radius: {CONTROL_RADIUS}px;
+    min-height: {HIT_TARGET_MIN}px;
+    padding: 0 {SPACE_2}px;
 }}
 QPushButton[class="secondary"]:hover {{ background-color: {HOVER_WASH}; border-color: {BORDER}; }}
 QPushButton[class="secondary"]:pressed {{ background-color: {PRESS_WASH}; }}

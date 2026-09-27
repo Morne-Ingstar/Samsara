@@ -820,6 +820,7 @@ class _CheatSheetWindow(QMainWindow):
         # guessed. Below this, Qt would clip a label mid-word.
         self._apply_width_floor()
 
+        theme.apply_design_scale(self)
         self.refresh_commands()
 
     # ----------------------------------------------------------------

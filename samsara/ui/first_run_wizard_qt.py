@@ -628,7 +628,7 @@ class _WizardWindow(QMainWindow):
 
         # ---- Header bar ---------------------------------------------------
         header = QWidget()
-        header.setStyleSheet(f"background:{theme.BG1};")
+        header.setStyleSheet(f"background:{theme.BG0};")
         header.setFixedHeight(64)
         hl = QHBoxLayout(header)
         hl.setContentsMargins(28, 0, 28, 0)
@@ -730,6 +730,7 @@ class _WizardWindow(QMainWindow):
         # Enumerate microphones in background so page 2 is ready
         thread_registry.spawn("first_run_wizard_qt._load_mics", self._load_mics, daemon=True)
 
+        theme.apply_design_scale(self)
         self._show_step()
 
     # ------------------------------------------------------------------

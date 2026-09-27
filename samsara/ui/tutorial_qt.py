@@ -279,7 +279,7 @@ class TutorialWindow(QMainWindow):
 
         # ---- Header bar: step counter + dots --------------------------------
         header = QWidget()
-        header.setStyleSheet(f"background:{theme.BG1};")
+        header.setStyleSheet(f"background:{theme.BG0};")
         header.setFixedHeight(64)
         hl = QHBoxLayout(header)
         hl.setContentsMargins(28, 0, 28, 0)
@@ -378,6 +378,7 @@ class TutorialWindow(QMainWindow):
 
         root.addWidget(nav)
 
+        theme.apply_design_scale(self)
         self._show_step()
 
     # ------------------------------------------------------------------

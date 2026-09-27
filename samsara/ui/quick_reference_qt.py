@@ -459,6 +459,7 @@ class _QuickReferenceWindow(QMainWindow):
         outer_lay.addWidget(footer)
 
         self.refresh()
+        theme.apply_design_scale(self)
 
     # ------------------------------------------------------------------
     # Refresh -- re-invokes every resolver and rebuilds the body from

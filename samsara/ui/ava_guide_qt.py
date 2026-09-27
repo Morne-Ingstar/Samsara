@@ -254,6 +254,7 @@ class _WizardWindow(QDialog):
         )
 
         self._build_ui()
+        theme.apply_design_scale(self)
         self._ollama_status_sig.connect(self._on_ollama_status)
         self._pull_line_sig.connect(self._on_pull_line)
         self._pull_done_sig.connect(self._on_pull_done)
@@ -271,7 +272,7 @@ class _WizardWindow(QDialog):
         # Header
         hdr = QWidget()
         hdr.setFixedHeight(60)
-        hdr.setStyleSheet(f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};")
+        hdr.setStyleSheet(f"background:{theme.BG0};border-bottom:1px solid {theme.BORDER_FAINT};")
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(24, 0, 24, 0)
         self._title_lbl = QLabel()

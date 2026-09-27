@@ -150,6 +150,7 @@ class _StressWizardWindow(QMainWindow):
         self._stack.addWidget(self._step_page)
         self._stack.addWidget(self._final_page)
 
+        theme.apply_design_scale(self)
         if self._battery:
             self._show_step(0)
         else:

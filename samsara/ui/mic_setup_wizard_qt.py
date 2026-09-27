@@ -286,6 +286,7 @@ class _WizardWindow(QDialog):
         )
 
         self._build_ui()
+        theme.apply_design_scale(self)
         self._level_sig.connect(self._on_level)
         self._oww_hit_sig.connect(self._on_oww_hit)
         self._wake_cal_done_sig.connect(self._on_wake_calibration_result)
@@ -305,7 +306,7 @@ class _WizardWindow(QDialog):
         hdr = QWidget()
         hdr.setFixedHeight(60)
         hdr.setStyleSheet(
-            f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
+            f"background:{theme.BG0};border-bottom:1px solid {theme.BORDER_FAINT};"
         )
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(24, 0, 24, 0)
