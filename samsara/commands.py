@@ -193,6 +193,7 @@ class CommandExecutor:
         # here, once, for a real app -- never as an import side effect.
         if app is not None:
             _plugin_commands.start_plugin_services(app)
+            self.rebuild_matcher()  # pick up aliases handed off by service hooks
 
     # ── Command file I/O ────────────────────────────────────────────────────────
 

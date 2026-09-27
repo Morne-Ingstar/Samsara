@@ -241,6 +241,9 @@ def _active(app):
 
 def followup(app, action: str) -> bool:
     if not _active(app):
+        from samsara.agent_channel import cli_agents
+        if cli_agents.followup(app, action):
+            return True
         # Queue reports share Claude's spoken "read the rest" / "repeat that"
         # commands, but retain their own chunk state and captioned speech.
         view = getattr(app, "_queue_voice_view", None)

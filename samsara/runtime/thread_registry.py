@@ -25,6 +25,14 @@ _threads: dict[int, "_Entry"] = {}      # id(thread) -> entry, currently tracked
 _finished: list["_Entry"] = []          # most-recently-finished, oldest first
 _MAX_FINISHED = 50
 _name_counts: dict[str, int] = {}       # base name -> times it's been used
+_shutdown_callbacks: list = []
+
+
+def on_shutdown(callback) -> None:
+    """Run external-resource cleanup before joining workers."""
+    with _lock:
+        if callback not in _shutdown_callbacks:
+            _shutdown_callbacks.append(callback)
 
 
 class _Entry:
@@ -226,6 +234,13 @@ def shutdown(timeout: float = 5.0) -> None:
     regardless of their daemon flag -- a pending non-daemon Timer would
     otherwise block this whole function for up to its remaining delay.
     cancel() is a no-op-safe call even if the timer already fired."""
+    with _lock:
+        callbacks = list(_shutdown_callbacks)
+    for callback in callbacks:
+        try:
+            callback()
+        except Exception:
+            logger.exception("[ThreadRegistry] shutdown callback failed")
     with _lock:
         all_entries = list(_threads.values())
 

@@ -428,6 +428,53 @@
     },
     {
       "aliases": [
+        "ask codex",
+        "ask gpt"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "ask_agent.ask_gpt",
+      "description": "ask gpt",
+      "kind": "plugin",
+      "object": "gpt",
+      "pack": "core",
+      "plugin": "ask_agent",
+      "risk": "ui",
+      "source": "plugins/commands/ask_agent.py:70",
+      "undoable": true,
+      "verb": "ask",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "new conversation with"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "ask_agent.new_conversation_with",
+      "description": "new conversation with",
+      "kind": "plugin",
+      "object": "conversation_with",
+      "pack": "core",
+      "plugin": "ask_agent",
+      "risk": "ui",
+      "source": "plugins/commands/ask_agent.py:83",
+      "undoable": true,
+      "verb": "new",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "ava cancel",
         "ava stop",
         "cancel that ava"

@@ -77,6 +77,25 @@ SETTINGS_SCHEMA = {
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Interpreter for the existing queue note script; advanced config-only path.",
     },
+    "agent_channel.cwd": {
+        "type": "str", "default": r"C:\Users\Morne\Documents\Claude",
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Working directory for subscription CLI agents.",
+    },
+    "agent_channel.allow_writes": {
+        "type": "bool", "default": False, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "CLI agents are read-only by default.",
+    },
+    "agent_channel.voice_preamble": {
+        "type": "str", "default": "This message was spoken aloud and your reply will be read aloud. Answer in plain spoken sentences first; put any code, paths or lists after that.",
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Spoken-response instruction sent with each CLI question.",
+    },
+    "agent_channel.timeout_s": {
+        "type": "int", "min": 1, "max": 3600, "default": 240,
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Maximum seconds to wait for a CLI answer.",
+    },
     "claude_voice.enabled": {
         "type": "bool", "default": True, "tab": "general",
         "settings_ui": False,
