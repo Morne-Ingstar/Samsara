@@ -838,6 +838,8 @@ class CommandExecutor:
         for _norm, _start, end in view_tokens(text)[:consumed + 3]:
             prefix = [tok for tok, _s, _e in view_tokens(apply_phonetic_wash(text[:end]) or '')]
             if prefix == phrase:
+                if getattr(entry.handler, 'verbatim_argument', False):
+                    return text[end:].lstrip()
                 return argument_text(text, end)
             if len(prefix) > consumed:
                 break

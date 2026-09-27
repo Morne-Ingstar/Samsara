@@ -2568,6 +2568,18 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     if generation is None:
         generation = execution_policy.current_generation(app)
 
+    # 320: exact local image requests keep their original text and never
+    # enter the model's ACTION grammar or provider request.
+    from plugins.commands.comfy import try_voice_command
+    image_result = try_voice_command(app, remainder, generation)
+    if image_result is not None:
+        from samsara.command_registry import DispatchState
+        queued = image_result.state is DispatchState.QUEUED
+        _set_turn_outcome(app, ("Image request" if queued else "Image command",
+                                "pending" if queued else "success" if image_result.state is DispatchState.COMPLETED else "warning"))
+        _done()
+        return image_result
+
     def _worker():
         _turn_local.speech = []
         _turn_local.reply = None

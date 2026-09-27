@@ -97,7 +97,7 @@ def what_did(app, remainder=""):
     return read_report(app, " ".join(words[:-1]))
 
 
-@command("more", pack="core", risk_class="safe", reversible=True,
+@command("read more", pack="core", risk_class="safe", reversible=True,
          side_effects=["audio", "ui"])
 def more(app, _remainder=""):
     return _read(app, QueueView.more)
@@ -142,7 +142,7 @@ def _confirm(app, view: QueueView, command_id: str, remainder: str, question: st
     return DispatchState.QUEUED
 
 
-@command("accept", pack="core", risk_class="write", reversible=True,
+@command("accept prompt", pack="core", risk_class="write", reversible=True,
          ai_visible=False, side_effects=["file", "audio", "ui"],
          preview_template="Accept {remainder}?")
 def accept(app, remainder=""):
@@ -156,7 +156,7 @@ def accept(app, remainder=""):
         if prompt is None or view.note.report_state(pid, prompt)[0] != "reported":
             _say(app, f"{pid} has no finished report to accept.")
             return DispatchState.FAILED
-        return _confirm(app, view, "accept", pid, f"Accept {pid}?", lambda: view.accept(pid))
+        return _confirm(app, view, "accept prompt", pid, f"Accept {pid}?", lambda: view.accept(pid))
     except Exception:
         _say(app, "I can't read the queue folder", "queue unavailable")
         return DispatchState.FAILED

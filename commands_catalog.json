@@ -440,7 +440,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2792",
+      "source": "plugins/commands/ask_ollama.py:2808",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -459,7 +459,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2844",
+      "source": "plugins/commands/ask_ollama.py:2860",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -479,7 +479,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2830",
+      "source": "plugins/commands/ask_ollama.py:2846",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -498,7 +498,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2871",
+      "source": "plugins/commands/ask_ollama.py:2887",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -526,7 +526,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2517",
+      "source": "plugins/commands/ask_ollama.py:2521",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -551,7 +551,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2631",
+      "source": "plugins/commands/ask_ollama.py:2647",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -572,7 +572,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2811",
+      "source": "plugins/commands/ask_ollama.py:2827",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -597,7 +597,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2687",
+      "source": "plugins/commands/ask_ollama.py:2703",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -6017,6 +6017,142 @@
     },
     {
       "aliases": [
+        "cancel the image"
+      ],
+      "args": [],
+      "canonical_id": "comfy.cancel_the_image",
+      "description": "Cancels this session's image without deleting any saved outputs.",
+      "kind": "plugin",
+      "object": "the_image",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "read",
+      "source": "plugins/commands/comfy.py:266",
+      "undoable": true,
+      "verb": "cancel",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "image status"
+      ],
+      "args": [],
+      "canonical_id": "comfy.image_status",
+      "description": "Reports image progress and rechecks an unresolved render.",
+      "kind": "plugin",
+      "object": "status",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "read",
+      "source": "plugins/commands/comfy.py:278",
+      "undoable": true,
+      "verb": "image",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "draw me",
+        "generate an image of",
+        "give me an image of",
+        "make an image of",
+        "render an image of"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "comfy.make_an_image_of",
+      "description": "Makes an image locally in ComfyUI, using exactly the description you say.",
+      "kind": "plugin",
+      "object": "an_image_of",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "read",
+      "source": "plugins/commands/comfy.py:204",
+      "undoable": true,
+      "verb": "make",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "make another"
+      ],
+      "args": [],
+      "canonical_id": "comfy.make_another",
+      "description": "Makes another image with the same description and a fresh seed.",
+      "kind": "plugin",
+      "object": "another",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "read",
+      "source": "plugins/commands/comfy.py:217",
+      "undoable": true,
+      "verb": "make",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "make it again but"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "comfy.make_it_again_but",
+      "description": "Makes another image, appending your change verbatim to the description.",
+      "kind": "plugin",
+      "object": "it_again_but",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "read",
+      "source": "plugins/commands/comfy.py:226",
+      "undoable": true,
+      "verb": "make",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "open it",
+        "open the image"
+      ],
+      "args": [],
+      "canonical_id": "comfy.open_the_image",
+      "description": "Opens the last completed image in your default image viewer.",
+      "kind": "plugin",
+      "object": "the_image",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "ui",
+      "source": "plugins/commands/comfy.py:239",
+      "undoable": true,
+      "verb": "open",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "where is the image"
+      ],
+      "args": [],
+      "canonical_id": "comfy.where_is_the_image",
+      "description": "Says where the last completed image was saved.",
+      "kind": "plugin",
+      "object": "is_the_image",
+      "pack": "ai",
+      "plugin": "comfy",
+      "risk": "read",
+      "source": "plugins/commands/comfy.py:254",
+      "undoable": true,
+      "verb": "where",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "check for update",
         "check for updates",
         "update samsara"
@@ -7214,7 +7350,7 @@
       "description": "read the rest",
       "kind": "plugin",
       "object": "the_rest",
-      "pack": "ai",
+      "pack": "core",
       "plugin": "message_claude",
       "risk": "ui",
       "source": "plugins/commands/message_claude.py:499",
@@ -7231,7 +7367,7 @@
       "description": "repeat that",
       "kind": "plugin",
       "object": "that",
-      "pack": "ai",
+      "pack": "core",
       "plugin": "message_claude",
       "risk": "ui",
       "source": "plugins/commands/message_claude.py:505",
@@ -7492,6 +7628,180 @@
       "source": "plugins/commands/music.py:563",
       "undoable": true,
       "verb": "search",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "accept prompt"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "queue_voice.accept_prompt",
+      "description": "accept prompt",
+      "kind": "plugin",
+      "object": "prompt",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "write",
+      "source": "plugins/commands/queue_voice.py:145",
+      "undoable": false,
+      "verb": "accept",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "queue note"
+      ],
+      "args": [],
+      "canonical_id": "queue_voice.queue_note",
+      "description": "queue note",
+      "kind": "plugin",
+      "object": "note",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "write",
+      "source": "plugins/commands/queue_voice.py:165",
+      "undoable": false,
+      "verb": "queue",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read more"
+      ],
+      "args": [],
+      "canonical_id": "queue_voice.read_more",
+      "description": "read more",
+      "kind": "plugin",
+      "object": "more",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:100",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read report"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "queue_voice.read_report",
+      "description": "read report",
+      "kind": "plugin",
+      "object": "report",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:75",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "stop queue"
+      ],
+      "args": [],
+      "canonical_id": "queue_voice.stop_queue",
+      "description": "stop queue",
+      "kind": "plugin",
+      "object": "queue",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:106",
+      "undoable": true,
+      "verb": "stop",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what can i run"
+      ],
+      "args": [],
+      "canonical_id": "queue_voice.what_can_i_run",
+      "description": "what can i run",
+      "kind": "plugin",
+      "object": "can_i_run",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:63",
+      "undoable": true,
+      "verb": "what",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what did"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "queue_voice.what_did",
+      "description": "what did",
+      "kind": "plugin",
+      "object": "did",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:90",
+      "undoable": true,
+      "verb": "what",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what finished",
+        "what is done",
+        "whats done"
+      ],
+      "args": [],
+      "canonical_id": "queue_voice.what_finished",
+      "description": "what finished",
+      "kind": "plugin",
+      "object": "finished",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:51",
+      "undoable": true,
+      "verb": "what",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what is running",
+        "whats running"
+      ],
+      "args": [],
+      "canonical_id": "queue_voice.whats_running",
+      "description": "whats running",
+      "kind": "plugin",
+      "object": "running",
+      "pack": "core",
+      "plugin": "queue_voice",
+      "risk": "ui",
+      "source": "plugins/commands/queue_voice.py:69",
+      "undoable": true,
+      "verb": "whats",
       "whole_utterance": false
     },
     {
@@ -9266,7 +9576,7 @@
       "pack": "utilities",
       "plugin": "web_shortcuts",
       "risk": "ui",
-      "source": "plugins/commands/web_shortcuts.py:63",
+      "source": "plugins/commands/web_shortcuts.py:67",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false

@@ -624,6 +624,8 @@ class CommandMatcher:
             if n <= len(text_tokens) and text_tokens[:n] == phrase_tokens:
                 start = tokens[n - 1][2]
                 remainder = argument_text(text, start)
+                if getattr(entry.handler, 'verbatim_argument', False):
+                    remainder = text[start:].lstrip()
                 if entry.scope is not None and not self.is_live(entry, context, remainder):
                     continue
                 return CommandMatch(

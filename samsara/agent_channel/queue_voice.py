@@ -143,7 +143,7 @@ class QueueView:
         self._index += len(page)
         if not page:
             return "That's all for now.", 0
-        tail = " Say more for the next three." if self._index < len(self._items) else ""
+        tail = " Say read more for the next three." if self._index < len(self._items) else ""
         return " ".join(page) + tail, len(page)
 
     def more(self) -> tuple[str, int]:

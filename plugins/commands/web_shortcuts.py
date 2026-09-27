@@ -24,6 +24,10 @@ def open_site(app, remainder):
     'go to meatball stuff' -> Google search fallback
     """
     if not remainder:
+        state = getattr(app, '_comfy_state', None)
+        if state is not None and state.paths:
+            from plugins.commands.comfy import open_image
+            return open_image(app, '')
         return False
     shortcuts = {}
     if app is not None and hasattr(app, 'config'):

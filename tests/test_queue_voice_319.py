@@ -139,6 +139,7 @@ def test_accept_is_confirmed_then_writes_empty_marker_and_calls_note(workspace, 
     marker = workspace.queue / "accepted" / "312"
     assert not marker.exists()
     assert pending["question"] == "Accept 312?"
+    assert pending["inv"].command_id == "accept prompt"
     pending["approve"](None)
     assert marker.is_file() and marker.stat().st_size == 0
     assert "queue note refreshed" in spoken[-1][0]
@@ -173,8 +174,10 @@ def test_queue_commands_are_available_by_default_and_writes_are_classified():
     entries = {entry["phrase"]: entry for entry in list_commands()
                if entry["source"] == "plugins.commands.queue_voice"}
     assert entries
+    assert all(len(phrase.split()) > 1 for entry in entries.values()
+               for phrase in [entry["phrase"], *entry["aliases"]])
     assert {entry["pack"] for entry in entries.values()} <= get_enabled_packs({})
-    assert entries["accept"]["risk_class"] == "write"
+    assert entries["accept prompt"]["risk_class"] == "write"
     assert entries["queue note"]["risk_class"] == "write"
     assert entries["what finished"]["risk_class"] == "safe"
     followups = {entry["phrase"]: entry for entry in list_commands()
