@@ -305,6 +305,7 @@ class WakeConsumer:
         self._utterance_frames: list = []   # float32 arrays at SAMPLE_RATE
         self._buffer_rms_history: list = []
         self._last_voice_ns: int | None = None
+        self._speech_start_ns: int | None = None
         self._last_epoch: int | None  = None
 
         # FIX 1 (2026-07-10 hotkey word-loss investigation): tracks the
@@ -670,13 +671,14 @@ class WakeConsumer:
     def _enqueue_toggle_utterance(
         self, buffer_copy: list, owner_token: int | None,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
+        speech_start_ns: int | None = None,
     ) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
         with self._toggle_queue_lock:
             if last_voice_ns is None or speech_end_ns is None:
                 queued = (buffer_copy, owner_token)
             else:
-                queued = (buffer_copy, owner_token, last_voice_ns, speech_end_ns)
+                queued = (buffer_copy, owner_token, last_voice_ns, speech_end_ns, speech_start_ns)
             self._toggle_queue.append(queued)
             if self._toggle_worker_active:
                 return
@@ -749,9 +751,11 @@ class WakeConsumer:
             flight_recorder.record('session.dispatch', op='started', kind='toggle_command', thread='cmd-utt-queue')
             try:
                 if endpoint:
+                    kwargs = dict(last_voice_ns=endpoint[0], speech_end_ns=endpoint[1])
+                    if len(endpoint) > 2 and endpoint[2] is not None:
+                        kwargs['speech_start_ns'] = endpoint[2]
                     self._app._handle_command_mode_utterance(
-                        buffer_copy, SAMPLE_RATE,
-                        last_voice_ns=endpoint[0], speech_end_ns=endpoint[1],
+                        buffer_copy, SAMPLE_RATE, **kwargs,
                     )
                 else:
                     self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
@@ -1236,12 +1240,16 @@ class WakeConsumer:
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
-            self._last_voice_ns = int(frame.t_capture * 1_000_000_000)
+            capture_ns = (int(frame.t_capture * 1_000_000_000)
+                          if isinstance(getattr(frame, 't_capture', None), (int, float))
+                          else time.perf_counter_ns())
+            self._last_voice_ns = capture_ns
             speech_onset   = not app.is_speaking
             app.is_speaking   = True
             app.silence_start = None
 
             if speech_onset:
+                self._speech_start_ns = capture_ns
                 flight_recorder.record(
                     'wake.session_open', app_state=app.app_state,
                     wake_word_triggered=bool(app.wake_word_triggered),
@@ -1393,6 +1401,7 @@ class WakeConsumer:
                 elif time.time() - app.silence_start >= silence_threshold:
                     speech_end_ns = time.perf_counter_ns()
                     last_voice_ns = self._last_voice_ns
+                    speech_start_ns = self._speech_start_ns
                     # Enough silence — flush if sufficient speech
                     speech_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
                     if speech_s >= min_speech:
@@ -1402,6 +1411,7 @@ class WakeConsumer:
                     self._utterance_frames   = []
                     self._buffer_rms_history = []
                     self._last_voice_ns = None
+                    self._speech_start_ns = None
                     app.is_speaking   = False
                     app.silence_start = None
 
@@ -1413,6 +1423,7 @@ class WakeConsumer:
                         self._flush(
                             buffer_copy, self._hands_free_capture_duck_token,
                             last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns,
+                            speech_start_ns=speech_start_ns,
                         )
                     else:
                         # Too short to count as a real utterance -- the
@@ -1461,6 +1472,7 @@ class WakeConsumer:
     def _flush(
         self, buffer_copy: list, owner_token: int | None = None, *,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
+        speech_start_ns: int | None = None,
     ) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
@@ -1479,7 +1491,7 @@ class WakeConsumer:
             flight_recorder.record('session.dispatch', op='enqueued', kind='toggle_command')
             if has_endpoint:
                 self._enqueue_toggle_utterance(
-                    buffer_copy, owner_token, last_voice_ns, speech_end_ns,
+                    buffer_copy, owner_token, last_voice_ns, speech_end_ns, speech_start_ns,
                 )
             else:
                 self._enqueue_toggle_utterance(buffer_copy, owner_token)

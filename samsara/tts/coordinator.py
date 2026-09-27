@@ -19,6 +19,8 @@ Design principles (from tts_architecture_spec_v2.md):
 import logging
 import threading
 import time
+from collections import deque
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 from samsara.runtime import thread_registry
@@ -93,6 +95,13 @@ MUTED_AVA_ID = 'noop-ava-muted'
 SUPPRESSED_TTS_ID = 'noop-tts-disabled'
 
 
+@dataclass(frozen=True)
+class SpeechWindow:
+    start_ns: int
+    end_ns: int
+    interrupted: bool = False
+
+
 def command_mode_char_limit(config) -> Optional[int]:
     """Effective command_mode.tts_char_limit: a positive int, or None for
     "no limit". 0 means no limit (every acknowledgement is spoken in full);
@@ -147,6 +156,10 @@ class AudioCoordinator:
         # State machine.
         self._state = IDLE
         self._state_lock = threading.Lock()
+        self._speech_started_ns: int | None = None
+        self._speech_windows = deque(maxlen=16)
+        self._speech_pending = 0
+        self._speech_generation = 0
 
         # Active TTS handle in SPEAKING state.
         self._active_handle: Optional[SpeechHandle] = None
@@ -185,6 +198,27 @@ class AudioCoordinator:
     def is_speaking(self) -> bool:
         """True while the coordinator is in the SPEAKING state."""
         return self._state == SPEAKING  # intentionally lock-free: str read is atomic in CPython
+
+    def speech_windows(self) -> tuple[SpeechWindow, ...]:
+        """Recent spoken intervals on the capture clock, including the grace tail."""
+        with self._state_lock:
+            try:
+                grace_ms = int((self.app.config.get('tts', {}) or {}).get(
+                    'self_hear_grace_ms', 400))
+            except (TypeError, ValueError):
+                grace_ms = 400
+            grace_ns = max(0, grace_ms) * 1_000_000
+            windows = tuple(SpeechWindow(w.start_ns, w.end_ns + grace_ns, w.interrupted)
+                            for w in self._speech_windows)
+            if self._speech_started_ns is not None:
+                windows += (SpeechWindow(self._speech_started_ns,
+                                         time.perf_counter_ns() + grace_ns),)
+            return windows
+
+    def speech_window(self) -> SpeechWindow | None:
+        """Last spoken [start, end + grace] interval, or None before speech."""
+        windows = self.speech_windows()
+        return windows[-1] if windows else None
 
     def speak(
         self,
@@ -250,9 +284,20 @@ class AudioCoordinator:
             effective_volume = volume if volume is not None else tts_cfg.get('volume', 0.8)
             effective_voice = voice_id or tts_cfg.get('voice_id')
 
-            # Wrap caller's on_done so we get the IDLE transition.
+            # A later utterance may already be queued when this one finishes.
+            # Keep the speech window open until the final playback callback.
+            with self._state_lock:
+                self._speech_pending += 1
+                generation = self._speech_generation
+
             def _on_tts_done():
-                self.transition_to(IDLE, context={'reason': 'tts_complete'})
+                with self._state_lock:
+                    current = generation == self._speech_generation
+                    if current:
+                        self._speech_pending = max(0, self._speech_pending - 1)
+                    last = current and self._speech_pending == 0
+                if last:
+                    self.transition_to(IDLE, context={'reason': 'tts_complete'})
                 if on_done:
                     try:
                         on_done()
@@ -321,6 +366,9 @@ class AudioCoordinator:
     def cancel_speech(self) -> None:
         """Cancel any in-progress TTS and return to IDLE."""
         with self._dispatch_lock:
+            with self._state_lock:
+                self._speech_generation += 1
+                self._speech_pending = 0
             if self.engine is not None:
                 self.engine.cancel_all()
             self.transition_to(IDLE, context={'reason': 'cancel_speech'})
@@ -380,6 +428,14 @@ class AudioCoordinator:
                 )
                 return False
             self._state = new_state
+            now_ns = time.perf_counter_ns()
+            if new_state == SPEAKING:
+                self._speech_started_ns = now_ns
+            elif old_state == SPEAKING and self._speech_started_ns is not None:
+                self._speech_windows.append(SpeechWindow(
+                    self._speech_started_ns, now_ns,
+                    context.get('reason') == 'user_speech_interrupt'))
+                self._speech_started_ns = None
 
         # Side effects happen AFTER the transition commits and outside the lock.
         self._on_transition(old_state, new_state, context)
@@ -403,6 +459,9 @@ class AudioCoordinator:
 
     def shutdown(self) -> None:
         """Cancel all pending speech, timers, and polling threads."""
+        with self._state_lock:
+            self._speech_generation += 1
+            self._speech_pending = 0
         self.engine.cancel_all()
         self._stop_interrupt_poll()
         self._stop_thinking_pulse()
@@ -410,6 +469,9 @@ class AudioCoordinator:
         self._restore_thresholds()
         with self._state_lock:
             self._state = IDLE
+            if self._speech_started_ns is not None:
+                self._speech_windows.append(SpeechWindow(self._speech_started_ns, time.perf_counter_ns()))
+                self._speech_started_ns = None
 
     # ------------------------------------------------------------------
     # State-transition side effects
@@ -521,8 +583,10 @@ class AudioCoordinator:
     def _on_user_speech_interrupt(self) -> None:
         """Cancel TTS and transition to LISTENING when user speaks."""
         logger.info("AudioCoordinator: user speech detected — interrupting TTS")
-        if self._active_handle:
-            self.engine.cancel(self._active_handle)
+        with self._state_lock:
+            self._speech_generation += 1
+            self._speech_pending = 0
+        self.engine.cancel_all()
         self.transition_to(LISTENING, context={'reason': 'user_speech_interrupt'})
 
     # ------------------------------------------------------------------

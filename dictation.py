@@ -472,6 +472,7 @@ from samsara.session_modes import (
     # checks the SAME matchers dispatch_utterance does, so a refused echo can
     # never be a phrase the session would have acted on.
     is_dictate_commit, is_recover_draft, match_switch_word,
+    is_self_hear_capture,
 )
 
 # Commands with special pending-text behavior inside the combined hands-free
@@ -6892,6 +6893,7 @@ class DictationApp:
     def _handle_command_mode_utterance(
         self, buffer: list, src_rate: int, *,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
+        speech_start_ns: int | None = None,
     ) -> None:
         """Transcribe and dispatch one queued VAD-gated utterance in the
         unified toggle-command-mode session (COMMAND <-> DICTATE).
@@ -6953,6 +6955,16 @@ class DictationApp:
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
             stage_timing.mark("capture_finalised", audio_s=audio_duration)
+
+            if _capture_mode == 'command' and is_self_hear_capture(
+                    getattr(self, 'audio_coordinator', None), speech_start_ns, last_voice_ns):
+                stage_timing.mark("capture_finalised", self_hear=True)
+                _timing_outcome = "gated"
+                flight_recorder.record('session.dispatch', op='dropped',
+                                       kind='toggle_command', reason='self_hear', self_hear=True)
+                logger.info('[SELF-HEAR] command utterance ignored during Ava speech')
+                self._show_outcome_chip('ignored - Ava was speaking', 'warning')
+                return
 
             if audio_duration < 0.3:
                 self._log_cmd_utt_dropped('too_short', _capture_mode, audio_duration)
@@ -11699,6 +11711,7 @@ class DictationApp:
                     delay_s=1.0,
                 )
 
+        self._hold_capture_start_ns = time.perf_counter_ns()
         self.set_app_state(recording=True)
 
         # Update tray icon to show active recording (critical for toggle mode
@@ -11803,6 +11816,7 @@ class DictationApp:
         )
 
         ownership = self._take_recording_ownership()
+        capture_end_ns = time.perf_counter_ns()
         park_hold_requested = bool(
             self._live_surface_hold_parking_enabled()
             and getattr(self, '_hold_park_requested', False)
@@ -11899,6 +11913,16 @@ class DictationApp:
                 "capture_finalised",
                 audio_s=(len(audio) / self.model_rate if "audio" in locals() else None),
             )
+        if is_self_hear_capture(getattr(self, 'audio_coordinator', None),
+                                getattr(self, '_hold_capture_start_ns', None), capture_end_ns):
+            if stage_timing is not None:
+                stage_timing.mark('capture_finalised', self_hear=True, outcome='gated')
+            flight_recorder.record('hold_recording.stop_reason', reason='self_hear', self_hear=True)
+            logger.info('[SELF-HEAR] hold utterance ignored during Ava speech')
+            self._show_outcome_chip('ignored - Ava was speaking', 'warning')
+            if live_hold_finalizing:
+                self._hold_park_finalizing = False
+            return
         logger.info("[...] Transcribing...")
 
         # Discard sub-debounce mode taps before gate/model work. Ownership

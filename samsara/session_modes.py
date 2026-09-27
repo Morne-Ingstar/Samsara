@@ -57,6 +57,23 @@ from samsara.stage_timing import current_stage_timing as _current_stage_timing
 log = logging.getLogger("Samsara.session_modes")
 
 
+def is_self_hear_capture(coordinator, start_ns: int | None, end_ns: int | None) -> bool:
+    """Refuse a capture wholly inside Ava speech unless speech interrupted TTS.
+
+    The coordinator owns the clock and keeps recent windows so a queued
+    command still sees the window that covered its original capture.
+    """
+    if coordinator is None or start_ns is None or end_ns is None or end_ns < start_ns:
+        return False
+    windows = getattr(coordinator, 'speech_windows', None)
+    if not callable(windows):
+        return False
+    return any(
+        not window.interrupted and window.start_ns <= start_ns <= end_ns <= window.end_ns
+        for window in windows()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Mode enum
 # ---------------------------------------------------------------------------

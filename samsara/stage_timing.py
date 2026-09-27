@@ -69,6 +69,7 @@ class _NoopTiming:
     outcome: str | None = None
     segment_index: int | None = None
     last_voice_source: str | None = None
+    self_hear: bool = False
 
     def mark(self, stage: str, **fields) -> None:
         return None
@@ -143,6 +144,7 @@ class StageTiming:
         self.outcome: str | None = None
         self.segment_index: int | None = None
         self.last_voice_source: str | None = None
+        self.self_hear = False
         self._monotonic_ns: dict[str, int | None] = dict.fromkeys(STAGES)
         self._utc: dict[str, str | None] = dict.fromkeys(STAGES)
         self._pending_feedback = 0
@@ -187,7 +189,7 @@ class StageTiming:
                 self._monotonic_ns[stage] = mark_ns
                 self._utc[stage] = mark_utc
             for key in ("audio_s", "words", "model", "beam", "outcome",
-                        "segment_index", "last_voice_source"):
+                        "segment_index", "last_voice_source", "self_hear"):
                 if key in fields and fields[key] is not None:
                     setattr(self, key, fields[key])
 
@@ -252,6 +254,7 @@ class StageTiming:
             "outcome": self.outcome,
             "segment_index": self.segment_index,
             "last_voice_source": self.last_voice_source,
+            "self_hear": self.self_hear,
             "timestamps_ns": dict(marks),
             "timestamps_utc": dict(self._utc),
             "deltas_ms": deltas,

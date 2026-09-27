@@ -583,6 +583,11 @@ SETTINGS_SCHEMA = {
     # TTS tab
     # -------------------------------------------------------------------------
     "tts.enabled":  {"type": "bool", "default": False, "tab": "tts"},
+    "tts.self_hear_grace_ms": {
+        "type": "int", "min": 0, "max": 2000, "step": 50, "default": 400,
+        "tab": "tts", "settings_ui": False,
+        "ui_less_reason": "Capture interlock grace after Ava speech ends.",
+    },
     "tts.engine": {
         "type": "enum",
         "options": ["winrt", "edge"],
