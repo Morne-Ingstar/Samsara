@@ -11,7 +11,7 @@ import base64
 import io
 import logging
 
-import requests
+from samsara import ai_transport
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class VisionBridge:
             "stream": False,
         }
         try:
-            r = requests.post(
+            r = ai_transport.post_local(
                 f"{self._host()}/api/chat",
                 json=payload,
                 timeout=t,
@@ -119,6 +119,9 @@ class VisionBridge:
                 logger.error("[VISION] HTTP %s from vision model", r.status_code)
                 return None
             return r.json().get("message", {}).get("content", "")
+        except ai_transport.AITransportRefused as exc:
+            ai_transport.notify_refusal(self._app, exc)
+            return None
         except Exception as e:
             logger.error("[VISION] describe failed: %s", e)
             return None
@@ -128,8 +131,11 @@ class VisionBridge:
         if not _local_ai_allowed(self._app):
             return False
         try:
-            r = requests.get(f"{self._host()}/api/tags", timeout=2)
+            r = ai_transport.get_local(f"{self._host()}/api/tags", timeout=2)
             return r.status_code == 200
+        except ai_transport.AITransportRefused as exc:
+            ai_transport.notify_refusal(self._app, exc)
+            return False
         except Exception:
             return False
 

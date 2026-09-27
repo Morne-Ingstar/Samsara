@@ -8,24 +8,19 @@ in dictation.py and samsara/streaming.py).
 
 Backend is either a local Ollama server (reusing the same "ollama.host"
 config Ava's Ollama client reads) or the existing samsara.cloud_llm client.
-We deliberately do NOT import plugins.commands.ask_ollama here even though
-it already talks to Ollama: importing that module starts a background
-health-monitor thread as a side effect (module-level `_start_health_monitor()`
-call), which we don't want triggered just to read a host string or do a
-health check. Instead this module makes its own minimal `requests` calls,
-per the same /api/chat contract Ava uses.
+The shared samsara.ai_transport boundary pins local destinations, ignores
+environment proxies, and refuses redirects before any body can be replayed.
 
 Every call that actually reaches a backend names that backend (and, for
-Ollama, the model) in its log line -- see _backend_tag(). With
-backend="auto", falling back to the cloud when the local Ollama server is
-down is opt-in (smart_corrections.allow_cloud_fallback, default False): a
-privacy-first app must never silently ship dictated text off-device.
+Ollama, the model) in its log line -- see _backend_tag(). Provider-bound
+consent selects exactly one backend; local failure never falls back to cloud.
 """
 
 import re
 import time
 
 import requests
+from samsara import ai_transport
 
 from samsara import cloud_llm
 from samsara import languages
@@ -114,12 +109,7 @@ _probe_cache: dict = {}  # host -> (monotonic_timestamp, reachable: bool)
 # below (tribunal Fix 7). None = never probed yet.
 _last_known_reachable: dict = {}
 
-# Reused across every Ollama call this module makes (reachability probe,
-# corrections, warm_up) so repeated local requests don't pay a fresh
-# TCP handshake each time. samsara.cloud_llm.send() does NOT manage a
-# session of its own -- every cloud call is a bare requests.post/get -- so
-# this only benefits the Ollama path; see the verification report.
-_session = requests.Session()
+_session = ai_transport.LocalClient()
 
 # Fires once per OUTAGE, not once per process (tribunal Fix 7): reset to
 # False whenever _ollama_reachable() observes a down->up recovery, so a
@@ -164,6 +154,9 @@ def _ollama_reachable(app) -> bool:
     try:
         r = _session.get(f"{host}/api/tags", timeout=2)
         reachable = r.status_code == 200
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        reachable = False
     except Exception:
         reachable = False
     _probe_cache[host] = (now, reachable)
@@ -532,6 +525,10 @@ def _call_ollama(text: str, app, system_prompt: str, timeout_s: float, model: st
         response = _session.post(f"{host}/api/chat", json=payload, timeout=timeout_s)
         response.raise_for_status()
         return response.json().get("message", {}).get("content", ""), False
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        _probe_cache.pop(host, None)
+        return None, False
     except requests.exceptions.Timeout:
         logger.debug("[SMART] Ollama call timed out")
         # A successful reachability probe minutes ago doesn't mean the
@@ -597,6 +594,8 @@ def warm_up(app) -> None:
                 "options": {"num_predict": 1},
             }
             _session.post(f"{host}/api/chat", json=payload, timeout=30)
+        except ai_transport.AITransportRefused as exc:
+            ai_transport.notify_refusal(app, exc)
         except Exception as exc:
             logger.debug(f"[SMART] warm_up request failed: {exc}")
 

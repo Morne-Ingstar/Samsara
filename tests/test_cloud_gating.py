@@ -104,7 +104,7 @@ class TestSendExStructuredResult:
             def json(self):
                 return {"choices": [{"message": {"content": "corrected text"}}]}
 
-        monkeypatch.setattr(cloud_llm.requests, 'post', lambda *a, **k: _Resp())
+        monkeypatch.setattr(cloud_llm.ai_transport, 'post_cloud', lambda *a, **k: _Resp())
 
         text, error_kind = cloud_llm.send_ex("sys", "user", self._app())
 
@@ -115,7 +115,7 @@ class TestSendExStructuredResult:
         def _raise(*a, **k):
             raise cloud_llm.requests.exceptions.Timeout("simulated")
 
-        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+        monkeypatch.setattr(cloud_llm.ai_transport, 'post_cloud', _raise)
 
         text, error_kind = cloud_llm.send_ex("sys", "user", self._app(), timeout=5)
 
@@ -126,7 +126,7 @@ class TestSendExStructuredResult:
         def _raise(*a, **k):
             raise cloud_llm.requests.exceptions.ConnectionError("simulated")
 
-        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+        monkeypatch.setattr(cloud_llm.ai_transport, 'post_cloud', _raise)
 
         text, error_kind = cloud_llm.send_ex("sys", "user", self._app())
 
@@ -145,7 +145,7 @@ class TestSendExStructuredResult:
         def _raise(*a, **k):
             raise ValueError("something else broke")
 
-        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+        monkeypatch.setattr(cloud_llm.ai_transport, 'post_cloud', _raise)
 
         text, error_kind = cloud_llm.send_ex("sys", "user", self._app())
 
@@ -159,7 +159,7 @@ class TestSendExStructuredResult:
         def _raise(*a, **k):
             raise cloud_llm.requests.exceptions.Timeout("simulated")
 
-        monkeypatch.setattr(cloud_llm.requests, 'post', _raise)
+        monkeypatch.setattr(cloud_llm.ai_transport, 'post_cloud', _raise)
 
         result = cloud_llm.send("sys", "user", self._app(), timeout=5)
 

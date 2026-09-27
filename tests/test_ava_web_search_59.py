@@ -155,14 +155,14 @@ def _post_returning(monkeypatch, *responses):
     calls = []
     seq = list(responses)
 
-    def post(url, json=None, headers=None, timeout=None):
+    def post(url, json=None, headers=None, timeout=None, **_kwargs):
         calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
         item = seq.pop(0) if len(seq) > 1 else seq[0]
         if isinstance(item, BaseException):
             raise item
         return item
 
-    monkeypatch.setattr(cloud_llm.requests, "post", post)
+    monkeypatch.setattr(cloud_llm.ai_transport, "post_cloud", post)
     return calls
 
 

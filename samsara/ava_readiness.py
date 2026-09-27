@@ -249,12 +249,13 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
     import requests  # noqa: PLC0415
     from samsara import cloud_llm  # noqa: PLC0415
 
-    get = http_get or requests.get
+    from samsara import ai_transport
     provider = configured_provider(app)
     try:
         if provider == "ollama":
             from plugins.commands.ask_ollama import get_host  # noqa: PLC0415
-            r = get(f"{get_host(app)}/api/tags", timeout=timeout)
+            r = ai_transport.get_local(f"{get_host(app)}/api/tags", timeout=timeout,
+                                       request_fn=http_get)
             return provider, (None if r.status_code == 200 else UNREACHABLE)
 
         cfg = getattr(app, "config", {}).get("cloud_llm", {}) or {}
@@ -266,8 +267,12 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
             headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
         else:
             headers = {"Authorization": f"Bearer {api_key}"}
-        r = get(f"{base_url}/models", timeout=timeout, headers=headers)
+        r = ai_transport.get_cloud(f"{base_url}/models", timeout=timeout, headers=headers,
+                                   request_fn=http_get)
         return provider, classify_http_status(int(r.status_code))
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        return provider, UNREACHABLE
     except requests.exceptions.Timeout:
         return provider, TIMEOUT
     except requests.exceptions.ConnectionError:
@@ -281,6 +286,7 @@ def warm_configured_provider(app) -> Readiness:
     """Run one harmless completion after startup to make the configured model
     resident. This is called from a background worker, never the boot lane."""
     from samsara import ai_preferences  # noqa: PLC0415
+    from samsara import ai_transport
     if not ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava").allowed:
         return tracker.snapshot()
     import requests  # noqa: PLC0415
@@ -295,7 +301,7 @@ def warm_configured_provider(app) -> Readiness:
             ollama = config.get("ollama", {}) or {}
             host = str(ollama.get("host", "http://localhost:11434")).rstrip("/")
             timeout = float(ollama.get("timeout_seconds", 30) or 30)
-            response = requests.post(
+            response = ai_transport.post_local(
                 f"{host}/api/chat",
                 json={"model": str(ollama.get("model", "llama3")),
                       "messages": [{"role": "user", "content": "Reply only: ready."}],
@@ -313,6 +319,9 @@ def warm_configured_provider(app) -> Readiness:
             )
             if str(response).startswith("Error:"):
                 failure_kind = classify_error_text(str(response))
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        failure_kind = UNREACHABLE
     except requests.exceptions.Timeout:
         failure_kind = TIMEOUT
     except requests.exceptions.ConnectionError:

@@ -7,6 +7,7 @@ Samsara does not store conversation content beyond the local session.
 """
 
 import requests
+from samsara import ai_transport
 from urllib.parse import urlparse
 
 
@@ -94,6 +95,9 @@ def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
                                            timeout, max_tokens,
                                            messages=messages)
         return text, None, None
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        return None, "error", str(exc)
     except requests.exceptions.ConnectionError:
         return None, "error", "Could not connect to the cloud LLM provider."
     except requests.exceptions.Timeout:
@@ -159,7 +163,7 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
         "max_tokens": max_tokens,
         "temperature": 0.3,
     }
-    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"].strip()
@@ -189,7 +193,7 @@ def _send_anthropic(base_url, api_key, model, system_prompt,
         "system": system,
         "messages": api_messages,
     }
-    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
     data = response.json()
     text_blocks = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
@@ -361,7 +365,8 @@ def send_web_search(system_prompt, messages, app, http_post=None):
     web_search server tool offered. `messages` is the AvaMemory list
     (a leading system message is lifted into the top-level field). Never
     raises; see SearchResult."""
-    post = http_post or requests.post
+    from functools import partial
+    post = partial(ai_transport.post_cloud, request_fn=http_post)
     cfg = _get_config(app)
     api_key = cfg.get("api_key", "")
     if not api_key:
@@ -431,6 +436,9 @@ def send_web_search(system_prompt, messages, app, http_post=None):
             # Long-running server tool turn: continue it by sending the
             # assistant content back, bounded.
             api_messages = api_messages + [{"role": "assistant", "content": data.get("content") or []}]
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        return SearchResult(error_kind="unreachable")
     except requests.exceptions.Timeout:
         return SearchResult(error_kind="timeout")
     except requests.exceptions.ConnectionError:
@@ -471,6 +479,9 @@ def send_json(system_prompt, user_message, app):
         else:
             return _send_openai_json(base_url, api_key, model, system_prompt,
                                      user_message, timeout, max_tokens)
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        return f"Error: {exc}"
     except requests.exceptions.ConnectionError:
         return "Error: Could not connect to the cloud LLM provider."
     except requests.exceptions.Timeout:
@@ -497,7 +508,7 @@ def _send_openai_json(base_url, api_key, model, system_prompt,
         "temperature": 0,
         "response_format": {"type": "json_object"},
     }
-    response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"].strip()
@@ -512,10 +523,13 @@ def check_available(app):
     try:
         provider, base_url, model = _get_provider_config(app)
         if provider == "anthropic":
-            r = requests.get(base_url.rstrip('/'), timeout=3)
+            r = ai_transport.get_cloud(base_url.rstrip('/'), timeout=3)
         else:
-            r = requests.get(f"{base_url}/models", timeout=3,
+            r = ai_transport.get_cloud(f"{base_url}/models", timeout=3,
                              headers={"Authorization": f"Bearer {api_key}"})
         return True, provider
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        return False, str(exc)
     except Exception as e:
         return False, str(e)

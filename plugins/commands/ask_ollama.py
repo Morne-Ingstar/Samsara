@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import requests
+from samsara import ai_transport
 from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import ava_readiness
@@ -955,7 +956,7 @@ def _log_turn(app, request, *, outcome, started=None):
 
 def _check_ollama_available(host: str, timeout: int = 3) -> bool:
     try:
-        r = requests.get(f"{host}/api/tags", timeout=timeout)
+        r = ai_transport.get_local(f"{host}/api/tags", timeout=timeout)
         return r.status_code == 200
     except Exception:
         return False
@@ -1325,7 +1326,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         return AvaReply(None, "ollama", _ms(), failure_kind=kind)
 
     try:
-        response = requests.post(
+        response = ai_transport.post_local(
             f"{host}/api/chat",
             json=payload,
             timeout=get_timeout(app),
@@ -1342,6 +1343,9 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             app._ava_memory.save()
         ava_readiness.tracker.record_turn("ollama", None)
         return AvaReply(reply, "ollama", _ms())
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        return _local_failed(ava_readiness.UNREACHABLE)
     except requests.exceptions.ConnectionError:
         return _local_failed(ava_readiness.UNREACHABLE)
     except requests.exceptions.Timeout:

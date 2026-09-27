@@ -77,9 +77,9 @@ def test_off_blocks_readiness_probe_and_warmup(monkeypatch):
 def test_off_blocks_the_local_vision_model_route(monkeypatch):
     app = _app({"ava": {"provider_policy": "off"}, "vision": {"enabled": True}})
     bridge = VisionBridge(app)
-    monkeypatch.setattr("samsara.vision.requests.post",
+    monkeypatch.setattr("samsara.vision.ai_transport.post_local",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("vision called")))
-    monkeypatch.setattr("samsara.vision.requests.get",
+    monkeypatch.setattr("samsara.vision.ai_transport.get_local",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("vision probe")))
 
     assert bridge.describe("fixture", "describe") is None
@@ -145,7 +145,7 @@ def test_off_during_delayed_local_reply_drops_it(monkeypatch):
         def json(self):
             return {"message": {"content": "late answer"}}
 
-    monkeypatch.setattr(ask_ollama.requests, "post", lambda *_args, **_kwargs: _Response())
+    monkeypatch.setattr(ask_ollama.ai_transport, "post_local", lambda *_args, **_kwargs: _Response())
 
     reply = ask_ollama.ask_model("hello", app)
 

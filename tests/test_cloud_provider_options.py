@@ -56,8 +56,8 @@ def test_hidden_provider_endpoint_override_is_ignored():
 def test_unsupported_provider_fails_without_network_request(monkeypatch):
     requests = []
     monkeypatch.setattr(
-        cloud_llm.requests,
-        "post",
+        cloud_llm.ai_transport,
+        "post_cloud",
         lambda *args, **kwargs: requests.append((args, kwargs)),
     )
 
@@ -82,7 +82,7 @@ def test_openrouter_send_reuses_openai_compatible_request(monkeypatch):
         request.update(url=url, **kwargs)
         return _Response()
 
-    monkeypatch.setattr(cloud_llm.requests, "post", _post)
+    monkeypatch.setattr(cloud_llm.ai_transport, "post_cloud", _post)
 
     assert cloud_llm.send("system", "hello", _app()) == "routed"
     assert request["url"] == "https://openrouter.ai/api/v1/chat/completions"

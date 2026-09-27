@@ -108,6 +108,7 @@ def build_user_message(text: str, instruction: str) -> str:
 def _call_ollama(app, user_message: str, timeout_s: float):
     """(content_or_None, reason_or_None). Mirrors smart_corrections._call_ollama."""
     from samsara import smart_corrections as sc  # noqa: PLC0415  (shared host/probe cache)
+    from samsara import ai_transport
     import requests  # noqa: PLC0415
     host = sc._ollama_host(app)
     payload = {
@@ -123,6 +124,10 @@ def _call_ollama(app, user_message: str, timeout_s: float):
         response = sc._session.post(f"{host}/api/chat", json=payload, timeout=timeout_s)
         response.raise_for_status()
         return response.json().get("message", {}).get("content", ""), None
+    except ai_transport.AITransportRefused as exc:
+        ai_transport.notify_refusal(app, exc)
+        sc._probe_cache.pop(host, None)
+        return None, "the model could not be reached"
     except requests.exceptions.Timeout:
         sc._probe_cache.pop(host, None)
         return None, "the model took too long"
