@@ -39,6 +39,23 @@ if errorlevel 1 (
     exit /b 1
 )
 cd /d "%~dp0.."
+set "DIST_DIR=dist"
+set "WORK_DIR=build"
+if defined SAMSARA_TEMP_BUILD_ROOT (
+    for %%D in ("%SAMSARA_TEMP_BUILD_ROOT%") do set "TEMP_BUILD_ROOT=%%~fD"
+    if exist "!TEMP_BUILD_ROOT!\dist" (
+        echo Temporary dist already exists: "!TEMP_BUILD_ROOT!\dist"
+        exit /b 1
+    )
+    if exist "!TEMP_BUILD_ROOT!\build" (
+        echo Temporary build already exists: "!TEMP_BUILD_ROOT!\build"
+        exit /b 1
+    )
+    set "DIST_DIR=!TEMP_BUILD_ROOT!\dist"
+    set "WORK_DIR=!TEMP_BUILD_ROOT!\build"
+)
+set "SAMSARA_BUILD_DIST=%DIST_DIR%"
+set "SAMSARA_BUILD_WORK=%WORK_DIR%"
 "%PYTHON_EXE%" %PYTHON_ARGS% tools\check_release_version.py
 if errorlevel 1 exit /b 1
 
@@ -48,27 +65,29 @@ echo ============================================
 echo.
 
 echo [1/3] Cleaning previous build...
-if exist "dist" rmdir /s /q dist
-if exist "build" rmdir /s /q build
+if not defined SAMSARA_TEMP_BUILD_ROOT (
+    if exist "dist" rmdir /s /q dist
+    if exist "build" rmdir /s /q build
+)
 
 echo.
 echo [2/3] Running PyInstaller with scripts\samsara.spec...
-"%PYTHON_EXE%" %PYTHON_ARGS% -m PyInstaller --clean --noconfirm scripts\samsara.spec
+"%PYTHON_EXE%" %PYTHON_ARGS% -m PyInstaller --clean --noconfirm --distpath "%DIST_DIR%" --workpath "%WORK_DIR%" scripts\samsara.spec
 
-if not exist "dist\Samsara\Samsara.exe" (
+if not exist "%DIST_DIR%\Samsara\Samsara.exe" (
     echo.
-    echo Build FAILED -- dist\Samsara\Samsara.exe was not produced. Check output above.
+    echo Build FAILED -- %DIST_DIR%\Samsara\Samsara.exe was not produced. Check output above.
     exit /b 1
 )
 
 echo.
-echo Build successful: dist\Samsara\Samsara.exe
+echo Build successful: %DIST_DIR%\Samsara\Samsara.exe
 
 set "CHECK_FAIL=0"
-set "DIST_INTERNAL=dist\Samsara\_internal\openwakeword\resources\models"
+set "DIST_INTERNAL=%DIST_DIR%\Samsara\_internal\openwakeword\resources\models"
 
 echo.
-echo [12] Checking packaged OWW model files are present in dist\_internal...
+echo [12] Checking packaged OWW model files are present in %DIST_DIR%\_internal...
 for %%M in (
     alexa_v0.1.onnx
     embedding_model.onnx
@@ -100,7 +119,7 @@ mkdir "%IMPORT_HOME%" >nul 2>nul
 set "SAMSARA_HOME_DIR=%IMPORT_HOME%"
 set "SAMSARA_FROZEN_IMPORT_CHECK=1"
 set "SAMSARA_FROZEN_IMPORT_MARKER=%IMPORT_MARKER%"
-dist\Samsara\Samsara.exe > "%IMPORT_LOG%" 2>&1
+"%DIST_DIR%\Samsara\Samsara.exe" > "%IMPORT_LOG%" 2>&1
 set "IMPORT_RESULT=%ERRORLEVEL%"
 set "SAMSARA_FROZEN_IMPORT_CHECK="
 set "SAMSARA_FROZEN_IMPORT_MARKER="
@@ -135,7 +154,7 @@ mkdir "%GESTURE_HOME%" >nul 2>nul
 set "SAMSARA_HOME_DIR=%GESTURE_HOME%"
 set "SAMSARA_GESTURE_COMPONENT_CHECK=missing"
 set "SAMSARA_FROZEN_IMPORT_MARKER=%GESTURE_MARKER%"
-dist\Samsara\Samsara.exe > "%GESTURE_LOG%" 2>&1
+"%DIST_DIR%\Samsara\Samsara.exe" > "%GESTURE_LOG%" 2>&1
 set "GESTURE_RESULT=%ERRORLEVEL%"
 set "SAMSARA_GESTURE_COMPONENT_CHECK="
 set "SAMSARA_FROZEN_IMPORT_MARKER="
@@ -159,7 +178,7 @@ echo [CHECK-15] PASS -- missing component is handled without app startup
 echo.
 echo [16] Proving the installed gesture component imports in the frozen app...
 set "GESTURE_ZIP="
-for %%F in (dist\Samsara-GestureControl-*.zip) do set "GESTURE_ZIP=%%~fF"
+for %%F in ("%DIST_DIR%\Samsara-GestureControl-*.zip") do set "GESTURE_ZIP=%%~fF"
 if not defined GESTURE_ZIP (
     echo [CHECK-16] FAIL -- gesture component archive was not built
     exit /b 1
@@ -168,7 +187,7 @@ set "GESTURE_APP=%TEMP%\samsara_gesture_app_%RANDOM%%RANDOM%"
 set "GESTURE_HOME=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%"
 set "GESTURE_LOG=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%.log"
 set "GESTURE_MARKER=%TEMP%\samsara_gesture_%RANDOM%%RANDOM%.ok"
-"%PYTHON_EXE%" %PYTHON_ARGS% -c "import shutil,sys,zipfile; from pathlib import Path; shutil.copytree(sys.argv[1], sys.argv[2]); zipfile.ZipFile(sys.argv[3]).extractall(Path(sys.argv[2]) / '_internal')" "dist\Samsara" "%GESTURE_APP%" "%GESTURE_ZIP%"
+"%PYTHON_EXE%" %PYTHON_ARGS% -c "import shutil,sys,zipfile; from pathlib import Path; shutil.copytree(sys.argv[1], sys.argv[2]); zipfile.ZipFile(sys.argv[3]).extractall(Path(sys.argv[2]) / '_internal')" "%DIST_DIR%\Samsara" "%GESTURE_APP%" "%GESTURE_ZIP%"
 if errorlevel 1 (
     echo [CHECK-16] FAIL -- could not prepare the isolated component install
     rmdir /s /q "%GESTURE_APP%"
@@ -203,7 +222,7 @@ echo [CHECK-16] PASS -- frozen component, gesture loop and PyAV MP4 writer
 echo.
 echo [3/3] Running frozen_smoke.py against the fresh build...
 set "SMOKE_LOG=%TEMP%\samsara_smoke_%RANDOM%.log"
-"%PYTHON_EXE%" %PYTHON_ARGS% tools\frozen_smoke.py dist\Samsara > "%SMOKE_LOG%" 2>&1
+"%PYTHON_EXE%" %PYTHON_ARGS% tools\frozen_smoke.py "%DIST_DIR%\Samsara" > "%SMOKE_LOG%" 2>&1
 set "SMOKE_RESULT=%ERRORLEVEL%"
 
 echo [13] Scanning frozen smoke log for OWW model-load failures...
@@ -230,5 +249,5 @@ if "%SMOKE_RESULT%"=="0" (
 if not "%CHECK_FAIL%"=="0" exit /b 1
 echo.
 echo [SIZE] Fresh build report:
-"%PYTHON_EXE%" %PYTHON_ARGS% tools\size_report.py dist\Samsara
+"%PYTHON_EXE%" %PYTHON_ARGS% tools\size_report.py "%DIST_DIR%\Samsara"
 exit /b %SMOKE_RESULT%

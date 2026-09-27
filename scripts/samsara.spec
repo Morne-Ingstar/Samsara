@@ -43,7 +43,9 @@ app_dir = Path(SPECPATH).parent
 # to prove its import inventory.  It is generated under PyInstaller's build
 # directory rather than becoming a second application entry point or a shipped
 # source file.  ``os._exit`` prevents dictation.py from starting in this mode.
-_runtime_import_hook = app_dir / 'build' / 'samsara_runtime_import_check.py'
+_build_work = Path(os.environ.get('SAMSARA_BUILD_WORK', str(app_dir / 'build')))
+_build_dist = Path(os.environ.get('SAMSARA_BUILD_DIST', str(app_dir / 'dist')))
+_runtime_import_hook = _build_work / 'samsara_runtime_import_check.py'
 _runtime_import_hook.parent.mkdir(parents=True, exist_ok=True)
 _runtime_import_hook.write_text(r'''
 import importlib
@@ -87,9 +89,12 @@ if os.environ.get("SAMSARA_FROZEN_IMPORT_CHECK") == "1":
 
 if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "missing":
     try:
-        if importlib.util.find_spec("av") is not None:
-            raise RuntimeError("PyAV unexpectedly present in core build")
         from samsara.components import ComponentNotInstalled
+        # faster_whisper.transcribe imports faster_whisper.audio, whose line 15
+        # imports av. PyAV therefore belongs to the core transcription build.
+        import av  # noqa: F401
+        if importlib.util.find_spec("cv2") is not None or importlib.util.find_spec("mediapipe") is not None:
+            raise RuntimeError("optional camera libraries unexpectedly present in core build")
         from samsara.vision.camera_service import CameraService
         CameraService().start()
     except ComponentNotInstalled as exc:
@@ -132,6 +137,19 @@ if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "installed":
                 video.pix_fmt = "yuv420p"
                 audio = container.add_stream("aac", rate=16000)
                 audio.layout = "mono"
+                frame = av.VideoFrame(width=16, height=16, format="yuv420p")
+                for packet in video.encode(frame):
+                    container.mux(packet)
+                for packet in video.encode(None):
+                    container.mux(packet)
+                samples = av.AudioFrame(format="s16", layout="mono", samples=1024)
+                samples.sample_rate = 16000
+                for plane in samples.planes:
+                    plane.update(bytes(plane.buffer_size))
+                for packet in audio.encode(samples):
+                    container.mux(packet)
+                for packet in audio.encode(None):
+                    container.mux(packet)
             finally:
                 container.close()
             if not os.path.isfile(output) or os.path.getsize(output) == 0:
@@ -194,9 +212,10 @@ pyside6_hiddenimports = [
 shiboken6_datas, shiboken6_binaries, shiboken6_hiddenimports = collect_all('shiboken6')
 datas += pyside6_datas + shiboken6_datas
 
-# 2d. Gesture control is a downloadable component, not part of the core
-# onedir build. _write_gesture_component() below puts its files under
-# _internal, the frozen interpreter's existing sys._MEIPASS import root.
+# 2d. Core includes faster_whisper and its imports, including PyAV:
+# faster_whisper/transcribe.py:19 imports audio.py, which imports av at :15.
+# The downloadable GestureControl pack adds camera/MediaPipe/gesture libraries,
+# not PyAV. It is unpacked under the frozen interpreter's _internal import root.
 
 # 3. sounddevice PortAudio binaries
 sounddevice_data = os.path.join(site_packages, '_sounddevice_data')
@@ -585,13 +604,36 @@ _CV2_DISTRIBUTION = next(iter(metadata.packages_distributions().get('cv2', ())),
 if _CV2_DISTRIBUTION is None:
     raise SystemExit('samsara.spec: cv2 has no installed distribution metadata')
 _GESTURE_DISTRIBUTIONS = (
-    'mediapipe', _CV2_DISTRIBUTION, 'av', 'absl-py', 'protobuf',
+    'mediapipe', _CV2_DISTRIBUTION, 'absl-py', 'protobuf',
     'flatbuffers', 'attrs', 'six', 'packaging',
     # MediaPipe's current solutions API imports drawing_utils, which imports
     # matplotlib.  These are its wheel dependencies that are not core.
     'matplotlib', 'contourpy', 'cycler', 'fonttools', 'kiwisolver',
     'pillow', 'pyparsing', 'python-dateutil',
 )
+
+
+_COMPONENT_EXCLUDED_DIRS = frozenset({
+    '__pycache__', 'test', 'tests', 'testing', 'doc', 'docs',
+    'example', 'examples', 'samples', 'sample_data',
+})
+
+
+def _exclude_gesture_member(relative: Path, distribution_files: set[Path]) -> bool:
+    """Drop development files while preserving importable code and resources."""
+    parts = tuple(part.lower() for part in relative.parts)
+    if any(part in _COMPONENT_EXCLUDED_DIRS for part in parts):
+        return True
+    if parts[:2] in {('pyparsing', 'tools'), ('pyparsing', 'ai')}:
+        return True
+    if any(part.endswith('.dist-info') for part in parts):
+        # Keep METADATA, WHEEL and entry points for importlib.metadata consumers.
+        return parts[-1] in {'record', 'installer', 'direct_url.json', 'requested'}
+    if relative.suffix.lower() == '.pyc':
+        return relative.with_suffix('.py') in distribution_files
+    if relative.suffix.lower() == '.pyi':
+        return True
+    return False
 
 
 def _write_gesture_component(output: Path) -> None:
@@ -602,7 +644,8 @@ def _write_gesture_component(output: Path) -> None:
         with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
             for distribution_name in _GESTURE_DISTRIBUTIONS:
                 distribution = metadata.distribution(distribution_name)
-                for relative in distribution.files or ():
+                distribution_files = {Path(item) for item in distribution.files or ()}
+                for relative in sorted(distribution_files):
                     # Some wheels list console-script launchers outside
                     # site-packages (for example ../../Scripts/fonttools.exe).
                     # They are neither importable component contents nor safe
@@ -610,10 +653,15 @@ def _write_gesture_component(output: Path) -> None:
                     relative = Path(relative)
                     if relative.is_absolute() or ".." in relative.parts:
                         continue
+                    if _exclude_gesture_member(relative, distribution_files):
+                        continue
                     source = Path(distribution.locate_file(relative))
                     if not source.is_file():
                         continue
-                    arcname = source.relative_to(site_packages).as_posix()
+                    try:
+                        arcname = source.relative_to(site_packages).as_posix()
+                    except ValueError:
+                        continue
                     if arcname not in seen:
                         archive.write(source, arcname)
                         seen.add(arcname)
@@ -624,10 +672,10 @@ def _write_gesture_component(output: Path) -> None:
         raise SystemExit('samsara.spec: gesture component has no mediapipe files')
     if not any(name.startswith('cv2/') for name in seen):
         raise SystemExit('samsara.spec: gesture component has no cv2 files')
-    if not any(name.startswith('av/') for name in seen):
-        raise SystemExit('samsara.spec: gesture component has no PyAV files')
+    if any(name.startswith('av/') for name in seen):
+        raise SystemExit('samsara.spec: core PyAV leaked into gesture component')
     os.replace(temporary, output)
 
 
 from samsara import __version__  # noqa: E402
-_write_gesture_component(app_dir / 'dist' / f'Samsara-GestureControl-v{__version__}.zip')
+_write_gesture_component(_build_dist / f'Samsara-GestureControl-v{__version__}.zip')
