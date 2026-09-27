@@ -2,13 +2,14 @@
 
 import ast
 import re
+import time
 import types
 from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QWidget
 
-from samsara import ava_readiness
+from samsara import ai_preferences, ava_readiness
 from samsara.ui import home_signals, voice_help_qt
 
 
@@ -33,6 +34,26 @@ def _app(*, config=None, mics=DEFAULT_MICS, running=True, armed=True, models="re
         _hands_free_fault=fault,
         wake_ready_state=lambda: models,
     )
+
+
+def _ava_config(*, policy="local", api_key="present"):
+    """A consented Ava profile using the current policy-state contract."""
+    config = {
+        "ava": {"provider_policy": policy},
+        "ava_command_session": {"enabled": True},
+        "ollama": {"enabled": policy == "local", "host": "http://localhost:11434"},
+        "cloud_llm": {"enabled": policy == "cloud", "provider": "deepseek", "api_key": api_key},
+    }
+    provider = ai_preferences.provider_for(
+        config, policy, resolved_addresses=("127.0.0.1", "::1") if policy == "local" else ())
+    config["ava"]["consent"] = {
+        "version": ai_preferences.CONSENT_VERSION,
+        "accepted_at": "2026-01-01T00:00:00+00:00",
+        "features": ["ava"],
+        "provider": provider.record(),
+        "cloud_version": ai_preferences.CONSENT_VERSION if policy == "cloud" else None,
+    }
+    return config
 
 
 def _copy_strings(value):
@@ -147,11 +168,53 @@ def test_every_settings_location_names_a_declared_page_and_row(monkeypatch):
     assert citations == {
         ("General", "Microphone"),
         ("Dictation", "Wake activation"),
-        ("Ava", "Ava"),
     }
     declarations = _declared_settings_rows()
     for page, row in citations:
         assert row in declarations[page], (page, row)
+
+
+@pytest.mark.parametrize("readiness, expected", [
+    (ava_readiness.READY, (home_signals.AVA_AWAKE, "Ava is ready to answer.")),
+    (ava_readiness.WARMING, (home_signals.AVA_WARMING, "Ava is warming up.")),
+    (ava_readiness.OFFLINE, (home_signals.AVA_DIM,
+                             "Ava is offline. Ollama is not running on this computer.")),
+])
+def test_ava_presence_follows_effective_state_then_provider_readiness(
+        monkeypatch, readiness, expected):
+    config = _ava_config()
+    monkeypatch.setattr(
+        ava_readiness, "readiness_for",
+        lambda _app: ava_readiness.Readiness(readiness, provider="ollama",
+                                              failure_kind=ava_readiness.UNREACHABLE),
+    )
+    state = ai_preferences.runtime_state(config, "ava")
+    assert state.allowed
+    assert home_signals.ava_presence(_app(config=config)) == expected
+
+
+def test_ava_presence_uses_effective_state_reason_when_setup_blocks_it():
+    config = _ava_config(policy="cloud", api_key="")
+    effective = ai_preferences.runtime_state(config, "ava")
+    assert effective.status == "setup-pending"
+    assert home_signals.ava_presence(_app(config=config)) == (
+        home_signals.AVA_DIM, effective.reason)
+
+
+def test_ava_presence_does_not_call_a_setup_blocked_ava_working():
+    config = _ava_config(policy="cloud", api_key="")
+    effective = ai_preferences.runtime_state(config, "ava")
+    app = _app(config=config)
+    app.ava_thinking_since = time.monotonic()
+    assert home_signals.ava_presence(app) == (home_signals.AVA_DIM, effective.reason)
+
+
+def test_ava_presence_calls_an_off_choice_off_with_its_effective_state_reason():
+    config = {"ava": {"provider_policy": "off"}, "ava_command_session": {"enabled": False}}
+    effective = ai_preferences.runtime_state(config, "ava")
+    assert effective.status == "off-by-choice"
+    assert home_signals.ava_presence(_app(config=config)) == (
+        home_signals.AVA_ASLEEP, effective.reason)
 
 
 @pytest.mark.parametrize("case", ["wake-off", "microphone-missing", "ava-offline"])

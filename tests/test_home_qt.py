@@ -455,6 +455,39 @@ class TestAvaInTheHeader:
         control.refresh()
         assert control.state == home_signals.AVA_AWAKE          # never indefinite
 
+    def test_readiness_change_refreshes_the_header_without_reopening(self, qapp, monkeypatch):
+        from samsara import ava_readiness
+        from samsara.ui import qt_runtime
+
+        tracker = ava_readiness.ReadinessTracker()
+        monkeypatch.setattr(ava_readiness, "tracker", tracker)
+        monkeypatch.setattr(qt_runtime, "post", lambda callback: callback())
+        current = {"value": (home_signals.AVA_DIM, "Ava has not been checked yet.")}
+        monkeypatch.setattr(home_qt.home_signals, "ava_presence",
+                            lambda _app: current["value"])
+        control = self._control(qapp)
+        assert control.visible_text.endswith("unavailable")
+        current["value"] = (home_signals.AVA_AWAKE, "Ava is ready to answer.")
+        tracker.record_probe("ollama", None)
+        assert control.visible_text.endswith("ready")
+        control.close()
+
+    def test_refresh_failure_replaces_stale_text_and_warns_once(self, qapp, monkeypatch):
+        calls = []
+        monkeypatch.setattr(home_qt.home_signals, "ava_presence",
+                            lambda _app: (_ for _ in ()).throw(RuntimeError("readiness failed")))
+        monkeypatch.setattr(home_qt.logger, "warning",
+                            lambda *args, **kwargs: calls.append((args, kwargs)))
+        control = self._control(qapp)
+        control.refresh()
+        assert control.state == home_signals.AVA_DIM
+        assert control.visible_text.endswith("unavailable")
+        assert control.accessibleDescription() == (
+            "Samsara could not refresh Ava's status. Try again shortly.")
+        assert len(calls) == 1
+        assert calls[0][1]["exc_info"] is not None
+        control.close()
+
     def test_awake_does_not_claim_a_microphone_or_a_network_send(self, qapp, monkeypatch):
         _ready(None, home_signals.READY, monkeypatch=monkeypatch)
         control = self._control(qapp)

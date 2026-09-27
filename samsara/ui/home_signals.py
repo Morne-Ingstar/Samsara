@@ -305,11 +305,18 @@ def hands_free_state(app) -> CapabilityState:
 
 def ava_state(app) -> CapabilityState:
     cfg = _cfg(app)
-    enabled = bool(_cfg_get(cfg, "ollama.enabled")) or bool(_cfg_get(cfg, "cloud_llm.enabled"))
-    if not enabled:
+    try:
+        from samsara import ai_preferences            # noqa: PLC0415
+        preference = ai_preferences.runtime_state(cfg, "ava")
+    except Exception as exc:                           # never break Home
+        logger.debug(f"[HOME] Ava preference state unavailable: {exc}")
         return CapabilityState(
-            AVA, OFF,
-            "To ask questions by voice, turn it on in Settings > Ava > Ava.")
+            AVA, UNKNOWN,
+            "Samsara could not check whether Ava is enabled right now. Try again shortly.")
+    if preference.status == "off-by-choice":
+        return CapabilityState(AVA, OFF, preference.reason)
+    if not preference.allowed:
+        return CapabilityState(AVA, UNKNOWN, preference.reason)
     try:
         from samsara import ava_readiness            # noqa: PLC0415
         readiness = ava_readiness.readiness_for(app)
@@ -322,11 +329,9 @@ def ava_state(app) -> CapabilityState:
     if state == getattr(ava_readiness, "READY", "ready"):
         return CapabilityState(AVA, READY, "", "You can ask Ava a question now")
     if state == getattr(ava_readiness, "WARMING", "warming"):
-        return CapabilityState(AVA, WARMING, "Ava is getting ready. Try again in a moment.")
+        return CapabilityState(AVA, WARMING, readiness.sentence())
     if state == getattr(ava_readiness, "OFFLINE", "offline"):
-        return CapabilityState(
-            AVA, UNAVAILABLE,
-            "Check your connection or account, then try asking Ava again.")
+        return CapabilityState(AVA, UNAVAILABLE, readiness.sentence())
     return CapabilityState(
         AVA, UNKNOWN,
         "Samsara has not checked whether Ava can answer yet.")
@@ -363,11 +368,11 @@ def ava_presence(app, now: Optional[float] = None) -> tuple:
     now = time.monotonic() if now is None else now
     started = getattr(app, "ava_thinking_since", None)
     state = ava_state(app)
-    if isinstance(started, (int, float)) and 0 <= now - started <= AVA_THINKING_MAX_S:
-        return AVA_THINKING, AVA_STATE_TEXT[AVA_THINKING]
     if state.status == OFF:
-        return AVA_ASLEEP, AVA_STATE_TEXT[AVA_ASLEEP]
+        return AVA_ASLEEP, state.detail or AVA_STATE_TEXT[AVA_ASLEEP]
     if state.status == READY:
+        if isinstance(started, (int, float)) and 0 <= now - started <= AVA_THINKING_MAX_S:
+            return AVA_THINKING, AVA_STATE_TEXT[AVA_THINKING]
         return AVA_AWAKE, AVA_STATE_TEXT[AVA_AWAKE]
     if state.status == WARMING:
         return AVA_WARMING, state.detail or AVA_STATE_TEXT[AVA_WARMING]

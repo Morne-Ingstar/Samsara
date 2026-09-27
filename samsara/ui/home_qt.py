@@ -1545,6 +1545,8 @@ class AvaHeaderControl(QPushButton):
         for child in (self._mark, self._text):
             child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.clicked.connect(self._clicked)
+        self._presence_failure_logged = False
+        _subscribe_ava_readiness(self)
         self.refresh()
 
     def sizeHint(self) -> QSize:
@@ -1574,8 +1576,11 @@ class AvaHeaderControl(QPushButton):
         try:
             state, sentence = home_signals.ava_presence(self._app)
         except Exception as exc:
-            logger.debug(f"[HOME] Ava presence unavailable: {exc}")
-            return
+            if not self._presence_failure_logged:
+                logger.warning("[HOME] Ava presence refresh failed", exc_info=exc)
+                self._presence_failure_logged = True
+            state = home_signals.AVA_DIM
+            sentence = "Samsara could not refresh Ava's status. Try again shortly."
         self._state = state
         self._mark.set_state(state)
         word = AVA_SHORT_STATE.get(state, state)
