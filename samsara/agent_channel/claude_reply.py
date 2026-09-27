@@ -241,6 +241,18 @@ def _active(app):
 
 def followup(app, action: str) -> bool:
     if not _active(app):
+        # Queue reports share Claude's spoken "read the rest" / "repeat that"
+        # commands, but retain their own chunk state and captioned speech.
+        view = getattr(app, "_queue_voice_view", None)
+        response = view.report_followup(action) if view is not None else None
+        if response is not None:
+            coordinator = getattr(app, "audio_coordinator", None)
+            if coordinator is not None:
+                if not response:
+                    coordinator.cancel_speech()
+                else:
+                    coordinator.speak(response, category="ava_response", interruptible=True)
+            return True
         return False
     state = _state(app)
     if action in ("stop claude", "stop claude reply", "stop the reply", "quiet claude"):

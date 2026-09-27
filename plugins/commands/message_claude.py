@@ -496,13 +496,13 @@ def handle_claude_message_submit(app, remainder):
                    chip="warning", extra={"draft_kept": True})
 
 
-@command("read the rest", pack="ai", risk_class="safe", reversible=True,
+@command("read the rest", pack="core", risk_class="safe", reversible=True,
          side_effects=["audio"])
 def handle_claude_read_rest(app, remainder):
     return claude_reply.followup(app, "read the rest")
 
 
-@command("repeat that", pack="ai", risk_class="safe", reversible=True,
+@command("repeat that", pack="core", risk_class="safe", reversible=True,
          side_effects=["audio"])
 def handle_claude_repeat(app, remainder):
     return claude_reply.followup(app, "repeat that")

@@ -29,6 +29,54 @@ Cross-field dependencies use one of two forms:
 """
 
 SETTINGS_SCHEMA = {
+    "comfy.base_url": {
+        "type": "str", "default": "http://127.0.0.1:8001", "tab": "general",
+        "settings_ui": False, "ui_less_reason": "Local ComfyUI server address; loopback only.",
+    },
+    "comfy.default_workflow": {
+        "type": "str", "default": "klein_simple", "tab": "general",
+        "settings_ui": False, "ui_less_reason": "Name of an explicitly imported local image workflow.",
+    },
+    "comfy.workflows": {
+        "type": "dict", "tab": "general",
+        "default": {"klein_simple": {
+            "path": "comfy_workflows/klein_simple.api.json",
+            "prompt": ["74", "inputs", "text"], "seed": ["73", "inputs", "noise_seed"],
+            "width": ["68", "inputs", "value"], "height": ["69", "inputs", "value"],
+        }},
+        "settings_ui": False, "ui_less_reason": "Imported API graphs and their exact input mappings; configured by the workflow import tool.",
+    },
+    "comfy.prompt_prefix": {
+        "type": "str", "default": "", "tab": "general",
+        "settings_ui": False, "ui_less_reason": "Owner-editable text prepended verbatim to image prompts; empty by default.",
+    },
+    "comfy.prompt_suffix": {
+        "type": "str", "default": "", "tab": "general",
+        "settings_ui": False, "ui_less_reason": "Owner-editable text appended verbatim to image prompts; empty by default.",
+    },
+    "comfy.auto_open": {
+        "type": "bool", "default": True, "tab": "general",
+        "settings_ui": False, "ui_less_reason": "Advanced image completion preference; open the image remains available by voice.",
+    },
+    "comfy.timeout_s": {
+        "type": "int", "min": 1, "max": 3600, "default": 600, "tab": "general",
+        "settings_ui": False, "ui_less_reason": "Local image rendering deadline in seconds.",
+    },
+    "queue_voice.queue_root": {
+        "type": "str", "default": r"C:\Users\Morne\Documents\Claude\queue",
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Owner-maintained prompt queue location; advanced config-only path.",
+    },
+    "queue_voice.reports_root": {
+        "type": "str", "default": r"C:\Users\Morne\Documents\Claude\reports",
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Owner-maintained prompt reports location; advanced config-only path.",
+    },
+    "queue_voice.python": {
+        "type": "str", "default": r"F:\envs\sami\python.exe",
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Interpreter for the existing queue note script; advanced config-only path.",
+    },
     "claude_voice.enabled": {
         "type": "bool", "default": True, "tab": "general",
         "settings_ui": False,
