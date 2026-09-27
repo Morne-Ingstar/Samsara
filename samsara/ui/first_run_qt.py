@@ -539,7 +539,8 @@ def _qt_widget_is_valid(widget) -> bool:
 # checks, and remote Ollama endpoints contact network services when you ask
 # or enable them. See PRIVACY.md for what each request includes.
 _FIRST_RUN_NETWORK_COPY = (
-    "If you choose a speech model, Samsara downloads it on first use. If you choose "
+    "Once you choose a speech model, Samsara will download it the first time it opens. "
+    "The more advanced the model, the longer the download takes. If you choose "
     "Get, it downloads that optional component from its host. Cloud Ava, web search, cloud "
     "corrections, Edge TTS, Smart Actions, web links and integrations, update checks, "
     "and remote Ollama endpoints contact network services when you ask or enable them. "
