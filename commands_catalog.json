@@ -487,7 +487,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2808",
+      "source": "plugins/commands/ask_ollama.py:2964",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -506,7 +506,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2860",
+      "source": "plugins/commands/ask_ollama.py:3016",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -526,7 +526,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2846",
+      "source": "plugins/commands/ask_ollama.py:3002",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -545,7 +545,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2887",
+      "source": "plugins/commands/ask_ollama.py:3043",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -573,7 +573,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2521",
+      "source": "plugins/commands/ask_ollama.py:2666",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -598,7 +598,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2647",
+      "source": "plugins/commands/ask_ollama.py:2803",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -619,7 +619,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2827",
+      "source": "plugins/commands/ask_ollama.py:2983",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -644,7 +644,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2703",
+      "source": "plugins/commands/ask_ollama.py:2859",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -7484,6 +7484,24 @@
     },
     {
       "aliases": [
+        "import my spotify playlists",
+        "import spotify playlists"
+      ],
+      "args": [],
+      "canonical_id": "music.import_my_spotify_playlists",
+      "description": "Open the local Spotify data export picker from voice.",
+      "kind": "plugin",
+      "object": "my_spotify_playlists",
+      "pack": "media",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:618",
+      "undoable": true,
+      "verb": "import",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "mute",
         "mute spotify"
       ],
@@ -7495,7 +7513,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:639",
+      "source": "plugins/commands/music.py:661",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -7517,7 +7535,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:625",
+      "source": "plugins/commands/music.py:647",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -7537,7 +7555,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:618",
+      "source": "plugins/commands/music.py:640",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -7694,7 +7712,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:632",
+      "source": "plugins/commands/music.py:654",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -7735,7 +7753,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "write",
-      "source": "plugins/commands/queue_voice.py:160",
+      "source": "plugins/commands/queue_voice.py:165",
       "undoable": false,
       "verb": "accept",
       "whole_utterance": false
@@ -7752,7 +7770,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "write",
-      "source": "plugins/commands/queue_voice.py:180",
+      "source": "plugins/commands/queue_voice.py:185",
       "undoable": false,
       "verb": "queue",
       "whole_utterance": false
@@ -7773,7 +7791,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:114",
+      "source": "plugins/commands/queue_voice.py:115",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -7796,7 +7814,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:89",
+      "source": "plugins/commands/queue_voice.py:90",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -7813,7 +7831,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:121",
+      "source": "plugins/commands/queue_voice.py:126",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -7830,7 +7848,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:77",
+      "source": "plugins/commands/queue_voice.py:78",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7853,7 +7871,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:104",
+      "source": "plugins/commands/queue_voice.py:105",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7872,7 +7890,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:64",
+      "source": "plugins/commands/queue_voice.py:65",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7890,7 +7908,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:83",
+      "source": "plugins/commands/queue_voice.py:84",
       "undoable": true,
       "verb": "whats",
       "whole_utterance": false

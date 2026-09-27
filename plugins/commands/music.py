@@ -615,6 +615,28 @@ def handle_artist(app, remainder):
     return handle_play(app, f"artist {remainder}")
 
 
+@command("import my Spotify playlists", aliases=["import Spotify playlists"],
+         pack="media", risk_class="safe", ai_composable=False, side_effects=["ui"])
+def handle_import_spotify_playlists(app, remainder):
+    """Open the local Spotify data export picker from voice."""
+    from samsara.ui.settings.music_qt import open_spotify_import_picker
+
+    if not open_spotify_import_picker(app):
+        message = "The Spotify playlist import picker is unavailable."
+        _announce(app, message)
+        return DispatchResult(
+            DispatchState.FAILED, phrase="import my Spotify playlists",
+            detail={"message": message},
+        )
+
+    message = "Choose your Spotify data export."
+    _announce(app, message)
+    return DispatchResult(
+        DispatchState.COMPLETED, phrase="import my Spotify playlists",
+        detail={"message": message},
+    )
+
+
 @command("pause", aliases=["pause music", "stop music", "play pause"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_pause(app, remainder):
