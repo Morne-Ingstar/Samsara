@@ -1046,6 +1046,7 @@ class PendingOperation:
                  target_probe: Optional[Callable[[], dict]] = None,
                  foreground_target: Optional[dict] = None,
                  foreground_probe: Optional[Callable[[], dict]] = None,
+                 ttl_s: float = CONFIRM_TTL_S,
                  clock: Callable[[], float] = time.monotonic):
         self.invocation = inv
         self.prompt = prompt
@@ -1061,9 +1062,10 @@ class PendingOperation:
         self._foreground_probe = foreground_probe
         self._app = app
         self._clock = clock
-        self.deadline = clock() + CONFIRM_TTL_S
+        self._ttl_s = ttl_s
+        self.deadline = clock() + ttl_s
         # Wall-clock mirror for readers of the legacy pending-slot "expires" key.
-        self.expires = time.time() + CONFIRM_TTL_S
+        self.expires = time.time() + ttl_s
         self.extended = False
         self.cancel_reason: Optional[str] = None
         #: Set by refusal() when the bound target moved, for the spoken reason.
@@ -1127,8 +1129,8 @@ class PendingOperation:
             if self.extended or self.approved is not None or self.is_expired():
                 return False
             self.extended = True
-            self.deadline = self._clock() + CONFIRM_TTL_S
-            self.expires = time.time() + CONFIRM_TTL_S
+            self.deadline = self._clock() + self._ttl_s
+            self.expires = time.time() + self._ttl_s
         return True
 
     # -- resolution -------------------------------------------------------
@@ -1346,6 +1348,7 @@ def describe_target_change(before: Optional[dict], after: Optional[dict]) -> str
 
 def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reject=None,
                   extra: Optional[dict] = None, record_type: str = "invocation",
+                  ttl_s: float = CONFIRM_TTL_S,
                   targets: Optional[dict] = None,
                   target_probe: Optional[Callable[[], dict]] = None,
                   foreground_target: Optional[dict] = None,
@@ -1398,7 +1401,8 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
         on_approve = approve_repeat
     op = PendingOperation(inv, prompt, on_approve=on_approve, on_reject=on_reject,
                           app=app, targets=targets, target_probe=target_probe,
-                          foreground_target=foreground_target, foreground_probe=foreground_probe)
+                          foreground_target=foreground_target, foreground_probe=foreground_probe,
+                          ttl_s=ttl_s)
     record = {
         "type": record_type,
         "op": op,
@@ -1523,6 +1527,12 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
     if isinstance(op, (TimedOperation, ChoiceOperation)):
         return answer_cancel_window(app, text, source=source)
     reply = classify_reply(text)
+    if op is not None and op.invocation.command_id == "send prompt":
+        exact = (text or "").strip().lower().rstrip(".!?")
+        if exact == "approve":
+            reply = REPLY_YES
+        elif exact == "reject":
+            reply = REPLY_NO
     if reply is None or op is None:
         return None
     if source not in (ANSWER_VOICE, ANSWER_DIALOG):

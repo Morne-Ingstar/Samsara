@@ -77,6 +77,15 @@ SETTINGS_SCHEMA = {
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Interpreter for the existing queue note script; advanced config-only path.",
     },
+    "dispatch_voice.enabled": {
+        "type": "bool", "default": True, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Agora voice dispatch and its event feed.",
+    },
+    "dispatch_voice.poll_s": {
+        "type": "int", "min": 1, "max": 300, "default": 5,
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Seconds between Agora dispatch feed checks.",
+    },
     "agent_channel.cwd": {
         "type": "str", "default": r"C:\Users\Morne\Documents\Claude",
         "tab": "general", "settings_ui": False,

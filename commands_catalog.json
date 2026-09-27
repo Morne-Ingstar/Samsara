@@ -6593,6 +6593,46 @@
     },
     {
       "aliases": [
+        "send prompt"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "dispatch_voice.send_prompt",
+      "description": "send prompt",
+      "kind": "plugin",
+      "object": "prompt",
+      "pack": "core",
+      "plugin": "dispatch_voice",
+      "risk": "write",
+      "source": "plugins/commands/dispatch_voice.py:190",
+      "undoable": false,
+      "verb": "send",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what needs me"
+      ],
+      "args": [],
+      "canonical_id": "dispatch_voice.what_needs_me",
+      "description": "what needs me",
+      "kind": "plugin",
+      "object": "needs_me",
+      "pack": "core",
+      "plugin": "dispatch_voice",
+      "risk": "ui",
+      "source": "plugins/commands/dispatch_voice.py:249",
+      "undoable": true,
+      "verb": "what",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "greet me",
         "hello",
         "say hello"

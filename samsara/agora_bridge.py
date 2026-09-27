@@ -69,6 +69,7 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -79,6 +80,9 @@ from typing import Any, Callable
 CONTRACT_VERSION = 1
 INTAKE_PATH = "/v1/intents"
 DEFAULT_BASE_URL = "http://127.0.0.1:8788"
+DISPATCH_APPROVE_PATH = "/v1/dispatch/approve"
+DISPATCH_PENDING_PATH = "/v1/dispatch/pending"
+DISPATCH_EVENTS_PATH = "/v1/dispatch/events"
 SOURCE = "samsara/ava"
 
 TOKEN_FILE_ENV_VAR = "AGORA_BRIDGE_TOKEN_FILE"
@@ -217,6 +221,78 @@ class _TokenCache:
 
 
 _token_cache = _TokenCache()
+
+
+class AgoraDispatchHTTPError(AgoraBridgeError):
+    def __init__(self, status: int, error: str, spoken: str = ""):
+        self.status, self.error, self.spoken = status, error, spoken
+        super().__init__(spoken or error)
+
+
+def dispatch_request(method: str, path: str, payload: dict | None = None, *,
+                     base_url: str = DEFAULT_BASE_URL, timeout: float = 5.0,
+                     _force_token_reread: bool = False) -> dict:
+    """Signed loopback request for Agora's draft, approval, and feed endpoints."""
+    if method not in {"GET", "POST"} or not path.startswith("/v1/"):
+        raise AgoraValidationError("Invalid dispatch request")
+    parsed = urllib.parse.urlsplit(base_url)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise AgoraValidationError("Dispatch endpoint must be loopback HTTP")
+    event_id = str(uuid.uuid4())
+    now, timestamp = _rfc3339_now()
+    if method == "POST":
+        payload = {**(payload or {}), "request_id": event_id}
+        if path == INTAKE_PATH:
+            payload["sent_at"] = timestamp
+            payload["expires_at"] = _format_rfc3339(
+                now + timedelta(seconds=EXPIRES_LIFETIME_SECONDS))
+        body = json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                          separators=(",", ":")).encode("utf-8")
+    else:
+        body = b""
+    if len(body) > _MAX_BODY_BYTES:
+        raise AgoraValidationError("Dispatch request is too large")
+    signature = _sign(_token_cache.get(force=_force_token_reread), method=method,
+                      path=path, event_id=event_id, timestamp=timestamp, body=body)
+    headers = {_EVENT_ID_HEADER: event_id, _TIMESTAMP_HEADER: timestamp,
+               _SIGNATURE_HEADER: signature}
+    if method == "POST":
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    request = urllib.request.Request(base_url.rstrip("/") + path,
+                                     data=body if method == "POST" else None,
+                                     method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = json.loads(exc.read().decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            detail = {}
+        if exc.code == 401 and not _force_token_reread:
+            return dispatch_request(method, path, payload, base_url=base_url,
+                                    timeout=timeout, _force_token_reread=True)
+        raise AgoraDispatchHTTPError(exc.code, detail.get("error", "unknown"),
+                                     detail.get("spoken", "")) from exc
+    except urllib.error.URLError as exc:
+        raise AgoraUnreachableError("Agora isn't running") from exc
+
+
+def send_dispatch_draft(prompt_id: str, identity: str, effort: str | None = None, *,
+                        base_url: str = DEFAULT_BASE_URL, timeout: float = 5.0) -> dict:
+    """Create a bound plan draft through the existing signed intake envelope."""
+    now, sent_at = _rfc3339_now()
+    envelope = _build_envelope(
+        request_id=str(uuid.uuid4()), utterance=f"send {prompt_id} to {identity}",
+        intent_context=None, supersedes_request_id=None,
+        require_reconfirmation_if_delayed=True, sent_at=sent_at,
+        expires_at=_format_rfc3339(now + timedelta(seconds=EXPIRES_LIFETIME_SECONDS)),
+    )
+    envelope["dispatch"] = {"prompt_id": prompt_id, "identity": identity}
+    if effort is not None:
+        envelope["dispatch"]["effort"] = effort
+    return dispatch_request("POST", INTAKE_PATH, envelope,
+                            base_url=base_url, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------

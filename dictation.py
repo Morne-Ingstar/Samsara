@@ -5748,6 +5748,9 @@ class DictationApp:
     def _answer_cancel_window(self, text: str):
         try:
             from samsara import execution_policy as _policy
+            op = _policy.pending_operation()
+            if (op is not None and op.invocation.command_id == "send prompt"):
+                return _policy.answer_pending(self, text)
             return _policy.answer_cancel_window(self, text)
         except Exception as exc:
             logger.debug(f'[SESSION] cancel window reply unavailable: {exc}')
@@ -5899,6 +5902,12 @@ class DictationApp:
         # Stop path independent of understanding (execution_policy.stop_all):
         # an exact stop/cancel utterance never queues behind the model.
         if self._try_stop_utterance(text, 'ava session'):
+            return
+        # Queue 332b: dispatch phrases must reach the literal registry before
+        # Ava's model can reinterpret them as unrelated actions.
+        from plugins.commands.dispatch_voice import match_send  # noqa: PLC0415
+        if (match_send(text) or text.strip().lower().rstrip(".!? ") == "what needs me"):
+            self.command_executor.process_text(text, self, force_commands=True)
             return
         # Queue 102 -- Ava's edit proposals. THE ONE dispatch call site this
         # feature touches. It sits here, and not in session_modes' dispatch,

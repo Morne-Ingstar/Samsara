@@ -754,6 +754,16 @@ class CommandExecutor:
             if effective_app and not effective_app.command_matching_enabled:
                 return DispatchResult.miss(text)
 
+        # The queue id sits between "send" and "to <agent>", so a fixed
+        # prefix matcher cannot express this complete, bounded grammar.
+        if text.lstrip().lower().startswith("send "):
+            from plugins.commands.dispatch_voice import match_send
+            if match_send(text):
+                return self.execute_canonical(
+                    "send prompt", effective_app, route=Route.GRAMMAR,
+                    generation=generation, args={"remainder": text.strip()[5:]},
+                    source_text=text)
+
         # Phonetic wash for matching only; original text is returned on fallthrough
         # so free-form dictation output is never silently rewritten.
         match_text = apply_phonetic_wash(text)
