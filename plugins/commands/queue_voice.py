@@ -28,6 +28,7 @@ def _view(app) -> QueueView:
 
 
 def _say(app, text: str, chip: str | None = None) -> None:
+    app._last_read_more_source = "queue"
     coordinator = getattr(app, "audio_coordinator", None)
     if coordinator is not None:
         coordinator.speak(text, category="ava_response", interruptible=True)
@@ -115,6 +116,10 @@ def what_did(app, remainder=""):
          pack="core", risk_class="safe", reversible=True,
          side_effects=["audio", "ui"])
 def more(app, _remainder=""):
+    if getattr(app, "_last_read_more_source", None) == "catalog":
+        from plugins.commands.ask_ollama import catalog_more
+        if catalog_more(app):
+            return True
     return _read(app, QueueView.more)
 
 

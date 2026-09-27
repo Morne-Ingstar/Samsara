@@ -6,6 +6,7 @@ from typing import Optional
 
 import requests
 from samsara import ai_transport
+from samsara import command_catalog
 from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import ava_readiness
@@ -17,6 +18,7 @@ from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
 from samsara import execution_policy
 from samsara.execution_policy import Invocation, Route
+from samsara.intent.grammar import asks_to_run_action, catalog_question_goal
 
 from samsara.log import get_logger
 
@@ -688,6 +690,116 @@ def speak(app, text, category="ava_response"):
     return False
 
 
+_CATALOG_SYNONYMS = {
+    "split": {"split", "snap", "tile", "half", "side", "arrange"},
+    "app": {"app", "application", "window"},
+    "monitor": {"monitor", "screen", "display"},
+    "move": {"move", "send", "place"},
+}
+_CATALOG_STOPWORDS = {"a", "an", "the", "to", "for", "on", "in", "my", "any", "these", "with"}
+_CATALOG_SCORE_FLOOR = 0.42
+
+
+def _catalog_term(word):
+    word = word.lower()
+    if word in {"splitting", "split", "splits"}:
+        return "split"
+    if word in {"snaps", "snapping"}:
+        return "snap"
+    if word in {"arranges", "arranging", "arranged"}:
+        return "arrange"
+    if word.endswith("s") and len(word) > 3 and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
+def _catalog_terms(text):
+    return {_catalog_term(word) for word in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if word not in _CATALOG_STOPWORDS}
+
+
+def _catalog_records(app):
+    """The live guidance catalog, with the checked-in JSON as its fallback."""
+    executor = getattr(app, "command_executor", None)
+    matcher = getattr(executor, "_matcher", None)
+    rows = None
+    if matcher is not None and hasattr(matcher, "list_commands"):
+        try:
+            rows = matcher.list_commands()
+        except Exception:
+            rows = None
+    records = command_catalog.guidance_catalog(rows) or []
+    from samsara.command_packs import get_enabled_packs
+    enabled = get_enabled_packs(getattr(app, "config", {}) or {})
+    available = getattr(executor, "command_availability", None)
+    return [record for record in records
+            if record.get("pack", "core") in enabled
+            and (not callable(available) or available(command_catalog.canonical_phrase(record)) is None)]
+
+
+def _catalog_matches(app, goal):
+    """Rank phrase, alias and description with the existing menu score."""
+    from samsara.commands import menu_score
+    query = _catalog_terms(goal)
+    ranked = []
+    for record in _catalog_records(app):
+        phrase = command_catalog.canonical_phrase(record)
+        fields = [phrase, *(record.get("aliases") or ()), record.get("description") or ""]
+        terms = _catalog_terms(" ".join(fields))
+        coverage = (sum(2 if term == "split" else 1 for term in query
+                        if terms.intersection(_CATALOG_SYNONYMS.get(term, {term})))
+                    / max(1, sum(2 if term == "split" else 1 for term in query)))
+        lexical = max(menu_score(goal, field) for field in fields if field)
+        layout_bonus = (0.04 if "split" in query and "half" in terms else
+                        -0.04 if "split" in query and "quarter" in terms else 0.0)
+        ranked.append((0.75 * coverage + 0.25 * lexical + layout_bonus, phrase, record))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return ranked
+
+
+def _catalog_page(app, state):
+    start = state["index"]
+    items = state["items"][start:start + 3]
+    state["index"] = start + len(items)
+    prefix = state["prefix"] if start == 0 else "Also: "
+    spoken = speak(app, prefix + ". ".join(items) + ("." if items else ""))
+    app._last_read_more_source = "catalog"
+    try:
+        from samsara.ui import ava_captions_qt
+        ava_captions_qt.show_caption(app, state["full"], hold=spoken)
+    except Exception:
+        logger.debug("[AVA-CATALOG] full caption unavailable", exc_info=True)
+
+
+def _answer_catalog(app, goal):
+    ranked = _catalog_matches(app, goal)
+    matches = [record for score, _phrase, record in ranked if score >= _CATALOG_SCORE_FLOOR][:12]
+    if matches:
+        prefix = "You can say: "
+    else:
+        matches = [record for _score, _phrase, record in ranked[:3]]
+        prefix = f"Nothing for {goal} - the closest are: " if matches else f"Nothing for {goal} in the command catalog."
+    items = [f"{command_catalog.canonical_phrase(record)} - {record.get('description') or 'Command'}"
+             for record in matches]
+    if not items:
+        speak(app, prefix)
+        app._ava_catalog_answer = None
+        return
+    state = {"items": items, "index": 0, "prefix": prefix,
+             "full": prefix + "\n" + "\n".join(items), "at": time.monotonic()}
+    app._ava_catalog_answer = state
+    _catalog_page(app, state)
+
+
+def catalog_more(app) -> bool:
+    """Speak the next three results of the most recent catalog answer."""
+    state = getattr(app, "_ava_catalog_answer", None)
+    if not state or time.monotonic() - state["at"] > 120 or state["index"] >= len(state["items"]):
+        return False
+    _catalog_page(app, state)
+    return True
+
+
 # ── Ava turn outcome + log (queue 57) ─────────────────────────────────────────
 
 _CHIP_CHECK = chr(0x2713)   # same glyphs as samsara.session_modes CHIP_CHECK/CHIP_CROSS
@@ -916,7 +1028,7 @@ def _log_turn(app, request, *, outcome, started=None):
             provider = reply.provider
             if reply.fallback_from:
                 provider = f"{reply.provider} (fallback from {reply.fallback_from})"
-        elif outcome in ("local_fast_path", "vision", "disabled"):
+        elif outcome in ("local_fast_path", "vision", "disabled", "catalog_answered"):
             provider = "none (local)"
         else:
             try:
@@ -1547,6 +1659,42 @@ def _parse_structured_response(response):
 
 # ── Intent router ─────────────────────────────────────────────────────────────
 
+_REFUSED_ACTION_TAG = re.compile(
+    r"^\s*(?:ACTION2?|APP|SCHEDULE|EXECUTE)\s+", re.I | re.M)
+
+
+def _conversational_refusal(app, request, command_name, generation):
+    """One speech-only retry after the closed-world ACTION gate has refused."""
+    if not execution_policy.is_current(app, generation) or _disabled_since_request(app):
+        return TurnOutcome("action", "stale", reason="stale", name=command_name)
+    goal = catalog_question_goal(request or "") or request or command_name
+    matches = _catalog_matches(app, goal)[:3]
+    closest = "; ".join(
+        f"{command_catalog.canonical_phrase(record)}: {record.get('description') or 'Command'}"
+        for _score, _phrase, record in matches) or "none"
+    prompt = (f"The user said: {request or ''}\n"
+              f"Your proposed ACTION {command_name!r} was refused because it is not in "
+              "the offered command menu. Answer the user in plain words. "
+              f"If useful, mention these real commands: {closest}")
+    system = (AVA_PERSONA_TEXT + "\nThis is a speech-only answer. "
+              "Do not propose, stage, or execute an action. Never output ACTION, "
+              "APP, SCHEDULE, EXECUTE, or CONFIRM tags. Answer in 1 to 3 sentences.")
+    reply = ask_model(prompt, app, system=system, allow_search=False)
+    if not execution_policy.is_current(app, generation) or _disabled_since_request(app):
+        return TurnOutcome("action", "stale", reason="stale", name=command_name)
+    if reply.ok and not _REFUSED_ACTION_TAG.search(reply.text):
+        answer = _strip_tags(reply.text)
+        if answer:
+            speak(app, answer)
+            return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
+    if asks_to_run_action(request or ""):
+        speak(app, f"I couldn't find a command for that. Say 'what can I say to "
+              f"{command_name}' and I'll list what's close.")
+    else:
+        _answer_catalog(app, catalog_question_goal(request or "") or request or command_name)
+    return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
+
+
 def handle_response(app, response, original_text=None, *, generation=None):
     """Route one model response. The model can only NAME a tool id (ACTION)
     or an ACTION2 verb + argument; whether it runs, is confirmed first, or
@@ -1603,9 +1751,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         if not execution_policy.command_exists(command_name, app=app,
                                                executor=executor):
             logger.info("[AVA-GATE] %r is not a command at all -- invented", command_name)
-            speak(app, "I don't have a command called that.")
-            return TurnOutcome("action", "refused", reason="not_a_command",
-                               name=command_name)
+            return _conversational_refusal(app, original_text, command_name, generation)
 
         # The menu is the model's complete authority for this turn.  A
         # command absent from it must not reach the executor, even when it is
@@ -1620,8 +1766,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
                 app, Invocation(command_name, route=Route.MODEL, generation=generation,
                                 source_text=original_text or ""),
                 execution_policy.Denied("not_offered", detail=status))
-            speak(app, "That wasn't one of the commands I offered.")
-            return TurnOutcome("action", "refused", reason="not_offered", name=command_name)
+            return _conversational_refusal(app, original_text, command_name, generation)
 
         # --- Queue 125, gate 2: an app-naming command must name the app the
         # user said. This is the one that stops "Bring up Blender" ->
@@ -2589,6 +2734,15 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         started = time.monotonic()
         outcome = "exception"
         try:
+            catalog_enabled = (getattr(app, "config", {}).get("ava", {}) or {}).get(
+                "catalog_answers", True)
+            goal = catalog_question_goal(remainder) if catalog_enabled else None
+            if goal:
+                _answer_catalog(app, goal)
+                outcome = "catalog_answered"
+                _set_turn_outcome(app, _answered_chip())
+                return
+            app._ava_catalog_answer = None
             if _check_teaching_intent(app, remainder):
                 outcome = "local_fast_path"
                 _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
@@ -2630,7 +2784,9 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
                 # did. A refused or failed action is never "Ava <check>"; only
                 # a conversational answer falls through to _answered_chip
                 # (which still reports an answer that was never spoken).
-                outcome = "answered" if (turn is None or turn.ok) else f"action_{turn.state}"
+                outcome = ("action_refused_conversational"
+                           if turn is not None and turn.reason == "action_refused_conversational"
+                           else "answered" if (turn is None or turn.ok) else f"action_{turn.state}")
                 _set_turn_outcome(app, _outcome_chip(app, turn) or _answered_chip())
             except Exception as e:
                 print(f"[OLLAMA] Error in worker: {e}")

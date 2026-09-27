@@ -23,9 +23,41 @@ Slot parsers are shared by every command and reuse the plugins' own grammar
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Iterable, Optional
 
 from samsara.intent import normalize as nz
+
+
+_CATALOG_QUESTION_PATTERNS = (
+    re.compile(r"^(?:what\s+(?:kind\s+of\s+)?commands?\s+do\s+i\s+have|"
+               r"do\s+i\s+have\s+(?:any\s+)?commands?)\s+(?:for|to)\s+(.+)$", re.I),
+    re.compile(r"^how\s+do\s+i\s+(.+)$", re.I),
+    re.compile(r"^is\s+there\s+(?:a|any)\s+commands?\s+(?:for|to)\s+(.+)$", re.I),
+    re.compile(r"^what\s+can\s+i\s+say\s+to\s+(.+)$", re.I),
+)
+
+
+def catalog_question_goal(utterance: str) -> str | None:
+    """Return the requested goal only for explicit command-help questions."""
+    text = " ".join((utterance or "").strip().rstrip(".?! ").split())
+    text = re.sub(r"^can\s+you\s+tell\s+me\s+", "", text, flags=re.I)
+    for pattern in _CATALOG_QUESTION_PATTERNS:
+        match = pattern.fullmatch(text)
+        if match:
+            return match.group(1).strip() or None
+    return None
+
+
+def asks_to_run_action(utterance: str) -> bool:
+    """A direct request to act, rather than an information question."""
+    text = " ".join((utterance or "").lower().split())
+    if catalog_question_goal(text):
+        return False
+    return bool(re.match(
+        r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?"
+        r"(?:open|close|launch|start|stop|move|snap|split|show|hide|"
+        r"minimi[sz]e|maximi[sz]e|press|run|switch|tile|dock)\b", text))
 
 # ---------------------------------------------------------------------------
 # Vocabulary

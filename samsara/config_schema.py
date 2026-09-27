@@ -1065,6 +1065,10 @@ SETTINGS_SCHEMA = {
         "type": "enum", "options": ["off", "local", "cloud"],
         "default": "off", "tab": "ava",
     },
+    "ava.catalog_answers": {
+        "type": "bool", "default": True, "tab": "ava", "settings_ui": False,
+        "ui_less_reason": "Local answers to command catalog questions.",
+    },
     "onboarding.version": {
         "settings_ui": False,
         "ui_less_reason": "Setup workflow version owned by onboarding migrations.",
