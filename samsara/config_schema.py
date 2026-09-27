@@ -127,8 +127,8 @@ SETTINGS_SCHEMA = {
         "item_type": "dict",
         "default": [
             {
-                "id": "claude", "phrase": "activate claude",
-                "oww_model": "activate_claude.onnx", "target_process": "claude.exe",
+                "id": "claude", "phrase": "okay claude",
+                "oww_model": "okay_claude.onnx", "target_process": "claude.exe",
                 "enabled": True, "mode": "focus_dictate", "send_word": "over",
             },
             {

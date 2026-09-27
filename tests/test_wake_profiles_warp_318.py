@@ -8,7 +8,11 @@ from samsara.wake_profiles import count_syllables, validate_wake_profiles
 
 def test_warp_profile_is_in_schema_defaults_and_disabled():
     defaults = SETTINGS_SCHEMA["wake_profiles"]["default"]
+    claude = next(profile for profile in defaults if profile["id"] == "claude")
     warp = next(profile for profile in defaults if profile["id"] == "warp")
+
+    assert claude["phrase"] == "okay claude"
+    assert claude["oww_model"] == "okay_claude.onnx"
 
     assert SETTINGS_SCHEMA["wake_profiles"]["type"] == "list"
     assert SETTINGS_SCHEMA["wake_profiles"]["item_type"] == "dict"

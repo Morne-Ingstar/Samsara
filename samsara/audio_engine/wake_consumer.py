@@ -56,6 +56,23 @@ from samsara import flight_recorder
 
 logger = get_logger(__name__)
 
+
+class AdmittedWakeBuffer(list):
+    """Audio and its OWW hits travel together through the asynchronous decode FIFO."""
+
+    def __init__(self, frames, *, primary_hit=False, profile_hits=()):
+        super().__init__(frames)
+        self.primary_hit = bool(primary_hit)
+        self.profile_hits = frozenset(profile_hits)
+
+
+def _clear_oww_hits(app):
+    app._oww_wake_detected = False
+    app._oww_primary_hit = False
+    app._oww_profile_hits = set()
+    app._oww_primary_hit_ns = None
+    app._oww_profile_hit_ns = {}
+
 # Streaming-preview tail window (dictation.py's DictatePreviewSession): the
 # toggle-DICTATE lane is exempted from the 7s hard cap (_hard_cap_applies),
 # so an in-progress buffer can grow arbitrarily long while the user keeps
@@ -830,7 +847,7 @@ class WakeConsumer:
             app.command_mode_active = False
         app.wake_word_active = False
         app.wake_word_triggered = False
-        app._oww_wake_detected = False
+        _clear_oww_hits(app)
         app._wake_rearm_needs_onset = False
         app._wake_capture_admission = None
         app._wake_session_started_at = None
@@ -1084,6 +1101,7 @@ class WakeConsumer:
                 # confirmed on its worker while this poller was buffering TV.
                 self._utterance_frames = []
                 self._buffer_rms_history = []
+                _clear_oww_hits(app)
                 app.is_speaking = False
                 app.silence_start = None
 
@@ -1218,6 +1236,8 @@ class WakeConsumer:
             _oww_chunk = oww_prefilter(raw_chunk, rms)
             if app._wake_detector.detected(_oww_chunk):
                 app._oww_wake_detected = True
+                app._oww_primary_hit = True
+                app._oww_primary_hit_ns = int(frame.t_capture * 1_000_000_000)
                 app._wake_detector.reset()
                 flight_recorder.record('wake.oww_confirm', app_state=app.app_state)
 
@@ -1226,17 +1246,29 @@ class WakeConsumer:
         # detector above, instead of merely disabling the primary gate for
         # every phrase whenever any profile is enabled (see _flush's gate).
         if (app.app_state == 'asleep'
-                and not app.wake_word_triggered
-                and not app._oww_wake_detected):
-            for _profile_detector in getattr(app, '_wake_profile_detectors', {}).values():
+                and not app.wake_word_triggered):
+            _profile_detectors = getattr(app, '_wake_profile_detectors', {})
+            if not isinstance(_profile_detectors, dict):
+                _profile_detectors = {}
+            for _profile_id, _profile_detector in _profile_detectors.items():
                 if _profile_detector is None or not _profile_detector.is_available:
                     continue
                 _oww_chunk = oww_prefilter(raw_chunk, rms)
                 if _profile_detector.detected(_oww_chunk):
                     app._oww_wake_detected = True
+                    hits = getattr(app, '_oww_profile_hits', None)
+                    if hits is None:
+                        hits = set()
+                        app._oww_profile_hits = hits
+                    hits.add(_profile_id)
+                    hit_times = getattr(app, '_oww_profile_hit_ns', None)
+                    if hit_times is None:
+                        hit_times = {}
+                        app._oww_profile_hit_ns = hit_times
+                    hit_times[_profile_id] = int(frame.t_capture * 1_000_000_000)
                     _profile_detector.reset()
-                    flight_recorder.record('wake.oww_confirm', app_state=app.app_state, profile=True)
-                    break
+                    flight_recorder.record('wake.oww_confirm', app_state=app.app_state,
+                                           profile=_profile_id)
 
         # ── Speech accumulation ───────────────────────────────────────────────
         if is_speech:
@@ -1359,6 +1391,7 @@ class WakeConsumer:
                     )
                     self._utterance_frames   = []
                     self._buffer_rms_history = []
+                    _clear_oww_hits(app)
                     self._last_voice_ns = None
                     app.is_speaking   = False
                     app.silence_start = None
@@ -1379,6 +1412,7 @@ class WakeConsumer:
                 )
                 self._utterance_frames   = []
                 self._buffer_rms_history = []
+                _clear_oww_hits(app)
                 self._last_voice_ns = None
                 app.is_speaking   = False
                 app.silence_start = None
@@ -1503,30 +1537,39 @@ class WakeConsumer:
             self._close_hands_free_duck_safe(app, owner_token)
             return
 
-        # Only a profile with NO loaded detector still needs the Whisper
-        # fallback exemption below -- one with a real model was already
-        # consulted as a pre-filter in _process_frame above, so a hit there
-        # already set app._oww_wake_detected. Previously any enabled profile
-        # (model-backed or not) disabled the strict gate for every phrase.
-        _profile_detectors = getattr(app, '_wake_profile_detectors', {})
-        _has_modelless_wake_profiles = any(
-            t.get('enabled', True)
-            and not getattr(_profile_detectors.get(t.get('id', '')), 'is_available', False)
-            for t in getattr(app, 'config', {}).get('wake_profiles', [])
-        )
+        # Each OWW hit belongs to this captured utterance. Never let a
+        # model-less profile exempt every phrase from the generic gate.
+        raw_profile_hits = getattr(app, '_oww_profile_hits', ())
+        profile_hits = (frozenset(raw_profile_hits)
+                        if isinstance(raw_profile_hits, (set, frozenset, list, tuple))
+                        else frozenset())
+        primary_hit = (getattr(app, '_oww_primary_hit', False) is True
+                       or (getattr(app, '_oww_wake_detected', False) is True
+                           and not profile_hits))
+        if speech_start_ns is not None and speech_end_ns is not None:
+            # A hit during an earlier discarded/noise buffer cannot admit a
+            # later utterance. Allow the ring's pre-roll before VAD onset.
+            earliest = speech_start_ns - PREBUFFER_FRAMES * FRAME_MS * 1_000_000
+            latest = speech_end_ns
+            primary_at = getattr(app, '_oww_primary_hit_ns', None)
+            if isinstance(primary_at, (int, float)) and not earliest <= primary_at <= latest:
+                primary_hit = False
+            times = getattr(app, '_oww_profile_hit_ns', {}) or {}
+            if not isinstance(times, dict):
+                times = {}
+            profile_hits = frozenset(pid for pid in profile_hits
+                                     if pid not in times or earliest <= times[pid] <= latest)
+        _clear_oww_hits(app)
         _primary_oww_eligible = (
             app._wake_detector is not None
             and app._wake_detector.is_available
             and app.app_state == 'asleep'
             and not app.wake_word_triggered
         )
-        _oww_hit = bool(
-            _primary_oww_eligible and app._oww_wake_detected
-        )
-        # With no model-less profile fallbacks, the OWW pre-filters (primary
-        # plus any profile detector) remain a strict gate. Enabled profiles
-        # without their own model must still reach Whisper when nothing fired.
-        if _primary_oww_eligible and not _oww_hit and not _has_modelless_wake_profiles:
+        _passive = app.app_state == 'asleep' and not app.wake_word_triggered
+        _has_profiles = any(t.get('enabled', True) for t in
+                            getattr(app, 'config', {}).get('wake_profiles', []))
+        if _passive and (_primary_oww_eligible or _has_profiles) and not (primary_hit or profile_hits):
             if app._wake_detector is not None:
                 app._wake_detector.reset()
             flight_recorder.record('session.dispatch', op='dropped', kind='oww_gate_no_hit')
@@ -1543,8 +1586,10 @@ class WakeConsumer:
         # enabled. Previously profile presence forced this False, so a 0.99
         # Jarvis detection was subsequently discarded by the adaptive RMS
         # gate. Profiles only relax the no-hit path; they must not erase a hit.
-        oww_confirmed = _oww_hit
-        app._oww_wake_detected = False
+        oww_confirmed = bool(_passive and (primary_hit or profile_hits))
+        if _has_profiles:
+            buffer_copy = AdmittedWakeBuffer(buffer_copy, primary_hit=primary_hit,
+                                             profile_hits=profile_hits)
         # Passive wake-mode deep ducking is now moved to OWW dispatch (command
         # utterance protection) so wake-phrase audibility stays at idle-duck.
         owner_token = (

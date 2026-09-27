@@ -2820,8 +2820,8 @@ class DictationApp:
             "wake_profiles": [
                 {
                     "id": "claude",
-                    "phrase": "activate claude",
-                    "oww_model": "activate_claude.onnx",
+                    "phrase": "okay claude",
+                    "oww_model": "okay_claude.onnx",
                     "target_process": "claude.exe",
                     "enabled": True,
                     "mode": "focus_dictate",
@@ -8750,7 +8750,8 @@ class DictationApp:
                 if getattr(self, 'wake_word_active', False):
                     self._warn_wake_profile_fallback_once(tid, phrase)
 
-    def _check_wake_profiles(self, corrected_lower):
+    def _check_wake_profiles(self, corrected_lower, *, primary_hit=False,
+                             profile_hits=(), session_open=False):
         """Match corrected transcript against all enabled wake_profiles.
 
         Returns the first matching profile dict, or None if no profile matched.
@@ -8758,6 +8759,11 @@ class DictationApp:
         """
         for profile in self.config.get('wake_profiles', []):
             if not profile.get('enabled', True):
+                continue
+            if not wake_profiles.profile_admitted(
+                    profile, getattr(self, '_wake_profile_detectors', {}),
+                    primary_hit=primary_hit, profile_hits=profile_hits,
+                    session_open=session_open):
                 continue
             phrase = profile.get('phrase', '').lower().strip()
             if not phrase:
@@ -10002,12 +10008,20 @@ class DictationApp:
             # Phase 1: check multi-wake profiles BEFORE the legacy single-phrase check.
             # Each enabled wake_profile has a distinct phrase ("hey claude",
             # "activate hermes") that doesn't overlap with legacy jarvis phrases.
-            _wake_profile = self._check_wake_profiles(corrected_lower)
+            _wake_profile = self._check_wake_profiles(
+                corrected_lower, primary_hit=getattr(buffer, 'primary_hit', False),
+                profile_hits=getattr(buffer, 'profile_hits', ()),
+                session_open=self.app_state != 'asleep' or self.wake_word_triggered)
             if _wake_profile is not None:
                 self._dispatch_wake_profile(_wake_profile, corrected_lower=corrected_lower)
                 return
 
             matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
+            if (matched and self.app_state == 'asleep'
+                    and any(t.get('enabled', True) for t in self.config.get('wake_profiles', []))
+                    and not getattr(buffer, 'primary_hit', False)):
+                # A profile detector's hit cannot authorize the generic wake phrase.
+                matched = False
 
             self._emit_wake_trace({
                 "stage": "wake_word_check", "input": text, "normalized": text_lower,

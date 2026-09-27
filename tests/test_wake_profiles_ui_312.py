@@ -20,7 +20,7 @@ def _window(monkeypatch, tmp_path):
 def test_schema_default_is_the_shipped_profile_list():
     shipped = [
         {
-            "id": "claude", "phrase": "activate claude", "oww_model": "activate_claude.onnx",
+            "id": "claude", "phrase": "okay claude", "oww_model": "okay_claude.onnx",
             "target_process": "claude.exe", "enabled": True, "mode": "focus_dictate", "send_word": "over",
         },
         {
