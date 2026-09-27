@@ -39,24 +39,38 @@ def _say(app, text: str, chip: str | None = None) -> None:
 
 
 def _read(app, action):
+    view = _view(app)
     try:
-        text, count = action(_view(app))
+        text, count = action(view)
     except Exception:
         _say(app, "I can't read the queue folder", "queue unavailable")
         return DispatchState.FAILED
-    _say(app, text)
+    _say(app, _next_page_hint(view, text))
     return True
+
+
+def _next_page_hint(view: QueueView, text: str) -> str:
+    if not view.has_more:
+        return text
+    from samsara import plugin_commands
+    entry = next((entry for entry in plugin_commands._MODULE_ENTRIES.get(__name__, {}).values()
+                  if entry["func"] is more), None)
+    if entry is None:
+        return text
+    phrases = [entry["phrase"], *entry["aliases"][:1]]
+    return f"{text} Say {' or '.join(phrases)} for the next three."
 
 
 @command("what finished", aliases=["what's done", "whats done", "what is done"], pack="core",
          risk_class="safe", reversible=True, side_effects=["audio", "ui"])
 def what_finished(app, _remainder=""):
+    view = _view(app)
     try:
-        text, count = _view(app).finished()
+        text, count = view.finished()
     except Exception:
         _say(app, "I can't read the queue folder", "queue unavailable")
         return DispatchState.FAILED
-    _say(app, text, f"queue: {count} finished")
+    _say(app, _next_page_hint(view, text), f"queue: {count} finished")
     return True
 
 
@@ -97,7 +111,8 @@ def what_did(app, remainder=""):
     return read_report(app, " ".join(words[:-1]))
 
 
-@command("read more", pack="core", risk_class="safe", reversible=True,
+@command("read more", aliases=["read next", "next three", "more", "continue reading"],
+         pack="core", risk_class="safe", reversible=True,
          side_effects=["audio", "ui"])
 def more(app, _remainder=""):
     return _read(app, QueueView.more)

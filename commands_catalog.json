@@ -6074,7 +6074,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "read",
-      "source": "plugins/commands/comfy.py:266",
+      "source": "plugins/commands/comfy.py:274",
       "undoable": true,
       "verb": "cancel",
       "whole_utterance": false
@@ -6091,7 +6091,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "read",
-      "source": "plugins/commands/comfy.py:278",
+      "source": "plugins/commands/comfy.py:286",
       "undoable": true,
       "verb": "image",
       "whole_utterance": false
@@ -6118,7 +6118,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "read",
-      "source": "plugins/commands/comfy.py:204",
+      "source": "plugins/commands/comfy.py:208",
       "undoable": true,
       "verb": "make",
       "whole_utterance": false
@@ -6135,7 +6135,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "read",
-      "source": "plugins/commands/comfy.py:217",
+      "source": "plugins/commands/comfy.py:221",
       "undoable": true,
       "verb": "make",
       "whole_utterance": false
@@ -6158,7 +6158,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "read",
-      "source": "plugins/commands/comfy.py:226",
+      "source": "plugins/commands/comfy.py:230",
       "undoable": true,
       "verb": "make",
       "whole_utterance": false
@@ -6176,7 +6176,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "ui",
-      "source": "plugins/commands/comfy.py:239",
+      "source": "plugins/commands/comfy.py:243",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -6193,7 +6193,7 @@
       "pack": "ai",
       "plugin": "comfy",
       "risk": "read",
-      "source": "plugins/commands/comfy.py:254",
+      "source": "plugins/commands/comfy.py:260",
       "undoable": true,
       "verb": "where",
       "whole_utterance": false
@@ -7695,7 +7695,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "write",
-      "source": "plugins/commands/queue_voice.py:145",
+      "source": "plugins/commands/queue_voice.py:160",
       "undoable": false,
       "verb": "accept",
       "whole_utterance": false
@@ -7712,14 +7712,18 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "write",
-      "source": "plugins/commands/queue_voice.py:165",
+      "source": "plugins/commands/queue_voice.py:180",
       "undoable": false,
       "verb": "queue",
       "whole_utterance": false
     },
     {
       "aliases": [
-        "read more"
+        "continue reading",
+        "more",
+        "next three",
+        "read more",
+        "read next"
       ],
       "args": [],
       "canonical_id": "queue_voice.read_more",
@@ -7729,7 +7733,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:100",
+      "source": "plugins/commands/queue_voice.py:114",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -7752,7 +7756,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:75",
+      "source": "plugins/commands/queue_voice.py:89",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -7769,7 +7773,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:106",
+      "source": "plugins/commands/queue_voice.py:121",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -7786,7 +7790,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:63",
+      "source": "plugins/commands/queue_voice.py:77",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7809,7 +7813,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:90",
+      "source": "plugins/commands/queue_voice.py:104",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7828,7 +7832,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:51",
+      "source": "plugins/commands/queue_voice.py:64",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7846,7 +7850,7 @@
       "pack": "core",
       "plugin": "queue_voice",
       "risk": "ui",
-      "source": "plugins/commands/queue_voice.py:69",
+      "source": "plugins/commands/queue_voice.py:83",
       "undoable": true,
       "verb": "whats",
       "whole_utterance": false

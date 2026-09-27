@@ -279,7 +279,13 @@ def test_command_worker_feedback_auto_open_and_followups(server, config, tmp_pat
     assert len(opened) == 1
     spoken = [call.args[0] for call in app.audio_coordinator.speak.call_args_list]
     assert spoken[0] == "Sending to ComfyUI."
-    assert any("one image" in text and "seconds" in text and "Say open it" in text for text in spoken)
+    assert any("one image" in text and "seconds" in text and "It's open." in text
+               and "Say open it" not in text for text in spoken)
+    assert comfy._state(app).opened is True
+    comfy.where_image(app, "")
+    where_spoken = app.audio_coordinator.speak.call_args.args[0]
+    assert "Samsara images folder" in where_spoken
+    assert "Say open it" not in where_spoken
     assert all("a fixture" not in text for text in spoken)
     assert "Klein_001.png" in app._show_outcome_chip.call_args.args[0]
     comfy.open_image(app, "")
@@ -351,6 +357,9 @@ def test_make_another_and_auto_open_false(server, config, tmp_path, monkeypatch)
     assert graphs[0]["73"]["inputs"] != graphs[1]["73"]["inputs"]
     assert graphs[0]["74"]["inputs"] == graphs[1]["74"]["inputs"]
     opened.assert_not_called()
+    assert comfy._state(app).opened is False
+    comfy.where_image(app, "")
+    assert "Say open it" in app.audio_coordinator.speak.call_args.args[0]
 
 
 def test_failed_history_is_not_completion(server, config, tmp_path):

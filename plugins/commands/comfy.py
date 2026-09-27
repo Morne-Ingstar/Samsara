@@ -27,6 +27,7 @@ class ImageState:
     job: object = None
     last_prompt: str = ""
     paths: list = field(default_factory=list)
+    opened: bool = False
     status: str = "No image has been requested."
 
 
@@ -100,12 +101,15 @@ def try_voice_command(app, text, generation=None):
 
 def _complete(app, state, result):
     state.paths = result.paths
+    state.opened = False
     count = len(result.paths)
     spoken_count = "one image" if count == 1 else f"{count} images"
     state.status = f"Done — {spoken_count}, {round(result.elapsed)} seconds. Say open it."
     if settings(app.config)["auto_open"]:
         try:
             os.startfile(str(result.paths[0]))
+            state.opened = True
+            state.status = f"Done — {spoken_count}, {round(result.elapsed)} seconds. It's open."
         except OSError:
             state.status += " I couldn't open the viewer."
     _feedback(app, state.status, caption=", ".join(path.name for path in result.paths))
@@ -239,12 +243,14 @@ make_amended.verbatim_argument = True
 @command("open the image", aliases=["open it"], pack="ai", risk_class="ui", side_effects=["ui"])
 def open_image(app, remainder):
     """Opens the last completed image in your default image viewer."""
-    paths = _state(app).paths
+    state = _state(app)
+    paths = state.paths
     if not paths:
         _feedback(app, "There isn't a completed image yet.")
     else:
         try:
             os.startfile(str(paths[0]))
+            state.opened = True
             _feedback(app, "Opening the image.", caption=paths[0].name)
         except OSError:
             _feedback(app, "I couldn't open the image viewer.", kind="warning", caption=paths[0].name)
@@ -254,11 +260,13 @@ def open_image(app, remainder):
 @command("where is the image", pack="ai", risk_class="read", side_effects=[])
 def where_image(app, remainder):
     """Says where the last completed image was saved."""
-    paths = _state(app).paths
+    state = _state(app)
+    paths = state.paths
     if not paths:
         _feedback(app, "There isn't a completed image yet.")
     else:
-        _feedback(app, f"It's in your Samsara images folder, under {paths[0].parent.name}. Say open it.",
+        hint = "" if state.opened else " Say open it."
+        _feedback(app, f"It's in your Samsara images folder, under {paths[0].parent.name}.{hint}",
                   caption=str(paths[0]))
     return _result()
 

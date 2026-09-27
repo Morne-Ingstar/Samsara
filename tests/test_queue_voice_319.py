@@ -175,7 +175,9 @@ def test_queue_commands_are_available_by_default_and_writes_are_classified():
                if entry["source"] == "plugins.commands.queue_voice"}
     assert entries
     assert all(len(phrase.split()) > 1 for entry in entries.values()
-               for phrase in [entry["phrase"], *entry["aliases"]])
+               for phrase in [entry["phrase"], *entry["aliases"]] if phrase != "more")
+    assert entries["read more"]["aliases"] == [
+        "read next", "next three", "more", "continue reading"]
     assert {entry["pack"] for entry in entries.values()} <= get_enabled_packs({})
     assert entries["accept prompt"]["risk_class"] == "write"
     assert entries["queue note"]["risk_class"] == "write"
@@ -184,3 +186,32 @@ def test_queue_commands_are_available_by_default_and_writes_are_classified():
                  if entry["phrase"] in {"read the rest", "repeat that"}}
     assert set(followups) == {"read the rest", "repeat that"}
     assert {entry["pack"] for entry in followups.values()} == {"core"}
+
+
+def test_paging_hint_uses_registered_phrases_and_every_read_more_alias_resolves(workspace):
+    importlib.reload(voice)
+    from samsara import plugin_commands
+    from samsara.command_registry import CommandMatcher
+
+    registered = next(entry for entry in plugin_commands._MODULE_ENTRIES[voice.__name__].values()
+                      if entry["func"] is voice.more)
+    matcher = CommandMatcher()
+    matcher.load_plugins(plugin_commands._MODULE_ENTRIES[voice.__name__])
+    matcher.freeze()
+    for phrase in [registered["phrase"], *registered["aliases"]]:
+        match, _remainder = matcher.match(phrase)
+        assert match is not None and match.phrase == registered["phrase"]
+
+    for pid in ("901", "902", "903", "904"):
+        report(workspace, pid)
+    view = QueueView(workspace.paths)
+    spoken = []
+    app = SimpleNamespace(
+        _queue_voice_view=view,
+        audio_coordinator=SimpleNamespace(speak=lambda text, **_kw: spoken.append(text)),
+    )
+    voice.what_finished(app)
+    expected = f"Say {registered['phrase']} or {registered['aliases'][0]} for the next three."
+    assert expected in spoken[-1]
+    assert registered["phrase"] in spoken[-1]
+    assert matcher.match(registered["phrase"])[0].phrase == registered["phrase"]
