@@ -13,6 +13,8 @@ Output: C:\\Users\\Morne\\Documents\\Claude\\ui_proof\\*.png
 from __future__ import annotations
 
 import sys
+import os
+import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +22,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtCore import Qt
 
 OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\ui_proof")
 
@@ -143,5 +147,76 @@ def main() -> int:
     return 0
 
 
+def render_step_candidates() -> int:
+    from samsara.ui import theme
+    from samsara.ui.widgets.step_indicator import StepIndicator, _upcoming_ink
+
+    out_dir = OUT_DIR / "325"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    previous_home = os.environ.get("SAMSARA_HOME_DIR")
+    captures = {}
+    with tempfile.TemporaryDirectory(prefix="samsara-325-") as temporary_home:
+        os.environ["SAMSARA_HOME_DIR"] = temporary_home
+        app = QApplication.instance() or QApplication(sys.argv)
+        for palette in ("dark", "light"):
+            theme.set_theme(palette, refresh=False)
+            upcoming = _upcoming_ink().name()
+            ratios = {
+                "done/BG1": theme.contrast_ratio(theme.TEXT_PRIMARY, theme.BG1),
+                "current/BG1": theme.contrast_ratio(theme.ACCENT, theme.BG1),
+                "upcoming/BG1": theme.contrast_ratio(upcoming, theme.BG1),
+                "done/BG2": theme.contrast_ratio(theme.TEXT_PRIMARY, theme.BG2),
+                "upcoming/BG2": theme.contrast_ratio(upcoming, theme.BG2),
+                "pill-ink/accent": theme.contrast_ratio(theme.TEXT_ON_ACCENT, theme.ACCENT),
+            }
+            print(f"{palette} contrast: " + ", ".join(f"{name}={ratio:.2f}:1" for name, ratio in ratios.items()))
+            print(f"{palette} upcoming AA-corrected TEXT_DISABLED={upcoming}")
+            for scale in (1.0, 1.5):
+                for variant in ("A", "B", "C"):
+                    widget = StepIndicator(["Device", "Level", "Wake word", "Done"], variant=variant)
+                    widget.set_ui_scale(scale)
+                    widget.set_current(2)
+                    widget.set_done(0)
+                    widget.set_done(1)
+                    widget.resize(round(theme.HIT_TARGET_MIN * 16 * scale), widget.height())
+                    widget.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+                    widget.show()
+                    app.processEvents()
+                    capture = widget.grab().toImage()
+                    filename = f"{variant}_{palette}_{str(scale).replace('.', '_')}x.png"
+                    path = out_dir / filename
+                    if not capture.save(str(path)):
+                        raise RuntimeError(f"Could not save {path}")
+                    captures[(palette, scale, variant)] = capture
+                    print(f"saved: {path}")
+                    widget.close()
+        tile_width = max(image.width() for image in captures.values())
+        tile_height = max(image.height() for image in captures.values()) + theme.TYPE_TITLE * 2
+        sheet = QImage(tile_width * 3, tile_height * 4, QImage.Format.Format_ARGB32_Premultiplied)
+        sheet.fill(QColor(theme.BG0))
+        painter = QPainter(sheet)
+        painter.setPen(QColor(theme.TEXT_PRIMARY))
+        painter.setFont(theme.qfont(theme.TYPE_BODY))
+        for row, (palette, scale) in enumerate((
+            ("dark", 1.0), ("dark", 1.5), ("light", 1.0), ("light", 1.5)
+        )):
+            for column, variant in enumerate(("A", "B", "C")):
+                image = captures[(palette, scale, variant)]
+                left = column * tile_width
+                top = row * tile_height
+                painter.drawText(left + theme.TYPE_MIN, top + theme.TYPE_TITLE, f"{variant} · {palette} · {scale:g}x")
+                painter.drawImage(left, top + theme.TYPE_TITLE * 2, image)
+        painter.end()
+        sheet_path = out_dir / "candidates.png"
+        if not sheet.save(str(sheet_path)):
+            raise RuntimeError(f"Could not save {sheet_path}")
+        print(f"saved: {sheet_path}")
+    if previous_home is None:
+        os.environ.pop("SAMSARA_HOME_DIR", None)
+    else:
+        os.environ["SAMSARA_HOME_DIR"] = previous_home
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(render_step_candidates() if "--step-candidates" in sys.argv else main())

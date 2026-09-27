@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import QUrl, Qt, QTimer, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout,
+    QComboBox, QDialog, QFrame, QHBoxLayout,
     QLabel, QPushButton, QSizePolicy, QStackedWidget,
     QVBoxLayout, QWidget,
 )
@@ -34,6 +34,7 @@ from samsara.ui import ava_consent_qt, qt_runtime
 
 from samsara.log import get_logger
 from samsara.ui import theme
+from samsara.ui.widgets.step_indicator import StepIndicator
 
 logger = get_logger(__name__)
 
@@ -232,6 +233,7 @@ class _WizardWindow(QDialog):
         self._pulling = False
         self._installed_models: list[str] = []
         self._ollama_running: bool | None = None
+        self._skipped_steps: set[int] = set()
         configured_model = (app.config.get("ollama") or {}).get("model")
         self._selected_model_name = (
             configured_model if configured_model in {name for name, _, _ in _MODELS}
@@ -282,50 +284,9 @@ class _WizardWindow(QDialog):
         hdr_lay.addWidget(self._step_lbl)
         root.addWidget(hdr)
 
-        # Progress strip.  The old one-row layout gave a dot and a 14 px
-        # label only 28 px of total height, then centered connector lines
-        # through both.  Keep the connectors in the dot row and labels in
-        # their own row so neither can be clipped or overdrawn.
-        dots_bar = QWidget()
-        dots_bar.setObjectName("avaGuideStepStrip")
-        dots_bar.setFixedHeight(52)
-        dots_bar.setStyleSheet(
-            f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
-        )
-        dots_lay = QGridLayout(dots_bar)
-        dots_lay.setContentsMargins(24, 4, 24, 4)
-        dots_lay.setHorizontalSpacing(0)
-        dots_lay.setVerticalSpacing(1)
-        self._step_strip = dots_bar
-        self._dots: list[tuple[QLabel, QLabel]] = []
-        self._step_connectors: list[QFrame] = []
-        for i, name in enumerate(["Intro", "Ollama", "Model", "Done"]):
-            step_column = i * 2
-            if i > 0:
-                line = QFrame()
-                line.setObjectName("avaGuideStepConnector")
-                line.setFixedHeight(2)
-                line.setSizePolicy(
-                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-                )
-                line.setStyleSheet(f"background:{theme.BORDER};")
-                dots_lay.addWidget(
-                    line, 0, step_column - 1,
-                    alignment=Qt.AlignmentFlag.AlignVCenter,
-                )
-                dots_lay.setColumnStretch(step_column - 1, 1)
-                self._step_connectors.append(line)
-            dot = QLabel("●")
-            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
-            lbl = QLabel(name)
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
-            dots_lay.addWidget(dot, 0, step_column)
-            dots_lay.addWidget(lbl, 1, step_column)
-            dots_lay.setColumnMinimumWidth(step_column, 72)
-            self._dots.append((dot, lbl))
-        root.addWidget(dots_bar)
+        self._step_indicator = StepIndicator(["Intro", "Ollama", "Model", "Done"])
+        self._step_indicator.setObjectName("avaGuideStepStrip")
+        root.addWidget(self._step_indicator)
 
         # Page stack
         self._stack = QStackedWidget()
@@ -694,18 +655,7 @@ class _WizardWindow(QDialog):
         self._title_lbl.setText(self._STEP_TITLES[step])
         self._step_lbl.setText(f"Step {step + 1} of 4")
 
-        for i, (dot, lbl) in enumerate(self._dots):
-            if i < step:
-                dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
-                lbl.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
-            elif i == step:
-                dot.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;")
-                lbl.setStyleSheet(
-                    f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;font-weight:bold;"
-                )
-            else:
-                dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
-                lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
+        self._step_indicator.set_progress(step, self._skipped_steps)
 
         self._back_btn.setVisible(step > 0)
 
@@ -738,6 +688,7 @@ class _WizardWindow(QDialog):
             self._finish()
             return
         if self._current_step < self._STEP_DONE:
+            self._skipped_steps.discard(self._current_step)
             self._go_to(self._current_step + 1)
 
     def _go_back(self):
@@ -746,6 +697,7 @@ class _WizardWindow(QDialog):
 
     def _skip_step(self):
         if self._current_step < self._STEP_DONE:
+            self._skipped_steps.add(self._current_step)
             self._go_to(self._current_step + 1)
 
     # ----------------------------------------------------------------

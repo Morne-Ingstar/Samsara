@@ -27,6 +27,7 @@ from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from samsara import session_modes
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
+from samsara.ui.widgets.step_indicator import StepIndicator
 from samsara.audio_devices import force_rescan, list_microphones, pick_index_by_name
 
 from samsara.log import get_logger
@@ -638,15 +639,9 @@ class _WizardWindow(QMainWindow):
 
         hl.addStretch()
 
-        # Step dots
-        self._dots: list[QLabel] = []
-        for _ in _STEPS:
-            dot = QLabel("●")
-            dot.setStyleSheet(f"font-size:{theme.TYPE_MIN}px;")
-            self._dots.append(dot)
-            hl.addWidget(dot)
-
         root.addWidget(header)
+        self._step_indicator = StepIndicator([name for name, _ in _STEPS])
+        root.addWidget(self._step_indicator)
 
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
@@ -1085,12 +1080,7 @@ class _WizardWindow(QMainWindow):
         self._step_lbl.setText(f"Step {self._step + 1} of {len(_STEPS)}")
         self._title_lbl.setText(title)
 
-        # Dots
-        for i, dot in enumerate(self._dots):
-            dot.setStyleSheet(
-                f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;" if i == self._step
-                else f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;"
-            )
+        self._step_indicator.set_progress(self._step)
 
         # Button states
         self._back_btn.setEnabled(self._step > 0)

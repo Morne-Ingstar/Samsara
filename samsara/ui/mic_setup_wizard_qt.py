@@ -36,6 +36,7 @@ from samsara.audio_engine.wake_prefilter import NativeRateFrames, chunk_rms, oww
 from samsara.runtime import thread_registry
 from samsara.speech_pace import measured_interword_pauses, recommend_profile
 from samsara.ui import qt_runtime, theme
+from samsara.ui.widgets.step_indicator import StepIndicator
 from samsara.audio_devices import pick_index_by_name
 
 from samsara.log import get_logger
@@ -248,6 +249,7 @@ class _WizardWindow(QDialog):
         self._selected_device = None    # sounddevice index (None = default)
         self._capture_rate    = DEFAULT_CAPTURE_RATE
         self._current_step    = -1      # set by _go_to()
+        self._skipped_steps: set[int] = set()
 
         # Level state
         self._level_history   = collections.deque(maxlen=20)
@@ -317,44 +319,8 @@ class _WizardWindow(QDialog):
         hdr_lay.addWidget(self._step_lbl)
         root.addWidget(hdr)
 
-        # ---- Progress dots bar ----
-        # Height must accommodate two lines: dot (10px) + label (14px) + spacing
-        dots_bar = QWidget()
-        dots_bar.setFixedHeight(52)
-        dots_bar.setStyleSheet(
-            f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
-        )
-        dots_lay = QHBoxLayout(dots_bar)
-        dots_lay.setContentsMargins(24, 6, 24, 6)
-        dots_lay.setSpacing(0)
-        self._dots: list = []
-        step_names = ["Device", "Level", "Wake word", "Done"]
-        for i, name in enumerate(step_names):
-            if i > 0:
-                line = QFrame()
-                line.setFixedHeight(2)
-                line.setSizePolicy(
-                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-                )
-                line.setStyleSheet(f"background:{theme.BORDER};margin-bottom:14px;")
-                dots_lay.addWidget(line)
-            col = QVBoxLayout()
-            col.setSpacing(2)
-            col.setContentsMargins(0, 0, 0, 0)
-            dot = QLabel("*")
-            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_BODY}px;font-weight:bold;")
-            lbl = QLabel(name)
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
-            col.addWidget(dot)
-            col.addWidget(lbl)
-            container = QWidget()
-            container.setFixedWidth(72)
-            container.setLayout(col)
-            dots_lay.addWidget(container)
-            self._dots.append((dot, lbl))
-        root.addWidget(dots_bar)
+        self._step_indicator = StepIndicator(["Device", "Level", "Wake word", "Done"])
+        root.addWidget(self._step_indicator)
 
         # ---- Page stack ----
         self._stack = QStackedWidget()
@@ -583,17 +549,7 @@ class _WizardWindow(QDialog):
         self._title_lbl.setText(self._STEP_TITLES[step])
         self._step_lbl.setText(f"Step {step + 1} of 4")
 
-        # Dots
-        for i, (dot, lbl) in enumerate(self._dots):
-            if i < step:
-                dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_BODY}px;font-weight:bold;")
-                lbl.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
-            elif i == step:
-                dot.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;font-weight:bold;")
-                lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;font-weight:bold;")
-            else:
-                dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_BODY}px;font-weight:bold;")
-                lbl.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;")
+        self._step_indicator.set_progress(step, self._skipped_steps)
 
         # Nav bar
         self._back_btn.setVisible(step > 0)
@@ -637,6 +593,7 @@ class _WizardWindow(QDialog):
         if self._switch_in_flight:
             return
         step = self._current_step
+        self._skipped_steps.discard(step)
         if step == self._STEP_DEVICE:
             # Asynchronous: advances from _on_microphone_switch_done.
             self._begin_microphone_switch()
@@ -659,6 +616,7 @@ class _WizardWindow(QDialog):
         if self._switch_in_flight:
             return
         if self._current_step < self._STEP_DONE:
+            self._skipped_steps.add(self._current_step)
             self._go_to(self._current_step + 1)
 
     def _set_nav_enabled(self, enabled: bool):

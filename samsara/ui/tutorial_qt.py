@@ -40,6 +40,7 @@ from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
+from samsara.ui.widgets.step_indicator import StepIndicator
 
 logger = get_logger(__name__)
 
@@ -245,6 +246,7 @@ class TutorialWindow(QMainWindow):
         self._app = app
         self._step = 0
         self._completed: set[int] = set()
+        self._skipped_steps: set[int] = set()
         self._hint_timer: QTimer | None = None
 
         self._step_signal.connect(self._on_step_signal)
@@ -287,14 +289,9 @@ class TutorialWindow(QMainWindow):
         hl.addWidget(self._step_lbl)
         hl.addStretch()
 
-        self._dots: list[QLabel] = []
-        for _ in self._steps:
-            dot = QLabel("●")
-            dot.setStyleSheet(f"font-size:{theme.TYPE_MIN}px;")
-            self._dots.append(dot)
-            hl.addWidget(dot)
-
         root.addWidget(header)
+        self._step_indicator = StepIndicator([title for _, title in self._steps])
+        root.addWidget(self._step_indicator)
 
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
@@ -769,12 +766,7 @@ class TutorialWindow(QMainWindow):
         self._step_lbl.setText(f"Step {self._step + 1} of {len(self._steps)}")
         self._title_lbl.setText(title)
 
-        # Dots
-        for i, dot in enumerate(self._dots):
-            dot.setStyleSheet(
-                f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;" if i == self._step
-                else f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_MIN}px;"
-            )
+        self._step_indicator.set_progress(self._step, self._skipped_steps)
 
         is_last    = self._step == len(self._steps) - 1
         is_welcome = key == "welcome"
@@ -831,6 +823,7 @@ class TutorialWindow(QMainWindow):
         if key == "done":
             self._finish()
             return
+        self._skipped_steps.discard(self._step)
         self._step += 1
         self._show_step()
 
@@ -855,6 +848,7 @@ class TutorialWindow(QMainWindow):
         key = self._steps[self._step][0]
         self._remove_hook(key)
         self._cancel_hint_timer()
+        self._skipped_steps.add(self._step)
         self._step += 1
         self._show_step()
 
@@ -954,6 +948,7 @@ class TutorialWindow(QMainWindow):
         if 1 in self._completed:
             return
         self._completed.add(1)
+        self._skipped_steps.discard(1)
         self._cancel_hint_timer()
         if self._dictation_box and text:
             self._dictation_box.setPlainText(text)
@@ -967,6 +962,7 @@ class TutorialWindow(QMainWindow):
         if 2 in self._completed:
             return
         self._completed.add(2)
+        self._skipped_steps.discard(2)
         self._cancel_hint_timer()
         # Scroll the demo area a bit to make it visible
         if self._scroll_area:
