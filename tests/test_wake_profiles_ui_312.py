@@ -27,6 +27,10 @@ def test_schema_default_is_the_shipped_profile_list():
             "id": "hermes", "phrase": "activate hermes", "oww_model": "activate_hermes.onnx",
             "target_process": "Hermes.exe", "enabled": True, "mode": "stage_send", "send_word": "send",
         },
+        {
+            "id": "warp", "phrase": "activate warp", "oww_model": "activate_warp.onnx",
+            "target_process": "warp.exe", "enabled": False, "mode": "focus_dictate", "send_word": "over",
+        },
     ]
     assert SETTINGS_SCHEMA["wake_profiles"]["type"] == "list"
     assert SETTINGS_SCHEMA["wake_profiles"]["item_type"] == "dict"
@@ -41,7 +45,7 @@ def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path):
         qapp.processEvents()
         profiles = deepcopy(window.app.config["wake_profiles"])
         controls = window._widgets["wake_profile_controls"]
-        assert len(controls) == len(profiles) == 2
+        assert len(controls) == len(profiles) == 3
         row = next(row for row in window._destination_rows if row.title == "Wake profiles")
         assert row.page_name == "Dictation"
         assert row.disclosure is window._pages["Dictation"].advanced

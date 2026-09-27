@@ -127,6 +127,11 @@ SETTINGS_SCHEMA = {
                 "oww_model": "activate_hermes.onnx", "target_process": "Hermes.exe",
                 "enabled": True, "mode": "stage_send", "send_word": "send",
             },
+            {
+                "id": "warp", "phrase": "activate warp",
+                "oww_model": "activate_warp.onnx", "target_process": "warp.exe",
+                "enabled": False, "mode": "focus_dictate", "send_word": "over",
+            },
         ],
         "tab": "dictation",
     },
