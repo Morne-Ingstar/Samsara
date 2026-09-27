@@ -3390,6 +3390,14 @@ class DictationApp:
             self.config['wake_profiles'] = copy.deepcopy(default_config.get('wake_profiles', []))
             logger.info("[MIGRATE] Injected default wake_profiles")
 
+        _wwc = self.config.get('wake_word_config')
+        _renamed_cancel_words = False
+        if isinstance(_wwc, dict) and 'cancel_words' in _wwc:
+            _wwc.setdefault('wake_abort_phrase', _wwc['cancel_words'])
+            del _wwc['cancel_words']
+            _renamed_cancel_words = True
+            logger.info("[MIGRATE] Removed wake_word_config.cancel_words after preserving wake_abort_phrase")
+
         # Check if we have old flat config but no new nested config
         if 'wake_word_config' not in self.config:
             # Create new nested config from defaults (deep copy so nested
@@ -3420,12 +3428,7 @@ class DictationApp:
             # Ensure all nested keys exist (for configs created between versions)
             self._deep_update(self.config['wake_word_config'], default_config['wake_word_config'])
 
-        # cancel_words -> wake_abort_phrase rename, inside the now-guaranteed
-        # wake_word_config dict.
         _wwc = self.config['wake_word_config']
-        if 'cancel_words' in _wwc and 'wake_abort_phrase' not in _wwc:
-            _wwc['wake_abort_phrase'] = _wwc.pop('cancel_words')
-            logger.info("[MIGRATE] Renamed wake_word_config.cancel_words -> wake_abort_phrase")
 
         # Per-profile send_word (agentic-safety requirement): migrate the old
         # GLOBAL send_words list (wake_word_config.send_words, first entry)
@@ -3449,7 +3452,7 @@ class DictationApp:
         # already called save_config() and this same removal rode along with
         # it -- only save again here for the steady-state case where nothing
         # else in this pass triggered a save.
-        if _removed_stale_wake_targets and _wwc_present_at_entry:
+        if _renamed_cancel_words or (_removed_stale_wake_targets and _wwc_present_at_entry):
             self.save_config()
 
     def _wake_word_config_already_migrated(self) -> bool:
@@ -3511,11 +3514,12 @@ class DictationApp:
         if 'command_mode_enabled' not in self.config:
             return
         legacy_value = self.config.pop('command_mode_enabled')
-        self.config.setdefault('command_mode', {})['command_matching_enabled'] = legacy_value
+        self.config.setdefault('command_mode', {}).setdefault(
+            'command_matching_enabled', legacy_value)
         self.save_config()
         logger.info(
-            f"[MIGRATE] command_mode_enabled={legacy_value!r} -> "
-            f"command_mode.command_matching_enabled={legacy_value!r}"
+            "[MIGRATE] Removed command_mode_enabled after preserving "
+            "command_mode.command_matching_enabled"
         )
 
     def _migrate_ai_command_mode_config(self):
@@ -4871,7 +4875,9 @@ class DictationApp:
             if device == "auto":
                 try:
                     import ctranslate2
-                    cuda_available = 'cuda' in ctranslate2.get_supported_compute_types('cuda')
+                    cuda_available = (is_cuda_available()
+                                      and ctranslate2.get_cuda_device_count() > 0
+                                      and bool(ctranslate2.get_supported_compute_types('cuda')))
                     if cuda_available:
                         device = "cuda"
                         logger.debug("[GPU] CUDA available via ctranslate2")
@@ -8858,6 +8864,9 @@ class DictationApp:
             self._dictation_silence_timeout = _WAKE_SESSION_CHUNK_GAP_S
             self._wake_profile_active = True
             self._wake_session_first_chunk = True
+            self._wake_session_delivery_failed = False
+            self._wake_session_delivered_text = ''
+            self._wake_session_target_hwnd = _get_foreground_hwnd()
             self._wake_session_mode = mode
             self._wake_session_send_word = send_word
 
@@ -9730,11 +9739,12 @@ class DictationApp:
 
             # In dictation state (quick_dictation, long_dictation, or wake_session)?
             if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
+                from samsara.session_modes import match_whole_utterance
                 # Check abort words
                 abort_words = ww_config.get(
                     'wake_abort_phrase', config_defaults.DEFAULTS['wake_word_config.wake_abort_phrase'])
                 for cw in abort_words:
-                    if cw.lower() in text_lower:
+                    if match_whole_utterance(text, [cw]) is not None:
                         logger.info(f"[CANCEL] Dictation cancelled ('{cw}')")
                         self._emit_wake_trace({"stage": "cancel_word_detected", "phrase": cw})
                         self.play_sound("error")
@@ -9786,18 +9796,60 @@ class DictationApp:
                     if _matched_sw is not None:
                         _pre = ' '.join(_tokens[:-1])
                         if _pre:
-                            self._output_dictation(_pre)
+                            if self._output_dictation(_pre) is not True:
+                                self._emit_wake_trace({"stage": "utterance_end", "result": "delivery_failed"})
+                                return
                         _mode = getattr(self, '_wake_session_mode', 'focus_dictate')
                         _claude_reply_context = None
                         if _mode == 'focus_dictate':
+                            _target_process = getattr(self, '_wake_session_target_process', '')
+                            _target_hwnd = getattr(self, '_wake_session_target_hwnd', None)
+                            _target_ok = bool(
+                                self.config.get('auto_paste')
+                                and not getattr(self, '_wake_session_delivery_failed', False)
+                                and not self.wake_dictation_buffer
+                                and getattr(self, '_wake_session_delivered_text', '').strip()
+                                and _target_process
+                                and _target_hwnd
+                                and self._foreground_process_name() == _target_process
+                                and _get_foreground_hwnd() == _target_hwnd
+                            )
+                            if not _target_ok:
+                                if not self.config.get('auto_paste'):
+                                    _label = 'Auto-paste off; send refused'
+                                elif getattr(self, '_wake_session_delivery_failed', False):
+                                    _label = 'Paste failed; draft kept'
+                                else:
+                                    _label = 'Send refused; draft not confirmed in target'
+                                self._show_outcome_chip(_label, 'error')
+                                self._emit_wake_trace({"stage": "utterance_end", "result": "send_refused"})
+                                return
                             if getattr(self, '_wake_session_target_process', '') == 'claude.exe':
                                 from samsara.agent_channel import claude_reply
                                 import win32gui
+                                from plugins.commands.message_claude import ClaudeUiaAdapter
+                                try:
+                                    _adapter = ClaudeUiaAdapter()
+                                    _composer = _adapter.find_composer(_target_hwnd)
+                                    _composer_text = _adapter.read_composer(_composer) if _composer else ''
+                                except Exception:
+                                    logger.exception('[WAKE-SESSION] Claude composer verification failed')
+                                    _composer_text = ''
+                                _sent_text = getattr(self, '_wake_session_delivered_text', '')
+                                if not ' '.join(_composer_text.split()).endswith(' '.join(_sent_text.split())):
+                                    self._show_outcome_chip('Send refused; Claude draft not confirmed', 'error')
+                                    self._emit_wake_trace({"stage": "utterance_end", "result": "send_refused"})
+                                    return
                                 _claude_reply_context = claude_reply.before_send(
                                     self, win32gui.GetForegroundWindow(),
                                     send_word=self._wake_session_send_word)
                             time.sleep(0.05)
+                            if _get_foreground_hwnd() != _target_hwnd:
+                                self._show_outcome_chip('Send refused; target focus changed', 'error')
+                                self._emit_wake_trace({"stage": "utterance_end", "result": "send_refused"})
+                                return
                             pyautogui.press('return')
+                            self._wake_failed_draft = ''
                             self.play_sound("success")
                             self.play_sound("text_sent")
                             logger.info(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
@@ -9811,33 +9863,31 @@ class DictationApp:
                         if _claude_reply_context is not None:
                             claude_reply.start_after_send(self, _claude_reply_context)
                         return
-                    self._output_dictation(text.strip())
-                    self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_delivered"})
+                    _delivered = self._output_dictation(text.strip())
+                    self._emit_wake_trace({"stage": "utterance_end", "result":
+                                           "wake_session_delivered" if _delivered else "delivery_failed"})
                     return
 
                 # Check end words (primarily long_dictation, but works in both).
                 # Checked before pause/resume so "over" finalizes even while paused.
                 end_words = ww_config.get('end_words', ['over', 'done'])
                 for ew in end_words:
-                    if ew.lower() in text_lower:
+                    if match_whole_utterance(text, [ew]) is not None:
                         logger.info(f"[END] End word detected: '{ew}'")
-                        end_index = text_lower.rfind(ew.lower())
-                        final_text = text[:end_index].strip()
-                        if self.wake_dictation_buffer:
-                            final_text = ' '.join(self.wake_dictation_buffer) + ' ' + final_text
+                        final_text = ' '.join(self.wake_dictation_buffer).strip()
                         self._emit_wake_trace({"stage": "end_word_detected", "phrase": ew,
                                                "buffered_text": ' '.join(self.wake_dictation_buffer),
                                                "final_output": final_text.strip()})
                         if final_text.strip():
-                            self._output_dictation(final_text.strip())
+                            if self._output_dictation(final_text) is False:
+                                self._emit_wake_trace({"stage": "utterance_end", "result": "delivery_failed"})
+                                return
                         self._reset_wake_dictation()
                         self._emit_wake_trace({"stage": "utterance_end", "result": "end_word"})
                         return
 
                 # Pause/resume state machine (long_dictation only)
                 if self.app_state == 'long_dictation':
-                    from samsara.session_modes import match_whole_utterance
-
                     if self._dictation_paused:
                         # Only resume words get through; everything else is ignored.
                         resume_words = ww_config.get('resume_words', ['resume', 'continue', 'go on'])
@@ -10277,6 +10327,9 @@ class DictationApp:
             self._pending_transcriptions = 0
             self._wake_profile_active = False
             self._wake_session_first_chunk = True
+            self._wake_session_delivery_failed = False
+            self._wake_session_delivered_text = ''
+            self._wake_session_target_hwnd = None
             self._wake_session_mode = 'focus_dictate'
             # Profile isolation: clear the just-ended session's send_word so a
             # future session that somehow starts without one (defensive-only --
@@ -10316,10 +10369,12 @@ class DictationApp:
         try:
             with self._dictation_finalize_lock:
                 if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
+                    if self.app_state == 'wake_session' and getattr(self, '_wake_session_delivery_failed', False):
+                        return
                     final_text = ' '.join(self.wake_dictation_buffer)
                     logger.info(f"[DONE] Dictation complete: {final_text}")
-                    self._output_dictation(final_text)
-                    self._reset_wake_dictation()
+                    if self._output_dictation(final_text):
+                        self._reset_wake_dictation()
         except Exception as e:
             logger.exception(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
             import traceback
@@ -10737,22 +10792,6 @@ class DictationApp:
             stage_timing.mark("dispatch_start", words=len(text.split()))
         for timing in pending_timings:
             timing.mark("dispatch_start", words=len(text.split()))
-        logger.info(f"[OK] {text}")
-        self.play_sound("success")
-        if hasattr(self, 'listening_indicator'):
-            self._schedule_ui(self.listening_indicator.flash_success)
-
-        # Add to history
-        self.add_to_history(text.strip(), is_command=False)
-        self._log_history(
-            raw_text=raw,
-            display_text=text.strip(),
-            mode="wake",
-            status="success",
-            entry_type="dictation",
-        )
-        self._notify_main_window(text.strip())
-
         # Diagnostics record -- total combines the accumulated transcribe
         # time (across every chunk feeding this utterance) with this
         # method's own corrections/smart/overhead time.
@@ -10784,8 +10823,10 @@ class DictationApp:
         except Exception as _diag_exc:
             logger.debug(f"[DIAG] wake record failed: {_diag_exc}")
 
-        delivered = None
-        if self.config['auto_paste']:
+        delivered = False
+        _wake_delivery_failed = (self.app_state == 'wake_session'
+                                 and getattr(self, '_wake_session_delivery_failed', False))
+        if self.config['auto_paste'] and not _wake_delivery_failed:
             logger.info(
                 f"[WS-DIAG] _output_dictation: wake_profile_active="
                 f"{getattr(self,'_wake_profile_active',None)} "
@@ -10793,20 +10834,60 @@ class DictationApp:
                 f"app_state={self.app_state!r}"
             )
             if getattr(self, '_wake_profile_active', False):
-                if getattr(self, '_wake_session_first_chunk', True):
-                    delivered = self._deliver_text_to_focused_editor(text)
-                    self._wake_session_first_chunk = False
-                else:
-                    delivered = self._paste_preserving_clipboard(' ' + text)
+                _target_process = getattr(self, '_wake_session_target_process', '')
+                _target_hwnd = getattr(self, '_wake_session_target_hwnd', None)
+                if ((not _target_process or self._foreground_process_name() == _target_process)
+                        and (not _target_hwnd or _get_foreground_hwnd() == _target_hwnd)):
+                    if getattr(self, '_wake_session_first_chunk', True):
+                        delivered = self._deliver_text_to_focused_editor(text)
+                        if delivered:
+                            self._wake_session_first_chunk = False
+                    else:
+                        delivered = self._paste_preserving_clipboard(
+                            ' ' + text,
+                            before_paste=(lambda: _get_foreground_hwnd() == _target_hwnd)
+                            if _target_hwnd else None)
             else:
                 delivered = self._paste_preserving_clipboard(text)
-        timing_outcome = ("error" if delivered is False else
+        timing_outcome = ("error" if not delivered and self.config['auto_paste'] else
                           "typed" if self.config['auto_paste'] else "buffered")
         if stage_timing is not None:
             stage_timing.mark("action_done", outcome=timing_outcome)
         for timing in pending_timings:
             timing.mark("action_done", outcome=timing_outcome)
             timing.complete(outcome=timing_outcome)
+
+        if not delivered:
+            if self.app_state == 'wake_session':
+                self._wake_session_delivery_failed = True
+                self.wake_dictation_buffer.append(text.strip())
+                self._wake_failed_draft = ' '.join(self.wake_dictation_buffer)
+            self.play_sound("error")
+            if hasattr(self, '_show_outcome_chip'):
+                if self.app_state == 'wake_session':
+                    label = ('Auto-paste off; draft kept' if not self.config['auto_paste']
+                             else 'Paste failed; draft kept')
+                else:
+                    label = 'Auto-paste off; text not sent' if not self.config['auto_paste'] else 'Paste failed'
+                self._show_outcome_chip(label, 'error')
+            return False
+
+        logger.info(f"[OK] {text}")
+        self.play_sound("success")
+        if hasattr(self, 'listening_indicator'):
+            self._schedule_ui(self.listening_indicator.flash_success)
+        self.add_to_history(text.strip(), is_command=False)
+        self._log_history(
+            raw_text=raw,
+            display_text=text.strip(),
+            mode="wake",
+            status="success",
+            entry_type="dictation",
+        )
+        self._notify_main_window(text.strip())
+        if self.app_state == 'wake_session':
+            self._wake_session_delivered_text = (
+                getattr(self, '_wake_session_delivered_text', '') + ' ' + text).strip()
 
         if hasattr(self, 'hints'):
             self.hints.maybe_show(
@@ -10824,6 +10905,7 @@ class DictationApp:
                     " immediately instead of waiting for silence.",
                     delay_s=2.0,
                 )
+        return True
 
     def _start_wake_timeout(self, timeout_s=None):
         """Start timeout for wake word command.

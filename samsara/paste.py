@@ -199,12 +199,18 @@ def deliver_text_to_focused_editor(app, text):
     """Remove the wake focus primer, then deliver text through the app seam."""
     import pyautogui
 
+    target_hwnd = getattr(app, '_wake_session_target_hwnd', None)
+    if target_hwnd and _get_foreground_hwnd() != target_hwnd:
+        return False
     # backspace removes focus-primer char; assumes empty input box at session start
     pyautogui.press('x')
     time.sleep(_WAKE_PRIMER_DELAY)
     pyautogui.press('backspace')
     time.sleep(_WAKE_PRIMER_DELAY)
-    app._paste_preserving_clipboard(text)
+    if target_hwnd:
+        return app._paste_preserving_clipboard(
+            text, before_paste=lambda: _get_foreground_hwnd() == target_hwnd)
+    return app._paste_preserving_clipboard(text)
 
 
 def record_undoable_paste(
