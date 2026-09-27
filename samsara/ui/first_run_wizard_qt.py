@@ -1100,10 +1100,6 @@ class _WizardWindow(QMainWindow):
             self._next_btn.setEnabled(False)
             self._start_meter()
 
-        # List whatever is still missing every time the page is entered
-        if _STEPS[self._step][0] == "Components" and self._components_page is not None:
-            self._components_page.refresh_async()
-
     def _go_next(self):
         self._collect_step()
         if _STEPS[self._step][0] == "Microphone" and not self._mic_capture_ready:

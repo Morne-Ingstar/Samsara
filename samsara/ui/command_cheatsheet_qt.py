@@ -893,6 +893,8 @@ class _CheatSheetWindow(QMainWindow):
                     [c for c in filtered if c["phrase"] not in self._pinned])
 
         self._list.blockSignals(True)
+        self._item_generation = getattr(self, "_item_generation", 0) + 1
+        item_generation = self._item_generation
         self._list.clear()
         for cmd in unpinned:
             item = QListWidgetItem()
@@ -900,6 +902,7 @@ class _CheatSheetWindow(QMainWindow):
             # and tooling (every row resolves to a real catalog command).
             item.setData(Qt.ItemDataRole.UserRole, cmd["phrase"])
             item.setData(Qt.ItemDataRole.UserRole + 1, cmd["canonical_id"])
+            item.setData(Qt.ItemDataRole.UserRole + 2, item_generation)
             item.setText(row_text(cmd))
             tooltip = cmd.get("description", "")
             if cmd.get("pack") not in (None, "", "core"):
@@ -1033,14 +1036,21 @@ class _CheatSheetWindow(QMainWindow):
         phrase = item.data(Qt.ItemDataRole.UserRole)
         if not phrase:
             return
+        generation = item.data(Qt.ItemDataRole.UserRole + 2)
         # Flash
         orig = item.foreground()
         item.setForeground(theme.qcolor(theme.ACCENT))
         item.setBackground(theme.qcolor(_selected_bg()))
         def _restore():
-            item.setForeground(orig)
-            item.setBackground(QColor(Qt.GlobalColor.transparent))
-        QTimer.singleShot(300, _restore)
+            try:
+                if (self._item_generation == generation
+                        and self._list.row(item) >= 0
+                        and item.data(Qt.ItemDataRole.UserRole + 2) == generation):
+                    item.setForeground(orig)
+                    item.setBackground(QColor(Qt.GlobalColor.transparent))
+            except RuntimeError:
+                pass
+        QTimer.singleShot(300, self, _restore)
         self._execute(phrase)
 
     def _apply_width_floor(self):

@@ -522,6 +522,31 @@ def _load_manifest_default() -> dict:
     return components.load_manifest(default_manifest_url(__version__))
 
 
+def _qt_widget_is_valid(widget) -> bool:
+    if widget is None:
+        return False
+    try:
+        import shiboken6  # noqa: PLC0415
+        return shiboken6.isValid(widget)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# OWNER COPY — first-run network disclosure for Morne:
+# If you choose a speech model, Samsara downloads it on first use. If you choose
+# Get, it downloads that optional component from its host. Cloud Ava, web search,
+# cloud corrections, Edge TTS, Smart Actions, web links/integrations, update
+# checks, and remote Ollama endpoints contact network services when you ask
+# or enable them. See PRIVACY.md for what each request includes.
+_FIRST_RUN_NETWORK_COPY = (
+    "If you choose a speech model, Samsara downloads it on first use. If you choose "
+    "Get, it downloads that optional component from its host. Cloud Ava, web search, cloud "
+    "corrections, Edge TTS, Smart Actions, web links and integrations, update checks, "
+    "and remote Ollama endpoints contact network services when you ask or enable them. "
+    "See PRIVACY.md for details about each request."
+)
+
+
 class ComponentsPage:
     """The wizard's optional-components page, built on a QWidget the caller
     owns. Rows: name, size, what it enables, a "Get <name>" button (or a
@@ -564,10 +589,23 @@ class ComponentsPage:
         lay = QVBoxLayout(self.widget)
         lay.setContentsMargins(28, 16, 28, 16)
         lay.setSpacing(12)
-        self._intro = QLabel("Optional parts you can add now or any time later from Settings.")
+        self._intro = QLabel(
+            "Optional parts you can add now or any time later from Settings. "
+            "Select ‘Check what's available’ to contact GitHub."
+        )
         self._intro.setWordWrap(True)
         self._intro.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(self._intro)
+        self._network_notice = QLabel(_FIRST_RUN_NETWORK_COPY)
+        self._network_notice.setWordWrap(True)
+        self._network_notice.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        lay.addWidget(self._network_notice)
+        self._check_btn = QPushButton("Check what's available")
+        self._check_btn.setAccessibleName("Check what's available")
+        self._check_btn.setMinimumHeight(MIN_TARGET)
+        self._check_btn.setMinimumWidth(MIN_TARGET)
+        self._check_btn.clicked.connect(self.refresh_async)
+        lay.addWidget(self._check_btn)
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Components status")
@@ -613,13 +651,17 @@ class ComponentsPage:
             return self.refresh()
         self._manifest_generation += 1
         generation = self._manifest_generation
+        if _qt_widget_is_valid(self._check_btn):
+            self._check_btn.setEnabled(False)
+            self._check_btn.setText("Checking…")
         self._status.setText("Loading component list…")
 
         def _load():
             try:
                 manifest = self._loader()
             except Exception as exc:  # noqa: BLE001
-                self._post(lambda: self._finish_manifest_refresh(generation, None, exc))
+                msg = str(exc)
+                self._post(lambda message=msg: self._finish_manifest_refresh(generation, None, message))
             else:
                 self._post(lambda: self._finish_manifest_refresh(generation, manifest, None))
 
@@ -627,8 +669,14 @@ class ComponentsPage:
         return list(getattr(self, "_listed", []))
 
     def _finish_manifest_refresh(self, generation: int, manifest, error):
-        if generation != self._manifest_generation:
+        if (not _qt_widget_is_valid(self.widget)
+                or not _qt_widget_is_valid(self._status)
+                or not _qt_widget_is_valid(self._check_btn)
+                or not _qt_widget_is_valid(self._rows_host)
+                or generation != self._manifest_generation):
             return
+        self._check_btn.setEnabled(True)
+        self._check_btn.setText("Check what's available")
         if error is None:
             self._manifest, self._error = manifest, None
         else:
@@ -731,6 +779,7 @@ class ComponentsPage:
             self._rows[component["id"]] = {
                 "component": component, "get": get_btn, "cancel": cancel_btn,
                 "bar": bar, "result": result, "note": note_lbl,
+                "generation": self._manifest_generation,
             }
         # Tab order: top to bottom, Get then Cancel per row, Later last.
         prev = None
@@ -758,18 +807,25 @@ class ComponentsPage:
         row["result"].setText("")
 
         def _progress(done, total):
-            self._post(lambda: row["bar"].setValue(int(1000 * done / total) if total else 0))
+            value = int(1000 * done / total) if total else 0
+            def update_progress():
+                if (self._rows.get(component_id) is row
+                        and _qt_widget_is_valid(self.widget)
+                        and _qt_widget_is_valid(row["bar"])):
+                    row["bar"].setValue(value)
+            self._post(update_progress)
 
         def _work():
             try:
                 fetch_and_install(component, self._app_root, self._downloads,
                                   progress=_progress, cancel=flag.is_set,
                                   opener=capped_opener(self._opener))
-                self._post(lambda: self._finish(component_id, "Installed."))
+                self._post(lambda: self._finish(component_id, "Installed.", row_ref=row))
             except FetchCancelled:
-                self._post(lambda: self._finish(component_id, "Cancelled. Nothing was changed.", retry=True))
+                self._post(lambda: self._finish(component_id, "Cancelled. Nothing was changed.", retry=True, row_ref=row))
             except Exception as exc:  # noqa: BLE001
-                self._post(lambda: self._finish(component_id, f"Could not install: {exc}", retry=True))
+                msg = str(exc)
+                self._post(lambda message=msg: self._finish(component_id, f"Could not install: {message}", retry=True, row_ref=row))
 
         if self._threaded:
             # Registered with the thread registry (37) so it shows in
@@ -841,12 +897,14 @@ class ComponentsPage:
             app.aboutToQuit.connect(lambda: page.cancel_all())
             self._quit_hooked = True
 
-    def _finish(self, component_id: str, message: str, retry: bool = False):
+    def _finish(self, component_id: str, message: str, retry: bool = False, row_ref=None):
         row = self._rows.get(component_id)
-        if row is None:
+        if (row is None or (row_ref is not None and row is not row_ref)
+                or not _qt_widget_is_valid(self.widget)
+                or any(not _qt_widget_is_valid(row[key]) for key in ("cancel", "bar", "result", "get"))):
             return
         row["cancel"].setVisible(False)
-        row["bar"].setVisible(retry)
+        row["bar"].setVisible(False)
         row["result"].setText(message)
         row["get"].setEnabled(retry)
         if not retry:

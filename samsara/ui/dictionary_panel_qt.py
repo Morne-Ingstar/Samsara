@@ -28,6 +28,16 @@ from samsara.ui import theme
 
 logger = logging.getLogger(__name__)
 
+
+def _qt_widget_is_valid(widget) -> bool:
+    if widget is None:
+        return False
+    try:
+        import shiboken6
+        return shiboken6.isValid(widget)
+    except Exception:
+        return False
+
 # ---------------------------------------------------------------------------
 # Colours — matches the main Qt window palette
 # ---------------------------------------------------------------------------
@@ -556,10 +566,17 @@ class DictionaryPanelQt(QWidget):
                     from PySide6.QtWidgets import QApplication
                     qt = QApplication.instance()
                     if qt:
+                        def update_if_alive(callback):
+                            def apply():
+                                if (self._alive and _qt_widget_is_valid(self)
+                                        and _qt_widget_is_valid(table)
+                                        and _qt_widget_is_valid(status_lbl)):
+                                    callback()
+                            return apply
                         if saved:
-                            QTimer.singleShot(0, qt, lambda: self._kv_reload(table, mode, status_lbl))
+                            QTimer.singleShot(0, qt, update_if_alive(lambda: self._kv_reload(table, mode, status_lbl)))
                         else:
-                            QTimer.singleShot(0, qt, lambda: status_lbl.setText("Save refused -- see log"))
+                            QTimer.singleShot(0, qt, update_if_alive(lambda: status_lbl.setText("Save refused -- see log")))
             except Exception as exc:
                 logger.error(f"[DICT] {mode} add failed: {exc}", exc_info=True)
                 if self._alive:
@@ -567,7 +584,12 @@ class DictionaryPanelQt(QWidget):
                     from PySide6.QtWidgets import QApplication
                     qt = QApplication.instance()
                     if qt:
-                        QTimer.singleShot(0, qt, lambda: status_lbl.setText(f"Save failed: {exc}"))
+                        msg = str(exc)
+                        def show_error(message=msg):
+                            if (self._alive and _qt_widget_is_valid(self)
+                                    and _qt_widget_is_valid(status_lbl)):
+                                status_lbl.setText(f"Save failed: {message}")
+                        QTimer.singleShot(0, qt, show_error)
 
         thread_registry.spawn("dictionary_panel_qt._kv_add", _do, daemon=True)
 

@@ -30,8 +30,11 @@ is not a promise that every file is encrypted or automatically deleted.
 
 | Feature | Information involved |
 | --- | --- |
-| **Initial setup and model downloads** | Downloads application components or model files from their hosts. The host receives normal connection metadata. |
+| **Optional component check** | When you select “Check what's available” in first-run setup, Samsara contacts GitHub for the component manifest. GitHub receives ordinary connection metadata, including your IP address, request time and user agent. |
+| **Optional component downloads** | When you select Get, Samsara downloads the component you chose from the host named in its manifest. That host receives ordinary connection metadata. |
+| **Speech model downloads** | When a speech model is first needed, Samsara downloads its files from the model host. That host receives ordinary connection metadata. |
 | **Cloud Ava** | Sends the prompt and relevant conversation context to the provider you configure, using your API key. |
+| **Ollama on another computer** | Sends requests to the Ollama endpoint you configure. The other computer or service receives the request. Ollama on your own computer stays local. |
 | **Optional Ava web search** | Sends the question and request context to the configured supported cloud search service when enabled. |
 | **Smart Corrections cloud backend or fallback** | Sends text for correction when the cloud path is configured and enabled. Cloud fallback is off by default. |
 | **Edge TTS** | Sends the text selected for speech to Microsoft's online speech service. It needs internet but no personal API key. Choose Windows voices for local speech. |
@@ -39,9 +42,7 @@ is not a promise that every file is encrypted or automatically deleted.
 | **Web searches, links and integrations** | Contact the website, service or network device involved in the requested action. Their own data policies apply. |
 | **Packaged-app update checks** | Contact GitHub Releases. GitHub receives ordinary connection metadata, including IP address, request time and user agent. |
 
-An Ollama endpoint configured on another machine is a network service too;
-“local model” assumes the endpoint is on your own computer. API providers may
-charge for usage independently of Samsara.
+API providers may charge for usage independently of Samsara.
 
 Update checks do not send dictation, audio, history, configuration, API keys,
 or device names. Automatic checks are off by default; a manual check or an
