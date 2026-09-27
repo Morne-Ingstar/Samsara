@@ -151,19 +151,8 @@ class PageAssembly:
             ('Restore automatic backup', 'restoreConfigBackupButton'),
         ])
         route = CleanComboBox()
-        route.addItems(['Local', 'Cloud'])
-        cloud = self._widgets['cloud_enabled']
-        route.setCurrentIndex(int(cloud.isChecked()))
-        def choose_route(index):
-            if bool(index) != cloud.isChecked():
-                cloud.click()  # invokes the existing provider consent flow
-            route.blockSignals(True)
-            route.setCurrentIndex(int(cloud.isChecked()))
-            route.blockSignals(False)
-            self._widgets['ava_cmd_backend'].setCurrentText('Cloud' if cloud.isChecked() else 'Ollama')
-            self._refresh_conditions()
-        route.currentIndexChanged.connect(choose_route)
         self._widgets['providerRoute'] = route
+        self._configure_ava_route_master(route)
         corrections = QPushButton('Open')
         corrections.clicked.connect(self._open_corrections)
         self._widgets['openCorrections'] = corrections

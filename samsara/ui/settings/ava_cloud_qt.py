@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara import ai_preferences, ava_readiness, config_defaults
+from samsara.log import get_logger
 from samsara.ui import ava_consent_qt, theme
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
@@ -67,6 +68,8 @@ _WEB_SEARCH_UNAVAILABLE = (
     "Local models (Ollama) and the other providers have no built-in web search."
 )
 
+logger = get_logger(__name__)
+
 
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
@@ -88,16 +91,19 @@ class AvaCloudPage:
         layout.setSpacing(12)
 
         cfg = self.app.config.get('cloud_llm', {}) or {}
-        master_touched = {"value": False}
-        route_touched = {"value": False}
+        self._ava_route_touched = False
+        self._ava_route_confirmation_pending = ai_preferences.cloud_route_confirmation_needed(self.app.config)
+        if self._ava_route_confirmation_pending and not getattr(self.app, "_ava_route_confirmation_logged", False):
+            logger.warning("[AVA-ROUTE] Cloud was previously enabled with consent while policy stayed local; explicit route confirmation required")
+            self.app._ava_route_confirmation_logged = True
 
         def _staged_ava_config():
             """Current page choices as one config, without persisting them."""
             effective = dict(self.app.config)
             cloud_cfg = dict(effective.get("cloud_llm", {}) or {})
-            cloud_checkbox = self._widgets.get("cloud_enabled")
-            if cloud_checkbox is not None:
-                cloud_cfg["enabled"] = cloud_checkbox.isChecked()
+            route = self._widgets.get("providerRoute")
+            policy = route.currentData() if route is not None else (effective.get("ava", {}) or {}).get("provider_policy", "off")
+            cloud_cfg["enabled"] = policy == "cloud"
             provider_widget = self._widgets.get("cloud_provider")
             if provider_widget is not None:
                 cloud_cfg["provider"] = _DISPLAY_TO_CODE.get(
@@ -117,40 +123,39 @@ class AvaCloudPage:
 
             session = dict(effective.get("ava_command_session", {}) or {})
             session["backend"] = "cloud" if cloud_cfg.get("enabled") else "ollama"
+            session["enabled"] = policy != "off"
             modes_model = self._widgets.get("ava_cmd_model")
             if modes_model is not None and modes_model.text().strip():
                 session["model"] = modes_model.text().strip()
             effective["ava_command_session"] = session
 
+            ava_cfg = dict(effective.get("ava", {}) or {})
+            ava_cfg["provider_policy"] = policy
             staged = getattr(self, "_ava_consent_staged", None)
             if staged is not None:
-                ava_cfg = dict(effective.get("ava", {}) or {})
                 ava_cfg["consent"] = staged
-                effective["ava"] = ava_cfg
+            effective["ava"] = ava_cfg
             return effective
+
+        self._ava_staged_config = _staged_ava_config
 
         # ---- Master switch: the one place Ava is turned on or off ---------
         layout.addWidget(self._section_title("Ava"))
         layout.addSpacing(4)
-        ava_enabled = QCheckBox("Ava")
+        ava_enabled = QCheckBox("Ava", container)
         ava_enabled.setChecked(ai_preferences.ava_master_enabled(self.app.config))
         ava_enabled.setAccessibleName("Turn Ava on or off")
         self._widgets["ava_enabled"] = ava_enabled
-        layout.addWidget(ava_enabled)
-        ava_note = QLabel(
-            "Turns Ava on for both assistant and command-session shortcuts. "
-            "Cloud stays separate and needs its own API key."
-        )
-        ava_note.setWordWrap(True)
-        ava_note.setStyleSheet(
-            f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;"
-        )
-        layout.addWidget(ava_note)
+        status = QLabel(ai_preferences.ava_route_status(self.app.config), container)
+        status.setAccessibleName("Effective Ava route")
+        status.setWordWrap(True)
+        self._widgets["ava_route_status"] = status
+        layout.addWidget(status)
         interpret_misses = QCheckBox("Ava interprets commands")
         interpret_misses.setChecked(bool(
             (self.app.config.get("ava_command_session", {}) or {}).get("interpret_misses", False)
         ))
-        interpret_misses.setEnabled(ava_enabled.isChecked())
+        interpret_misses.setEnabled((self.app.config.get("ava", {}) or {}).get("provider_policy") != "off")
         interpret_misses.setAccessibleName("Let Ava interpret unmatched commands")
         interpret_note = QLabel(
             "After an ordinary command miss, Ava may choose one available command."
@@ -159,7 +164,6 @@ class AvaCloudPage:
         interpret_note.setStyleSheet(
             f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;"
         )
-        ava_enabled.toggled.connect(interpret_misses.setEnabled)
         self._widgets["ava_interpret_misses"] = interpret_misses
         layout.addWidget(interpret_misses)
         layout.addWidget(interpret_note)
@@ -169,18 +173,10 @@ class AvaCloudPage:
         layout.addWidget(self._section_title("Cloud AI (bring your own key)"))
         layout.addSpacing(4)
 
-        cloud_enabled = QCheckBox("Enable Cloud AI (Ava sends requests to your chosen provider)")
-        cloud_enabled.setChecked(bool(cfg.get('enabled', False)))
+        cloud_enabled = QCheckBox("Cloud route active", container)
+        cloud_enabled.setChecked((self.app.config.get("ava", {}) or {}).get("provider_policy") == "cloud")
         self._widgets['cloud_enabled'] = cloud_enabled
-        layout.addWidget(cloud_enabled)
 
-        enable_note = QLabel(
-            "Sends voice requests to your chosen provider; falls back to local on error. "
-            "Free with your own API key."
-        )
-        enable_note.setWordWrap(True)
-        enable_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 26px;")
-        layout.addWidget(enable_note)
         consent_btn = QPushButton("Read this again")
         consent_btn.setAccessibleName("Read what turning Ava on means again")
         theme.make_secondary(consent_btn)
@@ -219,44 +215,6 @@ class AvaCloudPage:
         warm_on_boot.toggled.connect(_remember_warm_choice)
         cloud_enabled.toggled.connect(_default_warm_for_provider)
 
-        def _confirm_cloud_enable(checked):
-            route_touched["value"] = True
-            if not ava_enabled.isChecked() and not checked:
-                return
-            effective = _staged_ava_config()
-            if not ava_consent_qt.consent_required(
-                effective, cloud_enabled=checked
-            ):
-                return
-            consent = ava_consent_qt.request_consent(
-                self, effective, cloud_enabled=checked
-            )
-            if consent is not None:
-                self._ava_consent_staged = consent
-                return
-            was_blocked = cloud_enabled.blockSignals(True)
-            cloud_enabled.setChecked(not checked)
-            cloud_enabled.blockSignals(was_blocked)
-
-        cloud_enabled.clicked.connect(_confirm_cloud_enable)
-
-        def _confirm_ava_enable(checked):
-            master_touched["value"] = True
-            if not checked:
-                return
-            effective = _staged_ava_config()
-            cloud = bool((effective.get("cloud_llm", {}) or {}).get("enabled"))
-            consent = ava_consent_qt.request_consent(
-                self, effective, cloud_enabled=cloud
-            )
-            if consent is None:
-                blocked = ava_enabled.blockSignals(True)
-                ava_enabled.setChecked(False)
-                ava_enabled.blockSignals(blocked)
-                return
-            self._ava_consent_staged = consent
-
-        ava_enabled.clicked.connect(_confirm_ava_enable)
         self._widgets['ava_warm_on_boot'] = warm_on_boot
         layout.addWidget(warm_on_boot)
         layout.addSpacing(8)
@@ -324,6 +282,7 @@ class AvaCloudPage:
         provider_combo = QComboBox()
         provider_combo.addItems(_PROVIDER_DISPLAY)
         provider_combo.setCurrentText(current_display)
+        self._ava_previous_provider_display = current_display
         self._widgets['cloud_provider'] = provider_combo
         layout.addLayout(self._setting_row(
             "Provider",
@@ -367,6 +326,7 @@ class AvaCloudPage:
         api_key_entry.setPlaceholderText("Paste your API key here")
         api_key_entry.setMinimumWidth(260)
         self._widgets['cloud_api_key'] = api_key_entry
+        api_key_entry.textChanged.connect(lambda _text: self._refresh_ava_route_status())
         show_btn = QPushButton("Show")
         show_btn.setCheckable(True)
         show_btn.setFixedWidth(60)
@@ -453,6 +413,7 @@ class AvaCloudPage:
         test_row = QHBoxLayout()
         test_row.setSpacing(12)
         test_btn = QPushButton("Test Connection")
+        self._widgets['cloud_test_button'] = test_btn
         test_btn.setMinimumWidth(150)
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(self._run_test_connection)
@@ -579,12 +540,13 @@ class AvaCloudPage:
         def _save(_acc):
             updates = {}
             if 'cloud_enabled' in self._widgets:
+                policy = self._widgets['providerRoute'].currentData()
                 provider_display = self._widgets['cloud_provider'].currentText()
                 provider = _DISPLAY_TO_CODE.get(provider_display, 'deepseek')
                 api_key = self._widgets['cloud_api_key'].text().strip()
                 model_override = self._widgets['cloud_model'].text().strip()
                 cloud_cfg = dict(self.app.config.get('cloud_llm', {}) or {})
-                cloud_cfg['enabled'] = self._widgets['cloud_enabled'].isChecked()
+                cloud_cfg['enabled'] = policy == 'cloud'
                 cloud_cfg['provider'] = provider
                 cloud_cfg['api_key'] = api_key
                 cloud_cfg['timeout_seconds'] = self._widgets['cloud_timeout'].value()
@@ -648,10 +610,7 @@ class AvaCloudPage:
                             "ava_edit_demo_pacing"].isChecked() else "instant")
                 updates["ava_edit"] = ava_edit_cfg
 
-            reconcile_master = master_touched["value"] or (
-                ava_enabled.isChecked() and route_touched["value"]
-            )
-            if reconcile_master:
+            if self._ava_route_touched:
                 effective = dict(self.app.config)
                 effective.update(_acc)
                 effective.update(updates)
@@ -660,30 +619,91 @@ class AvaCloudPage:
                 if staged is not None:
                     ava_cfg["consent"] = staged
                 effective["ava"] = ava_cfg
-
-                if ava_enabled.isChecked():
-                    policy = (
-                        "cloud"
-                        if (effective.get("cloud_llm", {}) or {}).get("enabled")
-                        else "local"
-                    )
-                    consent = ava_cfg.get("consent")
-                    preferred = ava_consent_qt.apply_accepted_ava(
-                        self.app, consent, policy=policy,
-                        config=effective, persist=False,
-                    )
-                else:
-                    preferred = ava_consent_qt.apply_disabled_ava(
-                        self.app, config=effective, persist=False,
-                    )
+                try:
+                    preferred = ai_preferences.apply_ava_route_choice(
+                        effective, policy=policy, consent=staged)
+                except ValueError:
+                    # A programmatic or stale control change cannot bypass consent.
+                    policy = (self.app.config.get("ava", {}) or {}).get("provider_policy", "off")
+                    if policy == "cloud":
+                        policy = "off"
+                    preferred = ai_preferences.apply_ava_route_choice(effective, policy=policy)
+                    self._restore_ava_route(policy)
+                    self._widgets['ava_route_status'].setText(
+                        "Cloud was not selected because consent was not accepted.")
                 for key in ava_consent_qt._PREFERENCE_KEYS:
-                    updates[key] = preferred[key]
+                    if key in preferred:
+                        updates[key] = preferred[key]
             return updates
         self._save_fns.append(_save)
 
         layout.addStretch()
         scroll.setWidget(container)
         return scroll
+
+    def _configure_ava_route_master(self, route):
+        route.addItem("Off", "off")
+        route.addItem("On this PC (Ollama)", "local")
+        display = self._widgets['cloud_provider'].currentText().replace(" (default)", "")
+        route.addItem(f"In the cloud ({display})", "cloud")
+        policy = (self.app.config.get("ava", {}) or {}).get("provider_policy", "off")
+        route.setCurrentIndex({"off": 0, "local": 1, "cloud": 2}.get(policy, 0))
+        route.setAccessibleName("Ava runs")
+        self._ava_last_route = route.currentData()
+        route.currentIndexChanged.connect(self._on_ava_route_choice)
+        self._sync_ava_cloud_controls()
+        self._refresh_ava_route_status()
+
+    def _restore_ava_route(self, policy):
+        route = self._widgets['providerRoute']
+        blocked = route.blockSignals(True)
+        route.setCurrentIndex({"off": 0, "local": 1, "cloud": 2}[policy])
+        route.blockSignals(blocked)
+        self._ava_last_route = policy
+        self._sync_ava_cloud_controls()
+
+    def _sync_ava_cloud_controls(self):
+        policy = self._widgets['providerRoute'].currentData()
+        self._widgets['cloud_enabled'].setChecked(policy == 'cloud')
+        self._widgets['ava_enabled'].setChecked(policy != 'off')
+        self._widgets['ava_interpret_misses'].setEnabled(policy != 'off')
+        self._widgets['ava_cmd_backend'].setCurrentText('Cloud' if policy == 'cloud' else 'Local (Ollama)')
+        for key in ('cloud_provider', 'cloud_api_key', 'cloud_model', 'cloud_timeout', 'cloud_test_button'):
+            self._widgets[key].setEnabled(policy == 'cloud')
+        self._sync_web_search_availability()
+        self._refresh_conditions()
+
+    def _refresh_ava_route_status(self):
+        status = self._widgets.get('ava_route_status')
+        if status is None:
+            return
+        if self._ava_route_confirmation_pending:
+            # OWNER COPY
+            status.setText("Cloud chosen, consent recorded - confirm to switch. Ava still runs on this PC.")
+            return
+        status.setText(ai_preferences.ava_route_status(self._ava_staged_config()))
+
+    def _on_ava_route_choice(self, _index):
+        policy = self._widgets['providerRoute'].currentData()
+        previous = self._ava_last_route
+        if policy == previous:
+            return
+        if policy == 'cloud':
+            effective = self._ava_staged_config()
+            if ava_consent_qt.consent_required(effective, cloud_enabled=True):
+                consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=True)
+                if consent is None:
+                    self._restore_ava_route(previous)
+                    # OWNER COPY
+                    self._widgets['ava_route_status'].setText(
+                        "Cloud was not selected because consent was not accepted. Ava's previous route is unchanged.")
+                    return
+                self._ava_consent_staged = consent
+        self._ava_route_touched = True
+        self._ava_route_confirmation_pending = False
+        self._ava_last_route = policy
+        self._sync_ava_cloud_controls()
+        self._refresh_ava_route_status()
     def _sync_web_search_availability(self):
         """Web search exists only for Cloud AI with DeepSeek. Otherwise the
         box is disabled AND unchecked, and the reason is shown -- never a
@@ -715,6 +735,24 @@ class AvaCloudPage:
         return _PROVIDER_INFO.get(code, "")
 
     def _on_cloud_provider_changed(self, display_name: str):
+        route = self._widgets.get('providerRoute')
+        previous = getattr(self, '_ava_previous_provider_display', display_name)
+        if route is not None and route.currentData() == 'cloud' and display_name != previous:
+            effective = self._ava_staged_config()
+            if ava_consent_qt.consent_required(effective, cloud_enabled=True):
+                consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=True)
+                if consent is None:
+                    provider = self._widgets['cloud_provider']
+                    blocked = provider.blockSignals(True)
+                    provider.setCurrentText(previous)
+                    provider.blockSignals(blocked)
+                    self._widgets['ava_route_status'].setText(
+                        "Provider was not changed because consent was not accepted.")  # OWNER COPY
+                    return
+                self._ava_consent_staged = consent
+        self._ava_previous_provider_display = display_name
+        if route is not None:
+            route.setItemText(2, f"In the cloud ({display_name.replace(' (default)', '')})")
         info_label = self._widgets.get('cloud_info_label')
         if info_label:
             info_label.setText(self._provider_info(display_name))
@@ -722,6 +760,7 @@ class AvaCloudPage:
         if model_entry:
             code = _DISPLAY_TO_CODE.get(display_name, 'deepseek')
             model_entry.setPlaceholderText(f"Default: {_DEFAULT_MODELS.get(code, '')}")
+        self._refresh_ava_route_status()
 
     def _activate_license(self):
         """Store an optional supporter key. Unlocks no capability -- purely

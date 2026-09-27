@@ -857,7 +857,11 @@ def _user_word_count() -> Optional[int]:
 
 
 def _ava_sources(cfg: dict) -> tuple:
-    return (bool(_cfg_get(cfg, 'ollama.enabled')), bool(_cfg_get(cfg, 'cloud_llm.enabled')))
+    from samsara import ai_preferences  # noqa: PLC0415
+    if not ai_preferences.runtime_state(cfg, 'ava').allowed:
+        return (False, False)
+    policy = (cfg.get('ava', {}) or {}).get('provider_policy')
+    return (policy == 'local', policy == 'cloud')
 
 
 def ava_text(cfg: dict) -> str:
@@ -1583,10 +1587,12 @@ class AvaHeaderControl(QPushButton):
             sentence = "Samsara could not refresh Ava's status. Try again shortly."
         self._state = state
         self._mark.set_state(state)
+        route = home_signals.ava_route_label(self._app)
         word = AVA_SHORT_STATE.get(state, state)
-        self._text.setText(f"{AVA_NAME} {EM_DASH} {word}")
-        self.setText(f"{AVA_NAME} {EM_DASH} {word}")
-        self.setAccessibleName(f"{AVA_NAME} {EM_DASH} {word}")
+        label = f"{route} {EM_DASH} {word}"
+        self._text.setText(label)
+        self.setText(label)
+        self.setAccessibleName(label)
         self.setAccessibleDescription(sentence)
         self.setToolTip(sentence)
         self.updateGeometry()

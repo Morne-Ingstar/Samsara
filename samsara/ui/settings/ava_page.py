@@ -1,19 +1,19 @@
-"""Ava Settings destination (285; placeholder copy)."""
+"""Ava Settings destination with one consent-gated route control."""
 
 TITLE = "Ava"
 SUBTITLE = "Choose how Ava helps, with permissions you control."
 BASE = [
     [
-        "Ava",
-        "Enable assistant and command-session shortcuts.",
-        "ava_enabled",
-        "ava.provider_policy,ava_mode_enabled,ava_command_session.enabled,command_packs.ai"
+        "Ava runs",
+        "Choose Off, on this PC, or your cloud provider.",
+        "providerRoute",
+        "ava.provider_policy,ava_mode_enabled,ava_command_session.enabled,command_packs.ai,cloud_llm.enabled,ava_command_session.backend,ava.consent"
     ],
     [
-        "Provider route",
-        "Choose local processing or your cloud provider.",
-        "providerRoute,ava:Read this again",
-        "cloud_llm.enabled,ava_command_session.backend,ava.consent"
+        "Effective route",
+        "Where Ava will handle your requests after Apply.",
+        "ava_route_status",
+        ""
     ],
     [
         "Memory retention",
@@ -35,6 +35,12 @@ BASE = [
     ]
 ]
 ADVANCED = [
+    [
+        "Ava consent",
+        "Read how Ava handles local and cloud requests.",
+        "ava:Read this again",
+        ""
+    ],
     [
         "Cloud provider",
         "Choose the provider receiving cloud requests.",
@@ -152,4 +158,6 @@ ADVANCED = [
 ]
 
 def build(owner):
-    return owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    owner._widgets["ava_route_status"].setMinimumWidth(260)
+    return page

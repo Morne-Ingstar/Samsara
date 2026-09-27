@@ -250,6 +250,72 @@ def ava_master_enabled(config: dict) -> bool:
     )
 
 
+def cloud_route_confirmation_needed(config: dict) -> bool:
+    """A legacy cloud toggle is evidence to show, never authority to reroute."""
+    cloud = _section(config, "cloud_llm")
+    consent = _section(_section(config, "ava"), "consent")
+    return (_section(config, "ava").get("provider_policy") == "local"
+            and cloud.get("enabled") is True and bool(cloud.get("api_key"))
+            and consent.get("cloud_version") is not None)
+
+
+def ava_route_status(config: dict) -> str:
+    """The selected Ava destination, checked through the effective-state gate."""
+    # OWNER COPY: these route words are shared by Settings and Home.
+    policy = _section(config, "ava").get("provider_policy", "off")
+    state = runtime_state(config, "ava")
+    if policy == "off":
+        return "Ava: off"
+    if policy == "cloud":
+        if "consent" in state.reason.lower():
+            return "Ava: cloud chosen, consent pending"
+        if not _section(config, "cloud_llm").get("api_key"):
+            return "Ava: cloud chosen, API key needed"
+        names = {"deepseek": "DeepSeek", "openai": "OpenAI",
+                 "anthropic": "Anthropic", "openrouter": "OpenRouter"}
+        identity = state.provider.identity if state.provider else _section(config, "cloud_llm").get("provider")
+        return f"Ava: cloud - {names.get(identity, 'provider setup needed')}"
+    if policy == "local":
+        if "consent" in state.reason.lower():
+            return "Ava: on this PC chosen, consent pending"
+        model = (_section(config, "ava_command_session").get("model")
+                 or _section(config, "ollama").get("model")
+                 or cfg_get(config, "ava_command_session.model"))
+        return f"Ava: on this PC - {model}"
+    return "Ava: provider setup needed"
+
+
+def apply_ava_route_choice(config: dict, *, policy: str, consent: dict | None = None) -> dict:
+    """Keep legacy provider flags in step with a deliberate route choice.
+
+    A missing local grant leaves Ava pending. A new cloud route always needs a
+    valid provider-bound cloud grant before any cloud flag can be enabled.
+    """
+    if policy not in POLICIES:
+        raise ValueError("invalid Ava route")
+    if policy == "off":
+        return apply_preferences(config, policy="off")
+    provider = provider_for(config, policy,
+                            resolved_addresses=("127.0.0.1", "::1") if policy == "local" else ())
+    record = consent if consent is not None else _section(config, "ava").get("consent")
+    covered = consent_covers(record, features=("ava",), provider=provider,
+                             cloud=policy == "cloud")
+    if policy == "cloud" and not covered and _section(config, "ava").get("provider_policy") != "cloud":
+        raise ValueError("cloud consent required before switching Ava")
+    if covered:
+        return apply_accepted_ava(config, policy=policy, consent=record)
+    result = deepcopy(config)
+    for section in ("ava", "ava_command_session", "ollama", "cloud_llm", "command_packs"):
+        result[section] = deepcopy(_section(config, section))
+    result["ava"]["provider_policy"] = policy
+    result["ava_command_session"].update(enabled=True, backend="cloud" if policy == "cloud" else "ollama")
+    result["ollama"]["enabled"] = policy == "local"
+    result["cloud_llm"].update(enabled=policy == "cloud", web_search=False)
+    result["command_packs"]["ai"] = True
+    result["ava_mode_enabled"] = True
+    return result
+
+
 def effective_state(config: dict, feature: str, *, provider_route: str | None = None,
                     ready: bool | None = None, resolved_addresses=()) -> EffectiveState:
     """Fail closed; caller passes readiness for THIS provider, never probes here."""

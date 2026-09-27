@@ -480,11 +480,15 @@ class TestAvaCloudTabNoLicenseGate:
     hiding them. The old QStackedWidget gate (cloud_settings_widget) and its
     visibility toggle are gone for good."""
 
-    def test_cloud_settings_visible_without_any_key(self, qapp):
+    def test_cloud_settings_visible_without_any_key(self, qapp, monkeypatch):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        from samsara.ui import ava_consent_qt
+        monkeypatch.setattr(ava_consent_qt, 'request_consent',
+                            lambda _parent, staged, **k: ava_consent_qt.accepted_consent(
+                                staged, cloud_enabled=True, accepted_at='2026-09-27T00:00:00+00:00'))
         win = _SettingsWindow(_StubApp())
         win._stack.setCurrentIndex(_TAB_NAMES.index('Ava'))
-        win._widgets['cloud_enabled'].setChecked(True)
+        win._widgets['providerRoute'].setCurrentIndex(2)
         win._pages['Ava'].advanced.reveal()
 
         for widget_key in ('providerRoute', 'cloud_provider', 'cloud_api_key',
@@ -506,12 +510,16 @@ class TestAvaCloudTabNoLicenseGate:
         assert 'cloud_license_entry' not in win._widgets  # Prompt 244 removed the supporter UI.
         assert 'cloud_license_stack' not in win._widgets  # Prompt 244 removed the supporter UI.
 
-    def test_save_fn_writes_cloud_settings_without_license(self, qapp):
+    def test_save_fn_writes_cloud_settings_without_license(self, qapp, monkeypatch):
         """Firing the Ava/Cloud save fn must persist cloud_llm settings with
         no premium_license present at all."""
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        from samsara.ui import ava_consent_qt
+        monkeypatch.setattr(ava_consent_qt, 'request_consent',
+                            lambda _parent, staged, **k: ava_consent_qt.accepted_consent(
+                                staged, cloud_enabled=True, accepted_at='2026-09-27T00:00:00+00:00'))
         win = _SettingsWindow(_StubApp())
-        win._widgets['cloud_enabled'].setChecked(True)
+        win._widgets['providerRoute'].setCurrentIndex(2)
         win._widgets['cloud_api_key'].setText('sk-test-key')
 
         ava_cloud_save_fn = win._source_saves['ava'][0]

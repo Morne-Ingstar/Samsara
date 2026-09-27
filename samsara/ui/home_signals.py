@@ -337,6 +337,16 @@ def ava_state(app) -> CapabilityState:
         "Samsara has not checked whether Ava can answer yet.")
 
 
+def ava_route_label(app) -> str:
+    """Home's visible destination, from the same effective gate as routing."""
+    try:
+        from samsara import ai_preferences  # noqa: PLC0415
+        return ai_preferences.ava_route_status(_cfg(app))
+    except Exception as exc:
+        logger.debug(f"[HOME] Ava route unavailable: {exc}")
+        return "Ava: route unavailable"  # OWNER COPY
+
+
 def capability_states(app) -> dict:
     """The one account every surface reads."""
     return {state.name: state for state in

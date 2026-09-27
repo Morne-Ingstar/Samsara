@@ -236,10 +236,9 @@ def test_provider_controls_follow_actual_consent_result(window, monkeypatch):
     from samsara.ui import ava_consent_qt
     monkeypatch.setattr(ava_consent_qt, 'request_consent', lambda *a, **k: None)
     monkeypatch.setattr(ava_consent_qt, 'consent_required', lambda *a, **k: True)
-    window._widgets['cloud_enabled'].setChecked(False)
-    window._widgets['providerRoute'].setCurrentIndex(1)
+    window._widgets['providerRoute'].setCurrentIndex(2)
     assert not window._widgets['cloud_enabled'].isChecked()
-    assert window._widgets['providerRoute'].currentIndex() == 0
+    assert window._widgets['providerRoute'].currentData() == 'off'
     assert window._rows_by_widget['cloud_api_key'].isHidden()
 
 
