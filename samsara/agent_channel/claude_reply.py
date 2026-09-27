@@ -1,0 +1,320 @@
+"""Read completed Claude desktop replies through UI Automation and speak them."""
+from __future__ import annotations
+
+import math
+import re
+import time
+from dataclasses import dataclass
+
+from samsara.log import get_logger
+from samsara.runtime import thread_registry
+
+logger = get_logger(__name__)
+_POLL_S = 0.3
+_STABLE_S = 1.5
+_FOLLOWUP_S = 60.0
+_MESSAGE_NAME = re.compile(r"Message (\d+) of \d+")
+_PATH = re.compile(r"(?<!\w)(?:[A-Za-z]:\\|/|\.\.?[/\\])[^\s,;:!?<>|]+")
+_CODE = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
+_TABLE = re.compile(r"(?m)^(?:\s*\|[^\n]+\|\s*\n?){2,}")
+
+
+class ReplyFailure(Exception):
+    """A reply could not be observed."""
+
+
+class WindowGone(ReplyFailure):
+    pass
+
+
+class ReplyTimeout(ReplyFailure):
+    pass
+
+
+class NoNewNode(ReplyFailure):
+    pass
+
+
+@dataclass(frozen=True)
+class _Message:
+    index: int
+    assistant: bool
+    text: str
+
+
+@dataclass(frozen=True)
+class _Snapshot:
+    messages: tuple[_Message, ...]
+    streaming: bool
+    chat_found: bool = True
+
+
+@dataclass(frozen=True)
+class SendContext:
+    hwnd: int
+    after_message_index: int
+    conversation: str
+    send_word: str | None = None
+
+
+def _control(window):
+    if isinstance(window, int):
+        import win32gui
+        import uiautomation as uia
+        if not win32gui.IsWindow(window):
+            raise WindowGone()
+        return uia.ControlFromHandle(window)
+    if hasattr(window, "Exists") and not window.Exists(0, 0):
+        raise WindowGone()
+    return window
+
+
+def _walk(root, limit=5000):
+    stack = [root]
+    seen = 0
+    while stack and seen < limit:
+        control = stack.pop()
+        seen += 1
+        yield control
+        stack.extend(reversed(control.GetChildren()))
+
+
+def _prose(message):
+    rows = [control for control in _walk(message, 600)
+            if control.ControlTypeName == "GroupControl"
+            and "group/message-row" in (control.ClassName or "")]
+    if not rows:
+        return ""
+    parts = []
+    for child in rows[0].GetChildren():
+        if child.ControlTypeName != "GroupControl" or child.ClassName:
+            continue
+        stack = [child]
+        while stack:
+            control = stack.pop()
+            kind = control.ControlTypeName
+            class_name = control.ClassName or ""
+            if kind in {"DocumentControl", "ButtonControl", "ToolBarControl", "StatusBarControl"}:
+                continue
+            if "thinking" in class_name or "tool-shell" in class_name:
+                continue
+            if "code" in class_name or kind == "CodeControl":
+                parts.append("there's a code block on screen")
+                continue
+            if kind == "TableControl" or "table" in class_name:
+                parts.append("there's a table on screen")
+                continue
+            if kind == "TextControl" and "sr-only" not in class_name:
+                value = (control.Name or "").strip()
+                if value:
+                    parts.append(value)
+                continue
+            stack.extend(reversed(control.GetChildren()))
+    return "\n".join(parts)
+
+
+def _snapshot(window) -> _Snapshot:
+    try:
+        root = _control(window)
+        chat = next((control for control in _walk(root)
+                     if control.ControlTypeName == "GroupControl"
+                     and control.Name == "Chat messages"), None)
+        if chat is None:
+            return _Snapshot((), False, False)
+        messages = []
+        for control in _walk(chat):
+            if control.ControlTypeName != "GroupControl":
+                continue
+            match = _MESSAGE_NAME.fullmatch(control.Name or "")
+            if match:
+                assistant = any("group/message-row" in (child.ClassName or "")
+                                for child in control.GetChildren())
+                messages.append(_Message(int(match.group(1)), assistant,
+                                         _prose(control) if assistant else ""))
+        streaming = any(control.ControlTypeName == "ButtonControl"
+                        and control.Name == "Stop response" for control in _walk(root))
+        return _Snapshot(tuple(messages), streaming)
+    except ReplyFailure:
+        raise
+    except Exception as exc:
+        raise WindowGone() from exc
+
+
+def message_index(window) -> int:
+    snapshot = _snapshot(window)
+    if not snapshot.chat_found:
+        raise NoNewNode()
+    return max((message.index for message in snapshot.messages), default=0)
+
+
+def watch_for_reply(window, after_message_index: int, timeout_s: float) -> str:
+    """Return new assistant prose after Stop response disappears and text settles."""
+    deadline = time.monotonic() + timeout_s
+    previous = ""
+    stable_since = None
+    saw_new = False
+    while time.monotonic() < deadline:
+        snapshot = _snapshot(window)
+        fresh = [message for message in snapshot.messages if message.index > after_message_index]
+        saw_new |= bool(fresh)
+        assistant = next((message for message in reversed(fresh) if message.assistant), None)
+        text = assistant.text if assistant else ""
+        if text and not snapshot.streaming:
+            if text != previous:
+                stable_since = time.monotonic()
+            elif stable_since is not None and time.monotonic() - stable_since >= _STABLE_S:
+                logger.info("[CLAUDE-VOICE] reply complete index=%s chars=%s", assistant.index, len(text))
+                return text
+        else:
+            stable_since = None
+        previous = text
+        time.sleep(_POLL_S)
+    raise ReplyTimeout() if saw_new else NoNewNode()
+
+
+def _word_cap(config) -> int:
+    try:
+        return max(1, min(500, int(config.get("claude_voice", {}).get("spoken_word_cap", 60))))
+    except (TypeError, ValueError, AttributeError):
+        return 60
+
+
+def _reply_timeout(config) -> float:
+    try:
+        value = float(config.get("claude_voice", {}).get("reply_timeout_s", 180))
+        return value if math.isfinite(value) and value > 0 else 180.0
+    except (TypeError, ValueError, AttributeError):
+        return 180.0
+
+
+def spoken_form(reply: str, word_cap: int = 60) -> tuple[str, str]:
+    """Replace unreadable material and split the first spoken chunk from the rest."""
+    safe = _CODE.sub(" there's a code block on screen ", reply)
+    safe = _TABLE.sub(" there's a table on screen ", safe)
+    safe = _PATH.sub(" there's a file path on screen ", safe)
+    safe = re.sub(r"\s+", " ", safe).strip()
+    words = safe.split()
+    return " ".join(words[:word_cap]), " ".join(words[word_cap:])
+
+
+def _state(app):
+    state = getattr(app, "_claude_voice_state", None)
+    if state is None:
+        state = {"token": None, "last": "", "rest": "", "handle": None,
+                 "expires": 0.0, "speaking": False, "resume": None}
+        app._claude_voice_state = state
+    return state
+
+
+def _speak(app, text: str, token, on_done=None):
+    state = _state(app)
+    if state["token"] is not token:
+        return
+    state["last"] = text
+    state["speaking"] = True
+    state["expires"] = time.monotonic() + _FOLLOWUP_S
+
+    def done():
+        if state["token"] is token:
+            state["speaking"] = False
+            state["expires"] = time.monotonic() + _FOLLOWUP_S
+            if on_done:
+                on_done()
+
+    coordinator = getattr(app, "audio_coordinator", None)
+    if coordinator is not None:
+        state["handle"] = coordinator.speak(text, category="conversation",
+                                             interruptible=True, on_done=done)
+        logger.info("[CLAUDE-VOICE] speak chars=%s", len(text))
+        if getattr(state["handle"], "utterance_id", None) == "noop-ava-muted":
+            done()
+
+
+def _active(app):
+    state = _state(app)
+    coordinator = getattr(app, "audio_coordinator", None)
+    return (state["token"] is not None and state["handle"] is not None
+            and time.monotonic() < state["expires"]
+            and coordinator is not None
+            and getattr(coordinator, "_last_spoken_handle", state["handle"]) == state["handle"])
+
+
+def followup(app, action: str) -> bool:
+    if not _active(app):
+        return False
+    state = _state(app)
+    if action in ("stop claude", "stop claude reply", "stop the reply", "quiet claude"):
+        app.audio_coordinator.cancel_speech()
+        state["speaking"] = False
+        if state["resume"]:
+            state["resume"]()
+        return True
+    if action == "repeat that":
+        _speak(app, state["last"], state["token"], on_done=state["resume"])
+        return True
+    if action == "read the rest" and state["rest"]:
+        chunk, state["rest"] = spoken_form(state["rest"], _word_cap(app.config))
+        _speak(app, chunk, state["token"], on_done=state["resume"])
+        return True
+    if action == "read the rest":
+        _speak(app, "That's all of Claude's reply.", state["token"], on_done=state["resume"])
+        return True
+    return False
+
+
+def before_send(app, hwnd: int, *, send_word=None) -> SendContext | None:
+    try:
+        if not app.config.get("claude_voice", {}).get("enabled", True):
+            return None
+        import psutil
+        import win32process
+        _thread_id, process_id = win32process.GetWindowThreadProcessId(hwnd)
+        if psutil.Process(process_id).name().lower() != "claude.exe":
+            return None
+        from plugins.commands.message_claude import ClaudeUiaAdapter
+        adapter = ClaudeUiaAdapter()
+        return SendContext(hwnd, message_index(hwnd), adapter.conversation_title(hwnd), send_word)
+    except Exception:
+        logger.exception("[CLAUDE-VOICE] could not capture send context")
+        return None
+
+
+def start_after_send(app, context: SendContext | None) -> None:
+    if context is None:
+        return
+    state = _state(app)
+    token = object()
+    state["token"] = token
+    state["expires"] = 0.0
+    logger.info("[CLAUDE-VOICE] watcher start hwnd=%s after=%s", context.hwnd,
+                context.after_message_index)
+
+    def resume():
+        if context.send_word and getattr(app, "app_state", None) == "asleep":
+            try:
+                import win32gui
+                if win32gui.GetForegroundWindow() == context.hwnd:
+                    app._start_wake_session(mode="focus_dictate", send_word=context.send_word)
+            except Exception:
+                logger.exception("[CLAUDE-VOICE] wake resume failed")
+
+    state["resume"] = resume
+
+    def run():
+        try:
+            timeout = _reply_timeout(app.config)
+            reply = watch_for_reply(context.hwnd, context.after_message_index, timeout)
+            if _state(app)["token"] is not token:
+                return
+            first, rest = spoken_form(reply, _word_cap(app.config))
+            state["rest"] = rest
+            _speak(app, first or "Claude answered on screen.", token, on_done=resume)
+        except WindowGone:
+            _speak(app, "I lost the Claude window", token, on_done=resume)
+        except (ReplyTimeout, NoNewNode):
+            _speak(app, "Claude didn't answer", token, on_done=resume)
+
+    try:
+        thread_registry.spawn("claude.reply", run)
+    except Exception:
+        logger.exception("[CLAUDE-VOICE] watcher could not start")

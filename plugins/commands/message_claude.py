@@ -53,6 +53,7 @@ from samsara.plugin_commands import command
 from samsara import execution_policy
 from samsara.execution_policy import Invocation, Route
 from samsara.log import get_logger
+from samsara.agent_channel import claude_reply
 
 logger = get_logger(__name__)
 
@@ -467,6 +468,7 @@ def handle_claude_message_submit(app, remainder):
                        extra={"composer": seen[:120]})
 
     button = adapter.find_send(composer)
+    reply_context = claude_reply.before_send(app, hwnd)
     if button is None or not adapter.invoke(button):
         return _failed(app, draft, "send control not found; body left in the composer, not sent")
     submitted_at = time.time()
@@ -481,6 +483,7 @@ def handle_claude_message_submit(app, remainder):
                 _chip(app, "Sent to Claude", "success")
                 _speak(app, "Sent.")
                 logger.info("[CLAUDE] draft %s observed in conversation %r", draft.id, conversation)
+                claude_reply.start_after_send(app, reply_context)
                 return DispatchResult(DispatchState.COMPLETED, "claude message submit", "claude message submit", {
                     "state": "sent", "detail": "sent: observed", "draft_id": draft.id,
                     "observed_after_s": round(time.time() - submitted_at, 2)})
@@ -491,3 +494,22 @@ def handle_claude_message_submit(app, remainder):
     _speak(app, "I sent it but could not see it appear. Check the Claude window; I will not resend.")
     return _failed(app, draft, "submitted, not observed -- do not retry automatically", state="unknown",
                    chip="warning", extra={"draft_kept": True})
+
+
+@command("read the rest", pack="ai", risk_class="safe", reversible=True,
+         side_effects=["audio"])
+def handle_claude_read_rest(app, remainder):
+    return claude_reply.followup(app, "read the rest")
+
+
+@command("repeat that", pack="ai", risk_class="safe", reversible=True,
+         side_effects=["audio"])
+def handle_claude_repeat(app, remainder):
+    return claude_reply.followup(app, "repeat that")
+
+
+@command("stop claude", aliases=["stop claude reply", "stop the reply", "quiet claude"],
+         pack="ai", risk_class="safe", reversible=True,
+         side_effects=["audio"])
+def handle_claude_stop(app, remainder):
+    return claude_reply.followup(app, "stop claude")

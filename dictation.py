@@ -5181,6 +5181,19 @@ class DictationApp:
         return hotkeys.HotkeyCluster._check_command_mode_key(self, key, pressed)
     # ── Unified session mode state machine (COMMAND <-> DICTATE) ────────────
 
+    def _probe_media_transport(self, text: str):
+        from samsara.command_catalog import hands_free_media_phrases
+        from samsara.session_modes import match_whole_utterance
+
+        phrases = hands_free_media_phrases()
+        phrase = match_whole_utterance(text, phrases)
+        if phrase is None:
+            return None
+        return HandsFreeCommandMatch(
+            dispatch_text=phrase, phrase=phrases[phrase],
+            pending_policy=PendingTextPolicy.PRESERVE, reserved=True,
+        )
+
     def _probe_hands_free_command(self, text: str):
         """Classify one utterance without executing it.
 
@@ -5188,6 +5201,9 @@ class DictationApp:
         commit staged text before focus-changing commands, then execute the
         command only if the paste succeeded. None means ordinary dictation.
         """
+        media_match = self._probe_media_transport(text)
+        if media_match is not None:
+            return media_match
         normalized = normalize_utterance(apply_phonetic_wash(text))
         if not normalized:
             return None
@@ -5384,7 +5400,7 @@ class DictationApp:
                     # _handle_session_dispatch_outcome (the single chokepoint)
                     # after dispatch_utterance returns -- not duplicated here.
                 return CommandDispatchResult(matched=True, phrase=result, state=state,
-                                             awaiting_confirmation=awaiting)
+                                             awaiting_confirmation=awaiting, detail=detail)
 
             disabled_pack = detail.get('pack') if detail.get('reason') == 'pack_disabled' else None
             if disabled_pack:
@@ -8788,6 +8804,7 @@ class DictationApp:
         # send_word is THIS profile's own terminator (never the shared/global
         # default) -- passed through so the termination check later only
         # recognizes this profile's word, not every profile's.
+        self._wake_session_target_process = process_name.lower()
         self._start_wake_session(
             initial_content=initial_content, mode=_mode,
             send_word=profile.get('send_word'),
@@ -9698,6 +9715,19 @@ class DictationApp:
 
             self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
 
+            media_match = self._probe_media_transport(text)
+            if media_match is not None:
+                if stage_timing is not None:
+                    stage_timing.mark("dispatch_start", words=len(text.split()))
+                outcome = self._ensure_session_mode_manager().dispatch_command_utterance(
+                    media_match.dispatch_text)
+                if stage_timing is not None:
+                    stage_timing.mark("action_done", outcome=outcome_label(outcome.kind))
+                self._handle_session_dispatch_outcome(outcome, media_match.dispatch_text)
+                self._emit_wake_trace({"stage": "utterance_end", "result": "media_transport",
+                                       "command": media_match.phrase, "outcome": outcome.kind})
+                return
+
             # In dictation state (quick_dictation, long_dictation, or wake_session)?
             if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
                 # Check abort words
@@ -9739,6 +9769,13 @@ class DictationApp:
                         else ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
                     )
                     _tokens = text.strip().split()
+                    if (getattr(self, '_wake_session_target_process', '') == 'claude.exe'
+                            and text.strip().lower() in ('read the rest', 'repeat that',
+                                                         'stop claude', 'stop claude reply',
+                                                         'stop the reply', 'quiet claude')):
+                        from samsara.agent_channel import claude_reply
+                        if claude_reply.followup(self, text.strip().lower()):
+                            return
                     _matched_sw = None
                     if _tokens:
                         _last_tok = _tokens[-1].rstrip('.,!?').lower()
@@ -9751,7 +9788,14 @@ class DictationApp:
                         if _pre:
                             self._output_dictation(_pre)
                         _mode = getattr(self, '_wake_session_mode', 'focus_dictate')
+                        _claude_reply_context = None
                         if _mode == 'focus_dictate':
+                            if getattr(self, '_wake_session_target_process', '') == 'claude.exe':
+                                from samsara.agent_channel import claude_reply
+                                import win32gui
+                                _claude_reply_context = claude_reply.before_send(
+                                    self, win32gui.GetForegroundWindow(),
+                                    send_word=self._wake_session_send_word)
                             time.sleep(0.05)
                             pyautogui.press('return')
                             self.play_sound("success")
@@ -9764,6 +9808,8 @@ class DictationApp:
                         self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_sent",
                                                "send_word": _matched_sw, "mode": _mode})
                         self._end_wake_session()
+                        if _claude_reply_context is not None:
+                            claude_reply.start_after_send(self, _claude_reply_context)
                         return
                     self._output_dictation(text.strip())
                     self._emit_wake_trace({"stage": "utterance_end", "result": "wake_session_delivered"})
@@ -9790,11 +9836,13 @@ class DictationApp:
 
                 # Pause/resume state machine (long_dictation only)
                 if self.app_state == 'long_dictation':
+                    from samsara.session_modes import match_whole_utterance
+
                     if self._dictation_paused:
                         # Only resume words get through; everything else is ignored.
                         resume_words = ww_config.get('resume_words', ['resume', 'continue', 'go on'])
                         for rw in resume_words:
-                            if rw.lower() in text_lower:
+                            if match_whole_utterance(text, [rw]) is not None:
                                 self._dictation_paused = False
                                 self.play_sound("start")
                                 if hasattr(self, 'listening_indicator'):
@@ -9812,10 +9860,10 @@ class DictationApp:
 
                     pause_words = ww_config.get('pause_words', ['pause'])
                     for pw in pause_words:
-                        if pw.lower() in text_lower:
+                        if match_whole_utterance(text, [pw]) is not None:
                             # Preserve any content spoken before the pause word.
                             pause_idx = text_lower.find(pw.lower())
-                            cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip()
+                            cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip().rstrip(string.punctuation + ' ')
                             if cleaned:
                                 self.wake_dictation_buffer.append(cleaned)
                                 logger.info(f"[DICTATE] Buffered (pre-pause): {cleaned}")
@@ -10235,6 +10283,7 @@ class DictationApp:
             # the normal dispatch path always supplies it) can't inherit a stale
             # word from whichever profile ran previously.
             self._wake_session_send_word = None
+            self._wake_session_target_process = None
 
             existing = getattr(self, '_wake_session_inactivity_timer', None)
             if existing is not None:

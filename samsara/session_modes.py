@@ -594,6 +594,12 @@ def match_literal_payload(raw_text: str) -> Optional[str]:
     return payload if payload.strip() else None
 
 
+def match_whole_utterance(raw_text: str, phrases) -> Optional[str]:
+    normalized = (raw_text or "").strip().rstrip(string.punctuation + " ").casefold()
+    return next((phrase for phrase in phrases
+                 if phrase.strip().casefold() == normalized and normalized), None)
+
+
 def match_switch_word(
     raw_text: str, current_mode: Optional[SessionMode] = None,
 ) -> Optional[SwitchMatch]:
@@ -1309,6 +1315,7 @@ class CommandDispatchResult:
     awaiting_confirmation: bool = False
     # A miss because the utterance is exactly a phrase of this disabled pack.
     disabled_pack: Optional[str] = None
+    detail: dict = field(default_factory=dict)
 
 
 #: Claimed-but-not-carried-out command states: never dictation, never a
@@ -1588,6 +1595,8 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         why = answer.split(":", 1)[1] if answer.startswith("refused:") else answer
         return (f"refused: {_short(why)}", "warning")
     if kind in ("command_executed", "hands_free_command_executed"):
+        if detail.get("state") == "completed" and detail.get("media_action"):
+            return (detail["message"], "success")
         phrase = _first_two_words(detail.get("phrase"))
         heard = _heard(detail)
         if detail.get("origin") == "model" and detail.get("state") == "completed":
@@ -2583,7 +2592,8 @@ class SessionModeManager:
             if self._hands_free_command_probe_fn is not None:
                 hands_free_match = self._hands_free_command_probe_fn(text)
                 if hands_free_match is not None:
-                    if fragment_guard:
+                    from samsara.command_catalog import hands_free_media_phrases
+                    if fragment_guard and hands_free_match.dispatch_text not in hands_free_media_phrases():
                         log.info("[SESSION] paced fragment kept as dictation: %r", text)
                         return self._dispatch_dictate(text)
                     if not passes_switch_anti_hallucination_gate(signals):
@@ -3340,6 +3350,7 @@ class SessionModeManager:
             # Recognised but not carried out: say so, but it is still a
             # command -- not a miss, not dictation, nothing to undo.
             return DispatchOutcome(kind="command_failed", detail={
+                **getattr(result, "detail", {}),
                 "phrase": result.phrase, "state": state, "heard": heard,
             })
         if result.matched and getattr(result, "awaiting_confirmation", False):
@@ -3353,6 +3364,7 @@ class SessionModeManager:
                 mode=SessionMode.COMMAND, timestamp=self._clock(),
             ))
             return DispatchOutcome(kind="command_executed", detail={
+                **getattr(result, "detail", {}),
                 "phrase": result.phrase, "state": state, "heard": heard,
             })
         pack = getattr(result, "disabled_pack", None)
@@ -3399,6 +3411,7 @@ class SessionModeManager:
         state = _command_state(result)
         if not result.matched or state in COMMAND_UNSUCCESSFUL_STATES:
             return DispatchOutcome(kind="hands_free_command_failed", detail={
+                **getattr(result, "detail", {}),
                 "phrase": match.phrase,
                 "dispatch_text": match.dispatch_text,
                 "heard": _short(match.dispatch_text, _COMMAND_HEARD_MAX),
@@ -3421,6 +3434,7 @@ class SessionModeManager:
             mode=SessionMode.DICTATE, timestamp=self._clock(),
         ))
         return DispatchOutcome(kind="hands_free_command_executed", detail={
+            **getattr(result, "detail", {}),
             "phrase": result.phrase or match.phrase,
             "dispatch_text": match.dispatch_text,
             "committed": commit_detail,

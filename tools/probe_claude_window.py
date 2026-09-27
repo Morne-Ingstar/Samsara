@@ -143,6 +143,59 @@ def candidates(nodes, out):
         out.write(f"  depth={d} {i['type']} name={i['name']!r} aid={i['aid']!r} cls={i['cls']!r}\n")
 
 
+def watch_summary(seconds: float, interval: float, out) -> None:
+    """Log read-only structural changes without recording conversation text."""
+    relevant_buttons = {"Send", "Send message", "Stop response", "Copy", "Edit", "Retry",
+                        "Read aloud", "Good response", "Bad response", "View request/response"}
+    deadline = time.monotonic() + seconds
+    previous = None
+    started = time.monotonic()
+    while time.monotonic() < deadline:
+        windows = find_claude_windows("Claude")
+        summaries = []
+        for window, _title, _cls, _proc, pid in windows:
+            stack = [(window, 0)]
+            messages = []
+            buttons = []
+            documents = []
+            seen = 0
+            while stack and seen < 4000:
+                control, depth = stack.pop()
+                seen += 1
+                try:
+                    kind = control.ControlTypeName
+                    name = control.Name or ""
+                    if kind == "DocumentControl" and control.AutomationId == "RootWebArea":
+                        documents.append(bool(name.endswith(" - Claude")))
+                    if kind == "ButtonControl" and name in relevant_buttons:
+                        buttons.append(name)
+                    if kind == "GroupControl" and name.startswith("Message "):
+                        children = []
+                        message_stack = [(control, 0)]
+                        while message_stack and len(children) < 600:
+                            child, level = message_stack.pop()
+                            child_kind = child.ControlTypeName
+                            child_name = child.Name or ""
+                            children.append((level, child_kind,
+                                             child_name if child_kind == "ButtonControl"
+                                             and child_name in relevant_buttons else f"len={len(child_name)}",
+                                             child.ClassName[:60]))
+                            if level < 10:
+                                message_stack.extend((item, level + 1) for item in reversed(child.GetChildren()))
+                        messages.append((name, children))
+                    if depth < 45:
+                        stack.extend((item, depth + 1) for item in reversed(control.GetChildren()))
+                except Exception:
+                    continue
+            summaries.append((pid, documents, messages[-4:], sorted(set(buttons))))
+        signature = repr(summaries)
+        if signature != previous:
+            out.write(f"t={time.monotonic() - started:.2f}s {signature}\n")
+            out.flush()
+            previous = signature
+        time.sleep(interval)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--title", default="Claude")
@@ -152,7 +205,18 @@ def main(argv=None) -> int:
     parser.add_argument("--max-nodes", type=int, default=4000)
     parser.add_argument("--budget", type=float, default=60.0, help="seconds")
     parser.add_argument("--out", default=None, help="also write the dump to this file")
+    parser.add_argument("--watch-seconds", type=float, default=0,
+                        help="record read-only UIA structure changes, with message text redacted")
+    parser.add_argument("--interval", type=float, default=0.3)
     args = parser.parse_args(argv)
+
+    if args.watch_seconds:
+        if args.out:
+            with open(args.out, "w", encoding="utf-8") as report:
+                watch_summary(args.watch_seconds, args.interval, report)
+        else:
+            watch_summary(args.watch_seconds, args.interval, sys.stdout)
+        return 0
 
     out = sys.stdout
     try:

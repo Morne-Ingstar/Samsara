@@ -43,6 +43,7 @@ import logging
 import os
 import re
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -783,6 +784,24 @@ def load_catalog_json(path: Optional[Path] = None) -> Optional[list]:
     if validate_catalog(doc):
         return None
     return doc["commands"]
+
+
+@lru_cache(maxsize=1)
+def hands_free_media_phrases() -> dict[str, str]:
+    transports = {
+        "music.pause", "music.play", "music.play_music", "music.next",
+        "music.previous_music", "music.mute",
+    }
+    phrases = {
+        "pause music", "unpause music", "resume music", "play music",
+        "stop music", "next track", "previous track", "mute",
+    }
+    return {
+        alias: canonical_phrase(record)
+        for record in (load_catalog_json() or [])
+        if record.get("pack") == "media" and record["canonical_id"] in transports
+        for alias in record["aliases"] if alias in phrases
+    }
 
 
 def guidance_catalog(rows=None, *, catalog_path: Optional[Path] = None) -> Optional[list]:

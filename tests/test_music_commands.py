@@ -142,6 +142,28 @@ def test_music_transport_aliases_are_not_foreground_scoped():
     assert plugin_commands._REGISTRY['pause music']['phrase'] == 'pause'
     assert plugin_commands._REGISTRY['next song']['phrase'] == 'next'
     assert plugin_commands._REGISTRY['previous song']['phrase'] == 'previous music'
+    assert plugin_commands._REGISTRY['unpause music']['phrase'] == 'play'
+    assert plugin_commands._REGISTRY['resume music']['phrase'] == 'play'
+
+
+def test_bare_play_music_resumes_current_media(monkeypatch):
+    transport = Mock(return_value=DispatchResult(DispatchState.COMPLETED, phrase='play'))
+    monkeypatch.setattr(music, '_media_transport', transport)
+    result = music.handle_play(SimpleNamespace(), '')
+    assert result.state is DispatchState.COMPLETED
+    transport.assert_called_once_with('play')
+
+
+@pytest.mark.parametrize('action,message', [('pause', 'paused music'), ('play', 'resumed music')])
+def test_smtc_success_reports_the_actual_media_action(monkeypatch, action, message):
+    import sys
+    control = SimpleNamespace(GlobalSystemMediaTransportControlsSessionManager=SimpleNamespace(
+        request_async=AsyncMock(return_value=SimpleNamespace(get_current_session=lambda: SimpleNamespace(
+            try_play_async=AsyncMock(return_value=True), try_pause_async=AsyncMock(return_value=True))))))
+    monkeypatch.setitem(sys.modules, 'winsdk.windows.media.control', control)
+    result = music._media_transport(action)
+    assert result.state is DispatchState.COMPLETED
+    assert result.detail == {'media_action': action, 'message': message}
 
 
 def test_spotify_absent_launch_then_play(playback):

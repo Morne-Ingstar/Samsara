@@ -7177,7 +7177,7 @@
       "pack": "ai",
       "plugin": "message_claude",
       "risk": "write",
-      "source": "plugins/commands/message_claude.py:361",
+      "source": "plugins/commands/message_claude.py:362",
       "undoable": false,
       "verb": "claude",
       "whole_utterance": false
@@ -7200,9 +7200,63 @@
       "pack": "ai",
       "plugin": "message_claude",
       "risk": "destructive",
-      "source": "plugins/commands/message_claude.py:422",
+      "source": "plugins/commands/message_claude.py:423",
       "undoable": false,
       "verb": "claude",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read the rest"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.read_the_rest",
+      "description": "read the rest",
+      "kind": "plugin",
+      "object": "the_rest",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:499",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "repeat that"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.repeat_that",
+      "description": "repeat that",
+      "kind": "plugin",
+      "object": "that",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:505",
+      "undoable": true,
+      "verb": "repeat",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "quiet claude",
+        "stop claude",
+        "stop claude reply",
+        "stop the reply"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.stop_claude",
+      "description": "stop claude",
+      "kind": "plugin",
+      "object": "claude",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:511",
+      "undoable": true,
+      "verb": "stop",
       "whole_utterance": false
     },
     {
@@ -7218,7 +7272,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:634",
+      "source": "plugins/commands/music.py:639",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -7240,7 +7294,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:620",
+      "source": "plugins/commands/music.py:625",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -7260,7 +7314,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:613",
+      "source": "plugins/commands/music.py:618",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -7268,7 +7322,9 @@
     {
       "aliases": [
         "play",
-        "resume"
+        "resume",
+        "resume music",
+        "unpause music"
       ],
       "args": [
         {
@@ -7284,7 +7340,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:579",
+      "source": "plugins/commands/music.py:584",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7308,7 +7364,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:597",
+      "source": "plugins/commands/music.py:602",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7332,7 +7388,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:605",
+      "source": "plugins/commands/music.py:610",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7370,7 +7426,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:518",
+      "source": "plugins/commands/music.py:521",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7394,7 +7450,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:589",
+      "source": "plugins/commands/music.py:594",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7415,7 +7471,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:627",
+      "source": "plugins/commands/music.py:632",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -7433,7 +7489,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:558",
+      "source": "plugins/commands/music.py:563",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false

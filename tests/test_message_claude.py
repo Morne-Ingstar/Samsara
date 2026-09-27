@@ -117,6 +117,20 @@ def _chips(app):
 # ---------------------------------------------------------------------------
 
 class TestGrammar:
+    def test_reply_followups_are_registered_and_decline_without_reply(self, app):
+        from samsara import plugin_commands
+        for phrase, handler in (("read the rest", mc.handle_claude_read_rest),
+                                ("repeat that", mc.handle_claude_repeat),
+                                ("stop claude", mc.handle_claude_stop)):
+            assert plugin_commands._REGISTRY[phrase]["func"] is handler
+            assert handler(app, "") is False
+
+        stop_entry = plugin_commands._REGISTRY["stop claude"]
+        assert set(stop_entry["aliases"]) == {
+            "stop claude reply", "stop the reply", "quiet claude"}
+        for alias in stop_entry["aliases"]:
+            assert plugin_commands._REGISTRY[alias] is stop_entry
+
     def test_four_phrases_registered_on_prepare(self):
         from samsara import plugin_commands
         entry = plugin_commands._REGISTRY["claude message prepare"]
@@ -207,6 +221,28 @@ def _prepared(app):
 
 
 class TestSubmit:
+    def test_observed_send_starts_reply_watcher(self, app, adapter, monkeypatch):
+        context = object()
+        capture = Mock(return_value=context)
+        start = Mock()
+        monkeypatch.setattr(mc.claude_reply, "before_send", capture)
+        monkeypatch.setattr(mc.claude_reply, "start_after_send", start)
+        draft_id = _prepared(app)
+        result = mc.handle_claude_message_submit(app, draft_id)
+        assert result.state is DispatchState.COMPLETED
+        capture.assert_called_once_with(app, 4242)
+        start.assert_called_once_with(app, context)
+
+    def test_unknown_send_does_not_start_reply_watcher(self, app, adapter, monkeypatch):
+        start = Mock()
+        monkeypatch.setattr(mc.claude_reply, "before_send", lambda *_args: object())
+        monkeypatch.setattr(mc.claude_reply, "start_after_send", start)
+        draft_id = _prepared(app)
+        adapter.append_on_send = False
+        result = mc.handle_claude_message_submit(app, draft_id)
+        assert result.state is DispatchState.FAILED
+        start.assert_not_called()
+
     def test_yes_runs_submit_and_observes_the_message(self, app, adapter):
         draft_id = _prepared(app)
         ask_ollama.handle_ava_confirm(app)                       # the policy's confirmed path

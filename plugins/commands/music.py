@@ -73,7 +73,10 @@ def _media_transport(action):
                         detail={"reason": "nothing is playing"},
                     )
                 print(f"[MEDIA] transport: {action}")
-                return DispatchResult(DispatchState.COMPLETED, phrase=action)
+                message = {"pause": "paused music", "play": "resumed music",
+                           "next": "next track", "previous": "previous track"}[action]
+                return DispatchResult(DispatchState.COMPLETED, phrase=action,
+                                      detail={"media_action": action, "message": message})
             except Exception as e:
                 print(f"[MEDIA] transport {action} failed: {e}")
                 return DispatchResult(
@@ -525,6 +528,8 @@ def _set_volume(level):
 ], pack="media", risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_play(app, remainder):
     """Plays what you name on Spotify, such as play music by Nick Cave."""
+    if not remainder or not remainder.strip():
+        return _media_transport("play")
     requested, preferred_type = _parse_music_request(remainder)
     if not requested or requested.lower() in {'music', 'something'}:
         uri = 'spotify:collection:tracks'
@@ -576,7 +581,7 @@ def handle_music_search(app, remainder):
 
 # ── Earbud-style transport commands (SMTC, app-agnostic) ──────────────────
 
-@command("play", aliases=["resume"], pack="media",
+@command("play", aliases=["resume", "unpause music", "resume music"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'],
          param_schema={"name": {"type": "str", "required": False, "max_len": 120}})
 def handle_media_play(app, remainder):

@@ -70,7 +70,7 @@ _DEFAULT_EARCON_DURATION_MS = 300
 #                          callers summarise long lists before speaking.
 TTS_CHAR_LIMIT_EXEMPT_CATEGORIES = frozenset({
     "ava_response", "ava_status", "ava_command_session", "confirmation", "readback",
-    "dictation_readback",
+    "dictation_readback", "conversation",
 })
 
 DEFAULT_COMMAND_MODE_TTS_CHAR_LIMIT = 50
@@ -86,6 +86,7 @@ SUPPRESSED_CMD_MODE_ID = 'noop-cmd-mode'
 # captioning it would put command chatter in a window labelled Ava.
 AVA_SPEECH_CATEGORIES = frozenset({
     "ava_response", "ava_status", "ava_command_session", "dictation_readback",
+    "conversation",
 })
 #: Returned when Ava's audio is muted: the caption was shown, nothing spoke.
 MUTED_AVA_ID = 'noop-ava-muted'
@@ -155,6 +156,7 @@ class AudioCoordinator:
         self._interrupt_grace_active = False
         self._interrupt_grace_timer: Optional[threading.Timer] = None
         self._active_interruptible = True
+        self._last_spoken_handle = None
 
         # Thinking-pulse timer chain.
         self._thinking_pulse_timer: Optional[threading.Timer] = None
@@ -219,7 +221,9 @@ class AudioCoordinator:
                     "AudioCoordinator: Ava audio muted (category=%s, captions=%s)",
                     category, captions,
                 )
-                return SpeechHandle(utterance_id=MUTED_AVA_ID)
+                handle = SpeechHandle(utterance_id=MUTED_AVA_ID)
+                self._last_spoken_handle = handle
+                return handle
             if captions:
                 self._emit_caption(text, hold=True)
                 # Release the caption's hold when THIS utterance finishes.
@@ -253,6 +257,7 @@ class AudioCoordinator:
         )
 
         self._active_handle = handle
+        self._last_spoken_handle = handle
         return handle
 
     # ------------------------------------------------------------------

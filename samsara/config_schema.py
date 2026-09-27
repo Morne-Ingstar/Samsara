@@ -29,23 +29,23 @@ Cross-field dependencies use one of two forms:
 """
 
 SETTINGS_SCHEMA = {
+    "claude_voice.enabled": {
+        "type": "bool", "default": True, "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Desktop Claude reply reading is enabled by default; advanced config-only override.",
+    },
+    "claude_voice.spoken_word_cap": {
+        "type": "int", "min": 1, "max": 500, "default": 60, "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Advanced config-only limit for each spoken Claude reply chunk.",
+    },
+    "claude_voice.reply_timeout_s": {
+        "type": "int", "min": 5, "max": 600, "default": 180, "tab": "general",
+        "settings_ui": False,
+        "ui_less_reason": "Advanced config-only timeout for a desktop Claude reply.",
+    },
     "tasks.todoist.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "tasks.todoist.api_token": {"type": "str", "default": "", "tab": "commands"},
-    # -------------------------------------------------------------------------
-    # General tab
-    # -------------------------------------------------------------------------
-    "model_size": {
-        "type": "enum",
-        "options": ["tiny", "tiny.en", "base", "base.en", "small", "small.en",
-                    "medium", "medium.en", "large-v3"],
-        "default": "base",
-        "tab": "general",
-    },
-    "language": {
-        "type": "str",
-        "default": "en",
-        "tab": "general",
-    },
     "wake_profiles": {
         "type": "list",
         "item_type": "dict",
@@ -62,6 +62,21 @@ SETTINGS_SCHEMA = {
             },
         ],
         "tab": "dictation",
+    },
+    # -------------------------------------------------------------------------
+    # General tab
+    # -------------------------------------------------------------------------
+    "model_size": {
+        "type": "enum",
+        "options": ["tiny", "tiny.en", "base", "base.en", "small", "small.en",
+                    "medium", "medium.en", "large-v3"],
+        "default": "base",
+        "tab": "general",
+    },
+    "language": {
+        "type": "str",
+        "default": "en",
+        "tab": "general",
     },
     # Queue 129. Dark is not universally accessible: astigmatism, some
     # low-vision conditions and a bright room all read light-on-dark worse,
