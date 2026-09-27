@@ -259,9 +259,11 @@ class GeneralPage:
 
         # Samsara-only output routing. This never changes the Windows default.
         outputs = list(getattr(self.app, 'available_outputs', None) or [])
-        output_map = {"System default": (None, None)}
+        output_map = {"System default": (None, None, None)}
         for output in outputs:
-            output_map[output['name']] = (output['id'], output['name'])
+            output_map[output['name']] = (
+                output['id'], output['name'], output.get('hostapi'),
+            )
         output_combo = QComboBox()
         stored_output_id = self.app.config.get('output_device')
         stored_output_name = self.app.config.get('output_device_name')
@@ -282,7 +284,10 @@ class GeneralPage:
             # Preserve the unavailable preference if Apply is clicked without
             # changing this control. Selecting the plain System default entry
             # still clears it explicitly.
-            output_map[selected_label] = (stored_output_id, stored_output_name)
+            output_map[selected_label] = (
+                stored_output_id, stored_output_name,
+                self.app.config.get('output_device_hostapi'),
+            )
         output_combo.addItems(list(output_map))
         output_combo.setCurrentText(selected_label)
         self._widgets['output_combo'] = output_combo
@@ -696,17 +701,19 @@ class GeneralPage:
             updates['microphone_name'] = mic_combo.currentText()
 
             output_label = self._widgets['output_combo'].currentText()
-            output_id, output_name = self._widgets['output_label_map'].get(
-                output_label, (None, None)
+            output_id, output_name, output_hostapi = self._widgets['output_label_map'].get(
+                output_label, (None, None, None)
             )
             saved_output = (
                 self.app.config.get('output_device'),
                 self.app.config.get('output_device_name'),
+                self.app.config.get('output_device_hostapi'),
             )
-            if (output_id, output_name) != saved_output:
+            if (output_id, output_name, output_hostapi) != saved_output:
                 # Keep the recovered runtime id with the stable device name.
                 updates['output_device'] = output_id
                 updates['output_device_name'] = output_name
+                updates['output_device_hostapi'] = output_hostapi
             return updates
         self._save_fns.append(_save)
 

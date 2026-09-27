@@ -90,6 +90,7 @@ AVA_SPEECH_CATEGORIES = frozenset({
 })
 #: Returned when Ava's audio is muted: the caption was shown, nothing spoke.
 MUTED_AVA_ID = 'noop-ava-muted'
+SUPPRESSED_TTS_ID = 'noop-tts-disabled'
 
 
 def command_mode_char_limit(config) -> Optional[int]:
@@ -123,6 +124,14 @@ class AudioCoordinator:
     def __init__(self, app, engine: TTSEngine, config: dict = None):
         self.app = app
         self.engine = engine
+        self._dispatch_lock = threading.RLock()
+        self._engine_provider = (getattr(app, 'config', {}).get('tts', {}) or {}).get('engine')
+        authorize = getattr(engine, 'set_authorization_checker', None)
+        if callable(authorize):
+            authorize(lambda: bool((self.app.config.get('tts', {}) or {}).get('enabled', False))
+                      and (self.app.config.get('tts', {}) or {}).get('engine') == 'edge'
+                      and getattr(self.app, 'tts_engine', None) is engine
+                      and self.engine is engine)
         cfg = config or {}
 
         # Configuration with defaults.
@@ -229,32 +238,39 @@ class AudioCoordinator:
                 # Release the caption's hold when THIS utterance finishes.
                 on_done = self._with_caption_release(on_done)
 
-        tts_cfg = self.app.config.get('tts', {})
-        effective_speed = speed if speed is not None else tts_cfg.get('speed', 1.0)
-        effective_volume = volume if volume is not None else tts_cfg.get('volume', 0.8)
-        effective_voice = voice_id or tts_cfg.get('voice_id')
+        with self._dispatch_lock:
+            tts_cfg = self.app.config.get('tts', {}) or {}
+            if ((tts_cfg.get('enabled') is False)
+                    or self.engine is None
+                    or (self._engine_provider is not None
+                        and tts_cfg.get('engine') != self._engine_provider)):
+                logger.info("AudioCoordinator: TTS suppressed by current enable/provider setting")
+                return SpeechHandle(utterance_id=SUPPRESSED_TTS_ID)
+            effective_speed = speed if speed is not None else tts_cfg.get('speed', 1.0)
+            effective_volume = volume if volume is not None else tts_cfg.get('volume', 0.8)
+            effective_voice = voice_id or tts_cfg.get('voice_id')
 
-        # Wrap caller's on_done so we get the IDLE transition.
-        def _on_tts_done():
-            self.transition_to(IDLE, context={'reason': 'tts_complete'})
-            if on_done:
-                try:
-                    on_done()
-                except Exception:
-                    logger.exception("AudioCoordinator: on_done callback raised")
+            # Wrap caller's on_done so we get the IDLE transition.
+            def _on_tts_done():
+                self.transition_to(IDLE, context={'reason': 'tts_complete'})
+                if on_done:
+                    try:
+                        on_done()
+                    except Exception:
+                        logger.exception("AudioCoordinator: on_done callback raised")
 
-        self._active_interruptible = interruptible
-        self.transition_to(SPEAKING, context={'text': text})
+            self._active_interruptible = interruptible
+            self.transition_to(SPEAKING, context={'text': text})
 
-        handle = self.engine.speak(
-            text,
-            voice_id=effective_voice,
-            speed=effective_speed,
-            volume=effective_volume,
-            category=category,
-            queue_mode=queue_mode,
-            on_done=_on_tts_done,
-        )
+            handle = self.engine.speak(
+                text,
+                voice_id=effective_voice,
+                speed=effective_speed,
+                volume=effective_volume,
+                category=category,
+                queue_mode=queue_mode,
+                on_done=_on_tts_done,
+            )
 
         self._active_handle = handle
         self._last_spoken_handle = handle
@@ -304,8 +320,10 @@ class AudioCoordinator:
 
     def cancel_speech(self) -> None:
         """Cancel any in-progress TTS and return to IDLE."""
-        self.engine.cancel_all()
-        self.transition_to(IDLE, context={'reason': 'cancel_speech'})
+        with self._dispatch_lock:
+            if self.engine is not None:
+                self.engine.cancel_all()
+            self.transition_to(IDLE, context={'reason': 'cancel_speech'})
 
     def on_earcon_starting(self, sound_type: str) -> None:
         """Hook called by play_sound before an earcon plays.

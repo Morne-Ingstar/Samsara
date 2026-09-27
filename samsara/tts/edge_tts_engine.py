@@ -75,7 +75,12 @@ def _import_edge_tts():
         ) from exc
 
 
-def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str) -> bytes:
+class _SynthesisRevoked(Exception):
+    """The active Edge request lost TTS authorization."""
+
+
+def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
+                    authorize=None) -> bytes:
     """Synthesize text via edge-tts, return raw MP3 bytes.
 
     edge-tts streams audio over a websocket that can drop mid-utterance on
@@ -91,11 +96,17 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str) -> bytes:
     # short replies never trip the check.
     min_expected_bytes = max(2048, int(len(text) / 12.0 * 3500))
 
+    def _require_authorized():
+        if authorize is not None and not authorize():
+            raise _SynthesisRevoked()
+
     async def _do():
+        _require_authorized()
         communicate = edge_tts.Communicate(text, voice_id, rate=rate, volume=volume)
         buf = io.BytesIO()
         got_audio = False
         async for chunk in communicate.stream():
+            _require_authorized()
             if chunk["type"] == "audio":
                 buf.write(chunk["data"])
                 got_audio = True
@@ -135,8 +146,11 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str) -> bytes:
 
     mp3 = b""
     for attempt in range(1, 4):  # up to 3 tries
+        _require_authorized()
         try:
             mp3, got_audio = _run_isolated()
+        except _SynthesisRevoked:
+            raise
         except Exception as exc:  # websocket / network blip
             logger.warning("[EdgeTTS] stream attempt %d failed: %s", attempt, exc)
             continue
@@ -196,7 +210,19 @@ class EdgeTTSEngine(TTSEngine):
         self._cancelled = False
         self._output_device = output_device
         self._output_device_resolver = output_device_resolver
+        self._authorization_checker = None
         logger.info("[TTS] EdgeTTSEngine initialized (Azure Neural voices via edge-tts)")
+
+    def set_authorization_checker(self, checker) -> None:
+        """Bind the current app authorization; checked again by the worker."""
+        self._authorization_checker = checker
+
+    def _authorized(self, *, check_cancelled: bool = True) -> bool:
+        with self._lock:
+            if check_cancelled and self._cancelled:
+                return False
+        checker = self._authorization_checker
+        return checker is None or bool(checker())
 
     def set_output_device(self, device_id: Optional[int]) -> None:
         """Route subsequent speech to a Samsara-specific output device."""
@@ -233,6 +259,10 @@ class EdgeTTSEngine(TTSEngine):
     ) -> SpeechHandle:
         handle = SpeechHandle(utterance_id=str(uuid.uuid4()))
 
+        if not self._authorized(check_cancelled=False):
+            handle._state = "done"
+            return handle
+
         with self._lock:
             self._cancelled = False
             self._active_handle = handle
@@ -250,8 +280,12 @@ class EdgeTTSEngine(TTSEngine):
                 with self._lock:
                     self._state = "synthesizing"
 
+                if not self._authorized():
+                    return
                 logger.debug("[EdgeTTS] synthesizing: %r (voice=%s)", text[:50], voice)
-                mp3_bytes = _synthesize_mp3(voice, text, rate_str, vol_str)
+                mp3_bytes = _synthesize_mp3(
+                    voice, text, rate_str, vol_str, authorize=self._authorized,
+                )
 
                 with self._lock:
                     if self._cancelled:
@@ -266,6 +300,8 @@ class EdgeTTSEngine(TTSEngine):
 
                 self._play_pcm(pcm)
 
+            except _SynthesisRevoked:
+                return
             except EngineUnavailableError:
                 raise
             except Exception as exc:

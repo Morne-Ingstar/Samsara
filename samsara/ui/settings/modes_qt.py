@@ -1126,7 +1126,7 @@ class ModesPage:
                     else mode.currentText()
                 )
             if 'speech_pace' in self._widgets:
-                accessibility = dict(updates.get('accessibility', self.app.config.get('accessibility', {})) or {})
+                accessibility = dict(_acc.get('accessibility', self.app.config.get('accessibility', {})) or {})
                 accessibility['speech_pace'] = next(
                     key for key, label in pace_options.items()
                     if label == self._widgets['speech_pace'].currentText())

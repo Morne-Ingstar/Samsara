@@ -57,7 +57,7 @@ class TTSPage:
         self._widgets['tts_enabled'] = tts_enabled
         layout.addWidget(tts_enabled)
 
-        restart_note = QLabel("Restart Samsara to apply enable/disable changes.")
+        restart_note = QLabel("Enable, disable, and engine changes take effect on Apply.")
         restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(restart_note)
         layout.addSpacing(16)
@@ -72,7 +72,7 @@ class TTSPage:
         self._widgets['tts_engine'] = engine_combo
         layout.addLayout(self._setting_row(
             "Engine",
-            "winrt: built-in Windows voices.  edge: higher-quality online voices (internet required). Restart required.",
+            "winrt: built-in Windows voices.  edge: higher-quality online voices (internet required).",
             engine_combo,
         ))
         edge_note = QLabel("Edge uses Microsoft’s online voices; WinRT is the offline option.")
@@ -99,7 +99,7 @@ class TTSPage:
         if voice_labels:
             initial_lbl = id_to_label.get(current_voice_id, voice_labels[0])
         else:
-            initial_lbl = current_voice_id or "No voices — enable TTS and restart"
+            initial_lbl = current_voice_id or "No voices available"
 
         voice_combo = QComboBox()
         voice_combo.addItems(voice_labels or [initial_lbl])
@@ -249,7 +249,7 @@ class TTSPage:
         status = self._widgets.get('tts_test_status')
         if coordinator is None:
             if status:
-                status.setText("TTS not initialized — restart with TTS enabled.")
+                status.setText("TTS is off. Enable it and Apply settings.")
             return
         voice_combo = self._widgets.get('tts_voice_combo')
         voice_label = voice_combo.currentText() if voice_combo else None
