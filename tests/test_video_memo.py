@@ -279,8 +279,9 @@ def test_camera_pack_smoke_checks_pyav_but_core_check_rejects_it():
 
     root = Path(__file__).resolve().parents[1]
     spec = (root / "scripts" / "samsara.spec").read_text(encoding="utf-8")
-    assert "'mediapipe', _CV2_DISTRIBUTION, 'av'" in spec
-    assert 'find_spec("av") is not None' in spec
+    assert "'mediapipe', _CV2_DISTRIBUTION, 'absl-py'" in spec
+    assert 'import av  # noqa: F401' in spec  # required by core transcription
+    assert "if any(name.startswith('av/') for name in seen):" in spec
     assert 'import av' in spec
     assert 'container.add_stream("libx264", rate=30)' in spec
     assert 'container.add_stream("aac", rate=16000)' in spec
