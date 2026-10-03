@@ -1,6 +1,7 @@
 """356: dispatch-shaped speech stays local and its outcomes enter Ava history."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -65,10 +66,18 @@ def app(tmp_path, monkeypatch):
         def events(self, _since=None):
             return list(events)
 
+    class ReadyQueue:
+        paths = SimpleNamespace(queue_root=Path("fake-queue"))
+        note = SimpleNamespace(label=lambda path: path.name.split("_", 1)[0])
+
+        def _prompt_files(self, _folder):
+            return [Path(f"{pid}_test.md") for pid in ("353a", "353b")]
+
     instance = SimpleNamespace(config={"dispatch_voice": {"enabled": True},
                                        "ava_memory": {"mode": "clear"}},
                                _ava_memory=AvaMemory(),
                                _dispatch_voice_client=Client(),
+                               _queue_voice_view=ReadyQueue(),
                                audio_coordinator=SimpleNamespace(speak=speak),
                                _show_outcome_chip=Mock())
     yield SimpleNamespace(app=instance, spoken=spoken, drafted=drafted,
@@ -124,7 +133,7 @@ def test_identity_only_correction_never_retargets_pending_plan(app):
 
 def test_missing_id_follow_up_accepts_only_number(app):
     assert dispatch_voice.route_ava_utterance(app.app, "Send to Luna")
-    assert app.spoken[-1] == "Which prompt number?"
+    assert app.spoken[-1] == "Which prompt: 353a or 353b?"
     assert dispatch_voice.route_ava_utterance(app.app, "three five three b")
     assert app.drafted == [("353b", "Luna")]
 

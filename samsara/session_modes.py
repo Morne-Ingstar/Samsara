@@ -3947,7 +3947,13 @@ class SessionModeManager:
         "sent" can be defined. Agent turns are never pushed onto the
         scratch-that stack -- an agent exchange can't be unsent."""
         if not is_substantive_utterance(text):
-            return DispatchOutcome(kind="ava_rejected_not_substantive", detail={"text": text})
+            owner = getattr(self._agent_dispatch_fn, "__self__", None)
+            follow_up = False
+            if owner is not None:
+                from plugins.commands.dispatch_voice import awaiting_follow_up
+                follow_up = awaiting_follow_up(owner, text)
+            if not follow_up:
+                return DispatchOutcome(kind="ava_rejected_not_substantive", detail={"text": text})
 
         context = None
         if detect_stage_reference(text) and self._stage_buffer:

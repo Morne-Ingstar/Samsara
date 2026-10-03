@@ -22,6 +22,20 @@ from samsara.log import get_logger
 _SEND = re.compile(r"^(?:send|dispatch)\b", re.I)
 _DIGITS = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
            "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9"}
+_SPOKEN = {
+    "number": "Which prompt number?", "identity": "To Luna, Sol, Astra or Claude Code?",
+    "absent": "I don't see that prompt in the queue.",
+    "choose_ready": "Which prompt: {ids}?", "choose_exact": "{ids}?",
+    "absent_ready": "I don't see that prompt in the queue. Ready: {ids}.",
+    "queue_unavailable": "I can't read the queue folder.",
+    "expired": "That dispatch question expired. Say the full request again.",
+    "repeat": "Say that again, I lost the end.",
+    "plan_waiting": "The dispatch plan is already waiting for approval.",
+    "plan_target": "The pending plan is for {identity}. Say no, then send again.",
+}
+_FOLLOW_UP_S = 30.0
+_LETTER_HEARINGS = {"8": "a", "eight": "a", "hey": "a", "be": "b",
+                    "sea": "c", "the": "d"}
 _IDENTITIES = {
     "sol": "sol", "soul": "sol", "sole": "sol", "seoul": "sol",
     "the soul": "sol", "the sun": "sol", "s o l": "sol",
@@ -63,8 +77,7 @@ def _prompt_id(text: str) -> str | None:
     return prompt_id("".join(digits) + suffix)
 
 
-def parse_send(text: str) -> tuple[str | None, str | None] | None:
-    """Canonical queue id and identity, including bounded Whisper spellings."""
+def _send_parts(text: str) -> tuple[str, str | None] | None:
     words = _words(text)
     match = re.match(r"^(?:send|dispatch)\s+(?:(?:prompt|number)\s+)*(.+)$", words)
     if not match:
@@ -73,11 +86,123 @@ def parse_send(text: str) -> tuple[str | None, str | None] | None:
     parts = re.split(r"\bto\b", body, maxsplit=1)
     if len(parts) == 2:
         left, right = parts
-        return _prompt_id(left), _identity(right)
+        return left, _identity(right)
     for alias in sorted(_IDENTITIES, key=len, reverse=True):
         if body.endswith(" " + alias):
-            return _prompt_id(body[:-(len(alias) + 1)]), _IDENTITIES[alias]
-    return _prompt_id(body), None
+            return body[:-(len(alias) + 1)], _IDENTITIES[alias]
+    return body, None
+
+
+def parse_send(text: str) -> tuple[str | None, str | None] | None:
+    """Canonical queue id and identity, including bounded Whisper spellings."""
+    parts = _send_parts(text)
+    return (_prompt_id(parts[0]), parts[1]) if parts is not None else None
+
+
+def _ready_ids(app) -> tuple[str, ...] | None:
+    """Read queue-root IDs with QueueView's existing filename and label parser."""
+    try:
+        view = queue_voice._view(app)
+        return tuple(sorted({view.note.label(path).lower()
+                             for path in view._prompt_files(view.paths.queue_root)}))
+    except Exception as exc:
+        logger.warning("[DISPATCH] ready queue unavailable: %s", type(exc).__name__)
+        return None
+
+
+def _number_hint(text: str) -> tuple[str, str]:
+    """Return heard digits and optional suffix; allow a few Whisper letter forms."""
+    from plugins.commands.window_switcher import PHONETIC
+
+    words = _words(text).split()
+    if not words:
+        return "", ""
+    if len(words) == 1 and re.fullmatch(r"\d{4}", words[0]) and words[0][-1] in {"8", "3"}:
+        return words[0][:-1], {"8": "a", "3": "b"}[words[0][-1]]
+    suffix = ""
+    last = words[-1]
+    if last in _LETTER_HEARINGS or last in PHONETIC or (len(last) == 1 and last.isalpha()):
+        suffix = _LETTER_HEARINGS.get(last) or PHONETIC.get(last, last).lower()
+        words.pop()
+    elif last == "3" and len(words) > 1:
+        prior = "".join(word if word.isdigit() else _DIGITS.get(word, "") for word in words[:-1])
+        if len(prior) >= 3:
+            suffix = "b"
+            words.pop()
+    values = [word if word.isdigit() else _DIGITS.get(word) for word in words]
+    if any(value is None for value in values):
+        return "", ""
+    digits = "".join(values)
+    return digits, suffix
+
+
+def _resolve_ids(heard: str, ready: tuple[str, ...],
+                 choices: tuple[str, ...] = ()) -> tuple[str, ...]:
+    available = tuple(pid for pid in choices if pid in ready) if choices else ready
+    exact = _prompt_id(heard)
+    if exact in available:
+        return (exact,)
+    digits, suffix = _number_hint(heard)
+    if not digits and not suffix:
+        return ()
+    if not suffix:
+        return tuple(pid for pid in available if pid.startswith(digits)) if digits else ()
+    matches = tuple(pid for pid in available if pid == digits + suffix)
+    if matches:
+        return matches
+    if not digits:
+        return tuple(pid for pid in available if pid.endswith(suffix))
+    return tuple(pid for pid in available if pid.endswith(suffix)
+                 and _digits_in_order(digits, re.match(r"\d+", pid).group()))
+
+
+def _digits_in_order(heard: str, candidate: str) -> bool:
+    variants = {heard}
+    variants.update(heard[:index] + heard[index + 1:]
+                    for index in range(1, len(heard)) if heard[index] == heard[index - 1])
+    for variant in variants:
+        positions = iter(candidate)
+        if all(any(digit == value for value in positions) for digit in variant):
+            return True
+    return False
+
+
+def _list_ids(ids: tuple[str, ...]) -> str:
+    if len(ids) == 1:
+        return ids[0]
+    return ", ".join(ids[:-1]) + " or " + ids[-1]
+
+
+def _number_question(ready: tuple[str, ...], choices: tuple[str, ...] = ()) -> str:
+    if choices:
+        return _SPOKEN["choose_exact"].format(ids=_list_ids(choices))
+    if ready:
+        return _SPOKEN["choose_ready"].format(ids=_list_ids(ready[:4]))
+    return _SPOKEN["number"]
+
+
+def _absent_line(ready: tuple[str, ...]) -> str:
+    return (_SPOKEN["absent_ready"].format(ids=_list_ids(ready[:4]))
+            if ready else _SPOKEN["absent"])
+
+
+def _stage_follow_up(state: FeedState, pid: str | None, identity: str | None,
+                     choices: tuple[str, ...] = (), retry: int = 0) -> None:
+    state.follow_up = (pid, identity)
+    state.follow_up_choices = choices
+    state.follow_up_deadline = time.monotonic() + _FOLLOW_UP_S
+    state.follow_up_retry = retry
+
+
+def _looks_like_reply(text: str) -> bool:
+    return bool(_identity(text) or _prompt_id(text) or _number_hint(text) != ("", ""))
+
+
+def awaiting_follow_up(app, text: str = "") -> bool:
+    """Forward a live reply, or an expired ID/identity for a spoken refusal."""
+    state = getattr(app, "_dispatch_voice_feed", None)
+    return bool(state and state.follow_up is not None
+                and (time.monotonic() <= state.follow_up_deadline or _looks_like_reply(text)))
 
 
 def is_dispatch_shaped(text: str) -> bool:
@@ -100,6 +225,9 @@ class FeedState:
     blocked: dict[str, dict] = field(default_factory=dict)
     needs_chip: bool = False
     follow_up: tuple[str | None, str | None] | None = None
+    follow_up_choices: tuple[str, ...] = ()
+    follow_up_deadline: float = 0.0
+    follow_up_retry: int = 0
     task_meta: dict[str, tuple[str, str]] = field(default_factory=dict)
     recent_prompt: str | None = None
     recent_identity: str | None = None
@@ -135,21 +263,43 @@ def route_ava_utterance(app, text: str) -> bool:
     state = _feed_state(app)
     raw = (text or "").strip()
     words = _words(raw)
-    follow_up, state.follow_up = state.follow_up, None
+    expired = state.follow_up is not None and time.monotonic() > state.follow_up_deadline
+    follow_up = state.follow_up if not expired else None
+    choices, retry = state.follow_up_choices, state.follow_up_retry
+    state.follow_up = None
+    state.follow_up_choices = ()
+    if expired and not is_dispatch_shaped(raw) and _looks_like_reply(raw):
+        _say(app, _SPOKEN["expired"], lane="near-miss",
+             user_text=raw, action="follow-up expired")
+        return True
     if follow_up is not None and not is_dispatch_shaped(raw):
         pid, identity = follow_up
-        if pid is None:
-            pid = _prompt_id(raw)
+        ready = _ready_ids(app)
+        if ready is None:
+            _say(app, _SPOKEN["queue_unavailable"], lane="refused",
+                 user_text=raw, action="queue unavailable")
+            return True
+        ids = _resolve_ids(raw, ready, choices) if pid is None else (pid,)
         if identity is None:
             identity = _identity(raw)
-        if pid and identity:
-            send_prompt(app, f"{pid} to {identity}", heard=raw)
+        if len(ids) == 1 and identity:
+            send_prompt(app, f"{ids[0]} to {identity}", heard=raw)
             return True
+        if len(ids) > 1:
+            choices = ids
+        if not ids and pid is None and _number_hint(raw) != ("", ""):
+            question = _absent_line(ready)
+        else:
+            question = (_number_question(ready, choices) if not ids else _SPOKEN["identity"])
+        if retry == 0:
+            _stage_follow_up(state, pid, identity, choices, retry=1)
+        _say(app, question, lane="near-miss", user_text=raw, action="follow-up unresolved")
+        return True
     clarification = _identity(raw)
     if state.recent_prompt and clarification:
-        response = ("The dispatch plan is already waiting for approval."
+        response = (_SPOKEN["plan_waiting"]
                     if clarification == state.recent_identity else
-                    f"The pending plan is for {state.recent_identity.title()}. Say no, then send again.")
+                    _SPOKEN["plan_target"].format(identity=state.recent_identity.title()))
         _say(app, response,
              lane="dispatch", user_text=raw, action="clarification")
         return True
@@ -158,17 +308,28 @@ def route_ava_utterance(app, text: str) -> bool:
         return True
     if raw.casefold().startswith("send ") and raw.endswith("-") and len(words.split()) <= 3:
         _remember(app, "dispatch request", "", "asked to repeat an incomplete request")
-        _say(app, "Say that again, I lost the end.", lane="near-miss",
+        _say(app, _SPOKEN["repeat"], lane="near-miss",
              user_text=raw, action="repeat requested")
         return True
-    parsed = parse_send(raw)
-    if parsed is None and not is_dispatch_shaped(raw):
+    parts = _send_parts(raw)
+    if parts is None and not is_dispatch_shaped(raw):
         return False
-    pid, identity = parsed or (_prompt_id(words.removeprefix("count number ")), None)
-    if not pid or not identity:
-        state.follow_up = (pid, identity)
-        question = ("Which prompt number?" if not pid else
-                    "To Luna, Sol, Astra or Claude Code?")
+    heard_id, identity = parts or (words.removeprefix("count number "), None)
+    ready = _ready_ids(app)
+    if ready is None:
+        _say(app, _SPOKEN["queue_unavailable"], lane="refused",
+             user_text=raw, action="queue unavailable")
+        return True
+    ids = _resolve_ids(heard_id, ready)
+    if not ids and heard_id:
+        response = _absent_line(ready)
+        _say(app, response, lane="near-miss", user_text=raw, action="prompt absent")
+        return True
+    pid = ids[0] if len(ids) == 1 else None
+    if len(ids) > 1 or not pid or not identity:
+        _stage_follow_up(state, pid, identity, ids if len(ids) > 1 else ())
+        question = (_number_question(ready, ids if len(ids) > 1 else ())
+                    if not pid else _SPOKEN["identity"])
         _remember(app, pid or "dispatch request", identity or "",
                   "asked for a prompt number" if not pid else "asked for an identity")
         _say(app, question, lane="near-miss", user_text=raw, action="clarification")
@@ -353,16 +514,16 @@ def send_prompt(app, remainder="", *, heard=None):
         return DispatchState.FAILED
     parsed = parse_send("send " + (remainder or "").strip())
     if parsed is None:
-        _say(app, "Which prompt number?", lane="near-miss",
+        _say(app, _SPOKEN["number"], lane="near-miss",
              user_text=heard or remainder, action="invalid dispatch")
         return DispatchState.FAILED
     pid, identity = parsed
     if pid is None:
-        _say(app, "Which prompt number?", lane="near-miss",
+        _say(app, _SPOKEN["number"], lane="near-miss",
              user_text=heard or remainder, action="invalid prompt")
         return DispatchState.FAILED
     if identity is None:
-        _say(app, "To Luna, Sol, Astra or Claude Code?", lane="near-miss",
+        _say(app, _SPOKEN["identity"], lane="near-miss",
              user_text=heard or remainder, action="invalid identity")
         return DispatchState.FAILED
     client = _client(app)
