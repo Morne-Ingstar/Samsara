@@ -426,7 +426,6 @@ class AdvancedPage:
             container, on_later=lambda: None, include_installed=True, show_later=False,
         )
         layout.addWidget(self._components_page.widget)
-        self._components_page.refresh_async()
 
         def _offer_gesture_install(checked):
             if not checked:

@@ -1180,6 +1180,8 @@ SETTINGS_SCHEMA = {
 if not getattr(sys, "frozen", False):
     SETTINGS_SCHEMA["diagnostics.watch_code_changes"] = {
         "type": "bool", "default": True, "tab": "help",
+        "settings_ui": False,
+        "ui_less_reason": "Source-build-only code watcher; configurable in the file, not a packaged-app Settings control.",
     }
 
 

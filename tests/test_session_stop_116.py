@@ -398,6 +398,20 @@ def test_a_mid_ava_stop_drains_the_queue_so_no_reply_arrives_afterwards():
     assert label.startswith("halted speech") and kind == "warning"
 
 
+def test_stop_does_not_attempt_retired_waterfall_drain(caplog):
+    """Stopping the app-owned queue must not silently call a removed helper."""
+    from samsara import execution_policy
+
+    app = _App(speaking=False)
+    app._ava_session_dispatch_queue = [(1, "old request")]
+    with caplog.at_level("DEBUG", logger="Samsara.execution_policy"):
+        cleared = execution_policy.stop_all(app, "voice stop", chip=False)
+
+    assert cleared["queued"] == 1
+    assert app._ava_session_dispatch_queue == []
+    assert "waterfall queue not drained" not in caplog.text
+
+
 def test_the_stop_survives_an_app_with_no_coordinator_and_a_raising_engine():
     """A panic control that can raise is not a panic control."""
     from samsara import execution_policy

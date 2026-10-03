@@ -721,8 +721,8 @@ def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True)
     Bumps the generation FIRST (so any worker that is mid-model-call or
     mid-resolution is stale before we touch anything else), then clears every
     place a request can be waiting: the answer already being spoken (queue
-    110), the staged confirmation, the AVA-session queue, the D3 waterfall
-    queue, the scheduler. Drafts (staged dictation) are deliberately
+    110), the staged confirmation, the app-owned AVA-session queue, and the
+    scheduler. Drafts (staged dictation) are deliberately
     untouched. Returns what was cleared, for feedback.
     """
     # bump=False is for a caller that has ALREADY bumped under its own lock
@@ -777,14 +777,6 @@ def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True)
                 q.clear()
         except Exception as exc:
             logger.debug("[POLICY] stop_all: AVA queue not cleared: %s", exc)
-
-    # D3 waterfall queue: items carry their generation and are now stale;
-    # drain the not-yet-started ones so they do not even reach the resolver.
-    try:
-        from samsara import ava_command_session  # noqa: PLC0415
-        cleared["queued"] += ava_command_session.drain_stale(app)
-    except Exception as exc:
-        logger.debug("[POLICY] stop_all: waterfall queue not drained: %s", exc)
 
     if chip:
         _chip(app, "stopped", "warning")

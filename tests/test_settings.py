@@ -54,6 +54,21 @@ class TestSettingsWindowConstruction:
         win = _SettingsWindow(_StubApp())
         assert win is not None
 
+    def test_opening_settings_does_not_check_remote_components(self, qapp, monkeypatch):
+        from PySide6.QtWidgets import QPushButton
+        from samsara.ui.first_run_qt import ComponentsPage
+        from samsara.ui.settings_qt import _SettingsWindow
+
+        checks = []
+        monkeypatch.setattr(ComponentsPage, 'refresh_async', lambda self: checks.append(self))
+        win = _SettingsWindow(_StubApp())
+        assert checks == []
+        buttons = [button for button in win.findChildren(QPushButton)
+                   if button.text() == "Check what's available"]
+        assert len(buttons) == 1
+        buttons[0].click()
+        assert len(checks) == 1
+
     def test_cmd_button_widget_removed(self, qapp):
         """The old raw-key button picker was removed -- cmd_tab_button
         (now on the Modes tab) is the single home."""
@@ -626,7 +641,14 @@ class TestApplyAndCloseSnapshot:
         # Current post-284 snapshot: retain only live keys and current defaults.
         # 298: Advanced adds its preference without discarding General's theme.
         expected['ui']['live_surface'] = {'enabled': False}
-        expected['accessibility'] = {'speech_pace': 'standard'}
+        # The speech-pace control shares this section with the two opted-out
+        # caption controls; Apply must retain all three defaults.
+        expected['accessibility'] = {
+            'speech_pace': 'standard', 'ava_captions': False,
+            'ava_mute_audio': False,
+        }
+        # The wake-profile editor persists an empty list on a fresh profile.
+        expected['wake_profiles'] = []
         expected['ava_command_session']['keep_warm'] = False
         expected['command_packs'].pop('mouse', None)
         expected['command_packs']['word'] = True
