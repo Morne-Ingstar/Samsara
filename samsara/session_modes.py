@@ -1921,6 +1921,9 @@ class SessionModeManager:
         self._active_capture_interceptors = {}
         self._active_capture_interceptor_id = 0
         self._session_epoch = 0
+        # 345c is an opt-in controller seam. dictation.py does not install it
+        # until onset transport and persistent feedback are wired in 345d/e.
+        self._interact_controller = None
         # window_integrity_fn(): an injection_safety.IntegrityVerdict for the
         # foreground window (queue 50). A `blocked` verdict (the window runs at
         # a higher integrity level, e.g. elevated/admin) means Windows will
@@ -2035,6 +2038,11 @@ class SessionModeManager:
     # -- session lifecycle -----------------------------------------------
 
     def reset(self, initial_mode: SessionMode = SessionMode.COMMAND) -> None:
+        """Start a new session under the dispatch lock."""
+        with self._dispatch_lock:
+            self._reset_locked(initial_mode)
+
+    def _reset_locked(self, initial_mode: SessionMode) -> None:
         """Discard all mode state and choose the new session's initial lane.
 
         The default remains COMMAND for legacy/direct callers. The latched
@@ -2045,9 +2053,13 @@ class SessionModeManager:
         discarded here: exit resets leave it set aside, and the next reset
         into the buffered DICTATE lane restores it as the pending thought.
         """
+        if self._interact_controller is not None:
+            self._interact_controller.exit("session reset")
         self.mode = initial_mode
         # A cancel window staged in the previous session never runs in this one.
         self._session_epoch += 1
+        if self._interact_controller is not None:
+            self._interact_controller.session_epoch_changed()
         self._stack = UnitOfWorkStack()
         self._dictate_target_process = None
         self._dictate_target_hwnd = None
@@ -2205,6 +2217,7 @@ class SessionModeManager:
         if not self._live_surface_enabled:
             return DispatchOutcome(kind="draft_pause_unavailable")
         with self._dispatch_lock:
+            self.invalidate_interact("hold entry")
             self._parked_hold = True
             self._draft.mark_manual_commit()
         return DispatchOutcome(kind="draft_parked", detail={"source": source,
@@ -2220,6 +2233,7 @@ class SessionModeManager:
             return DispatchOutcome(kind="draft_pause_unavailable")
         text = str(text or "")
         with self._dispatch_lock:
+            self.invalidate_interact("hold entry")
             self._parked_hold = True
             self._draft.mark_manual_commit()
             # Holds are separate utterances; decoder finals do not necessarily
@@ -2313,15 +2327,88 @@ class SessionModeManager:
                 log.warning("[SESSION] active capture interceptor returned an invalid outcome")
         return None
 
-    def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
+    def install_interact_controller(self, controller) -> None:
+        """Install only after all capture, policy and visible feedback ports exist."""
+        with self._dispatch_lock:
+            if self._interact_controller is not None:
+                self._interact_controller.exit("controller replaced")
+            self._interact_controller = controller
+
+    def configure_interact(self, *, targets, effects, app, publish,
+                           present_question, clock_ns=None, schedule=None,
+                           known_names=None):
+        """Build the optional controller after app ports are ready (345e wiring)."""
+        from samsara import execution_policy
+        from samsara.interact import InteractController
+        controller = InteractController(
+            targets=targets, effects=effects, app=app,
+            session_epoch=lambda: self._session_epoch,
+            get_mode=lambda: self.mode, set_mode=self._interact_set_mode,
+            policy_generation=lambda: execution_policy.current_generation(app),
+            publish=publish, present_question=present_question,
+            pending_probe=execution_policy.pending_operation,
+            answer=lambda text: execution_policy.answer_pending(app, text),
+            known_names=(known_names if known_names is not None else
+                         set(getattr(targets, "aliases", None) or {})),
+            command_mode=SessionMode.COMMAND,
+            switch_match=lambda text: match_switch_word(text, current_mode=self.mode) is not None
+            or match_ava_invocation(text, self._ava_invocations),
+            gate=passes_switch_anti_hallucination_gate,
+            transition_lock=self._dispatch_lock,
+            normalize=normalize_utterance,
+            input_owned=self._interact_input_owned,
+            **({"clock_ns": clock_ns} if clock_ns is not None else {}),
+            **({"schedule": schedule} if schedule is not None else {}),
+        )
+        self.install_interact_controller(controller)
+        return controller
+
+    def _interact_input_owned(self) -> bool:
+        if (self._pending_clear is not None or self._pending_command_suggestion is not None
+                or self._pending_correction is not None):
+            return True
+        try:
+            from plugins.commands import ask_ollama
+            with ask_ollama._pending_action_lock:
+                return ask_ollama._pending_action is not None
+        except Exception:
+            return True
+
+    def invalidate_interact(self, reason: str = "capture lost") -> None:
+        """Lifecycle hook for microphone loss, hold entry and shutdown."""
+        with self._dispatch_lock:
+            if self._interact_controller is not None:
+                self._interact_controller.exit(reason)
+
+    def interact_capture_view(self):
+        controller = self._interact_controller
+        return controller.capture_view() if controller is not None else None
+
+    def _interact_set_mode(self, mode: SessionMode) -> bool:
+        """Change capture lane without committing or clearing a DICTATE draft."""
+        old = self.mode
+        if mode is old:
+            return True
+        self.mode = mode
+        try:
+            if self._on_mode_change:
+                self._on_mode_change(mode)
+        except Exception:
+            self.mode = old
+            return False
+        return True
+
+    def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals,
+                           onset_context=None) -> DispatchOutcome:
         timing = _current_stage_timing()
         timing.mark("dispatch_start")
         with self._dispatch_lock:
-            outcome = self._dispatch_utterance_locked(raw_text, signals)
+            outcome = self._dispatch_utterance_locked(raw_text, signals, onset_context)
         timing.mark("action_done")
         return outcome
 
-    def _dispatch_utterance_locked(self, raw_text: str, signals: UtteranceSignals) -> DispatchOutcome:
+    def _dispatch_utterance_locked(self, raw_text: str, signals: UtteranceSignals,
+                                   onset_context=None) -> DispatchOutcome:
         # Queue 50: suppressed dictation past its retype TTL leaves memory at
         # the next utterance, whatever that utterance is.
         self._purge_expired_suppressed()
@@ -2349,13 +2436,17 @@ class SessionModeManager:
         # otherwise discard it) -- sleep stops capture, it never discards.
         normalized = normalize_utterance(text)
 
-        active_capture = self._intercept_active_capture(text, normalized, signals)
+        active_capture = (None if self._interact_controller is not None
+                          and self._interact_controller.state.phase != "OFF"
+                          else self._intercept_active_capture(text, normalized, signals))
         if active_capture is not None:
             return active_capture
 
         # 0. Stop: same no-gate rule as abort. Generation first (inside
         # stop_fn), draft untouched, mode and microphone unchanged.
         if self._stop_fn is not None and normalized in self._stop_phrases:
+            if self._interact_controller is not None:
+                self._interact_controller.exit("stop")
             cleared = self._stop_fn("stop") or {}
             return DispatchOutcome(kind="stopped", detail={
                 "draft_kept_chars": len(self._dictate_pending_buffer),
@@ -2364,6 +2455,8 @@ class SessionModeManager:
             })
 
         if normalized in self._sleep_phrases:
+            if self._interact_controller is not None:
+                self._interact_controller.exit("sleep")
             # Sleep = stop + disarm: the same stop runs FIRST, so nothing
             # captured before "go to sleep" can act while the session ends.
             stopped = False
@@ -2379,6 +2472,8 @@ class SessionModeManager:
             })
 
         if self._matches_abort_phrase(text):
+            if self._interact_controller is not None:
+                self._interact_controller.exit("abort")
             # Queue 84: an abort ends the session without committing, but it
             # must never DESTROY the draft -- a misheard "cancel" will happen
             # eventually. The draft is copied aside first (on_abort's
@@ -2394,6 +2489,12 @@ class SessionModeManager:
                 "recoverable_chars": recoverable,
                 "recover_phrase": RECOVER_DRAFT_PHRASES[0],
             })
+
+        controller = self._interact_controller
+        if controller is not None:
+            reply = controller.handle(text, signals, onset_context)
+            if reply is not None:
+                return DispatchOutcome(kind=reply.kind, detail={"message": reply.message})
 
         # 1b-80. The answer to this session's own "clear the whole draft?"
         # question. Answered here, before the command probe, because a bare
@@ -3217,6 +3318,8 @@ class SessionModeManager:
         return DispatchOutcome(kind="mode_switch", detail={"mode": switch.target_mode})
 
     def _switch_mode(self, new_mode: SessionMode) -> Optional[str]:
+        if self._interact_controller is not None:
+            self._interact_controller.exit("lane switch")
         prior_mode = self.mode
         log.info("[SESSION] mode change %s -> %s", prior_mode.value, new_mode.value)
 
@@ -3270,6 +3373,8 @@ class SessionModeManager:
 
     def force_mode(self, new_mode: SessionMode) -> None:
         """Apply a non-utterance-driven mode change."""
+        if self._interact_controller is not None:
+            self._interact_controller.exit("forced lane switch")
         self._switch_mode(new_mode)
 
     def _dispatch_in_mode(
