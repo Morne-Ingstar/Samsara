@@ -5,6 +5,7 @@ import logging
 import threading
 
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 from samsara.session_modes import DispatchOutcome
 from samsara.video_memo import (
     CAMERA_PACK_NOTICE, CameraUnavailable, VideoMemoCapture, VideoMemoError,
@@ -40,9 +41,7 @@ class VideoMemoController:
                 else:
                     chip(text, kind)
 
-        timer = threading.Timer(after_s, show)
-        timer.daemon = True
-        timer.start()
+        thread_registry.timer("video-memo-notice", after_s, show, daemon=True)
 
     def _speak(self, text):
         coordinator = getattr(self.app, "audio_coordinator", None)
@@ -95,9 +94,7 @@ class VideoMemoController:
             self._cleanup_hooks()
             self._report_start_failure(exc)
             return None
-        worker = threading.Thread(target=self._countdown_and_start,
-                                  name="video-memo-start", daemon=True)
-        worker.start()
+        thread_registry.spawn("video-memo-start", self._countdown_and_start, daemon=True)
         return None  # queued: dispatch shows its working chip without an error sound
 
     def _countdown_and_start(self):

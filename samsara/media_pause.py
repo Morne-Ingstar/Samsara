@@ -13,6 +13,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
+from samsara.runtime import thread_registry
+
 
 logger = logging.getLogger("Samsara")
 _missing_api_logged = False
@@ -111,10 +113,7 @@ class RecordingMediaPauser:
         self._paused: list[_PausedSession] = []
 
     def start(self) -> None:
-        self._worker = threading.Thread(
-            target=self._run, name="samsara.media-pause", daemon=True,
-        )
-        self._worker.start()
+        self._worker = thread_registry.spawn("samsara.media-pause", self._run, daemon=True)
 
     def finish(self) -> None:
         """Request conditional resume; safe even if startup is still running."""

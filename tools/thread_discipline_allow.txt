@@ -27,4 +27,4 @@ samsara/ui/qt_runtime.py:60
 # thread_registry.timer() starts immediately on construction, which would
 # invert that ordering. Kept as raw construction + register() right after
 # .start() to preserve the exact original sequencing.
-samsara/tts/coordinator.py:257
+samsara/tts/coordinator.py:406

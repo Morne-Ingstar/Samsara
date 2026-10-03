@@ -15,6 +15,7 @@ import pyautogui
 
 from samsara.command_scope import capture_context
 from samsara.plugin_commands import command
+from samsara.runtime import thread_registry
 
 
 WORD_EXE = "winword.exe"
@@ -114,8 +115,7 @@ def _com_call(action: Callable[[object], object]) -> tuple[str, object | None]:
                     pass
             done.set()
 
-    thread = threading.Thread(target=worker, name="word-command-com", daemon=True)
-    thread.start()
+    thread_registry.spawn("word-command-com", worker, daemon=True)
     if not done.wait(COM_TIMEOUT_S):
         return "timeout", None
     return str(result.get("status", "error")), result.get("value")

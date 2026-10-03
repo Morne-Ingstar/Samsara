@@ -16,6 +16,7 @@ import time
 import uuid
 
 from samsara.paths import samsara_home_dir
+from samsara.runtime import thread_registry
 
 
 STAGES = (
@@ -212,11 +213,7 @@ class StageTiming:
             ready = self._prepare_write_locked()
         if ready:
             # This can run on PortAudio's callback thread. Keep disk I/O off it.
-            threading.Thread(
-                target=self._append_record,
-                name="stage-timing-write",
-                daemon=True,
-            ).start()
+            thread_registry.spawn("stage-timing-write", self._append_record, daemon=True)
 
     def complete(self, *, outcome: str | None = None) -> None:
         with self._lock:

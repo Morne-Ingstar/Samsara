@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass, replace
 from typing import Callable
 
+from samsara.runtime import thread_registry
 from samsara.subjects import InteractState, OnsetContext, SubjectRef
 from samsara.window_targets import EffectResult, title_fingerprint
 
@@ -105,10 +106,7 @@ class InteractController:
 
     @staticmethod
     def _thread_timer(seconds, callback):
-        timer = threading.Timer(seconds, callback)
-        timer.daemon = True
-        timer.start()
-        return timer
+        return thread_registry.timer("interact-deadline", seconds, callback, daemon=True)
 
     def capture_view(self) -> CaptureView:
         with self._view_lock:
