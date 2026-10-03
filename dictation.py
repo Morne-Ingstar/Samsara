@@ -41,6 +41,13 @@ if os.environ.get("SAMSARA_DUCKING_HOST") == "1":
         sys.stdout.reconfigure(encoding="utf-8")
     sys.exit(_ducking_host_main())
 
+# The detached restart helper must wait for this process to release its
+# single-instance mutex before launching the replacement. In a frozen build
+# it re-enters this executable, so dispatch before all app/native imports.
+if len(sys.argv) > 1 and sys.argv[1] == "--restart-helper":
+    from samsara.app_restart import main as _restart_helper_main
+    sys.exit(_restart_helper_main())
+
 
 #: Startup argument dispatch (108/F9). CLI modes that are NOT "run the app"
 #: are routed here and exit, for the same reason the ducking host above does:
@@ -13664,9 +13671,9 @@ class DictationApp:
             return True
         return False
 
-    def quit_app(self):
+    def quit_app(self, *, _restart_draft_resolved=False):
         """Exit the application"""
-        if not self._resolve_parked_draft_before_quit():
+        if not _restart_draft_resolved and not self._resolve_parked_draft_before_quit():
             return
         logger.info("[EXIT] Shutting down Samsara...")
         from plugins.commands.ask_ollama import _finish_ava_session  # noqa: PLC0415

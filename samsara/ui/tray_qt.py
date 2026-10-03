@@ -674,8 +674,11 @@ _CODE_CHANGE_MESSAGE = "Samsara's code changed on disk - restart to load it"
 
 
 def build_restart_argv(executable=None, argv=None):
-    """Build a same-interpreter relaunch command without starting a process."""
-    return [executable or sys.executable, *(sys.argv if argv is None else argv)]
+    """Build the installed app's relaunch command without starting it."""
+    from samsara.app_restart import build_relaunch
+
+    command, _cwd = build_relaunch(executable=executable, argv=argv)
+    return command
 
 
 def open_support_tab(app):
@@ -1245,10 +1248,28 @@ class SamsaraTrayQt(QObject):
         self._settings_tools.show_tool(name)
 
     def _restart_samsara(self):
-        argv = build_restart_argv()
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        subprocess.Popen(argv, creationflags=flags)
-        self._app.quit_app()
+        if getattr(self, "_restart_pending", False):
+            return
+        self._restart_pending = True
+        try:
+            # quit_app can be cancelled by a parked draft. Resolve it before
+            # arming the helper so a cancelled exit cannot later restart us.
+            if not self._app._resolve_parked_draft_before_quit():
+                self._restart_pending = False
+                return
+            from samsara.app_restart import build_relaunch, start_handoff
+
+            argv, cwd = build_relaunch()
+            start_handoff(argv, cwd=cwd)
+        except Exception as exc:
+            self._restart_pending = False
+            logger.exception("[RESTART] Could not arm restart: %s", exc)
+            self._tray.showMessage(
+                "Samsara restart failed", f"Samsara is still running: {exc}",
+                QSystemTrayIcon.MessageIcon.Critical,
+            )
+            return
+        self._app.quit_app(_restart_draft_resolved=True)
 
     def _rebuild_menu(self):
         """Rebuild the tray menu with core actions first and isolated sections."""

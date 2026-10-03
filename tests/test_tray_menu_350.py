@@ -61,8 +61,11 @@ def test_newer_python_source_mtime_is_detected_under_given_root(tmp_path):
 
 
 def test_restart_argv_reuses_interpreter_and_process_arguments():
+    from pathlib import Path
+
     assert build_restart_argv("python-test.exe", ["dictation.py", "--quiet"]) == [
-        "python-test.exe", "dictation.py", "--quiet",
+        "python-test.exe", str(Path(__file__).resolve().parents[1] / "dictation.py"),
+        "--quiet",
     ]
 
 

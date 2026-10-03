@@ -2,16 +2,11 @@
 Core utility commands — app-level controls (restart, quit, etc.).
 """
 
-import os
-import subprocess
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
 from samsara.plugin_commands import command
-from samsara.runtime import thread_registry
-
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
@@ -35,58 +30,28 @@ def speak_if_available(app, text):
             logger.debug(f"speak_if_available: {e}")
 
 
-def _build_restart_args() -> tuple[list[str], str]:
-    """Return (argv, cwd) for relaunching Samsara in whatever mode it's running."""
-    if getattr(sys, 'frozen', False):
-        # Running as a PyInstaller-compiled exe — relaunch the exe itself
-        exe = sys.executable
-        return [exe], os.path.dirname(exe)
-    else:
-        # Running from source — relaunch via the same interpreter + dictation.py
-        interpreter = sys.executable
-        script = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__)
-            ))),
-            'dictation.py',
-        )
-        return [interpreter, script], os.path.dirname(script)
-
-
 @command("restart samsara", aliases=["restart", "reboot samsara"], pack="core",
          risk_class="destructive",
 )
 def restart_app(app, remainder="", **kwargs):
-    """Closes Samsara and starts it again."""
-    def _do_restart():
-        time.sleep(0.8)
+    """Request the same guarded restart used by the tray, on its Qt thread."""
+    from samsara.ui import qt_runtime
 
-        args, cwd = _build_restart_args()
-
-        # DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP break the child out of
-        # the parent's Windows Job Object so it survives after the parent exits.
-        flags = 0
-        if sys.platform == 'win32':
-            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-
-        try:
-            subprocess.Popen(
-                args,
-                cwd=cwd,
-                creationflags=flags,
-                close_fds=True,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception as e:
-            print(f"[RESTART] Failed to spawn new process: {e}")
+    def _restart_on_ui():
+        tray = getattr(app, "tray_icon", None)
+        restart = getattr(tray, "_restart_samsara", None)
+        if not callable(restart):
+            logger.error("[RESTART] Voice restart unavailable: tray is not ready")
+            speak_if_available(app, "Restart is unavailable right now.")
             return
+        restart()
 
-        app.quit_app()
-
-    speak_if_available(app, "Restarting.")
-    thread_registry.spawn("core_utils._do_restart", _do_restart, daemon=True)
+    if not qt_runtime.is_alive():
+        logger.error("[RESTART] Voice restart unavailable: Qt runtime is not running")
+        speak_if_available(app, "Restart is unavailable right now.")
+        return True
+    qt_runtime.post(_restart_on_ui)
+    return True
 
 
 @command(
