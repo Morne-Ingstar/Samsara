@@ -29,7 +29,6 @@ class SettingsQt:
     def __init__(self, app):
         self.app = app
         self._window = None
-        self._tools = {}
 
     def show(self):
         qt_runtime.post(self._show_preferences)
@@ -45,14 +44,9 @@ class SettingsQt:
         qt_runtime.post(lambda: self._show_tool(name))
 
     def _show_tool(self, name):
-        # A tool owns a separate edit session, so applying it never applies
-        # the user's unsaved Settings controls.
-        if name not in self._tools:
-            self._tools[name] = _SettingsWindow(self.app, tool=name)
-        window = self._tools[name]
-        window.show()
-        window.raise_()
-        window.activateWindow()
+        if self._window is None:
+            self._window = _SettingsWindow(self.app)
+        self._window.open_tool(name)
 
 
 class _SettingsWindow(
@@ -105,7 +99,7 @@ class _SettingsWindow(
             self._stack.addWidget(module.build(self))
         self._tool_pages = tools_page.build(self)
         for page in self._tool_pages.values():
-            page.setParent(self._source_store)
+            self._stack.addWidget(page)
         self._connect_conditions()
         # Status labels retain their original callbacks and move beside the
         # feature that owns them rather than remaining in hidden scaffolding.
@@ -136,17 +130,14 @@ class _SettingsWindow(
             self._sidebar_row_to_stack_index[index] = index
         # Heading, search and page list share one surface (360); a tool window has no search.
         sidebar_panel = settings_sidebar.build_panel(_SIDEBAR_GROUPS[0][0], None if tool else self._search_edit, self._sidebar)
+        # Tools and preferences share the shell and retain their controls.
+        # Apply still collects only the currently selected destination.
         page_column = QVBoxLayout()
         page_column.setSpacing(0)
-        if tool:
-            self._stack.setParent(self._source_store)
-            page_column.addWidget(self._tool_pages[tool], 1)
-            root.addLayout(page_column, 1)
-        else:
-            body.addWidget(sidebar_panel)
-            page_column.addWidget(self._stack, 1)
-            body.addLayout(page_column, 1)
-            root.addLayout(body, 1)
+        page_column.addWidget(self._stack, 1)
+        body.addWidget(sidebar_panel)
+        body.addLayout(page_column, 1)
+        root.addLayout(body, 1)
         self._sidebar.currentRowChanged.connect(self._on_sidebar_row_changed)
         self._sidebar.setCurrentRow(0)
         footer = QHBoxLayout()
@@ -158,6 +149,7 @@ class _SettingsWindow(
         footer.addWidget(tools)
         footer.addStretch()
         cancel = QPushButton("Close" if tool else "Cancel")
+        self._close_button = cancel
         cancel.clicked.connect(self.close)
         footer.addWidget(cancel)
         apply = QPushButton("Apply && Close")
@@ -177,6 +169,8 @@ class _SettingsWindow(
         self._apply_metric_minimum_widths()
         theme.apply_design_scale(self)
         self._save_fns = [self._collect_destination_updates]
+        if tool:
+            self._select_tool(tool)
 
     def _build_search_registry(self):
         self._search_rows = [
@@ -208,11 +202,15 @@ class _SettingsWindow(
             # "Stage timing" before "staged thought" when searching "stage".
             best_rank = max(name_matches.values())
             best_pages = {name for name, rank in name_matches.items() if rank == best_rank}
-            if _TAB_NAMES[self._stack.currentIndex()] not in best_pages:
+            if self._tool_name or _TAB_NAMES[self._stack.currentIndex()] not in best_pages:
                 self._sidebar.setCurrentRow(next(i for i, name in enumerate(_TAB_NAMES) if name in best_pages))
 
     def _on_sidebar_row_changed(self, row):
         if row in self._sidebar_row_to_stack_index:
+            self._tool_name = None
+            self.setWindowTitle("Samsara — Settings")
+            if hasattr(self, '_close_button'):
+                self._close_button.setText('Cancel')
             self._stack.setCurrentIndex(row)
             if _TAB_NAMES[row] == 'Ava':
                 self._refresh_sc_status()
@@ -227,15 +225,23 @@ class _SettingsWindow(
         self.raise_()
         self.activateWindow()
 
+    def _select_tool(self, name):
+        if name not in self._tool_pages:
+            raise ValueError(name)
+        self._sidebar.setCurrentRow(-1)
+        self._tool_name = name
+        self._stack.setCurrentWidget(self._tool_pages[name])
+        self._close_button.setText('Close')
+        self.setWindowTitle('Samsara — ' + name)
+
     def open_tool(self, name):
-        if not hasattr(self, '_tool_controller'):
-            self._tool_controller = SettingsQt(self.app)
-        self._tool_controller.show_tool(name)
+        self._select_tool(name)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def open_preferences(self, name):
-        if not hasattr(self, '_preference_controller'):
-            self._preference_controller = SettingsQt(self.app)
-        qt_runtime.post(lambda: self._preference_controller._show_preferences(name))
+        self.show_tab(name)
 
     def closeEvent(self, event):
         event.ignore()

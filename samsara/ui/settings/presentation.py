@@ -14,6 +14,7 @@ def style():
                font-size: {theme.TYPE_BODY}px; background: {theme.BG0}; }}
     QFrame#sidebar, QFrame#footer {{ background: {theme.BG1}; }}
     QLabel {{ background: transparent; }}
+    QSlider {{ background: transparent; }}
     QLabel[role='description'] {{ color: {theme.TEXT_SECONDARY}; }}
     QLabel[role='title'] {{ font-size: {theme.TYPE_BODY + 12}px; font-weight: 600; }}
     QLabel[role='label'] {{ font-weight: 600; }}
