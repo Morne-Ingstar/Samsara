@@ -83,7 +83,8 @@ def test_scaled_settings_window_uses_work_area_friendly_minimum_and_refresh_fits
 ):
     window = settings_qt._SettingsWindow(_SettingsApp(1.30))
     try:
-        assert window.minimumWidth() == 720
+        # 360: the sidebar grew 180 -> 240, so the minimum grew by the same 60 px.
+        assert window.minimumWidth() == 780
         assert window.minimumHeight() == 480
 
         refresh = window.findChild(QPushButton, "microphoneRefreshButton")

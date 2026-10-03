@@ -3,6 +3,7 @@ from samsara.ui.settings.shared_qt import *
 from samsara.ui.settings.services import SettingsServices
 from samsara.ui.settings.assembly import PageAssembly
 from samsara.ui.settings.presentation import style as presentation_style
+from samsara.ui.settings import sidebar as settings_sidebar
 from samsara.ui.settings import general_page, dictation_page, audio_page, ava_page, shortcuts_page, help_page, tools_page
 from samsara.ui.settings.general_qt import GeneralPage
 from samsara.ui.settings.modes_qt import ModesPage
@@ -79,7 +80,7 @@ class _SettingsWindow(
         self._source_store = QWidget(self)
         self._source_store.hide()
         self.setWindowTitle("Samsara — " + (tool or "Settings"))
-        self.setMinimumSize(720, 480)
+        self.setMinimumSize(780, 480)
         available = self.screen().availableGeometry()
         self.resize(min(1160, max(720, available.width() - 40)), min(920, max(480, available.height() - 40)))
         self.setStyleSheet(presentation_style())
@@ -126,23 +127,25 @@ class _SettingsWindow(
         self._search_edit.setPlaceholderText("Search settings…")
         self._search_edit.setAccessibleName("Search settings")
         self._search_edit.setMinimumHeight(44)
-        if not tool:
-            root.addWidget(self._search_edit)
         body = QHBoxLayout()
         self._sidebar = QListWidget()
-        self._sidebar.setFixedWidth(180)
         self._sidebar.setAccessibleName("Settings pages")
         self._sidebar_row_to_stack_index = {}
         for index, name in enumerate(_TAB_NAMES):
             self._sidebar.addItem(name)
             self._sidebar_row_to_stack_index[index] = index
-        self._sidebar.setStyleSheet(f"QListWidget {{ border: none; background: {theme.BG1}; }} QListWidget::item {{ min-height: 44px; padding: 0 16px; border-radius: 6px; }} QListWidget::item:selected {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; }}")
+        # Heading, search and page list share one surface (360); a tool window has no search.
+        sidebar_panel = settings_sidebar.build_panel(_SIDEBAR_GROUPS[0][0], None if tool else self._search_edit, self._sidebar)
+        page_column = QVBoxLayout()
+        page_column.setSpacing(0)
         if tool:
             self._stack.setParent(self._source_store)
-            root.addWidget(self._tool_pages[tool], 1)
+            page_column.addWidget(self._tool_pages[tool], 1)
+            root.addLayout(page_column, 1)
         else:
-            body.addWidget(self._sidebar)
-            body.addWidget(self._stack, 1)
+            body.addWidget(sidebar_panel)
+            page_column.addWidget(self._stack, 1)
+            body.addLayout(page_column, 1)
             root.addLayout(body, 1)
         self._sidebar.currentRowChanged.connect(self._on_sidebar_row_changed)
         self._sidebar.setCurrentRow(0)
@@ -161,7 +164,10 @@ class _SettingsWindow(
         apply.setObjectName("apply")
         apply.clicked.connect(self._apply_and_close)
         footer.addWidget(apply)
-        root.addLayout(footer)
+        page_column.addLayout(footer)
+        # Air around Tools / Cancel / Apply so they no longer touch the window edges (360).
+        footer.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_2)
+        footer.setSpacing(theme.SPACE_1)
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(150)
