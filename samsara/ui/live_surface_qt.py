@@ -8,10 +8,11 @@ from __future__ import annotations
 from html import escape
 from math import ceil
 import re
-from typing import Any
+from time import monotonic
+from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QEasingCurve, QRect, QRectF, QPropertyAnimation, QSignalBlocker, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import (QCloseEvent, QImage, QKeyEvent, QMouseEvent, QPainter,
+from PySide6.QtGui import (QCloseEvent, QColor, QImage, QKeyEvent, QMouseEvent, QPainter,
                            QPaintEvent, QPainterPath, QPen, QRegion)
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget
 
@@ -34,6 +35,8 @@ STATUS_SIZE = (360, 64)
 LIVE_SIZE = (500, 240)
 REVIEW_SIZE = (500, 360)
 RESIZE_DURATION_MS = 120
+MARK_TWEEN_S = 0.30
+MARK_TURN_S = {"listening": 3.0, "recording": 2.4, "transcribing": 2.4}
 _WORD = re.compile(r"[\w]+(?:['’\-][\w]+)*", re.UNICODE)
 
 
@@ -55,8 +58,33 @@ def _capture_mark(view: SurfaceView) -> tuple[str, str]:
     return capture, eye
 
 
+def _mark_mode(view: SurfaceView) -> str:
+    if view.capture is CaptureState.RECORDING:
+        return "recording"
+    if view.capture is CaptureState.TRANSCRIBING:
+        return "transcribing"
+    if view.text and view.document in (DocumentState.EDITABLE_DRAFT, DocumentState.PARKED_DRAFT):
+        return "staged"
+    if view.capture in (CaptureState.WAKE_ARMED, CaptureState.HANDS_FREE_LISTENING):
+        return "listening"
+    return "idle"
+
+
+def _mark_color(mode: str) -> QColor:
+    # These tokens follow the brand vocabulary in tray_qt without changing tray painting.
+    return theme.qcolor({"idle": theme.ICON_IDLE, "listening": theme.ACCENT,
+                         "recording": theme.RECORDING, "transcribing": theme.AVA,
+                         "staged": theme.ACCENT}[mode])
+
+
+def _blend_color(start: QColor, end: QColor, fraction: float) -> QColor:
+    t = max(0.0, min(1.0, fraction))
+    return QColor.fromRgb(*(round(a + (b - a) * t) for a, b in
+                            zip(start.getRgb()[:3], end.getRgb()[:3])))
+
+
 def render_device_mark(capture: str, eye: str, *, dpr: float,
-                       rotation: float = 0.0) -> QImage:
+                       rotation: float = 0.0, color: QColor | None = None) -> QImage:
     pixels = max(1, round(MARK_ART_SIZE * dpr))
     image = QImage(pixels, pixels, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(Qt.GlobalColor.transparent)
@@ -64,11 +92,10 @@ def render_device_mark(capture: str, eye: str, *, dpr: float,
     try:
         paint_mark(painter, QRectF(0, 0, pixels, pixels), capture, eye, rotation,
                    small_max=None, brand=True)
-        if capture != "recording":
-            # Keep the brand geometry while the surface's idle/listening mark
-            # uses its neutral token. Other presentations keep their palette.
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-            painter.fillRect(image.rect(), theme.qcolor(theme.ICON_IDLE))
+        # Recolour the existing ring and eye silhouette on this surface only.
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(image.rect(), color or theme.qcolor(
+            theme.RECORDING if capture == "recording" else theme.ICON_IDLE))
     finally:
         painter.end()
     image.setDevicePixelRatio(dpr)
@@ -79,17 +106,18 @@ class _Mark(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.capture, self.eye, self.rotation = "off", "closed", 0.0
+        self.color = theme.qcolor(theme.ICON_IDLE)
         self.setAccessibleName("Microphone state")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-    def set_state(self, capture: str, eye: str, rotation: float) -> None:
-        self.capture, self.eye, self.rotation = capture, eye, rotation
+    def set_state(self, capture: str, eye: str, rotation: float, color: QColor) -> None:
+        self.capture, self.eye, self.rotation, self.color = capture, eye, rotation, QColor(color)
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
         image = render_device_mark(self.capture, self.eye, dpr=self.devicePixelRatioF(),
-                                   rotation=self.rotation)
+                                   rotation=self.rotation, color=self.color)
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -119,7 +147,8 @@ class LiveSurfaceWidget(QWidget):
     move_requested = Signal(object)
     show_requested = Signal()
 
-    def __init__(self, controller: Any, *, reduced_motion: bool | None = None) -> None:
+    def __init__(self, controller: Any, *, reduced_motion: bool | None = None,
+                 motion_clock: Callable[[], float] = monotonic) -> None:
         flags = (Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
                  Qt.WindowType.WindowDoesNotAcceptFocus | Qt.WindowType.WindowStaysOnTopHint)
         super().__init__(None, flags)
@@ -127,13 +156,18 @@ class LiveSurfaceWidget(QWidget):
         self._motion_override = reduced_motion
         self._reduced_motion = system_reduced_motion() if reduced_motion is None else reduced_motion
         self._rotation, self._animation = 0.0, None
+        self._motion_clock = motion_clock
+        self._last_mark_time: float | None = None
+        self._color = _mark_color(_mark_mode(self._view))
+        self._color_from = QColor(self._color)
+        self._color_to = QColor(self._color)
+        self._color_started = motion_clock()
         self._spin_timer = QTimer(self)
-        self._spin_timer.setInterval(50)
+        self._spin_timer.setInterval(33)
         self._spin_timer.timeout.connect(self._advance_mark)
         self._motion_timer = QTimer(self)
         self._motion_timer.setInterval(1000)
         self._motion_timer.timeout.connect(self._check_motion_preference)
-        self._motion_timer.start()
         self._announcer = LiveSurfaceAnnouncer(self)
         self._follow_latest, self._unread_segments = True, 0
         self._word_targets: list[dict[str, object]] = []
@@ -247,6 +281,8 @@ class LiveSurfaceWidget(QWidget):
         self._apply_motion_preference(enabled)
 
     def _apply_motion_preference(self, enabled: bool) -> None:
+        if self._reduced_motion == enabled:
+            return
         self._reduced_motion = enabled
         if enabled and self._animation is not None: self._animation.stop(); self._animation = None
         self._update_mark()
@@ -256,18 +292,53 @@ class LiveSurfaceWidget(QWidget):
             self._apply_motion_preference(system_reduced_motion())
 
     def _update_mark(self) -> None:
-        recording = self._view.capture is CaptureState.RECORDING
-        if recording and not self._reduced_motion:
+        now = self._motion_clock()
+        mode = _mark_mode(self._view)
+        target = _mark_color(mode)
+        if self._reduced_motion:
+            self._color = target
+            self._color_from = QColor(target)
+            self._color_to = QColor(target)
+            self._rotation = 0.0
+            self._spin_timer.stop()
+        elif target != self._color_to:
+            self._color_from = QColor(self._color)
+            self._color_to = target
+            self._color_started = now
+        capture, eye = _capture_mark(self._view)
+        self._mark.set_state(capture, eye, self._rotation, self._color)
+        if self.isVisible() and not self._reduced_motion and (mode in MARK_TURN_S or self._color != self._color_to):
             if not self._spin_timer.isActive(): self._spin_timer.start()
         else:
             self._spin_timer.stop()
-            self._rotation = 0.0
-        capture, eye = _capture_mark(self._view)
-        self._mark.set_state(capture, eye, self._rotation)
 
     def _advance_mark(self) -> None:
-        self._rotation = (self._rotation + 12.0) % 360.0
-        self._mark.set_state(self._mark.capture, self._mark.eye, self._rotation)
+        if self._reduced_motion or not self.isVisible():
+            return
+        now = self._motion_clock()
+        mode = _mark_mode(self._view)
+        if self._last_mark_time is not None and mode in MARK_TURN_S:
+            elapsed = max(0.0, now - self._last_mark_time)
+            self._rotation = (self._rotation + elapsed * 360.0 / MARK_TURN_S[mode]) % 360.0
+        self._last_mark_time = now
+        self._color = _blend_color(self._color_from, self._color_to,
+                                   (now - self._color_started) / MARK_TWEEN_S)
+        capture, eye = _capture_mark(self._view)
+        self._mark.set_state(capture, eye, self._rotation, self._color)
+        if mode not in MARK_TURN_S and self._color == self._color_to:
+            self._spin_timer.stop()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._last_mark_time = self._motion_clock()
+        self._motion_timer.start()
+        self._update_mark()
+
+    def hideEvent(self, event) -> None:
+        self._spin_timer.stop()
+        self._motion_timer.stop()
+        self._last_mark_time = None
+        super().hideEvent(event)
 
     def _display_form(self) -> VisibleForm:
         # Correction is local UI intent; queued producer updates must never
@@ -353,6 +424,7 @@ class LiveSurfaceWidget(QWidget):
             bar.setValue(bar.maximum() if self._follow_latest else position)
 
     def _apply_view_content(self, view: SurfaceView, *, animate: bool) -> None:
+        self._advance_mark()  # settle the previous state before a new colour target
         previous, previous_text = self._view, self._view.text
         if view.document_id != previous.document_id or not (view.text or view.provisional_text):
             self._follow_latest, self._unread_segments = True, 0
@@ -485,6 +557,8 @@ class LiveSurfaceWidget(QWidget):
         # Reserve each action's space once. Pending-text recovery is separate
         # from ordinary capture, whose final is inserted automatically.
         actions = [(self._clear, 64)]
+        if self._view.document is DocumentState.PARKED_DRAFT and self._view.text:
+            actions.insert(0, (self._insert, 132))
         if not self._follow_latest or self._unread_segments:
             self._latest.setText("Latest" + (f" (+{self._unread_segments})" if self._unread_segments else ""))
             actions.insert(0, (self._latest, 104))

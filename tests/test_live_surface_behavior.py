@@ -40,7 +40,8 @@ def test_actual_widget_keeps_its_form_size_through_repeated_placement(surface, e
             c.begin_capture(Lane.HOLD)
             c.post(SurfaceEvent(EventKind.PARTIAL, text=text))
         c.drain()
-        expected = (44, 44) if text is None else (500, c.widget.height())
+        # The compact mark now reserves width for its visible state label.
+        expected = (152, 44) if text is None else (500, c.widget.height())
         for _ in range(4):
             c._place_widget()
             assert (c.widget.width(), c.widget.height()) == expected
@@ -80,15 +81,15 @@ def test_success_expires_on_timer_without_another_capture(surface):
     indicator.flash_success()
     c.drain()
     assert c.widget.view.form is VisibleForm.STATUS
-    assert c.widget.width() == 240
+    assert c.widget.width() == 360
     clock[0] += 1.1
     QTest.qWait(150)
     assert c.widget.view.form is VisibleForm.MARK
-    assert c.widget.size().width() == c.widget.size().height() == 44
+    assert (c.widget.width(), c.widget.height()) == (152, 44)
 
 
-@pytest.mark.parametrize("name,lane,label", [("COMMAND", Lane.COMMAND, "Command mode"),
-    ("AVA", Lane.AVA, "Ava listening"), ("HANDS FREE", Lane.HANDS_FREE_DICTATE, "Hands-free dictation")])
+@pytest.mark.parametrize("name,lane,label", [("COMMAND", Lane.COMMAND, "Command — listening"),
+    ("AVA", Lane.AVA, "Ava — listening"), ("HANDS FREE", Lane.HANDS_FREE_DICTATE, "Hands-free — listening")])
 def test_mode_feedback_survives_legacy_hide_and_hold_completion(surface, name, lane, label):
     c, indicator, _ = surface
     indicator.set_session_mode(name, "unused")
@@ -237,7 +238,7 @@ def test_optional_ai_off_expires_without_further_input(surface):
     c, indicator, clock = surface
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
-    assert c.widget._state.text() == "Optional AI is off"
+    assert c.widget._state.text() == "Hold — Optional AI is off"
     clock[0] += 1.9
     QTest.qWait(150)
     assert c.widget.view.notice.kind is NoticeKind.NONE
@@ -252,7 +253,7 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
     assert c.widget.view.form is VisibleForm.LIVE
-    assert c.widget._state.text() == "Recording"
+    assert c.widget._state.text() == "Hold — recording"
     assert "Synthetic words remain visible." in c.widget._transcript.toPlainText()
     partials.stop()
     c.begin_capture(Lane.HOLD)

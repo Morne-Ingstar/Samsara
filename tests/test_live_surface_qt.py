@@ -165,18 +165,24 @@ def test_all_states_have_a_non_colour_text_or_symbol_cue(qapp):
     widget.close()
 
 @pytest.mark.parametrize('capture', list(CaptureState))
-def test_only_recording_is_red_and_spins(qapp, capture):
-    from PySide6.QtTest import QTest
-    w = LiveSurfaceWidget(_view(VisibleForm.STATUS, capture=capture), reduced_motion=False)
+def test_active_capture_states_spin_in_their_theme_colours(qapp, capture):
+    ticks = [0.0]
+    w = LiveSurfaceWidget(_view(VisibleForm.STATUS, capture=capture), reduced_motion=False,
+                          motion_clock=lambda: ticks[0])
     w.show(); qapp.processEvents()
     angle = w._mark.rotation
-    QTest.qWait(160)
-    if capture is CaptureState.RECORDING:
-        assert w._mark.capture == 'recording'
+    ticks[0] = .35
+    w._advance_mark()
+    if capture in (CaptureState.WAKE_ARMED, CaptureState.HANDS_FREE_LISTENING,
+                   CaptureState.RECORDING, CaptureState.TRANSCRIBING):
         assert w._spin_timer.isActive() and w._mark.rotation != angle
+        expected = (theme.RECORDING if capture is CaptureState.RECORDING else
+                    theme.AVA if capture is CaptureState.TRANSCRIBING else theme.ACCENT)
+        assert w._mark.color == theme.qcolor(expected)
     else:
         assert w._mark.capture != 'recording'
         assert not w._spin_timer.isActive() and w._mark.rotation == 0
+        assert w._mark.color == theme.qcolor(theme.ICON_IDLE)
     assert not hasattr(w, '_recording_dot')
     w.hide(); w.deleteLater()
 

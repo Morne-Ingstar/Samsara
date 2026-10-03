@@ -34,7 +34,7 @@ def test_state_table_core_forms_and_draft_never_collapses_to_mark():
                                document_id="d1", revision=1, text="settled"))
     assert model.consume(event(EventKind.CAPTURE_STOPPED, sequence=4, lane=Lane.HOLD))
     clock.advance(5.1)
-    assert model.view().form is VisibleForm.DRAFT_BADGE
+    assert model.view().form is VisibleForm.LIVE
     assert model.view().form is not VisibleForm.MARK
     assert model.consume(SurfaceEvent(EventKind.CORRECTION_OPENED, document_id="d1", revision=1))
     assert model.view().form is VisibleForm.REVIEW

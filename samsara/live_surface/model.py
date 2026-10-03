@@ -356,9 +356,13 @@ class LiveSurfaceModel:
 
     def _form(self, now: float, can_collapse: bool) -> VisibleForm:
         protected = self.presentation in (PresentationState.PINNED_REVIEW, PresentationState.CORRECTION,
-                                          PresentationState.KEYBOARD_INTERACTION)
+                                           PresentationState.KEYBOARD_INTERACTION)
         if protected and (self.text or self.presentation is PresentationState.CORRECTION):
             return VisibleForm.REVIEW
+        if self.text and self.document in (DocumentState.EDITABLE_DRAFT, DocumentState.PARKED_DRAFT):
+            # A waiting draft stays readable through idle, capture and notices.
+            # Clear/Insert are explicit actions; time cannot collapse its text.
+            return VisibleForm.LIVE
         if (self._notice.kind in (NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
                 or self._notice.kind is NoticeKind.ERROR and self._notice.expires_at is None):
             return VisibleForm.STATUS
@@ -371,8 +375,6 @@ class LiveSurfaceModel:
         if self.document is DocumentState.DELIVERED:
             return VisibleForm.STATUS if not can_collapse or self.capture is CaptureState.HANDS_FREE_LISTENING else VisibleForm.MARK
         if self.text:
-            if can_collapse and now - self._last_activity >= IDLE_DELAY_S:
-                return VisibleForm.DRAFT_BADGE
             return VisibleForm.LIVE
         if self._notice.kind is not NoticeKind.NONE:
             return VisibleForm.STATUS

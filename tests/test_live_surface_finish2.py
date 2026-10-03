@@ -49,7 +49,7 @@ def test_hold_then_handsfree_uses_current_lane_and_vad_before_any_partial(surfac
     c.drain(); c.refresh_expired()
     assert c.view().lane is Lane.HANDS_FREE_DICTATE
     assert c.widget._state.text() == 'Hands-free — listening'
-    assert c.widget._mark.capture != 'recording' and not c.widget._spin_timer.isActive()
+    assert c.widget._mark.capture == 'listening' and c.widget._spin_timer.isActive()
     app.is_speaking = True
     c.refresh_expired()
     assert c.widget._state.text() == 'Hands-free — recording'
@@ -57,7 +57,7 @@ def test_hold_then_handsfree_uses_current_lane_and_vad_before_any_partial(surfac
     app.is_speaking = False
     c.refresh_expired()
     assert c.widget._state.text() == 'Hands-free — listening'
-    assert c.widget._mark.capture != 'recording' and c.widget._mark.rotation == 0
+    assert c.widget._mark.capture == 'listening' and c.widget._spin_timer.isActive()
     session._overlay.close()
 
 
@@ -135,16 +135,18 @@ def test_clear_is_available_before_first_hold_partial(surface):
     assert c.widget._clear.height() >= 44
 
 
-def test_waiting_badge_explains_next_action_and_insert_routes_to_existing_commit(surface):
+def test_waiting_draft_stays_visible_and_insert_routes_to_existing_commit(surface):
     c, app, clock, _, injected = surface
     c.model.lane = Lane.HOLD
     app._session_mode_manager.stage_parked_hold('Synthetic words')
     c.sync_draft(app._session_mode_manager); c.drain()
     clock[0] += 6; c.refresh_expired()
-    assert c.widget._state.text() == 'Hold — 2 words waiting'
-    assert c.widget._badge.text() == 'Tap Insert text to send.'
+    assert c.view().form is VisibleForm.LIVE
+    assert c.widget._state.text() == 'Hold — staged'
+    assert 'Synthetic words' in c.widget._transcript.toPlainText()
+    assert c.widget._transcript.isVisible()
     assert c.widget._insert.isVisible() and c.widget._clear.isVisible()
-    for item in (c.widget._state,c.widget._badge,c.widget._insert,c.widget._clear):
+    for item in (c.widget._state,c.widget._transcript,c.widget._insert,c.widget._clear):
         assert c.widget.rect().contains(item.geometry())
     c.widget._insert.click(); c.drain()
     assert injected == ['Synthetic words']
@@ -166,7 +168,8 @@ def test_recording_timer_in_both_lanes_obeys_reduced_motion(surface,reduced):
         if lane is Lane.HANDS_FREE_DICTATE:c.refresh_expired()
         else:c.stop_capture();c.drain()
         assert c.widget._mark.capture != 'recording'
-        assert not c.widget._spin_timer.isActive()
+        # Hold eases to idle; hands-free returns to ambient listening motion.
+        assert c.widget._spin_timer.isActive() is not reduced
 
 
 def test_outcomes_expire_and_wake_settings_cannot_resurrect_them(surface):
