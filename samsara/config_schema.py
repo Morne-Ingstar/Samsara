@@ -28,6 +28,8 @@ Cross-field dependencies use one of two forms:
     "some.key=='value'"   -- active when some.key equals 'value'
 """
 
+import sys
+
 SETTINGS_SCHEMA = {
     "comfy.base_url": {
         "type": "str", "default": "http://127.0.0.1:8001", "tab": "general",
@@ -1173,6 +1175,12 @@ SETTINGS_SCHEMA = {
         "tab": "music",
     },
 }
+
+# Source builds watch for code edits so a mixed-version session is visible.
+if not getattr(sys, "frozen", False):
+    SETTINGS_SCHEMA["diagnostics.watch_code_changes"] = {
+        "type": "bool", "default": True, "tab": "help",
+    }
 
 
 # Prompt 284: pure, idempotent removal/mapping before defaults merge.

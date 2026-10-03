@@ -19,9 +19,11 @@ with MarkFrame and let _apply_icon render it on the Qt thread.
 """
 
 import math
+import subprocess
 import sys
 import threading
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from collections import namedtuple
 from pathlib import Path
 from typing import Optional
@@ -33,8 +35,8 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
+from samsara.paths import newest_python_mtime
 from samsara.quick_memo import memo_file
-from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
 from samsara.updater import update_check_menu_label
 
@@ -667,6 +669,20 @@ def mark_icon(frame: MarkFrame) -> QIcon:
 # case, on top of the immediate, event-driven refresh on actual screen
 # add/remove/primary-change below.
 _ICON_REFRESH_INTERVAL_MS = 20 * 60 * 1000  # 20 minutes
+_CODE_CHANGE_POLL_INTERVAL_MS = 60 * 1000
+_CODE_CHANGE_MESSAGE = "Samsara's code changed on disk - restart to load it"
+
+
+def build_restart_argv(executable=None, argv=None):
+    """Build a same-interpreter relaunch command without starting a process."""
+    return [executable or sys.executable, *(sys.argv if argv is None else argv)]
+
+
+def open_support_tab(app):
+    """Load support UI only when its core menu action is selected."""
+    from samsara.support_feedback import open_support_tab as show_support_tab
+
+    return show_support_tab(app)
 
 
 class SamsaraTrayQt(QObject):
@@ -683,6 +699,16 @@ class SamsaraTrayQt(QObject):
         self._tooltip_base = "Samsara"
         self._ready_ladder = None
         self._available_update = None
+        diagnostics = getattr(app, "config", {}).get("diagnostics", {}) or {}
+        self._code_watch_enabled = (
+            not getattr(sys, "frozen", False)
+            and bool(diagnostics.get("watch_code_changes", True))
+        )
+        self._code_mtime_at_start = (
+            newest_python_mtime() if self._code_watch_enabled else None
+        )
+        self._code_change_detected = False
+        self._code_change_timer = None
         self._tray = QSystemTrayIcon()
         self._menu = QMenu()
         self._menu.aboutToShow.connect(self._rebuild_menu)
@@ -725,6 +751,12 @@ class SamsaraTrayQt(QObject):
         self._icon_refresh_timer.setInterval(_ICON_REFRESH_INTERVAL_MS)
         self._icon_refresh_timer.timeout.connect(self._refresh_icon_registration)
         self._icon_refresh_timer.start()
+
+        if self._code_watch_enabled:
+            self._code_change_timer = QTimer(self)
+            self._code_change_timer.setInterval(_CODE_CHANGE_POLL_INTERVAL_MS)
+            self._code_change_timer.timeout.connect(self._poll_code_changes)
+            self._code_change_timer.start()
 
         gui_app = QGuiApplication.instance()
         if gui_app is not None:
@@ -794,10 +826,43 @@ class SamsaraTrayQt(QObject):
             self._sync_ready_ladder()
         ladder = self._ready_ladder
         if ladder is None:
-            self._tooltip_sig.emit(self._tooltip_base)
+            text = self._tooltip_base
+            if self._code_change_detected:
+                text += f"\n{_CODE_CHANGE_MESSAGE}"
+            self._tooltip_sig.emit(text)
             return
         lines = "\n".join(text for _key, text, _state in ladder.snapshot())
+        if self._code_change_detected:
+            lines = f"{lines}\n{_CODE_CHANGE_MESSAGE}" if lines else _CODE_CHANGE_MESSAGE
         self._tooltip_sig.emit(f"{self._tooltip_base}\n{lines}")
+
+    def _poll_code_changes(self):
+        if not self._code_watch_enabled or self._code_change_detected:
+            return
+        try:
+            latest = newest_python_mtime()
+        except Exception:
+            logger.exception("[TRAY] Could not check source file timestamps")
+            return
+        if (self._code_mtime_at_start is None or latest is None
+                or latest <= self._code_mtime_at_start):
+            return
+
+        self._code_change_detected = True
+        if self._code_change_timer is not None:
+            self._code_change_timer.stop()
+        self._refresh_ready_tooltip(sync=False)
+        try:
+            self._app._show_outcome_chip(_CODE_CHANGE_MESSAGE, "warning")
+        except Exception:
+            logger.exception("[TRAY] Could not show the source-change chip")
+            try:
+                self._tray.showMessage(
+                    "Samsara code changed", _CODE_CHANGE_MESSAGE,
+                    QSystemTrayIcon.MessageIcon.Warning, 10000,
+                )
+            except Exception:
+                logger.exception("[TRAY] Could not show source-change notification")
 
     def notify_warning(self, title: str, text: str) -> None:
         """Show a warning balloon (thread-safe). Used by the mouse-hotkey fallback (35)."""
@@ -813,6 +878,11 @@ class SamsaraTrayQt(QObject):
             pass
         try:
             self._icon_refresh_timer.stop()
+        except Exception:
+            pass
+        try:
+            if self._code_change_timer is not None:
+                self._code_change_timer.stop()
         except Exception:
             pass
         self._hide_sig.emit()
@@ -1141,196 +1211,252 @@ class SamsaraTrayQt(QObject):
         self._reset_preview_position()
         self._reset_indicator_position()
 
+    @contextmanager
+    def _optional_menu_section(self, menu, section):
+        """Keep one optional menu section from taking down the rest."""
+        try:
+            yield
+        except Exception:
+            logger.exception("[TRAY] %s menu section failed", section)
+            row = menu.addAction(f"{section} unavailable - see log")
+            row.setEnabled(False)
+
+    def _core_actions(self, menu):
+        """Add recovery actions before constructing any optional sections."""
+        app = self._app
+        show_action = self._add(menu, "Show Samsara", lambda: app.show_main_window())
+        menu.setDefaultAction(show_action)
+        settings_action = self._add(menu, "Settings", lambda: app.open_settings())
+        support_action = self._add(menu, "Something wrong?", self._open_support_tab)
+        restart_action = None
+        if self._code_change_detected:
+            restart_action = self._add(menu, "Restart Samsara", self._restart_samsara)
+        exit_action = self._add(menu, "Exit", lambda: app.quit_app())
+        return show_action, settings_action, support_action, restart_action, exit_action
+
+    def _open_support_tab(self):
+        open_support_tab(self._app)
+
+    def _show_settings_tool(self, name):
+        from samsara.ui.settings_qt import SettingsQt
+
+        if not hasattr(self, "_settings_tools"):
+            self._settings_tools = SettingsQt(self._app)
+        self._settings_tools.show_tool(name)
+
+    def _restart_samsara(self):
+        argv = build_restart_argv()
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(argv, creationflags=flags)
+        self._app.quit_app()
+
     def _rebuild_menu(self):
-        """Rebuild the full context menu from live app state.
-
-        Called by QMenu.aboutToShow each time the user right-clicks the
-        tray icon -- once per menu open, not on every hover.
-
-        Recovery-first grouping: a person whose voice control stopped needs
-        app visibility, listening/mic/mode controls, instructions, settings,
-        and support without opening another submenu. Everyday records live
-        in Workspace; setup and one-off tools live in Tools; debug surfaces
-        live in Developer. Every action goes through _add(), so none can fail
-        silently.
-        """
-        app  = self._app
+        """Rebuild the tray menu with core actions first and isolated sections."""
+        app = self._app
         menu = self._menu
         menu.clear()
         add = self._add
-
-        # ---- Show / hide hub ----
-        show_act = add(menu, "Show Samsara", lambda: app.show_main_window())
-        menu.setDefaultAction(show_act)
-        # Mouse hotkey (32/35): state, re-enable without a restart, panic release.
-        status_fn = getattr(app, 'mouse_hotkey_status', None)
-        mouse_status = status_fn() if callable(status_fn) else {'state': 'n/a'}
-        if mouse_status.get('state') == 'disabled':
-            info = menu.addAction(f"Mouse hotkey disabled: {mouse_status.get('reason', '')}"[:90])
-            info.setEnabled(False)
-        if mouse_status.get('state') in ('active', 'disabled') and hasattr(app, 'reenable_mouse_hotkey'):
-            add(menu, "Re-enable mouse hotkey", lambda: app.reenable_mouse_hotkey())
-        if getattr(app, '_mouse_hook', None) is not None and hasattr(app, 'release_mouse_buttons'):
-            add(menu, "Release mouse buttons", lambda: app.release_mouse_buttons())
-        if self._available_update is not None and self._update_entry_enabled():
-            add(menu, f"Install Samsara v{self._available_update.version}\u2026",
-                self._open_update_dialog, report_as="Install update")
+        _show_action, settings_action, support_action, restart_action, exit_action = (
+            self._core_actions(menu)
+        )
         menu.addSeparator()
 
-        # ---- Snooze submenu: pause / resume listening ----
-        snoozed = getattr(app, 'snoozed', False)
-        snooze_sub = QMenu("Snoozed" if snoozed else "Snooze")
-        for label, mins in [
-            ("5 minutes",    5),
-            ("15 minutes",   15),
-            ("30 minutes",   30),
-            ("1 hour",       60),
-            ("Until resumed", None),
-        ]:
-            act = add(snooze_sub, label, lambda m=mins: app.snooze_listening(m), report_as="Snooze")
-            act.setEnabled(not snoozed)
-        snooze_sub.addSeparator()
-        resume_act = add(snooze_sub, "Resume now", lambda: app.resume_listening())
-        resume_act.setEnabled(snoozed)
-        menu.addMenu(snooze_sub)
-
-        # ---- Wake word ----
-        ww_phrase = app.config.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
-        ww_label = f"Wake Word  ({ww_phrase})"
-        # Wake models load lazily on their own thread (see dictation.py
-        # wake_ready_state); say so rather than look enabled-but-deaf.
-        wake_state_fn = getattr(app, 'wake_ready_state', None)
-        if (app.config.get('wake_word_enabled', False) and callable(wake_state_fn)
-                and wake_state_fn() != 'ready'):
-            ww_label += "  - loading..."
-        add(menu, ww_label, lambda checked: app.set_wake_word_enabled(checked),
-            checked=app.config.get('wake_word_enabled', False), report_as="Wake Word")
-
-        # ---- Microphone submenu ----
-        mic_label = f"[MIC]  {app.get_current_microphone_name()}"
-        mic_sub = QMenu(mic_label)
-        if not app._mic_refresh_blocked():
-            try:
-                app.available_mics = app.get_available_microphones()
-                app._reconcile_microphone_selection()
-            except Exception as e:
-                logger.debug(f"_rebuild_menu: {e}")
-        current_mic = app.config.get('microphone')
-        for mic in app.available_mics:
-            add(mic_sub, mic['name'],
-                lambda _checked, mid=mic['id']: app.switch_microphone_and_refresh(mid),
-                checked=mic['id'] == current_mic, report_as="Switch microphone")
-        menu.addMenu(mic_sub)
-
-        # ---- Mode submenu ----
-        mode = app.config.get('mode', 'hold')
-        mode_sub  = QMenu(f"Mode:  {mode.title()}")
-        mode_grp  = QActionGroup(mode_sub)
-        mode_grp.setExclusive(True)
-        for label, val in [
-            ("Hold to Talk",             "hold"),
-            ("Toggle (click to start/stop)", "toggle"),
-            ("Continuous",               "continuous"),
-        ]:
-            act = add(mode_sub, label,
-                      lambda checked, m=val: app.switch_mode_from_tray(m) if checked else None,
-                      checked=mode == val, report_as="Change mode")
-            mode_grp.addAction(act)
-        menu.addMenu(mode_sub)
-
+        with self._optional_menu_section(menu, "Mouse hotkey"):
+            status_fn = getattr(app, "mouse_hotkey_status", None)
+            mouse_status = status_fn() if callable(status_fn) else {"state": "n/a"}
+            if mouse_status.get("state") == "disabled":
+                info = menu.addAction(
+                    f"Mouse hotkey disabled: {mouse_status.get('reason', '')}"[:90]
+                )
+                info.setEnabled(False)
+            if (mouse_status.get("state") in ("active", "disabled")
+                    and hasattr(app, "reenable_mouse_hotkey")):
+                add(menu, "Re-enable mouse hotkey", lambda: app.reenable_mouse_hotkey())
+            if getattr(app, "_mouse_hook", None) is not None and hasattr(app, "release_mouse_buttons"):
+                add(menu, "Release mouse buttons", lambda: app.release_mouse_buttons())
+            if self._available_update is not None and self._update_entry_enabled():
+                add(menu, f"Install Samsara v{self._available_update.version}\u2026",
+                    self._open_update_dialog, report_as="Install update")
         menu.addSeparator()
 
-        # ---- Recovery first ----
-        add(menu, "Quick Reference", lambda: app.open_quick_reference())
-        add(menu, "Settings", lambda: app.open_settings())
-        add(menu, "Something wrong?", lambda: open_support_tab(app))
+        with self._optional_menu_section(menu, "Snooze"):
+            snoozed = getattr(app, "snoozed", False)
+            snooze_sub = QMenu("Snoozed" if snoozed else "Snooze")
+            for label, mins in [
+                ("5 minutes", 5), ("15 minutes", 15), ("30 minutes", 30),
+                ("1 hour", 60), ("Until resumed", None),
+            ]:
+                act = add(snooze_sub, label, lambda m=mins: app.snooze_listening(m),
+                          report_as="Snooze")
+                act.setEnabled(not snoozed)
+            snooze_sub.addSeparator()
+            resume_act = add(snooze_sub, "Resume now", lambda: app.resume_listening())
+            resume_act.setEnabled(snoozed)
+            menu.addMenu(snooze_sub)
 
-        # ---- Everyday records, out of the recovery path ----
-        workspace_sub = QMenu("Workspace")
-        add(workspace_sub, "History", lambda: app.open_history())
-        add(workspace_sub, "Open memos", self._open_memos)
-        add(workspace_sub, "Open the raw memo file", self._open_memo_file)
-        menu.addMenu(workspace_sub)
+        with self._optional_menu_section(menu, "Wake word"):
+            ww_phrase = app.config.get("wake_word_config", {}).get("phrase", DEFAULT_WAKE_PHRASE)
+            ww_label = f"Wake Word  ({ww_phrase})"
+            wake_state_fn = getattr(app, "wake_ready_state", None)
+            if (app.config.get("wake_word_enabled", False) and callable(wake_state_fn)
+                    and wake_state_fn() != "ready"):
+                ww_label += "  - loading..."
+            add(menu, ww_label, lambda checked: app.set_wake_word_enabled(checked),
+                checked=app.config.get("wake_word_enabled", False), report_as="Wake Word")
 
+        with self._optional_menu_section(menu, "Microphone"):
+            mic_label = f"[MIC]  {app.get_current_microphone_name()}"
+            mic_sub = QMenu(mic_label)
+            if not app._mic_refresh_blocked():
+                try:
+                    app.available_mics = app.get_available_microphones()
+                    app._reconcile_microphone_selection()
+                except Exception as exc:
+                    logger.debug("_rebuild_menu microphone refresh: %s", exc)
+            current_mic = app.config.get("microphone")
+            for mic in app.available_mics:
+                add(mic_sub, mic["name"],
+                    lambda _checked, mid=mic["id"]: app.switch_microphone_and_refresh(mid),
+                    checked=mic["id"] == current_mic, report_as="Switch microphone")
+            menu.addMenu(mic_sub)
+
+        with self._optional_menu_section(menu, "Mode"):
+            mode = app.config.get("mode", "hold")
+            mode_sub = QMenu(f"Mode:  {mode.title()}")
+            mode_group = QActionGroup(mode_sub)
+            mode_group.setExclusive(True)
+            for label, value in [
+                ("Hold to Talk", "hold"),
+                ("Toggle (click to start/stop)", "toggle"),
+                ("Continuous", "continuous"),
+            ]:
+                act = add(mode_sub, label,
+                          lambda checked, selected=value: (
+                              app.switch_mode_from_tray(selected) if checked else None
+                          ),
+                          checked=mode == value, report_as="Change mode")
+                mode_group.addAction(act)
+            menu.addMenu(mode_sub)
         menu.addSeparator()
 
-        # ---- Tools submenu: setup toggles, overlays, one-off tools ----
-        tools_sub = QMenu("Tools")
-        # 285: independent managers, separate from Settings' edit transaction.
-        from samsara.ui.settings_qt import SettingsQt
-        if not hasattr(self, '_settings_tools'):
-            self._settings_tools = SettingsQt(app)
-        for tool_name in ("Command library", "Alarms", "Health", "Music", "Components", "Integrations"):
-            add(tools_sub, tool_name,
-                lambda name=tool_name: self._settings_tools.show_tool(name))
-        tools_sub.addSeparator()
-        window_recovery = QMenu("Window recovery")
-        add(window_recovery, "Reset dictation preview", self._reset_preview_position,
-            report_as="Reset dictation preview")
-        add(window_recovery, "Reset listening indicator", self._reset_indicator_position,
-            report_as="Reset listening indicator")
-        add(window_recovery, "Reset both floating windows", self._reset_floating_window_positions,
-            report_as="Reset floating windows")
-        tools_sub.addMenu(window_recovery)
-        tools_sub.addSeparator()
-        add(tools_sub, "Streaming Mode  (CapsLock)", lambda checked: app.set_streaming_mode(checked),
-            checked=app.config.get('streaming_mode', False), report_as="Streaming Mode")
-        add(tools_sub, "Gesture Lane  (webcam)", lambda checked: self._set_gesture_lane(checked),
-            checked=app.config.get('gesture', {}).get('enabled', False), report_as="Gesture Lane")
-        add(tools_sub, "Command Reference", lambda _checked: app.toggle_cheat_sheet(),
-            checked=getattr(getattr(app, 'cheat_sheet', None), '_visible', False))
-        add(tools_sub, "Show Listening Indicator", lambda _checked: app.toggle_listening_indicator(),
-            checked=app.config.get('listening_indicator_enabled', False))
-        add(tools_sub, "Move listening indicator...", lambda: app.enter_indicator_move_mode(),
-            report_as="Move listening indicator")
-        tools_sub.addSeparator()
-        add(tools_sub, "Interactive Tutorial", lambda: app.show_tutorial())
-        add(tools_sub, "Mic Setup Guide", lambda: self._open_guide("mic_setup_wizard", "Mic Setup Guide"))
-        add(tools_sub, "Ava Guide", lambda: self._open_guide("ava_guide", "Ava Guide"))
-        add(tools_sub, "Voice Training", lambda: app.open_voice_training())
-        add(tools_sub, "Benchmark Review", lambda: app.open_benchmark_review())
-        add(tools_sub, "Correct Last Dictation", lambda: app.open_correction_capture())
-        add(tools_sub, "Stress Test Wizard", lambda: app.open_stress_test_wizard())
-        tools_sub.addSeparator()
-        add(tools_sub, "Recalibrate Mic", lambda: app.recalibrate_mic())
-        if self._update_entry_enabled() and self._available_update is None:
-            add(tools_sub, update_check_menu_label(), self._open_update_dialog,
-                report_as="Updates")
-        tools_sub.addSeparator()
+        with self._optional_menu_section(menu, "Quick Reference"):
+            add(menu, "Quick Reference", lambda: app.open_quick_reference())
 
-        cleanup_sub = QMenu("Cleanup")
-        cleanup_grp = QActionGroup(cleanup_sub)
-        cleanup_grp.setExclusive(True)
-        cleanup_mode = app.config.get('cleanup_mode', 'clean')
-        for label, val in [
-            ("Clean  (remove fillers)", "clean"),
-            ("Verbatim  (no cleanup)",  "verbatim"),
-        ]:
-            act = add(cleanup_sub, label,
-                      lambda checked, v=val: app.set_cleanup_mode(v) if checked else None,
-                      checked=cleanup_mode == val, report_as="Cleanup")
-            cleanup_grp.addAction(act)
-        tools_sub.addMenu(cleanup_sub)
-
-        menu.addMenu(tools_sub)
-
-        # ---- Developer submenu: debug/diagnostic surfaces ----
-        dev_sub = QMenu("Developer")
-        add(dev_sub, "Dictation Diagnostics", lambda: app.open_dictation_diagnostics())
-        add(dev_sub, "Wake Word Debug", lambda: app.open_wake_word_debug())
-        add(dev_sub, "View Live Log", lambda: app.open_log_viewer())
-        dev_sub.addSeparator()
-        add(dev_sub, "Calibrate Echo Cancellation", lambda: app.calibrate_echo_cancellation())
-        dev_sub.addSeparator()
-        add(dev_sub, "Open Config Folder", lambda: app.open_config_folder())
-        dev_sub.addSeparator()
-        add(dev_sub, "Preview First-Run (fresh profile)", lambda: app.preview_first_run())
-        logs_sub = QMenu("View Logs")
-        add(logs_sub, "Main Log", lambda: app.open_main_log())
-        add(logs_sub, "Voice Training Log", lambda: app.open_voice_training_log())
-        dev_sub.addMenu(logs_sub)
-
-        menu.addMenu(dev_sub)
+        with self._optional_menu_section(menu, "Workspace"):
+            workspace_sub = QMenu("Workspace")
+            add(workspace_sub, "History", lambda: app.open_history())
+            add(workspace_sub, "Open memos", self._open_memos)
+            add(workspace_sub, "Open the raw memo file", self._open_memo_file)
+            menu.addMenu(workspace_sub)
         menu.addSeparator()
 
-        add(menu, "Exit", lambda: app.quit_app())
+        with self._optional_menu_section(menu, "Tools"):
+            tools_sub = QMenu("Tools")
+            for tool_name in (
+                "Command library", "Alarms", "Health", "Music", "Components", "Integrations"
+            ):
+                add(tools_sub, tool_name,
+                    lambda name=tool_name: self._show_settings_tool(name))
+            tools_sub.addSeparator()
+            window_recovery = QMenu("Window recovery")
+            add(window_recovery, "Reset dictation preview", self._reset_preview_position,
+                report_as="Reset dictation preview")
+            add(window_recovery, "Reset listening indicator", self._reset_indicator_position,
+                report_as="Reset listening indicator")
+            add(window_recovery, "Reset both floating windows", self._reset_floating_window_positions,
+                report_as="Reset floating windows")
+            tools_sub.addMenu(window_recovery)
+            tools_sub.addSeparator()
+            add(tools_sub, "Streaming Mode  (CapsLock)",
+                lambda checked: app.set_streaming_mode(checked),
+                checked=app.config.get("streaming_mode", False), report_as="Streaming Mode")
+            add(tools_sub, "Gesture Lane  (webcam)",
+                lambda checked: self._set_gesture_lane(checked),
+                checked=app.config.get("gesture", {}).get("enabled", False),
+                report_as="Gesture Lane")
+            add(tools_sub, "Command Reference", lambda _checked: app.toggle_cheat_sheet(),
+                checked=getattr(getattr(app, "cheat_sheet", None), "_visible", False))
+            add(tools_sub, "Show Listening Indicator",
+                lambda _checked: app.toggle_listening_indicator(),
+                checked=app.config.get("listening_indicator_enabled", False))
+            add(tools_sub, "Move listening indicator...",
+                lambda: app.enter_indicator_move_mode(), report_as="Move listening indicator")
+            tools_sub.addSeparator()
+            add(tools_sub, "Interactive Tutorial", lambda: app.show_tutorial())
+            add(tools_sub, "Mic Setup Guide",
+                lambda: self._open_guide("mic_setup_wizard", "Mic Setup Guide"))
+            add(tools_sub, "Ava Guide", lambda: self._open_guide("ava_guide", "Ava Guide"))
+            add(tools_sub, "Voice Training", lambda: app.open_voice_training())
+            add(tools_sub, "Benchmark Review", lambda: app.open_benchmark_review())
+            add(tools_sub, "Correct Last Dictation", lambda: app.open_correction_capture())
+            add(tools_sub, "Stress Test Wizard", lambda: app.open_stress_test_wizard())
+            tools_sub.addSeparator()
+            add(tools_sub, "Recalibrate Mic", lambda: app.recalibrate_mic())
+            if self._update_entry_enabled() and self._available_update is None:
+                add(tools_sub, update_check_menu_label(), self._open_update_dialog,
+                    report_as="Updates")
+            tools_sub.addSeparator()
+            cleanup_sub = QMenu("Cleanup")
+            cleanup_group = QActionGroup(cleanup_sub)
+            cleanup_group.setExclusive(True)
+            cleanup_mode = app.config.get("cleanup_mode", "clean")
+            for label, value in [
+                ("Clean  (remove fillers)", "clean"),
+                ("Verbatim  (no cleanup)", "verbatim"),
+            ]:
+                act = add(cleanup_sub, label,
+                          lambda checked, selected=value: (
+                              app.set_cleanup_mode(selected) if checked else None
+                          ),
+                          checked=cleanup_mode == value, report_as="Cleanup")
+                cleanup_group.addAction(act)
+            tools_sub.addMenu(cleanup_sub)
+            menu.addMenu(tools_sub)
+
+        with self._optional_menu_section(menu, "Developer"):
+            dev_sub = QMenu("Developer")
+            add(dev_sub, "Dictation Diagnostics", lambda: app.open_dictation_diagnostics())
+            add(dev_sub, "Wake Word Debug", lambda: app.open_wake_word_debug())
+            add(dev_sub, "View Live Log", lambda: app.open_log_viewer())
+            dev_sub.addSeparator()
+            add(dev_sub, "Calibrate Echo Cancellation", lambda: app.calibrate_echo_cancellation())
+            dev_sub.addSeparator()
+            add(dev_sub, "Open Config Folder", lambda: app.open_config_folder())
+            dev_sub.addSeparator()
+            add(dev_sub, "Preview First-Run (fresh profile)", lambda: app.preview_first_run())
+            logs_sub = QMenu("View Logs")
+            add(logs_sub, "Main Log", lambda: app.open_main_log())
+            add(logs_sub, "Voice Training Log", lambda: app.open_voice_training_log())
+            dev_sub.addMenu(logs_sub)
+            menu.addMenu(dev_sub)
+
+        # Keep core recovery actions near their familiar locations after
+        # creating all of them before optional sections can fail.
+        menu.removeAction(settings_action)
+        menu.removeAction(support_action)
+        actions = menu.actions()
+        reference_index = next(
+            (index for index, action in enumerate(actions)
+             if action.text() == "Quick Reference"
+             or action.text() == "Quick Reference unavailable - see log"),
+            None,
+        )
+        if reference_index is not None:
+            anchor = actions[reference_index + 1] if reference_index + 1 < len(actions) else None
+        else:
+            anchor = next((action for action in actions if action.text() == "Workspace"), None)
+        if anchor is not None:
+            menu.insertAction(anchor, settings_action)
+            menu.insertAction(anchor, support_action)
+        else:
+            menu.addAction(settings_action)
+            menu.addAction(support_action)
+
+        # Exit stays visually at the bottom, and Restart sits beside it when
+        # the watcher has detected source edits.
+        menu.addSeparator()
+        if restart_action is not None:
+            menu.removeAction(restart_action)
+            menu.addAction(restart_action)
+        menu.removeAction(exit_action)
+        menu.addAction(exit_action)

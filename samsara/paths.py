@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,37 @@ def samsara_home_dir() -> Path:
     if override:
         return Path(override)
     return Path(os.path.expanduser("~")) / ".samsara"
+
+
+def newest_python_mtime(root: str | Path | None = None) -> int | None:
+    """Return the newest Python source mtime under the development app root.
+
+    Frozen builds have no live source tree to watch. Passing ``root`` is
+    intended for deterministic checks and does not change the frozen default.
+    Metadata and virtual-environment directories are excluded.
+    """
+    if root is None:
+        if getattr(sys, "frozen", False):
+            return None
+        root_path = Path(__file__).resolve().parents[1]
+    else:
+        root_path = Path(root)
+    if not root_path.is_dir():
+        return None
+
+    newest: int | None = None
+    excluded = {".git", "__pycache__", ".venv", "venv", "build", "dist"}
+    for current, dirs, files in os.walk(root_path):
+        dirs[:] = [name for name in dirs if name not in excluded]
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            try:
+                mtime = (Path(current) / name).stat().st_mtime_ns
+            except OSError:
+                continue
+            newest = mtime if newest is None else max(newest, mtime)
+    return newest
 
 
 def samsara_config_path() -> Path:
