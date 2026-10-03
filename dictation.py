@@ -6897,6 +6897,7 @@ class DictationApp:
         self, buffer: list, src_rate: int, *,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
         speech_start_ns: int | None = None,
+        onset_context=None,
     ) -> None:
         """Transcribe and dispatch one queued VAD-gated utterance in the
         unified toggle-command-mode session (COMMAND <-> DICTATE).
@@ -6959,8 +6960,9 @@ class DictationApp:
             audio_duration = len(audio) / self.model_rate
             stage_timing.mark("capture_finalised", audio_s=audio_duration)
 
-            if _capture_mode == 'command' and is_self_hear_capture(
-                    getattr(self, 'audio_coordinator', None), speech_start_ns, last_voice_ns):
+            _self_hear = is_self_hear_capture(
+                getattr(self, 'audio_coordinator', None), speech_start_ns, last_voice_ns)
+            if _capture_mode == 'command' and _self_hear:
                 stage_timing.mark("capture_finalised", self_hear=True)
                 _timing_outcome = "gated"
                 flight_recorder.record('session.dispatch', op='dropped',
@@ -7221,6 +7223,15 @@ class DictationApp:
                     logger.debug(f'[CMD-UTT] context-echo chip failed: {exc}')
                 return
 
+            # An Interact arm spoken while DICTATE was active must pass the
+            # same real playback-window verdict as COMMAND captures.
+            if (_was_dictate_lane and normalize_utterance(text) == 'interact'
+                    and (speech_start_ns is None or last_voice_ns is None or _self_hear)):
+                stage_timing.mark('capture_finalised', self_hear=_self_hear)
+                _timing_outcome = 'gated'
+                self._show_outcome_chip('Interact needs a fresh voice capture', 'warning')
+                return
+
             signals = self._compute_switch_gate_signals(
                 audio,
                 seg_list,
@@ -7232,7 +7243,7 @@ class DictationApp:
             if _cancel_windows is not None:
                 _cancel_windows.note_utterance_start()
             stage_timing.mark("dispatch_start", words=len(text.split()))
-            outcome = manager.dispatch_utterance(text, signals)
+            outcome = manager.dispatch_utterance(text, signals, onset_context=onset_context)
             outcome = self._resolve_command_miss(outcome, text)
             _timing_outcome = outcome_label(outcome.kind)
             _dispatched = True

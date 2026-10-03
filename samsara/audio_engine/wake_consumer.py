@@ -34,7 +34,8 @@ import logging
 import math
 import threading
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -50,6 +51,7 @@ from samsara.constants import (
 )
 from samsara.config_defaults import cfg_get
 from samsara.session_modes import SessionMode
+from samsara.subjects import OnsetContext
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
 from samsara import flight_recorder
@@ -292,6 +294,19 @@ class WakeStopResult(list):
         self.stopped = stopped
 
 
+@dataclass(frozen=True, slots=True)
+class QueuedUtterance:
+    """One completed frame list and its capture-time metadata."""
+
+    utterance_id: str
+    frames: list
+    owner_token: int | None
+    last_voice_ns: int | None = None
+    speech_end_ns: int | None = None
+    speech_start_ns: int | None = None
+    onset_context: OnsetContext | None = None
+
+
 class WakeConsumer:
     """Polls the ACE ring and runs the full wake word policy loop.
 
@@ -323,6 +338,7 @@ class WakeConsumer:
         self._buffer_rms_history: list = []
         self._last_voice_ns: int | None = None
         self._speech_start_ns: int | None = None
+        self._onset_context: OnsetContext | None = None
         self._last_epoch: int | None  = None
 
         # FIX 1 (2026-07-10 hotkey word-loss investigation): tracks the
@@ -374,6 +390,8 @@ class WakeConsumer:
             self._utterance_frames = []
             self._buffer_rms_history = []
             self._last_voice_ns = None
+            self._speech_start_ns = None
+            self._onset_context = None
             self._last_epoch = None
             self._await_wake_onset = False
             self._silero_was_speech = False
@@ -401,6 +419,8 @@ class WakeConsumer:
         with self._lifecycle_lock:
             self._running = False
             self._stop_event.set()
+            self._speech_start_ns = None
+            self._onset_context = None
             thread = self._thread
             if thread is not None:
                 if thread is threading.current_thread():
@@ -415,6 +435,8 @@ class WakeConsumer:
             self._app.silence_start = None
             remaining, self._utterance_frames = self._utterance_frames, []
             self._buffer_rms_history = []
+            self._speech_start_ns = None
+            self._onset_context = None
             return WakeStopResult(remaining, stopped=True)
 
     def _close_capture_duck(self) -> None:
@@ -445,6 +467,8 @@ class WakeConsumer:
         self._utterance_frames   = []
         self._buffer_rms_history = []
         self._last_voice_ns = None
+        self._speech_start_ns = None
+        self._onset_context = None
         app.is_speaking   = False
         app.silence_start = None
         try:
@@ -476,11 +500,42 @@ class WakeConsumer:
         """
         buffer_copy, self._utterance_frames = self._utterance_frames, []
         self._buffer_rms_history = []
+        onset = self._onset_context if self._speech_start_ns is not None else None
+        speech_start_ns, last_voice_ns = self._speech_start_ns, self._last_voice_ns
+        self._speech_start_ns = None
+        self._onset_context = None
         if not buffer_copy:
             return False
         token, self._hands_free_capture_duck_token = self._hands_free_capture_duck_token, None
-        self._flush(buffer_copy, token)
+        self._flush(buffer_copy, token, last_voice_ns=last_voice_ns,
+                    speech_end_ns=time.perf_counter_ns(), speech_start_ns=speech_start_ns,
+                    onset_context=onset)
         return True
+
+    def _capture_onset_context(self, speech_start_ns: int) -> OnsetContext | None:
+        """The app port samples its immutable view and native target on this VAD edge."""
+        callback = getattr(self._app, '_capture_interact_onset', None)
+        if not callable(callback):
+            return None  # Legacy app and tests remain inert.
+        observed_at_ns = time.perf_counter_ns()
+        utterance_id = uuid.uuid4().hex
+        try:
+            context = callback(utterance_id=utterance_id,
+                               speech_start_ns=speech_start_ns,
+                               observed_at_ns=observed_at_ns)
+        except Exception as exc:
+            self._log_frame(logging.DEBUG, 'interact_onset',
+                            '[INTERACT] onset capture failed: %s', type(exc).__name__)
+            return None
+        if (not isinstance(context, OnsetContext)
+                or context.utterance_id != utterance_id
+                or context.speech_start_ns != speech_start_ns
+                or context.observed_at_ns < observed_at_ns):
+            return None
+        # Completion is a conservative timestamp for the native sample.
+        # Callback work therefore counts toward the 100 ms admission bound.
+        return replace(context, observed_at_ns=max(context.observed_at_ns,
+                                                   time.perf_counter_ns()))
 
     @staticmethod
     def _open_hands_free_duck_safe(app) -> int | None:
@@ -689,14 +744,14 @@ class WakeConsumer:
         self, buffer_copy: list, owner_token: int | None,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
         speech_start_ns: int | None = None,
+        onset_context: OnsetContext | None = None,
     ) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
         with self._toggle_queue_lock:
-            if last_voice_ns is None or speech_end_ns is None:
-                queued = (buffer_copy, owner_token)
-            else:
-                queued = (buffer_copy, owner_token, last_voice_ns, speech_end_ns, speech_start_ns)
-            self._toggle_queue.append(queued)
+            self._toggle_queue.append(QueuedUtterance(
+                onset_context.utterance_id if onset_context else uuid.uuid4().hex,
+                buffer_copy, owner_token, last_voice_ns, speech_end_ns,
+                speech_start_ns, onset_context))
             if self._toggle_worker_active:
                 return
             self._toggle_worker_active = True
@@ -757,8 +812,7 @@ class WakeConsumer:
                     self._toggle_worker_active = False
                     return
                 queued = self._toggle_queue.popleft()
-                buffer_copy, owner_token = queued[:2]
-                endpoint = queued[2:] if len(queued) > 2 else ()
+                buffer_copy, owner_token = queued.frames, queued.owner_token
 
             if not self._is_toggle_cmd(self._app):
                 logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
@@ -767,15 +821,15 @@ class WakeConsumer:
                 continue
             flight_recorder.record('session.dispatch', op='started', kind='toggle_command', thread='cmd-utt-queue')
             try:
-                if endpoint:
-                    kwargs = dict(last_voice_ns=endpoint[0], speech_end_ns=endpoint[1])
-                    if len(endpoint) > 2 and endpoint[2] is not None:
-                        kwargs['speech_start_ns'] = endpoint[2]
-                    self._app._handle_command_mode_utterance(
-                        buffer_copy, SAMPLE_RATE, **kwargs,
-                    )
-                else:
-                    self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE)
+                kwargs = {}
+                if queued.last_voice_ns is not None and queued.speech_end_ns is not None:
+                    kwargs.update(last_voice_ns=queued.last_voice_ns,
+                                  speech_end_ns=queued.speech_end_ns)
+                    if queued.speech_start_ns is not None:
+                        kwargs['speech_start_ns'] = queued.speech_start_ns
+                if queued.onset_context is not None:
+                    kwargs['onset_context'] = queued.onset_context
+                self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE, **kwargs)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
                 flight_recorder.record('session.dispatch', op='completed', kind='toggle_command', exc=True)
@@ -866,6 +920,8 @@ class WakeConsumer:
             reasons.clear()
         self._utterance_frames = []
         self._buffer_rms_history = []
+        self._speech_start_ns = None
+        self._onset_context = None
         self._await_wake_onset = False
         self._silero_was_speech = False
         self._rms_was_speech = None
@@ -921,6 +977,8 @@ class WakeConsumer:
             self._utterance_frames   = []
             self._buffer_rms_history = []
             self._last_voice_ns = None
+            self._speech_start_ns = None
+            self._onset_context = None
             app.is_speaking   = False
             app.silence_start = None
             self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
@@ -1101,6 +1159,8 @@ class WakeConsumer:
                 # confirmed on its worker while this poller was buffering TV.
                 self._utterance_frames = []
                 self._buffer_rms_history = []
+                self._speech_start_ns = None
+                self._onset_context = None
                 _clear_oww_hits(app)
                 app.is_speaking = False
                 app.silence_start = None
@@ -1282,6 +1342,8 @@ class WakeConsumer:
 
             if speech_onset:
                 self._speech_start_ns = capture_ns
+                self._onset_context = (self._capture_onset_context(capture_ns)
+                                       if self._is_toggle_cmd(app) else None)
                 flight_recorder.record(
                     'wake.session_open', app_state=app.app_state,
                     wake_word_triggered=bool(app.wake_word_triggered),
@@ -1393,6 +1455,8 @@ class WakeConsumer:
                     self._buffer_rms_history = []
                     _clear_oww_hits(app)
                     self._last_voice_ns = None
+                    self._speech_start_ns = None
+                    self._onset_context = None
                     app.is_speaking   = False
                     app.silence_start = None
                     try:
@@ -1414,6 +1478,8 @@ class WakeConsumer:
                 self._buffer_rms_history = []
                 _clear_oww_hits(app)
                 self._last_voice_ns = None
+                self._speech_start_ns = None
+                self._onset_context = None
                 app.is_speaking   = False
                 app.silence_start = None
                 try:
@@ -1436,6 +1502,7 @@ class WakeConsumer:
                     speech_end_ns = time.perf_counter_ns()
                     last_voice_ns = self._last_voice_ns
                     speech_start_ns = self._speech_start_ns
+                    onset_context = self._onset_context
                     # Enough silence — flush if sufficient speech
                     speech_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
                     if speech_s >= min_speech:
@@ -1446,6 +1513,7 @@ class WakeConsumer:
                     self._buffer_rms_history = []
                     self._last_voice_ns = None
                     self._speech_start_ns = None
+                    self._onset_context = None
                     app.is_speaking   = False
                     app.silence_start = None
 
@@ -1458,6 +1526,7 @@ class WakeConsumer:
                             buffer_copy, self._hands_free_capture_duck_token,
                             last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns,
                             speech_start_ns=speech_start_ns,
+                            onset_context=onset_context,
                         )
                     else:
                         # Too short to count as a real utterance -- the
@@ -1507,9 +1576,15 @@ class WakeConsumer:
         self, buffer_copy: list, owner_token: int | None = None, *,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
         speech_start_ns: int | None = None,
+        onset_context: OnsetContext | None = None,
     ) -> None:
         """Dispatch utterance to process_wake_word_buffer, respecting OWW gate."""
         app = self._app
+        self._onset_context = None
+        self._speech_start_ns = None
+        if (speech_start_ns is None or not isinstance(onset_context, OnsetContext)
+                or onset_context.speech_start_ns != speech_start_ns):
+            onset_context = None
         has_endpoint = last_voice_ns is not None and speech_end_ns is not None
         # Dispatch now owns this token. A later short capture/abort must not
         # close the owner of an utterance still waiting for Whisper.
@@ -1526,6 +1601,7 @@ class WakeConsumer:
             if has_endpoint:
                 self._enqueue_toggle_utterance(
                     buffer_copy, owner_token, last_voice_ns, speech_end_ns, speech_start_ns,
+                    onset_context,
                 )
             else:
                 self._enqueue_toggle_utterance(buffer_copy, owner_token)
