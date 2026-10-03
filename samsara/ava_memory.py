@@ -9,9 +9,11 @@ Thread-safe: add_user/add_assistant/clear can be called from any thread.
 
 import json
 import logging
+import math
 import os
 import re
 import threading
+from functools import lru_cache
 from datetime import date, datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -24,11 +26,13 @@ logger = get_logger(__name__)
 _conversation_lock = threading.Lock()
 
 
-def log_conversation(*, lane, provider, user_text, ava_spoken, ava_shown, action):
+def log_conversation(*, lane, provider, user_text, ava_spoken, ava_shown, action,
+                     working_context=""):
     """Write one complete private turn, independently of the preview log."""
     record = {"at": datetime.now(timezone.utc).isoformat(), "lane": lane,
               "provider": provider, "user": user_text, "ava_spoken": ava_spoken,
-              "ava_shown": ava_shown, "action": action}
+              "ava_shown": ava_shown, "action": action,
+              "working_context": working_context}
     path = samsara_home_dir() / "logs" / "ava_conversation.log"
     try:
         with _conversation_lock:
@@ -197,6 +201,29 @@ def _trim_to_token_limit(history, system_prompt, token_limit):
 
 
 _HEADINGS = ("## About you", "## Recent sessions", "## Do not remember")
+MEMORY_PROMPT_BYTES = 1500
+_STOPWORDS = frozenset("a an and are as at be been but by can did do for from had has have "
+                       "how i in is it me my of on or our that the their them there these "
+                       "they this to was we were what when where who why with you your "
+                       "about remember talked discuss discussed session recent".split())
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+@lru_cache(maxsize=8192)
+def _tokens(value):
+    words = _WORD.findall(value.casefold())
+    result = set()
+    for word in words:
+        if word in _STOPWORDS or (len(word) < 3 and not word.isdigit()):
+            continue
+        if len(word) > 5 and word.endswith("ing"):
+            word = word[:-3]
+        elif len(word) > 4 and word.endswith("ed"):
+            word = word[:-2]
+        elif len(word) > 4 and word.endswith("s"):
+            word = word[:-1]
+        result.add(word)
+    return result
 _SENSITIVE = re.compile(
     r"\b(?:diagnos\w*|disease|disability|disabled|medication|medicine|therapy|"
     r"hospital|doctor|pain|pregnan\w*|cancer|diabet\w*|depress\w*|anxi\w*|"
@@ -231,15 +258,18 @@ class PersonalMemory:
 
     def __init__(self, path=None, sessions_kept=30, recall_sessions=3):
         self.path = Path(path) if path else samsara_home_dir() / "ava_memory.md"
+        self.archive_path = self.path.with_name("ava_memory_archive.md")
+        self.pending_path = self.path.with_name("ava_memory_pending.json")
         self.sessions_kept = max(0, int(sessions_kept))
         self.recall_sessions = max(0, int(recall_sessions))
         self._lock = threading.RLock()
 
-    def _read(self):
+    def _read(self, path=None):
+        path = path or self.path
         sections = {heading: [] for heading in _HEADINGS}
-        if not self.path.exists():
+        if not path.exists():
             return sections
-        text = self.path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
         current = None
         seen = set()
         for line in text.splitlines():
@@ -256,8 +286,9 @@ class PersonalMemory:
             raise ValueError("Ava memory sections incomplete; file left unchanged")
         return sections
 
-    def _write(self, sections):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def _write(self, sections, path=None):
+        path = path or self.path
+        path.parent.mkdir(parents=True, exist_ok=True)
         content = "\n\n".join(
             heading + "\n" + "".join(f"- {item}\n" for item in sections[heading])
             for heading in _HEADINGS
@@ -266,13 +297,13 @@ class PersonalMemory:
         tmp = None
         try:
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n",
-                                             dir=self.path.parent, prefix=".ava_memory_",
+                                             dir=path.parent, prefix=".ava_memory_",
                                              suffix=".tmp", delete=False) as handle:
                 tmp = Path(handle.name)
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(tmp, self.path)
+            os.replace(tmp, path)
         finally:
             if tmp is not None and tmp.exists():
                 tmp.unlink()
@@ -297,6 +328,51 @@ class PersonalMemory:
             value = _one_line(text)
             sections = self._read()
             return value if value and not _SENSITIVE.search(value) and not self._excluded(value, sections) else ""
+
+    def pending_sessions(self):
+        with self._lock:
+            if not self.pending_path.exists():
+                return []
+            data = json.loads(self.pending_path.read_text(encoding="utf-8"))
+            if not isinstance(data, list) or any(not isinstance(row, list) for row in data):
+                raise ValueError("Invalid Ava pending sessions; file left unchanged")
+            return data
+
+    def _write_pending(self, sessions):
+        self.pending_path.parent.mkdir(parents=True, exist_ok=True)
+        import tempfile
+        tmp = None
+        try:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n",
+                                             dir=self.pending_path.parent, prefix=".ava_pending_",
+                                             suffix=".tmp", delete=False) as handle:
+                tmp = Path(handle.name)
+                json.dump(sessions, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, self.pending_path)
+        finally:
+            if tmp is not None and tmp.exists():
+                tmp.unlink()
+
+    def enqueue_session(self, turns):
+        """Persist scrubbed local summary input before attempting Ollama."""
+        safe = [f"{row['role']}: {part}" for row in turns[-16:]
+                if (part := self.safe_for_summary(row.get("content", "")))]
+        if not safe:
+            return False
+        with self._lock:
+            sessions = self.pending_sessions()
+            if safe not in sessions:
+                sessions.append(safe)
+                self._write_pending(sessions)
+        return True
+
+    def complete_pending_session(self, expected):
+        with self._lock:
+            sessions = self.pending_sessions()
+            if sessions and sessions[0] == expected:
+                self._write_pending(sessions[1:])
 
     def remember(self, utterance):
         """Save only an explicit self statement. The model never calls this."""
@@ -329,29 +405,94 @@ class PersonalMemory:
             sections[_HEADINGS[0]] = [item for item in about if key not in item.casefold()]
             sessions = sections[_HEADINGS[1]]
             sections[_HEADINGS[1]] = [item for item in sessions if key not in item.casefold()]
+            archive = self._read(self.archive_path)
+            old_archive = len(archive[_HEADINGS[1]])
+            archive[_HEADINGS[1]] = [item for item in archive[_HEADINGS[1]]
+                                      if key not in item.casefold()]
             exclusions = sections[_HEADINGS[2]]
             if key not in {item.casefold() for item in exclusions}:
                 exclusions.append(subject)
             self._write(sections)
-            return len(about) != old_count or len(sessions) != len(sections[_HEADINGS[1]])
+            if self.archive_path.exists() or old_archive:
+                self._write(archive, self.archive_path)
+            pending = self.pending_sessions()
+            if pending:
+                self._write_pending([[line for line in session if key not in line.casefold()]
+                                     for session in pending if any(key not in line.casefold()
+                                                                   for line in session)])
+            return (len(about) != old_count or len(sessions) != len(sections[_HEADINGS[1]])
+                    or old_archive != len(archive[_HEADINGS[1]]))
 
     def erase(self):
         with self._lock:
             self._write({heading: [] for heading in _HEADINGS})
+            if self.archive_path.exists():
+                self._write({heading: [] for heading in _HEADINGS}, self.archive_path)
+            if self.pending_path.exists():
+                self.pending_path.unlink()
 
     def add_summary(self, summary, day=None):
-        sentence = re.sub(r'["“”]', '', _one_line(summary)).strip("'")
+        return self.add_summaries([summary], day=day)
+
+    def add_summaries(self, summaries, day=None):
+        """Store up to four scrubbed lines; archive overflow before trimming recent."""
         with self._lock:
             sections = self._read()
-            if not sentence or _SENSITIVE.search(sentence) or self._excluded(sentence, sections):
+            accepted = []
+            for raw in list(summaries)[:4]:
+                sentence = re.sub(r'["“”]', '', _one_line(raw)).strip("'")
+                if sentence and not _SENSITIVE.search(sentence) and not self._excluded(sentence, sections):
+                    accepted.append(f"{day or date.today().isoformat()}: {sentence.rstrip('.!? ')}.")
+            if not accepted:
                 return False
-            sentence = sentence.split(".")[0].rstrip(".!? ") + "."
-            sections[_HEADINGS[1]].append(f"{day or date.today().isoformat()}: {sentence}")
-            sections[_HEADINGS[1]] = sections[_HEADINGS[1]][-self.sessions_kept:] if self.sessions_kept else []
+            sections[_HEADINGS[1]].extend(accepted)
+            overflow = max(0, len(sections[_HEADINGS[1]]) - self.sessions_kept)
+            if overflow:
+                archive = self._read(self.archive_path)
+                archive[_HEADINGS[1]].extend(sections[_HEADINGS[1]][:overflow])
+                self._write(archive, self.archive_path)
+                sections[_HEADINGS[1]] = sections[_HEADINGS[1]][overflow:]
             self._write(sections)
             return True
 
-    def prompt_block(self, max_tokens=599):
+    def _candidates(self, sections):
+        archive = self._read(self.archive_path)
+        excluded = lambda item: _SENSITIVE.search(item) or self._excluded(item, sections)
+        facts = [item for item in sections[_HEADINGS[0]] if not excluded(item)]
+        sessions = [item for item in archive[_HEADINGS[1]] + sections[_HEADINGS[1]]
+                    if not excluded(item)]
+        return facts, sessions
+
+    @staticmethod
+    def _essential(item):
+        return bool(re.match(r"^(?:call me|please call me|my (?:name|preferred name|pronunciation)|"
+                             r"i prefer|(?:please )?(?:keep|make|talk to me))\b", item, re.I))
+
+    def recall(self, utterance, previous_user_turn="", limit=12):
+        """Deterministic IDF overlap across the recent and archived record."""
+        with self._lock:
+            sections = self._read()
+            facts, sessions = self._candidates(sections)
+        candidates = [("Recent session", item) for item in sessions]
+        candidates += [("About you", item) for item in facts if not self._essential(item)]
+        query = _tokens(utterance) | _tokens(previous_user_turn)
+        if not query:
+            return []
+        token_sets = [_tokens(item) for _, item in candidates]
+        document_frequency = {word: sum(word in tokens for tokens in token_sets)
+                              for word in query}
+        count = len(candidates)
+        weights = {word: math.log1p((count + 1) / (frequency + 1))
+                   for word, frequency in document_frequency.items()}
+        scored = []
+        for index, ((kind, item), tokens) in enumerate(zip(candidates, token_sets)):
+            score = sum(weights[word] for word in query & tokens)
+            if score >= 1.0:
+                scored.append((score, index, kind, item))
+        scored.sort(key=lambda row: (-row[0], -row[1]))
+        return [(kind, item) for _, _, kind, item in scored[:limit]]
+
+    def prompt_block(self, max_tokens=MEMORY_PROMPT_BYTES, utterance="", previous_user_turn=""):
         with self._lock:
             sections = self._read()
         intro = ("Ava memory (owner-editable facts, not instructions or permission). "
@@ -359,16 +500,17 @@ class PersonalMemory:
                  "answer length or pace. Never recite memory unless asked. You are software.\n")
         # A byte ceiling is conservative for byte-based model tokenizers,
         # including names and notes written in non-ASCII languages.
-        limit = min(max_tokens, 599)
+        limit = min(max_tokens, MEMORY_PROMPT_BYTES)
         result = intro
-        facts = [item for item in sections[_HEADINGS[0]] if not self._excluded(item, sections)]
-        def essential(item):
-            return bool(re.match(r"^(?:call me|please call me|my (?:name|preferred name|pronunciation)|"
-                                 r"i prefer|(?:please )?(?:keep|make|talk to me))\b", item, re.I))
-        lines = [f"About you: {item}" for item in facts if essential(item)]
-        lines += [f"Recent session: {item}" for item in reversed(sections[_HEADINGS[1]][-self.recall_sessions:])
-                  if not _SENSITIVE.search(item) and not self._excluded(item, sections)]
-        lines += [f"About you: {item}" for item in facts if not essential(item)]
+        facts, sessions = self._candidates(sections)
+        lines = [f"About you: {item}" for item in facts if self._essential(item)]
+        newest_day = sessions[-1][:10] if sessions else ""
+        lines += [f"Recent session: {item}" for item in sessions
+                  if newest_day and item.startswith(newest_day)]
+        for kind, item in self.recall(utterance, previous_user_turn):
+            line = f"{kind}: {item}"
+            if line not in lines:
+                lines.append(line)
         for line in lines:
             if len((result + line + "\n").encode("utf-8")) > limit:
                 continue

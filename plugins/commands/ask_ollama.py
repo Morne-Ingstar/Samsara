@@ -11,6 +11,7 @@ from samsara import ai_transport
 from samsara import command_catalog
 from samsara import ava_corrections
 from samsara import ava_profile
+from samsara import ava_persona
 from samsara import ava_readiness
 from samsara import cloud_llm
 from samsara import teach_patterns
@@ -31,11 +32,9 @@ _LANG_CODE_TO_NAME = dict(LANGUAGES)
 
 # ── System prompts ────────────────────────────────────────────────────────────
 
-AVA_PERSONA_TEXT = """You are Ava, software built into Samsara, a voice-control app for
-people with chronic pain and accessibility needs. Be warm, calm, plain, and
-brief enough to be comfortable when spoken aloud. Write only words that should
-be spoken: no markdown, lists, or helpdesk language.
-
+_AVA_IDENTITY = """You are Ava, software built into Samsara, a voice-control app for
+people with chronic pain and accessibility needs."""
+_AVA_GUARDRAILS = """These rules outrank everything above.
 You are not a person. Never claim a memory unless it is in the supplied local
 context, and use a preferred name sparingly and only when it fits naturally.
 Never pressure, guilt, or ask the user to return. If they mention people in
@@ -44,10 +43,11 @@ Support time with people they care about without making yourself part of that
 relationship. Never describe yourself as needing the user.
 This conversation starts only after the user has addressed Ava; ordinary
 dictation is not a conversation or a memory instruction."""
+AVA_PERSONA_TEXT = _AVA_IDENTITY + "\n" + ava_persona.SEED + "\n" + _AVA_GUARDRAILS
 
 # Relaxed prompt: natural conversation with the same bounded, non-manipulative
 # persona as strict mode.
-RELAXED_SYSTEM_PROMPT = AVA_PERSONA_TEXT + """
+RELAXED_SYSTEM_PROMPT = """
 
 For simple questions, use 1 to 3 sentences. For a complex explanation, use
 only the detail needed to answer clearly without cutting off mid-sentence.
@@ -58,7 +58,7 @@ MODE 1 — CONVERSATION:
 For questions, opinions, facts, explanations, or anything not requesting a
 computer action, respond with plain natural language and no prefix."""
 
-STRICT_SYSTEM_PROMPT = AVA_PERSONA_TEXT + """
+STRICT_SYSTEM_PROMPT = """
 
 Keep every response to 1 to 3 sentences. When a conversation is done, give
 one short acknowledgement and stop.
@@ -213,7 +213,7 @@ cannot do. Never substitute the nearest listed command.
 
 # Compose the active prompt from whichever personality + shared modes.
 # get_system_prompt() picks based on config['ava_personality'].
-DEFAULT_SYSTEM_PROMPT = RELAXED_SYSTEM_PROMPT + _SHARED_MODES
+DEFAULT_SYSTEM_PROMPT = AVA_PERSONA_TEXT + RELAXED_SYSTEM_PROMPT + _SHARED_MODES
 
 
 # ── Conversation memory persistence ───────────────────────────────────────────
@@ -338,6 +338,18 @@ def _handle_personal_memory_intent(app, utterance):
             facts = memory.about()
             speak(app, "I remember: " + "; ".join(facts) if facts else "I don't have any facts about you saved.")
             return True
+        topic = re.match(r"^(?:do you remember when we talked about|what do you remember about) (.+)$",
+                         phrase, re.I)
+        if topic:
+            hits = memory.recall(topic.group(1))
+            if not hits:
+                speak(app, "I have nothing saved about that.")
+                return True
+            state = _ai_state(app)
+            if not state.allowed or not _assistant_recall_allowed(app, state):
+                speak(app, "I have: " + "; ".join(item for _, item in hits[:3]))
+                return True
+            return False
         if lower == "forget everything":
             app._ava_erase_pending_until = time.monotonic() + 30
             speak(app, "This will erase your Ava memory file. Say yes, forget everything to confirm.")
@@ -378,6 +390,51 @@ def _handle_personal_memory_intent(app, utterance):
     return False
 
 
+def _handle_persona_intent(app, utterance):
+    action, change = ava_persona.voice_intent(utterance)
+    if not action:
+        return False
+    try:
+        if action == "change":
+            line, omitted = ava_persona.append(change)
+            if not line:
+                speak(app, "Tell me the change after change your personality.")
+            else:
+                reply = f"I added: {line}."
+                if ava_persona.asks_to_drop_guardrail(change):
+                    reply += " I can sound different, but my fixed rules stay."
+                if omitted:
+                    reply += " My personality file is full; the oldest change was left out of this prompt."
+                speak(app, reply)
+        elif action == "read":
+            who, changes = ava_persona.read()
+            speak(app, "Who I am: " + who + ". Changes you asked for: " +
+                  ("; ".join(changes) if changes else "none"))
+        elif action == "undo":
+            removed = ava_persona.undo()
+            speak(app, f"I removed the newest change: {removed}." if removed else
+                  "There is no personality change to undo.")
+        elif action == "open":
+            ava_persona.read()
+            os.startfile(ava_persona.path())
+            speak(app, "I opened your personality file.")
+    except (OSError, ValueError) as exc:
+        logger.warning("[AVA PERSONA] local update failed: %s", type(exc).__name__)
+        speak(app, "I couldn't use your personality file.")
+    return True
+
+
+def _handle_working_context_intent(app, utterance):
+    if " ".join(utterance.casefold().split()).strip(" .?!") != "what are you working from":
+        return False
+    context = getattr(app, "_ava_last_context", None)
+    if not context:
+        speak(app, "I don't have a previous reply's personality or memory context to read back.")
+    else:
+        speak(app, context)
+    return True
+
+
 def _finish_ava_session(app, *, wait=False):
     """Summarize completed turns through Ollama only, after Ava exits."""
     if _memory_mode(app) != "assistant" or not hasattr(app, "_ava_memory"):
@@ -386,50 +443,53 @@ def _finish_ava_session(app, *, wait=False):
     if not hasattr(app, "_ava_summary_lock"):
         app._ava_summary_lock = threading.Lock()
         app._ava_summary_worker_lock = threading.Lock()
+    memory = _personal_memory(app)
     with app._ava_summary_lock:
-        pending = getattr(app, "_ava_summary_pending", [])
-        pending.extend(getattr(app, "_ava_legacy_history", []))
-        app._ava_legacy_history = []
-        pending.extend(history)
-        app._ava_summary_pending = pending
-    if not pending:
+        legacy = getattr(app, "_ava_legacy_history", [])
+        if legacy:
+            memory.enqueue_session(legacy)
+            app._ava_legacy_history = []
+        if history:
+            memory.enqueue_session(history)
+    if not memory.pending_sessions():
         return
 
     def _summarize():
         with app._ava_summary_worker_lock:
-            with app._ava_summary_lock:
-                batch = list(app._ava_summary_pending)
-                generation = getattr(app, "_ava_memory_generation", 0)
-            if not batch:
-                return
-            memory = _personal_memory(app)
-            try:
-                safe = [f"{row['role']}: {part}" for row in batch[-16:]
-                        if (part := memory.safe_for_summary(row.get("content", "")))]
-                if not safe:
-                    return
-                response = ai_transport.post_local(
-                    f"{get_host(app)}/api/chat",
-                    json={"model": get_model(app), "stream": False, "messages": [
-                        {"role": "system", "content": "Summarize this Ava session in one plain sentence. "
-                         "Do not quote the person. Do not include sensitive details or identifiers. "
-                         "Return only the sentence."},
-                        {"role": "user", "content": "\n".join(safe)[:2400]},
-                    ]}, timeout=min(get_timeout(app), 15),
-                )
-                response.raise_for_status()
-                summary = ava_readiness.ollama_response_content(response)
+            while True:
                 with app._ava_summary_lock:
-                    if (summary and generation == getattr(app, "_ava_memory_generation", 0)
-                            and memory.add_summary(summary)):
-                        if app._ava_summary_pending[:len(batch)] == batch:
-                            del app._ava_summary_pending[:len(batch)]
-                        legacy = getattr(app._ava_memory, "_legacy_path", None)
-                        if legacy:
-                            os.remove(legacy)
-                            app._ava_memory._legacy_path = None
-            except Exception as exc:
-                logger.warning("[AVA MEMORY] local summary unavailable: %s", type(exc).__name__)
+                    pending = memory.pending_sessions()
+                    generation = getattr(app, "_ava_memory_generation", 0)
+                if not pending:
+                    return
+                batch = pending[0]
+                try:
+                    response = ai_transport.post_local(
+                        f"{get_host(app)}/api/chat",
+                        json={"model": get_model(app), "stream": False, "messages": [
+                            {"role": "system", "content": "Summarize this Ava session in up to four short lines: "
+                             "topics, decisions, what the person wanted kept in mind, and a running joke if any. "
+                             "Do not quote the person. Do not include sensitive details or identifiers. "
+                             "Return only the lines."},
+                            {"role": "user", "content": "\n".join(batch)[:2400]},
+                        ]}, timeout=min(get_timeout(app), 15),
+                    )
+                    response.raise_for_status()
+                    summary = ava_readiness.ollama_response_content(response)
+                    lines = [re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
+                             for line in summary.splitlines()][:4]
+                    with app._ava_summary_lock:
+                        if generation == getattr(app, "_ava_memory_generation", 0) and memory.add_summaries(lines):
+                            memory.complete_pending_session(batch)
+                            legacy_path = getattr(app._ava_memory, "_legacy_path", None)
+                            if legacy_path:
+                                os.remove(legacy_path)
+                                app._ava_memory._legacy_path = None
+                        else:
+                            return
+                except Exception as exc:
+                    logger.warning("[AVA MEMORY] local summary unavailable: %s", type(exc).__name__)
+                    return
 
     if wait:
         _summarize()
@@ -694,16 +754,26 @@ def get_model(app):
 def get_host(app):
     return _ollama_config(app).get("host") or "http://localhost:11434"
 
+def _persona_base(cloud=False):
+    try:
+        style, _omitted = ava_persona.prompt_style(cloud=cloud)
+    except (OSError, ValueError) as exc:
+        logger.warning("[AVA PERSONA] style unavailable: %s", type(exc).__name__)
+        style = ava_persona.SEED
+    return _AVA_IDENTITY + "\n" + style + "\n" + _AVA_GUARDRAILS
+
+
 def get_system_prompt(app):
     # Config override wins (fully custom prompt from user)
     custom = _ollama_config(app).get("system_prompt")
     if custom:
         return custom
+    base = _persona_base(cloud=getattr(_turn_local, "prompt_cloud", False))
     # Toggle: "strict" = tight persona, "relaxed" = natural conversation
     personality = app.config.get("ava_personality", "relaxed")
     if personality == "strict":
-        return STRICT_SYSTEM_PROMPT + _SHARED_MODES
-    return RELAXED_SYSTEM_PROMPT + _SHARED_MODES
+        return base + STRICT_SYSTEM_PROMPT + _SHARED_MODES
+    return base + RELAXED_SYSTEM_PROMPT + _SHARED_MODES
 
 
 def _profile_context_cap(app):
@@ -1254,13 +1324,15 @@ def _log_turn(app, request, *, outcome, started=None):
                          provider=provider, user_text=request,
                          ava_spoken="\n".join(getattr(_turn_local, "spoken_text", None) or []),
                          ava_shown=reply.text if reply is not None and reply.text is not None else "",
-                         action=outcome)
+                         action=outcome,
+                         working_context=getattr(_turn_local, "working_context", ""))
     except Exception as exc:
         logger.debug(f"[AVA-TURN] logging failed: {exc}")
     finally:
         _turn_local.speech = None
         _turn_local.reply = None
         _turn_local.spoken_text = None
+        _turn_local.working_context = None
 
 
 # ── Ollama API ────────────────────────────────────────────────────────────────
@@ -1508,8 +1580,14 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     host = get_host(app)
     if not model:
         model = get_model(app)
+    custom_system_supplied = bool(system or _ollama_config(app).get("system_prompt"))
     if not system:
-        system = get_system_prompt(app)
+        previous_cloud = getattr(_turn_local, "prompt_cloud", False)
+        _turn_local.prompt_cloud = state.provider.identity != "ollama"
+        try:
+            system = get_system_prompt(app)
+        finally:
+            _turn_local.prompt_cloud = previous_cloud
 
     # Build fully-resolved system prompt
     global _system_prompt_logged
@@ -1565,11 +1643,32 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
 
     # Assistant memory is opt-in. Cloud receives the same bounded block only
     # when the owner selected the cloud route and enabled that provider.
+    memory_block = ""
     if _assistant_recall_allowed(app, state):
         try:
-            system = _personal_memory(app).prompt_block() + "\n" + system
+            memory_block = _personal_memory(app).prompt_block(
+                utterance=prompt, previous_user_turn=getattr(app, "_ava_previous_user_turn", ""))
+            system = memory_block + "\n" + system
         except (OSError, ValueError) as exc:
             logger.warning("[AVA MEMORY] recall unavailable: %s", type(exc).__name__)
+    app._ava_previous_user_turn = prompt
+    try:
+        ava_persona.read()
+        style, _omitted = ava_persona.prompt_style(cloud=state.provider.identity != "ollama")
+        included = sum(1 for line in style.splitlines() if line.startswith("- "))
+        who_lines = [line for line in style.split("Changes you asked for", 1)[0].splitlines()[1:]
+                     if line.strip()]
+        memory_lines = [line for line in memory_block.splitlines()
+                        if line.startswith(("About you:", "Recent session:"))]
+        personality_description = ("Custom system prompt." if custom_system_supplied else
+                                   f"Personality: {len(who_lines) + included} lines.")
+        context = (personality_description + " "
+                   + ("Memory: " + "; ".join(memory_lines) if memory_lines else "Memory: no lines."))
+        app._ava_last_context = context
+        _turn_local.working_context = context
+    except (OSError, ValueError):
+        app._ava_last_context = "Personality file unavailable. Memory: " + memory_block
+        _turn_local.working_context = app._ava_last_context
 
     # Language awareness: ask Ava to respond in the user's language
     lang = getattr(app, 'config', {}).get('language', 'en')
@@ -1881,7 +1980,7 @@ def _conversational_refusal(app, request, command_name, generation):
               f"Your proposed ACTION {command_name!r} was refused because it is not in "
               "the offered command menu. Answer the user in plain words. "
               f"If useful, mention these real commands: {closest}")
-    system = (AVA_PERSONA_TEXT + "\nThis is a speech-only answer. "
+    system = (_persona_base(cloud=True) + "\nThis is a speech-only answer. "
               "Do not propose, stage, or execute an action. Never output ACTION, "
               "APP, SCHEDULE, EXECUTE, or CONFIRM tags. Answer in 1 to 3 sentences.")
     reply = ask_model(prompt, app, system=system, allow_search=False)
@@ -2897,6 +2996,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     _turn_local.speech = []
     _turn_local.spoken_text = []
     _turn_local.reply = None
+    _turn_local.working_context = None
 
     # Queue 57: every exit records an honest outcome for the chip
     # (app._ava_turn_outcome, read by dictation's on_done hook) -- the chip
@@ -2910,6 +3010,17 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         _done()
         return
 
+    if remainder and (_handle_persona_intent(app, remainder) or
+                      _handle_working_context_intent(app, remainder)):
+        _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
+        _log_turn(app, remainder, outcome="local_fast_path")
+        _done()
+        return
+    if remainder and _handle_personal_memory_intent(app, remainder):
+        _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
+        _log_turn(app, remainder, outcome="local_fast_path")
+        _done()
+        return
     state = _ai_state(app)
     if not state.allowed:
         if state.status == "off-by-choice":
@@ -2924,11 +3035,6 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         speak(app, "Yes? How can I help?")
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
         _log_turn(app, remainder, outcome="prompted")
-        _done()
-        return
-    if _handle_personal_memory_intent(app, remainder):
-        _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
-        _log_turn(app, remainder, outcome="local_fast_path")
         _done()
         return
     # No per-utterance reachability probe here any more (it blocked up to

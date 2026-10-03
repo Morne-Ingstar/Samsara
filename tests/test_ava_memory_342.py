@@ -43,7 +43,7 @@ def test_sensitive_requires_explicit_remember_and_is_never_summarized(home):
     assert memory.remember("remember that I have a medical diagnosis")
     assert "medical diagnosis" in memory.about()[0]
     assert memory.safe_for_summary("We discussed my medical diagnosis") == ""
-    assert "medical diagnosis" in memory.prompt_block()
+    assert "medical diagnosis" not in memory.prompt_block()
 
 
 def test_forget_scrubs_facts_sessions_and_future_summaries(home):
@@ -89,10 +89,10 @@ def test_session_rotation_recall_limit_and_prompt_cap(home):
     assert "topic 1" not in text
     assert "topic 4" in text
     assert "topic 2" not in memory.prompt_block()
-    assert "topic 3" in memory.prompt_block()
+    assert "topic 3" in memory.prompt_block(utterance="topic 3")
     for n in range(40):
         memory.remember(f"remember that interest number {n} is a long personal preference")
-    assert len(memory.prompt_block().encode("utf-8")) < 600
+    assert len(memory.prompt_block().encode("utf-8")) <= 1500
 
 
 def test_atomic_replace_failure_preserves_existing_file(home, monkeypatch):
