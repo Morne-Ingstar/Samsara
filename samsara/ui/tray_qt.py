@@ -77,8 +77,8 @@ def brand_capture():
         "ava":       (theme.AVA, "ring-brand"),
     }
 BRAND_EYE = {
-    "off":    "eye-closed",
-    "asleep": "eye-closed",
+    "off":    None,
+    "asleep": None,
     "armed":  "eye-open",
     "heard":  "eye-open",
 }
@@ -87,7 +87,7 @@ BRAND_EYE = {
 #: the ring brightened (capture is starting, so red is truthful).
 MARK_EYE = {
     "off":    None,
-    "asleep": "eye-closed",
+    "asleep": None,
     "armed":  "eye-open",
     "heard":  "eye-open",
 }
@@ -104,7 +104,7 @@ MARK_STATES = {
     "armed":     ("listening", "armed"),
     "heard":     ("listening", "heard"),
 }
-#: App / exe / taskbar / window icon: brand cyan wheel, lid closed.
+#: App icon state: articulated wheel, empty centre until hands-free is armed.
 APP_MARK = ("listening", "asleep")
 #: Wake phrase heard: (ms from the hit, eye state). The eye flashes red and
 #: the ring brightens for ~1 s, then the lid closes as the command session
@@ -132,7 +132,7 @@ SPIN_SECONDS_PER_TURN = {
 #: Tray frame from any thread: rendered on the Qt thread by _apply_icon.
 MarkFrame = namedtuple("MarkFrame", "capture eye rotation opacity", defaults=(0.0, 1.0))
 
-_SMALL_MAX = 20          # sizes at or below this use the heavy small drawing (no head/tail)
+_SMALL_MAX = 20          # sizes at or below this use the heavy articulated small drawing
 #: Taskbar-facing icons (the tray icon; the app/exe/window .ico sizes) use the
 #: heavy drawing up to this size: at 150% scaling Windows shows their 24 px
 #: frame (and 32 px at 200%) in the same slot where 16 px sits at 100%.
@@ -168,8 +168,8 @@ _renderer_lock = threading.Lock()
 # expanded here into ONE filled contour per segment (left edge forwards, tip
 # cap, right edge back): no outlined band, no double contour. The tail tip and
 # the nose end round (the band's nose closes as a half-ellipse, 42); the other
-# ends are butt, so the 12-degree gaps
-# stay open at full band weight. gen_icons.py writes the centrelines and both
+# ends are butt, so the two articulated joints remain visible even at band
+# weight. gen_icons.py writes the centrelines and both
 # weights' expansions into assets/icon/samsara.svg; --check flags drift.
 
 RING_CENTRE = 32.0
@@ -183,13 +183,14 @@ RING_BAND_WIDTH = 11.0        # recording weight -- same centreline, its own tap
 #: visible at 26 px and clearly at 60 px without the ring turning into a
 #: band. Same centreline; the head/tail profile is interpolated for it.
 RING_BRAND_WIDTH = 5.5
-SEGMENT_START_DEG = -84.0     # segment 0 starts just right of 12 o'clock (y down = clockwise)
-SEGMENT_SPAN_DEG = 108.0
-SEGMENT_STEP_DEG = 120.0      # 12-degree gaps at 12, 4 and 8 o'clock
+SEGMENT_START_DEG = -88.0     # tapered tail begins just right of 12 o'clock
+SEGMENT_SPAN_DEG = 112.0
+SEGMENT_STEP_DEG = 120.0      # two articulated joints; the third is the bite
+HEAD_SPAN_DEG = 115.0
 TAIL_SEGMENT = 0
 HEAD_SEGMENT = 2
 HEAD_FRACTION = 0.20          # head grows over the last 20% of its arc
-HEAD_OVERSHOOT_DEG = 13.0     # the centreline runs this far past the head segment's end (both weights)
+HEAD_OVERSHOOT_DEG = 4.0      # nose nearly meets, but does not cross, the tail
 _SEGMENT_SAMPLES = 48
 _NOSE_SAMPLES = 12
 _CAP_SAMPLES = 8
@@ -315,7 +316,7 @@ def stroke_scale(segment: int, u: float, weight: float = RING_BAND_WIDTH) -> flo
         lead = nose_lead(weight)
         peak = 1.0 - lead
         if u > peak:
-            v = (u - peak) / (lead + nose * HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG)
+            v = (u - peak) / (lead + nose * HEAD_OVERSHOOT_DEG / HEAD_SPAN_DEG)
             if v > 1.0 + 1e-9:
                 return 0.0
             dome = head * math.sqrt(max(0.0, 1.0 - v * v))
@@ -335,7 +336,7 @@ def _nose_span(weight: float) -> tuple[float, float]:
     """(u of the head's widest point, u where the stroke ends) for a weight."""
     lead = nose_lead(weight)
     nose = weight_profile(weight)[3]
-    return 1.0 - lead, 1.0 + nose * HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG
+    return 1.0 - lead, 1.0 + nose * HEAD_OVERSHOOT_DEG / HEAD_SPAN_DEG
 
 
 def ring_centreline(segment: int, weight: Optional[float] = None) -> list[tuple[float, float, float, float]]:
@@ -350,7 +351,7 @@ def ring_centreline(segment: int, weight: Optional[float] = None) -> list[tuple[
     start = SEGMENT_START_DEG + segment * SEGMENT_STEP_DEG
     fractions = [i / _SEGMENT_SAMPLES for i in range(_SEGMENT_SAMPLES + 1)]
     if segment == HEAD_SEGMENT:
-        over = HEAD_OVERSHOOT_DEG / SEGMENT_SPAN_DEG
+        over = HEAD_OVERSHOOT_DEG / HEAD_SPAN_DEG
         fractions += [1.0 + over * i / _NOSE_SAMPLES for i in range(1, _NOSE_SAMPLES + 1)]
         if weight is not None and nose_lead(weight) > 0.0:
             peak, end = _nose_span(weight)
@@ -359,7 +360,7 @@ def ring_centreline(segment: int, weight: Optional[float] = None) -> list[tuple[
             fractions = [u for u in fractions if u < peak - 1e-9] + dense
     samples = []
     for u in fractions:
-        angle = math.radians(start + u * SEGMENT_SPAN_DEG)
+        angle = math.radians(start + u * (HEAD_SPAN_DEG if segment == HEAD_SEGMENT else SEGMENT_SPAN_DEG))
         samples.append((u, angle,
                         RING_CENTRE + RING_RADIUS * math.cos(angle),
                         RING_CENTRE + RING_RADIUS * math.sin(angle)))
@@ -374,7 +375,7 @@ def nose_metrics(weight: float) -> tuple[float, float, int]:
     stroked with a non-zero width in (widest point, stroke end]."""
     peak, end = _nose_span(weight)
     half = weight * head_scale(weight) / 2.0
-    length = RING_RADIUS * math.radians((end - peak) * SEGMENT_SPAN_DEG)
+    length = RING_RADIUS * math.radians((end - peak) * HEAD_SPAN_DEG)
     points = sum(1 for u, *_rest in ring_centreline(HEAD_SEGMENT, weight)
                  if peak + 1e-9 < u <= end + 1e-9 and ring_width(HEAD_SEGMENT, u, weight) > 0.0)
     return half, length, points
@@ -435,7 +436,16 @@ def ring_segment_path_data(segment: int, weight: float = RING_BAND_WIDTH) -> str
     points = ring_stroke_outline(segment, weight)
     head = f"M {points[0][0]:.2f},{points[0][1]:.2f}"
     body = " ".join(f"L {x:.2f},{y:.2f}" for x, y in points[1:])
-    return f"{head} {body} Z"
+    path = f"{head} {body} Z"
+    if segment == HEAD_SEGMENT:
+        # Even-odd subpaths cut an eye and mouth from the head itself. They
+        # rotate with the body; neither is a disconnected central dot or bar.
+        path += (
+            " M 25.750,9.000 A 1.250,1.250 0 1 0 28.250,9.000"
+            " A 1.250,1.250 0 1 0 25.750,9.000 Z"
+            " M 30.750,8.300 L 35.200,9.350 L 30.750,10.400 Z"
+        )
+    return path
 
 
 def mark_svg_path() -> Path:
@@ -462,8 +472,7 @@ def mark_colours(capture: str, eye: str, brand: bool = False) -> tuple[str, str]
 
 
 def mark_eye_id(eye: str, brand: bool = False) -> Optional[str]:
-    """The eye drawing for a hands-free state: MARK_EYE (tray: none when
-    off) or BRAND_EYE (always present)."""
+    """The hands-free drawing; resting marks have no detached centre mark."""
     return (BRAND_EYE if brand else MARK_EYE)[eye]
 
 
@@ -493,6 +502,26 @@ def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | No
     for attr in ("fill", "stroke"):
         if ring.get(attr, "none") != "none":
             ring.set(attr, ring_colour)
+    if brand and capture in ("idle", "listening") and eye in ("off", "asleep") and layer == "ring":
+        # Tint only the head end of the static brand. The other two joints
+        # remain cyan, and the live recording ring keeps its unambiguous red.
+        defs = ET.SubElement(root, f"{{{_SVG_NS}}}defs")
+        gradient = ET.SubElement(defs, f"{{{_SVG_NS}}}linearGradient", {
+            "id": "ouroboros-head", "gradientUnits": "userSpaceOnUse",
+            "x1": "12", "y1": "40", "x2": "30", "y2": "8",
+        })
+        warm = theme._mix(ring_colour, theme.RECORDING, 0.9)
+        bridge = theme._mix(ring_colour, theme.AVA, 0.95)
+        for offset, colour in (("0", ring_colour), ("0.42", ring_colour),
+                               ("0.58", bridge), ("0.78", warm), ("1", warm)):
+            ET.SubElement(gradient, f"{{{_SVG_NS}}}stop", {
+                "offset": offset, "stop-color": colour,
+            })
+        head_path = [el for el in ring if el.get("data-role") == "segment"][-1]
+        head_path.set("fill", "url(#ouroboros-head)")
+        for jaw in ring:
+            if jaw.get("data-role") == "jaw":
+                jaw.set("fill", "url(#ouroboros-head)")
     if eye_id is not None:
         for el in by_id[eye_id + suffix].iter():
             role = el.get("data-role")
@@ -619,9 +648,9 @@ def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
     Sizes up to small_max (default _SMALL_MAX = 20) use the heavy #small
     drawing; the taskbar-facing icons pass TASKBAR_SMALL_MAX. 16-24 px draws
     a cached 15-degree frame; 32 px and up rotates the vector live.
-    brand=True is the presentation for the window header and Home (38):
-    brand_capture() colours at RING_BRAND_WIDTH, the eye always present,
-    never the #small drawing.
+    brand=True is the window-header and Home presentation: brand_capture()
+    colours at RING_BRAND_WIDTH, an empty resting centre, a restrained warm
+    head for the idle/listening brand, and never the #small drawing.
     """
     size = min(rect.width(), rect.height())
     with _renderer_lock:
