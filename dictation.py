@@ -5904,11 +5904,10 @@ class DictationApp:
         # an exact stop/cancel utterance never queues behind the model.
         if self._try_stop_utterance(text, 'ava session'):
             return
-        # Queue 332b: dispatch phrases must reach the literal registry before
+        # Queue 356: dispatch and near misses stay in the local lane before
         # Ava's model can reinterpret them as unrelated actions.
-        from plugins.commands.dispatch_voice import match_send  # noqa: PLC0415
-        if (match_send(text) or text.strip().lower().rstrip(".!? ") == "what needs me"):
-            self.command_executor.process_text(text, self, force_commands=True)
+        from plugins.commands.dispatch_voice import route_ava_utterance  # noqa: PLC0415
+        if route_ava_utterance(self, text):
             return
         # Queue 102 -- Ava's edit proposals. THE ONE dispatch call site this
         # feature touches. It sits here, and not in session_modes' dispatch,

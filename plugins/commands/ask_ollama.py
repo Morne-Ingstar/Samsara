@@ -14,7 +14,7 @@ from samsara import ava_profile
 from samsara import ava_readiness
 from samsara import cloud_llm
 from samsara import teach_patterns
-from samsara.ava_memory import AvaMemory, PersonalMemory
+from samsara.ava_memory import AvaMemory, PersonalMemory, log_conversation
 from samsara.paths import samsara_home_dir
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
@@ -191,6 +191,13 @@ SCHEDULE 30 scroll down
 {USER_ALIASES}
 
 IMPORTANT RULES:
+- You can dispatch queue prompts to Luna, Sol, Astra or Claude Code by voice
+  ("send N to X"). Samsara performs the dispatch, not you. Assistant-side
+  [action] lines in history are the record of what happened. Never claim you
+  cannot send prompts; if the request is unclear, ask which identity.
+- If the last user turn resembles a dispatch request but lacks a clear prompt
+  or identity, ask for the missing part only. Do not output ACTION, APP,
+  SCHEDULE, EXECUTE or CONFIRM for that turn.
 - Never mix prose with ACTION, APP, SCHEDULE, or CONFIRM tags.
 - If you are not certain which command name to use for ACTION, respond \
 conversationally and say what you cannot do. Never guess a command name.
@@ -278,6 +285,14 @@ def _build_ava_memory(app):
     memory = AvaMemory(max_turns=max_turns)
     memory._mode = "clear"
     return memory
+
+
+def ensure_ava_memory(app):
+    """Share the session history between the model and local dispatch lane."""
+    if (not hasattr(app, "_ava_memory") or
+            getattr(app._ava_memory, "_mode", _memory_mode(app)) != _memory_mode(app)):
+        app._ava_memory = _build_ava_memory(app)
+    return app._ava_memory
 
 
 def _personal_memory(app):
@@ -854,10 +869,14 @@ def speak(app, text, category="ava_response"):
             _record_speech(False, "suppressed by command_mode.tts_char_limit", chars)
             return False
         _record_speech(True, "tts", chars)
+        if getattr(_turn_local, "spoken_text", None) is not None:
+            _turn_local.spoken_text.append(text)
         return True
     elif hasattr(app, "tts_engine") and app.tts_engine:
         app.tts_engine.speak(text)
         _record_speech(True, "tts_engine", chars)
+        if getattr(_turn_local, "spoken_text", None) is not None:
+            _turn_local.spoken_text.append(text)
         return True
     print(f"[OLLAMA] {text}")
     _record_speech(False, "no TTS engine (text-to-speech is off)", chars)
@@ -1231,11 +1250,17 @@ def _log_turn(app, request, *, outcome, started=None):
             logger.warning(line)
         else:
             logger.info(line)
+        log_conversation(lane="model" if outcome != "disabled" else "refused",
+                         provider=provider, user_text=request,
+                         ava_spoken="\n".join(getattr(_turn_local, "spoken_text", None) or []),
+                         ava_shown=reply.text if reply is not None and reply.text is not None else "",
+                         action=outcome)
     except Exception as exc:
         logger.debug(f"[AVA-TURN] logging failed: {exc}")
     finally:
         _turn_local.speech = None
         _turn_local.reply = None
+        _turn_local.spoken_text = None
 
 
 # ── Ollama API ────────────────────────────────────────────────────────────────
@@ -1558,10 +1583,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         )
 
     # ── Conversation memory ──
-    if (not hasattr(app, "_ava_memory") or
-            getattr(app._ava_memory, "_mode", _memory_mode(app)) != _memory_mode(app)):
-        app._ava_memory = _build_ava_memory(app)
-    app._ava_memory.add_user(prompt)
+    ensure_ava_memory(app).add_user(prompt)
 
     # ── Cloud LLM path (bring-your-own-key, no license required) ──
     cloud_provider = None
@@ -1893,6 +1915,13 @@ def handle_response(app, response, original_text=None, *, generation=None):
     if response == MODEL_UNAVAILABLE:
         speak(app, unavailable_sentence(app))
         return TurnOutcome("error", "failed", reason="model_unavailable")
+
+    # A garbled dispatch request cannot be converted into a different model
+    # action if an external route accidentally lets it reach this parser.
+    from plugins.commands.dispatch_voice import is_dispatch_shaped
+    if is_dispatch_shaped(original_text or ""):
+        speak(app, "To Luna, Sol, Astra or Claude Code?")
+        return TurnOutcome("conversation", "refused", reason="dispatch_unresolved")
 
     print(f"[AVA RAW] {response!r}")
     if generation is None:
@@ -2865,10 +2894,21 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         if on_done is not None:
             on_done()
 
+    _turn_local.speech = []
+    _turn_local.spoken_text = []
+    _turn_local.reply = None
+
     # Queue 57: every exit records an honest outcome for the chip
     # (app._ava_turn_outcome, read by dictation's on_done hook) -- the chip
     # used to say "Ava <check>" whatever happened.
     _set_turn_outcome(app, None)
+
+    # Hold-to-talk and other direct Ava callers share the same local dispatch
+    # gate as the latched session; a malformed send never reaches a model.
+    from plugins.commands.dispatch_voice import route_ava_utterance
+    if remainder and route_ava_utterance(app, remainder):
+        _done()
+        return
 
     state = _ai_state(app)
     if not state.allowed:
@@ -2883,10 +2923,12 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     if not remainder:
         speak(app, "Yes? How can I help?")
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
+        _log_turn(app, remainder, outcome="prompted")
         _done()
         return
     if _handle_personal_memory_intent(app, remainder):
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
+        _log_turn(app, remainder, outcome="local_fast_path")
         _done()
         return
     # No per-utterance reachability probe here any more (it blocked up to
@@ -2909,11 +2951,13 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         queued = image_result.state is DispatchState.QUEUED
         _set_turn_outcome(app, ("Image request" if queued else "Image command",
                                 "pending" if queued else "success" if image_result.state is DispatchState.COMPLETED else "warning"))
+        _log_turn(app, remainder, outcome="local_fast_path")
         _done()
         return image_result
 
     def _worker():
         _turn_local.speech = []
+        _turn_local.spoken_text = []
         _turn_local.reply = None
         # Queue 59: only this conversation turn may offer web search (and only
         # if the user enabled it -- cloud_llm.web_search_available).

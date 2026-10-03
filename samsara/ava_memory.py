@@ -8,10 +8,12 @@ Thread-safe: add_user/add_assistant/clear can be called from any thread.
 """
 
 import json
+import logging
 import os
 import re
 import threading
-from datetime import date
+from datetime import date, datetime, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from samsara.paths import samsara_home_dir
@@ -19,11 +21,35 @@ from samsara.paths import samsara_home_dir
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
+_conversation_lock = threading.Lock()
+
+
+def log_conversation(*, lane, provider, user_text, ava_spoken, ava_shown, action):
+    """Write one complete private turn, independently of the preview log."""
+    record = {"at": datetime.now(timezone.utc).isoformat(), "lane": lane,
+              "provider": provider, "user": user_text, "ava_spoken": ava_spoken,
+              "ava_shown": ava_shown, "action": action}
+    path = samsara_home_dir() / "logs" / "ava_conversation.log"
+    try:
+        with _conversation_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handler = RotatingFileHandler(path, maxBytes=2 * 1024 * 1024,
+                                          backupCount=3, encoding="utf-8")
+            try:
+                handler.setFormatter(logging.Formatter("%(message)s"))
+                handler.emit(logging.LogRecord("Samsara.ava.conversation", logging.INFO,
+                                               "", 0, json.dumps(record, ensure_ascii=False),
+                                               (), None))
+            finally:
+                handler.close()
+    except Exception:
+        logger.warning("[AVA] conversation log unavailable")
 
 
 class AvaMemory:
     def __init__(self, max_turns=20, persist_path=None):
         self._history = []
+        self._actions = []
         self._max_turns = max_turns
         self._lock = threading.Lock()
         self._persist_path = persist_path
@@ -40,6 +66,14 @@ class AvaMemory:
             self._history.append({"role": "assistant", "content": text})
             self._trim()
 
+    def add_action_event(self, text):
+        """Assistant-side action record retained across Ava mode switches."""
+        if not isinstance(text, str) or not text.startswith("[action] "):
+            raise ValueError("an action event must be explicit")
+        with self._lock:
+            self._actions.append({"role": "assistant", "content": text})
+            self._actions = self._actions[-self._max_turns:]
+
     def get_messages(self, system_prompt=None, token_limit=None):
         """Return the full messages array ready for an API call.
 
@@ -49,9 +83,14 @@ class AvaMemory:
         """
         with self._lock:
             history = list(self._history)
+            actions = list(self._actions)
 
         if token_limit is not None:
             history = _trim_to_token_limit(history, system_prompt, token_limit)
+
+        if actions:
+            index = len(history) - 1 if history and history[-1]["role"] == "user" else len(history)
+            history[index:index] = actions
 
         msgs = []
         if system_prompt:
@@ -62,6 +101,7 @@ class AvaMemory:
     def clear(self):
         with self._lock:
             self._history.clear()
+            self._actions.clear()
         if self._persist_path:
             try:
                 os.remove(self._persist_path)

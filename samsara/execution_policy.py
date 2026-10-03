@@ -1595,6 +1595,7 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
     if source not in (ANSWER_VOICE, ANSWER_DIALOG):
         logger.warning("[POLICY] ignored a %s-sourced %r for pending %s", source, reply, op.op_id[:8])
         return "refused:model"
+    op.reply_text = text  # The owning local lane may log the full spoken reply.
     if reply == REPLY_WAIT:
         if op.invocation.command_id.startswith("interact "):
             return "refused:interact deadline"

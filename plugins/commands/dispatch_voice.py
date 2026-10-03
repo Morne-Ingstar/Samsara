@@ -16,9 +16,77 @@ from samsara.execution_policy import Invocation, Route
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
 from plugins.commands import queue_voice
+from samsara.ava_memory import log_conversation
+from samsara.log import get_logger
 
-_SEND = re.compile(r"^send\s+(.+?)\s+to\s+(sol|luna|astra|claude code)[.!?]?\s*$", re.I)
+_SEND = re.compile(r"^(?:send|dispatch)\b", re.I)
+_DIGITS = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+           "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9"}
+_IDENTITIES = {
+    "sol": "sol", "soul": "sol", "sole": "sol", "seoul": "sol",
+    "the soul": "sol", "the sun": "sol", "s o l": "sol",
+    "the sun s o l": "sol", "solomon": "sol",
+    "luna": "luna", "lunar": "luna", "loona": "luna",
+    "astra": "astra", "astro": "astra", "aster": "astra", "astrid": "astra",
+    "claude code": "claude code", "cloud code": "claude code", "claude": "claude code",
+}
 _STOP = threading.Event()
+logger = get_logger(__name__)
+_FEED_INIT_LOCK = threading.Lock()
+_EVENT_STATES = frozenset({"draft", "queued", "preparing", "running", "reported",
+                           "blocked", "failed", "cancelled"})
+
+
+def _words(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", (text or "").casefold()).split())
+
+
+def _identity(text: str) -> str | None:
+    return _IDENTITIES.get(_words(text))
+
+
+def _prompt_id(text: str) -> str | None:
+    words = _words(text).split()
+    if not words:
+        return None
+    suffix = ""
+    if len(words) > 1 and (words[-1] in {"b", "bee"} or
+                           len(words[-1]) == 1 and words[-1].isalpha()):
+        suffix = "b" if words[-1] == "bee" else words[-1]
+        words = words[:-1]
+    if len(words) == 1 and re.fullmatch(r"\d{2,3}[a-z]?", words[0]):
+        return prompt_id(words[0] + suffix)
+    digits = [word if len(word) == 1 and word.isdigit() else _DIGITS.get(word)
+              for word in words]
+    if len(digits) not in (2, 3) or any(digit is None for digit in digits):
+        return None
+    return prompt_id("".join(digits) + suffix)
+
+
+def parse_send(text: str) -> tuple[str | None, str | None] | None:
+    """Canonical queue id and identity, including bounded Whisper spellings."""
+    words = _words(text)
+    match = re.match(r"^(?:send|dispatch)\s+(?:(?:prompt|number)\s+)*(.+)$", words)
+    if not match:
+        return None
+    body = match.group(1)
+    parts = re.split(r"\bto\b", body, maxsplit=1)
+    if len(parts) == 2:
+        left, right = parts
+        return _prompt_id(left), _identity(right)
+    for alias in sorted(_IDENTITIES, key=len, reverse=True):
+        if body.endswith(" " + alias):
+            return _prompt_id(body[:-(len(alias) + 1)]), _IDENTITIES[alias]
+    return _prompt_id(body), None
+
+
+def is_dispatch_shaped(text: str) -> bool:
+    raw = (text or "").strip()
+    words = _words(raw)
+    return bool(re.match(r"^(?:send|dispatch)\b.*\bto\b", words)
+                or re.match(r"^send\s+\d", words)
+                or re.match(r"^send\s+(?:prompt\s+)?(?:number\s+)?(?:zero|one|two|three|four|five|six|seven|eight|nine)\b", words)
+                or re.match(r"^count\s+number\s+\d", words))
 
 
 @dataclass
@@ -31,6 +99,10 @@ class FeedState:
     lock: threading.RLock = field(default_factory=threading.RLock)
     blocked: dict[str, dict] = field(default_factory=dict)
     needs_chip: bool = False
+    follow_up: tuple[str | None, str | None] | None = None
+    task_meta: dict[str, tuple[str, str]] = field(default_factory=dict)
+    recent_prompt: str | None = None
+    recent_identity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -42,7 +114,67 @@ class SpeechItem:
 
 
 def match_send(text: str) -> bool:
-    return bool(_SEND.fullmatch((text or "").strip()))
+    parsed = parse_send(text)
+    return parsed is not None and all(parsed)
+
+
+def _remember(app, prompt: str, identity: str, event: str) -> None:
+    """The model sees what Samsara actually did, never a guessed action."""
+    try:
+        from plugins.commands.ask_ollama import ensure_ava_memory
+        stamp = datetime.now().strftime("%H:%M")
+        target = f"{prompt} to {identity.title()}" if identity else prompt
+        ensure_ava_memory(app).add_action_event(
+            f"[action] {target}: {event} at {stamp}")
+    except Exception as exc:
+        logger.warning("[DISPATCH] Ava action history unavailable: %s", type(exc).__name__)
+
+
+def route_ava_utterance(app, text: str) -> bool:
+    """Claim dispatch and near misses before the model; return False otherwise."""
+    state = _feed_state(app)
+    raw = (text or "").strip()
+    words = _words(raw)
+    follow_up, state.follow_up = state.follow_up, None
+    if follow_up is not None and not is_dispatch_shaped(raw):
+        pid, identity = follow_up
+        if pid is None:
+            pid = _prompt_id(raw)
+        if identity is None:
+            identity = _identity(raw)
+        if pid and identity:
+            send_prompt(app, f"{pid} to {identity}", heard=raw)
+            return True
+    clarification = _identity(raw)
+    if state.recent_prompt and clarification:
+        response = ("The dispatch plan is already waiting for approval."
+                    if clarification == state.recent_identity else
+                    f"The pending plan is for {state.recent_identity.title()}. Say no, then send again.")
+        _say(app, response,
+             lane="dispatch", user_text=raw, action="clarification")
+        return True
+    if words == "what needs me":
+        what_needs_me(app)
+        return True
+    if raw.casefold().startswith("send ") and raw.endswith("-") and len(words.split()) <= 3:
+        _remember(app, "dispatch request", "", "asked to repeat an incomplete request")
+        _say(app, "Say that again, I lost the end.", lane="near-miss",
+             user_text=raw, action="repeat requested")
+        return True
+    parsed = parse_send(raw)
+    if parsed is None and not is_dispatch_shaped(raw):
+        return False
+    pid, identity = parsed or (_prompt_id(words.removeprefix("count number ")), None)
+    if not pid or not identity:
+        state.follow_up = (pid, identity)
+        question = ("Which prompt number?" if not pid else
+                    "To Luna, Sol, Astra or Claude Code?")
+        _remember(app, pid or "dispatch request", identity or "",
+                  "asked for a prompt number" if not pid else "asked for an identity")
+        _say(app, question, lane="near-miss", user_text=raw, action="clarification")
+        return True
+    send_prompt(app, f"{pid} to {identity}", heard=raw)
+    return True
 
 
 def _client(app) -> DispatchVoice:
@@ -52,8 +184,11 @@ def _client(app) -> DispatchVoice:
 def _feed_state(app) -> FeedState:
     state = getattr(app, "_dispatch_voice_feed", None)
     if state is None:
-        state = FeedState()
-        app._dispatch_voice_feed = state
+        with _FEED_INIT_LOCK:
+            state = getattr(app, "_dispatch_voice_feed", None)
+            if state is None:
+                state = FeedState()
+                app._dispatch_voice_feed = state
     return state
 
 
@@ -89,7 +224,8 @@ def _start_next_speech(app, state: FeedState) -> None:
 
 def _say(app, text: str, chip: str | None = None, *,
          task_id: str = "", event_state: str = "", is_event: bool = False,
-         state: FeedState | None = None) -> None:
+         state: FeedState | None = None, lane: str | None = None,
+         user_text: str = "", action: str = "") -> None:
     state = state or _feed_state(app)
     with state.lock:
         key = (task_id, event_state)
@@ -108,6 +244,9 @@ def _say(app, text: str, chip: str | None = None, *,
     show = getattr(app, "_show_outcome_chip", None)
     if show is not None and chip:
         show(chip, "info")
+    if lane is not None:
+        log_conversation(lane=lane, provider="Agora", user_text=user_text,
+                         ava_spoken=text, ava_shown=chip or text, action=action or event_state)
     _start_next_speech(app, state)
 
 
@@ -153,6 +292,21 @@ def poll_once(app, client: DispatchVoice, state: FeedState) -> list[dict]:
     # Only the newest state for each task in this tick needs a spoken update.
     latest = {event.get("task_id"): event for event in fresh}
     for event in fresh:
+        with state.lock:
+            known_prompt, known_identity = state.task_meta.get(event.get("task_id"), ("", ""))
+        prompt = str(event.get("prompt_id") or known_prompt)
+        identity = known_identity
+        identity = identity or _identity(str(event.get("identity") or ""))
+        event_state = str(event.get("state") or "")
+        if prompt and event_state in _EVENT_STATES:
+            spoken_status = re.search(r"\bSTATUS\s+([A-Z_]+)", str(event.get("spoken") or ""), re.I)
+            result = event.get("result")
+            status = str(event.get("status") or (result.get("status") if isinstance(result, dict) else "")
+                         or (spoken_status.group(1) if spoken_status else ""))
+            status_text = f" STATUS {status}" if status else ""
+            state_text = {"running": "started", "reported": "finished",
+                          "blocked": "blocked; needs me"}.get(event_state, event_state)
+            _remember(app, prompt, identity, state_text + status_text)
         if latest[event.get("task_id")] is not event:
             continue
         spoken = event.get("spoken")
@@ -161,7 +315,9 @@ def poll_once(app, client: DispatchVoice, state: FeedState) -> list[dict]:
             if spoken.strip().lower().rstrip(".!?") in {"approve", "yes", "reject", "no"}:
                 spoken = "Agora reported a status update."
             _say(app, spoken, task_id=event.get("task_id", ""),
-                 event_state=event.get("state", ""), is_event=True, state=state)
+                 event_state=event.get("state", ""), is_event=True, state=state,
+                 lane="dispatch", action=(event_state if event_state in _EVENT_STATES
+                                          else "ignored unrecognized event"))
     _show_needs_chip(app, state)
     return events
 
@@ -190,45 +346,71 @@ def start_services(app) -> None:
 @command("send prompt", pack="core", risk_class="write", reversible=True,
          ai_visible=False, side_effects=["network", "audio", "ui"],
          preview_template="Draft a prompt dispatch for approval")
-def send_prompt(app, remainder=""):
+def send_prompt(app, remainder="", *, heard=None):
     if not (getattr(app, "config", {}) or {}).get("dispatch_voice", {}).get("enabled", True):
-        _say(app, "Voice dispatch is off in settings.")
+        _say(app, "Voice dispatch is off in settings.", lane="refused",
+             user_text=heard or remainder, action="dispatch disabled")
         return DispatchState.FAILED
-    match = _SEND.fullmatch("send " + (remainder or "").strip())
-    if match is None:
-        _say(app, "Say send, a prompt number, to Sol, Luna, Astra, or Claude Code.")
+    parsed = parse_send("send " + (remainder or "").strip())
+    if parsed is None:
+        _say(app, "Which prompt number?", lane="near-miss",
+             user_text=heard or remainder, action="invalid dispatch")
         return DispatchState.FAILED
-    pid = prompt_id(match.group(1))
-    identity = match.group(2).lower()
+    pid, identity = parsed
     if pid is None:
-        _say(app, "Say a prompt number.")
+        _say(app, "Which prompt number?", lane="near-miss",
+             user_text=heard or remainder, action="invalid prompt")
+        return DispatchState.FAILED
+    if identity is None:
+        _say(app, "To Luna, Sol, Astra or Claude Code?", lane="near-miss",
+             user_text=heard or remainder, action="invalid identity")
         return DispatchState.FAILED
     client = _client(app)
     try:
         # Agora binds effort to the queue prompt; the spoken command does not specify it.
         draft = client.draft(pid, identity.title())
     except Exception as exc:
-        _say(app, _failure(exc, pid))
+        _remember(app, pid, identity, "draft refused")
+        _say(app, _failure(exc, pid), lane="refused", user_text=heard or remainder,
+             action="draft failed")
         return DispatchState.FAILED
+    state = _feed_state(app)
+    with state.lock:
+        state.task_meta[draft.task_id] = (pid, identity)
+        state.recent_prompt = pid
+        state.recent_identity = identity
+    _remember(app, pid, identity, "plan read back")
     question = f"{draft.spoken}. Approve to start?"
     generation = execution_policy.current_generation(app)
     inv = Invocation("send prompt", {"remainder": remainder}, Route.GRAMMAR,
                      generation, source_text="send " + remainder)
 
     def approved(_op):
+        state.recent_prompt = None
+        state.recent_identity = None
         decision = execution_policy.authorize(inv, app=app, confirmed=True)
         if not isinstance(decision, execution_policy.Allowed):
-            _say(app, "cancelled, nothing started")
+            _remember(app, pid, identity, "approval refused")
+            _say(app, "cancelled, nothing started", lane="refused",
+                 user_text=getattr(_op, "reply_text", ""), action="approval refused")
             return
         try:
             result = client.approve(draft.task_id, draft.plan_hash)
+            _remember(app, pid, identity, "approved")
             _say(app, result.get("spoken") or f"{pid} approved for {identity.title()}.",
-                 task_id=draft.task_id, event_state=result.get("state", "queued"))
+                 task_id=draft.task_id, event_state=result.get("state", "queued"),
+                 lane="dispatch", user_text=getattr(_op, "reply_text", ""), action="approved")
         except Exception as exc:
-            _say(app, _failure(exc, pid))
+            _remember(app, pid, identity, "approval failed")
+            _say(app, _failure(exc, pid), lane="refused",
+                 user_text=getattr(_op, "reply_text", ""), action="approval failed")
 
     def rejected(_op):
-        _say(app, "cancelled, nothing started")
+        state.recent_prompt = None
+        state.recent_identity = None
+        _remember(app, pid, identity, "cancelled")
+        _say(app, "cancelled, nothing started", lane="dispatch",
+             user_text=getattr(_op, "reply_text", ""), action="cancelled")
 
     op = execution_policy.stage_pending(app, inv, question, on_approve=approved,
                                         on_reject=rejected, record_type="action", ttl_s=60,
@@ -242,7 +424,8 @@ def send_prompt(app, remainder=""):
 
     thread_registry.timer("dispatch.voice.expiry", 60.05, expire, daemon=True)
     _say(app, question + " Say approve or no.", "dispatch: confirm",
-         task_id=draft.task_id, event_state="draft")
+         task_id=draft.task_id, event_state="draft", lane="dispatch",
+         user_text=heard or "send " + remainder, action="plan read back")
     return DispatchState.QUEUED
 
 
@@ -254,7 +437,8 @@ def what_needs_me(app, _remainder=""):
         drafts = client.pending()
         events = client.events()
     except Exception as exc:
-        _say(app, _failure(exc))
+        _say(app, _failure(exc), lane="refused", user_text="what needs me",
+             action="needs-me unavailable")
         return DispatchState.FAILED
     latest = {}
     for event in sorted(events, key=lambda row: row.get("at", "")):
@@ -266,7 +450,8 @@ def what_needs_me(app, _remainder=""):
     view._items = items
     view._index = 0
     text, count = view._page() if items else ("Nothing needs you right now.", 0)
-    _say(app, queue_voice._next_page_hint(view, text), f"needs you: {len(items)}")
+    _say(app, queue_voice._next_page_hint(view, text), f"needs you: {len(items)}",
+         lane="dispatch", user_text="what needs me", action="needs-me summary")
     state = getattr(app, "_dispatch_voice_feed", None)
     if state is not None:
         state.needs_chip = False
