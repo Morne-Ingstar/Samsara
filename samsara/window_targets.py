@@ -6,10 +6,12 @@ import hashlib
 import math
 import ntpath
 import os
+import time
 from dataclasses import dataclass
+from typing import Callable
 
 from samsara.app_index import MATCH_FLOOR, score_name_match
-from samsara.subjects import WindowIdentity
+from samsara.subjects import SubjectRef, WindowIdentity
 
 _TOOLWINDOW = 0x80
 _SHELL_CLASSES = {"progman", "workerw", "shell_traywnd", "shell_secondarytraywnd", "#32770"}
@@ -247,3 +249,106 @@ class WindowTargetAdapter:
         scored.sort(key=lambda item: (-item[0], item[1].identity.hwnd))
         return CandidateResult(tuple(found for _, found in scored),
                                None if scored else "no_match")
+
+
+@dataclass(frozen=True, slots=True)
+class EffectResult:
+    ok: bool
+    reason: str
+    subject_ref: SubjectRef | None = None
+
+
+class NativeWindowActions:
+    """Native calls stay behind a port so tests never touch the desktop."""
+
+    def focus(self, hwnd: int, preflight: Callable[[], bool]) -> bool:
+        from plugins.commands.windows import raise_window
+        return raise_window(hwnd, activate=True, preflight=preflight)
+
+    def show(self, hwnd: int, how: str) -> None:
+        import win32con
+        import win32gui
+        win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE if how == "minimize"
+                            else win32con.SW_MAXIMIZE)
+
+    def state(self, hwnd: int, how: str) -> bool:
+        import win32gui
+        return bool(win32gui.IsIconic(hwnd) if how == "minimize" else win32gui.IsZoomed(hwnd))
+
+    def move(self, hwnd: int, number: int, preflight: Callable[[], bool]) -> bool:
+        from plugins.commands.windows import get_monitor_by_index, move_window_to_monitor
+        monitor = get_monitor_by_index(number)
+        return bool(monitor and preflight() and
+                    move_window_to_monitor(hwnd, monitor, preflight=preflight))
+
+    def snap(self, hwnd: int, side: str, preflight: Callable[[], bool]) -> bool:
+        from plugins.commands.windows import snap_window
+        return snap_window(hwnd, side, preflight=preflight)
+
+    def close(self, hwnd: int) -> None:
+        import win32con
+        import win32gui
+        win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+
+
+class BoundWindowEffects:
+    """Execute only a controller-bound SubjectRef; never resolve names or pointer."""
+
+    def __init__(self, targets: WindowTargetAdapter, actions=None, *, clock=time.monotonic,
+                 sleep=time.sleep):
+        self.targets = targets
+        self.actions = actions if actions is not None else NativeWindowActions()
+        self._clock = clock
+        self._sleep = sleep
+
+    def execute(self, ref: SubjectRef, verb: str, *, guard: Callable[[], bool],
+                side: str | None = None, monitor: int | None = None,
+                title_hash: str | None = None) -> EffectResult:
+        if not isinstance(ref, SubjectRef) or ref.kind != "window" or not callable(guard):
+            return EffectResult(False, "missing_controller_context")
+        if verb == "close" and not title_hash:
+            return EffectResult(False, "missing_close_title")
+        title_hash = title_hash if verb == "close" else None
+
+        def ready() -> bool:
+            try:
+                return bool(guard() and self.targets.validate(ref.identity, title_hash=title_hash).ok)
+            except Exception:
+                return False
+
+        if not ready():
+            return EffectResult(False, "target_or_context_changed")
+        hwnd = ref.identity.hwnd
+        try:
+            if verb == "focus":
+                success = self.actions.focus(hwnd, ready)
+            elif verb in ("minimize", "maximize"):
+                if not ready():
+                    return EffectResult(False, "target_or_context_changed")
+                self.actions.show(hwnd, verb)
+                deadline = self._clock() + 0.15
+                success = False
+                while ready():
+                    if self.actions.state(hwnd, verb):
+                        success = True
+                        break
+                    if self._clock() >= deadline:
+                        break
+                    self._sleep(0.02)
+            elif verb == "move" and isinstance(monitor, int) and monitor > 0:
+                success = self.actions.move(hwnd, monitor, ready)
+            elif verb == "snap" and side in ("left", "right", "top", "bottom",
+                                               "top left", "top right", "bottom left", "bottom right"):
+                success = self.actions.snap(hwnd, side, ready)
+            elif verb == "close":
+                if not ready():
+                    return EffectResult(False, "target_or_context_changed")
+                self.actions.close(hwnd)
+                return EffectResult(True, "close_requested")
+            else:
+                return EffectResult(False, "invalid_verb_args")
+        except Exception:
+            success = False
+        if not ready():
+            return EffectResult(False, "target_or_context_changed")
+        return EffectResult(True, "done", ref) if success else EffectResult(False, "native_failed")

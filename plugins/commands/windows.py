@@ -273,7 +273,7 @@ def get_all_movable_windows(extra_ignore=None):
 # Window moving
 # ---------------------------------------------------------------------------
 
-def raise_window(hwnd: int, *, activate: bool) -> bool:
+def raise_window(hwnd: int, *, activate: bool, preflight=None) -> bool:
     """Restore if minimized, then steal foreground using the full incantation.
 
     Steps:
@@ -300,9 +300,14 @@ def raise_window(hwnd: int, *, activate: bool) -> bool:
     try:
         user32 = ctypes.windll.user32
 
+        def checked(fn, *args):
+            if preflight is not None and not preflight():
+                raise RuntimeError("bound window changed")
+            return fn(*args)
+
         # 1. Restore if minimised.
-        if user32.IsIconic(hwnd):
-            user32.ShowWindow(hwnd, win32con.SW_RESTORE)
+        if checked(user32.IsIconic, hwnd):
+            checked(user32.ShowWindow, hwnd, win32con.SW_RESTORE)
 
         _SWP_NOMOVE = 0x0002
         _SWP_NOSIZE = 0x0001
@@ -310,12 +315,12 @@ def raise_window(hwnd: int, *, activate: bool) -> bool:
         _SWP_FLAGS = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE
 
         if not activate:
-            user32.ShowWindow(hwnd, win32con.SW_SHOW)
-            user32.BringWindowToTop(hwnd)
+            checked(user32.ShowWindow, hwnd, win32con.SW_SHOW)
+            checked(user32.BringWindowToTop, hwnd)
             # TOPMOST flip brings the window forward without permanently
             # pinning it as always-on-top or stealing foreground ownership.
-            user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
-            user32.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
+            checked(user32.SetWindowPos, hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
+            checked(user32.SetWindowPos, hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
             return True
 
         # 2. Capture current foreground and thread IDs.
@@ -342,15 +347,15 @@ def raise_window(hwnd: int, *, activate: bool) -> bool:
             user32.AttachThreadInput(our_tid, tgt_tid, True)
         )
         try:
-            user32.ShowWindow(hwnd, win32con.SW_SHOW)
-            user32.BringWindowToTop(hwnd)
+            checked(user32.ShowWindow, hwnd, win32con.SW_SHOW)
+            checked(user32.BringWindowToTop, hwnd)
             # TOPMOST flip brings the window above everything without
             # permanently pinning it as always-on-top.
-            user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
-            user32.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
-            user32.SetForegroundWindow(hwnd)
-            user32.SetActiveWindow(hwnd)
-            user32.SetFocus(hwnd)
+            checked(user32.SetWindowPos, hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, _SWP_FLAGS)
+            checked(user32.SetWindowPos, hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, _SWP_FLAGS)
+            checked(user32.SetForegroundWindow, hwnd)
+            checked(user32.SetActiveWindow, hwnd)
+            checked(user32.SetFocus, hwnd)
         finally:
             if attached_us:
                 user32.AttachThreadInput(our_tid, tgt_tid, False)
@@ -367,15 +372,22 @@ def raise_window(hwnd: int, *, activate: bool) -> bool:
         return False
 
 
-def move_window_to_monitor(hwnd, monitor):
-    if win32gui.IsIconic(hwnd):
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-
+def move_window_to_monitor(hwnd, monitor, *, preflight=None):
+    def ready():
+        return preflight is None or preflight()
     try:
+        if not ready():
+            return False
+        if win32gui.IsIconic(hwnd):
+            if not ready():
+                return False
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        if not ready():
+            return False
         rect = win32gui.GetWindowRect(hwnd)
     except Exception as e:
         logger.warning("GetWindowRect failed for hwnd %s: %s", hwnd, e)
-        return
+        return False
 
     w = min(rect[2] - rect[0], monitor['width'])
     h = min(rect[3] - rect[1], monitor['height'])
@@ -383,11 +395,22 @@ def move_window_to_monitor(hwnd, monitor):
     x = ml + (monitor['width'] - w) // 2
     y = mt + (monitor['height'] - h) // 2
 
-    title = win32gui.GetWindowText(hwnd)
-    logger.info("Moving '%s' to monitor %s (%d,%d)", title, monitor['index'], x, y)
-    win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
-    if not raise_window(hwnd, activate=True):
+    if not ready():
+        return False
+    logger.info("Moving hwnd %s to monitor %s (%d,%d)", hwnd, monitor['index'], x, y)
+    try:
+        win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
+    except Exception:
+        return False
+    raised = (raise_window(hwnd, activate=True, preflight=preflight) if preflight is not None
+              else raise_window(hwnd, activate=True))
+    if not raised:
         logger.debug("Moved hwnd %s to monitor %s but Windows refused to raise it", hwnd, monitor['index'])
+        return False
+    try:
+        return ready() and win32gui.GetWindowRect(hwnd) == (x, y, x + w, y + h)
+    except Exception:
+        return False
 
 
 def maximize_window_on_monitor(hwnd, monitor):
@@ -1196,51 +1219,57 @@ def _snap_rect(monitor, direction):
     return table.get(direction)
 
 
+def snap_window(hwnd, direction, *, preflight=None) -> bool:
+    """Snap an exact HWND; a bound caller rechecks identity at each substep."""
+    if direction not in _SNAP_DIRECTIONS:
+        return False
+    ready = lambda: preflight is None or preflight()
+    if not hwnd or not ready():
+        return False
+    try:
+        if win32gui.IsIconic(hwnd):
+            if not ready():
+                return False
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        if win32gui.GetWindowPlacement(hwnd)[1] == win32con.SW_SHOWMAXIMIZED:
+            if not ready():
+                return False
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        if not ready():
+            return False
+        monitors = get_monitors()
+        if preflight is None:
+            monitor = _get_monitor_for_window(hwnd, monitors)
+        else:
+            # A bound action cannot use the legacy primary-monitor fallback.
+            rect = win32gui.GetWindowRect(hwnd)
+            cx, cy = (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
+            monitor = next((m for m in monitors if m['rect'][0] <= cx < m['rect'][2]
+                            and m['rect'][1] <= cy < m['rect'][3]), None)
+        if not monitor:
+            return False
+        x, y, w, h = _snap_rect(monitor, direction)
+        if not ready():
+            return False
+        win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
+        raised = (raise_window(hwnd, activate=True, preflight=preflight) if preflight is not None
+                  else raise_window(hwnd, activate=True))
+        return bool(raised and ready() and
+                    win32gui.GetWindowRect(hwnd) == (x, y, x + w, y + h))
+    except Exception as exc:
+        logger.debug("snap_window failed for hwnd %s: %s", hwnd, exc)
+        return False
+
+
 @command("snap", aliases=["dock"], pack="window-management",
          risk_class="ui", param_schema={"side": {"type": "side", "required": False}})
 def handle_snap(app, remainder):
-    """Snaps the focused window to the side you name, such as left or right."""
+    """Legacy foreground snap delegates to the exact-HWND helper."""
     direction = remainder.strip().lower()
     if direction not in _SNAP_DIRECTIONS:
-        print(
-            f"[SNAP] Unknown direction '{direction}'. "
-            "Say: left, right, top, bottom, top left, top right, "
-            "bottom left, or bottom right."
-        )
+        print(f"[SNAP] Unknown direction '{direction}'.")
         return True
-
     hwnd = win32gui.GetForegroundWindow()
-    if not hwnd:
-        print("[SNAP] No foreground window")
-        return True
-
-    # Restore before resizing: SetWindowPos has no effect on maximized windows
-    # and produces wrong coords on minimized ones.
-    if win32gui.IsIconic(hwnd):
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-    try:
-        if win32gui.GetWindowPlacement(hwnd)[1] == win32con.SW_SHOWMAXIMIZED:
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-    except Exception as e:
-        logger.debug(f"handle_snap: {e}")
-
-    monitors = get_monitors()
-    monitor = _get_monitor_for_window(hwnd, monitors)
-    if not monitor:
-        print("[SNAP] Could not determine monitor for foreground window")
-        return True
-
-    snap = _snap_rect(monitor, direction)
-    if snap is None:
-        return True
-
-    x, y, w, h = snap
-    title = win32gui.GetWindowText(hwnd)
-    logger.info(
-        "Snap '%s' %s -> monitor %s (%d,%d %dx%d)",
-        title, direction, monitor['index'], x, y, w, h,
-    )
-    win32gui.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
-    if not raise_window(hwnd, activate=True):
-        logger.debug("Snapped hwnd %s but Windows refused to raise it", hwnd)
+    if not hwnd or not snap_window(hwnd, direction):
+        print("[SNAP] Window could not be snapped")
     return True

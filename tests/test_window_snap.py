@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / 'plugins' / 'commands'))
 
 from windows import _snap_rect, _get_monitor_for_window, _SNAP_DIRECTIONS
+import windows as win
 
 
 # ---------------------------------------------------------------------------
@@ -200,3 +201,47 @@ def test_get_monitor_for_window_fallback_to_primary_on_exception(monkeypatch):
     monkeypatch.setattr(win32gui, 'GetWindowRect', lambda hwnd: (_ for _ in ()).throw(Exception("fail")))
     result = _get_monitor_for_window(0xDEAD, monitors)
     assert result is MON_1080
+
+
+def test_snap_window_uses_supplied_hwnd_and_checks_result(monkeypatch):
+    import win32con
+    import win32gui
+
+    calls = []
+    monkeypatch.setattr(win32gui, 'IsIconic', lambda hwnd: False)
+    monkeypatch.setattr(win32gui, 'GetWindowPlacement', lambda hwnd: (None, win32con.SW_SHOWNORMAL))
+    monkeypatch.setattr(win32gui, 'SetWindowPos', lambda hwnd, *args: calls.append((hwnd, args)))
+    monkeypatch.setattr(win32gui, 'GetWindowRect', lambda hwnd: (0, 0, 960, 1040))
+    monkeypatch.setattr(win32gui, 'GetForegroundWindow', lambda: (_ for _ in ()).throw(
+        AssertionError('bound snap must not select foreground')))
+    monkeypatch.setattr(win, 'get_monitors', lambda: [MON_1080])
+    monkeypatch.setattr(win, '_get_monitor_for_window', lambda hwnd, monitors: MON_1080)
+    monkeypatch.setattr(win, 'raise_window', lambda hwnd, *, activate, preflight=None:
+                        activate and preflight())
+
+    assert win.snap_window(101, 'left', preflight=lambda: True)
+    assert calls[0][0] == 101
+    assert calls[0][1][:4] == (win.HWND_TOP, 0, 0, 960)
+
+
+def test_snap_window_stops_when_preflight_changes_before_resize(monkeypatch):
+    import win32con
+    import win32gui
+
+    calls = []
+    checks = iter((True, False))
+    monkeypatch.setattr(win32gui, 'IsIconic', lambda hwnd: True)
+    monkeypatch.setattr(win32gui, 'ShowWindow', lambda *args: calls.append(args))
+    monkeypatch.setattr(win32gui, 'SetWindowPos', lambda *args: calls.append(args))
+    assert not win.snap_window(101, 'left', preflight=lambda: next(checks))
+    assert calls == []
+
+
+def test_legacy_snap_delegates_to_exact_hwnd_helper(monkeypatch):
+    import win32gui
+
+    called = []
+    monkeypatch.setattr(win32gui, 'GetForegroundWindow', lambda: 202)
+    monkeypatch.setattr(win, 'snap_window', lambda hwnd, side: called.append((hwnd, side)) or True)
+    assert win.handle_snap(None, 'right') is True
+    assert called == [(202, 'right')]

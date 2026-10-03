@@ -1047,6 +1047,7 @@ class PendingOperation:
                  foreground_target: Optional[dict] = None,
                  foreground_probe: Optional[Callable[[], dict]] = None,
                  ttl_s: float = CONFIRM_TTL_S,
+                 refusal_guard: Optional[Callable[[], Optional[str]]] = None,
                  clock: Callable[[], float] = time.monotonic):
         self.invocation = inv
         self.prompt = prompt
@@ -1060,6 +1061,7 @@ class PendingOperation:
         # its private identity is still captured and rechecked on approval.
         self._foreground_target = dict(foreground_target or {})
         self._foreground_probe = foreground_probe
+        self._refusal_guard = refusal_guard
         self._app = app
         self._clock = clock
         self._ttl_s = ttl_s
@@ -1091,6 +1093,13 @@ class PendingOperation:
         app = app if app is not None else self._app
         if app is not None and not is_fresh(app, self.generation):
             return "stale"
+        if self._refusal_guard is not None:
+            try:
+                reason = self._refusal_guard()
+            except Exception:
+                reason = "bound context unavailable"
+            if reason:
+                return reason
         if self._target_probe is not None:
             if self.targets.get("gone"):
                 self.target_change = describe_target_change(self.targets, self.targets)
@@ -1151,6 +1160,8 @@ class PendingOperation:
         return True
 
     def approve(self, *, always: bool = False, source: str = ANSWER_VOICE, app=None) -> bool:
+        if always and self.invocation.command_id.startswith("interact "):
+            return False
         if source not in (ANSWER_VOICE, ANSWER_DIALOG):
             logger.warning("[POLICY] refused a %s-sourced approval of %s", source,
                            self.invocation.command_id)
@@ -1352,7 +1363,8 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
                   targets: Optional[dict] = None,
                   target_probe: Optional[Callable[[], dict]] = None,
                   foreground_target: Optional[dict] = None,
-                  foreground_probe: Optional[Callable[[], dict]] = None) -> PendingOperation:
+                  foreground_probe: Optional[Callable[[], dict]] = None,
+                  refusal_guard: Optional[Callable[[], Optional[str]]] = None) -> PendingOperation:
     """Put THE pending operation into the shared pending slot. An older record
     is superseded: cancelled visibly ("cancelled: superseded") so a blocked
     waiter wakes up and a late "yes" cannot reach it.
@@ -1402,7 +1414,7 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
     op = PendingOperation(inv, prompt, on_approve=on_approve, on_reject=on_reject,
                           app=app, targets=targets, target_probe=target_probe,
                           foreground_target=foreground_target, foreground_probe=foreground_probe,
-                          ttl_s=ttl_s)
+                          ttl_s=ttl_s, refusal_guard=refusal_guard)
     record = {
         "type": record_type,
         "op": op,
@@ -1419,6 +1431,51 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
         record.update(extra)
     _install_record(app, record)
     return op
+
+
+def stage_bound_pending(app, inv: Invocation, prompt: str, *, targets: dict,
+                        target_probe: Callable[[], dict],
+                        current_invocation: Callable[[], Invocation],
+                        reply_guard: Callable[[], bool], on_approve,
+                        on_reject=None, ttl_s: float = CONFIRM_TTL_S) -> PendingOperation:
+    """Stage one exact target and refuse changed args/context at approval."""
+    frozen = Invocation(inv.command_id, copy.deepcopy(inv.args), inv.route,
+                        inv.generation, source_text=inv.source_text)
+    expected_hash = argument_hash(frozen.command_id, frozen.args)
+    frozen_targets = copy.deepcopy(targets)
+
+    def refusal_guard() -> Optional[str]:
+        now = current_invocation()
+        if (not isinstance(now, Invocation) or now.route != frozen.route
+                or now.generation != frozen.generation
+                or argument_hash(now.command_id, now.args) != expected_hash
+                or argument_hash(frozen.command_id, frozen.args) != expected_hash):
+            return "arguments changed"
+        return None if reply_guard() else "bound context changed"
+
+    def guarded_approve(op: PendingOperation) -> None:
+        try:
+            now = current_invocation()
+            same_args = (isinstance(now, Invocation)
+                         and now.route == frozen.route and now.generation == frozen.generation
+                         and argument_hash(now.command_id, now.args) == expected_hash
+                         and argument_hash(op.invocation.command_id, op.invocation.args) == expected_hash
+                         and op.arg_hash == expected_hash)
+            same_target = dict(target_probe() or {}) == frozen_targets
+            eligible = bool(reply_guard())
+        except Exception:
+            same_args = same_target = eligible = False
+        if op.always or not (same_args and same_target and eligible):
+            _emit(app, frozen, Denied("bound_confirmation_changed"))
+            return
+        decision = authorize(frozen, app=app, confirmed=True)
+        if isinstance(decision, Allowed):
+            on_approve(op)
+
+    return stage_pending(app, frozen, prompt, on_approve=guarded_approve,
+                         on_reject=on_reject, record_type="action", ttl_s=ttl_s,
+                         targets=frozen_targets, target_probe=target_probe,
+                         refusal_guard=refusal_guard)
 
 
 def _install_record(app, record: dict) -> None:
@@ -1539,6 +1596,8 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
         logger.warning("[POLICY] ignored a %s-sourced %r for pending %s", source, reply, op.op_id[:8])
         return "refused:model"
     if reply == REPLY_WAIT:
+        if op.invocation.command_id.startswith("interact "):
+            return "refused:interact deadline"
         if op.is_live(app) and op.extend():
             try:
                 from plugins.commands import ask_ollama  # noqa: PLC0415

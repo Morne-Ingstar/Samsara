@@ -272,13 +272,17 @@ SYNONYM_PAYLOADS = [
 class TestModelBypass:
     def test_hidden_ava_forget_is_refused_before_execution(self, app, executor, effects, monkeypatch, caplog):
         monkeypatch.setattr(ask_ollama, "offered_menu", lambda *_args: ["switch window"])
+        # Isolate the closed-world action gate from route consent and the model retry.
+        monkeypatch.setattr(ask_ollama, "_disabled_since_request", lambda _app: False)
+        monkeypatch.setattr(ask_ollama, "ask_model", lambda *_args, **_kwargs:
+                            ask_ollama.AvaReply("That command is unavailable.", "ollama", 0))
         monkeypatch.setattr(ep, "command_exists", lambda cid, **_kwargs: cid == "ava forget")
         with patch.object(executor, "execute_canonical", wraps=executor.execute_canonical) as execute:
             caplog.set_level(logging.WARNING)
             outcome = ask_ollama.handle_response(
                 app, "CONFIRM acknowledgement.\nACTION ava forget",
                 original_text="tell me a joke", generation=7)
-        assert outcome.state == "refused" and outcome.reason == "not_offered"
+        assert outcome.state == "spoken" and outcome.reason == "action_refused_conversational"
         assert effects == [] and execute.call_count == 0
         assert any("ava forget" in record.message for record in caplog.records)
         assert ("Blocked: ava forget", "error") in [call.args for call in app._show_outcome_chip.call_args_list]
