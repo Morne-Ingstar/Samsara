@@ -25,7 +25,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from plugins.commands import ask_ollama  # noqa: E402
-from samsara import commands as commands_mod, execution_policy as ep  # noqa: E402
+from samsara import ai_preferences, commands as commands_mod, execution_policy as ep  # noqa: E402
 from samsara import plugin_commands  # noqa: E402
 from samsara.command_registry import DispatchResult, DispatchState  # noqa: E402
 from samsara.commands import CommandExecutor  # noqa: E402
@@ -66,7 +66,12 @@ def executor(tmp_path, effects, monkeypatch):
 @pytest.fixture
 def app(executor):
     a = types.SimpleNamespace()
-    a.config = {"ollama": {"enabled": True}}
+    base = {"ollama": {"host": "http://127.0.0.1:11434", "model": "fixture-model"}}
+    consent = ai_preferences.accept_consent(
+        base, features=("ava",), provider=ai_preferences.provider_for(base, "local"),
+        accepted_at="fixture-accept")
+    a.config = ai_preferences.apply_preferences(
+        base, policy="local", ava=True, consent=consent, local_model="fixture-model")
     a.audio_coordinator = Mock()
     a.play_sound = Mock()
     a.command_executor = executor
@@ -201,7 +206,7 @@ class TestStop:
         assert started.wait(2)
         gen_before = ep.current_generation(app)
 
-        outcome = manager.dispatch_utterance("Stop.", SIGNALS)
+        outcome = manager.dispatch_utterance("Halt.", SIGNALS)
 
         assert outcome.kind == "stopped"
         assert order == [("stop", "stop", gen_before)]            # stop ran; no disarm
@@ -209,7 +214,7 @@ class TestStop:
         assert manager.dictate_pending_buffer.strip() == "a staged thought"   # draft kept
         assert manager.mode is sm.SessionMode.DICTATE               # mic/session still armed
         assert outcome.detail["draft_kept_chars"] == len(manager.dictate_pending_buffer)
-        assert sm.outcome_chip(outcome.kind, outcome.detail) == ("stopped", "warning")
+        assert sm.outcome_chip(outcome.kind, outcome.detail) == ("halted speech", "warning")
         assert ("stopped", "warning") in [c.args for c in app._show_outcome_chip.call_args_list]
 
         release.set()
@@ -235,7 +240,7 @@ class TestStop:
         assert at_boundary.wait(2)
 
         manager, _order = _manager(app)
-        assert manager.dispatch_utterance("stop", SIGNALS).kind == "stopped"
+        assert manager.dispatch_utterance("halt", SIGNALS).kind == "stopped"
         release.set()
         worker.join(3)
         assert effects == []
@@ -244,7 +249,7 @@ class TestStop:
         app._ava_session_dispatch_queue.append((3, "close the window"))
         op = ep.stage_pending(app, Invocation("permanent delete", {}, Route.MODEL, 3), "Permanent delete?")
         manager, _ = _manager(app)
-        outcome = manager.dispatch_utterance("stop", SIGNALS)
+        outcome = manager.dispatch_utterance("halt", SIGNALS)
         assert outcome.detail["cleared"]["queued"] >= 1 and outcome.detail["cleared"]["pending"] is True
         assert len(app._ava_session_dispatch_queue) == 0
         assert op.approved is False and ep.pending_operation() is None

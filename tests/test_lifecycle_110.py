@@ -33,12 +33,17 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from plugins.commands import ask_ollama  # noqa: E402
-from samsara import execution_policy as ep  # noqa: E402
+from samsara import ai_preferences, execution_policy as ep  # noqa: E402
 
 
 def _app():
     a = types.SimpleNamespace()
-    a.config = {"ollama": {"enabled": True}}
+    base = {"ollama": {"host": "http://127.0.0.1:11434", "model": "fixture-model"}}
+    consent = ai_preferences.accept_consent(
+        base, features=("ava",), provider=ai_preferences.provider_for(base, "local"),
+        accepted_at="fixture-accept")
+    a.config = ai_preferences.apply_preferences(
+        base, policy="local", ava=True, consent=consent, local_model="fixture-model")
     a.audio_coordinator = Mock()
     a.audio_coordinator.is_speaking = True
     a.audio_coordinator.speak = Mock(return_value=types.SimpleNamespace(utterance_id="u1"))
@@ -74,6 +79,8 @@ class TestScheduleLifecycle:
     def test_replacing_a_schedule_stops_the_old_worker_mid_effect(self, monkeypatch):
         """The exact Astra F7 shape: the old worker is INSIDE its effect when
         the replacement starts. Real threads, the real start/stop functions."""
+        # Keep the concurrency loop short; interval validation is tested separately.
+        monkeypatch.setattr(ask_ollama, "schedule_interval_error", lambda _interval: None)
         fired = []
         inside_effect = threading.Event()
         release = threading.Event()
@@ -117,6 +124,7 @@ class TestScheduleLifecycle:
     def test_stop_schedule_stops_every_live_schedule_and_counts_them(self, monkeypatch):
         """Two live workers (the second started without the usual stop-first)
         are both stopped, and the count is what the voice handler reports."""
+        monkeypatch.setattr(ask_ollama, "schedule_interval_error", lambda _interval: None)
         fired = []
         app = _app()
         monkeypatch.setattr(ask_ollama, "_execute_safe",
