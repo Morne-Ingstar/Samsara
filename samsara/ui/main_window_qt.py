@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import config_defaults
-from samsara.ui import qt_runtime, theme
+from samsara.ui import qt_runtime, theme, window_activation
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 from samsara.ui.command_marquee import build_example_strip
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
@@ -809,17 +809,20 @@ class MainWindowQt:
         window = self._window
         if window is None:
             return
-        if window.isMinimized():
-            window.showNormal()
-        else:
-            window.show()
-        window.raise_()
-        window.activateWindow()
+        if reason == "splash closed":
+            # Splash dismissal is passive. Startup already showed the hub;
+            # closing its overlay must not activate it over the user's work.
+            logger.info("[MAIN] splash closed: main window remains visible")
+            return
+        attempted = window_activation.surface_requested(
+            window, confirm=lambda: self._confirm_in_front(reason))
+        if not attempted:
+            logger.info("[MAIN] %s: active modal kept focus", reason)
+            return
         g = window.geometry()
         logger.info(
             "[MAIN] %s: show() called, isVisible=%s windowState=%s geometry=%s,%s %sx%s",
             reason, window.isVisible(), _state_name(window), g.x(), g.y(), g.width(), g.height())
-        self._confirm_in_front(reason)
 
     def _confirm_in_front(self, reason: str):
         """Windows foreground lock: a process that is not the foreground

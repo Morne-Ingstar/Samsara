@@ -25,6 +25,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
 
 from samsara.ui import main_window_qt
@@ -87,6 +88,7 @@ class TestShowAndRaiseRestoresMinimizedWindow:
     def test_minimized_window_is_restored(self, qapp):
         mw = main_window_qt.MainWindowQt(_make_app())
         window = QWidget()
+        window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         mw._window = window
         try:
             window.show()
@@ -104,6 +106,7 @@ class TestShowAndRaiseRestoresMinimizedWindow:
     def test_non_minimized_window_is_just_shown(self, qapp):
         mw = main_window_qt.MainWindowQt(_make_app())
         window = QWidget()
+        window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         mw._window = window
         try:
             window.show()

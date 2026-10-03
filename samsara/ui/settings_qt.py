@@ -3,6 +3,7 @@ from samsara.ui.settings.shared_qt import *
 from samsara.ui.settings.services import SettingsServices
 from samsara.ui.settings.assembly import PageAssembly
 from samsara.ui.settings.presentation import style as presentation_style
+from samsara.ui import window_activation
 from samsara.ui.settings import sidebar as settings_sidebar
 from samsara.ui.settings import general_page, dictation_page, audio_page, ava_page, shortcuts_page, help_page, tools_page
 from samsara.ui.settings.general_qt import GeneralPage
@@ -221,9 +222,7 @@ class _SettingsWindow(
             self.open_tool(name)
             return
         self._sidebar.setCurrentRow(_TAB_NAMES.index(name))
-        self.show()
-        self.raise_()
-        self.activateWindow()
+        window_activation.surface_requested(self)
 
     def _select_tool(self, name):
         if name not in self._tool_pages:
@@ -236,9 +235,7 @@ class _SettingsWindow(
 
     def open_tool(self, name):
         self._select_tool(name)
-        self.show()
-        self.raise_()
-        self.activateWindow()
+        window_activation.surface_requested(self)
 
     def open_preferences(self, name):
         self.show_tab(name)

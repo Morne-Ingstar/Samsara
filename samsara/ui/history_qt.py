@@ -8,7 +8,7 @@ embedded History tab. No list logic is duplicated in this file.
 
 from PySide6.QtWidgets import QMainWindow
 
-from samsara.ui import qt_runtime, theme
+from samsara.ui import qt_runtime, theme, window_activation
 from samsara.ui.history_view import HistoryView
 
 from samsara.log import get_logger
@@ -41,14 +41,12 @@ class HistoryQt:
     def _show_and_refresh(self):
         """Runs on the Qt thread; prevents a reopened window looking stale."""
         self._window._view.refresh()
-        self._window.show()
-        self._window.raise_()
-        self._window.activateWindow()
+        window_activation.surface_requested(self._window)
 
     def _init_window(self):
         """Runs on the Qt thread."""
         self._window = _HistoryWindow(self.app)
-        self._window.show()
+        window_activation.surface_requested(self._window)
 
 
 # ---------------------------------------------------------------------------
