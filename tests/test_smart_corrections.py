@@ -10,10 +10,8 @@ smart_correct() resolves its backend via _resolve_backend_detailed() (not
 the public resolve_backend() wrapper) so it can also see used_cloud_fallback
 and skip_reason for logging/notification purposes -- tests that drive
 smart_correct()'s gating/happy-path/failure behavior monkeypatch
-_resolve_backend_detailed directly. Tests of the routing matrix itself
-(auto/ollama/cloud x reachability x allow_cloud_fallback) exercise the real
-resolve_backend()/_resolve_backend_detailed() logic against a monkeypatched
-_ollama_reachable + cloud_llm.is_enabled.
+_resolve_backend_detailed directly. Provider routing tests exercise the real
+consent-gated resolver against a monkeypatched _ollama_reachable.
 """
 
 import sys
@@ -26,15 +24,26 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import samsara.smart_corrections as sc
+from samsara import ai_preferences
 
 
-def _make_app(smart_corrections=None, cloud_llm=None, vocab=None, corrections=None, language=None):
+def _make_app(smart_corrections=None, cloud_llm=None, vocab=None, corrections=None, language=None,
+              policy=None):
     app = types.SimpleNamespace()
+    policy = policy or ('cloud' if (smart_corrections or {}).get('backend') == 'cloud' else 'local')
     app.config = {
         'smart_corrections': smart_corrections or {},
-        'cloud_llm': cloud_llm or {},
-        'ollama': {},
+        'cloud_llm': {'provider': 'deepseek', 'api_key': 'test-not-a-key',
+                      'enabled': policy == 'cloud', **(cloud_llm or {})},
+        'ollama': {'enabled': policy == 'local', 'host': 'http://localhost:11434'},
+        'ava': {'provider_policy': policy},
+        'ava_edit': {'enabled': True},
     }
+    provider = ai_preferences.provider_for(
+        app.config, policy, resolved_addresses=('127.0.0.1', '::1') if policy == 'local' else ())
+    app.config['ava']['consent'] = ai_preferences.accept_consent(
+        app.config, features=('editing',), provider=provider, cloud=policy == 'cloud',
+        accepted_at='2026-01-01T00:00:00+00:00')
     if language is not None:
         app.config['language'] = language
     app.voice_training_window = types.SimpleNamespace(
@@ -149,8 +158,7 @@ class TestFailureHandling:
 
 
 # ============================================================================
-# Routing matrix -- backend='auto' x ollama reachability x allow_cloud_fallback
-# (Task 2: auto-fallback must be opt-in, never a silent cloud-routing surprise)
+# Provider routing -- prompt 222 B makes the consented route authoritative.
 # ============================================================================
 
 class TestRoutingMatrix:
@@ -160,22 +168,15 @@ class TestRoutingMatrix:
 
         assert sc.resolve_backend(app) == 'ollama'
 
-    def test_auto_ollama_down_fallback_disabled_skips_with_info_log(self, monkeypatch, caplog):
+    def test_auto_ollama_down_fallback_disabled_skips_with_info_log(self, monkeypatch):
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
         app = _make_app(smart_corrections={'backend': 'auto', 'allow_cloud_fallback': False})
 
-        with caplog.at_level('INFO'):
-            backend = sc.resolve_backend(app)
-
-        assert backend is None
-        assert any(
-            "local backend down, cloud fallback disabled -- skipping" in r.message
-            for r in caplog.records
-        )
+        assert sc._resolve_backend_detailed(app) == (
+            None, False, 'ollama_down_explicit_backend')
 
     def test_auto_ollama_down_fallback_enabled_cloud_configured_uses_cloud(self, monkeypatch):
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
-        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: True)
         app = _make_app(
             smart_corrections={'backend': 'auto', 'allow_cloud_fallback': True},
             cloud_llm={'enabled': True},
@@ -183,23 +184,15 @@ class TestRoutingMatrix:
 
         backend, used_fallback, skip_reason = sc._resolve_backend_detailed(app)
 
-        assert backend == 'cloud'
-        assert used_fallback is True
-        assert skip_reason is None
+        assert (backend, used_fallback, skip_reason) == (
+            None, False, 'ollama_down_explicit_backend')
 
-    def test_auto_ollama_down_fallback_enabled_no_cloud_configured_skips(self, monkeypatch, caplog):
+    def test_auto_ollama_down_fallback_enabled_no_cloud_configured_skips(self, monkeypatch):
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
-        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: False)
         app = _make_app(smart_corrections={'backend': 'auto', 'allow_cloud_fallback': True})
 
-        with caplog.at_level('INFO'):
-            backend = sc.resolve_backend(app)
-
-        assert backend is None
-        assert any(
-            "no cloud provider configured -- skipping" in r.message
-            for r in caplog.records
-        )
+        assert sc._resolve_backend_detailed(app) == (
+            None, False, 'ollama_down_explicit_backend')
 
     def test_explicit_backend_ollama_down_resolves_none(self, monkeypatch):
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
@@ -498,7 +491,7 @@ class TestFallbackNotice:
         assert notified[0][0] == "Smart Corrections"
         assert "skipping" in notified[0][1]
 
-    def test_notifies_once_when_routed_to_cloud_via_fallback(self, monkeypatch):
+    def test_local_route_never_falls_back_to_cloud_or_notifies_of_cloud(self, monkeypatch):
         notified = []
         nm = types.SimpleNamespace(
             show_notification=lambda title, msg, duration=5: notified.append((title, msg))
@@ -511,16 +504,14 @@ class TestFallbackNotice:
         )
         app.notification_manager = nm
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
-        monkeypatch.setattr(sc.cloud_llm, 'is_enabled', lambda app: True)
-        monkeypatch.setattr(
-            sc, '_call_cloud',
-            lambda text, app, system_prompt, timeout_s: (text, False),
-        )
+        cloud_calls = []
+        monkeypatch.setattr(sc, '_call_cloud', lambda *args: cloud_calls.append(args))
 
         sc.smart_correct("route this to cloud via fallback please", app)
 
+        assert cloud_calls == []
         assert len(notified) == 1
-        assert "using Cloud AI" in notified[0][1]
+        assert "skipping" in notified[0][1]
 
     def test_no_notification_manager_does_not_raise(self, monkeypatch):
         app = _make_app(smart_corrections={

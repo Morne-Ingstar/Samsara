@@ -91,7 +91,7 @@ def test_openrouter_send_reuses_openai_compatible_request(monkeypatch):
 
 
 def test_openrouter_is_selectable_in_ava_cloud_ui(qapp):
-    from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+    from samsara.ui.settings_qt import _SettingsWindow
     from tests.test_settings import _StubApp
 
     win = _SettingsWindow(_StubApp())
@@ -104,6 +104,6 @@ def test_openrouter_is_selectable_in_ava_cloud_ui(qapp):
     )
     assert "many models" in win._widgets["cloud_info_label"].text()
 
-    save_ava = win._save_fns[_TAB_NAMES.index("Ava / Cloud")]
+    save_ava = win._source_saves["ava"][0]
     assert save_ava({})["cloud_llm"]["provider"] == "openrouter"
     win.close()

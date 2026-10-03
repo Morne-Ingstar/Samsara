@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from plugins.commands import ask_ollama  # noqa: E402
-from samsara import ava_readiness, cloud_llm  # noqa: E402
+from samsara import ai_preferences, ava_readiness, cloud_llm  # noqa: E402
 from samsara.tts.coordinator import AudioCoordinator  # noqa: E402
 from samsara.tts.engine_base import SpeechHandle  # noqa: E402
 from samsara.ui import ava_search_panel_qt  # noqa: E402
@@ -100,14 +100,22 @@ def _isolation(monkeypatch):
 
 def _app(*, web_search=True, provider="deepseek", cloud=True):
     app = MagicMock()
+    policy = 'cloud' if cloud else 'local'
     app.config = {
-        "ollama": {"enabled": True, "host": "http://localhost:11434"},
+        "ollama": {"enabled": not cloud, "host": "http://localhost:11434"},
         "cloud_llm": {"enabled": cloud, "provider": provider, "api_key": "test-not-a-key" if cloud else "",
                       "web_search": web_search},
+        "ava": {"provider_policy": policy},
+        "ava_command_session": {"enabled": True},
         "command_mode": {"tts_char_limit": 50},
         "tts": {"speed": 1.0, "volume": 0.8, "voice_id": None},
         "language": "en",
     }
+    destination = ai_preferences.provider_for(
+        app.config, policy, resolved_addresses=('127.0.0.1', '::1') if not cloud else ())
+    app.config['ava']['consent'] = ai_preferences.accept_consent(
+        app.config, features=('ava',), provider=destination, cloud=cloud,
+        accepted_at='2026-01-01T00:00:00+00:00')
     app.command_mode_active = True
     app.engine = MagicMock()
     app.engine.speak.return_value = SpeechHandle(utterance_id="spoken-1")
@@ -115,6 +123,7 @@ def _app(*, web_search=True, provider="deepseek", cloud=True):
     app.audio_coordinator = AudioCoordinator(app, app.engine)
     app.play_sound = Mock()
     app._ava_memory = MagicMock()
+    app._ava_memory._mode = "clear"
     app._ava_memory.get_messages.return_value = [
         {"role": "system", "content": "SYSTEM"}, {"role": "user", "content": "what's the weather"}]
     app._ava_turn_outcome = None
@@ -367,6 +376,8 @@ def test_control_the_same_text_without_a_search_does_reach_the_executor(monkeypa
         {"type": "text", "text": "CONFIRM Close it.\nACTION close window"}], "usage": {}}
     _post_returning(monkeypatch, _Resp(200, body))
     app = _app()
+    app.command_executor.ava_menu.return_value = ["close window"]
+    app.command_executor.commands = {"close window": Mock()}
     run_turn(app, "close this window")
     effect_spies.handle_response.assert_called_once()
     # Queue 107: model proposals go through the one execution API.
@@ -378,6 +389,7 @@ def test_next_ordinary_turn_has_no_web_text_in_context(monkeypatch, run_turn):
     _post_returning(monkeypatch, _Resp(200, _search_body(INJECTED)))
     app = _app()
     app._ava_memory = AvaMemory(max_turns=10)
+    app._ava_memory._mode = "clear"
     run_turn(app)
     history = app._ava_memory.get_messages("SYS")
     assert not any("ignore all previous instructions" in (m.get("content") or "") for m in history)
@@ -518,13 +530,13 @@ def _settings_window(config):
     sys.path.insert(0, str(ROOT / "tests"))
     from test_settings import _StubApp as SettingsStub
     stub = SettingsStub()
+    config.setdefault('ava', {'provider_policy': 'cloud' if config.get('cloud_llm', {}).get('enabled') else 'local'})
     stub.config = config
     return _SettingsWindow(stub)
 
 
 def _ava_save(win):
-    from samsara.ui.settings_qt import _TAB_NAMES
-    return win._save_fns[_TAB_NAMES.index('Ava / Cloud')]({})
+    return win._source_saves['ava'][0]({})
 
 
 @pytest.mark.parametrize("cloud, provider, available", [
@@ -535,7 +547,8 @@ def test_settings_control_availability(qapp, cloud, provider, available):
     win = _settings_window({"cloud_llm": {"enabled": cloud, "provider": provider,
                                           "api_key": "k", "web_search": True}})
     cb = win._widgets['cloud_web_search']
-    assert cb.text() == "Let Ava search the web (DeepSeek only)"
+    assert win._rows_by_widget['cloud_web_search'].title == "Web search"
+    assert cb.text() == ("On" if available else "Off")
     assert cb.isEnabled() is available
     assert cb.isChecked() is available
     # isHidden(): the page may sit in a non-current stack, so ancestors are hidden
@@ -545,7 +558,16 @@ def test_settings_control_availability(qapp, cloud, provider, available):
     assert _ava_save(win)['cloud_llm']['web_search'] is available
 
 
-def test_settings_default_is_off_and_switching_provider_disarms(qapp):
+def test_settings_default_is_off_and_switching_provider_disarms(qapp, monkeypatch):
+    from samsara.ui.settings import ava_cloud_qt
+
+    def accept_provider_change(_win, effective, cloud_enabled):
+        destination = ai_preferences.provider_for(effective, 'cloud')
+        return ai_preferences.accept_consent(
+            effective, features=('ava',), provider=destination, cloud=True,
+            accepted_at='2026-01-01T00:00:00+00:00')
+
+    monkeypatch.setattr(ava_cloud_qt.ava_consent_qt, 'request_consent', accept_provider_change)
     win = _settings_window({"cloud_llm": {"enabled": True, "provider": "deepseek", "api_key": "k"}})
     cb = win._widgets['cloud_web_search']
     assert cb.isEnabled() and not cb.isChecked()

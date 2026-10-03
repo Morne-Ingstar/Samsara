@@ -211,6 +211,7 @@ def test_production_local_sinks_refuse_replay_and_notify(app, adapter, monkeypat
         from plugins.commands import ask_ollama
 
         app._ava_memory = Mock()
+        app._ava_memory._mode = "clear"
         app._ava_memory.get_messages.return_value = [{"role": "user", "content": "example text"}]
         assert ask_ollama.ask_model("example text", app, system="example system").failure_kind == ava_readiness.UNREACHABLE
         app._ava_memory.pop_last_if_user.assert_called_once()
