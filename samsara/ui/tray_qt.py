@@ -547,7 +547,9 @@ def _renderer(capture: str, eye: str, small: bool, layer: str,
     # theme.active_theme() is part of the key: the SVG is coloured from the
     # palette, so a cached renderer from the other theme would paint the
     # dark cyan mark onto a white header (queue 129).
-    key = (capture, eye if layer == "eye" or eye == "heard" else "", small, layer,
+    # The brand ring also depends on eye state: resting marks have a warm
+    # head, while armed marks do not. Preserve that input for either layer.
+    key = (capture, eye, small, layer,
            brand, theme.active_theme())
     renderer = _renderer_cache.get(key)
     if renderer is None:

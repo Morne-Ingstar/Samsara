@@ -209,6 +209,21 @@ def test_brand_head_is_warm_but_recording_state_stays_distinct(qapp):
         assert head.name() != theme.RECORDING
 
 
+@pytest.mark.parametrize("capture", ("idle", "listening"))
+@pytest.mark.parametrize("size", (24, 256))
+@pytest.mark.parametrize("first,target", (("armed", "off"), ("off", "armed")))
+def test_brand_ring_cache_preserves_state_independent_of_render_order(qapp, capture, size, first, target):
+    tray_qt.clear_mark_caches()
+    try:
+        expected = tray_qt.render_mark(capture, target, size, brand=True)
+        tray_qt.clear_mark_caches()
+        tray_qt.render_mark(capture, first, size, brand=True)
+        actual = tray_qt.render_mark(capture, target, size, brand=True)
+        assert actual == expected
+    finally:
+        tray_qt.clear_mark_caches()
+
+
 def test_small_tray_mark_keeps_two_legible_joints(qapp):
     image = tray_qt.render_mark("listening", "asleep", 32, small_max=32)
     for angle in (30, 150):
