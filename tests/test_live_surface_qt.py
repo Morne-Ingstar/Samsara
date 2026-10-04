@@ -12,6 +12,16 @@ from samsara.ui.live_surface_qt import (CARD_INSET, CARD_RADIUS, LIVE_SIZE, MARK
                                         render_device_mark)
 
 
+@pytest.fixture(autouse=True)
+def _restore_theme_after_test():
+    """Palette-rendering tests must not change the next test's global theme."""
+    previous = theme.active_theme()
+    try:
+        yield
+    finally:
+        theme.set_theme(previous)
+
+
 def _view(form, *, text="", partial="", capture=CaptureState.OFF,
           document=DocumentState.EMPTY, notice=NoticeKind.NONE):
     return SurfaceView(form, capture, None, document, PresentationState.COMPACT,

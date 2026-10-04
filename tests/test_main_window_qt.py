@@ -253,23 +253,25 @@ from samsara.ui import tray_qt as _tray
 
 
 class TestBrandHeaderAndSidebar:
-    def test_header_mark_is_accent_with_an_eye_at_rest(self, window, qapp):
-        """The 26 px lockup at rest: ACCENT, never ICON_IDLE, eye present."""
+    def test_header_mark_has_accent_body_warm_head_and_empty_resting_centre(self, window, qapp):
+        """The approved mark keeps its cyan body and leaves the centre empty."""
         win, app = window
         app.pair = ("idle", "off")
         win._header_mark.refresh()
         image = win._header_mark.grab().toImage()
         accent = _theme._hex_to_rgb(_theme.ACCENT)
-        grey = _theme._hex_to_rgb(_theme.ICON_IDLE)
+
 
         def near(c, rgb, tol=30):
             return abs(c.red() - rgb[0]) <= tol and abs(c.green() - rgb[1]) <= tol and abs(c.blue() - rgb[2]) <= tol
 
         pixels = [image.pixelColor(x, y) for y in range(image.height()) for x in range(image.width())]
         assert sum(near(c, accent) for c in pixels) > 20
-        assert sum(near(c, grey) and not near(c, accent) for c in pixels) == 0
+        assert any(c.alpha() > 200 and c.red() > c.blue() + 30 for c in pixels)
         centre = image.pixelColor(image.width() // 2, image.height() // 2)
-        assert near(centre, accent), "the closed lid is drawn at the centre when hands-free is off"
+        # QWidget.grab composites onto the header: an empty centre must match
+        # the untouched background, not the former cyan closed-eye stroke.
+        assert centre == image.pixelColor(0, 0)
 
     def test_wordmark_uses_the_display_face_on_a_bordered_band(self, window):
         win, _ = window
