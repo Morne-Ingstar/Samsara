@@ -6470,6 +6470,135 @@
     },
     {
       "aliases": [
+        "feedback brief"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.feedback_brief",
+      "description": "Uses short Samsara sounds for outcomes and speaks questions and read-backs.",
+      "kind": "plugin",
+      "object": "brief",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:62",
+      "undoable": true,
+      "verb": "feedback",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "feedback full"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.feedback_full",
+      "description": "Makes Samsara speak every reply.",
+      "kind": "plugin",
+      "object": "full",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:69",
+      "undoable": true,
+      "verb": "feedback",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "feedback silent"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.feedback_silent",
+      "description": "Shows Samsara replies on screen without speaking them.",
+      "kind": "plugin",
+      "object": "silent",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:55",
+      "undoable": true,
+      "verb": "feedback",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "beeps louder",
+        "louder sounds",
+        "raise the sounds",
+        "sounds louder"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.sounds_louder",
+      "description": "Raises Samsara sounds and beeps by ten percentage points.",
+      "kind": "plugin",
+      "object": "louder",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:94",
+      "undoable": true,
+      "verb": "sounds",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "beeps quieter",
+        "lower the sounds",
+        "quieter sounds",
+        "sounds quieter"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.sounds_quieter",
+      "description": "Lowers Samsara sounds and beeps by ten percentage points.",
+      "kind": "plugin",
+      "object": "quieter",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:87",
+      "undoable": true,
+      "verb": "sounds",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "less feedback",
+        "less talking",
+        "talk less"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.talk_less",
+      "description": "Makes Samsara speak less: Full, then Brief, then Silent.",
+      "kind": "plugin",
+      "object": "less",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:41",
+      "undoable": true,
+      "verb": "talk",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "more feedback",
+        "more talking",
+        "talk more"
+      ],
+      "args": [],
+      "canonical_id": "feedback_level.talk_more",
+      "description": "Makes Samsara speak more: Silent, then Brief, then Full.",
+      "kind": "plugin",
+      "object": "more",
+      "pack": "core",
+      "plugin": "feedback_level",
+      "risk": "ui",
+      "source": "plugins/commands/feedback_level.py:48",
+      "undoable": true,
+      "verb": "talk",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "abort print",
         "cancel print",
         "cancel printing",
@@ -9629,7 +9758,7 @@
       "pack": "media",
       "plugin": "volume",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:296",
+      "source": "plugins/commands/volume.py:304",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -9652,7 +9781,7 @@
       "pack": "media",
       "plugin": "volume",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:279",
+      "source": "plugins/commands/volume.py:283",
       "undoable": true,
       "verb": "volume",
       "whole_utterance": false

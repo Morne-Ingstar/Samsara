@@ -273,6 +273,10 @@ def handle_volume_up(app, remainder):
     new = min(1.0, current + VOLUME_STEP)
     ok = _audio.set_volume(new)
     print(f"[VOLUME] {int(current*100)}% -> {int(new*100)}%")
+    if ok:
+        show = getattr(app, "_show_outcome_chip", None)
+        if callable(show):
+            show(f"Windows volume {round(new * 100)}%", "success", 3500)
     return ok
 
 
@@ -290,6 +294,10 @@ def handle_volume_down(app, remainder):
     new = max(0.0, current - VOLUME_STEP)
     ok = _audio.set_volume(new)
     print(f"[VOLUME] {int(current*100)}% -> {int(new*100)}%")
+    if ok:
+        show = getattr(app, "_show_outcome_chip", None)
+        if callable(show):
+            show(f"Windows volume {round(new * 100)}%", "success", 3500)
     return ok
 
 
