@@ -5245,6 +5245,8 @@ class DictationApp:
         # window applies to reserved words only when the user extends it.
         reserved = policy is not None
         if policy is None:
+            if not (self.config.get('hands_free') or {}).get('exact_commands', True):
+                return None
             command_executor = getattr(self, 'command_executor', None)
             find_exact = getattr(command_executor, 'find_exact_command', None)
             if find_exact is not None:

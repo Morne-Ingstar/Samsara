@@ -2284,6 +2284,7 @@
       "pack": "text-editing"
     },
     "show commands": {
+      "aliases": ["command reference"],
       "type": "method",
       "method": "show_cheat_sheet",
       "pack": "core",

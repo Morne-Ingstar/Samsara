@@ -434,6 +434,7 @@ class CommandMatcher:
             entry = CommandEntry(
                 phrase=name_lower,
                 source='builtin',
+                aliases=data.get('aliases', []),
                 cmd_type=data.get('type', 'unknown'),
                 data=data,
                 pack=data.get('pack', 'core'),

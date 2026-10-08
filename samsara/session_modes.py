@@ -1644,6 +1644,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         why = answer.split(":", 1)[1] if answer.startswith("refused:") else answer
         return (f"refused: {_short(why)}", "warning")
     if kind in ("command_executed", "hands_free_command_executed"):
+        if (kind == "hands_free_command_executed" and detail.get("state") == "completed"
+                and not detail.get("media_action") and detail.get("origin") != "model"):
+            return (f"→ command: {detail.get('phrase') or 'command'}", "success")
         if detail.get("state") == "completed" and detail.get("media_action"):
             return (detail["message"], "success")
         phrase = _first_two_words(detail.get("phrase"))

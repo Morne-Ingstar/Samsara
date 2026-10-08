@@ -772,7 +772,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2323",
+      "source": "commands.json:2324",
       "undoable": true,
       "verb": "again",
       "whole_utterance": false
@@ -1353,7 +1353,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2298",
+      "source": "commands.json:2299",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1421,7 +1421,7 @@
       "pack": "text-editing",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2304",
+      "source": "commands.json:2305",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1567,7 +1567,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2310",
+      "source": "commands.json:2311",
       "undoable": false,
       "verb": "enter",
       "whole_utterance": false
@@ -2013,7 +2013,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2292",
+      "source": "commands.json:2293",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -2414,7 +2414,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2340",
+      "source": "commands.json:2341",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2431,7 +2431,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2350",
+      "source": "commands.json:2351",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2448,7 +2448,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2330",
+      "source": "commands.json:2331",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -3390,7 +3390,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2586",
+      "source": "commands.json:2587",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3713,7 +3713,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2544",
+      "source": "commands.json:2545",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3730,7 +3730,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2550",
+      "source": "commands.json:2551",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3747,7 +3747,7 @@
       "pack": "media",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2556",
+      "source": "commands.json:2557",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -4378,7 +4378,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "write",
-      "source": "commands.json:2536",
+      "source": "commands.json:2537",
       "undoable": false,
       "verb": "remove",
       "whole_utterance": false
@@ -4439,7 +4439,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2316",
+      "source": "commands.json:2317",
       "undoable": true,
       "verb": "repeat",
       "whole_utterance": false
@@ -4517,7 +4517,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2465",
+      "source": "commands.json:2466",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -4619,7 +4619,7 @@
       "pack": "core",
       "plugin": "builtin",
       "risk": "destructive",
-      "source": "commands.json:2592",
+      "source": "commands.json:2593",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -4913,7 +4913,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2505",
+      "source": "commands.json:2506",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4930,7 +4930,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2474",
+      "source": "commands.json:2475",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4947,7 +4947,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2384",
+      "source": "commands.json:2385",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4964,7 +4964,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2360",
+      "source": "commands.json:2361",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4981,7 +4981,7 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2441",
+      "source": "commands.json:2442",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -4998,13 +4998,14 @@
       "pack": "window-management",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2408",
+      "source": "commands.json:2409",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
     },
     {
       "aliases": [
+        "command reference",
         "show commands"
       ],
       "args": [],
@@ -5236,7 +5237,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2580",
+      "source": "commands.json:2581",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -5253,7 +5254,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2568",
+      "source": "commands.json:2569",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -5270,7 +5271,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2562",
+      "source": "commands.json:2563",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -5287,7 +5288,7 @@
       "pack": "gaming",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2574",
+      "source": "commands.json:2575",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -5819,7 +5820,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "risk": "ui",
-      "source": "commands.json:2598",
+      "source": "commands.json:2599",
       "undoable": true,
       "verb": "transcribe",
       "whole_utterance": false

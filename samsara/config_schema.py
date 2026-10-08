@@ -535,6 +535,11 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Placement state owned by the draggable preview and its Settings reset action.",
     },
+    "hands_free.exact_commands": {
+        "type": "bool", "default": True, "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Config override for exact registered phrases in hands-free Dictate; reserved controls remain available.",
+    },
     # Queue 140: during a latched AVA reply, suppress the session capture
     # path (including an already-open capture) while keeping OpenWakeWord
     # available as the hands-free interruption route.
