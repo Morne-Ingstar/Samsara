@@ -11,9 +11,12 @@ from samsara.ui import theme
 
 
 @pytest.fixture
-def dark_again():
-    yield
-    theme.set_theme("dark", refresh=False)
+def dark_again(qapp):
+    try:
+        yield
+    finally:
+        theme.set_theme("dark", refresh=False)
+        _clear_headless_windows(qapp)
 
 
 def _dominant_pixel(widget) -> int:
@@ -48,9 +51,24 @@ def _max_rendered_contrast(image, rect, background: int) -> float:
 
 def _clear_headless_windows(qapp) -> None:
     """Remove test-only windows constructed by earlier targeted modules."""
+    from PySide6.QtCore import QEvent
+
+    retired_engines = set()
     for widget in qapp.topLevelWidgets():
-        widget.hide()
-        widget.deleteLater()
+        # Qt also lists parent-owned windows (e.g. combo popups) here.
+        # Their owner must destroy them, rather than deleting its internals first.
+        if widget.parentWidget() is None:
+            engine = getattr(getattr(widget, "app", None), "tts_engine", None)
+            shutdown = getattr(engine, "shutdown", None)
+            if callable(shutdown) and id(engine) not in retired_engines:
+                # Apply can start a native audio stream on the test app. Its
+                # callback must stop before deleting the app's last window.
+                retired_engines.add(id(engine))
+                shutdown()
+            widget.hide()
+            widget.deleteLater()
+    # processEvents alone does not deliver DeferredDelete outside app.exec().
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
 
 
@@ -147,3 +165,45 @@ def test_system_theme_follows_windows_change_while_running(
 
     theme._follow_system_theme()
     assert theme.active_theme() == "dark"
+
+
+@pytest.mark.parametrize("delete_already_posted", (False, True))
+def test_clear_headless_windows_destroys_roots_and_children(
+        qapp, dark_again, delete_already_posted):
+    """Cleanup destroys Qt objects even while Python still holds wrappers."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QComboBox, QLabel, QWidget
+    from shiboken6 import isValid
+
+    window = QWidget()
+    sibling = QWidget()
+    retired = []
+    app = SimpleNamespace(tts_engine=SimpleNamespace(
+        shutdown=lambda: retired.append((isValid(window), isValid(sibling)))))
+    window.app = sibling.app = app
+    independently_deleted = []
+
+    class OwnedWindow(QLabel):
+        def deleteLater(self):
+            independently_deleted.append(True)
+            super().deleteLater()
+
+    child = OwnedWindow("Earlier test window", window)
+    child.setWindowFlag(Qt.WindowType.Window)
+    combo = QComboBox(window)
+    popup = combo.view().window()
+    assert child in qapp.topLevelWidgets()
+    assert popup in qapp.topLevelWidgets()
+    window.hide()
+    if delete_already_posted:
+        window.deleteLater()
+
+    _clear_headless_windows(qapp)
+
+    assert not isValid(window)
+    assert not isValid(sibling)
+    assert not isValid(child)
+    assert not isValid(combo)
+    assert not isValid(popup)
+    assert not independently_deleted
+    assert retired == [(True, True)]
