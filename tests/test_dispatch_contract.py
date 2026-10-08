@@ -11,12 +11,14 @@ inverted direction:
 
 PLUGIN_MODULE_IDENTITY (item 6) lives in tests/test_plugin_commands.py.
 """
+import ast
 import json
 import sys
 import threading
 import time
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -34,6 +36,54 @@ from samsara import session_modes as sm  # noqa: E402
 
 ASTRA_UTTERANCE = 'ask ava Tell Claude: "Don\'t rename Foo.py to foo.py".'
 ASTRA_PAYLOAD = 'Tell Claude: "Don\'t rename Foo.py to foo.py"'
+
+
+def _enabled_local_ava_config():
+    """Real preference/consent contract; no provider calls or persistence."""
+    from samsara import ai_preferences
+
+    config = {"ollama": {"host": "http://127.0.0.1:11434"}}
+    provider = ai_preferences.provider_for(config, "local")
+    consent = ai_preferences.accept_consent(
+        config, provider=provider, accepted_at="2026-10-08T00:00:00Z")
+    config = ai_preferences.apply_preferences(
+        config, policy="local", ava=True, consent=consent,
+        local_model="dispatch-test-model")
+    config["ava_command_session"]["interpret_misses"] = True
+    assert ai_preferences.runtime_state(config, "ava").allowed
+    return config
+
+
+def _dictation_bindings():
+    """Compile selected production AST only, never the desktop bootstrap.
+
+    Keep the real constructor/dispatch closure so counting, history, repeat
+    tracking and manager wiring remain under test (as in hold-capture tests).
+    """
+    tree = ast.parse((ROOT / "dictation.py").read_text(encoding="utf-8"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+               and n.name == "DictationApp")
+    names = {"_ensure_session_mode_manager", "_resolve_command_miss"}
+    methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    assert {n.name for n in methods} == names
+    helpers = [n for n in tree.body if (
+        isinstance(n, ast.FunctionDef) and n.name in {"_is_repeat_blacklisted", "_config_phrase_list"}
+    ) or (
+        isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in {
+            "_REPEAT_BLACKLIST_NAMES", "_REPEAT_BLACKLIST_TYPES"} for t in n.targets)
+    )]
+    module = ModuleType("dispatch_contract_bindings")
+    module.__dict__.update(vars(sm))
+    module.__dict__.update(
+        time=time, logger=Mock(), increment_command_count=Mock(),
+        _get_foreground_exe_lower=lambda: "editor.exe",
+        _get_foreground_hwnd=lambda: 1,
+        injection_safety=SimpleNamespace(window_integrity=lambda: None),
+    )
+    exec(compile(ast.Module(body=[*helpers, *methods], type_ignores=[]),
+                 str(ROOT / "dictation.py"), "exec"), module.__dict__)
+    module.DictationApp = SimpleNamespace(**{name: getattr(module, name) for name in names})
+    return module
 
 
 @pytest.fixture
@@ -224,7 +274,7 @@ class TestRealRegistrations:
 
     def test_ask_ava_schedules_once_and_is_queued(self, real_ask_ollama):
         dispatch = real_ask_ollama.executor.process_text(
-            "ask ava hello", _app(), force_commands=True)
+            "ask ava hello", _app(config=_enabled_local_ava_config()), force_commands=True)
 
         assert dispatch.state is DispatchState.QUEUED
         assert tuple(dispatch) == ("hey ava", True)
@@ -232,7 +282,8 @@ class TestRealRegistrations:
             ("spawn", "ask_ollama._worker")]
 
     def test_ask_ava_receives_the_original_payload(self, real_ask_ollama):
-        real_ask_ollama.executor.process_text(ASTRA_UTTERANCE, _app(), force_commands=True)
+        real_ask_ollama.executor.process_text(
+            ASTRA_UTTERANCE, _app(config=_enabled_local_ava_config()), force_commands=True)
         assert ("payload", ASTRA_PAYLOAD) in real_ask_ollama.effects
 
     @pytest.mark.parametrize("utterance", ["yes", "Yeah.", "ava cancel"])
@@ -263,21 +314,24 @@ class TestWaterfallNeverReinterpretsAClaimedCommand:
 
         calls = []
         monkeypatch.setattr(acs, "_match_action2_grammar", lambda u: calls.append("b"))
-        monkeypatch.setattr(acs, "_stage_c_llm_fallback",
-                            lambda *a, **k: calls.append("c") or False)
-        monkeypatch.setattr(acs, "_build_shortlist", lambda *a, **k: [])
-        monkeypatch.setattr(acs, "_set_thinking_indicator", lambda *a, **k: None)
-
-        class _Executor:
-            def process_text(self, text, app, force_commands=False, **kwargs):
-                return DispatchResult(state, "hey ava", "hey ava")
-
-        app = SimpleNamespace(config={}, command_executor=_Executor(),
-                              _ava_cmd_generation=1, _ava_cmd_miss_count=3)
-        acs._process_utterance(app, 1, "ask ava close the window")
+        monkeypatch.setattr(acs.CommandMissResolver, "resolve",
+                            lambda *a, **k: calls.append("resolver"))
+        from plugins.commands import ask_ollama
+        monkeypatch.setattr(ask_ollama, "ask_ollama",
+                            lambda *a, **k: calls.append("model"))
+        bindings, app, _ = TestDictationSessionDispatchFn()._app(
+            DispatchResult(state, "hey ava", "hey ava"))
+        app.config = _enabled_local_ava_config()
+        manager = bindings.DictationApp._ensure_session_mode_manager(app)
+        text = "ask ava close the window"
+        outcome = manager._dispatch_command(text)
+        assert outcome.kind == ("command_executed" if state is DispatchState.QUEUED
+                                else "command_failed")
+        assert outcome.detail == {"phrase": "hey ava", "state": state.value, "heard": text}
+        assert bindings.DictationApp._resolve_command_miss(app, outcome, text) is outcome
 
         assert calls == []
-        assert app._ava_cmd_miss_count == 0
+        assert app._command_mode_miss_count == 0
 
     def test_a_real_miss_still_falls_through(self, monkeypatch):
         from samsara import ava_command_session as acs
@@ -285,16 +339,50 @@ class TestWaterfallNeverReinterpretsAClaimedCommand:
         calls = []
         monkeypatch.setattr(acs, "_match_action2_grammar",
                             lambda u: calls.append("b") or ("focus", "notepad"))
-        monkeypatch.setattr(acs, "_dispatch_action2", lambda *a, **k: calls.append("dispatch"))
+        original_resolve = acs.CommandMissResolver.resolve
 
-        class _Executor:
-            def process_text(self, text, app, force_commands=False, **kwargs):
-                return DispatchResult.miss(text)
+        def resolve(resolver, utterance, request_id, deadline):
+            calls.append(("resolve", utterance, request_id))
+            return original_resolve(resolver, utterance, request_id, deadline)
 
-        app = SimpleNamespace(config={}, command_executor=_Executor(),
-                              _ava_cmd_generation=1, _ava_cmd_miss_count=0)
-        acs._process_utterance(app, 1, "focus notepad")
-        assert calls == ["b", "dispatch"]
+        monkeypatch.setattr(acs.CommandMissResolver, "resolve", resolve)
+        monkeypatch.setattr(acs, "_CANCELLED", set())
+        from plugins.commands import ask_ollama
+        monkeypatch.setattr(ask_ollama, "ask_ollama",
+                            lambda *a, **k: pytest.fail("deterministic miss must not call a model"))
+        from samsara import ava_readiness, execution_policy, handlers
+        from samsara.execution_policy import Route
+        monkeypatch.setattr(ava_readiness, "readiness_for",
+                            lambda app: SimpleNamespace(ready=True))
+        monkeypatch.setattr(execution_policy, "pending_operation", lambda: None)
+        monkeypatch.setattr(handlers, "_get_foreground_hwnd", lambda: 1)
+        bindings, app, _ = TestDictationSessionDispatchFn()._app(
+            DispatchResult.miss("focus notepad"))
+        app.config = _enabled_local_ava_config()
+        app._ava_interpret_request = 0
+        app.command_executor.ava_menu = lambda *a, **k: ["focus"]
+        executions = []
+
+        def execute(command_id, target, **kwargs):
+            calls.append("dispatch")
+            executions.append((command_id, target, kwargs))
+            return DispatchResult(DispatchState.COMPLETED, "focus", "focus")
+
+        app.command_executor.execute_canonical = execute
+        manager = bindings.DictationApp._ensure_session_mode_manager(app)
+        outcome = manager._dispatch_command("focus notepad", allow_suggestion=False)
+        assert outcome.kind == "command_miss"
+        assert app._command_mode_miss_count == 2  # only the final outcome owns miss accounting
+        resolved = bindings.DictationApp._resolve_command_miss(app, outcome, "focus notepad")
+        assert calls == [("resolve", "focus notepad", "1"), "b", "dispatch"]
+        assert executions == [("focus", app, {
+            "route": Route.MODEL, "generation": execution_policy.capture_generation(app),
+            "args": {"remainder": "notepad"}, "source_text": "focus notepad",
+        })]
+        assert resolved == sm.DispatchOutcome(kind="command_executed", detail={
+            "phrase": "focus", "state": "completed", "heard": "focus notepad", "origin": "model",
+        })
+        assert app._command_mode_miss_count == 0
 
 
 def _manager(dispatch_result):
@@ -314,7 +402,7 @@ class TestSessionLanes:
         manager = _manager(sm.CommandDispatchResult(matched=True, phrase="copy", state=state))
         outcome = manager._dispatch_command("copy")
         assert outcome.kind == "command_failed"
-        assert outcome.detail == {"phrase": "copy", "state": state}
+        assert outcome.detail == {"phrase": "copy", "state": state, "heard": "copy"}
         assert len(manager._stack) == 0
 
     @pytest.mark.parametrize("state", ["completed", "queued"])
@@ -339,25 +427,25 @@ class TestSessionLanes:
 class TestChipForStates:
     def test_completed_is_a_tick(self):
         assert sm.outcome_chip("command_executed", {"phrase": "copy", "state": "completed"}) == (
-            f"{sm.CHIP_CHECK} copy", "success")
+            "heard: (nothing) — ran copy", "success")
 
     @pytest.mark.parametrize("state", ["queued", "matched"])
     def test_queued_is_never_a_success_tick(self, state):
         assert sm.outcome_chip("command_executed", {"phrase": "hey ava", "state": state}) == (
-            f"hey ava{sm.CHIP_ELLIPSIS}", "accent")
+            f"heard: (nothing) — hey ava{sm.CHIP_ELLIPSIS}", "accent")
 
     def test_failed_is_an_error(self):
         assert sm.outcome_chip("command_failed", {"phrase": "copy", "state": "failed"}) == (
-            f"{sm.CHIP_CROSS} copy", "error")
+            f"heard: (nothing) — {sm.CHIP_CROSS} copy", "error")
 
     def test_rejected_is_a_refusal(self):
         assert sm.outcome_chip("command_failed", {"phrase": "next track", "state": "rejected"}) == (
-            "refused: next track", "warning")
+            "heard: (nothing) — refused: next track", "warning")
 
     def test_cancelled(self):
         assert sm.outcome_chip("hands_free_command_failed",
                                {"phrase": "copy", "state": "cancelled"}) == (
-            "cancelled: copy", "warning")
+            "heard: (nothing) — cancelled: copy", "warning")
 
 
 class TestDictationSessionDispatchFn:
@@ -365,7 +453,7 @@ class TestDictationSessionDispatchFn:
     command (no miss count, no dictation), but not a success."""
 
     def _app(self, dispatch):
-        import dictation
+        dictation = _dictation_bindings()
 
         history = []
 
@@ -397,6 +485,10 @@ class TestDictationSessionDispatchFn:
             _dictate_commit_redecode=lambda *a, **k: None,
             _pop_pending_action_for_scratch=lambda *a, **k: None,
             _log_command_dispatch=lambda *a, **k: None,
+            _answer_cancel_window=lambda text: None,
+            _stage_hands_free_cancel_window=lambda *a, **k: 0,
+            _handle_deferred_session_outcome=lambda *a, **k: None,
+            _speak_session_notice=lambda *a, **k: None,
         )
         return dictation, app, history
 
@@ -440,7 +532,8 @@ class TestDictationSessionDispatchFn:
         result = manager._command_dispatch_fn("show windows")
 
         assert result == sm.CommandDispatchResult(matched=True, phrase="show windows", state="queued",
-                                                  awaiting_confirmation=True)
+                                                  awaiting_confirmation=True,
+                                                  detail={"awaiting_confirmation": True})
         assert counted == []
         assert history[-1]["status"] == "awaiting_confirmation"
         assert not hasattr(app, "_last_command_name")
