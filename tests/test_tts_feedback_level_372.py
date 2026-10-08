@@ -17,6 +17,41 @@ from samsara.tts.coordinator import (
 from samsara.tts.engine_base import SpeechHandle
 
 
+@pytest.fixture(autouse=True)
+def _shutdown_test_coordinators(monkeypatch):
+    """Retire every router, including replacements, and join test-owned workers."""
+    coordinators = []
+    workers = []
+    original_init = AudioCoordinator.__init__
+    original_start = threading.Thread.start
+
+    def remember_coordinator(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        coordinators.append(self)
+
+    def remember_worker(self, *args, **kwargs):
+        result = original_start(self, *args, **kwargs)
+        workers.append(self)
+        return result
+
+    monkeypatch.setattr(AudioCoordinator, "__init__", remember_coordinator)
+    monkeypatch.setattr(threading.Thread, "start", remember_worker)
+    yield
+    try:
+        for coord in reversed(coordinators):
+            coord.shutdown()
+    finally:
+        # shutdown stops polling and cancels timers, but does not join either
+        # the poll worker or its unretained grace watcher.
+        for worker in workers:
+            if isinstance(worker, threading.Timer):
+                worker.cancel()
+            worker.join(timeout=2.0)
+        alive = [worker.name for worker in workers if worker.is_alive()]
+        if alive:
+            pytest.fail(f"Feedback test workers survived cleanup: {alive}")
+
+
 def coordinator(level="full", *, enabled=True, captions=False, muted=False):
     app = MagicMock()
     app.command_mode_active = False
