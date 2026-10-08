@@ -241,7 +241,7 @@ def test_voice_help_capability_cards_render(case, qapp, monkeypatch, tmp_path):
         page.resize(980, 920)
         page.show()
         qapp.processEvents()
-        proof = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\308")
+        proof = tmp_path
         proof.mkdir(parents=True, exist_ok=True)
         assert QWidget.grab(page).save(str(proof / f"voice-help-{case}.png"))
         copy = " ".join(label.text() for label, _evidence in page._capability_rows.values())

@@ -9,7 +9,6 @@ from samsara.session_modes import DispatchOutcome, outcome_chip
 
 
 ROOT = Path(__file__).resolve().parent.parent
-ARTIFACTS = Path(r"C:\Users\Morne\Documents\Claude\reports\198\artifacts")
 
 
 class _Entry:
@@ -154,14 +153,14 @@ def test_dispatcher_contains_only_the_cross_utterance_offer_seam():
     assert "_show_outcome_chip(*chip, 8000)" in source
 
 
-def test_offer_chip_grabs_in_light_and_dark(qapp):
+def test_offer_chip_grabs_in_light_and_dark(qapp, tmp_path):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QLabel
     from samsara.ui import theme
 
     original = theme.active_theme()
     try:
-        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        tmp_path.mkdir(parents=True, exist_ok=True)
         label, _kind = outcome_chip("personal_alias_offer", {"miss": "tab won", "canonical": "tab one"})
         for palette in ("light", "dark"):
             theme.set_theme(palette, refresh=False)
@@ -175,6 +174,6 @@ def test_offer_chip_grabs_in_light_and_dark(qapp):
             )
             image = chip.grab()
             assert not image.isNull()
-            assert image.save(str(ARTIFACTS / f"personal_alias_offer_{palette}.png"))
+            assert image.save(str(tmp_path / f"personal_alias_offer_{palette}.png"))
     finally:
         theme.set_theme(original, refresh=False)

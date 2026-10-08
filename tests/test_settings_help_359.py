@@ -11,9 +11,9 @@ from samsara.ui.settings_qt import _SettingsWindow
 from tests.test_settings_pages import _StubApp, _schema_defaults
 
 
-REPORTS = Path.home() / "Documents" / "Claude" / "reports"
-DOCS_AUDIT = REPORTS / "358" / "artifacts" / "docs_audit.md"
-DECISIONS = REPORTS / "359" / "artifacts" / "help_decisions.md"
+FIXTURES = Path(__file__).parent / "fixtures" / "359"
+DOCS_AUDIT = FIXTURES / "docs_audit.md"
+DECISIONS = FIXTURES / "help_decisions.md"
 
 
 def test_every_schema_key_has_a_decision_and_help_docs_home():

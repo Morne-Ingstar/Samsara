@@ -8,7 +8,6 @@ import pytest
 from samsara.ui import theme, tray_qt, voice_training_qt, wake_word_debug_qt
 
 
-ARTIFACTS = Path(r"C:\Users\Morne\Documents\Claude\reports\194\artifacts")
 
 
 def _voice_training_window():
@@ -113,8 +112,8 @@ def test_tray_listening_and_ava_have_different_non_colour_geometry(qapp):
     assert _alpha_mask(listening) != _alpha_mask(ava)
 
 
-def test_light_and_dark_surface_grabs_are_saved(qapp):
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+def test_light_and_dark_surface_grabs_are_saved(qapp, tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     for palette in ("light", "dark"):
         theme.set_theme(palette, refresh=False)
 
@@ -124,10 +123,10 @@ def test_light_and_dark_surface_grabs_are_saved(qapp):
             voice._on_level(90)
             wake._set_timer("0.4s", theme.ERROR)
             qapp.processEvents()
-            _save_grab(voice, ARTIFACTS / f"voice_training_{palette}.png")
-            _save_grab(wake, ARTIFACTS / f"wake_word_debug_{palette}.png")
+            _save_grab(voice, tmp_path / f"voice_training_{palette}.png")
+            _save_grab(wake, tmp_path / f"wake_word_debug_{palette}.png")
             tray = tray_qt.render_mark("ava", "off", 64)
-            assert tray.save(str(ARTIFACTS / f"tray_ava_{palette}.png"))
+            assert tray.save(str(tmp_path / f"tray_ava_{palette}.png"))
         finally:
             voice.close()
             wake.close()

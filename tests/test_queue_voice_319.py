@@ -17,7 +17,7 @@ from plugins.commands import queue_voice as voice
 from plugins.commands import message_claude
 
 
-SOURCE_NOTE = Path(r"C:\Users\Morne\Documents\Claude\queue_note.py")
+SOURCE_NOTE = Path(__file__).parent / "fixtures" / "319" / "queue_note.py"
 
 
 @pytest.fixture

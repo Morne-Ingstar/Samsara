@@ -56,7 +56,7 @@ def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path):
         window._apply_search_filter()
         assert window._pages["Dictation"].advanced.toggle.isChecked()
         assert row.isVisible()
-        proof = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\312")
+        proof = tmp_path
         proof.mkdir(parents=True, exist_ok=True)
         qapp.processEvents()
         QWidget.grab(window).save(str(proof / "312-wake-profiles.png"))

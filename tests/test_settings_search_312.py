@@ -19,7 +19,7 @@ def _window(monkeypatch, tmp_path):
 
 def test_filtered_advanced_disclosure_keeps_a_visible_empty_state(qapp, monkeypatch, tmp_path):
     window = _window(monkeypatch, tmp_path)
-    proof = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\312")
+    proof = tmp_path
     proof.mkdir(parents=True, exist_ok=True)
     try:
         window.show_tab("Dictation")
@@ -65,7 +65,7 @@ def test_search_matches_collapsed_advanced_wake_profile(qapp, monkeypatch, tmp_p
 
 def test_wake_filter_and_advanced_click_keep_dictation_page_visible(qapp, monkeypatch, tmp_path):
     window = _window(monkeypatch, tmp_path)
-    proof = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\312")
+    proof = tmp_path
     try:
         window.show_tab("Dictation")
         page = window._pages["Dictation"]
@@ -82,7 +82,7 @@ def test_wake_filter_and_advanced_click_keep_dictation_page_visible(qapp, monkey
         assert page.isVisible()
         assert any(row.title == "Wake activation" and row.isVisible() for row in window._destination_rows)
         QWidget.grab(window).save(str(proof / "312-wake-filter-click.png"))
-        (Path(r"C:\Users\Morne\Documents\Claude\reports\312\artifacts") / "wake_filter_layout.txt").write_text(
+        (tmp_path / "wake_filter_layout.txt").write_text(
             f"query=wake\nauto_expanded_before_click=True\nadvanced_matches={advanced_matches}\n"
             f"page_visible_after_click={page.isVisible()}\nbase_wake_activation_visible="
             f"{any(row.title == 'Wake activation' and row.isVisible() for row in window._destination_rows)}\n",

@@ -13,7 +13,6 @@ from samsara.ui.profile_manager_qt import _ProfileManagerWindow
 from samsara.ui.settings.commands_qt import CommandsPage
 
 
-ARTIFACTS = Path(r"C:\Users\Morne\Documents\Claude\reports\224\artifacts")
 
 
 def _write(path: Path, data):
@@ -121,7 +120,7 @@ def test_profile_manager_shows_default_as_read_only(qapp, tmp_path):
 
 
 def test_dark_and_light_widget_grabs_are_real_widget_evidence(qapp, tmp_path):
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    tmp_path.mkdir(parents=True, exist_ok=True)
     original_theme = theme.active_theme()
     try:
         for palette in ("dark", "light"):
@@ -137,9 +136,9 @@ def test_dark_and_light_widget_grabs_are_real_widget_evidence(qapp, tmp_path):
             pack_scroll.resize(700, 270)
             profile_entry = host._widgets["_command_profiles_entry"]
             profile_entry.resize(700, 70)
-            assert page.grab().save(str(ARTIFACTS / f"commands_page_{palette}.png"))
-            assert pack_scroll.grab().save(str(ARTIFACTS / f"pack_list_{palette}.png"))
-            assert profile_entry.grab().save(str(ARTIFACTS / f"profiles_entry_{palette}.png"))
+            assert page.grab().save(str(tmp_path / f"commands_page_{palette}.png"))
+            assert pack_scroll.grab().save(str(tmp_path / f"pack_list_{palette}.png"))
+            assert profile_entry.grab().save(str(tmp_path / f"profiles_entry_{palette}.png"))
 
             dialog = QFileDialog()
             dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
@@ -147,7 +146,7 @@ def test_dark_and_light_widget_grabs_are_real_widget_evidence(qapp, tmp_path):
             dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
             dialog.setNameFilter("Samsara dictionary (*.json)")
             dialog.resize(700, 480)
-            assert dialog.grab().save(str(ARTIFACTS / f"dictionary_export_dialog_{palette}.png"))
+            assert dialog.grab().save(str(tmp_path / f"dictionary_export_dialog_{palette}.png"))
             dialog.deleteLater()
             page.deleteLater()
             qapp.processEvents()
