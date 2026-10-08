@@ -372,6 +372,12 @@ class Grammar:
             name, kind, required = t.args[0]
             if not rest:
                 return ({}, P_MISSING_REQUIRED) if required else ({}, 0.0)
+            if t.canonical_id == "tab_finder.tab_number":
+                # The voice route needs a string remainder, but this slot
+                # accepts only the browser's tab numbers, never a tab name.
+                from plugins.commands.tab_finder import _browser_tab_number  # noqa: PLC0415
+                if _browser_tab_number(" ".join(rest)) is None:
+                    return None
             got = self._slot(kind, name, rest)
             if got is None:
                 return None
