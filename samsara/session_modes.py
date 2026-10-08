@@ -1433,6 +1433,8 @@ _CHIP_TTL_OVERRIDES = {
 # OWNER COPY — placeholder. Command-lane wording belongs in this one table so
 # the owner can revise it without hunting through dispatch logic.
 COMMAND_CHIP_COPY = {
+    "ava_done": "Ava: {done}",
+    "ava_chain_done": "Ava did {count} things: {done}",
     "chain_done": "Did {count} things: {done}",
     "chain_yes": 'One at a time: "{step}" needs a yes',
     "chain_refused": 'One at a time: "{step}" — {reason}',
@@ -1569,6 +1571,14 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     detail = detail if isinstance(detail, dict) else {}
     if detail.get('chain_feedback_sent'):
         return None  # 399: executor already emitted the utterance's one shared chip.
+    if (kind in ('command_executed', 'hands_free_command_executed')
+            and detail.get('origin') == 'model' and detail.get('state') == 'completed'):
+        return (_command_copy('ava_done', done=detail.get('ava_done') or detail.get('phrase') or 'command'), 'success')
+    if kind == 'ava_command_chain':
+        done = detail.get('chain_done') or []
+        if detail.get('state') == 'completed':
+            return (_command_copy('ava_chain_done', count=len(done), done=' · '.join(done)), 'success')
+        return outcome_chip('command_chain', detail)
     if kind == 'command_chain' or 'chain_count' in detail:
         done = detail.get('chain_done') or []
         step = detail.get('chain_stopped') or 'chain'

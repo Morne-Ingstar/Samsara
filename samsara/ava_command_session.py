@@ -28,8 +28,10 @@ _DEFAULTS: dict[str, Any] = {
     "model": "llama3.2:3b",
     "shortlist_size": 12,
     "keep_warm": False,
-    "interpret_misses": False,
+    "interpret_misses": True,
 }
+MAX_REQUEST_WORDS = 16
+MAX_PROPOSAL_STEPS = 3
 _REQUEST_LOCK = threading.Lock()
 _CANCELLED: set[str] = set()
 
@@ -41,6 +43,7 @@ class Proposal:
     args: dict[str, Any] = field(default_factory=dict)
     origin: str = "model"
     provider: str = "unknown"
+    steps: tuple[Proposal, ...] = ()
 
 
 _ACTION2_VERB_SYNONYMS = {
@@ -135,7 +138,7 @@ class CommandMissResolver:
             if self._cancelled(request_id, deadline):
                 return None
             cfg = _cfg(self.app)
-            if len((utterance or "").split()) > 8:
+            if len((utterance or "").split()) > MAX_REQUEST_WORDS:
                 return None
             from samsara import ai_preferences, ava_readiness
             state = ai_preferences.runtime_state(getattr(self.app, "config", {}) or {}, "ava")
@@ -145,7 +148,8 @@ class CommandMissResolver:
             grammar = _match_action2_grammar(utterance)
             shortlist = _build_shortlist(self.app, utterance, cfg)
             allowed = {_normalise_command_id(item): item for item in shortlist}
-            if grammar is not None and grammar[0] in allowed:
+            if (grammar is not None and grammar[0] in allowed
+                    and not re.search(r"\b(?:and|then)\b", utterance, re.IGNORECASE)):
                 result_id = allowed[grammar[0]]
                 return Proposal(result_id, {"remainder": grammar[1]}, provider=provider)
 
@@ -157,6 +161,35 @@ class CommandMissResolver:
             response = ask_ollama.ask_ollama(utterance, self.app, model=model, system=system)
             if self._cancelled(request_id, deadline) or not isinstance(response, str) or response == "__OLLAMA_DOWN__":
                 return None
+            # Repeat the existing APP/ACTION wire lines to carry a list. Keep
+            # the existing single-step prompt byte-identical until a live
+            # format evaluation is available; never truncate an invalid list.
+            lines = [line.strip() for line in response.splitlines() if line.strip()]
+            action_lines = [line for line in lines if re.match(
+                r"^(?:ACTION2?|APP|SCHEDULE|EXECUTE)\b", line, re.IGNORECASE)]
+            if len(action_lines) > 1:
+                if (len(action_lines) > MAX_PROPOSAL_STEPS or len(lines) != len(action_lines) + 1
+                        or not re.match(r"^CONFIRM\s+.+$", lines[0], re.IGNORECASE)):
+                    return None
+                steps = []
+                for line in lines[1:]:
+                    parsed_step = ask_ollama._parse_structured_response(lines[0] + "\n" + line)
+                    if parsed_step.get("type") == "action":
+                        name = _normalise_command_id(parsed_step.get("command"))
+                        if name not in allowed:
+                            return None
+                        steps.append(Proposal(allowed[name], provider=provider))
+                    elif parsed_step.get("type") == "action2":
+                        name = _normalise_command_id(parsed_step.get("verb"))
+                        argument = str(parsed_step.get("argument") or "").strip()
+                        if (name not in allowed or not argument
+                                or not ask_ollama.grounded_in_utterance(argument, utterance)):
+                            return None
+                        steps.append(Proposal(allowed[name], {"remainder": argument}, provider=provider))
+                    else:
+                        return None
+                result_id = ", ".join(step.command_id for step in steps)
+                return Proposal(steps[0].command_id, steps[0].args, provider=provider, steps=tuple(steps))
             parsed = ask_ollama._parse_structured_response(response)
             if parsed.get("type") == "action":
                 candidate = _normalise_command_id(parsed.get("command"))

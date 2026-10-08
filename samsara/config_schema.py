@@ -572,7 +572,7 @@ SETTINGS_SCHEMA = {
         "ui_less_reason": "Interpreter candidate-budget tuning; the supported user choice is whether command-miss interpretation is enabled.",
     },
     "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "Keeping the local model loaded reduces the delay before the next Ava request. Enable it when you use Ava frequently and have enough memory; leave it off to free resources between requests. It is off by default.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.keep_warm"}},
-    "ava_command_session.interpret_misses": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "After the normal matcher misses, Ava may interpret the phrase against available commands. Enable this when natural wording helps you find commands; leave it off when you want only direct matches. It is off by default and still follows the command execution policy.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.interpret_misses"}},
+    "ava_command_session.interpret_misses": {"type": "bool", "default": True, "tab": "commands", "help": {"why": "After the normal matcher misses, Ava may interpret the phrase against available commands. It is on by default and can be turned off when you want only direct matches. Ava still follows the command execution policy.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.interpret_misses"}},
 
     "click.type": {
         "type": "enum",
@@ -1245,6 +1245,13 @@ def migrate_removed_settings(config: dict) -> bool:
     changed = (tts.get("feedback_level") != level
                or tts.get("enabled") is not (level != "silent"))
     apply_feedback_level(config, level)
+    # 400: one-time transition from the old migration's False. A later user
+    # opt-out is preserved on every subsequent load, including Settings saves.
+    session = config.setdefault("ava_command_session", {})
+    if isinstance(session, dict) and not session.get("plain_requests_migrated", False):
+        session["interpret_misses"] = True
+        session["plain_requests_migrated"] = True
+        changed = True
     for section, keys in _REMOVED_SETTING_KEYS.items():
         value = config.get(section)
         if isinstance(value, dict):

@@ -3577,7 +3577,7 @@ class DictationApp:
         for key in changed:
             cfg.pop(key, None)
         if 'interpret_misses' not in cfg:
-            cfg['interpret_misses'] = False
+            cfg['interpret_misses'] = True
             changed.append('interpret_misses')
         if changed:
             self.save_config()
@@ -7383,22 +7383,18 @@ class DictationApp:
                                f"further failures this session are counted, not logged")
 
     def _resolve_command_miss(self, outcome: "DispatchOutcome", text: str) -> "DispatchOutcome":
-        """Resolve one eligible normal-command miss, then execute once.
-
-        Suggestions, pending confirmations, disabled packs and ordinary
-        deterministic results are terminal. Only the final unclaimed miss may
-        reach Ava, and a proposal carries Route.MODEL into the normal executor.
-        """
+        """Resolve an eligible command miss; model policy guards every effect."""
         if outcome.kind != "command_miss" or outcome.detail.get("pack"):
             return outcome
+        from samsara.ava_command_session import MAX_REQUEST_WORDS, MAX_PROPOSAL_STEPS
         cfg = self.config.get("ava_command_session", {}) or {}
-        if not cfg.get("interpret_misses", False) or len((text or "").split()) > 8:
+        if not cfg.get("interpret_misses", True) or len((text or "").split()) > MAX_REQUEST_WORDS:
             return outcome
         try:
             from samsara import ai_preferences, ava_command_session, execution_policy
             from samsara.handlers import _get_foreground_hwnd
             from samsara.execution_policy import Route
-            from samsara.session_modes import DispatchOutcome
+            from samsara.session_modes import DispatchOutcome, outcome_chip
             if (not ai_preferences.ava_master_enabled(self.config)
                     or execution_policy.pending_operation() is not None):
                 return outcome
@@ -7406,30 +7402,85 @@ class DictationApp:
             request_id = str(self._ava_interpret_request)
             capture_hwnd = _get_foreground_hwnd()
             generation = execution_policy.capture_generation(self)
+            request_serial = getattr(self.command_executor, '_grammar_request_serial', 0)
             deadline = time.monotonic() + 2.5
             proposal = ava_command_session.resolve(self, text, request_id, deadline)
             if (proposal is None or time.monotonic() > deadline
                     or ava_command_session.is_cancelled(request_id)
+                    or str(self._ava_interpret_request) != request_id
+                    or request_serial != getattr(self.command_executor, '_grammar_request_serial', 0)
                     or _get_foreground_hwnd() != capture_hwnd):
                 return outcome
+            steps = tuple(getattr(proposal, 'steps', ()) or (proposal,))
+            if not 1 <= len(steps) <= MAX_PROPOSAL_STEPS:
+                return outcome
+
+            class AvaFeedbackHost:
+                """Forward app effects; collect labels and translate runner feedback."""
+                def __init__(host, app):
+                    object.__setattr__(host, '_host', app)
+                    object.__setattr__(host, 'labels', [])
+                    object.__setattr__(host, 'chain_detail', {})
+                def __getattr__(host, name):
+                    if (name == '_ava_cmd_generation'
+                            and (ava_command_session.is_cancelled(request_id)
+                                 or str(self._ava_interpret_request) != request_id)):
+                        return generation + 1
+                    return getattr(host._host, name)
+                def __setattr__(host, name, value):
+                    setattr(host._host, name, value)
+                def _show_outcome_chip(host, label, *args, **kwargs):
+                    host.labels.append(str(label))
+                def _show_dispatch_outcome_chip(host, result_outcome):
+                    if result_outcome.kind == 'command_chain':
+                        host.chain_detail.update(result_outcome.detail, origin='model')
+                        result_outcome = DispatchOutcome(kind='ava_command_chain', detail=host.chain_detail)
+                    show = getattr(host._host, '_show_dispatch_outcome_chip', None)
+                    if callable(show):
+                        show(result_outcome)
+                def _speak_session_notice(host, label, **kwargs):
+                    if host.chain_detail:
+                        chip = outcome_chip('ava_command_chain', host.chain_detail)
+                        label = chip[0] if chip else label
+                    speak = getattr(host._host, '_speak_session_notice', None)
+                    if callable(speak):
+                        speak(label, **kwargs)
+
+            host = AvaFeedbackHost(self)
+            if len(steps) > 1:
+                ready = []
+                for step in steps:
+                    entry = self.command_executor._registry_entry(step.command_id)
+                    if entry is None:
+                        return outcome
+                    ready.append((entry, step.args, text, None, {}))
+                result = self.command_executor.run_chain(
+                    ready, text=text, app=host, generation=generation,
+                    route=Route.MODEL, request_serial=request_serial)
+                state = getattr(getattr(result, 'state', None), 'value', 'failed')
+                if state == 'completed':
+                    self._command_mode_miss_count = 0
+                return DispatchOutcome(kind='ava_command_chain', detail={
+                    **result.detail, 'origin': proposal.origin, 'heard': outcome.detail.get('heard', '')})
             result = self.command_executor.execute_canonical(
-                proposal.command_id, self, route=Route.MODEL,
-                generation=generation,
-                args=proposal.args, source_text=text,
-            )
+                steps[0].command_id, self, route=Route.MODEL,
+                generation=generation, args=steps[0].args, source_text=text)
             state = getattr(getattr(result, "state", None), "value", "failed")
             if state == "completed":
                 self._command_mode_miss_count = 0
-                return DispatchOutcome(kind="command_executed", detail={
-                    "phrase": result.phrase, "state": state, "heard": outcome.detail.get("heard", ""),
-                    "origin": proposal.origin,
-                })
+                detail = {"phrase": result.phrase, "state": state,
+                          "heard": outcome.detail.get("heard", ""), "origin": proposal.origin}
+                label = result.detail.get('message') or result.detail.get('label')
+                if label:
+                    detail['ava_done'] = str(label)
+                chip = outcome_chip('command_executed', detail)
+                if chip is not None:
+                    host._speak_session_notice(chip[0], category='command')
+                return DispatchOutcome(kind="command_executed", detail=detail)
             if state == "queued":
                 return DispatchOutcome(kind="command_awaiting_confirmation", detail={
                     "phrase": result.phrase, "state": state, "heard": outcome.detail.get("heard", ""),
                 })
-            # A known/refused/disabled command is a terminal MISS; never ask a
-            # model again for an alternative action.
             return outcome
         except Exception as exc:
             logger.warning("[AVA-RESOLVE] request failed: %s", type(exc).__name__)

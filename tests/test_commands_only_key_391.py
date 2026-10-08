@@ -233,8 +233,10 @@ def test_interpret_misses_alone_does_not_enable_ava_master(tmp_path,monkeypatch)
     app._paste_preserving_clipboard.assert_not_called()
 
 
-def test_ava_miss_above_eight_words_never_calls_resolver(tmp_path,monkeypatch):
-    app,spies=_app(tmp_path,monkeypatch,'one two three four five six seven eight nine',
+def test_ava_miss_above_the_word_limit_never_calls_resolver(tmp_path,monkeypatch):
+    # 400 raised the limit from eight words to sixteen; seventeen is the first length that must not reach Ava.
+    app,spies=_app(tmp_path,monkeypatch,
+                   'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen',
                    interpret=True,ava_enabled=True)
     _run(app)
     assert spies.resolver.call_count==0 and spies.hand.call_count==0

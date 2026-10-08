@@ -157,7 +157,7 @@ class AvaCloudPage:
         layout.addWidget(status)
         interpret_misses = QCheckBox("Ava interprets commands")
         interpret_misses.setChecked(bool(
-            (self.app.config.get("ava_command_session", {}) or {}).get("interpret_misses", False)
+            (self.app.config.get("ava_command_session", {}) or {}).get("interpret_misses", True)
         ))
         interpret_misses.setEnabled((self.app.config.get("ava", {}) or {}).get("provider_policy") != "off")
         interpret_misses.setAccessibleName("Let Ava interpret unmatched commands")

@@ -575,7 +575,8 @@ class TestApplyAndCloseSnapshot:
             'ready_cue_dir', 'ready_cue_enabled', 'shortlist_size',
         ):
             expected['ava_command_session'].pop(key, None)
-        expected['ava_command_session']['interpret_misses'] = False
+        # 400: unmatched command interpretation is on by default.
+        expected['ava_command_session']['interpret_misses'] = True
         # Queue 57 delta: command_mode.tts_char_limit gained a Settings
         # control, so Apply now writes its effective value (default 50).
         expected.setdefault('command_mode', {})['tts_char_limit'] = 50

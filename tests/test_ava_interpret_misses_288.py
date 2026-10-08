@@ -31,7 +31,8 @@ def test_offline_and_long_misses_do_not_call_the_model(monkeypatch):
     monkeypatch.setattr(ask_ollama, "ask_ollama", lambda *_args, **_kwargs: calls.append(True))
     assert resolver.resolve(_app(), "make text bigger", "offline", 10**12) is None
     _allowed(monkeypatch, ready=True)
-    assert resolver.resolve(_app(), "one two three four five six seven eight nine", "long", 10**12) is None
+    # 400: the rejection boundary is now seventeen words.
+    assert resolver.resolve(_app(), " ".join(["word"] * 17), "long", 10**12) is None
     assert calls == []
 
 
@@ -47,5 +48,6 @@ def test_ava_success_chip_is_emitted_only_for_completed_execution():
     queued = outcome_chip("command_executed", {
         "phrase": "increase font size", "state": "queued", "origin": "model",
     })
-    assert completed == ("✓ increase font (Ava)", "success")
+    # 400: the shared Ava outcome names the completed command in full.
+    assert completed == ("Ava: increase font size", "success")
     assert queued != completed
