@@ -203,7 +203,10 @@ class LiveSurfaceWidget(QWidget):
         # explicit scroll actions, including wheel/trackpad input, instead.
         bar.sliderMoved.connect(self._scroll_value_changed)
         bar.actionTriggered.connect(lambda _: self._scroll_value_changed(bar.sliderPosition()))
-        bar.rangeChanged.connect(lambda *_: self._scroll_to_latest() if self._follow_latest else None)
+        # Qt can reset the scroll position after emitting rangeChanged during
+        # layout. Follow after that layout completes, not inside its callback.
+        bar.rangeChanged.connect(lambda *_: QTimer.singleShot(
+            0, self, lambda: self._scroll_to_latest() if self._follow_latest else None))
         bar.installEventFilter(self)
         self._transcript.viewport().installEventFilter(self)
         self._provisional = QLabel(self); self._provisional.setWordWrap(True)
@@ -478,7 +481,9 @@ class LiveSurfaceWidget(QWidget):
                                            "word": word, "occurrence": occurrence[folded] - 1})
                 parts.append(f'<a href="word:{index}">{escape(word)}</a>'); at = match.end()
             parts.append(escape(text[at:]))
-        if not self._view.text and self._view.provisional_text:
+        if self._view.provisional_text:
+            if self._view.text:
+                parts.append("<br/>")
             parts.append(f'<span style="color: {theme.TEXT_SECONDARY}">⋯ '
                          + escape(self._view.provisional_text) + '</span>')
         self._transcript.setHtml(
@@ -501,7 +506,7 @@ class LiveSurfaceWidget(QWidget):
             # A live panel grows for content, but does not retain a blank
             # review-sized slab for a one-line draft.
             chars_per_line = 50
-            lines = max(1, ceil(len(self._view.text or self._view.provisional_text) / chars_per_line))
+            lines = max(1, ceil((len(self._view.text) + len(self._view.provisional_text)) / chars_per_line))
             height = 64 + min(10, lines) * 24 + (24 if self._view.provisional_text else 0) + 20
             height = max(132, min(REVIEW_SIZE[1], height))
         return QRect(self.x(), self.y(), width, height)
@@ -572,20 +577,10 @@ class LiveSurfaceWidget(QWidget):
         self._state.show()
         y = content.y()+HEADER_HEIGHT+REGION_GAP
         available = content.bottom() - y + 1
-        if not self._view.text and self._view.provisional_text:
-            self._transcript.setGeometry(content.x(), y, content.width(), available)
-            self._transcript.show()
-            return
-        partial_lines = ceil(len(self._view.provisional_text) / 50)
-        partial_h = min(available, max(24, partial_lines * 24)) if partial_lines else 0
-        if self._view.text:
-            partial_h = min(partial_h, max(24, available // 2))
-        transcript_h = max(0, available - partial_h)
-        self._transcript.setGeometry(content.x(), y, content.width(), transcript_h); self._transcript.show()
-        if self._view.provisional_text:
-            self._provisional.setWordWrap(True)
-            self._provisional.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-            self._provisional.setGeometry(content.x(), y+transcript_h, content.width(), partial_h); self._provisional.show()
+        # Both settled and incoming words need the same scrollable viewport.
+        # A capped QLabel otherwise clips long speech below a retained draft.
+        self._transcript.setGeometry(content.x(), y, content.width(), available)
+        self._transcript.show()
 
     def _layout_row(self, controls, x: int, y: int, width: int) -> None:
         available = width - REGION_GAP*(len(controls)-1); base, rem = divmod(available, len(controls))

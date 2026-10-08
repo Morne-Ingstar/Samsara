@@ -184,7 +184,7 @@ def test_outcomes_expire_and_wake_settings_cannot_resurrect_them(surface):
     indicator.show_outcome('Sent','success');c.drain()
     clock[0] += 1.1;c.refresh_expired()
     indicator.set_wake_armed(True);c.drain()
-    assert c.widget._state.text() == 'Hands-free — listening'
+    assert c.widget._state.text() == 'Idle'
     indicator.set_wake_armed(False);c.drain()
     assert c.widget._state.text() == 'Idle'
     assert not c.view().text and not c.view().notice.message

@@ -464,8 +464,8 @@ class LiveSurfaceIndicatorAdapter:
         self._session_lane = (Lane.AVA if "ava" in lower else
                               Lane.COMMAND if "command" in lower else
                               Lane.HANDS_FREE_DICTATE) if name else None
-        self.controller.idle_capture = (CaptureState.HANDS_FREE_LISTENING if name else
-                                       CaptureState.WAKE_ARMED if self._wake_armed else CaptureState.OFF)
+        self.controller.idle_capture = (CaptureState.HANDS_FREE_LISTENING if name
+                                       else CaptureState.OFF)
         self.controller.idle_lane = self._session_lane or self._lane
         self.clear_outcome()
         self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED,
@@ -491,15 +491,9 @@ class LiveSurfaceIndicatorAdapter:
                 self._capture_id = None
 
     def set_wake_armed(self, armed: bool) -> None:
+        # Wake availability belongs to its toggle, not the activity surface.
+        # Only entering a real session may advertise hands-free listening.
         self._wake_armed = armed
-        self.clear_outcome()
-        if self._session_lane is None:
-            self.controller.idle_capture = CaptureState.WAKE_ARMED if armed else CaptureState.OFF
-            self.controller.idle_lane = Lane.HANDS_FREE_DICTATE if armed else self._lane
-            if self.controller._active_capture is None:
-                self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED,
-                                                  lane=self.controller.idle_lane,
-                                                  capture=self.controller.idle_capture))
 
     def flash_wake(self) -> None:
         self.controller.notice(NoticeKind.RESULT, "Wake phrase heard")

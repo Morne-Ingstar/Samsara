@@ -1900,6 +1900,16 @@ class _LiveSurfaceStreamingOverlay:
     def delivery_finished(self, text):
         self._partials.final(text, delivered=True)
 
+    def show_empty_result(self):
+        # Feedback is not document content. Keep the capture token so a late
+        # empty result cannot replace feedback belonging to a newer hold.
+        from samsara.live_surface.model import EventKind, NoticeKind, SurfaceEvent
+        self._partials.sequence += 1
+        self._partials.controller.post(SurfaceEvent(
+            EventKind.NOTICE, capture_id=self._partials.capture_id,
+            sequence=self._partials.sequence, lane=self._partials.lane,
+            notice=NoticeKind.RESULT, message="No speech"))
+
     def flash_done_and_fade(self, on_complete):
         self._partials.stop()
         if on_complete:
@@ -2107,8 +2117,11 @@ class StreamingSession:
             if self._direct_paste and self._last_pasted:
                 thread_registry.spawn("streaming-empty-undo", self._undo_direct_paste,
                                  daemon=True)
-            self._overlay.update_text("(no speech)",
-                                      StreamingOverlayQt.STATE_DONE)
+            if isinstance(self._overlay, _LiveSurfaceStreamingOverlay):
+                self._overlay.show_empty_result()
+            else:
+                self._overlay.update_text("(no speech)",
+                                          StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
             return
 
