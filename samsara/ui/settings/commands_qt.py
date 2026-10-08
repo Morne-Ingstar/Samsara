@@ -160,6 +160,7 @@ class CommandsPage:
                 + ("  •  always on" if always_on else "")
                 + count_str
             )
+            cb.setAccessibleName(name_lbl.text())
             name_lbl.setStyleSheet(
                 f"color: {theme.ICON_IDLE if always_on else theme.TEXT_PRIMARY}; "
                 f"font-size: {theme.TYPE_BODY}px; font-weight: {'normal' if always_on else '600'};"
@@ -215,6 +216,7 @@ class CommandsPage:
         token_edit = QLineEdit(str(todoist_cfg.get("api_token", "")))
         token_edit.setObjectName("todoistTokenField")
         token_edit.setPlaceholderText("Todoist API token")
+        token_edit.setAccessibleName(token_edit.placeholderText())
         token_edit.setEchoMode(QLineEdit.EchoMode.Password)
         token_edit.setMinimumHeight(theme.HIT_TARGET_MIN)
         show_token = QPushButton("Show")
@@ -287,9 +289,11 @@ class CommandsPage:
 
         # ---- Section: Voice Commands ---------------------------------------
         cmd_header = QHBoxLayout()
-        cmd_header.addWidget(self._section_title("Voice Commands"))
+        commands_title = self._section_title("Voice Commands")
+        cmd_header.addWidget(commands_title)
         cmd_header.addStretch()
         search_box = QLineEdit()
+        search_box.setAccessibleName("Search commands")
         search_box.setPlaceholderText("Search commands...")
         search_box.setMinimumWidth(140)
         search_box.setMaximumWidth(280)
@@ -313,6 +317,7 @@ class CommandsPage:
 
         # Table
         table = QTableWidget(0, 4)
+        table.setAccessibleName(commands_title.text())
         table.setHorizontalHeaderLabels(['Voice Phrase', 'Type', 'Action', 'Description'])
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)

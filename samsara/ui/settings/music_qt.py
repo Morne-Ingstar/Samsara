@@ -46,7 +46,8 @@ class MusicPage:
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(12)
 
-        layout.addWidget(self._section_title("Music library"))
+        library_title = self._section_title("Music library")
+        layout.addWidget(library_title)
         note = QLabel(
             "Name playlists, albums, artists, or tracks once, then say “playlist Morning”."
         )
@@ -74,10 +75,12 @@ class MusicPage:
         add_row = QHBoxLayout()
         add_row.setSpacing(10)
         name = QLineEdit()
+        name.setAccessibleName("Music item name")
         name.setObjectName("musicLibraryName")
         name.setMinimumHeight(44)
         name.setPlaceholderText("Name to say, for example Morning Coffee")
         link = QLineEdit()
+        link.setAccessibleName("Spotify link")
         link.setObjectName("musicLibraryLink")
         link.setMinimumHeight(44)
         link.setPlaceholderText("Paste a Spotify link or spotify: URI")
@@ -103,6 +106,7 @@ class MusicPage:
         layout.addWidget(import_summary)
 
         table = QTableWidget(0, 4)
+        table.setAccessibleName(library_title.text())
         table.setObjectName("musicLibraryTable")
         table.setHorizontalHeaderLabels(["Name", "Type", "Spotify link", ""])
         table.verticalHeader().setVisible(False)

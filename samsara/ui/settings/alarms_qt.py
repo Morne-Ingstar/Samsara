@@ -108,13 +108,15 @@ class AlarmsPage:
         layout.addSpacing(4)
 
         # ---- Section: Alarm List --------------------------------------------
-        layout.addWidget(self._section_title("Your Alarms"))
+        alarms_title = self._section_title("Your Alarms")
+        layout.addWidget(alarms_title)
         instant_note = QLabel("Changes to alarms below apply immediately.")
         instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
         table = QTableWidget(0, 5)
+        table.setAccessibleName(alarms_title.text())
         table.setHorizontalHeaderLabels(['On', 'Name', 'Interval', 'Next', 'Streak'])
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)

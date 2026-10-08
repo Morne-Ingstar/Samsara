@@ -88,7 +88,8 @@ class HealthPage:
 
         # ---- Section: Today's Log ----
         layout = main_layout
-        layout.addWidget(self._section_title("Today's Log"))
+        log_title = self._section_title("Today's Log")
+        layout.addWidget(log_title)
         layout.addSpacing(4)
 
         self._health_count_label = QLabel("Loading...")
@@ -97,6 +98,7 @@ class HealthPage:
         layout.addSpacing(4)
 
         self._health_log_table = QTableWidget()
+        self._health_log_table.setAccessibleName(log_title.text())
         self._health_log_table.setColumnCount(3)
         self._health_log_table.setHorizontalHeaderLabels(["Time", "Type", "Detail"])
         self._health_log_table.horizontalHeader().setStretchLastSection(True)
