@@ -409,6 +409,7 @@ from samsara.history import HistoryManager
 from samsara.history_store import HistoryStore
 from samsara.wake_word_matcher import match_wake_phrase
 from samsara.target_window import _resolve_target_window
+from samsara import presentation_state as _presentation_state
 from samsara.wake_corrections import apply_corrections as apply_wake_corrections, was_corrected
 from samsara.command_parser import parse_wake_command, normalize_command_text, strip_wake_echoes
 from samsara.phonetic_wash import apply_phonetic_wash
@@ -12951,14 +12952,8 @@ class DictationApp:
         logger.info(f"[CLEANUP] Mode -> {mode}")
 
     def _get_mode_display(self):
-        """Build a display string for the current mode + wake word state."""
-        mode = self.config.get('mode', 'hold').title()
-        if self.config.get('wake_word_enabled', False):
-            wake_state = getattr(self, '_wake_models_state', 'ready')
-            if wake_state != 'ready':
-                return f"{mode} + Wake (loading)"
-            return f"{mode} + Wake"
-        return mode
+        return _presentation_state.mode_display(
+            self.config, getattr(self, '_wake_models_state', 'ready'))
 
     def _update_tray_tooltip(self):
         """Refresh the tray icon tooltip to reflect current mode/wake state."""
@@ -12988,43 +12983,15 @@ class DictationApp:
                 logger.exception("_schedule_ui direct-call fallback failed")
 
     def _idle_animation_enabled(self) -> bool:
-        """config ui.idle_animation (default True): the indicator's idle blink
-        and glance only -- never state animation, never the tray."""
-        ui_cfg = self.config.get('ui', {})
-        if not isinstance(ui_cfg, dict):
-            return True
-        return bool(ui_cfg.get('idle_animation', True))
+        return _presentation_state.idle_animation_enabled(self.config)
 
     def _tray_mark(self):
-        """(capture, eye) the tray shows for the live app state.
-
-        Capture (wheel): recording > Ava > listening (command mode,
-        continuous, or the wake listener armed) > idle. Eye (hands-free):
-        the heard animation's keyframe while it plays > asleep (snoozed) >
-        armed (wake listener running) > off. See tray_qt.MARK_STATES.
-        """
-        wake_armed = bool(getattr(self, 'wake_word_active', False))
-        snoozed = bool(getattr(self, 'snoozed', False))
-        if getattr(self, 'recording', False):
-            capture = 'recording'
-        elif getattr(self, 'ava_mode_active', False):
-            capture = 'ava'
-        elif (getattr(self, 'command_mode_active', False)
-                or getattr(self, 'continuous_active', False) or wake_armed):
-            capture = 'listening'
-        else:
-            capture = 'idle'
-
-        heard_eye = getattr(self, '_tray_heard_eye', None)
-        if heard_eye is not None:
-            eye = heard_eye
-        elif snoozed:
-            eye = 'asleep'
-        elif wake_armed:
-            eye = 'armed'
-        else:
-            eye = 'off'
-        return capture, eye
+        return _presentation_state.tray_mark({
+            name: getattr(self, name, default) for name, default in (
+                ('wake_word_active', False), ('snoozed', False),
+                ('recording', False), ('ava_mode_active', False),
+                ('command_mode_active', False), ('continuous_active', False),
+                ('_tray_heard_eye', None))})
 
     def create_icon_image(self, rotation=0.0, opacity=1.0):
         """The tray frame for the live state: a tray_qt.MarkFrame.
