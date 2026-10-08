@@ -127,6 +127,8 @@ def _app(*, web_search=True, provider="deepseek", cloud=True):
     app._ava_memory.get_messages.return_value = [
         {"role": "system", "content": "SYSTEM"}, {"role": "user", "content": "what's the weather"}]
     app._ava_turn_outcome = None
+    # Queue 356/362: let the real dispatch route create its idle FeedState.
+    app._dispatch_voice_feed = None
     app.command_executor = MagicMock()
     app.command_executor.commands = {}
     app.voice_training_window = None
@@ -302,6 +304,9 @@ def effect_spies(monkeypatch):
     monkeypatch.setattr(ask_ollama, "_execute_action2", spies.action2)
     spies.emit = Mock()
     monkeypatch.setattr(ask_ollama.execution_policy, "_emit", spies.emit)
+    # Queue 356 audits every turn; record telemetry without permitting disk effects.
+    spies.conversation_log = Mock()
+    monkeypatch.setattr(ask_ollama, "log_conversation", spies.conversation_log)
 
     fake_pyautogui = types.SimpleNamespace(press=Mock(), hotkey=Mock(), typewrite=Mock(),
                                            write=Mock(), keyDown=Mock(), keyUp=Mock())
@@ -336,6 +341,8 @@ def _assert_nothing_executed(app, spies):
     for key_fn in spies.keys:
         key_fn.assert_not_called()
     assert spies.writes == [], spies.writes
+    spies.conversation_log.assert_called_once()
+    assert spies.conversation_log.call_args.kwargs["action"] == "answered_web_search"
 
 
 def test_imperative_instruction_in_search_result_executes_nothing(monkeypatch, run_turn, effect_spies):

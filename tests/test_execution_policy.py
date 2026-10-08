@@ -309,9 +309,13 @@ class TestModelBypass:
         pending = ask_ollama.get_pending_action()
         assert pending["type"] == "action2" and pending["verb"] == "close"
 
-    def test_yes_runs_exactly_once_through_the_same_choke_point(self, app, effects):
+    def test_yes_runs_exactly_once_through_the_same_choke_point(self, app, effects, monkeypatch):
+        # Queue 250 binds input confirmations to an unchanged foreground window.
+        target = {"hwnd": 100, "pid": 200, "process": "writer.exe", "title_hash": "test-window"}
+        monkeypatch.setattr(ep, "foreground_window_identity", lambda: dict(target))
         ask_ollama.handle_response(app, "CONFIRM Send it.\nACTION enter", original_text="send it", generation=7)
         assert effects == []
+        assert ep.pending_operation()._foreground_target == target
         ask_ollama.handle_ava_confirm(app)
         assert [c.get("key") for c in effects] == ["enter"]
         assert ask_ollama.get_pending_action() is None

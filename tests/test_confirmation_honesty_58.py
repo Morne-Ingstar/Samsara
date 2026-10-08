@@ -245,7 +245,7 @@ def test_awaiting_confirmation_outcome_is_distinct_and_never_command_executed():
     outcome = mgr.dispatch_utterance("show windows", GOOD)
     assert outcome.kind == "command_awaiting_confirmation"
     assert outcome.kind != "command_executed"
-    assert outcome.detail == {"phrase": "show windows", "state": "queued"}
+    assert outcome.detail == {"phrase": "show windows", "state": "queued", "heard": "show windows"}
     assert list(mgr._stack._items) == []    # nothing ran, nothing to undo
 
 
@@ -288,7 +288,7 @@ def test_disabled_pack_miss_outcome_and_chip_name_the_pack():
     mgr = _manager(Mock(return_value=CommandDispatchResult(matched=False, disabled_pack="window-management")))
     outcome = mgr.dispatch_utterance("show windows", GOOD)
     assert outcome.kind == "command_miss"
-    assert outcome.detail == {"reason": "pack_disabled", "pack": "window-management"}
+    assert outcome.detail == {"reason": "pack_disabled", "pack": "window-management", "heard": "show windows"}
     label, kind = outcome_chip(outcome.kind, outcome.detail)
     assert "window-management" in label and kind == "warning"
-    assert outcome_chip("command_miss", {}) == ("MISS", "error")
+    assert outcome_chip("command_miss", {}) == ("heard: (nothing) — not a command", "error")

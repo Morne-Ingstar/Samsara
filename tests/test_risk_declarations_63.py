@@ -208,10 +208,13 @@ def test_spoken_runs_directly_command_executes_without_asking(stem, spoken, tmp_
     app = _app(stem, spoken)
     ex = _executor(tmp_path, app)
 
-    outcome = _session(ex, app).dispatch_utterance(phrase, GOOD)
+    # Queue 262b made send's destination mandatory; its risk still needs no yes.
+    remainder = "left" if (stem, phrase) == ("windows", "send") else ""
+    utterance = f"{phrase} {remainder}".strip()
+    outcome = _session(ex, app).dispatch_utterance(utterance, GOOD)
 
     assert outcome.kind == "command_executed"
-    assert calls == [(phrase, "")]
+    assert calls == [(phrase, remainder)]
     assert ep.pending_operation() is None
     app.audio_coordinator.speak.assert_not_called()
 
