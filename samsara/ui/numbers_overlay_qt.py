@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from samsara.log import get_logger
 from samsara.ui import theme
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
 logger = get_logger(__name__)
 
@@ -357,8 +358,10 @@ class NumbersOverlayWindow(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool
+            | Qt.ToolTip
             | Qt.WindowTransparentForInput
+            | Qt.WindowDoesNotAcceptFocus
+            | Qt.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
@@ -377,6 +380,9 @@ class NumbersOverlayWindow(QWidget):
         # window intersected with this screen. Default: the whole screen.
         self._bounds = (geo.x(), geo.y(), geo.x() + geo.width(), geo.y() + geo.height())
         self.setGeometry(geo)
+        self.setAccessibleName("Numbered targets")
+        self._announcer = LiveSurfaceAnnouncer(self)
+        self._update_accessibility()
 
         if _COORD_DEBUG:
             _logger.debug(
@@ -403,12 +409,40 @@ class NumbersOverlayWindow(QWidget):
         self.set_cells(cells)
         self.update()
 
+    def _update_accessibility(self) -> None:
+        # The input carries target positions, not UIA element names. Expose
+        # that same mapping as readable text without adding hidden controls.
+        mappings = [f"{text}: target at {x}, {y}" for x, y, _w, _h, text in self._labels]
+        mappings.extend(
+            f"{self._labels[i][4] if i < len(self._labels) else i + 1}: cell {left}, {top}, {right}, {bottom}"
+            for i, (left, top, right, bottom) in enumerate(self._cells)
+        )
+        self.setAccessibleDescription("; ".join(part for part in (self._caption, *mappings) if part))
+        if self.isVisible():
+            self._announce_mapping()
+
+    def _announce_mapping(self) -> None:
+        # Keep large grids readable on demand without speaking every coordinate.
+        summary = f"{self.accessibleName()}: {len(self._labels)}"
+        if self._caption:
+            summary = f"{summary}; {self._caption}"
+        self._announcer.announce_transition(self.accessibleDescription(), summary)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._announce_mapping()
+
+    def hideEvent(self, event) -> None:
+        self._announcer.reset()
+        super().hideEvent(event)
+
     def set_cells(self, cells: "list | None") -> None:
         """Queue 71: cell rectangles to outline, in LOGICAL coordinates
         (left, top, right, bottom). The mouse grid draws these so the user can
         see which region each number owns; None (the numbers overlay) draws
         pills only, exactly as before."""
         self._cells = list(cells) if cells else []
+        self._update_accessibility()
 
     def set_bounds(self, bounds: tuple) -> None:
         """Clamp pills to (left, top, right, bottom), intersected with this

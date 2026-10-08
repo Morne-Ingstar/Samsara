@@ -23,6 +23,7 @@ from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
 from samsara.ui import theme
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
 logger = get_logger(__name__)
 
@@ -133,7 +134,14 @@ class _StatusWindow(QMainWindow):
         self._am = alarm_manager
 
         self.setWindowTitle("Reminders & Alarms")
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAccessibleName(self.windowTitle())
+        self._announcer = LiveSurfaceAnnouncer(self)
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool | Qt.WindowDoesNotAcceptFocus)
+        # Retain the tool window's title/close chrome while using Qt's
+        # nonactivating tooltip show path; do not add a tooltip shadow.
+        self.setWindowFlags((self.windowFlags() & ~Qt.WindowType_Mask)
+                            | Qt.ToolTip | Qt.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setStyleSheet(_ss())
         self.resize(320, 440)
         self.setMinimumSize(260, 180)
@@ -164,6 +172,7 @@ class _StatusWindow(QMainWindow):
         hdr_row.addWidget(hdr, stretch=1)
 
         close_btn = QPushButton("x")
+        close_btn.setAccessibleName("Close status overlay")
         close_btn.setFixedSize(22, 22)
         close_btn.setFocusPolicy(Qt.NoFocus)
         close_btn.setCursor(Qt.PointingHandCursor)
@@ -303,6 +312,28 @@ class _StatusWindow(QMainWindow):
         self._scroll.setWidget(content)
 
         self._footer.setText(f"Updated {datetime.now().strftime('%H:%M:%S')}")
+        description = "; ".join(lbl.text() for lbl in content.findChildren(QLabel))
+        if nagging:
+            description = f"{self._nag_banner.text()}; {description}"
+        self.setAccessibleDescription(description)
+        # Countdown and Updated text change on every refresh; only changes
+        # to the reminders/alarms themselves should interrupt dictation.
+        self._status_transition = (
+            tuple((r.get("name", "Unnamed"), _schedule_label(r.get("schedule", {}))) for r in reminders),
+            tuple((a.get("id", a.get("name", "")), a.get("name", ""),
+                   a.get("enabled", False), a.get("interval_minutes", 0)) for a in alarms),
+            self._nag_banner.text() if nagging else "",
+        )
+        if self.isVisible():
+            self._announcer.announce_transition(self._status_transition, description)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._announcer.announce_transition(self._status_transition, self.accessibleDescription())
+
+    def hideEvent(self, event):
+        self._announcer.reset()
+        super().hideEvent(event)
 
     # ── Layout helpers ────────────────────────────────────────────────────────
 

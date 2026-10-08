@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
 
 from samsara.log import get_logger
 from samsara.ui import qt_runtime, theme
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
 logger = get_logger(__name__)
 
@@ -89,14 +90,19 @@ class _ToastWindow(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool
+            | Qt.ToolTip
             | Qt.WindowTransparentForInput
+            | Qt.WindowDoesNotAcceptFocus
+            | Qt.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setFixedWidth(_WIDTH)
 
         self._rows: list[_ToastRow] = []
+        self._announcement_serial = 0
+        self.setAccessibleName("Reminder notifications")
+        self._announcer = LiveSurfaceAnnouncer(self)
         self._fade_anim: "QPropertyAnimation | None" = None
 
         self._hold_timer = QTimer(self)
@@ -137,8 +143,12 @@ class _ToastWindow(QWidget):
             self.setWindowOpacity(1.0)
 
         self._hold_timer.start(_HOLD_MS)
+        row = self._rows[-1]
+        self._announcement_serial += 1
+        self._announcer.announce_transition(self._announcement_serial, f"{row.title}: {row.message}")
 
     def _rebuild_rows(self) -> None:
+        self.setAccessibleDescription("; ".join(f"{r.title}: {r.message}" for r in self._rows))
         while self._rows_layout.count():
             item = self._rows_layout.takeAt(0)
             w = item.widget()
@@ -237,6 +247,7 @@ class _ToastWindow(QWidget):
             self._hold_timer.start(_HOLD_MS)
         else:
             self.hide()
+            self.setAccessibleDescription("")
             self._sync_input_mode()
         try:
             callback()
@@ -276,6 +287,7 @@ class _ToastWindow(QWidget):
     def _on_faded_out(self) -> None:
         self.hide()
         self._rows.clear()
+        self.setAccessibleDescription("")
         self._sync_input_mode()
 
     def _cancel_fade(self) -> None:

@@ -75,6 +75,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QWidget
 from samsara.ui import theme
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
 logger = logging.getLogger(__name__)
 
@@ -264,9 +265,10 @@ class ListeningIndicator(QWidget):
             None,
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
+            | Qt.WindowType.ToolTip
             | Qt.WindowType.WindowTransparentForInput
-            | Qt.WindowType.WindowDoesNotAcceptFocus,
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+            | Qt.WindowType.NoDropShadowWindowHint,
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -358,6 +360,9 @@ class ListeningIndicator(QWidget):
         self._idle_frame_timer.timeout.connect(self._idle_frame)
 
         self.resize(_PILL_MIN_W, _PILL_H)
+        self.setAccessibleName("Listening indicator")
+        self._announcer = LiveSurfaceAnnouncer(self)
+        self._update_accessibility(announce=False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -410,6 +415,7 @@ class ListeningIndicator(QWidget):
 
     def set_mode(self, mode_str):
         self._mode_text = mode_str if mode_str else "Hold"
+        self._update_accessibility()
         if self.isVisible():
             self._reposition()
             self.update()
@@ -837,6 +843,23 @@ class ListeningIndicator(QWidget):
         # A capture state that turns the ring needs the frame clock running.
         if self.isVisible() and self._spinning() and not self._pulse_timer.isActive():
             self._pulse_timer.start()
+        self._update_accessibility()
+
+    def _update_accessibility(self, announce=True):
+        # Reuse the painted label and chip; animation frames never announce.
+        label = str(self._resolve_colors()[2])
+        state = self.display_state()
+        if state in ("capture", "command-capture"):
+            label = f"{label}: recording"
+        elif state == STATE_ARMED:
+            label = f"{label}: wake listener armed"
+        chip = self._active_chip()
+        description = label if not self._chip_only else ""
+        if chip:
+            description = "; ".join(part for part in (description, chip[0]) if part)
+        self.setAccessibleDescription(description)
+        if announce and self.isVisible():
+            self._announcer.announce_transition(description, description)
 
     def _start_blink(self):
         if not self._idle_allowed():
@@ -914,6 +937,7 @@ class ListeningIndicator(QWidget):
         else:
             self._reposition()
         self.update()
+        self._update_accessibility()
 
         if kind not in _NO_TTL_KINDS and ttl_ms:
             self._chip_timer.start(int(ttl_ms))
@@ -932,6 +956,7 @@ class ListeningIndicator(QWidget):
         if lost == self._device_lost:
             return
         self._device_lost = lost
+        self._update_accessibility(announce=False)
         if lost and not self.isVisible():
             self._chip_only = True
             self._reposition()
@@ -939,10 +964,15 @@ class ListeningIndicator(QWidget):
         elif not lost and self._chip_only and self._chip_label is None:
             self._chip_only = False
             super().hide()
+            self._announcer.announce_transition(("device-restored", lost), "Microphone reconnected")
             return
         if self.isVisible():
             self._reposition()
             self.update()
+        if lost:
+            self._update_accessibility()
+        else:
+            self._announcer.announce_transition(("device-restored", lost), "Microphone reconnected")
 
     def _active_chip(self) -> "tuple[str, str] | None":
         """(label, kind) actually drawn, or None. Device-lost wins."""

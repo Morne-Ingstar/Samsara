@@ -100,6 +100,15 @@ def _ss() -> str:
 # Task row widget
 # ---------------------------------------------------------------------------
 
+class _TaskDeleteButton(QPushButton):
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class _TaskRow(QWidget):
     def __init__(self, task: dict, on_change, parent=None):
         super().__init__(parent)
@@ -122,6 +131,7 @@ class _TaskRow(QWidget):
         lay.addWidget(self._check)
 
         self._label = QLabel(self._task["text"])
+        self._check.setAccessibleName(self._label.text())
         self._label.setWordWrap(False)
         self._label.setSizePolicy(
             self._label.sizePolicy().horizontalPolicy(),
@@ -129,9 +139,11 @@ class _TaskRow(QWidget):
         )
         lay.addWidget(self._label, stretch=1)
 
-        self._del = QPushButton("x")
+        self._del = _TaskDeleteButton("x")
+        self._del.setAccessibleName(f"Delete {self._label.text()}")
         self._del.setFixedSize(22, 22)
-        self._del.setFocusPolicy(Qt.NoFocus)
+        self._del.setFocusPolicy(Qt.StrongFocus)
+        QWidget.setTabOrder(self._check, self._del)
         self._del.setCursor(Qt.PointingHandCursor)
         self._del.clicked.connect(self._remove)
         self._del.setStyleSheet(
@@ -225,6 +237,7 @@ class _TaskWindow(QMainWindow):
         # Input field
         self._input = QLineEdit()
         self._input.setPlaceholderText("Add a task...")
+        self._input.setAccessibleName(self._input.placeholderText())
         self._input.returnPressed.connect(self._add_task)
         lay.addWidget(self._input)
 

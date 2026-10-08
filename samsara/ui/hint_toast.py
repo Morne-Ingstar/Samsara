@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 from samsara.ui import theme
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
 
 def _bg():
@@ -52,13 +53,17 @@ class HintToast(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool
+            | Qt.ToolTip
+            | Qt.WindowDoesNotAcceptFocus
+            | Qt.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setFixedWidth(self._WIDTH)
 
         self._build(message)
+        self._announcer = LiveSurfaceAnnouncer(self)
+        self.setAccessibleDescription(message)
 
     def _build(self, message: str) -> None:
         outer = QVBoxLayout(self)
@@ -96,6 +101,7 @@ class HintToast(QWidget):
         hdr.addWidget(icon_lbl)
 
         title_lbl = QLabel("Hint")
+        self.setAccessibleName(title_lbl.text())
         title_lbl.setStyleSheet(
             f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px; font-weight: 600;"
         )
@@ -103,6 +109,7 @@ class HintToast(QWidget):
         hdr.addStretch()
 
         close_btn = QPushButton("x")
+        close_btn.setAccessibleName("Dismiss hint")
         close_btn.setFixedSize(18, 18)
         close_btn.setFocusPolicy(Qt.NoFocus)
         close_btn.setCursor(Qt.PointingHandCursor)
@@ -144,6 +151,7 @@ class HintToast(QWidget):
         )
         self.setWindowOpacity(0.0)
         super().show()
+        self._announcer.announce_transition(self.accessibleDescription(), self.accessibleDescription())
 
         self._fade_in = QPropertyAnimation(self, b"windowOpacity", self)
         self._fade_in.setDuration(self._FADE_MS)
