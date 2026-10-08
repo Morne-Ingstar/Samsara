@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 from samsara import grammar
+from samsara.intent import resolve as rs
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CATALOG = json.loads((ROOT / "commands_catalog.json").read_text(encoding="utf-8"))
+CATALOG = {"commands": json.loads((ROOT / "tests" / "fixtures" / "426" /
+                                   "registry_snapshot.json").read_text(encoding="utf-8"))}
 RECORDS = CATALOG["commands"]
 
 
@@ -49,6 +51,12 @@ def _positive(record: dict) -> str:
 
 def _negative(record: dict) -> str:
     return f"i said {record['aliases'][0]}"
+
+
+@pytest.fixture(scope="module")
+def non_voice_aliases():
+    # Module scope loads before conftest's per-test plugin isolation.
+    return {row["phrase"] for row in rs.live_rows() if not row["voice_triggerable"]}
 
 
 @pytest.fixture(autouse=True)
@@ -107,9 +115,14 @@ def test_chaining_is_ordered_and_prose_is_not_a_command():
     assert grammar.parse("open obsidian then maybe", CATALOG) == []
 
 
-def test_every_argument_bearing_canonical_form_has_generated_positive_and_negative():
-    with_args = [record for record in RECORDS if record.get("args")]
-    assert len(with_args) == 72
+def test_every_argument_bearing_canonical_form_has_generated_positive_and_negative(non_voice_aliases):
+    # 345b's bound Interact identities are controller-only, never spoken.
+    # Read the registry flag so future controller identities follow it too.
+    with_args = [record for record in RECORDS if record.get("args")
+                 and not non_voice_aliases.intersection(record["aliases"])]
+    # 253 and subsequent additions replaced the old 72-record catalogue.
+    # The companion registry test pins every ID, alias, slot and scope.
+    assert len(with_args) == 91
     positives = [_positive(record) for record in with_args]
     negatives = [_negative(record) for record in with_args]
     assert len(positives) == len(with_args)

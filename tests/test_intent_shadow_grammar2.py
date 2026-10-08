@@ -16,7 +16,9 @@ def resolver():
 
 def test_logged_row_carries_the_independent_grammar_verdict(tmp_path, resolver):
     config = {"intent": {"shadow_dir": str(tmp_path)}}
-    observer = shadow.IntentShadow(lambda: resolver, lambda: config, pid_fn=lambda: None)
+    # 265: next-tab is eligible only with a supported browser focused.
+    observer = shadow.IntentShadow(lambda: resolver, lambda: config, pid_fn=lambda: None,
+                                   name_fn=lambda _pid: "chrome.exe")
 
     entry = observer.record("next tab", "staged", datetime(2026, 9, 17, 12, 0), None)
 
@@ -28,6 +30,19 @@ def test_logged_row_carries_the_independent_grammar_verdict(tmp_path, resolver):
     # Existing resolver evidence remains independent and unmodified.
     assert entry["tier"] == "exact"
     assert entry["would"] == "command:builtin.next_tab"
+
+
+def test_unknown_foreground_keeps_grammar2_independent_of_scope(tmp_path, resolver):
+    config = {"intent": {"shadow_dir": str(tmp_path)}}
+    observer = shadow.IntentShadow(lambda: resolver, lambda: config, pid_fn=lambda: None,
+                                   name_fn=lambda _pid: None)
+    entry = observer.record("next tab", "staged", datetime(2026, 9, 17, 12, 0), None)
+
+    assert entry["app"] is None
+    assert entry["would"] != "command:builtin.next_tab"
+    assert entry["grammar2"]["count"] == 1
+    assert entry["grammar2"]["canonical_id"] == "builtin.next_tab"
+    assert entry["grammar2"]["args"] == {}
 
 
 def test_grammar2_parse_p95_stays_under_one_ms(resolver):

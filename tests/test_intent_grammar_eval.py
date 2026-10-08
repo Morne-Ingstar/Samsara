@@ -44,6 +44,7 @@ commands with an example failure, negatives, tier 1+2 latency).
 """
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -56,7 +57,7 @@ from samsara.intent import resolve as rs
 from samsara.command_scope import MatchContext
 
 REPO = Path(__file__).resolve().parent.parent
-FIXTURE = REPO / "tests" / "fixtures" / "intent_eval.jsonl"
+FIXTURE = REPO / "tests" / "fixtures" / "426" / "intent_eval_sha256.json"
 COVERAGE_FLOOR = 0.85
 #: Queue 93: measured at 0.7716 the day the execution rules landed (16,961 ->
 #: 13,733 of 17,797 corpus phrasings still execute). The floor is set just
@@ -100,7 +101,9 @@ def gen():
 @pytest.fixture(scope="module")
 def catalog(gen):
     with contextlib.redirect_stdout(io.StringIO()):
-        return gen.load_catalog()
+        records, reserved = gen.load_catalog()
+    # Ignored owner-local demo commands cannot be included in portable data.
+    return [r for r in records if r["plugin"] != "demo_commands"], reserved
 
 
 @pytest.fixture(scope="module")
@@ -119,6 +122,11 @@ def report(gen, catalog, corpus):
     records, reserved = catalog
     resolver = rs.IntentResolver(records, app_names=gen.APP_NAMES, reserved=reserved)
     resolver.resolve("warm up")
+    # 265 added per-scope grammar indexes. Construct each eligible view before
+    # measuring tiers 1+2, just as the resolver itself is constructed outside
+    # the budget. Empty input warms the view without parsing a corpus sentence.
+    for record in records:
+        resolver.resolve("", context=_live_context(record))
     per = defaultdict(lambda: {"ok": 0, "n": 0, "fail": None})
     kinds = defaultdict(lambda: [0, 0])
     negatives = Counter()
@@ -176,11 +184,18 @@ def report(gen, catalog, corpus):
     }
 
 
-def test_fixture_is_generated_and_current(gen, catalog):
-    records, reserved = catalog
-    historical = [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines()]
-    assert historical
-    assert {line["id"] for line in historical} == {record["canonical_id"] for record in records}
+def test_fixture_is_generated_and_current(gen, catalog, corpus):
+    records, _reserved = catalog
+    # Freeze every generated row compactly, rather than duplicating the large
+    # historical corpus that other prompts still use. Hashes are per command
+    # so a changed alias, slot, phrasing or negative label names its command.
+    expected = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rows = defaultdict(list)
+    for line in corpus:
+        rows[line["id"]].append(line)
+    assert set(rows) == set(expected) == {r["canonical_id"] for r in records}
+    for cid, lines in rows.items():
+        assert hashlib.sha256(gen.render(lines).encode("utf-8")).hexdigest() == expected[cid], cid
 
 
 def test_corpus_covers_every_command_forty_times(catalog, corpus):

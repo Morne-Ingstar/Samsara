@@ -16,6 +16,7 @@ import pytest
 from samsara.intent import grammar as gr
 from samsara.intent import normalize as nz
 from samsara.intent import resolve as rs
+from samsara.command_scope import MatchContext
 
 REPO = Path(__file__).resolve().parent.parent
 APPS = ("chrome", "spotify", "discord", "notepad", "vs code", "firefox", "obsidian", "steam", "terminal")
@@ -30,6 +31,12 @@ def records():
 @pytest.fixture(scope="module")
 def resolver(records):
     return rs.IntentResolver(records, app_names=APPS)
+
+
+@pytest.fixture
+def browser_context():
+    # 265 deliberately limits browser accelerators to a focused browser.
+    return MatchContext.for_app("chrome.exe")
 
 
 # ---------------------------------------------------------------------------
@@ -207,22 +214,32 @@ def test_not_wired_into_dispatch():
             # spoken last-outcome formats a suggestion; it never dispatches it
             and not (path.name == "core_utils.py" and
                      enclosing_function(n) == "_nearest_similarity_command")
+            # 341 reuses two predicates for catalogue answers and refusals;
+            # importing the resolver or parser for dispatch remains forbidden.
+            and not (path.name == "ask_ollama.py" and
+                     isinstance(n, ast.ImportFrom) and
+                     n.module == "samsara.intent.grammar" and
+                     {a.name for a in n.names} ==
+                     {"asks_to_run_action", "catalog_question_goal"})
             for n in imports
         ), path
-    # 36: dictation.py may use the gate ONLY as the shadow observer -- both
-    # imports live inside _intent_shadow_observe, nothing dispatches on it.
+    # 36 observes outcomes; 271 also names suggestions without dispatching.
+    # Attribute nested imports to their nearest function, not every ancestor.
     tree = ast.parse((REPO / "dictation.py").read_text(encoding="utf-8-sig"))
+    parents = {child: parent for parent in ast.walk(tree)
+               for child in ast.iter_child_nodes(parent)}
     users = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            for inner in ast.walk(node):
-                if isinstance(inner, ast.ImportFrom) and (inner.module or "").startswith("samsara.intent"):
-                    users.add((node.name, inner.module))
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("samsara.intent"):
+            users.add((enclosing_function(node), node.module, tuple(a.name for a in node.names)))
     top_level = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))
                  and "samsara.intent" in ast.dump(n)]
     assert top_level == []
-    assert {name for name, _m in users} <= {"_intent_shadow_observe", "_resolver_factory"}
-    assert {m for _n, m in users} == {"samsara.intent.shadow", "samsara.intent.resolve"}
+    assert users == {
+        ("_intent_shadow_observe", "samsara.intent.shadow", ("IntentShadow",)),
+        ("_resolver_factory", "samsara.intent.resolve", ("IntentResolver",)),
+        ("_command_suggestion_fn", "samsara.intent.resolve", ("IntentResolver",)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -231,12 +248,14 @@ def test_not_wired_into_dispatch():
 
 def test_records_come_from_the_live_registry_and_match_the_fixture(records):
     fixture = {c["canonical_id"]: c for c in
-               json.loads((REPO / "commands_catalog.json").read_text(encoding="utf-8"))["commands"]}
-    live = {r["canonical_id"]: r for r in records}
+               json.loads((REPO / "tests" / "fixtures" / "426" /
+                           "registry_snapshot.json").read_text(encoding="utf-8"))}
+    # Local, ignored demo plugins are absent from CI and cannot be frozen.
+    live = {r["canonical_id"]: r for r in records if r["plugin"] != "demo_commands"}
     assert set(live) == set(fixture)
     for cid, rec in live.items():
-        assert rec["aliases"] == fixture[cid]["aliases"], cid
-        assert rec["risk"] == fixture[cid]["risk"], cid
+        for key in ("aliases", "risk", "args", "scope"):
+            assert rec[key] == fixture[cid][key], (cid, key)
 
 
 def test_catalog_shape(records):
@@ -370,8 +389,8 @@ def test_tier_order_and_thresholds_are_constants():
     # keys. Fuzzy by construction, so it can never execute.
     ("tab next", "similarity", "builtin.next_tab", rs.SUGGEST),
 ])
-def test_tiers_in_order(resolver, text, tier, cid, kind):
-    res = resolver.resolve(text)
+def test_tiers_in_order(resolver, browser_context, text, tier, cid, kind):
+    res = resolver.resolve(text, context=browser_context)
     assert (res.kind, res.tier, res.canonical_id) == (kind, tier, cid)
     if tier == "exact":
         assert res.confidence == 1.0
@@ -391,10 +410,10 @@ def test_whole_utterance_control_words_only_match_as_heard(resolver):
     assert resolver.resolve("please scratch that").canonical_id != "builtin.scratch_that"
 
 
-def test_destructive_never_resolves_through_a_lookalike_synonym_or_similarity(resolver):
-    assert resolver.resolve("close tab").kind == rs.RESOLVED
+def test_destructive_never_resolves_through_a_lookalike_synonym_or_similarity(resolver, browser_context):
+    assert resolver.resolve("close tab", context=browser_context).kind == rs.RESOLVED
     for text in ("clothes tab", "shut tab", "tab close"):
-        res = resolver.resolve(text)
+        res = resolver.resolve(text, context=browser_context)
         assert res.kind == rs.SUGGEST and res.canonical_id == "builtin.close_tab", text
         assert "builtin.close_tab" in res.suggestions
 
@@ -438,8 +457,8 @@ def test_empty_and_noise_are_dictation(resolver):
     assert resolver.resolve("purple banana glimmer octopus velvet").kind == rs.DICTATION
 
 
-def test_chain_resolution_reports_every_part(resolver):
-    res = resolver.resolve("next tab and then close tab")
+def test_chain_resolution_reports_every_part(resolver, browser_context):
+    res = resolver.resolve("next tab and then close tab", context=browser_context)
     assert res.kind == rs.RESOLVED and [p.canonical_id for p in res.chain] == ["builtin.next_tab", "builtin.close_tab"]
 
 
