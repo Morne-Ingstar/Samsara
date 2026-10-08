@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMenu, QVBoxLayout, QHBoxLayout, QSizePolicy, QDialog,
 )
 from samsara.ui import theme, qt_runtime
+from samsara.config_schema import SETTINGS_SCHEMA
 from .presentation import Page, SettingRow, Disclosure, CleanComboBox
 
 
@@ -77,19 +78,23 @@ class PageAssembly:
         self._pages[title] = page
         for is_advanced, specs in ((False, base), (True, advanced)):
             for spec in specs:
-                label, description, names, config, *help_copy = spec
+                label, description, names, config, *_old_help_copy = spec
                 keys = names.split(',') if names else []
                 controls = [self._take_control(key) for key in keys]
+                help_data = next(
+                    (SETTINGS_SCHEMA[key]["help"] for key in filter(None, config.split(','))
+                     if key in SETTINGS_SCHEMA and "help" in SETTINGS_SCHEMA[key]),
+                    None,
+                )
+                row = SettingRow(label, description, controls, help_data)
+                # Keep source explanations searchable without turning them
+                # into disclosure copy or adding a help button.
                 explanations = [
-                    text for _label, text, widget, _row in self._source_rows
+                    text for _label, text, widget, _source_row in self._source_rows
                     if any(widget == control or widget.isAncestorOf(control) for control in controls)
                     and text and text != description
                 ]
-                # A grouped row can inherit a short source label for each of
-                # its controls.  Use its most informative distinct explanation
-                # rather than repeating those labels inside the help panel.
-                full = help_copy[0] if help_copy else max(explanations, key=len, default="")
-                row = SettingRow(label, description, controls, full)
+                row.full_help = " ".join((description, *explanations, help_data["why"] if help_data else ""))
                 row.config_keys = tuple(filter(None, config.split(',')))
                 row.widget_keys = tuple(keys)
                 row.page_name = title

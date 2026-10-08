@@ -293,9 +293,11 @@ def test_diagnostics_apply_saves_and_refreshes_timing_cache(window, tmp_path, en
 
 
 def test_help_keeps_accessible_text_and_large_target(window):
-    row = window._rows_by_widget['launch_at_login']
+    row = window._rows_by_widget['adv_live_surface_enabled']
     assert row.help.width() >= 44 and row.help.height() >= 44
-    assert row.help.accessibleDescription() == row.full_help
+    assert row.help.accessibleName() == f'Help: {row.title}'
+    assert row.help.accessibleDescription() == row.help_data['why']
+    assert row.help_data['why'] in row.full_help
     row.help.click()
     assert not row.help_panel.isHidden()
     assert row.grid.indexOf(row.help_panel) == -1
@@ -332,15 +334,20 @@ def test_keyboard_help_and_disclosure(window, qapp):
     advanced.toggle.setFocus()
     QTest.keyClick(advanced.toggle, Qt.Key.Key_Space)
     assert advanced.toggle.isChecked()
-    row = window._rows_by_widget['launch_at_login']
+    row = window._rows_by_widget['adv_live_surface_enabled']
     row.help.setFocus()
     qapp.processEvents()
+    assert row.help.hasFocus()
     assert row.help_panel is None
     QTest.keyClick(row.help, Qt.Key.Key_Return)
     assert row.help_panel.isVisibleTo(window)
     QTest.keyClick(row.help, Qt.Key.Key_Escape)
     assert row.help_panel.isHidden()
-    assert window._widgets['launch_at_login'].accessibleName()
+    QTest.keyClick(row.help, Qt.Key.Key_Space)
+    assert row.help_panel.isVisibleTo(window)
+    QTest.keyClick(row.help, Qt.Key.Key_Escape)
+    assert row.help_panel.isHidden()
+    assert window._widgets['adv_live_surface_enabled'].accessibleName()
     window.hide()
 
 
@@ -348,8 +355,10 @@ def test_help_is_click_only_and_one_panel_at_a_time(window, qapp):
     from PySide6.QtTest import QTest
 
     window.show()
-    first = window._rows_by_widget['launch_at_login']
-    second = window._rows_by_widget['start_hidden']
+    window.show_tab('Help')
+    window._pages['Help'].advanced.toggle.setChecked(True)
+    first = window._rows_by_widget['diagnostics_stage_timing']
+    second = window._rows_by_widget['diagnostics_write_jsonl']
     QTest.mouseMove(first.help, first.help.rect().center())
     qapp.processEvents()
     assert first.help_panel is None

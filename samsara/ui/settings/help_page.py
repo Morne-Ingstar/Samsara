@@ -41,17 +41,13 @@ ADVANCED = [
         "Stage timing",
         "Record how long each dictation step takes in a local file.",
         "diagnostics_stage_timing",
-        "diagnostics.stage_timing",
-        "Turn this on to measure delays when tuning dictation performance. "
-        "It saves timings locally without dictated text; leave it off unless you are debugging."
+        "diagnostics.stage_timing"
     ],
     [
         "Diagnostic event log",
         "Save dictation results and troubleshooting details to a local file.",
         "diagnostics_write_jsonl",
-        "diagnostics.write_jsonl",
-        "Turn this on when investigating missing or unexpected dictation results. "
-        "The local file can include dictated text, so leave it off unless you are debugging."
+        "diagnostics.write_jsonl"
     ],
     [
         "Benchmark recording",

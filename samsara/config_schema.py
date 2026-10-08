@@ -182,6 +182,7 @@ SETTINGS_SCHEMA = {
             },
         ],
         "tab": "dictation",
+        "help": {"why": "Each profile pairs a spoken phrase with a target app, and an optional send word can finish the handoff. Use separate profiles when different apps need different wake phrases. The default Claude profile is enabled; a phrase without its matching trained model may not activate.", "docs": "https://morneis.com/samsara/docs/settings/#wake_profiles"},
     },
     # -------------------------------------------------------------------------
     # General tab
@@ -192,6 +193,7 @@ SETTINGS_SCHEMA = {
                     "medium", "medium.en", "large-v3"],
         "default": "base",
         "tab": "general",
+        "help": {"why": "Larger recognition models may improve difficult speech but use more memory and take longer to respond. Change this if accuracy or response time is a problem on your computer. The default base model favors a lighter local workload.", "docs": "https://morneis.com/samsara/docs/settings/#model_size"},
     },
     "language": {
         "type": "str",
@@ -213,11 +215,11 @@ SETTINGS_SCHEMA = {
         "default": "dark",
         "tab": "general",
     },
-    "auto_paste":           {"type": "bool", "default": True,  "tab": "general"},
+    "auto_paste":           {"type": "bool", "default": True,  "tab": "general", "help": {"why": "When enabled, completed dictation is sent to the active text field. Turn it off when you want to keep a draft in the session and choose when to insert it. The default assumes you want immediate insertion; turning it off does not automatically place text on the clipboard.", "docs": "https://morneis.com/samsara/docs/settings/#auto_paste"}},
     "add_trailing_space":   {"type": "bool", "default": True,  "tab": "general"},
     "auto_capitalize":      {"type": "bool", "default": True,  "tab": "general"},
     "format_numbers":       {"type": "bool", "default": True,  "tab": "general"},
-    "hints_enabled":        {"type": "bool", "default": True,  "tab": "general"},
+    "hints_enabled":        {"type": "bool", "default": True,  "tab": "general", "help": {"why": "Hints appear while you learn actions in the app; they do not alter dictation. Turn them off once they stop being useful, or use Reset hints to see them again. They are on by default for new users.", "docs": "https://morneis.com/samsara/docs/settings/#hints_enabled"}},
     "launch_at_login":      {"type": "bool", "default": False, "tab": "general"},
     "start_hidden":         {"type": "bool", "default": False, "tab": "general"},
     "updates.automatic_checks": {
@@ -281,6 +283,7 @@ SETTINGS_SCHEMA = {
         "options": ["clean", "verbatim"],
         "default": "clean",
         "tab": "general",
+        "help": {"why": "This controls how much Samsara changes recognized words before delivery. Use a lighter mode when exact wording matters, or more cleanup when you prefer polished text. The default clean mode applies normal formatting, so review it if you dictate code or unusual names.", "docs": "https://morneis.com/samsara/docs/settings/#cleanup_mode"},
     },
     # Final text-only backstop for short Whisper sign-off hallucinations.
     # No Settings row: this stays on by default and is only an escape hatch
@@ -300,12 +303,13 @@ SETTINGS_SCHEMA = {
         "default": "hold",
         "tab": "hotkeys",
     },
-    "wake_word_enabled": {"type": "bool", "default": False, "tab": "hotkeys"},
+    "wake_word_enabled": {"type": "bool", "default": False, "tab": "hotkeys", "help": {"why": "Wake activation keeps the microphone ready for a trained phrase so you can start without pressing a key. Enable it when that hands-free entry is useful and your wake model is set up. It is off by default, so a button remains the normal way to start.", "docs": "https://morneis.com/samsara/docs/settings/#wake_word_enabled"}},
     "threshold_mode": {
         "type": "enum",
         "options": ["auto", "manual"],
         "default": "auto",
         "tab": "hotkeys",
+        "help": {"why": "Automatic calibration adapts the speech threshold to the microphone environment. Choose manual when automatic detection cuts off quiet speech or responds to background noise. Automatic is the default; manual threshold only matters in manual mode.", "docs": "https://morneis.com/samsara/docs/settings/#threshold_mode"},
     },
     "cal_multiplier": {
         "type": "float",
@@ -314,6 +318,7 @@ SETTINGS_SCHEMA = {
         "step": 0.1,
         "default": 3.0,
         "tab": "hotkeys",
+        "help": {"why": "This scales the threshold found by automatic microphone calibration. Raise it if ambient noise triggers speech detection; lower it if quiet speech is missed. It only affects automatic calibration, so adjust the calibration mode first.", "docs": "https://morneis.com/samsara/docs/settings/#cal_multiplier"},
     },
     "wake_word_config.audio.wake_command_timeout": {
         "type": "float",
@@ -355,6 +360,7 @@ SETTINGS_SCHEMA = {
         "default": 0.20,
         "tab": "hotkeys",
         "depends_on": "wake_word_enabled",
+        "help": {"why": "This is the confidence required from the wake detector. A lower value can hear quiet wake phrases but may trigger more often by mistake; a higher value can miss them. Keep the default until you have tested your own microphone and room.", "docs": "https://morneis.com/samsara/docs/settings/#wake_word_config.oww_threshold"},
     },
 
     # command.trigger_mode and command.button kept for Phase 2A compatibility;
@@ -379,7 +385,7 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Phase 2A compatibility key; command_mode.button is the current Settings control.",
     },
-    "command_mode.enabled": {"type": "bool", "default": False, "tab": "commands"},
+    "command_mode.enabled": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "A session stays open across commands and dictation so you can keep working by voice. Enable this when you want that flow, then choose its button in Shortcuts. It is off by default, and the button setting has no session to open until this is enabled.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.enabled"}},
     "command_mode.button": {
         "type": "enum",
         "options": ["mouse4", "mouse5", "rctrl", "f13", "right_alt"],
@@ -391,8 +397,9 @@ SETTINGS_SCHEMA = {
         "options": ["hold", "toggle"],
         "default": "hold",
         "tab": "commands",
+        "help": {"why": "Hold keeps the session button active while pressed; toggle changes state with each press. Choose the one your physical access and workflow support. The default is hold, so a quick press is not the same as a latched session.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.mode"},
     },
-    "command_mode.suppress_button": {"type": "bool", "default": True, "tab": "commands"},
+    "command_mode.suppress_button": {"type": "bool", "default": True, "tab": "commands", "help": {"why": "When Mouse 4 or 5 is a session button, browsers may also treat it as Back or Forward. This suppresses that original mouse action while the binding is in use. It is on by default to prevent unwanted navigation; turn it off if you need the mouse action more.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.suppress_button"}},
     "command_mode.enter_debounce_ms": {
         "type": "int",
         "min": 0,
@@ -411,6 +418,7 @@ SETTINGS_SCHEMA = {
         "item_type": "str",
         "default": [],
         "tab": "commands",
+        "help": {"why": "These phrases leave the current hands-free session. Add words you can say reliably without using them in ordinary dictation. An accidental match can end a session early, so keep the list short.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.abort_phrases"},
     },
     "command_mode.dictate_commit_word": {
         # Queue 142. The single word that pastes a staged dictation thought.
@@ -460,6 +468,7 @@ SETTINGS_SCHEMA = {
         "step": 0.05,
         "default": 0.65,
         "tab": "commands",
+        "help": {"why": "This pause tells Samsara when a spoken phrase is complete in a session. Increase it if you need room to think between words; decrease it for faster delivery. Short values can split a sentence before you finish it.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.dictate_utterance_silence_s"},
     },
     "command_mode.miss_limit": {
         "type": "int",
@@ -545,6 +554,7 @@ SETTINGS_SCHEMA = {
         "type": "str",
         "default": "llama3.2:3b",
         "tab": "commands",
+        "help": {"why": "This installed local model interprets command requests when Ava's local route is in use. Choose a model that is present on this computer and responds at an acceptable speed. Changing the name alone does not download a model.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.model"},
     },
     "ava_command_session.shortlist_size": {
         "type": "int",
@@ -556,8 +566,8 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Interpreter candidate-budget tuning; the supported user choice is whether command-miss interpretation is enabled.",
     },
-    "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands"},
-    "ava_command_session.interpret_misses": {"type": "bool", "default": False, "tab": "commands"},
+    "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "Keeping the local model loaded reduces the delay before the next Ava request. Enable it when you use Ava frequently and have enough memory; leave it off to free resources between requests. It is off by default.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.keep_warm"}},
+    "ava_command_session.interpret_misses": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "After the normal matcher misses, Ava may interpret the phrase against available commands. Enable this when natural wording helps you find commands; leave it off when you want only direct matches. It is off by default and still follows the command execution policy.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.interpret_misses"}},
 
     "click.type": {
         "type": "enum",
@@ -613,6 +623,7 @@ SETTINGS_SCHEMA = {
         "options": ["winrt", "edge"],
         "default": "winrt",
         "tab": "tts",
+        "help": {"why": "A local Windows voice works without a network voice service. A network engine may offer different voices but depends on connectivity and its provider. Choose based on the privacy and reliability you need; changing the engine can also change which voice IDs work.", "docs": "https://morneis.com/samsara/docs/settings/#tts.engine"},
     },
     "tts.voice_id": {"type": "str", "default": "en-US-AvaNeural", "tab": "tts"},
     "tts.speed": {
@@ -678,6 +689,7 @@ SETTINGS_SCHEMA = {
         "options": ["auto", "cpu", "cuda"],
         "default": "auto",
         "tab": "advanced",
+        "help": {"why": "Automatic selection chooses available recognition hardware at load time. Pick a specific device only when diagnosing performance or compatibility. A device choice that is unavailable on this computer may fail or be replaced when settings apply.", "docs": "https://morneis.com/samsara/docs/settings/#device"},
     },
     "compute_type": {
         "type": "enum",
@@ -698,6 +710,7 @@ SETTINGS_SCHEMA = {
         "options": ["fast", "balanced", "accurate"],
         "default": "accurate",
         "tab": "advanced",
+        "help": {"why": "The faster preset reduces work at a possible accuracy cost; the accurate preset spends more time on recognition. Change it when response time or transcription quality is the limiting factor. The default favors accuracy.", "docs": "https://morneis.com/samsara/docs/settings/#performance_mode"},
     },
     "silence_threshold": {
         "type": "float",
@@ -737,7 +750,7 @@ SETTINGS_SCHEMA = {
     # (separate, post-release item). The code is intentionally NOT
     # deleted -- this only flips the default; see samsara/echo_cancel.py
     # for the still-functional implementation.
-    "echo_cancellation.enabled":  {"type": "bool", "default": False, "tab": "advanced"},
+    "echo_cancellation.enabled":  {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "This experimental option tries to remove playback picked up by the microphone. Use it when Samsara hears its own voice or other speaker audio. It is off by default because results depend on your speakers, microphone, and timing.", "docs": "https://morneis.com/samsara/docs/settings/#echo_cancellation.enabled"}},
     "echo_cancellation.latency_ms": {
         "type": "float",
         "min": 0.0,
@@ -759,6 +772,7 @@ SETTINGS_SCHEMA = {
     "ducking.recording_mode": {
         "type": "enum", "options": ["duck", "pause", "off"],
         "default": "duck", "tab": "advanced",
+        "help": {"why": "This decides whether other apps' audio is reduced while recording. Ducking can make speech easier to hear but also changes music or video volume. Choose the mode that works with your microphone and other audio; the default reduces playback.", "docs": "https://morneis.com/samsara/docs/settings/#ducking.recording_mode"},
     },
     "ducking.level": {
         "type": "float",
@@ -804,7 +818,7 @@ SETTINGS_SCHEMA = {
         "ui_less_reason": "Config-only animation override for the legacy listening indicator, separate from indicator visibility.",
         "type": "bool", "default": True, "tab": "advanced",
     },
-    "ui.live_surface.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "ui.live_surface.enabled": {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "This experimental display shows listening state and partial speech outside the main window. Try it if you need a persistent visual cue while dictating. It is off by default and may add another visible surface to manage.", "docs": "https://morneis.com/samsara/docs/settings/#ui.live_surface.enabled"}},
     # Live surface contracts (220 A). These are additive only; package I
     # later wires migration and Settings controls. Placement's nested map is
     # validated by samsara.live_surface.config, not treated as a Qt widget.
@@ -888,7 +902,7 @@ SETTINGS_SCHEMA = {
     # just dictated. Nothing is ever applied without the spoken word "apply",
     # so `enabled` gates whether the PROPOSAL is offered at all, not whether
     # something can happen behind the user's back.
-    "ava_edit.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "ava_edit.enabled": {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "This allows Ava to propose edits to recently dictated text. Enable it only after reviewing the editing permission and the local model you intend to use. It is off by default, and enabling this switch alone may not grant the required consent.", "docs": "https://morneis.com/samsara/docs/settings/#ava_edit.enabled"}},
     # Choreography only -- see samsara/ava_edit/pacing.py, which is built so
     # this cannot change WHAT is applied. "cinematic" adds dwell either side
     # of the deletion so a screen recording reads; "instant" is daily use.
@@ -914,7 +928,7 @@ SETTINGS_SCHEMA = {
 
     # Smart Corrections: optional LLM post-processing pass over dictation
     # output (homophones/misrecognitions/punctuation). Off by default.
-    "smart_corrections.enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "smart_corrections.enabled": {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "Automatic corrections run a separate local cleanup pass after eligible dictation. Turn it on if that extra processing improves your text, and review the mode switches below to choose where it applies. It is off by default and can add latency.", "docs": "https://morneis.com/samsara/docs/settings/#smart_corrections.enabled"}},
     "smart_corrections.ollama_model": {
         "type": "str",
         "default": "qwen2.5:3b",
@@ -961,8 +975,8 @@ SETTINGS_SCHEMA = {
     },
 
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
-    "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "help"},
-    "diagnostics.stage_timing": {"type": "bool", "default": False, "tab": "help"},
+    "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "help", "help": {"why": "This writes local troubleshooting events that can include dictated text. To limit retained private content, leave it off unless you are debugging. Switch it off when your investigation is finished.", "docs": "https://morneis.com/samsara/docs/settings/#diagnostics.write_jsonl"}},
+    "diagnostics.stage_timing": {"type": "bool", "default": False, "tab": "help", "help": {"why": "This measures delays in the dictation pipeline and saves timings locally without dictated text. It is off by default; leave it off unless you are debugging. Enable it while tuning dictation performance, then switch it off when finished.", "docs": "https://morneis.com/samsara/docs/settings/#diagnostics.stage_timing"}},
 
     # Opt-in: dump the exact assembled hotkey buffer (post-prepend,
     # pre-fade) to ~/.samsara/debug/hotkey_*.wav on every hotkey
@@ -975,7 +989,7 @@ SETTINGS_SCHEMA = {
 
     # Personal WER benchmark: opt-in local sample collection for the
     # offline accuracy harness (samsara/benchmark_store.py, tools/benchmark_eval.py).
-    "benchmark.collect_samples": {"type": "bool", "default": False, "tab": "advanced"},
+    "benchmark.collect_samples": {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "This records local audio and transcripts for performance review. Enable it for a deliberate benchmark session and turn it off afterward. It is off by default because the samples contain your speech.", "docs": "https://morneis.com/samsara/docs/settings/#benchmark.collect_samples"}},
     "benchmark.max_samples": {
         "type": "int",
         "min": 10,
@@ -1027,7 +1041,7 @@ SETTINGS_SCHEMA = {
     # otherwise type it. Empty is OFF and is the default: no prefix word is
     # hard-coded, the owner picks one from shadow data. It never waives rule 2
     # (only an exact match executes), so it cannot promote a homophone.
-    "intent.command_prefix": {"type": "str", "default": "", "tab": "advanced"},
+    "intent.command_prefix": {"type": "str", "default": "", "tab": "advanced", "help": {"why": "A spoken prefix can separate commands from ordinary dictation. Set one if command-like words are being entered as text or accidental commands are a problem. The default empty value requires no extra word, so choose a prefix you can say reliably.", "docs": "https://morneis.com/samsara/docs/settings/#intent.command_prefix"}},
 
     # -------------------------------------------------------------------------
     # Ava / Cloud tab
@@ -1043,6 +1057,7 @@ SETTINGS_SCHEMA = {
         "default": "deepseek",
         "tab": "ava",
         "depends_on": "cloud_llm.enabled",
+        "help": {"why": "This chooses which cloud service receives Ava requests when the cloud route is active. Change it only after checking that service's credential and privacy terms. The choice does nothing while Ava's route is off or local.", "docs": "https://morneis.com/samsara/docs/settings/#cloud_llm.provider"},
     },
     "cloud_llm.timeout_seconds": {
         "type": "int",
@@ -1064,6 +1079,7 @@ SETTINGS_SCHEMA = {
         "default": False,
         "tab": "ava",
         "depends_on": "cloud_llm.enabled",
+        "help": {"why": "Supported cloud providers may fetch current web information for a request. Enable it when the answer needs recent facts, and expect the request to leave this computer. It is off by default and has no effect for a local route or unsupported provider.", "docs": "https://morneis.com/samsara/docs/settings/#cloud_llm.web_search"},
     },
     "ava_personality": {
         "type": "enum",
@@ -1084,6 +1100,7 @@ SETTINGS_SCHEMA = {
     "ava.provider_policy": {
         "type": "enum", "options": ["off", "local", "cloud"],
         "default": "off", "tab": "ava",
+        "help": {"why": "Off prevents Ava requests; on this PC uses the local route; cloud sends eligible requests to the selected provider. Choose the route that matches the data you are willing to share and the models you have configured. The default is off, and cloud access also depends on consent and a working credential.", "docs": "https://morneis.com/samsara/docs/settings/#ava.provider_policy"},
     },
     "ava.catalog_answers": {
         "type": "bool", "default": True, "tab": "ava", "settings_ui": False,
@@ -1136,6 +1153,7 @@ SETTINGS_SCHEMA = {
         "options": ["clear", "last", "assistant"],
         "default": "clear",
         "tab": "ava",
+        "help": {"why": "Clear starts each conversation fresh, last keeps recent turns, and assistant also uses saved facts and summaries. Choose retention based on how much context helps versus how much personal history you want stored. The default is clear; changing mode does not erase information already saved.", "docs": "https://morneis.com/samsara/docs/settings/#ava_memory.mode"},
     },
     "ava_memory.max_turns": {
         "type": "int",
