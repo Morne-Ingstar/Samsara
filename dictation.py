@@ -11947,6 +11947,10 @@ class DictationApp:
                             )),
                             should_abort=lambda: getattr(self, '_streaming_tail_abort', False),
                         )
+                        # 387: decoder corroboration only; quiet clean speech passes.
+                        sess._release_tail_signals = dict(tail, speech_floor=float(self.config.get(
+                            'recording_tail_speech_threshold', HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
+                        )))
                         logger.debug(
                             '[TAIL] streaming release tail reason=%s elapsed=%dms frames=%d '
                             'threshold=%.4f speech_level=%.4f last_frame_rms=%.4f',

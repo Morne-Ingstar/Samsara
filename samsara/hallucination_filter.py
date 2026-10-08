@@ -54,6 +54,74 @@ def _value(segment: object, name: str):
     return getattr(segment, name, None)
 
 
+# 387 owner log, 01:45:25.340: compression 18.444 > decoder ceiling 2.4.
+DECODER_COMPRESSION_RATIO_THRESHOLD = 2.4
+# 01:45:22.010/23.099: partial logprobs -2.423/-3.173 failed -1.0.
+DECODER_LOGPROB_THRESHOLD = -1.0
+# 01:45:19.781/20.868: native no-speech skips at .789/.639 > .6.
+DECODER_NO_SPEECH_THRESHOLD = 0.6
+# 01:45:28.790: original last rung 1.0 returned logprob -4.766 anyway.
+DECODER_TOP_TEMPERATURE = 1.0
+# 01:45:24.010: measured hold level and configured floor both .0080.
+DECODER_SPEECH_FLOOR = 0.008
+
+
+def decoder_failure_reason(
+    segments, *, log_prob_threshold=DECODER_LOGPROB_THRESHOLD,
+    no_speech_threshold=DECODER_NO_SPEECH_THRESHOLD,
+    top_temperature=DECODER_TOP_TEMPERATURE, partial=False,
+    speech_level=None, speech_floor=DECODER_SPEECH_FLOOR,
+) -> str | None:
+    """Reject a failed decode from its existing signals, never energy alone.
+
+    Missing/non-finite telemetry fails open. A low hold level corroborates
+    an all-low-logprob result even before its last fallback rung; a clean
+    whispered decode is untouched. Partials have no recovery ladder, so a
+    failed segment must not be displayed or typed while recording.
+    """
+    from math import isfinite
+
+    def number(value):
+        try:
+            value = float(value)
+            return value if isfinite(value) else None
+        except (TypeError, ValueError):
+            return None
+
+    segments = list(segments)
+    if not segments:
+        return None
+    compression = [number(_value(seg, 'compression_ratio')) for seg in segments]
+    if any(value is not None and value > DECODER_COMPRESSION_RATIO_THRESHOLD
+           for value in compression):
+        return 'compression_ratio'
+
+    threshold = number(log_prob_threshold)
+    if threshold is None:
+        return None
+    logprobs = [number(_value(seg, 'avg_logprob')) for seg in segments]
+    failed = [value is not None and value < threshold for value in logprobs]
+    if partial:
+        return 'partial_logprob' if any(failed) else None
+    if not all(failed):
+        return None
+
+    top = number(top_temperature)
+    temperatures = [number(_value(seg, 'temperature')) for seg in segments]
+    if top is not None and all(value is not None and value >= top for value in temperatures):
+        return 'fallback_exhausted'
+    level, floor = number(speech_level), number(speech_floor)
+    if level is not None and floor is not None and level <= floor:
+        return 'low_logprob_at_noise_floor'
+    no_speech = [number(_value(seg, 'no_speech_prob')) for seg in segments]
+    silence_threshold = number(no_speech_threshold)
+    if silence_threshold is not None and all(
+        value is not None and value > silence_threshold for value in no_speech
+    ):
+        return 'no_speech'
+    return None
+
+
 def _split_context(segments: object) -> tuple[Sequence[object], float | None, bool]:
     if isinstance(segments, SignoffContext):
         return segments.segments, segments.audio_duration_s, segments.enabled

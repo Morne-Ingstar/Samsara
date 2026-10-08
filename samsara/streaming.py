@@ -1687,7 +1687,10 @@ class StreamingWorker(threading.Thread):
                 return None
             params = self._partial_params()
             segments, _ = app.model.transcribe(audio, **params)
-            text = "".join(seg.text for seg in segments).strip()
+            seg_list = list(segments)
+            text = "".join(seg.text for seg in seg_list).strip()
+            if self._decoder_guard(seg_list, text, params, partial=True):
+                return None
             return self._partial_cleanup(text)
         except Exception as e:
             logger.exception(f"[STREAM] Partial transcribe failed: {e}")
@@ -1729,6 +1732,11 @@ class StreamingWorker(threading.Thread):
                 diag_sig = {}
 
             if not text:
+                self._session.on_final(None, duration_s=duration_s,
+                                       elapsed_ms=elapsed_ms)
+                return
+
+            if self._decoder_guard(seg_list, text, params):
                 self._session.on_final(None, duration_s=duration_s,
                                        elapsed_ms=elapsed_ms)
                 return
@@ -1854,7 +1862,41 @@ class StreamingWorker(threading.Thread):
         params = dict(params)
         params['beam_size'] = FINAL_BEAM
         params['vad_filter'] = False
+        # 387: retain fast's single deterministic pass; other profiles get
+        # at most one retry. Do not undo 124's without_timestamps=False fix.
+        params['temperature'] = 0.0 if params.get('temperature') == 0.0 else (0.0, 0.2)
         return params
+
+    def _decoder_guard(self, segments, text, params, *, partial=False):
+        """Use decoder verdict first, then the batch path's exact backstop."""
+        from samsara.hallucination_filter import (
+            DECODER_LOGPROB_THRESHOLD, DECODER_NO_SPEECH_THRESHOLD,
+            DECODER_SPEECH_FLOOR, decoder_failure_reason,
+        )
+        from samsara.transcript_gates import _is_hallucinated_segments
+
+        tail = getattr(self._session, '_release_tail_signals', None) or {}
+        temperature = params.get('temperature', (0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
+        top = max(temperature) if isinstance(temperature, (list, tuple)) else temperature
+        reason = decoder_failure_reason(
+            segments, log_prob_threshold=params.get('log_prob_threshold', DECODER_LOGPROB_THRESHOLD),
+            no_speech_threshold=params.get('no_speech_threshold', DECODER_NO_SPEECH_THRESHOLD),
+            top_temperature=top, partial=partial,
+            speech_level=tail.get('speech_level'),
+            speech_floor=tail.get('speech_floor', DECODER_SPEECH_FLOOR),
+        )
+        if not reason and not partial and _is_hallucinated_segments(segments, text):
+            reason = 'batch_hallucination_backstop'
+        if reason and not partial:
+            # Signals only: no discarded transcript in the guard log.
+            logger.info(
+                '[GUARD] streaming final discarded: %s avg_logprob=%s '
+                'compression_ratio=%s temperature=%s speech_level=%s',
+                reason, [getattr(seg, 'avg_logprob', None) for seg in segments],
+                [getattr(seg, 'compression_ratio', None) for seg in segments],
+                [getattr(seg, 'temperature', None) for seg in segments], tail.get('speech_level'),
+            )
+        return reason
 
     def _partial_cleanup(self, text):
         if not text:
