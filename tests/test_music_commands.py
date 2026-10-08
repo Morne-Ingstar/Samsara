@@ -220,16 +220,77 @@ def test_configured_spotify_uri(playback):
     playback[2].assert_called_once_with('spotify:playlist:abc')
 
 
-def test_unmatched_name_never_opens_search_until_user_says_search(playback):
+def test_unmatched_name_never_opens_search_until_user_says_search(playback, monkeypatch):
     app = _app()
     result = music.handle_play(app, 'unlisted music')
     assert result.state is DispatchState.FAILED
     assert "No 'unlisted music' in your music library" in result.detail['message']
     playback[2].assert_not_called()
 
+    announce = Mock()
+    monkeypatch.setattr(music, '_announce', announce)
     search = music.handle_music_search(app, '')
     assert search.state is DispatchState.COMPLETED
+    assert search.detail['message'] == 'Spotify search opened.'
+    assert search.detail['outcome'] == 'opened_search'
+    assert search.detail['request_verified'] is False
+    assert search.detail['uri'] == 'spotify:search:unlisted%20music'
+    assert search.detail['query'] == 'unlisted music'
+    assert 'Playing' not in search.detail['message']
+    announce.assert_called_once_with(app, 'Spotify search opened.')
     playback[2].assert_called_once_with('spotify:search:unlisted%20music')
+    playback[1].try_play_async.assert_not_awaited()
+
+
+def test_music_search_open_failure_is_announced_without_transport(playback, monkeypatch):
+    app = _app()
+    music.handle_play(app, 'unlisted music')
+    playback[2].side_effect = OSError('protocol handler unavailable')
+    announce = Mock()
+    monkeypatch.setattr(music, '_announce', announce)
+
+    result = music.handle_music_search(app, '')
+
+    assert result.state is DispatchState.FAILED
+    assert result.detail['message'] == 'Spotify search failed.'
+    announce.assert_called_once_with(app, 'Spotify search failed.')
+    playback[1].try_play_async.assert_not_awaited()
+
+
+def test_music_search_expires_after_thirty_seconds(playback, monkeypatch):
+    app = _app()
+    music.handle_play(app, 'unlisted music')
+    monkeypatch.setattr(music, 'time', SimpleNamespace(monotonic=lambda: 31.0))
+
+    assert music.handle_music_search(app, '') is False
+    playback[2].assert_not_called()
+
+
+def test_music_search_rejects_old_request_generation(playback):
+    app = _app()
+    app._ava_cmd_generation = 3
+    music.handle_play(app, 'unlisted music')
+    app._ava_cmd_generation = 4
+
+    assert music.handle_music_search(app, '') is False
+    playback[2].assert_not_called()
+
+
+def test_second_play_request_replaces_pending_search(playback):
+    app = _app()
+    music.handle_play(app, 'first missing query')
+    music.handle_play(app, 'second missing query')
+
+    result = music.handle_music_search(app, '')
+
+    assert result.state is DispatchState.COMPLETED
+    playback[2].assert_called_once_with('spotify:search:second%20missing%20query')
+    playback[1].try_play_async.assert_not_awaited()
+
+
+def test_music_search_without_pending_request_returns_false(playback):
+    assert music.handle_music_search(_app(), '') is False
+    playback[2].assert_not_called()
 
 
 def test_ambiguous_name_does_not_open_spotify(playback):

@@ -528,6 +528,10 @@ def _set_volume(level):
 ], pack="media", risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_play(app, remainder):
     """Plays what you name on Spotify, such as play music by Nick Cave."""
+    try:
+        delattr(app, "_music_pending_search")
+    except AttributeError:
+        pass
     if not remainder or not remainder.strip():
         return _media_transport("play")
     requested, preferred_type = _parse_music_request(remainder)
@@ -545,7 +549,12 @@ def handle_play(app, remainder):
         if resolution == "none":
             message = f"No '{requested}' in your music library. Say search to search Spotify."
             try:
-                setattr(app, "_music_pending_search", requested)
+                from samsara.execution_policy import capture_generation
+                setattr(app, "_music_pending_search", {
+                    "query": requested,
+                    "created": time.monotonic(),
+                    "generation": capture_generation(app),
+                })
             except Exception:
                 pass
             _announce(app, message)
@@ -564,19 +573,33 @@ def handle_play(app, remainder):
          side_effects=['audio'])
 def handle_music_search(app, remainder):
     """Search Spotify only after a named-library miss asked for it."""
-    requested = getattr(app, "_music_pending_search", None)
-    if not requested:
+    pending = getattr(app, "_music_pending_search", None)
+    if not isinstance(pending, dict):
         return False
     try:
         delattr(app, "_music_pending_search")
     except AttributeError:
         pass
+    try:
+        from samsara.execution_policy import current_generation
+        requested = pending["query"]
+        age = time.monotonic() - pending["created"]
+        if age < 0 or age >= 30 or pending["generation"] != current_generation(app):
+            return False
+    except (KeyError, TypeError, ValueError):
+        return False
     uri = 'spotify:search:' + quote(requested, safe='')
     try:
-        return asyncio.run(asyncio.wait_for(_play_spotify(requested, uri), timeout=15.0))
-    except Exception as exc:
-        return _music_result(DispatchState.FAILED, requested,
-                             f"Spotify search failed: {type(exc).__name__}: {exc}")
+        _open_track(uri)
+    except Exception:
+        message = "Spotify search failed."
+        _announce(app, message)
+        return _music_result(DispatchState.FAILED, requested, message)
+    message = "Spotify search opened."
+    _announce(app, message)
+    return _music_result(DispatchState.COMPLETED, requested, message,
+                         outcome="opened_search", request_verified=False,
+                         uri=uri, query=requested)
 
 
 # ── Earbud-style transport commands (SMTC, app-agnostic) ──────────────────
