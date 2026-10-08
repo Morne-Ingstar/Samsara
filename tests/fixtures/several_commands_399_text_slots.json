@@ -23,30 +23,24 @@
   },
   "app_lifecycle.restart_ariadne": {
     "calls": [],
-    "detail": {
-      "awaiting_confirmation": true,
-      "prompt": "Restart samsara?"
-    },
-    "state": "queued",
-    "text": "restart ariadne alpha and volume down"
+    "detail": {},
+    "state": "miss",
+    "text": "restart ariadne alpha and volume down",
+    "_407": "The argument-less command 'restart samsara' used to consume this sentence with extra words."
   },
   "app_lifecycle.restart_sigil_server": {
     "calls": [],
-    "detail": {
-      "awaiting_confirmation": true,
-      "prompt": "Restart samsara?"
-    },
-    "state": "queued",
-    "text": "restart sigil server alpha and volume down"
+    "detail": {},
+    "state": "miss",
+    "text": "restart sigil server alpha and volume down",
+    "_407": "The argument-less command 'restart samsara' used to consume this sentence with extra words."
   },
   "app_lifecycle.restart_strata": {
     "calls": [],
-    "detail": {
-      "awaiting_confirmation": true,
-      "prompt": "Restart samsara?"
-    },
-    "state": "queued",
-    "text": "restart strata alpha and volume down"
+    "detail": {},
+    "state": "miss",
+    "text": "restart strata alpha and volume down",
+    "_407": "The argument-less command 'restart samsara' used to consume this sentence with extra words."
   },
   "app_lifecycle.start_ariadne": {
     "calls": [],
@@ -193,15 +187,11 @@
     "text": "start print alpha and volume down"
   },
   "gif_search.search_for_a_gif_of": {
-    "calls": [
-      [
-        "search music",
-        "for a gif of alpha and volume down"
-      ]
-    ],
+    "calls": [],
     "detail": {},
-    "state": "completed",
-    "text": "search for a gif of alpha and volume down"
+    "state": "miss",
+    "text": "search for a gif of alpha and volume down",
+    "_407": "The argument-less command 'search music' used to consume this sentence with extra words."
   },
   "health_tracker.health_summary": {
     "calls": [
@@ -409,15 +399,11 @@
     "text": "ask alpha and volume down"
   },
   "reminders.cancel_reminder": {
-    "calls": [
-      [
-        "cancel",
-        ""
-      ]
-    ],
+    "calls": [],
     "detail": {},
-    "state": "completed",
-    "text": "cancel reminder alpha and volume down"
+    "state": "miss",
+    "text": "cancel reminder alpha and volume down",
+    "_407": "The argument-less command 'cancel' used to consume this sentence with extra words."
   },
   "reminders.remind_me_to": {
     "calls": [],
@@ -549,15 +535,11 @@
     "text": "go to alpha and volume down"
   },
   "web_shortcuts.search_for": {
-    "calls": [
-      [
-        "search music",
-        "for alpha and volume down"
-      ]
-    ],
+    "calls": [],
     "detail": {},
-    "state": "completed",
-    "text": "search for alpha and volume down"
+    "state": "miss",
+    "text": "search for alpha and volume down",
+    "_407": "The argument-less command 'search music' used to consume this sentence with extra words."
   },
   "window_cube.refresh_cube": {
     "calls": [

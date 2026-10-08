@@ -96,7 +96,8 @@ def test_explicit_context_only(rig, monkeypatch, forced, active, matching):
         assert [c[0] for c in calls] == ['new tab', 'scroll down']
     else:
         spy.assert_not_called()
-        assert [c[0] for c in calls] == (['new tab'] if matching else [])
+        # 407: a no-argument prefix cannot discard the rest of an unforced sentence.
+        assert calls == []
 
 
 def test_off_switch_has_legacy_result_and_no_parse(rig, monkeypatch):
@@ -105,8 +106,9 @@ def test_off_switch_has_legacy_result_and_no_parse(rig, monkeypatch):
     spy = Mock(side_effect=AssertionError('grammar disabled'))
     monkeypatch.setattr(grammar, 'parse', spy)
     result = executor.process_text('new tab then scroll down', force_commands=True)
-    assert result.phrase == 'new tab'
-    assert calls == [('new tab', '')]
+    # 407: grammar off still requires the whole sentence for no-argument commands.
+    assert result.state is State.MISS
+    assert calls == []
     spy.assert_not_called()
 
 
@@ -119,8 +121,10 @@ def test_understanding_is_all_or_nothing_on_a_miss(rig):
 
 def test_resolution_none_falls_through_to_legacy_prefix(rig):
     executor, app, calls = rig
-    executor.process_text('new tab then purple monkey', force_commands=True)
-    assert calls == [('new tab', '')]  # R2 explicitly preserves the prefix path.
+    result = executor.process_text('new tab then purple monkey', force_commands=True)
+    # 407: the no-argument prefix no longer consumes unrecognized trailing words.
+    assert result.state is State.MISS
+    assert calls == []
 
 
 @pytest.mark.parametrize('decision', [policy.NeedsConfirmation('Ask first'),
@@ -227,8 +231,10 @@ def test_ambiguous_first_reading_keeps_prefix(rig, monkeypatch, caplog):
         ('volume.volume_down', {}, (0, 2), .99),
         ('scroll.scroll_down', {}, (3, 5), .99)])
     with caplog.at_level('INFO'):
-        executor.process_text('new tab then scroll down', force_commands=True)
-    assert calls == [('new tab', '')]
+        result = executor.process_text('new tab then scroll down', force_commands=True)
+    # 407: a conflicting chain cannot fall back to a no-argument partial prefix.
+    assert result.state is State.MISS
+    assert calls == []
     assert 'new tab' in caplog.text and 'volume down' in caplog.text
 
 

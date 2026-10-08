@@ -165,7 +165,8 @@ class TestProcessTextStates:
             effects.append("worker scheduled")  # returns None, like handle_ask_ava
 
         executor = self._executor(commands_file, tmp_path)
-        dispatch = executor.process_text("schedule work hello", _app(), force_commands=True)
+        # 407: the whole phrase keeps this a None-returning handler contract test.
+        dispatch = executor.process_text("schedule work", _app(), force_commands=True)
 
         assert effects == ["worker scheduled"]
         assert dispatch.state is DispatchState.QUEUED

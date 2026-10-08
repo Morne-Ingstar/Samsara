@@ -33,6 +33,13 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
+# 407: stand-in wording for the owner to edit; only filler may follow a command.
+_NO_ARGUMENT_TAIL_UNITS = (
+    'please', 'now', 'thanks', 'thank you', 'for me', 'right now',
+    'if you can', 'real quick', 'would you', 'can you', 'could you',
+    'just', 'hey', 'okay', 'um', 'uh', 'so',
+)
+
 # Optional dependencies - may not be available in test environments
 try:
     from pynput.keyboard import Key, Controller as KeyboardController
@@ -779,6 +786,12 @@ class CommandExecutor:
         entry, remainder = self._matcher.match(match_text, context)
         if entry is None:
             entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
+        if entry is not None and remainder and not self._takes_argument(entry):
+            filler = '|'.join(re.escape(unit) for unit in _NO_ARGUMENT_TAIL_UNITS)
+            if not re.fullmatch(rf'(?:{filler})(?:\s+(?:{filler}))*', remainder.strip()):
+                logger.info("[CMD] '%s' needs the whole sentence; treating '%s extra words' as not a command",
+                            entry.phrase, len(remainder.split()))
+                entry = None  # Continue the miss path without trying a shorter prefix.
         if entry is None:
             disabled_pack = self._matcher.disabled_pack_for(match_text)
             if disabled_pack:
@@ -832,6 +845,12 @@ class CommandExecutor:
         if result.state is DispatchState.MISS:
             return DispatchResult.miss(text, dict(result.detail))
         return result
+
+    def _takes_argument(self, entry):
+        """Use the live catalogue's declared and inferred argument metadata."""
+        _records, by_id = self._grammar_catalog()
+        return any(record.get('args') for record, phrase in by_id.values()
+                   if phrase == entry.phrase)
 
     def _grammar_enabled(self, app, force_commands):
         # Some lanes capture the same app generation for successive utterances.
