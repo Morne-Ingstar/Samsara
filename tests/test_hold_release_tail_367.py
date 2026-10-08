@@ -185,3 +185,34 @@ def test_batch_tail_log_retains_real_elapsed_and_frame_count(monkeypatch):
     assert args[1] == 'silence'
     assert 200 <= args[2] < 450
     assert args[3] == 3
+
+
+def test_streaming_release_tail_failure_still_cuts_off_and_finalizes(app):
+    events = []
+    app.recording = True
+    app._ace_streaming_active = True
+    app.live_surface = object()
+    app.config['ui'] = {'live_surface': {'enabled': True}}
+    app._hotkey_recording = True
+
+    def failing_tail(**kwargs):
+        assert app._hotkey_recording
+        events.append('tail')
+        raise RuntimeError('injected tail failure')
+
+    app._dictation_consumer.wait_for_streaming_release_tail = failing_tail
+    app._dictation_consumer.finish_capture = Mock(
+        side_effect=lambda **kw: events.append(('cutoff', kw)))
+    app.play_sound = Mock(
+        side_effect=lambda sound: events.append(('sound', sound, app._hotkey_recording)))
+    finalize = Mock(side_effect=lambda: events.append('finalize'))
+    app._streaming_session = SimpleNamespace(finalize=finalize)
+
+    app.stop_impl()
+
+    assert events == ['tail', ('cutoff', {'force': True}), ('sound', 'stop', False), 'finalize']
+    app._dictation_consumer.finish_capture.assert_called_once_with(force=True)
+    app.play_sound.assert_called_once_with('stop')
+    finalize.assert_called_once_with()
+    app.ns['logger'].exception.assert_called_once_with(
+        '[TAIL] streaming release tail failed; finalizing without it')

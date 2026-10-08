@@ -11961,6 +11961,8 @@ class DictationApp:
                             tail['reason'], tail['elapsed_ms'], tail['frames'],
                             tail['threshold'], tail['speech_level'], tail['last_frame_rms'],
                         )
+                    except Exception:
+                        logger.exception('[TAIL] streaming release tail failed; finalizing without it')
                     finally:
                         # The reader stays alive for the worker's final pass;
                         # freeze admission before the earcon can enter it.
