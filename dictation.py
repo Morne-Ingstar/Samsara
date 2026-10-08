@@ -12211,7 +12211,7 @@ class DictationApp:
 
                         if stage_timing is not None:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
-                        result, was_command = self.command_executor.process_text(text, self)
+                        result, was_command = self.command_executor.process_text(text, self, force_commands=True)
                         if stage_timing is not None:
                             stage_timing.mark("action_done", outcome="command" if was_command else "miss")
 
@@ -12269,6 +12269,7 @@ class DictationApp:
                             return
 
                         # Ordinary MISS: do not output text.
+                        self._show_dispatch_outcome_chip(resolved_outcome)
                         logger.info(f"[CMD] No command matched: '{text}'")
                         if self.command_mode_active:
                             self._command_mode_miss_count += 1
