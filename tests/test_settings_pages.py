@@ -45,23 +45,40 @@ PAGE_MODULES = {
 
 
 def test_dictation_rows_supply_distinct_plain_language_help(qapp):
+    from samsara.config_schema import SETTINGS_SCHEMA
     from samsara.ui.settings import dictation_page
     from samsara.ui.settings_qt import _SettingsWindow
 
     specs = dictation_page.BASE + dictation_page.ADVANCED
-    assert all(len(spec) == 5 for spec in specs)
-    for _title, description, _names, _config, help_copy in specs:
-        assert help_copy != description
-        sentences = [sentence for sentence in help_copy.split('.') if sentence.strip()]
-        assert 2 <= len(sentences) <= 4, help_copy
+    assert all(len(spec) == 4 for spec in specs)
 
     window = _SettingsWindow(_StubApp())
     try:
         rows = [row for row in window._destination_rows if row.page_name == 'Dictation']
-        assert len(rows) == len(specs)
-        assert all(row.help is not None and row.full_help for row in rows)
-        continuous = window._rows_by_widget['continuous_commit_trigger']
-        assert 'existing continuous dictation session' in continuous.full_help
+        # 312 added a custom profile editor; 359 made help schema-owned and optional.
+        assert len(rows) == len(specs) + 1
+        for _title, description, names, config in specs:
+            row = window._rows_by_widget[names.split(',')[0]]
+            assert row.description == description
+            assert row.config_keys == tuple(config.split(','))
+        assert window._rows_by_widget['wake_profiles'] in rows
+        assert any(row.help is None for row in rows)
+        assert any(row.help is not None for row in rows)
+        for row in rows:
+            expected = next((SETTINGS_SCHEMA[key]['help'] for key in row.config_keys
+                             if key in SETTINGS_SCHEMA and 'help' in SETTINGS_SCHEMA[key]), None)
+            assert row.help_data == expected
+            assert (row.help is not None) == (expected is not None)
+            assert row.full_help
+            if expected is not None:
+                assert expected['why'] != row.description
+                sentences = [sentence for sentence in expected['why'].split('.') if sentence.strip()]
+                assert 2 <= len(sentences) <= 4, expected['why']
+                assert row.help.accessibleDescription() == expected['why']
+                row.help.click()
+                assert row.help_copy.text() == expected['why']
+                assert expected['docs'] in row.help_link.text()
+                row.hide_help()
     finally:
         window.deleteLater()
 

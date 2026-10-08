@@ -315,13 +315,27 @@ def test_precision_metadata_is_read_only(window):
 def test_pages_fit_at_compact_and_normal_width(window, qapp, width):
     window.resize(width, 700)
     window.show()
+    # 360 deliberately raised the supported compact minimum to 780px.
+    assert window.width() == max(width, window.minimumWidth())
     for index, name in enumerate(settings_qt._TAB_NAMES):
         window._sidebar.setCurrentRow(index)
         page = window._pages[name]
         for expanded in (False, True):
             page.advanced.toggle.setChecked(expanded)
-            for _ in range(3):
+            # Disclosure visibility, row reflow and scrollbar changes cascade
+            # across queued layout events. Check the settled layout, bounded.
+            stable = 0
+            previous = None
+            for _ in range(30):
                 qapp.processEvents()
+                geometry = (page.container.width(), page.viewport().width(),
+                            page.container.height(), page.viewport().height(),
+                            page.container.minimumSizeHint().width())
+                stable = stable + 1 if geometry == previous else 0
+                previous = geometry
+                if stable >= 5:
+                    break
+            assert stable >= 5, (name, width, expanded, 'layout did not settle')
             assert page.container.width() <= page.viewport().width(), (name, width, expanded)
     window.hide()
 
