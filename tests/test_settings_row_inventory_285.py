@@ -267,13 +267,15 @@ def test_search_reveals_diagnostics_in_help(window, query, keys):
 
 
 @pytest.mark.parametrize('enabled', [True, False])
-def test_diagnostics_apply_saves_and_refreshes_timing_cache(window, tmp_path, enabled):
+def test_diagnostics_apply_saves_and_refreshes_timing_cache(window, tmp_path, enabled, request):
     from samsara.stage_timing import StageTiming
 
     app = window.app
     app.config['diagnostics'] = {'stage_timing': not enabled, 'write_jsonl': not enabled,
                                  'future_option': 'preserved'}
     app._stage_timing_enabled = not enabled
+    window = settings_qt._SettingsWindow(app)
+    request.addfinalizer(window.deleteLater)
     saved_config = tmp_path / 'config.json'
     app.save_config = lambda: saved_config.write_text(json.dumps(app.config), encoding='utf-8')
     for key in ('stage_timing', 'write_jsonl'):

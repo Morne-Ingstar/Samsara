@@ -60,6 +60,7 @@ class _SettingsWindow(
     def __init__(self, app, tool=None):
         super().__init__()
         self.app = app
+        self._config_at_open = copy.deepcopy(self.app.config)
         self._tool_name = tool
         self._widgets = {}
         self._save_fns = []

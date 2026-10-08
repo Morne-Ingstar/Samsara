@@ -406,6 +406,12 @@ class SettingsServices:
         updates: dict = {}
         for save_fn in self._save_fns:
             updates.update(save_fn(updates))
+        if hasattr(self, '_config_at_open'):
+            from samsara.settings_merge import merge_outside_changes
+            updates, kept = merge_outside_changes(
+                self._config_at_open, self.app.config, updates)
+            if kept:
+                logger.info('[SETTINGS] kept changes made outside this window: %s', ', '.join(kept))
 
         # Switch the live stream before the bulk config write. If the new ID
         # were written first, switch_microphone() would hit its same-ID guard
