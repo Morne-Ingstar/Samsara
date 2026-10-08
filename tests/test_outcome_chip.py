@@ -35,36 +35,75 @@ from samsara.session_modes import (
 _SOURCE = pathlib.Path(sm.__file__)
 
 
-def _dispatch_outcome_kinds() -> set:
-    """Every kind= string DispatchOutcome is constructed with in session_modes.
+_INTERACT_SOURCE = _SOURCE.with_name("interact.py")
 
-    Walks the AST rather than grepping: StackItem also takes kind= and must
-    not be mistaken for an outcome, and the scratch-that site uses a
-    conditional expression (`"scratch_success" if ok else "scratch_refuse"`)
-    that a regex would read as one kind.
+
+def _literal_kinds(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return {node.value}
+    if isinstance(node, ast.IfExp):
+        body, orelse = _literal_kinds(node.body), _literal_kinds(node.orelse)
+        if body is not None and orelse is not None:
+            return body | orelse
+    return None
+
+
+def _interact_reply_kinds() -> set:
+    """Read the closed producer set; a computed reply kind fails closed too."""
+    tree = ast.parse(_INTERACT_SOURCE.read_text(encoding="utf-8"))
+    kinds, dynamic = set(), []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "InteractReply":
+            value = node.args[0] if node.args else next(
+                (kw.value for kw in node.keywords if kw.arg == "kind"), None)
+            found = _literal_kinds(value)
+            if found is None:
+                dynamic.append(node.lineno)
+            else:
+                kinds.update(found)
+    assert not dynamic, f"InteractReply built with a non-literal kind at lines {dynamic}"
+    assert kinds, "No InteractReply literal kinds found"
+    return kinds
+
+
+def _dispatch_outcome_kinds() -> set:
+    """Enumerate literal outcomes and the source-derived controller reply set.
+
+    Only the verified controller.handle -> reply.kind seam is resolved.
+    Any other computed kind still fails the original collection guard.
     """
     tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
-
-    def strings(node):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return [node.value]
-        if isinstance(node, ast.IfExp):
-            body, orelse = strings(node.body), strings(node.orelse)
-            if body is None or orelse is None:
-                return None
-            return body + orelse
-        return None
+    reply_values = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef) or fn.name != "_dispatch_utterance_locked":
+            continue
+        assignments = [node for node in ast.walk(fn) if isinstance(node, ast.Assign)]
+        def binding(name):
+            matches = [node.value for node in assignments if any(
+                isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+            return matches[0] if len(matches) == 1 else None
+        controller, reply = binding("controller"), binding("reply")
+        if (isinstance(controller, ast.Attribute) and controller.attr == "_interact_controller"
+                and isinstance(controller.value, ast.Name) and controller.value.id == "self"
+                and isinstance(reply, ast.Call) and isinstance(reply.func, ast.Attribute)
+                and reply.func.attr == "handle" and isinstance(reply.func.value, ast.Name)
+                and reply.func.value.id == "controller"):
+            reply_values.update(node for node in ast.walk(fn)
+                                if isinstance(node, ast.Attribute) and node.attr == "kind"
+                                and isinstance(node.value, ast.Name) and node.value.id == "reply")
 
     kinds, dynamic = set(), []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "DispatchOutcome":
-            for kw in node.keywords:
-                if kw.arg == "kind":
-                    found = strings(kw.value)
-                    if found is None:
-                        dynamic.append(node.lineno)
-                    else:
-                        kinds.update(found)
+            value = node.args[0] if node.args else next(
+                (kw.value for kw in node.keywords if kw.arg == "kind"), None)
+            found = _literal_kinds(value)
+            if value in reply_values:
+                found = _interact_reply_kinds()
+            if found is None:
+                dynamic.append(node.lineno)
+            else:
+                kinds.update(found)
     assert not dynamic, (
         f"DispatchOutcome built with a non-literal kind at lines {dynamic}; "
         "this test can no longer prove every kind is mapped"
@@ -91,6 +130,45 @@ class TestEveryKindIsMapped:
             f"DispatchOutcome kind {kind!r} has no chip -- add it to "
             "session_modes.outcome_chip"
         )
+
+    def test_controller_reply_kinds_are_included(self):
+        assert _interact_reply_kinds() <= _dispatch_outcome_kinds()
+
+    @pytest.mark.parametrize("kind", sorted(_interact_reply_kinds()))
+    def test_controller_chips_preserve_existing_fallback(self, kind):
+        assert outcome_chip(kind, {"message": "controller feedback"}) == (f"? {kind}", "warning")
+        assert is_mapped_outcome(kind)
+        assert chip_ttl_ms(kind, "warning") == CHIP_TTL_MS
+
+    @pytest.mark.parametrize("expression", ["computed", "other.kind", "reply.other", "reply.kind"])
+    def test_other_computed_outcomes_still_fail(self, tmp_path, monkeypatch, expression):
+        source = tmp_path / "session_modes.py"
+        source.write_text(_SOURCE.read_text(encoding="utf-8") +
+                          f"\ndef unrelated():\n    return DispatchOutcome(kind={expression})\n",
+                          encoding="utf-8")
+        monkeypatch.setattr(__import__(__name__, fromlist=["_SOURCE"]), "_SOURCE", source)
+        with pytest.raises(AssertionError, match="DispatchOutcome built with a non-literal kind"):
+            _dispatch_outcome_kinds()
+
+    def test_changed_reply_binding_still_fails(self, tmp_path, monkeypatch):
+        source = tmp_path / "session_modes.py"
+        original = _SOURCE.read_text(encoding="utf-8")
+        changed = original.replace("reply = controller.handle(", "reply = other.handle(")
+        assert changed != original
+        source.write_text(changed, encoding="utf-8")
+        monkeypatch.setattr(__import__(__name__, fromlist=["_SOURCE"]), "_SOURCE", source)
+        with pytest.raises(AssertionError, match="DispatchOutcome built with a non-literal kind"):
+            _dispatch_outcome_kinds()
+
+    def test_reply_producer_changes_are_read_from_source(self, tmp_path, monkeypatch):
+        source = tmp_path / "interact.py"
+        source.write_text('InteractReply("new_literal")\nInteractReply(kind="keyword_literal")\n',
+                          encoding="utf-8")
+        monkeypatch.setattr(__import__(__name__, fromlist=["_INTERACT_SOURCE"]), "_INTERACT_SOURCE", source)
+        assert {"new_literal", "keyword_literal"} <= _dispatch_outcome_kinds()
+        source.write_text('InteractReply("known")\nInteractReply(kind=computed)\n', encoding="utf-8")
+        with pytest.raises(AssertionError, match="InteractReply built with a non-literal kind"):
+            _dispatch_outcome_kinds()
 
     def test_unknown_kind_is_visibly_flagged_not_hidden(self):
         assert outcome_chip("brand_new_kind") == ("? brand_new_kind", "warning")

@@ -1559,6 +1559,24 @@ def _abort_chip(detail: dict):
     return None
 
 
+# Queue 429: deliberate mappings preserve the existing controller chips.
+# Keep the warning wording until the owner supplies Interact chip labels.
+_INTERACT_CHIPS = {
+    "interact_action": ("? interact_action", "warning"),
+    "interact_armed": ("? interact_armed", "warning"),
+    "interact_choosing": ("? interact_choosing", "warning"),
+    "interact_cleared": ("? interact_cleared", "warning"),
+    "interact_confirm": ("? interact_confirm", "warning"),
+    "interact_exit": ("? interact_exit", "warning"),
+    "interact_expired": ("? interact_expired", "warning"),
+    "interact_off": ("? interact_off", "warning"),
+    "interact_refused": ("? interact_refused", "warning"),
+    "interact_reply": ("? interact_reply", "warning"),
+    "interact_selected": ("? interact_selected", "warning"),
+    "interact_unknown": ("? interact_unknown", "warning"),
+}
+
+
 def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] | None":
     """(label, chip_kind) for a DispatchOutcome kind, or None for no chip.
 
@@ -1809,11 +1827,16 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind == "ava_rejected_not_substantive":
         return ("Ava: nothing to do", "warning")
 
+    if kind in _INTERACT_CHIPS:
+        return _INTERACT_CHIPS[kind]
+
     return (f"? {kind}", "warning")
 
 
 def is_mapped_outcome(kind: str) -> bool:
-    """False only for the '? <kind>' fallback -- used to log unmapped kinds."""
+    """Recognise deliberate mappings, including preserved Interact labels."""
+    if kind in _INTERACT_CHIPS:
+        return True
     chip = outcome_chip(kind)
     return chip is None or not chip[0].startswith("? ")
 
