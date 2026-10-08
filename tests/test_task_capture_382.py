@@ -139,7 +139,10 @@ def test_all_default_places_and_quick_reference_follow_live_config():
     assert rows[labels.index('Add a task (hold)')]['value'] == 'Ctrl+Alt+T'
     app.config['task_hotkey'] = 'f9'
     assert {r['label']: r for r in qr._resolve_hotkeys(app)}['Add a task (hold)']['value'] == 'F9'
-    assert SETTINGS_SCHEMA['tasks.capture.ava_parse'] == {'type': 'bool', 'default': False, 'tab': 'commands'}
+    entry = SETTINGS_SCHEMA['tasks.capture.ava_parse']
+    assert (entry['type'], entry['default'], entry['tab']) == ('bool', False, 'commands')
+    # Config-only: no Settings row, so the schema must say so and say why (285 inventory rule).
+    assert entry['settings_ui'] is False and entry['ui_less_reason'].strip()
 
 
 def test_deliver_task_calls_lazy_plugin_and_returns_its_result(monkeypatch):

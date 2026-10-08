@@ -156,7 +156,11 @@ SETTINGS_SCHEMA = {
     },
     "tasks.todoist.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "tasks.todoist.api_token": {"type": "str", "default": "", "tab": "commands"},
-    "tasks.capture.ava_parse": {"type": "bool", "default": False, "tab": "commands"},
+    "tasks.capture.ava_parse": {
+        "type": "bool", "default": False, "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only optional Ava parsing of captured tasks; off by default.",
+    },
     "wake_profiles": {
         "type": "list",
         "item_type": "dict",
