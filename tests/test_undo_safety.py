@@ -162,10 +162,10 @@ def test_paste_captures_window_immediately_before_unconfirmed_shortcut(monkeypat
 
     assert app._paste_preserving_clipboard("delivered text") is True
 
-    target.assert_called_once_with()
-    # 43b443e made a successful but unconfirmed shortcut non-undoable; only
-    # confirmed typed delivery may arm the single-level undo state.
-    app._record_undoable_paste.assert_not_called()
+    # owner decision 2026-10-08: undo is armed after a same-window paste (392)
+    assert target.call_count == 2
+    # owner decision 2026-10-08: undo is armed after a same-window paste (392)
+    app._record_undoable_paste.assert_called_once_with('delivered text', target_hwnd=4242)
 
 
 def test_rejected_pre_paste_guard_does_not_capture_or_record_window(monkeypatch):

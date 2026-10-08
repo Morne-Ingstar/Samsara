@@ -56,7 +56,8 @@ def test_shortcut_only_delivery_is_not_recorded_as_undoable(monkeypatch):
         before_paste=ANY,
         incomplete_snapshot_fallback=ANY,
     )
-    app._record_undoable_paste.assert_not_called()
+    # owner decision 2026-10-08: undo is armed after a same-window paste (392)
+    app._record_undoable_paste.assert_called_once_with('dictated text', target_hwnd=4242)
     app.adaptive_learner.record_transcription.assert_not_called()
 
 

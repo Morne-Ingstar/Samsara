@@ -181,7 +181,7 @@ def paste_preserving_clipboard(
             len(text), get_foreground_hwnd_fn(),
         )
     elif paste_ok:
-        logger.warning("[PASTE] Ctrl+V shortcut sent without target acknowledgement; undo is not armed")
+        _arm_undo_after_paste(app, text, paste_target['hwnd'], get_foreground_hwnd_fn)
     else:
         logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
     flight_recorder.record(
@@ -193,6 +193,26 @@ def paste_preserving_clipboard(
         chars=len(text), result='ok' if paste_ok else 'failed',
     )
     return _result(paste_ok, delivery_confirmed)
+
+
+_UNDO_TERMINAL_PROCESSES = frozenset({
+    'windowsterminal.exe', 'cmd.exe', 'powershell.exe', 'pwsh.exe',
+    'conhost.exe', 'warp.exe', 'wezterm-gui.exe', 'alacritty.exe', 'mintty.exe',
+})
+
+
+def _arm_undo_after_paste(app, text, target_hwnd, get_foreground_hwnd_fn):
+    """Arm native undo for a stable editor target, without confirming delivery."""
+    if not target_hwnd:
+        reason = 'no target window'
+    elif get_foreground_hwnd_fn() != target_hwnd:
+        reason = 'foreground changed'
+    elif (flight_foreground_process_name() or '').lower() in _UNDO_TERMINAL_PROCESSES:
+        reason = 'terminal'
+    else:
+        app._record_undoable_paste(text, target_hwnd=target_hwnd)
+        return
+    logger.info('[PASTE] undo not armed: %s', reason)
 
 
 def deliver_text_to_focused_editor(app, text):
@@ -256,6 +276,8 @@ def undo_last_dictation(app, *, get_foreground_hwnd_fn=_get_foreground_hwnd):
     if not app._last_dictation_text:
         logger.info("[UNDO] Nothing to undo")
         app.play_sound("error")
+        if callable(getattr(app, '_show_outcome_chip', None)):
+            app._show_outcome_chip('Nothing to undo', 'error')
         return False
 
     target_hwnd = getattr(app, '_last_dictation_hwnd', None)
@@ -267,6 +289,8 @@ def undo_last_dictation(app, *, get_foreground_hwnd_fn=_get_foreground_hwnd):
             target_hwnd, current_hwnd,
         )
         app.play_sound("error")
+        if callable(getattr(app, '_show_outcome_chip', None)):
+            app._show_outcome_chip('Undo: go back to where it was typed', 'error')
         return False
 
     text = app._last_dictation_text
@@ -281,4 +305,6 @@ def undo_last_dictation(app, *, get_foreground_hwnd_fn=_get_foreground_hwnd):
     logger.info(f"[UNDO] Native Ctrl+Z sent for: {preview}")
     app.play_sound("success")
     app._clear_undo()
+    if callable(getattr(app, '_show_outcome_chip', None)):
+        app._show_outcome_chip(f'Undid: {text[:40]}', 'success')
     return True
