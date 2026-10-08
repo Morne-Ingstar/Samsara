@@ -1647,7 +1647,8 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     if _assistant_recall_allowed(app, state):
         try:
             memory_block = _personal_memory(app).prompt_block(
-                utterance=prompt, previous_user_turn=getattr(app, "_ava_previous_user_turn", ""))
+                utterance=prompt, previous_user_turn=getattr(app, "_ava_previous_user_turn", ""),
+                cloud=state.provider.identity != "ollama")
             system = memory_block + "\n" + system
         except (OSError, ValueError) as exc:
             logger.warning("[AVA MEMORY] recall unavailable: %s", type(exc).__name__)

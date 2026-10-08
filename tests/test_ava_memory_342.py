@@ -43,7 +43,8 @@ def test_sensitive_requires_explicit_remember_and_is_never_summarized(home):
     assert memory.remember("remember that I have a medical diagnosis")
     assert "medical diagnosis" in memory.about()[0]
     assert memory.safe_for_summary("We discussed my medical diagnosis") == ""
-    assert "medical diagnosis" not in memory.prompt_block()
+    assert "medical diagnosis" in memory.prompt_block()
+    assert "medical diagnosis" not in memory.prompt_block(cloud=True)
 
 
 def test_forget_scrubs_facts_sessions_and_future_summaries(home):
