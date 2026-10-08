@@ -1157,8 +1157,14 @@ def open_settings_tab(app, tab: str) -> bool:
     the window was read at call time: None on the first open, so Settings
     landed on page one -- the owner's "Ask Ava opens Settings at the top".
     """
+    try:
+        from samsara.ui.settings_qt import _ALIASES  # noqa: PLC0415
+        resolved_tab = _ALIASES.get(tab, tab)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[HOME] settings page aliases unavailable: {exc}")
+        resolved_tab = tab
     ids = settings_tab_ids()
-    if tab not in ids:
+    if resolved_tab not in ids:
         logger.error("[HOME] Settings page %r is not in the registry %r; not opening", tab, ids)
         return False
     fn = getattr(app, 'open_settings', None)
@@ -1174,12 +1180,12 @@ def open_settings_tab(app, tab: str) -> bool:
     def _select():
         window = getattr(getattr(app, '_settings_qt', None), '_window', None)
         if window is None or not hasattr(window, 'show_tab'):
-            logger.error("[HOME] Settings window not built after its init post; page %r not selected", tab)
+            logger.error("[HOME] Settings window not built after its init post; page %r not selected", resolved_tab)
             return
         try:
-            window.show_tab(tab)
+            window.show_tab(resolved_tab)
         except Exception as exc:
-            logger.error(f"[HOME] Settings page {tab!r} could not be selected: {exc}")
+            logger.error(f"[HOME] Settings page {resolved_tab!r} could not be selected: {exc}")
 
     _post_after(_select)
     return True

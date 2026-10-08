@@ -1617,6 +1617,40 @@ class TestTheCardLabelsStatePurpose:
         assert not home_qt.label_names_destination("Words", "page", "Dictionary")
 
 
+class TestSettingsTabRouting:
+    @pytest.mark.parametrize("requested,resolved", [
+        ("Ava / Cloud", "Ava"),
+        ("Modes", "Dictation"),
+    ])
+    def test_legacy_names_open_the_resolved_settings_page(self, monkeypatch, requested, resolved):
+        selected = []
+
+        class Window:
+            def show_tab(self, name):
+                selected.append(name)
+
+        class Settings:
+            _window = Window()
+
+        class App:
+            _settings_qt = Settings()
+
+            def open_settings(self):
+                pass
+
+        monkeypatch.setattr(home_qt, "_post_after", lambda callback: callback())
+        assert home_qt.open_settings_tab(App(), requested)
+        assert selected == [resolved]
+
+    def test_unknown_name_is_refused(self, monkeypatch, caplog):
+        class App:
+            def open_settings(self):
+                pytest.fail("unknown page must not open Settings")
+
+        assert not home_qt.open_settings_tab(App(), "not a Settings page")
+        assert "not in the registry" in caplog.text
+
+
 class TestFiguresAndExamples:
     """111.4 and 111.5."""
 

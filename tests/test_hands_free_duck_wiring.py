@@ -56,6 +56,13 @@ class TestCloseHandsFreeDuckSafe:
         WakeConsumer._close_hands_free_duck_safe(app)
         app._close_hands_free_capture_duck.assert_not_called()
 
+    def test_ownerless_noop_does_not_emit_a_per_frame_debug_line(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="samsara.audio_engine.wake_consumer"):
+            WakeConsumer._close_hands_free_duck_safe(object())
+        assert "Ignoring capture duck close without an owner" not in caplog.text
+
     def test_calls_app_method_with_owner_token(self):
         app = Mock()
         WakeConsumer._close_hands_free_duck_safe(app, owner_token=456)

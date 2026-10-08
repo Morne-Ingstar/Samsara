@@ -560,7 +560,6 @@ class WakeConsumer:
         worker) shares one safe accessor instead of repeating the
         getattr(...) dance."""
         if owner_token is None:
-            logger.debug('[DUCK] Ignoring capture duck close without an owner')
             return
         close_duck = getattr(app, '_close_hands_free_capture_duck', None)
         if close_duck is not None:
