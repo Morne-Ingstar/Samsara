@@ -385,7 +385,9 @@ def test_passive_dispatch_does_not_leave_capture_token(rig):
     assert app._wake_consumer._hands_free_capture_duck_token is None
     WakeConsumer._close_hands_free_duck_safe(app, None)  # A subsequent short utterance.
     drain(rig)
-    app._close_hands_free_capture_duck.assert_called_once_with(17)
+    # owner decision 2026-10-08: an unconfirmed wake candidate does not dip the music (401)
+    app._open_hands_free_capture_duck.assert_not_called()
+    app._close_hands_free_capture_duck.assert_not_called()
 
 
 def test_capture_token_transfers_to_dispatch_and_exception_closes_once(rig):
