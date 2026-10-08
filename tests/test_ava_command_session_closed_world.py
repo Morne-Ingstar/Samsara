@@ -1,219 +1,180 @@
-"""Regression tests for the stage (c) CLOSED-WORLD selection gate.
+"""Closed-menu resolver regressions after the separate Ava session retired.
 
-Defect (found in a G1 replay rerun, 2026-07-23): stage (c)'s LLM fallback
-synthesized novel commands from nonsense input -- e.g. "purple thinking
-clouds today" -> a fabricated CONFIRM+ACTION for 'set wallpaper to
-"purple thinking clouds"'; "asdkfj random gibberish text" -> a fabricated
-ACTION for 'insert random gibberish text'. Zero misses on the 5-utterance
-nonsense corpus -- in a latched command session, ambient/misheard speech
-was turning into text-mutating actions.
-
-RULE CHANGE (spec, enforced in samsara.ava_command_session._closed_world_
-selection_ok, not just the prompt): stage (c) may ONLY (1) select one
-candidate VERBATIM from the fuzzy shortlist it was given, or (2) emit a
-valid ACTION2 phrase whose verb is a real ACTION2 verb, or (3) MISS.
-
-This file exercises the REAL _process_utterance/_stage_c_llm_fallback path
-via mocked ask_ollama.ask_ollama (so no live Ollama call is needed) --
-same pattern as tests/test_ava_command_session_g2_matrix.py's
-TestWaterfallMissSingleFallbackThenMissFeedback -- plus direct unit tests
-of the gate function itself.
+4d29f9f replaced the executing waterfall with proposal-only resolve(). Model
+commands must still belong to the offered menu; APP arguments must be grounded
+in the user's request. No resolver result executes or speaks by itself.
 """
-import sys
-from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from samsara import ava_command_session
+from samsara import ai_preferences, ava_command_session, ava_readiness
 from plugins.commands import ask_ollama
 
-# Same 5 nonsense utterances from tools/ava_command_replay.py's CORPUS
-# (spec-required "nonsense" category), paired with a CONFIRM+ACTION
-# response reproducing the actual class of fabrication the G1 rerun found
-# -- a command name that is NOT verbatim on the shortlist we gave the
-# model, sometimes carrying the whole nonsense utterance as if it were a
-# free-text argument to an invented command.
-NONSENSE_FABRICATIONS = [
-    (
-        "banana weather umbrella",
-        'CONFIRM Do a banana weather umbrella thing.\nACTION banana weather umbrella',
-    ),
-    (
-        "purple thinking clouds today",
-        'CONFIRM Set your wallpaper to purple thinking clouds.\n'
-        'ACTION set wallpaper to "purple thinking clouds"',
-    ),
-    (
-        "asdkfj random gibberish text",
-        'CONFIRM Insert random gibberish text.\nACTION insert random gibberish text',
-    ),
-    (
-        "the quick brown fox jumps over",
-        'CONFIRM Type the quick brown fox jumps over.\n'
-        'ACTION type the quick brown fox jumps over',
-    ),
-    (
-        "nothing here matches anything useful",
-        'CONFIRM Do nothing here matches anything useful.\n'
-        'ACTION nothing here matches anything useful',
-    ),
-]
 
-# A shortlist of real, unrelated commands -- none of the fabrications above
-# are verbatim members of this list, which is the whole point.
-SHORTLIST = ["screenshot", "close tab", "scroll up", "mute", "maximize"]
+NONSENSE_FABRICATIONS = [
+    ('banana weather umbrella',
+     'CONFIRM Do a banana weather umbrella thing.\nACTION banana weather umbrella'),
+    ('purple thinking clouds today',
+     'CONFIRM Set your wallpaper to purple thinking clouds.\nACTION set wallpaper to "purple thinking clouds"'),
+    ('asdkfj random gibberish text',
+     'CONFIRM Insert random gibberish text.\nACTION insert random gibberish text'),
+    ('the quick brown fox jumps over',
+     'CONFIRM Type the quick brown fox jumps over.\nACTION type the quick brown fox jumps over'),
+    ('nothing here matches anything useful',
+     'CONFIRM Do nothing here matches anything useful.\nACTION nothing here matches anything useful'),
+]
+SHORTLIST = ['screenshot', 'close tab', 'scroll up', 'mute', 'maximize', 'focus', 'open', 'close']
 
 
 @pytest.fixture(autouse=True)
-def _reset_pending_action():
-    ask_ollama.clear_pending_action()
+def _isolated_resolver(monkeypatch):
+    ava_command_session.reset_cancellations()
+    monkeypatch.setattr(ai_preferences, 'runtime_state', lambda *_args: SimpleNamespace(
+        allowed=True, provider=SimpleNamespace(identity='ollama')))
+    monkeypatch.setattr(ava_readiness, 'readiness_for', lambda _app: SimpleNamespace(ready=True))
+    monkeypatch.setattr(ask_ollama, 'get_system_prompt', lambda _app: '{COMMAND_LIST}')
     yield
-    ask_ollama.clear_pending_action()
+    ava_command_session.reset_cancellations()
 
 
 def _make_app():
-    app = Mock()
-    app._ava_cmd_generation = 0
-    app._ava_cmd_miss_count = 0
-    app.ava_command_session_active = True
-    app.command_executor = Mock()
-    app.command_executor.process_text = Mock(return_value=(None, False))  # stage (a) miss
-    app.audio_coordinator = Mock()
-    app.exit_ava_command_session = Mock()
-    app.play_sound = Mock()
-    app.config = {'ava_command_session': {}}
+    app = SimpleNamespace(config={}, command_executor=Mock(), audio_coordinator=Mock())
+    app.command_executor.ava_menu.return_value = list(SHORTLIST)
     return app
 
 
-def _spoken_texts(app):
-    return [c.args[0] for c in app.audio_coordinator.speak.call_args_list]
+def _resolve(app, utterance='grab the screen'):
+    return ava_command_session.resolve(app, utterance, 'closed-world', 10**12)
 
 
 class TestNonsenseFabricationsAreRejectedAsMiss:
-    @pytest.mark.parametrize("utterance,fabricated_response", NONSENSE_FABRICATIONS)
+    @pytest.mark.parametrize('utterance,fabricated_response', NONSENSE_FABRICATIONS)
     def test_fabricated_action_never_reaches_handle_response(self, monkeypatch, utterance, fabricated_response):
         app = _make_app()
-        monkeypatch.setattr(ava_command_session, '_match_action2_grammar', lambda u: None)
-        monkeypatch.setattr(ava_command_session, '_build_shortlist', lambda app, u, cfg: list(SHORTLIST))
-        monkeypatch.setattr(ask_ollama, 'ask_ollama', Mock(return_value=fabricated_response))
-        handle_response_mock = Mock()
-        monkeypatch.setattr(ask_ollama, 'handle_response', handle_response_mock)
-        execute_command_mock = Mock()
-        app.command_executor.execute_command = execute_command_mock
+        model = Mock(return_value=fabricated_response)
+        dispatch = Mock()
+        monkeypatch.setattr(ask_ollama, 'ask_ollama', model)
+        monkeypatch.setattr(ask_ollama, 'handle_response', dispatch)
 
-        ava_command_session._process_utterance(app, 0, utterance)
+        assert _resolve(app, utterance) is None
 
-        handle_response_mock.assert_not_called()
-        execute_command_mock.assert_not_called()
+        model.assert_called_once()
+        dispatch.assert_not_called()
+        app.command_executor.execute_command.assert_not_called()
+        app.command_executor.execute_canonical.assert_not_called()
 
-    @pytest.mark.parametrize("utterance,fabricated_response", NONSENSE_FABRICATIONS)
-    def test_fabricated_action_registers_as_miss_with_spoken_feedback(self, monkeypatch, utterance, fabricated_response):
+    @pytest.mark.parametrize('utterance,fabricated_response', NONSENSE_FABRICATIONS)
+    def test_fabricated_action_returns_no_proposal_or_resolver_feedback(self, monkeypatch, utterance, fabricated_response):
         app = _make_app()
-        monkeypatch.setattr(ava_command_session, '_match_action2_grammar', lambda u: None)
-        monkeypatch.setattr(ava_command_session, '_build_shortlist', lambda app, u, cfg: list(SHORTLIST))
         monkeypatch.setattr(ask_ollama, 'ask_ollama', Mock(return_value=fabricated_response))
-        monkeypatch.setattr(ask_ollama, 'handle_response', Mock())
 
-        ava_command_session._process_utterance(app, 0, utterance)
+        assert _resolve(app, utterance) is None
 
-        assert app._ava_cmd_miss_count == 1
-        assert _spoken_texts(app) == ["I didn't catch a command in that."]
+        # Miss feedback belongs to the ordinary dispatcher; this resolver
+        # neither owns a session miss counter nor emits speech.
+        app.audio_coordinator.speak.assert_not_called()
+        assert not hasattr(app, '_ava_cmd_miss_count')
 
 
 class TestLegitimateSelectionsStillResolve:
     def test_verbatim_shortlist_selection_still_resolves(self, monkeypatch):
         app = _make_app()
-        monkeypatch.setattr(ava_command_session, '_match_action2_grammar', lambda u: None)
-        monkeypatch.setattr(ava_command_session, '_build_shortlist', lambda app, u, cfg: list(SHORTLIST))
-        monkeypatch.setattr(
-            ask_ollama, 'ask_ollama',
-            Mock(return_value='CONFIRM Take a screenshot.\nACTION screenshot'),
-        )
-        handle_response_mock = Mock()
-        monkeypatch.setattr(ask_ollama, 'handle_response', handle_response_mock)
+        model = Mock(return_value='CONFIRM Take a screenshot.\nACTION screenshot')
+        dispatch = Mock()
+        monkeypatch.setattr(ask_ollama, 'ask_ollama', model)
+        monkeypatch.setattr(ask_ollama, 'handle_response', dispatch)
 
-        ava_command_session._process_utterance(app, 0, "grab the screen")
+        assert _resolve(app) == ava_command_session.Proposal('screenshot', provider='ollama')
 
-        handle_response_mock.assert_called_once()
-        assert app._ava_cmd_miss_count == 0
-        assert _spoken_texts(app) == []  # no miss feedback -- this was a hit
+        assert model.call_args.kwargs['system'] == ', '.join(SHORTLIST)
+        dispatch.assert_not_called()
+        app.command_executor.execute_canonical.assert_not_called()
+        app.audio_coordinator.speak.assert_not_called()
 
-    def test_valid_action2_fallback_still_resolves(self, monkeypatch):
+    def test_valid_app_fallback_still_resolves(self, monkeypatch):
         app = _make_app()
-        monkeypatch.setattr(ava_command_session, '_match_action2_grammar', lambda u: None)
-        monkeypatch.setattr(ava_command_session, '_build_shortlist', lambda app, u, cfg: list(SHORTLIST))
-        monkeypatch.setattr(
-            ask_ollama, 'ask_ollama',
-            Mock(return_value='CONFIRM Open Notepad.\nACTION2 open | notepad'),
-        )
-        handle_response_mock = Mock()
-        monkeypatch.setattr(ask_ollama, 'handle_response', handle_response_mock)
+        model = Mock(return_value='CONFIRM Open Notepad.\nAPP open | notepad')
+        monkeypatch.setattr(ask_ollama, 'ask_ollama', model)
 
-        ava_command_session._process_utterance(app, 0, "please open notepad")
+        assert _resolve(app, 'I need notepad please') == ava_command_session.Proposal(
+            'open', {'remainder': 'notepad'}, provider='ollama')
+        model.assert_called_once()  # exercise the model fallback, not app grammar
+        app.command_executor.execute_canonical.assert_not_called()
+        app.audio_coordinator.speak.assert_not_called()
 
-        handle_response_mock.assert_called_once()
-        assert app._ava_cmd_miss_count == 0
-        assert _spoken_texts(app) == []
+
+def _resolve_parsed(monkeypatch, parsed, menu=None):
+    app = _make_app()
+    if menu is not None:
+        app.command_executor.ava_menu.return_value = menu
+    monkeypatch.setattr(ask_ollama, 'ask_ollama', Mock(return_value='test response'))
+    monkeypatch.setattr(ask_ollama, '_parse_structured_response', lambda _response: parsed)
+    return _resolve(app, 'I need notepad please')
 
 
 class TestClosedWorldSelectionOkUnit:
-    """Direct unit coverage of the gate function itself, independent of the
-    worker plumbing above."""
+    """Exercise selection gates through the supported resolver API."""
 
-    def test_action_verbatim_in_shortlist_passes(self):
-        parsed = {"type": "action", "command": "screenshot"}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is True
+    def test_action_verbatim_in_shortlist_passes(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {'type': 'action', 'command': 'screenshot'}) == (
+            ava_command_session.Proposal('screenshot', provider='ollama'))
 
-    def test_action_not_in_shortlist_fails(self):
-        parsed = {"type": "action", "command": "set wallpaper to purple thinking clouds"}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is False
+    def test_action_not_in_shortlist_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action', 'command': 'set wallpaper to purple thinking clouds'}) is None
 
-    def test_action_trailing_punctuation_is_tolerated(self):
-        # _parse_structured_response already lowercases parsed["command"];
-        # only punctuation/whitespace normalization is this gate's job.
-        parsed = {"type": "action", "command": "screenshot."}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is True
+    def test_action_trailing_punctuation_is_tolerated(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {'type': 'action', 'command': 'screenshot.'}) == (
+            ava_command_session.Proposal('screenshot', provider='ollama'))
 
-    def test_action_with_trailing_extra_words_fails(self):
-        # The whole point: appending free text to a real command name must
-        # not sneak through as a "close enough" verbatim match.
-        parsed = {"type": "action", "command": "screenshot of my desktop"}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is False
+    def test_action_with_trailing_extra_words_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action', 'command': 'screenshot of my desktop'}) is None
 
-    def test_action_empty_command_fails(self):
-        parsed = {"type": "action", "command": ""}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is False
+    def test_action_empty_command_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {'type': 'action', 'command': ''}) is None
 
-    @pytest.mark.parametrize("verb", ["focus", "open", "close"])
-    def test_action2_valid_verb_passes(self, verb):
-        parsed = {"type": "action2", "verb": verb, "argument": "notepad"}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is True
+    @pytest.mark.parametrize('verb', ['focus', 'open', 'close'])
+    def test_action2_valid_verb_passes(self, monkeypatch, verb):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action2', 'verb': verb, 'argument': 'notepad'}) == (
+            ava_command_session.Proposal(verb, {'remainder': 'notepad'}, provider='ollama'))
 
-    def test_action2_invalid_verb_fails(self):
-        parsed = {"type": "action2", "verb": "delete", "argument": "notepad"}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is False
+    def test_action2_invalid_verb_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action2', 'verb': 'delete', 'argument': 'notepad'}) is None
 
-    def test_schedule_type_fails(self):
-        parsed = {"type": "schedule", "command": "screenshot", "interval_seconds": 60, "key": None}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is False
+    def test_app_verb_absent_from_menu_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action2', 'verb': 'open', 'argument': 'notepad'}, menu=['screenshot']) is None
 
-    def test_conversation_type_fails(self):
-        parsed = {"type": "conversation"}
-        assert ava_command_session._closed_world_selection_ok(parsed, SHORTLIST) is False
+    def test_app_argument_not_in_request_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action2', 'verb': 'open', 'argument': 'calculator'}) is None
+
+    def test_app_empty_argument_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'action2', 'verb': 'open', 'argument': ''}) is None
+
+    def test_schedule_type_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {
+            'type': 'schedule', 'command': 'screenshot', 'interval_seconds': 60, 'key': None}) is None
+
+    def test_conversation_type_fails(self, monkeypatch):
+        assert _resolve_parsed(monkeypatch, {'type': 'conversation'}) is None
 
 
 class TestNormalizeCommandName:
     def test_strips_surrounding_quotes(self):
-        assert ava_command_session._normalize_command_name('"screenshot"') == "screenshot"
+        assert ava_command_session._normalise_command_id('"screenshot"') == 'screenshot'
 
     def test_strips_trailing_punctuation(self):
-        assert ava_command_session._normalize_command_name("screenshot.") == "screenshot"
+        assert ava_command_session._normalise_command_id('screenshot.') == 'screenshot'
 
     def test_collapses_internal_whitespace(self):
-        assert ava_command_session._normalize_command_name("close   tab") == "close tab"
+        assert ava_command_session._normalise_command_id('close   tab') == 'close tab'
 
     def test_none_input_returns_empty_string(self):
-        assert ava_command_session._normalize_command_name(None) == ""
+        assert ava_command_session._normalise_command_id(None) == ''
