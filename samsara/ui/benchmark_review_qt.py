@@ -164,6 +164,7 @@ class BenchmarkReviewWindow(QMainWindow):
         left.addWidget(self._progress_lbl)
 
         self._list = QListWidget()
+        self._list.setAccessibleName("Dictation samples")
         self._list.setMinimumWidth(320)
         self._list.currentRowChanged.connect(self._on_row_changed)
         left.addWidget(self._list, stretch=1)
@@ -187,6 +188,7 @@ class BenchmarkReviewWindow(QMainWindow):
         right.addWidget(self._meta_lbl)
 
         self._text_edit = QPlainTextEdit()
+        self._text_edit.setAccessibleName("Sample transcript")
         self._text_edit.setPlaceholderText(
             "Transcript (edit to correct, then Confirm as gold)"
         )

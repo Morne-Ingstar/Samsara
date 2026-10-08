@@ -68,6 +68,8 @@ class _PanelController:
                 self._window = _build_window()
             self._window.set_content(query, answer, items)
             self._window.show()
+            self._window._announcer.announce_transition(
+                (query, answer, tuple(items)), self._window.windowTitle())
         except Exception as exc:
             logger.warning(f"[AVA-SEARCH] panel failed to show: {exc}")
 
@@ -80,6 +82,7 @@ def _build_window():
         QPushButton, QVBoxLayout, QWidget,
     )
     from samsara.ui import theme
+    from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
     class AvaSearchPanel(QWidget):
         def __init__(self):
@@ -87,6 +90,7 @@ def _build_window():
             self.setWindowTitle("Ava - web answer")
             self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            self._announcer = LiveSurfaceAnnouncer(self)
             self.resize(460, 520)
             self.setStyleSheet(
                 f"QWidget {{ background: {theme.BG0}; color: {theme.TEXT_PRIMARY};"
@@ -128,6 +132,8 @@ def _build_window():
             layout.addWidget(notice)
 
             self.sources = QListWidget()
+            self.sources.setAccessibleName("Web answer sources")
+            self.sources.setAccessibleDescription(notice.text())
             self.sources.itemActivated.connect(self._open_item)
             layout.addWidget(self.sources, stretch=2)
 

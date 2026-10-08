@@ -260,6 +260,7 @@ class _ProfileManagerWindow(QMainWindow):
         sel_row = QHBoxLayout()
         sel_row.setSpacing(8)
         lbl = QLabel("Profile:")
+        lbl.setBuddy(combo)
         lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         sel_row.addWidget(lbl)
         sel_row.addWidget(combo, stretch=1)

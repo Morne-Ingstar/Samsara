@@ -292,6 +292,7 @@ class DiagnosticsWindow(QMainWindow):
 
         # ---- Table ----------------------------------------------------------
         self._table = QTableWidget(0, len(_COLUMNS))
+        self._table.setAccessibleName("Dictation records")
         self._table.setHorizontalHeaderLabels(_COLUMNS)
         hh = self._table.horizontalHeader()
         for col in range(len(_COLUMNS) - 1):

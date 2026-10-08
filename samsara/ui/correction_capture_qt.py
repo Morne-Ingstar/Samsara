@@ -100,6 +100,8 @@ class _PairRow(QFrame):
         always_btn.setMinimumHeight(_MIN_TARGET)
         just_once_btn = QPushButton("Just this once")
         just_once_btn.setMinimumHeight(_MIN_TARGET)
+        always_btn.setAccessibleName(f"{always_btn.text()}: {label.text()}")
+        just_once_btn.setAccessibleName(f"{just_once_btn.text()}: {label.text()}")
 
         def _handle_always():
             on_always_fix(wrong, right)
@@ -220,6 +222,7 @@ class CorrectionCaptureWindow(QMainWindow):
         root.addWidget(title)
 
         self._text_edit = QTextEdit()
+        title.setBuddy(self._text_edit)
         self._text_edit.setPlainText(self._original_text)
         if not self._original_text:
             self._text_edit.setPlaceholderText("No recent dictation found.")

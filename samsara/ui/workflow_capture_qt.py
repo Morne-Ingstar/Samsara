@@ -129,8 +129,10 @@ class _ReviewWindow(QWidget):
 
         # --- provider + analyze ---
         ctrl_row = QHBoxLayout()
-        ctrl_row.addWidget(QLabel("Analyze with:"))
+        provider_label = QLabel("Analyze with:")
+        ctrl_row.addWidget(provider_label)
         self._provider = QComboBox()
+        provider_label.setBuddy(self._provider)
         self._provider.addItems(["Local (Ollama)", "Cloud LLM"])
         self._provider.setFixedWidth(160)
         ctrl_row.addWidget(self._provider)

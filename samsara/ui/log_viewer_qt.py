@@ -162,6 +162,7 @@ class LogViewerWindow(QMainWindow):
         top_row.addWidget(self._follow_btn)
 
         self._filter_edit = QLineEdit()
+        self._filter_edit.setAccessibleName("Filter log entries")
         self._filter_edit.setPlaceholderText("Filter…")
         self._filter_edit.textChanged.connect(self._on_filter_changed)
         top_row.addWidget(self._filter_edit, stretch=1)

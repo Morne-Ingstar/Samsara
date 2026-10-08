@@ -147,15 +147,16 @@ class DictionaryPanelQt(QWidget):
         self._tabs = QTabWidget()
         lay.addWidget(self._tabs)
 
-        self._tabs.addTab(self._build_vocab_tab(),       "Vocabulary")
-        self._tabs.addTab(self._build_kv_tab("corrections"), "Corrections")
-        self._tabs.addTab(self._build_kv_tab("wake"),        "Wake Words")
+        vocab_title = "Vocabulary"
+        self._tabs.addTab(self._build_vocab_tab(vocab_title), vocab_title)
+        for mode, title in (("corrections", "Corrections"), ("wake", "Wake Words")):
+            self._tabs.addTab(self._build_kv_tab(mode, title), title)
 
     # ------------------------------------------------------------------
     # Vocabulary tab
     # ------------------------------------------------------------------
 
-    def _build_vocab_tab(self) -> QWidget:
+    def _build_vocab_tab(self, title: str) -> QWidget:
         page = QWidget()
         lay  = QVBoxLayout(page)
         lay.setContentsMargins(14, 14, 14, 12)
@@ -173,6 +174,7 @@ class DictionaryPanelQt(QWidget):
         # Input row
         add_row = QHBoxLayout()
         self._vocab_input = QLineEdit()
+        self._vocab_input.setAccessibleName("Add vocabulary word")
         self._vocab_input.setPlaceholderText("Word or phrase to add...")
         self._vocab_input.returnPressed.connect(self._vocab_add)
         add_row.addWidget(self._vocab_input, stretch=1)
@@ -184,6 +186,7 @@ class DictionaryPanelQt(QWidget):
 
         # List
         self._vocab_list = QListWidget()
+        self._vocab_list.setAccessibleName(title)
         self._vocab_list.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
@@ -387,7 +390,7 @@ class DictionaryPanelQt(QWidget):
     # Corrections / Wake Words tabs (shared factory)
     # ------------------------------------------------------------------
 
-    def _build_kv_tab(self, mode: str) -> QWidget:
+    def _build_kv_tab(self, mode: str, title: str) -> QWidget:
         """Build a two-column key-value editor tab.
 
         mode='corrections' -> VoiceTrainingQt training_data.json
@@ -426,10 +429,12 @@ class DictionaryPanelQt(QWidget):
         inp_row = QHBoxLayout()
         inp_row.setSpacing(6)
         field1 = QLineEdit()
+        field1.setAccessibleName(col1_hdr)
         field1.setPlaceholderText(ph1)
         arrow = QLabel("->")
         arrow.setStyleSheet(f"color:{theme.TEXT_SECONDARY};padding:0 4px;")
         field2 = QLineEdit()
+        field2.setAccessibleName(col2_hdr)
         field2.setPlaceholderText(ph2)
         add_btn = QPushButton("Add")
         add_btn.setFixedWidth(56)
@@ -452,6 +457,7 @@ class DictionaryPanelQt(QWidget):
 
         # Table: Heard | Value | Source
         table = QTableWidget(0, 3)
+        table.setAccessibleName(title)
         table.setHorizontalHeaderLabels([col1_hdr, col2_hdr, "Source"])
         hdr = table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
