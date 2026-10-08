@@ -480,3 +480,77 @@ class TestHookInstallsBesidePynput:
             app._install_mouse_listener()
         assert app._mouse_hook is None
         assert any('did NOT install' in r.getMessage() for r in caplog.records)
+
+# 367: deferred hand-off retains a physical re-press, never a released tap.
+@pytest.mark.parametrize('source', ['key', 'mouse'])
+@pytest.mark.parametrize('still_held', [True, False])
+def test_release_tail_repress_handoff(keyboard, spawned, source, still_held):
+    app = _App('hold', source)
+    driver = _Driver(app, keyboard, spawned, source)
+    driver.main(True)
+    driver.main(False)
+    driver.main(True)
+    assert app._streaming_tail_abort
+    if not still_held:
+        driver.main(False)
+    _drain(spawned)
+    assert not app._streaming_tail_abort
+    assert app.recording is still_held
+    assert len([c for c in app.calls if c[0] == 'start']) == 1 + int(still_held)
+
+
+@pytest.mark.parametrize('source', ['key', 'mouse'])
+def test_non_tail_stop_clears_abort_before_next_hold(keyboard, spawned, source):
+    app = _App('hold', source)
+    driver = _Driver(app, keyboard, spawned, source)
+    driver.main(True)
+    driver.main(False)
+    driver.main(True)  # A command/Ava/memo/batch stop ignores this signal.
+    driver.main(False)
+    _drain(spawned)
+    assert app._streaming_tail_abort is False
+    driver.main(True)
+    assert app.recording
+    assert app._streaming_tail_abort is False
+
+
+@pytest.mark.parametrize('source', ['key', 'mouse'])
+@pytest.mark.parametrize('still_held', [True, False])
+def test_repress_aborts_real_tail_and_waits_for_async_owner(keyboard, spawned, source, still_held):
+    import threading
+    from samsara.audio_engine import DictationSessionConsumer, FrameBus
+    app = _App('hold', source)
+    driver = _Driver(app, keyboard, spawned, source)
+    consumer = DictationSessionConsumer(
+        SimpleNamespace(register_consumer=lambda name: FrameBus().new_reader(name)),
+        SimpleNamespace(audio_coordinator=None, _tts_last_speaking=0.))
+    entered, finalized = threading.Event(), threading.Event()
+    results = []
+    def stop():
+        entered.set()
+        results.append(consumer.wait_for_streaming_release_tail(
+            max_tail_ms=1200, should_abort=lambda: getattr(app, '_streaming_tail_abort', False)))
+        app.recording = False
+        finalized.set()
+    app.stop_recording = stop
+    driver.main(True)
+    driver.main(False)
+    app._streaming_session = object()
+    job = spawned.pop()[1]
+    worker = threading.Thread(target=job)
+    worker.start()
+    try:
+        assert entered.wait(1)
+        driver.main(True)
+        assert finalized.wait(.5)
+        assert results[0]['reason'] == 'abort'
+        assert app._stop_in_flight  # first worker still owns the accumulator
+        if not still_held:
+            driver.main(False)
+        app._streaming_session = None
+    finally:
+        app._streaming_session = None
+        worker.join(2)
+    assert not worker.is_alive()
+    assert not app._streaming_tail_abort
+    assert app.recording is still_held

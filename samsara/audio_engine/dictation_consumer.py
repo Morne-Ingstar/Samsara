@@ -151,13 +151,15 @@ class DictationSessionConsumer:
             "dictation-hold-consumer", self._hold_drain_loop, args=(self._drain_stop,), daemon=True
         )
 
-    def finish_capture(self) -> None:
+    def finish_capture(self, *, force=False) -> None:
         """Exclude later frames before the hold owner releases its duck.
 
         Streaming finalization drains asynchronously; its worker may finish
         after the duck debounce expires. Preserve only the ducked interval.
+        A streaming tail forces the cutoff before its stop earcon, even without
+        ducking; later owner cleanup must not extend that interval.
         """
-        if self._capture_not_before is not None:
+        if (force or self._capture_not_before is not None) and self._capture_not_after is None:
             self._capture_not_after = time.perf_counter()
 
     def _frame_inside_capture_duck(self, frame) -> bool:
@@ -218,10 +220,6 @@ class DictationSessionConsumer:
         max_tail_ms = max(silence_ms, int(max_tail_ms))
         speech_threshold = max(0.0, float(speech_threshold))
         started = time.monotonic()
-        deadline = started + (max_tail_ms / 1000.0)
-        quiet_ms = 0
-        tail_frames = 0
-        reason = "max"
         with self._frames_lock:
             next_index = len(self._frames)
             # The first PREBUFFER_FRAMES precede the hotkey press, so they
@@ -256,22 +254,17 @@ class DictationSessionConsumer:
             noise_floor = float(np.percentile(prebuffer_rms, 20))
             speech_threshold = max(speech_threshold, noise_floor * ADAPTIVE_SPEECH_FLOOR_RATIO)
 
-        while time.monotonic() < deadline:
+        def next_rms():
+            nonlocal next_index
             with self._frames_lock:
-                new_frames = list(self._frames[next_index:])
+                new_frames = self._frames[next_index:]
                 next_index = len(self._frames)
+            return [float(np.sqrt(np.mean((pcm.astype(np.float32) / 32767.0) ** 2)))
+                    for _seq, _epoch, pcm in new_frames]
 
-            for _seq, _epoch, pcm in new_frames:
-                tail_frames += 1
-                pcm_f32 = pcm.astype(np.float32) / 32767.0
-                rms = float(np.sqrt(np.mean(pcm_f32 * pcm_f32)))
-                quiet_ms = quiet_ms + FRAME_MS if rms < speech_threshold else 0
-                if quiet_ms >= silence_ms:
-                    reason = "silence"
-                    break
-            if reason == "silence":
-                break
-            time.sleep(0.01)
+        result = self._wait_for_release_quiet(next_rms, speech_threshold,
+                                              silence_ms, max_tail_ms, started=started)
+        reason, tail_frames = result['reason'], result['frames']
 
         audio = self.drain()
         elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -281,6 +274,63 @@ class DictationSessionConsumer:
             reason, elapsed_ms, tail_frames, speech_threshold, noise_floor,
         )
         return audio
+
+    @staticmethod
+    def _wait_for_release_quiet(next_rms, threshold, silence_ms, max_tail_ms,
+                                should_abort=None, started=None):
+        """Watch only newly captured frames; both accumulators use this loop."""
+        measure_elapsed = started is None
+        if started is None:
+            started = time.monotonic()
+        deadline = started + max_tail_ms / 1000.0
+        quiet_ms = frames = 0
+        last_rms = 0.0
+        reason = 'max'
+        while time.monotonic() < deadline:
+            if should_abort is not None and should_abort():
+                reason = 'abort'
+                break
+            for rms in next_rms():
+                frames += 1
+                last_rms = rms
+                quiet_ms = quiet_ms + FRAME_MS if rms < threshold else 0
+                if quiet_ms >= silence_ms:
+                    reason = 'silence'
+                    break
+            if reason == 'silence':
+                break
+            time.sleep(0.01)
+        return dict(reason=reason, elapsed_ms=(int((time.monotonic() - started) * 1000)
+                                               if measure_elapsed else 0),
+                    frames=frames, threshold=threshold, last_frame_rms=last_rms)
+
+    def wait_for_streaming_release_tail(
+        self, *, silence_ms=300, max_tail_ms=1200,
+        speech_threshold=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD, should_abort=None,
+    ) -> dict:
+        """Wait for post-release quiet without stopping or copying out streaming audio."""
+        silence_ms = max(0, int(silence_ms))
+        max_tail_ms = max(silence_ms, int(max_tail_ms))
+        with self._streaming_lock:
+            next_index = len(self._streaming_frames)
+            held = list(self._streaming_frames)
+        speech_level = 0.0
+        if len(held) >= 3:
+            levels = [float(np.sqrt(np.mean(frame * frame))) for frame in held]
+            speech_level = float(np.percentile(levels, 90))
+        threshold = max(float(speech_threshold), speech_level * 0.10)
+
+        def next_rms():
+            nonlocal next_index
+            with self._streaming_lock:
+                new_frames = self._streaming_frames[next_index:]
+                next_index = len(self._streaming_frames)
+            return [float(np.sqrt(np.mean(frame * frame))) for frame in new_frames]
+
+        result = self._wait_for_release_quiet(next_rms, threshold, silence_ms,
+                                              max_tail_ms, should_abort)
+        result['speech_level'] = speech_level
+        return result
 
     def cancel(self) -> bool:
         """Discard accumulated frames without assembling audio.

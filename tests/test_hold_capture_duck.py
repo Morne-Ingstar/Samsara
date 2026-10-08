@@ -15,6 +15,8 @@ from samsara.audio_engine.dictation_consumer import DictationSessionConsumer
 from samsara.audio_engine.frame import FRAME_MS, FRAME_SIZE, PREBUFFER_FRAMES
 from samsara.audio_engine.ring import EMPTY
 from samsara.constants import HOLD_RELEASE_TAIL_SPEECH_THRESHOLD
+# 367: AST fixture must supply the production timing dependency and keyword.
+from samsara.stage_timing import StageTiming, set_current_stage_timing, reset_current_stage_timing
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +50,8 @@ def app():
     cls = next(n for n in source.body if isinstance(n, ast.ClassDef)
                and n.name == 'DictationApp')
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in METHODS]
-    ns = dict(time=time, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
+    ns = dict(StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
+              reset_current_stage_timing=reset_current_stage_timing, time=time, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
               audio_ducking=SimpleNamespace(SessionDucker=None),
               thread_registry=SimpleNamespace(timer=Timer),
               _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S=0.5,
@@ -105,7 +108,7 @@ def app():
         drain_after_release=Mock(return_value=None), drain=Mock(return_value=None),
     )
     a.stop_impl = a._stop_recording_impl
-    a._stop_recording_impl = lambda: a.set_app_state(recording=False)
+    a._stop_recording_impl = lambda **kw: a.set_app_state(recording=False)
     return a
 
 

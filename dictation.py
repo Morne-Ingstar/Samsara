@@ -11868,8 +11868,16 @@ class DictationApp:
             and self.config.get('mode', 'hold') == 'hold'
             and not ownership.is_command
         )
+        streaming_release_tail = bool(
+            getattr(self, '_ace_streaming_active', False)
+            and getattr(self, '_streaming_session', None) is not None
+            and self.config.get('mode', 'hold') == 'hold'
+            and self._live_surface_hold_parking_enabled()
+            and getattr(self, 'live_surface', None) is not None
+            and not (ownership.is_command or ownership.is_ava or memo_recording)
+        )
         self.set_app_state(recording=False)
-        if not adaptive_release_tail:
+        if not (adaptive_release_tail or streaming_release_tail):
             # Preserve existing command/streaming timing. Normal ACE hold
             # dictation keeps WakeConsumer suppressed through its adaptive
             # tail so final words cannot seed a second wake utterance.
@@ -11889,7 +11897,7 @@ class DictationApp:
             # wrapped around the transcribe thread below clears it otherwise.
             _hold_chip_seq = self._show_hold_pending_chip()
 
-        if not adaptive_release_tail:
+        if not (adaptive_release_tail or streaming_release_tail):
             # Legacy fixed tail remains for command and streaming paths.
             tail_ms = self.config.get('recording_tail_ms', 250)
             if tail_ms > 0:
@@ -11937,6 +11945,29 @@ class DictationApp:
             # reads them, causing a silent loss of the recording.
             sess = getattr(self, '_streaming_session', None)
             if sess is not None:
+                if streaming_release_tail:
+                    try:
+                        tail = self._dictation_consumer.wait_for_streaming_release_tail(
+                            silence_ms=int(self.config.get('recording_tail_silence_ms', 300)),
+                            max_tail_ms=int(self.config.get('recording_tail_max_ms', 1200)),
+                            speech_threshold=float(self.config.get(
+                                'recording_tail_speech_threshold', HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
+                            )),
+                            should_abort=lambda: getattr(self, '_streaming_tail_abort', False),
+                        )
+                        logger.debug(
+                            '[TAIL] streaming release tail reason=%s elapsed=%dms frames=%d '
+                            'threshold=%.4f speech_level=%.4f last_frame_rms=%.4f',
+                            tail['reason'], tail['elapsed_ms'], tail['frames'],
+                            tail['threshold'], tail['speech_level'], tail['last_frame_rms'],
+                        )
+                    finally:
+                        # The reader stays alive for the worker's final pass;
+                        # freeze admission before the earcon can enter it.
+                        self._dictation_consumer.finish_capture(force=True)
+                        if not self.hotkey_pressed:
+                            self._hotkey_recording = False
+                        self.play_sound('stop')
                 try:
                     sess.finalize()
                 except Exception as e:
