@@ -63,6 +63,7 @@ _HOTKEY_FALLBACKS = {
     "command_hotkey": "ctrl+alt+c",
     "cancel_hotkey": "escape",
     "memo_hotkey": "ctrl+alt+m",
+    "task_hotkey": "ctrl+alt+t",
     "correction_hotkey": "ctrl+alt+r",
     "hotkeys.capture_correction": "ctrl+alt+x",
     "continuous_commit_hotkey": "ctrl+space",
@@ -218,6 +219,7 @@ def _resolve_hotkeys(app) -> list[dict]:
         },
         {"label": "Undo last dictation", "value": _key("undo_hotkey"), "enabled": True},
         {"label": "Memo recording", "value": _key("memo_hotkey"), "enabled": True},
+        {"label": "Add a task (hold)", "value": _key("task_hotkey"), "enabled": True},
         {"label": "Correction report", "value": _key("correction_hotkey"), "enabled": True},
         {
             "label": "Correction capture",

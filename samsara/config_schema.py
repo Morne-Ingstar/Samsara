@@ -156,6 +156,7 @@ SETTINGS_SCHEMA = {
     },
     "tasks.todoist.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "tasks.todoist.api_token": {"type": "str", "default": "", "tab": "commands"},
+    "tasks.capture.ava_parse": {"type": "bool", "default": False, "tab": "commands"},
     "wake_profiles": {
         "type": "list",
         "item_type": "dict",

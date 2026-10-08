@@ -92,6 +92,19 @@ def handle_add_to_list(app, remainder="", **kwargs):
     return True
 
 
+def capture_spoken_task(app, text) -> bool:
+    """Save a hold-key task through the existing raw capture path."""
+    if not text or not text.strip():
+        _speak(app, "I didn't catch a task.")
+        return False
+    config = getattr(app, "config", {}) or {}
+    # The provider wrapper adds conversation/personal context even with a
+    # custom system prompt. Read the switch, but keep it inert until that
+    # wrapper offers an explicit stateless, utterance-only request seam.
+    _ava_parse = ((config.get("tasks") or {}).get("capture") or {}).get("ava_parse") is True
+    return handle_add_to_list(app, text)
+
+
 @command("sync tasks", aliases=["sync my tasks"], pack="tasks", risk_class="write")
 def handle_sync_tasks(app, remainder="", **kwargs):
     token = _todoist_token(app)

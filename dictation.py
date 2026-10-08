@@ -752,6 +752,7 @@ _MOUSE_HOTKEY_BUTTONS = ('mouse4', 'mouse5')
 _OTHER_HOTKEY_KEYS = (
     ('continuous_hotkey', 'ctrl+alt+d'), ('wake_word_hotkey', 'ctrl+alt+w'),
     ('command_hotkey', 'ctrl+alt+c'), ('memo_hotkey', 'ctrl+alt+m'),
+    ('task_hotkey', 'ctrl+alt+t'),
     ('undo_hotkey', 'ctrl+alt+z'), ('correction_hotkey', 'ctrl+alt+r'),
     ('cancel_hotkey', 'escape'),
 )
@@ -2684,6 +2685,7 @@ class DictationApp:
             "correction_hotkey": "ctrl+alt+r",
             "cancel_hotkey": "escape",
             "memo_hotkey": "ctrl+alt+m",
+            "task_hotkey": "ctrl+alt+t",
             # Queue 92: memo audio is now kept BY DEFAULT. The flag was
             # written for the dictation path, where retention is clearly
             # wrong; for a memo the recording IS the feature -- "record
@@ -11834,6 +11836,8 @@ class DictationApp:
 
         memo_recording = bool(getattr(self, '_memo_recording', False))
         self._memo_recording = False
+        capture_sink = getattr(self, '_capture_sink', None)
+        self._capture_sink = None
 
         flight_recorder.record(
             'hold_recording.stop',
@@ -12339,6 +12343,10 @@ class DictationApp:
                         text = self._apply_formatting_tokens(text)
 
                     if memo_recording:
+                        if capture_sink == 'task':
+                            from samsara import capture_sinks
+                            capture_sinks.deliver_task(self, text)
+                            return
                         try:
                             memo_home = self.config.get('memo_file') or None
                             audio_path = None
@@ -12677,6 +12685,8 @@ class DictationApp:
             return
 
         self.set_app_state(recording=False)
+        self._capture_sink = None
+        self._memo_recording = False
         if not self.hotkey_pressed:
             self._hotkey_recording = False  # Re-enable wake word processing
         logger.info("[X] Recording cancelled")

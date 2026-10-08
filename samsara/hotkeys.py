@@ -22,6 +22,7 @@ _MOUSE_HOTKEY_BUTTONS = ('mouse4', 'mouse5')
 _OTHER_HOTKEY_KEYS = (
     ('continuous_hotkey', 'ctrl+alt+d'), ('wake_word_hotkey', 'ctrl+alt+w'),
     ('command_hotkey', 'ctrl+alt+c'), ('memo_hotkey', 'ctrl+alt+m'),
+    ('task_hotkey', 'ctrl+alt+t'),
     ('undo_hotkey', 'ctrl+alt+z'), ('correction_hotkey', 'ctrl+alt+r'),
     ('cancel_hotkey', 'escape'),
 )
@@ -289,6 +290,7 @@ class HotkeyCluster:
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
         memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
+        task_hotkey = self.config.get('task_hotkey', 'ctrl+alt+t')
         pause_hotkey = ((self.config.get('ui', {}) or {}).get(
             'live_surface', {}).get('pause_hotkey', 'pause'))
 
@@ -304,12 +306,27 @@ class HotkeyCluster:
         if (self.check_hotkey_state(memo_hotkey)
                 and not self.hotkey_pressed and not self.recording):
             logger.debug(f"[MEMO] Hotkey detected: {memo_hotkey}")
+            self._capture_sink = None
             self._memo_recording = True
             self.hotkey_pressed = True
             self.play_sound('capture_started', use_winsound=True)
             self.start_recording(streaming=False, play_earcon=False)
             if not self.recording:
                 self._memo_recording = False
+                self.hotkey_pressed = False
+            return
+
+        if (self.check_hotkey_state(task_hotkey)
+                and not self.hotkey_pressed and not self.recording):
+            logger.debug(f"[TASK] Hotkey detected: {task_hotkey}")
+            self._memo_recording = True
+            self._capture_sink = 'task'
+            self.hotkey_pressed = True
+            self.play_sound('capture_started', use_winsound=True)
+            self.start_recording(streaming=False, play_earcon=False)
+            if not self.recording:
+                self._memo_recording = False
+                self._capture_sink = None
                 self.hotkey_pressed = False
             return
 
@@ -550,6 +567,7 @@ class HotkeyCluster:
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
+        task_hotkey = self.config.get('task_hotkey', 'ctrl+alt+t')
         pause_hotkey = ((self.config.get('ui', {}) or {}).get(
             'live_surface', {}).get('pause_hotkey', 'pause'))
         if pause_hotkey and not self.check_hotkey_state(pause_hotkey):
@@ -567,6 +585,7 @@ class HotkeyCluster:
         wake_pressed = self.check_hotkey_state(wake_hotkey)
         command_pressed = self.check_hotkey_state(command_hotkey)
         memo_pressed = self.check_hotkey_state(memo_hotkey)
+        task_pressed = self.check_hotkey_state(task_hotkey)
 
         def _deferred_stop():
             try:
@@ -608,7 +627,7 @@ class HotkeyCluster:
             self.hotkey_pressed = False
             return
 
-        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed:
+        if not main_pressed and not cont_pressed and not wake_pressed and not command_pressed and not memo_pressed and not task_pressed:
             if self.hotkey_pressed:
                 if self._memo_recording and self.recording:
                     logger.debug("[MEMO] Hotkey released, stopping recording")

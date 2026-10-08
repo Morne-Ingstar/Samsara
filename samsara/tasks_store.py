@@ -36,7 +36,7 @@ def _save():
     os.replace(tmp, _TASKS_PATH)
 
 
-def add_task(text: str) -> dict:
+def add_task(text: str, *, due=None, time=None, heard=None, parsed=False) -> dict:
     with _lock:
         task = {
             "id": _data["next_id"],
@@ -45,6 +45,12 @@ def add_task(text: str) -> dict:
             "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "completed_at": None,
         }
+        if parsed:
+            task.update(parsed=True,
+                        due=due if isinstance(due, str) else "",
+                        time=time if isinstance(time, str) else "")
+            if heard is not None:
+                task["heard"] = heard
         _data["tasks"].append(task)
         _data["next_id"] += 1
         _save()
