@@ -30,7 +30,19 @@ from samsara.runtime import thread_registry
 logger = get_logger(__name__)
 
 
-def _media_transport(action):
+_NAMED_APPS = {
+    "spotify": ("spotify.exe", "spotify", "Spotify", "spotify", ("transport", "volume")),
+}
+
+_PLAYER_PHRASES = {
+    "pause": ("transport", "pause {app}", ("stop {app}",)),
+    "play": ("transport", "play {app}", ("resume {app}",)),
+    "volume_up": ("volume", "{app} volume up", ("{app} louder", "turn {app} up")),
+    "volume_down": ("volume", "{app} volume down", ("{app} quieter", "turn {app} down")),
+}
+
+
+def _media_transport(action, app_stem=None):
     """Send a transport command to the current SMTC session.
 
     action: "play" | "pause" | "next"
@@ -48,11 +60,19 @@ def _media_transport(action):
         async def _transport():
             try:
                 mgr = await SessionManager.request_async()
-                session = mgr.get_current_session()
+                display = next((row[2] for row in _NAMED_APPS.values()
+                                if row[1] == app_stem), app_stem)
+                if app_stem is None:
+                    session = mgr.get_current_session()
+                else:
+                    session = next((item for item in mgr.get_sessions()
+                                    if app_stem.casefold() in
+                                    item.source_app_user_model_id.casefold()), None)
                 if not session:
                     return DispatchResult(
                         DispatchState.FAILED, phrase=action,
-                        detail={"reason": "no media app found"},
+                        detail={"reason": (f"{display} has no media session"
+                                           if app_stem is not None else "no media app found")},
                     )
                 if action == "play":
                     ok = await session.try_play_async()
@@ -75,6 +95,9 @@ def _media_transport(action):
                 print(f"[MEDIA] transport: {action}")
                 message = {"pause": "paused music", "play": "resumed music",
                            "next": "next track", "previous": "previous track"}[action]
+                if app_stem is not None:
+                    message = f"{display} " + {"pause": "paused", "play": "playing",
+                                               "next": "next track", "previous": "previous track"}[action]
                 return DispatchResult(DispatchState.COMPLETED, phrase=action,
                                       detail={"media_action": action, "message": message})
             except Exception as e:
@@ -97,166 +120,216 @@ def _media_transport(action):
         )
 
 
-def _spotify_mute_toggle():
-    """Toggle Spotify's own audio session mute via Core Audio IAudioSessionManager2.
+from contextlib import contextmanager
 
-    Enumerates all audio sessions on the default render device, finds the one
-    whose process is spotify.exe, and flips ISimpleAudioVolume.SetMute. System
-    mute is never touched. Uses raw COM vtables (same style as volume.py).
 
-    vtable indices (Windows SDK audiopolicy.h / mmdeviceapi.h):
-      IMMDeviceEnumerator   : 0-2 IUnknown, 3 EnumAudioEndpoints,
-                              4 GetDefaultAudioEndpoint
-      IMMDevice             : 0-2 IUnknown, 3 Activate
-      IAudioSessionManager2 : 0-2 IUnknown, 3 GetAudioSessionControl,
-                              4 GetSimpleAudioVolume, 5 GetSessionEnumerator
-      IAudioSessionEnumerator: 0-2 IUnknown, 3 GetCount, 4 GetSession
-      IAudioSessionControl2 : 0-11 IAudioSessionControl, 12 GetSessionIdentifier,
-                              13 GetSessionInstanceIdentifier, 14 GetProcessId
-      ISimpleAudioVolume    : 0-2 IUnknown, 3 SetMasterVolume, 4 GetMasterVolume,
-                              5 SetMute, 6 GetMute
-    Returns True if mute was toggled, False if no Spotify session or on error.
-    """
+@contextmanager
+def _audio_sessions(process_name):
+    """Yield every matching render session, releasing COM even on early exit."""
     import ctypes
-    from ctypes import POINTER, HRESULT, byref, cast, c_void_p
     import struct
+    import psutil
+    from ctypes import POINTER, HRESULT, byref, cast, c_void_p
 
-    try:
-        import psutil
-    except ImportError:
-        print("[MEDIA] mute: psutil not available")
-        return False
-
-    def _guid(s):
-        parts = s.strip('{}').split('-')
+    def guid(value):
+        parts = value.split('-')
         return struct.pack('<IHH', int(parts[0], 16), int(parts[1], 16),
                            int(parts[2], 16)) + bytes.fromhex(parts[3] + parts[4])
 
-    def _vf(ptr, idx, restype, *argtypes):
-        """Raw COM vtable call (mirrors volume.py _get_vtable_func)."""
-        vtbl = cast(ptr, POINTER(POINTER(c_void_p)))
-        functype = ctypes.WINFUNCTYPE(restype, *argtypes)
-        return functype(vtbl[0][idx])
+    def vf(ptr, index, restype, *argtypes):
+        table = cast(ptr, POINTER(POINTER(c_void_p)))
+        return ctypes.WINFUNCTYPE(restype, *argtypes)(table[0][index])
 
-    # GUIDs — verified against Windows SDK audiopolicy.h / mmdeviceapi.h
-    _CLSID_MMDeviceEnumerator  = _guid('{BCDE0395-E52F-467C-8E3D-C4579291692E}')
-    _IID_IMMDeviceEnumerator   = _guid('{A95664D2-9614-4F35-A746-DE8DB63617E6}')
-    _IID_IAudioSessionManager2 = _guid('{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}')
-    _IID_IAudioSessionControl2 = _guid('{bfb7ff88-7239-4fc9-8fa2-07c950be9c6d}')
-    _IID_ISimpleAudioVolume    = _guid('{87CE5498-68D6-44E5-9215-6DA47EF883D8}')
+    def release(ptr):
+        if ptr:
+            vf(ptr, 2, ctypes.c_ulong, c_void_p)(ptr)
+
+    def checked(hr):
+        if hr < 0:
+            raise OSError(f'Core Audio HRESULT {hr:#010x}')
+
+    class Volume:
+        def __init__(self, ptr):
+            self.ptr = ptr
+
+        def get_volume(self):
+            value = ctypes.c_float()
+            checked(vf(self.ptr, 4, HRESULT, c_void_p, POINTER(ctypes.c_float))(
+                self.ptr, byref(value)))
+            return round(value.value * 100)
+
+        def set_volume(self, percent):
+            checked(vf(self.ptr, 3, HRESULT, c_void_p, ctypes.c_float, c_void_p)(
+                self.ptr, percent / 100.0, None))
+
+        def toggle_mute(self):
+            muted = ctypes.c_int()
+            checked(vf(self.ptr, 6, HRESULT, c_void_p, POINTER(ctypes.c_int))(
+                self.ptr, byref(muted)))
+            checked(vf(self.ptr, 5, HRESULT, c_void_p, ctypes.c_int, c_void_p)(
+                self.ptr, 0 if muted.value else 1, None))
+            return True
 
     ole32 = ctypes.windll.ole32
     ole32.CoInitialize.argtypes = [c_void_p]
-    ole32.CoInitialize.restype  = HRESULT
+    ole32.CoInitialize.restype = HRESULT
+    ole32.CoUninitialize.argtypes = []
+    ole32.CoUninitialize.restype = None
     ole32.CoCreateInstance.argtypes = [
         c_void_p, c_void_p, ctypes.c_ulong, c_void_p, POINTER(c_void_p)]
     ole32.CoCreateInstance.restype = HRESULT
+    checked(ole32.CoInitialize(None))
+    enum, device, manager, sessions = (c_void_p() for _ in range(4))
 
-    hr = ole32.CoInitialize(None)
-    if hr < 0 and hr != 1:  # S_OK or S_FALSE (already initialised)
-        print(f"[MEDIA] mute: CoInitialize failed {hr:#010x}")
+    owned_volumes = []
+
+    def matching():
+        count = ctypes.c_int()
+        checked(vf(sessions, 3, HRESULT, c_void_p, POINTER(ctypes.c_int))(
+            sessions, byref(count)))
+        for index in range(count.value):
+            ctrl, ctrl2, volume = (c_void_p() for _ in range(3))
+            try:
+                hr = vf(sessions, 4, HRESULT, c_void_p, ctypes.c_int, POINTER(c_void_p))(
+                    sessions, index, byref(ctrl))
+                if hr < 0 or not ctrl:
+                    continue
+                hr = vf(ctrl, 0, HRESULT, c_void_p, c_void_p, POINTER(c_void_p))(
+                    ctrl, guid('bfb7ff88-7239-4fc9-8fa2-07c950be9c6d'), byref(ctrl2))
+                if hr < 0 or not ctrl2:
+                    continue
+                pid = ctypes.c_ulong()
+                hr = vf(ctrl2, 14, HRESULT, c_void_p, POINTER(ctypes.c_ulong))(
+                    ctrl2, byref(pid))
+                if hr < 0 or not pid.value:
+                    continue
+                try:
+                    name = psutil.Process(pid.value).name().casefold()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+                if name != process_name.casefold():
+                    continue
+                checked(vf(ctrl2, 0, HRESULT, c_void_p, c_void_p, POINTER(c_void_p))(
+                    ctrl2, guid('87CE5498-68D6-44E5-9215-6DA47EF883D8'), byref(volume)))
+                if volume:
+                    owned_volumes.append(volume)
+                    yield Volume(volume)
+            finally:
+                if volume and volume not in owned_volumes:
+                    release(volume)
+                release(ctrl2)
+                release(ctrl)
+
+    iterator = None
+    try:
+        checked(ole32.CoCreateInstance(
+            guid('BCDE0395-E52F-467C-8E3D-C4579291692E'), None, 23,
+            guid('A95664D2-9614-4F35-A746-DE8DB63617E6'), byref(enum)))
+        checked(vf(enum, 4, HRESULT, c_void_p, ctypes.c_uint, ctypes.c_uint, POINTER(c_void_p))(
+            enum, 0, 1, byref(device)))
+        checked(vf(device, 3, HRESULT, c_void_p, c_void_p, ctypes.c_ulong, c_void_p,
+                   POINTER(c_void_p))(device, guid('77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F'),
+                                     23, None, byref(manager)))
+        checked(vf(manager, 5, HRESULT, c_void_p, POINTER(c_void_p))(
+            manager, byref(sessions)))
+        iterator = matching()
+        yield iterator
+    finally:
+        if iterator is not None:
+            iterator.close()
+        for volume in owned_volumes:
+            release(volume)
+        release(sessions)
+        release(manager)
+        release(device)
+        release(enum)
+        ole32.CoUninitialize()
+
+
+def _spotify_mute_toggle():
+    """Keep the existing first-session mute toggle and boolean return value."""
+    try:
+        with _audio_sessions(next(iter(_NAMED_APPS.values()))[0]) as sessions:
+            volume = next(sessions, None)
+            return volume.toggle_mute() if volume is not None else False
+    except Exception:
+        logger.debug('[MEDIA] mute unavailable', exc_info=True)
         return False
 
-    # IMMDeviceEnumerator
-    enum = c_void_p()
-    hr = ole32.CoCreateInstance(
-        _CLSID_MMDeviceEnumerator, None, 23,
-        _IID_IMMDeviceEnumerator, byref(enum))
-    if hr != 0:
-        print(f"[MEDIA] mute: CoCreateInstance failed {hr:#010x}")
-        return False
 
-    # GetDefaultAudioEndpoint(eRender=0, eMultimedia=1)  vtable index 4
-    device = c_void_p()
-    hr = _vf(enum, 4, HRESULT, c_void_p, ctypes.c_uint, ctypes.c_uint, POINTER(c_void_p))(
-        enum, 0, 1, byref(device))
-    _vf(enum, 2, ctypes.c_ulong, c_void_p)(enum)   # Release IMMDeviceEnumerator
-    if hr != 0:
-        print(f"[MEDIA] mute: GetDefaultAudioEndpoint failed {hr:#010x}")
-        return False
+def _volume_step(current, direction):
+    """Ten percentage points, clamped to the player's 0–100 range."""
+    return max(0, min(100, current + direction * 10))
 
-    # IMMDevice::Activate(IAudioSessionManager2)  vtable index 3
-    mgr = c_void_p()
-    hr = _vf(device, 3, HRESULT,
-             c_void_p, c_void_p, ctypes.c_ulong, c_void_p, POINTER(c_void_p))(
-        device, _IID_IAudioSessionManager2, 23, None, byref(mgr))
-    _vf(device, 2, ctypes.c_ulong, c_void_p)(device)   # Release IMMDevice
-    if hr != 0:
-        print(f"[MEDIA] mute: Activate(IAudioSessionManager2) failed {hr:#010x}")
-        return False
 
-    # IAudioSessionManager2::GetSessionEnumerator  vtable index 5
-    sess_enum = c_void_p()
-    hr = _vf(mgr, 5, HRESULT, c_void_p, POINTER(c_void_p))(mgr, byref(sess_enum))
-    _vf(mgr, 2, ctypes.c_ulong, c_void_p)(mgr)         # Release IAudioSessionManager2
-    if hr != 0:
-        print(f"[MEDIA] mute: GetSessionEnumerator failed {hr:#010x}")
-        return False
+def _named_transport_handler(row, action):
+    def handler(app, remainder):
+        result = _media_transport(action, row[1])
+        message = result.detail.get('reason') if result.state is DispatchState.FAILED else (
+            f'{row[2]} ' + ('paused' if action == 'pause' else 'playing'))
+        _announce(app, message)
+        return _music_result(result.state, row[2], message, **{
+            key: value for key, value in result.detail.items() if key != 'message'})
+    handler.__doc__ = f'{"Pauses" if action == "pause" else "Resumes"} {row[2]}, whatever else is playing.'
+    return handler
 
-    # IAudioSessionEnumerator::GetCount  vtable index 3
-    count = ctypes.c_int()
-    _vf(sess_enum, 3, HRESULT, c_void_p, POINTER(ctypes.c_int))(sess_enum, byref(count))
 
-    found = False
-    for i in range(count.value):
-        # GetSession  vtable index 4
-        ctrl = c_void_p()
-        hr = _vf(sess_enum, 4, HRESULT, c_void_p, ctypes.c_int, POINTER(c_void_p))(
-            sess_enum, i, byref(ctrl))
-        if hr != 0 or not ctrl:
-            continue
-
-        # QI IAudioSessionControl → IAudioSessionControl2  (QI = vtable index 0)
-        ctrl2 = c_void_p()
-        hr2 = _vf(ctrl, 0, HRESULT, c_void_p, c_void_p, POINTER(c_void_p))(
-            ctrl, _IID_IAudioSessionControl2, byref(ctrl2))
-        _vf(ctrl, 2, ctypes.c_ulong, c_void_p)(ctrl)   # Release IAudioSessionControl
-        if hr2 != 0 or not ctrl2:
-            continue
-
-        # IAudioSessionControl2::GetProcessId  vtable index 14
-        pid = ctypes.c_ulong()
-        _vf(ctrl2, 14, HRESULT, c_void_p, POINTER(ctypes.c_ulong))(ctrl2, byref(pid))
-
-        proc_name = ''
+def _named_volume_handler(row, direction):
+    def handler(app, remainder):
         try:
-            if pid.value:
-                proc_name = psutil.Process(pid.value).name().lower()
-        except Exception as e:
-            logger.debug(f"_spotify_mute_toggle: {e}")
+            with _audio_sessions(row[0]) as sessions:
+                volumes = list(sessions)
+                if not volumes:
+                    message = f"{row[2]} isn't playing anything"
+                    state = DispatchState.FAILED
+                else:
+                    current = volumes[0].get_volume()
+                    target = _volume_step(current, direction)
+                    for volume in volumes:
+                        volume.set_volume(target)
+                    message = f'{row[2]} volume {target}%' + (' (already)' if target == current else '')
+                    state = DispatchState.COMPLETED
+        except Exception:
+            logger.debug('[MEDIA] named volume unavailable', exc_info=True)
+            message = f'{row[2]} volume unavailable'
+            state = DispatchState.FAILED
+        _announce(app, message)
+        return _music_result(state, row[2], message)
+    handler.__doc__ = f'{"Raises" if direction > 0 else "Lowers"} {row[2]}\'s own volume by ten points.'
+    return handler
 
-        if proc_name != 'spotify.exe':
-            _vf(ctrl2, 2, ctypes.c_ulong, c_void_p)(ctrl2)
-            continue
 
-        # Found Spotify — QI for ISimpleAudioVolume  (QI = vtable index 0)
-        vol = c_void_p()
-        hr3 = _vf(ctrl2, 0, HRESULT, c_void_p, c_void_p, POINTER(c_void_p))(
-            ctrl2, _IID_ISimpleAudioVolume, byref(vol))
-        _vf(ctrl2, 2, ctypes.c_ulong, c_void_p)(ctrl2)  # Release IAudioSessionControl2
-        if hr3 != 0 or not vol:
-            print(f"[MEDIA] mute: QI ISimpleAudioVolume failed {hr3:#010x}")
-            break
+def _make_pause_handler(row):
+    return _named_transport_handler(row, 'pause')
 
-        # ISimpleAudioVolume::GetMute index 6, SetMute index 5
-        muted = ctypes.c_int()
-        _vf(vol, 6, HRESULT, c_void_p, POINTER(ctypes.c_int))(vol, byref(muted))
-        new_mute = 0 if muted.value else 1
-        hr4 = _vf(vol, 5, HRESULT, c_void_p, ctypes.c_int, c_void_p)(vol, new_mute, None)
-        _vf(vol, 2, ctypes.c_ulong, c_void_p)(vol)      # Release ISimpleAudioVolume
 
-        if hr4 == 0:
-            print(f"[MEDIA] Spotify {'muted' if new_mute else 'unmuted'}")
-            found = True
-        else:
-            print(f"[MEDIA] mute: SetMute failed {hr4:#010x}")
-        break
+def _make_play_handler(row):
+    return _named_transport_handler(row, 'play')
 
-    _vf(sess_enum, 2, ctypes.c_ulong, c_void_p)(sess_enum)  # Release IAudioSessionEnumerator
 
-    if not found:
-        print("[MEDIA] mute: no Spotify audio session")
-    return found
+def _make_volume_up_handler(row):
+    return _named_volume_handler(row, 1)
+
+
+def _make_volume_down_handler(row):
+    return _named_volume_handler(row, -1)
+
+
+def _register_named_commands(rows=None):
+    """Expand capability vocabulary for each app through the normal decorator."""
+    factories = {'pause': _make_pause_handler, 'play': _make_play_handler,
+                 'volume_up': _make_volume_up_handler, 'volume_down': _make_volume_down_handler}
+    for name, row in (rows if rows is not None else _NAMED_APPS).items():
+        for action, (capability, phrase, aliases) in _PLAYER_PHRASES.items():
+            if capability not in row[4]:
+                continue
+            handler = factories[action](row)
+            handler.__name__ = f'handle_named_{action}'
+            command(phrase.format(app=name), aliases=[alias.format(app=name) for alias in aliases],
+                    pack=row[3], risk_class='safe', ai_composable=True, side_effects=['audio'])(handler)
+
+
+_register_named_commands()
 
 
 def _open_track(uri_or_url):

@@ -318,3 +318,229 @@ def test_uri_uses_protocol_handler_without_shell(monkeypatch):
     monkeypatch.setattr(music.os, 'startfile', start)
     music._open_track('spotify:search:Morne%27s%20Mix')
     start.assert_called_once_with('spotify:search:Morne%27s%20Mix')
+
+
+@pytest.fixture
+def named_transport(monkeypatch):
+    import sys
+    browser = session('chrome.exe', 'video')
+    player = session('Spotify.Spotify', 'song')
+    for item in (browser, player):
+        item.try_pause_async = AsyncMock(return_value=True)
+    manager = SimpleNamespace(get_current_session=Mock(return_value=browser),
+                              get_sessions=Mock(return_value=[browser, player]))
+    monkeypatch.setitem(sys.modules, 'winsdk.windows.media.control', SimpleNamespace(
+        GlobalSystemMediaTransportControlsSessionManager=SimpleNamespace(
+            request_async=AsyncMock(return_value=manager))))
+    return manager, browser, player
+
+
+@pytest.mark.parametrize('action,verb', [('pause', 'paused'), ('play', 'playing')])
+def test_named_transport_targets_player_and_generic_targets_current(named_transport, action, verb):
+    manager, browser, player = named_transport
+    result = music._media_transport(action, 'spotify')
+    assert result.state is DispatchState.COMPLETED
+    assert result.detail['message'] == f'Spotify {verb}'
+    getattr(player, f'try_{action}_async').assert_awaited_once()
+    getattr(browser, f'try_{action}_async').assert_not_awaited()
+    manager.get_current_session.assert_not_called()
+    music._media_transport(action)
+    getattr(browser, f'try_{action}_async').assert_awaited_once()
+
+
+def test_named_transport_missing_never_falls_back(named_transport):
+    manager, browser, _ = named_transport
+    manager.get_sessions.return_value = [browser]
+    result = music._media_transport('pause', 'spotify')
+    assert result.state is DispatchState.FAILED
+    assert result.detail['reason'] == 'Spotify has no media session'
+    browser.try_pause_async.assert_not_awaited()
+    manager.get_current_session.assert_not_called()
+
+
+@pytest.mark.parametrize('initial,action,expected,already', [
+    (50, 'volume_up', 60, False), (50, 'volume_down', 40, False),
+    (95, 'volume_up', 100, False), (5, 'volume_down', 0, False),
+    (100, 'volume_up', 100, True), (0, 'volume_down', 0, True),
+])
+def test_named_volume_all_sessions_and_exact_reply(monkeypatch, initial, action, expected, already):
+    from contextlib import contextmanager
+    volumes = [SimpleNamespace(get_volume=Mock(return_value=initial), set_volume=Mock()),
+               SimpleNamespace(get_volume=Mock(return_value=20), set_volume=Mock())]
+    @contextmanager
+    def sessions(process):
+        assert process == 'spotify.exe'
+        yield iter(volumes)
+    monkeypatch.setattr(music, '_audio_sessions', sessions)
+    announce = Mock()
+    monkeypatch.setattr(music, '_announce', announce)
+    plugin_commands._reinstall_module_commands(music)
+    phrase = 'spotify volume up' if action == 'volume_up' else 'spotify volume down'
+    app = _app()
+    result = plugin_commands._REGISTRY[phrase]['func'](app, '')
+    message = f'Spotify volume {expected}%' + (' (already)' if already else '')
+    assert result.state is DispatchState.COMPLETED
+    assert result.detail['message'] == message
+    announce.assert_called_once_with(app, message)
+    for volume in volumes:
+        volume.set_volume.assert_called_once_with(expected)
+
+
+def test_named_volume_missing_and_mute_compatibility(monkeypatch):
+    from contextlib import contextmanager
+    volume = SimpleNamespace(toggle_mute=Mock(return_value=True))
+    available = []
+    @contextmanager
+    def sessions(process):
+        assert process == 'spotify.exe'
+        yield iter(available)
+    monkeypatch.setattr(music, '_audio_sessions', sessions)
+    monkeypatch.setattr(music, '_announce', Mock())
+    plugin_commands._reinstall_module_commands(music)
+    result = plugin_commands._REGISTRY['spotify volume up']['func'](_app(), '')
+    assert result.state is DispatchState.FAILED
+    assert result.detail['message'] == "Spotify isn't playing anything"
+    assert music._spotify_mute_toggle() is False
+    available.extend([volume, SimpleNamespace(toggle_mute=Mock())])
+    assert music._spotify_mute_toggle() is True
+    volume.toggle_mute.assert_called_once_with()
+    available[1].toggle_mute.assert_not_called()
+
+
+def test_named_phrases_real_registry_and_disabled_pack():
+    from tools.dump_command_metadata import build_executor
+    from samsara.command_packs import get_enabled_packs, PACKS
+    from plugins.commands import volume
+    # conftest suppresses discovery; reinstall relevant real modules explicitly.
+    plugin_commands._reinstall_module_commands(music)
+    plugin_commands._reinstall_module_commands(volume)
+    matcher = build_executor()._matcher
+    groups = {
+        'pause spotify': ['pause spotify', 'stop spotify'],
+        'play spotify': ['play spotify', 'resume spotify'],
+        'spotify volume up': ['spotify volume up', 'spotify louder', 'turn spotify up'],
+        'spotify volume down': ['spotify volume down', 'spotify quieter', 'turn spotify down'],
+    }
+    for canonical, phrases in groups.items():
+        expected = plugin_commands._REGISTRY[canonical]['func']
+        for phrase in phrases:
+            entry, remainder = matcher.match(phrase.upper() + '!')
+            assert entry.handler is expected and remainder == ''
+            assert entry.pack == 'spotify' and entry.scope is None
+            assert 'Spotify' in entry.description
+            assert entry.risk_class == 'safe' and entry.ai_composable
+            assert entry.side_effects == ['audio']
+    for phrase, canonical in [('volume up', 'volume up'), ('louder', 'volume up'),
+                              ('quieter', 'volume down'), ('pause', 'pause'),
+                              ('play', 'play'), ('play Morning Coffee', 'play')]:
+        assert matcher.match(phrase)[0].phrase == canonical
+    assert matcher.match('play Morning Coffee')[1] == 'Morning Coffee'
+    assert PACKS['spotify']['default_enabled'] is True
+    matcher.set_enabled_packs(get_enabled_packs({'command_packs': {'spotify': False}}))
+    for phrases in groups.values():
+        for phrase in phrases:
+            assert matcher.match(phrase) == (None, '')
+    assert matcher.match('pause')[0].phrase == 'pause'
+
+
+def test_fake_row_uses_same_registration_loop(monkeypatch, named_transport):
+    from samsara.command_registry import CommandMatcher
+    rows = {'testplayer': ('testplayer.exe', 'testplayer', 'Test Player', 'testplayer', ('transport',))}
+    # Isolate test registrations from module discovery's persistent entries.
+    monkeypatch.setattr(plugin_commands, '_REGISTRY', {})
+    monkeypatch.setattr(plugin_commands, '_MODULE_ENTRIES', {})
+    music._register_named_commands(rows)
+    matcher = CommandMatcher()
+    matcher.load_plugins(plugin_commands._REGISTRY)
+    matcher.freeze()
+    manager, browser, spotify = named_transport
+    fake = session('vendor.testplayer', 'song')
+    fake.try_pause_async = AsyncMock(return_value=True)
+    manager.get_sessions.return_value = [browser, spotify, fake]
+    entry, remainder = matcher.match('pause testplayer')
+    result = entry.handler(_app(), remainder)
+    assert result.detail['message'] == 'Test Player paused'
+    fake.try_pause_async.assert_awaited_once()
+    spotify.try_pause_async.assert_not_awaited()
+    browser.try_pause_async.assert_not_awaited()
+    assert matcher.match('testplayer volume up') == (None, '')
+
+
+def test_named_catalog_rows():
+    from samsara import command_catalog as cc
+    from tools.dump_command_metadata import build_executor
+    plugin_commands._reinstall_module_commands(music)
+    specs = cc.build_catalog(build_executor())
+    rows = [row for row in specs if row.pack == 'spotify']
+    assert len(rows) == 4
+    assert all('Spotify' in row.description for row in rows)
+
+
+@pytest.mark.parametrize('early_exit', [False, True])
+def test_audio_finder_retains_volumes_and_balances_com_with_fakes(monkeypatch, early_exit):
+    import ctypes
+    import psutil
+    released = []
+    acquired = []
+    writes = []
+
+    def acquire(out, pointer):
+        out._obj.value = pointer
+        acquired.append(pointer)
+        return 0
+
+    def call(address, *args):
+        pointer, slot = divmod(address, 100)
+        assert pointer not in released
+        if slot == 2:
+            released.append(pointer)
+            return 0
+        if pointer == 1 and slot == 4:
+            return acquire(args[-1], 2)
+        if pointer == 2 and slot == 3:
+            return acquire(args[-1], 3)
+        if pointer == 3 and slot == 5:
+            return acquire(args[-1], 4)
+        if pointer == 4 and slot == 3:
+            args[-1]._obj.value = 3
+            return 0
+        if pointer == 4 and slot == 4:
+            return acquire(args[-1], 10 + args[1])
+        if pointer in (10, 11, 12) and slot == 0:
+            return acquire(args[-1], pointer + 10)
+        if pointer in (20, 21, 22) and slot == 14:
+            args[-1]._obj.value = pointer
+            return 0
+        if pointer in (20, 22) and slot == 0:
+            return acquire(args[-1], pointer + 10)
+        if pointer in (30, 32) and slot == 4:
+            args[-1]._obj.value = 0.5
+            return 0
+        if pointer in (30, 32) and slot == 3:
+            writes.append((pointer, args[1]))
+            return 0
+        raise AssertionError((pointer, slot))
+
+    monkeypatch.setattr(ctypes, 'cast', lambda ptr, _type: [[ptr.value * 100 + i for i in range(16)]])
+    monkeypatch.setattr(ctypes, 'WINFUNCTYPE', lambda *types: lambda address: lambda *args: call(address, *args))
+    ole = SimpleNamespace(CoInitialize=Mock(return_value=0), CoUninitialize=Mock(),
+                          CoCreateInstance=Mock(side_effect=lambda *args: acquire(args[-1], 1)))
+    monkeypatch.setattr(ctypes, 'windll', SimpleNamespace(ole32=ole))
+    monkeypatch.setattr(psutil, 'Process', lambda pid: SimpleNamespace(
+        name=lambda: 'browser.exe' if pid == 21 else 'spotify.exe'))
+    if early_exit:
+        with pytest.raises(RuntimeError, match='operation failed'):
+            with music._audio_sessions('spotify.exe') as sessions:
+                assert next(sessions).get_volume() == 50
+                raise RuntimeError('operation failed')
+    else:
+        with music._audio_sessions('spotify.exe') as sessions:
+            volumes = list(sessions)
+            assert len(volumes) == 2
+            assert 30 not in released and 32 not in released
+            for volume in volumes:
+                volume.set_volume(60)
+            assert writes == [(30, 0.6), (32, 0.6)]
+    assert sorted(acquired) == sorted(released)
+    assert len(released) == len(set(released))
+    ole.CoUninitialize.assert_called_once_with()

@@ -66,6 +66,12 @@ PACKS = {
         'always_on': False,
         'default_enabled': True,
     },
+    'spotify': {
+        'label': 'Spotify',
+        'description': 'Spotify by name - pause, play, its own volume',
+        'always_on': False,
+        'default_enabled': True,
+    },
     'smart-home': {
         'label': 'Smart Home',
         'description': 'Hyperion LED strip control, light effects and colors',

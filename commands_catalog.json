@@ -487,7 +487,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2964",
+      "source": "plugins/commands/ask_ollama.py:3305",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -506,7 +506,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3016",
+      "source": "plugins/commands/ask_ollama.py:3357",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -526,7 +526,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3002",
+      "source": "plugins/commands/ask_ollama.py:3343",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -545,7 +545,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3043",
+      "source": "plugins/commands/ask_ollama.py:3384",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -573,7 +573,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2666",
+      "source": "plugins/commands/ask_ollama.py:2981",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -598,7 +598,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2803",
+      "source": "plugins/commands/ask_ollama.py:3144",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -619,7 +619,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2983",
+      "source": "plugins/commands/ask_ollama.py:3324",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -644,7 +644,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2859",
+      "source": "plugins/commands/ask_ollama.py:3200",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -6212,7 +6212,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:92",
+      "source": "plugins/commands/core_utils.py:57",
       "undoable": false,
       "verb": "check",
       "whole_utterance": false
@@ -6236,7 +6236,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:313",
+      "source": "plugins/commands/core_utils.py:278",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -6256,7 +6256,7 @@
       "pack": "accessibility",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:219",
+      "source": "plugins/commands/core_utils.py:184",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -6276,7 +6276,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:110",
+      "source": "plugins/commands/core_utils.py:75",
       "undoable": true,
       "verb": "reload",
       "whole_utterance": false
@@ -6303,7 +6303,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:276",
+      "source": "plugins/commands/core_utils.py:241",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -6322,7 +6322,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:258",
+      "source": "plugins/commands/core_utils.py:223",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -6335,13 +6335,13 @@
       ],
       "args": [],
       "canonical_id": "core_utils.restart_samsara",
-      "description": "Closes Samsara and starts it again.",
+      "description": "Request the same guarded restart used by the tray, on its Qt thread.",
       "kind": "plugin",
       "object": "samsara",
       "pack": "core",
       "plugin": "core_utils",
       "risk": "destructive",
-      "source": "plugins/commands/core_utils.py:56",
+      "source": "plugins/commands/core_utils.py:33",
       "undoable": false,
       "verb": "restart",
       "whole_utterance": false
@@ -6365,7 +6365,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:339",
+      "source": "plugins/commands/core_utils.py:304",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -6385,7 +6385,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:133",
+      "source": "plugins/commands/core_utils.py:98",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -6404,191 +6404,9 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:508",
+      "source": "plugins/commands/core_utils.py:473",
       "undoable": true,
       "verb": "why",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "archive my tabs",
-        "save all tabs",
-        "save my tabs"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.archive_my_tabs",
-      "description": "Bookmarks every open browser tab and then closes them.",
-      "kind": "plugin",
-      "object": "my_tabs",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:525",
-      "undoable": true,
-      "verb": "archive",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "clean up explosions",
-        "clear explosions",
-        "remove explosions"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.clear_explosions",
-      "description": "Clears the explosion overlays from the screen.",
-      "kind": "plugin",
-      "object": "explosions",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "destructive",
-      "source": "plugins/commands/demo_commands.py:511",
-      "undoable": false,
-      "verb": "clear",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "explode his balls",
-        "explode movies balls",
-        "explode what these balls",
-        "explode woeys balls",
-        "explode woobies balls",
-        "explode wubbies balls",
-        "explode wubby",
-        "explode wubbys balls",
-        "wubby explosion"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.explode_wubbys_balls",
-      "description": "Draws an explosion at a random spot on the screen.",
-      "kind": "plugin",
-      "object": "wubbys_balls",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:492",
-      "undoable": true,
-      "verb": "explode",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "fucking stop",
-        "make it stop",
-        "shut it all down",
-        "stop everything"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.fucking_stop",
-      "description": "Stops all media, turns the lights off and silences everything.",
-      "kind": "plugin",
-      "object": "stop",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:267",
-      "undoable": true,
-      "verb": "fucking",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "clear my screen",
-        "move all that over",
-        "move all that over there",
-        "move everything over",
-        "sweep it over"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.move_all_that_over",
-      "description": "Moves every window from the main screen to the one on the right.",
-      "kind": "plugin",
-      "object": "all_that_over",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:585",
-      "undoable": true,
-      "verb": "move",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "open my work stuff",
-        "open work",
-        "resume work",
-        "resume workflow",
-        "work mode"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.resume_workflow",
-      "description": "Opens a spread of work apps, for demonstrating the app.",
-      "kind": "plugin",
-      "object": "workflow",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:545",
-      "undoable": true,
-      "verb": "resume",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "celery man",
-        "celeryman",
-        "show me celery man",
-        "show me celeryman"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.show_me_celery_man",
-      "description": "Minimises everything and plays the Celery Man clip fullscreen.",
-      "kind": "plugin",
-      "object": "me_celery_man",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "read",
-      "source": "plugins/commands/demo_commands.py:348",
-      "undoable": true,
-      "verb": "show",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "wake me the fuck up",
-        "wake me up"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.wake_me_up",
-      "description": "Gas Gas Gas + screen flash + Hyperion strobe + batman + mariachi.",
-      "kind": "plugin",
-      "object": "me_up",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "ui",
-      "source": "plugins/commands/demo_commands.py:41",
-      "undoable": true,
-      "verb": "wake",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "what was i doing",
-        "what was i working on",
-        "where was i"
-      ],
-      "args": [],
-      "canonical_id": "demo_commands.what_was_i_working_on",
-      "description": "Plays a scripted joke reply, for demonstrating the app.",
-      "kind": "plugin",
-      "object": "was_i_working_on",
-      "pack": "core",
-      "plugin": "demo_commands",
-      "risk": "read",
-      "source": "plugins/commands/demo_commands.py:325",
-      "undoable": true,
-      "verb": "what",
       "whole_utterance": false
     },
     {
@@ -6609,7 +6427,7 @@
       "pack": "core",
       "plugin": "dispatch_voice",
       "risk": "write",
-      "source": "plugins/commands/dispatch_voice.py:190",
+      "source": "plugins/commands/dispatch_voice.py:507",
       "undoable": false,
       "verb": "send",
       "whole_utterance": false
@@ -6626,7 +6444,7 @@
       "pack": "core",
       "plugin": "dispatch_voice",
       "risk": "ui",
-      "source": "plugins/commands/dispatch_voice.py:249",
+      "source": "plugins/commands/dispatch_voice.py:593",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -7172,6 +6990,154 @@
     },
     {
       "aliases": [
+        "interact close"
+      ],
+      "args": [
+        {
+          "name": "subject_token",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "interact.interact_close",
+      "description": "interact close",
+      "kind": "plugin",
+      "object": "close",
+      "pack": "core",
+      "plugin": "interact",
+      "risk": "destructive",
+      "source": "plugins/commands/interact.py:48",
+      "undoable": false,
+      "verb": "interact",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "interact focus"
+      ],
+      "args": [
+        {
+          "name": "subject_token",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "interact.interact_focus",
+      "description": "interact focus",
+      "kind": "plugin",
+      "object": "focus",
+      "pack": "core",
+      "plugin": "interact",
+      "risk": "ui",
+      "source": "plugins/commands/interact.py:19",
+      "undoable": true,
+      "verb": "interact",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "interact maximize"
+      ],
+      "args": [
+        {
+          "name": "subject_token",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "interact.interact_maximize",
+      "description": "interact maximize",
+      "kind": "plugin",
+      "object": "maximize",
+      "pack": "core",
+      "plugin": "interact",
+      "risk": "ui",
+      "source": "plugins/commands/interact.py:29",
+      "undoable": true,
+      "verb": "interact",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "interact minimize"
+      ],
+      "args": [
+        {
+          "name": "subject_token",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "interact.interact_minimize",
+      "description": "interact minimize",
+      "kind": "plugin",
+      "object": "minimize",
+      "pack": "core",
+      "plugin": "interact",
+      "risk": "ui",
+      "source": "plugins/commands/interact.py:24",
+      "undoable": true,
+      "verb": "interact",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "interact move"
+      ],
+      "args": [
+        {
+          "name": "subject_token",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "monitor",
+          "required": true,
+          "type": "int"
+        }
+      ],
+      "canonical_id": "interact.interact_move",
+      "description": "interact move",
+      "kind": "plugin",
+      "object": "move",
+      "pack": "core",
+      "plugin": "interact",
+      "risk": "ui",
+      "source": "plugins/commands/interact.py:34",
+      "undoable": true,
+      "verb": "interact",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "interact snap"
+      ],
+      "args": [
+        {
+          "name": "subject_token",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "side",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "interact.interact_snap",
+      "description": "interact snap",
+      "kind": "plugin",
+      "object": "snap",
+      "pack": "core",
+      "plugin": "interact",
+      "risk": "ui",
+      "source": "plugins/commands/interact.py:40",
+      "undoable": true,
+      "verb": "interact",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "break time",
         "stretch break",
         "take a break"
@@ -7495,7 +7461,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:618",
+      "source": "plugins/commands/music.py:714",
       "undoable": true,
       "verb": "import",
       "whole_utterance": false
@@ -7513,7 +7479,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:661",
+      "source": "plugins/commands/music.py:757",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -7535,7 +7501,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:647",
+      "source": "plugins/commands/music.py:743",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -7555,7 +7521,25 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:640",
+      "source": "plugins/commands/music.py:736",
+      "undoable": true,
+      "verb": "pause",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "pause spotify",
+        "stop spotify"
+      ],
+      "args": [],
+      "canonical_id": "music.pause_spotify",
+      "description": "Pauses Spotify, whatever else is playing.",
+      "kind": "plugin",
+      "object": "spotify",
+      "pack": "spotify",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:266",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -7581,7 +7565,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:584",
+      "source": "plugins/commands/music.py:680",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7605,7 +7589,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:602",
+      "source": "plugins/commands/music.py:698",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7629,7 +7613,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:610",
+      "source": "plugins/commands/music.py:706",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7667,7 +7651,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:521",
+      "source": "plugins/commands/music.py:594",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7691,7 +7675,25 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:594",
+      "source": "plugins/commands/music.py:690",
+      "undoable": true,
+      "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "play spotify",
+        "resume spotify"
+      ],
+      "args": [],
+      "canonical_id": "music.play_spotify",
+      "description": "Resumes Spotify, whatever else is playing.",
+      "kind": "plugin",
+      "object": "spotify",
+      "pack": "spotify",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:266",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -7712,7 +7714,7 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:654",
+      "source": "plugins/commands/music.py:750",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -7730,9 +7732,47 @@
       "pack": "media",
       "plugin": "music",
       "risk": "ui",
-      "source": "plugins/commands/music.py:563",
+      "source": "plugins/commands/music.py:645",
       "undoable": true,
       "verb": "search",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "spotify quieter",
+        "spotify volume down",
+        "turn spotify down"
+      ],
+      "args": [],
+      "canonical_id": "music.spotify_volume_down",
+      "description": "Lowers Spotify's own volume by ten points.",
+      "kind": "plugin",
+      "object": "volume_down",
+      "pack": "spotify",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:278",
+      "undoable": true,
+      "verb": "spotify",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "spotify louder",
+        "spotify volume up",
+        "turn spotify up"
+      ],
+      "args": [],
+      "canonical_id": "music.spotify_volume_up",
+      "description": "Raises Spotify's own volume by ten points.",
+      "kind": "plugin",
+      "object": "volume_up",
+      "pack": "spotify",
+      "plugin": "music",
+      "risk": "ui",
+      "source": "plugins/commands/music.py:278",
+      "undoable": true,
+      "verb": "spotify",
       "whole_utterance": false
     },
     {
@@ -9517,7 +9557,7 @@
       "pack": "utilities",
       "plugin": "video_memo",
       "risk": "write",
-      "source": "plugins/commands/video_memo.py:253",
+      "source": "plugins/commands/video_memo.py:250",
       "undoable": false,
       "verb": "record",
       "whole_utterance": false
@@ -9535,7 +9575,7 @@
       "pack": "utilities",
       "plugin": "video_memo",
       "risk": "write",
-      "source": "plugins/commands/video_memo.py:261",
+      "source": "plugins/commands/video_memo.py:258",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -10474,7 +10514,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:590",
+      "source": "plugins/commands/windows.py:613",
       "undoable": true,
       "verb": "bring",
       "whole_utterance": false
@@ -10505,7 +10545,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1105",
+      "source": "plugins/commands/windows.py:1128",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -10530,7 +10570,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:1020",
+      "source": "plugins/commands/windows.py:1043",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -10549,7 +10589,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1039",
+      "source": "plugins/commands/windows.py:1062",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -10572,7 +10612,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1074",
+      "source": "plugins/commands/windows.py:1097",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -10591,7 +10631,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1005",
+      "source": "plugins/commands/windows.py:1028",
       "undoable": true,
       "verb": "list",
       "whole_utterance": false
@@ -10611,7 +10651,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:716",
+      "source": "plugins/commands/windows.py:739",
       "undoable": true,
       "verb": "movie",
       "whole_utterance": false
@@ -10630,7 +10670,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1056",
+      "source": "plugins/commands/windows.py:1079",
       "undoable": true,
       "verb": "rescue",
       "whole_utterance": false
@@ -10655,7 +10695,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:990",
+      "source": "plugins/commands/windows.py:1013",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -10680,7 +10720,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "write",
-      "source": "plugins/commands/windows.py:975",
+      "source": "plugins/commands/windows.py:998",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -10711,7 +10751,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:669",
+      "source": "plugins/commands/windows.py:692",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -10729,13 +10769,13 @@
         }
       ],
       "canonical_id": "windows.snap",
-      "description": "Snaps the focused window to the side you name, such as left or right.",
+      "description": "Legacy foreground snap delegates to the exact-HWND helper.",
       "kind": "plugin",
       "object": "",
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1199",
+      "source": "plugins/commands/windows.py:1264",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
