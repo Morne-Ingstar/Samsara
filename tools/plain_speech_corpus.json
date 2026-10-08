@@ -1,0 +1,1792 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "authorship": "Written for queue 398 before any measured run; not sampled from owner speech.",
+  "label_notes": [
+    "Plain rows request one action; cancel means stop and discard dictation, not commit it.",
+    "Exact controls use the forty canonical phrases without optional slot values.",
+    "Resolution only: no handlers or execution side effects are called."
+  ],
+  "synthetic_foreground": {
+    "app": "chrome.exe",
+    "pid": 10001
+  },
+  "synthetic_windows": [
+    {
+      "hwnd": 101,
+      "title": "Synthetic browser",
+      "pid": 10001,
+      "process": "chrome.exe"
+    },
+    {
+      "hwnd": 102,
+      "title": "Synthetic Firefox",
+      "pid": 10002,
+      "process": "firefox.exe"
+    },
+    {
+      "hwnd": 103,
+      "title": "Synthetic music",
+      "pid": 10003,
+      "process": "spotify.exe"
+    },
+    {
+      "hwnd": 104,
+      "title": "Synthetic text",
+      "pid": 10004,
+      "process": "notepad.exe"
+    }
+  ],
+  "utterances": [
+    {
+      "id": "plain-01-1",
+      "tag": "plain",
+      "text": "can you pause what this window is playing",
+      "expected": {
+        "canonical_id": "media_keys.pause_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-01-2",
+      "tag": "plain",
+      "text": "put this video on hold",
+      "expected": {
+        "canonical_id": "media_keys.pause_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-01-3",
+      "tag": "plain",
+      "text": "make the video here stop for a moment",
+      "expected": {
+        "canonical_id": "media_keys.pause_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-01",
+      "tag": "exact",
+      "text": "pause this",
+      "expected": {
+        "canonical_id": "media_keys.pause_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-02-1",
+      "tag": "plain",
+      "text": "get the video in this window going again",
+      "expected": {
+        "canonical_id": "media_keys.play_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-02-2",
+      "tag": "plain",
+      "text": "continue the video here",
+      "expected": {
+        "canonical_id": "media_keys.play_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-02-3",
+      "tag": "plain",
+      "text": "can you resume what this window was playing",
+      "expected": {
+        "canonical_id": "media_keys.play_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-02",
+      "tag": "exact",
+      "text": "play this",
+      "expected": {
+        "canonical_id": "media_keys.play_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-03-1",
+      "tag": "plain",
+      "text": "skip to the next song in this window",
+      "expected": {
+        "canonical_id": "media_keys.next_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-03-2",
+      "tag": "plain",
+      "text": "i want the following track here",
+      "expected": {
+        "canonical_id": "media_keys.next_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-03-3",
+      "tag": "plain",
+      "text": "move this player on to another song",
+      "expected": {
+        "canonical_id": "media_keys.next_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-03",
+      "tag": "exact",
+      "text": "next track this",
+      "expected": {
+        "canonical_id": "media_keys.next_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-04-1",
+      "tag": "plain",
+      "text": "go back one song in this window",
+      "expected": {
+        "canonical_id": "media_keys.previous_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-04-2",
+      "tag": "plain",
+      "text": "play the track before this one here",
+      "expected": {
+        "canonical_id": "media_keys.previous_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-04-3",
+      "tag": "plain",
+      "text": "return to the previous song in this player",
+      "expected": {
+        "canonical_id": "media_keys.previous_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-04",
+      "tag": "exact",
+      "text": "previous track this",
+      "expected": {
+        "canonical_id": "media_keys.previous_track_this",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-05-1",
+      "tag": "plain",
+      "text": "can you turn that down a bit",
+      "expected": {
+        "canonical_id": "volume.volume_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-05-2",
+      "tag": "plain",
+      "text": "the computer is too loud lower its sound",
+      "expected": {
+        "canonical_id": "volume.volume_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-05-3",
+      "tag": "plain",
+      "text": "make everything a little quieter",
+      "expected": {
+        "canonical_id": "volume.volume_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-05",
+      "tag": "exact",
+      "text": "volume down",
+      "expected": {
+        "canonical_id": "volume.volume_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-06-1",
+      "tag": "plain",
+      "text": "can you turn that up a bit",
+      "expected": {
+        "canonical_id": "volume.volume_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-06-2",
+      "tag": "plain",
+      "text": "i can barely hear the computer make it louder",
+      "expected": {
+        "canonical_id": "volume.volume_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-06-3",
+      "tag": "plain",
+      "text": "raise the sound a little",
+      "expected": {
+        "canonical_id": "volume.volume_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-06",
+      "tag": "exact",
+      "text": "volume up",
+      "expected": {
+        "canonical_id": "volume.volume_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-07-1",
+      "tag": "plain",
+      "text": "silence all computer sound",
+      "expected": {
+        "canonical_id": "volume.toggle_mute",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-07-2",
+      "tag": "plain",
+      "text": "can you mute the computer",
+      "expected": {
+        "canonical_id": "volume.toggle_mute",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-07-3",
+      "tag": "plain",
+      "text": "turn all the sound off",
+      "expected": {
+        "canonical_id": "volume.toggle_mute",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-07",
+      "tag": "exact",
+      "text": "toggle mute",
+      "expected": {
+        "canonical_id": "volume.toggle_mute",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-08-1",
+      "tag": "plain",
+      "text": "put the computer sound at thirty percent",
+      "expected": {
+        "canonical_id": "volume.set_volume",
+        "args": {
+          "level": 30
+        }
+      }
+    },
+    {
+      "id": "plain-08-2",
+      "tag": "plain",
+      "text": "i want the volume at thirty",
+      "expected": {
+        "canonical_id": "volume.set_volume",
+        "args": {
+          "level": 30
+        }
+      }
+    },
+    {
+      "id": "plain-08-3",
+      "tag": "plain",
+      "text": "set the sound level to thirty percent",
+      "expected": {
+        "canonical_id": "volume.set_volume",
+        "args": {
+          "level": 30
+        }
+      }
+    },
+    {
+      "id": "exact-08",
+      "tag": "exact",
+      "text": "set volume",
+      "expected": {
+        "canonical_id": "volume.set_volume",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-09-1",
+      "tag": "plain",
+      "text": "make this window fill the screen",
+      "expected": {
+        "canonical_id": "builtin.maximize",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-09-2",
+      "tag": "plain",
+      "text": "give this window all the screen space",
+      "expected": {
+        "canonical_id": "builtin.maximize",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-09-3",
+      "tag": "plain",
+      "text": "enlarge the current window as far as possible",
+      "expected": {
+        "canonical_id": "builtin.maximize",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-09",
+      "tag": "exact",
+      "text": "maximize",
+      "expected": {
+        "canonical_id": "builtin.maximize",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-10-1",
+      "tag": "plain",
+      "text": "get this window out of the way",
+      "expected": {
+        "canonical_id": "builtin.minimize",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-10-2",
+      "tag": "plain",
+      "text": "hide the current window on the taskbar",
+      "expected": {
+        "canonical_id": "builtin.minimize",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-10-3",
+      "tag": "plain",
+      "text": "shrink this window down to its taskbar button",
+      "expected": {
+        "canonical_id": "builtin.minimize",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-10",
+      "tag": "exact",
+      "text": "minimize",
+      "expected": {
+        "canonical_id": "builtin.minimize",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-11-1",
+      "tag": "plain",
+      "text": "put this window back to its normal size",
+      "expected": {
+        "canonical_id": "builtin.restore_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-11-2",
+      "tag": "plain",
+      "text": "make the enlarged window small again",
+      "expected": {
+        "canonical_id": "builtin.restore_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-11-3",
+      "tag": "plain",
+      "text": "restore the current window to its earlier size",
+      "expected": {
+        "canonical_id": "builtin.restore_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-11",
+      "tag": "exact",
+      "text": "restore window",
+      "expected": {
+        "canonical_id": "builtin.restore_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-12-1",
+      "tag": "plain",
+      "text": "shut the current window",
+      "expected": {
+        "canonical_id": "builtin.close_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-12-2",
+      "tag": "plain",
+      "text": "get rid of this window",
+      "expected": {
+        "canonical_id": "builtin.close_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-12-3",
+      "tag": "plain",
+      "text": "can you close the window i am using",
+      "expected": {
+        "canonical_id": "builtin.close_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-12",
+      "tag": "exact",
+      "text": "close window",
+      "expected": {
+        "canonical_id": "builtin.close_window",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-13-1",
+      "tag": "plain",
+      "text": "put this window on the left half",
+      "expected": {
+        "canonical_id": "builtin.snap_left",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-13-2",
+      "tag": "plain",
+      "text": "fit the current window into the left side",
+      "expected": {
+        "canonical_id": "builtin.snap_left",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-13-3",
+      "tag": "plain",
+      "text": "move this window to fill half the screen on the left",
+      "expected": {
+        "canonical_id": "builtin.snap_left",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-13",
+      "tag": "exact",
+      "text": "snap left",
+      "expected": {
+        "canonical_id": "builtin.snap_left",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-14-1",
+      "tag": "plain",
+      "text": "put this window on the right half",
+      "expected": {
+        "canonical_id": "builtin.snap_right",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-14-2",
+      "tag": "plain",
+      "text": "fit the current window into the right side",
+      "expected": {
+        "canonical_id": "builtin.snap_right",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-14-3",
+      "tag": "plain",
+      "text": "move this window to fill half the screen on the right",
+      "expected": {
+        "canonical_id": "builtin.snap_right",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-14",
+      "tag": "exact",
+      "text": "snap right",
+      "expected": {
+        "canonical_id": "builtin.snap_right",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-15-1",
+      "tag": "plain",
+      "text": "give me a fresh browser tab",
+      "expected": {
+        "canonical_id": "builtin.new_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-15-2",
+      "tag": "plain",
+      "text": "open another tab in this browser",
+      "expected": {
+        "canonical_id": "builtin.new_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-15-3",
+      "tag": "plain",
+      "text": "i need an empty tab",
+      "expected": {
+        "canonical_id": "builtin.new_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-15",
+      "tag": "exact",
+      "text": "new tab",
+      "expected": {
+        "canonical_id": "builtin.new_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-16-1",
+      "tag": "plain",
+      "text": "get rid of the tab i am on",
+      "expected": {
+        "canonical_id": "builtin.close_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-16-2",
+      "tag": "plain",
+      "text": "can you shut this browser tab",
+      "expected": {
+        "canonical_id": "builtin.close_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-16-3",
+      "tag": "plain",
+      "text": "close the current browser tab",
+      "expected": {
+        "canonical_id": "builtin.close_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-16",
+      "tag": "exact",
+      "text": "close tab",
+      "expected": {
+        "canonical_id": "builtin.close_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-17-1",
+      "tag": "plain",
+      "text": "take me to the tab on the right",
+      "expected": {
+        "canonical_id": "builtin.next_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-17-2",
+      "tag": "plain",
+      "text": "switch to the following browser tab",
+      "expected": {
+        "canonical_id": "builtin.next_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-17-3",
+      "tag": "plain",
+      "text": "go one tab forward",
+      "expected": {
+        "canonical_id": "builtin.next_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-17",
+      "tag": "exact",
+      "text": "next tab",
+      "expected": {
+        "canonical_id": "builtin.next_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-18-1",
+      "tag": "plain",
+      "text": "take me to the tab on the left",
+      "expected": {
+        "canonical_id": "builtin.previous_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-18-2",
+      "tag": "plain",
+      "text": "switch to the browser tab before this one",
+      "expected": {
+        "canonical_id": "builtin.previous_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-18-3",
+      "tag": "plain",
+      "text": "go one tab backward",
+      "expected": {
+        "canonical_id": "builtin.previous_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-18",
+      "tag": "exact",
+      "text": "previous tab",
+      "expected": {
+        "canonical_id": "builtin.previous_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-19-1",
+      "tag": "plain",
+      "text": "bring back the tab i just shut",
+      "expected": {
+        "canonical_id": "builtin.reopen_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-19-2",
+      "tag": "plain",
+      "text": "recover my last closed browser tab",
+      "expected": {
+        "canonical_id": "builtin.reopen_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-19-3",
+      "tag": "plain",
+      "text": "undo closing that tab",
+      "expected": {
+        "canonical_id": "builtin.reopen_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-19",
+      "tag": "exact",
+      "text": "reopen tab",
+      "expected": {
+        "canonical_id": "builtin.reopen_tab",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-20-1",
+      "tag": "plain",
+      "text": "load this web page again",
+      "expected": {
+        "canonical_id": "builtin.refresh_page",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-20-2",
+      "tag": "plain",
+      "text": "get a fresh copy of this page",
+      "expected": {
+        "canonical_id": "builtin.refresh_page",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-20-3",
+      "tag": "plain",
+      "text": "can you reload the current page",
+      "expected": {
+        "canonical_id": "builtin.refresh_page",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-20",
+      "tag": "exact",
+      "text": "refresh page",
+      "expected": {
+        "canonical_id": "builtin.refresh_page",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-21-1",
+      "tag": "plain",
+      "text": "move a little farther down this page",
+      "expected": {
+        "canonical_id": "scroll.scroll_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-21-2",
+      "tag": "plain",
+      "text": "show me what is below this part",
+      "expected": {
+        "canonical_id": "scroll.scroll_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-21-3",
+      "tag": "plain",
+      "text": "can you scroll the page downward",
+      "expected": {
+        "canonical_id": "scroll.scroll_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-21",
+      "tag": "exact",
+      "text": "scroll down",
+      "expected": {
+        "canonical_id": "scroll.scroll_down",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-22-1",
+      "tag": "plain",
+      "text": "move a little farther up this page",
+      "expected": {
+        "canonical_id": "scroll.scroll_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-22-2",
+      "tag": "plain",
+      "text": "show me what is above this part",
+      "expected": {
+        "canonical_id": "scroll.scroll_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-22-3",
+      "tag": "plain",
+      "text": "can you scroll the page upward",
+      "expected": {
+        "canonical_id": "scroll.scroll_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-22",
+      "tag": "exact",
+      "text": "scroll up",
+      "expected": {
+        "canonical_id": "scroll.scroll_up",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-23-1",
+      "tag": "plain",
+      "text": "take me to the very beginning of this page",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_top",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-23-2",
+      "tag": "plain",
+      "text": "jump all the way up this page",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_top",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-23-3",
+      "tag": "plain",
+      "text": "show the first part of the page",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_top",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-23",
+      "tag": "exact",
+      "text": "scroll to top",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_top",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-24-1",
+      "tag": "plain",
+      "text": "take me to the very end of this page",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_bottom",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-24-2",
+      "tag": "plain",
+      "text": "jump all the way down this page",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_bottom",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-24-3",
+      "tag": "plain",
+      "text": "show the last part of the page",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_bottom",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-24",
+      "tag": "exact",
+      "text": "scroll to bottom",
+      "expected": {
+        "canonical_id": "builtin.scroll_to_bottom",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-25-1",
+      "tag": "plain",
+      "text": "bring up notepad for me",
+      "expected": {
+        "canonical_id": "builtin.open_notepad",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-25-2",
+      "tag": "plain",
+      "text": "i need the notepad app",
+      "expected": {
+        "canonical_id": "builtin.open_notepad",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-25-3",
+      "tag": "plain",
+      "text": "launch the notepad application",
+      "expected": {
+        "canonical_id": "builtin.open_notepad",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-25",
+      "tag": "exact",
+      "text": "open notepad",
+      "expected": {
+        "canonical_id": "builtin.open_notepad",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-26-1",
+      "tag": "plain",
+      "text": "take me to firefox",
+      "expected": {
+        "canonical_id": "app_verbs.focus",
+        "args": {
+          "app_name": "firefox"
+        }
+      }
+    },
+    {
+      "id": "plain-26-2",
+      "tag": "plain",
+      "text": "bring the firefox window to the front",
+      "expected": {
+        "canonical_id": "app_verbs.focus",
+        "args": {
+          "app_name": "firefox"
+        }
+      }
+    },
+    {
+      "id": "plain-26-3",
+      "tag": "plain",
+      "text": "can you switch over to firefox",
+      "expected": {
+        "canonical_id": "app_verbs.focus",
+        "args": {
+          "app_name": "firefox"
+        }
+      }
+    },
+    {
+      "id": "exact-26",
+      "tag": "exact",
+      "text": "focus",
+      "expected": {
+        "canonical_id": "app_verbs.focus",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-27-1",
+      "tag": "plain",
+      "text": "quit the spotify app",
+      "expected": {
+        "canonical_id": "app_verbs.close",
+        "args": {
+          "app_name": "spotify"
+        }
+      }
+    },
+    {
+      "id": "plain-27-2",
+      "tag": "plain",
+      "text": "shut down spotify",
+      "expected": {
+        "canonical_id": "app_verbs.close",
+        "args": {
+          "app_name": "spotify"
+        }
+      }
+    },
+    {
+      "id": "plain-27-3",
+      "tag": "plain",
+      "text": "can you close spotify for me",
+      "expected": {
+        "canonical_id": "app_verbs.close",
+        "args": {
+          "app_name": "spotify"
+        }
+      }
+    },
+    {
+      "id": "exact-27",
+      "tag": "exact",
+      "text": "close",
+      "expected": {
+        "canonical_id": "app_verbs.close",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-28-1",
+      "tag": "plain",
+      "text": "bring up the calculator for me",
+      "expected": {
+        "canonical_id": "builtin.open_calculator",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-28-2",
+      "tag": "plain",
+      "text": "i need the calculator app",
+      "expected": {
+        "canonical_id": "builtin.open_calculator",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-28-3",
+      "tag": "plain",
+      "text": "launch the calculator application",
+      "expected": {
+        "canonical_id": "builtin.open_calculator",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-28",
+      "tag": "exact",
+      "text": "open calculator",
+      "expected": {
+        "canonical_id": "builtin.open_calculator",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-29-1",
+      "tag": "plain",
+      "text": "put numbers on the things i can click",
+      "expected": {
+        "canonical_id": "show_numbers.show_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-29-2",
+      "tag": "plain",
+      "text": "label the clickable controls with numbers",
+      "expected": {
+        "canonical_id": "show_numbers.show_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-29-3",
+      "tag": "plain",
+      "text": "show me numbered labels for the buttons",
+      "expected": {
+        "canonical_id": "show_numbers.show_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-29",
+      "tag": "exact",
+      "text": "show numbers",
+      "expected": {
+        "canonical_id": "show_numbers.show_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-30-1",
+      "tag": "plain",
+      "text": "take away those numbered labels",
+      "expected": {
+        "canonical_id": "show_numbers.hide_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-30-2",
+      "tag": "plain",
+      "text": "remove the numbers from the buttons",
+      "expected": {
+        "canonical_id": "show_numbers.hide_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-30-3",
+      "tag": "plain",
+      "text": "clear those numbers off the screen",
+      "expected": {
+        "canonical_id": "show_numbers.hide_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-30",
+      "tag": "exact",
+      "text": "hide numbers",
+      "expected": {
+        "canonical_id": "show_numbers.hide_numbers",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-31-1",
+      "tag": "plain",
+      "text": "choose the button numbered seven",
+      "expected": {
+        "canonical_id": "show_numbers.click",
+        "args": {
+          "label": 7
+        }
+      }
+    },
+    {
+      "id": "plain-31-2",
+      "tag": "plain",
+      "text": "click on number seven",
+      "expected": {
+        "canonical_id": "show_numbers.click",
+        "args": {
+          "label": 7
+        }
+      }
+    },
+    {
+      "id": "plain-31-3",
+      "tag": "plain",
+      "text": "press the control with a seven on it",
+      "expected": {
+        "canonical_id": "show_numbers.click",
+        "args": {
+          "label": 7
+        }
+      }
+    },
+    {
+      "id": "exact-31",
+      "tag": "exact",
+      "text": "click",
+      "expected": {
+        "canonical_id": "show_numbers.click",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-32-1",
+      "tag": "plain",
+      "text": "open the context menu for number seven",
+      "expected": {
+        "canonical_id": "show_numbers.right_click",
+        "args": {
+          "label": 7
+        }
+      }
+    },
+    {
+      "id": "plain-32-2",
+      "tag": "plain",
+      "text": "right click on the button numbered seven",
+      "expected": {
+        "canonical_id": "show_numbers.right_click",
+        "args": {
+          "label": 7
+        }
+      }
+    },
+    {
+      "id": "plain-32-3",
+      "tag": "plain",
+      "text": "show the right mouse menu on seven",
+      "expected": {
+        "canonical_id": "show_numbers.right_click",
+        "args": {
+          "label": 7
+        }
+      }
+    },
+    {
+      "id": "exact-32",
+      "tag": "exact",
+      "text": "right click",
+      "expected": {
+        "canonical_id": "show_numbers.right_click",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-33-1",
+      "tag": "plain",
+      "text": "begin taking my dictation",
+      "expected": {
+        "canonical_id": "builtin.start_listening",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-33-2",
+      "tag": "plain",
+      "text": "start recording what i say",
+      "expected": {
+        "canonical_id": "builtin.start_listening",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-33-3",
+      "tag": "plain",
+      "text": "i want samsara to listen and type now",
+      "expected": {
+        "canonical_id": "builtin.start_listening",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-33",
+      "tag": "exact",
+      "text": "start listening",
+      "expected": {
+        "canonical_id": "builtin.start_listening",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-34-1",
+      "tag": "plain",
+      "text": "stop recording and throw away my draft",
+      "expected": {
+        "canonical_id": "builtin.cancel",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-34-2",
+      "tag": "plain",
+      "text": "cancel the dictation without keeping it",
+      "expected": {
+        "canonical_id": "builtin.cancel",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-34-3",
+      "tag": "plain",
+      "text": "discard what i have dictated and stop",
+      "expected": {
+        "canonical_id": "builtin.cancel",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-34",
+      "tag": "exact",
+      "text": "cancel",
+      "expected": {
+        "canonical_id": "builtin.cancel",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-35-1",
+      "tag": "plain",
+      "text": "put the selected text on the clipboard",
+      "expected": {
+        "canonical_id": "builtin.copy",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-35-2",
+      "tag": "plain",
+      "text": "copy the text i highlighted",
+      "expected": {
+        "canonical_id": "builtin.copy",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-35-3",
+      "tag": "plain",
+      "text": "keep a copy of the selected words",
+      "expected": {
+        "canonical_id": "builtin.copy",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-35",
+      "tag": "exact",
+      "text": "copy",
+      "expected": {
+        "canonical_id": "builtin.copy",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-36-1",
+      "tag": "plain",
+      "text": "insert what is on the clipboard here",
+      "expected": {
+        "canonical_id": "builtin.paste",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-36-2",
+      "tag": "plain",
+      "text": "put the copied text at the cursor",
+      "expected": {
+        "canonical_id": "builtin.paste",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-36-3",
+      "tag": "plain",
+      "text": "paste the words i copied here",
+      "expected": {
+        "canonical_id": "builtin.paste",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-36",
+      "tag": "exact",
+      "text": "paste",
+      "expected": {
+        "canonical_id": "builtin.paste",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-37-1",
+      "tag": "plain",
+      "text": "reverse the last change i made",
+      "expected": {
+        "canonical_id": "builtin.undo",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-37-2",
+      "tag": "plain",
+      "text": "take back that last edit",
+      "expected": {
+        "canonical_id": "builtin.undo",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-37-3",
+      "tag": "plain",
+      "text": "undo my most recent change",
+      "expected": {
+        "canonical_id": "builtin.undo",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-37",
+      "tag": "exact",
+      "text": "undo",
+      "expected": {
+        "canonical_id": "builtin.undo",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-38-1",
+      "tag": "plain",
+      "text": "highlight everything in this document",
+      "expected": {
+        "canonical_id": "builtin.select_all",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-38-2",
+      "tag": "plain",
+      "text": "select every bit of text here",
+      "expected": {
+        "canonical_id": "builtin.select_all",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-38-3",
+      "tag": "plain",
+      "text": "choose all the text at once",
+      "expected": {
+        "canonical_id": "builtin.select_all",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-38",
+      "tag": "exact",
+      "text": "select all",
+      "expected": {
+        "canonical_id": "builtin.select_all",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-39-1",
+      "tag": "plain",
+      "text": "keep the changes to this file",
+      "expected": {
+        "canonical_id": "builtin.save",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-39-2",
+      "tag": "plain",
+      "text": "save the document i am working on",
+      "expected": {
+        "canonical_id": "builtin.save",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-39-3",
+      "tag": "plain",
+      "text": "write my latest changes to disk",
+      "expected": {
+        "canonical_id": "builtin.save",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-39",
+      "tag": "exact",
+      "text": "save",
+      "expected": {
+        "canonical_id": "builtin.save",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-40-1",
+      "tag": "plain",
+      "text": "capture a picture of my screen",
+      "expected": {
+        "canonical_id": "builtin.screenshot",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-40-2",
+      "tag": "plain",
+      "text": "save an image of what is on the screen",
+      "expected": {
+        "canonical_id": "builtin.screenshot",
+        "args": {}
+      }
+    },
+    {
+      "id": "plain-40-3",
+      "tag": "plain",
+      "text": "take a photo of the desktop",
+      "expected": {
+        "canonical_id": "builtin.screenshot",
+        "args": {}
+      }
+    },
+    {
+      "id": "exact-40",
+      "tag": "exact",
+      "text": "screenshot",
+      "expected": {
+        "canonical_id": "builtin.screenshot",
+        "args": {}
+      }
+    },
+    {
+      "id": "dictation-01",
+      "tag": "dictation",
+      "text": "scroll down the page and you will find it",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-02",
+      "tag": "dictation",
+      "text": "close the window before it rains",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-03",
+      "tag": "dictation",
+      "text": "open the door when the delivery arrives",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-04",
+      "tag": "dictation",
+      "text": "save the whales is their campaign slogan",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-05",
+      "tag": "dictation",
+      "text": "copy the recipe into your notebook tomorrow",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-06",
+      "tag": "dictation",
+      "text": "paste the poster onto the classroom wall",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-07",
+      "tag": "dictation",
+      "text": "show numbers rather than names in the annual report",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-08",
+      "tag": "dictation",
+      "text": "volume down the street has increased since construction began",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-09",
+      "tag": "dictation",
+      "text": "start listening to your children when they explain",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-10",
+      "tag": "dictation",
+      "text": "cancel the meeting if the train is late",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-11",
+      "tag": "dictation",
+      "text": "next tab on the invoice is the tax breakdown",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-12",
+      "tag": "dictation",
+      "text": "select all the ripe tomatoes for dinner",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-13",
+      "tag": "dictation",
+      "text": "right click is what the instructor said to the class yesterday",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-14",
+      "tag": "dictation",
+      "text": "pause this discussion until the guests arrive",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-15",
+      "tag": "dictation",
+      "text": "bring the washing inside before the storm",
+      "expected": "dictation",
+      "command_like_start": true
+    },
+    {
+      "id": "dictation-16",
+      "tag": "dictation",
+      "text": "i had a lovely walk by the river yesterday",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-17",
+      "tag": "dictation",
+      "text": "the children are coming home after lunch",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-18",
+      "tag": "dictation",
+      "text": "we should talk about our holiday plans this weekend",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-19",
+      "tag": "dictation",
+      "text": "my sister left her umbrella at the station",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-20",
+      "tag": "dictation",
+      "text": "there are three apples and two pears in the bowl",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-21",
+      "tag": "dictation",
+      "text": "the report needs another paragraph about delivery costs",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-22",
+      "tag": "dictation",
+      "text": "i wonder whether the library is still open",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-23",
+      "tag": "dictation",
+      "text": "he asked me to turn down the invitation politely",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-24",
+      "tag": "dictation",
+      "text": "the song we heard on saturday reminded me of school",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-25",
+      "tag": "dictation",
+      "text": "our neighbour has a new puppy called pepper",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-26",
+      "tag": "dictation",
+      "text": "i told her to close the tab after reading the article",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-27",
+      "tag": "dictation",
+      "text": "in the story the robot tries to open calculator",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-28",
+      "tag": "dictation",
+      "text": "she wrote show numbers on the whiteboard as an example",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-29",
+      "tag": "dictation",
+      "text": "the words start listening were part of his speech",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-30",
+      "tag": "dictation",
+      "text": "we discussed how to cancel a booking at breakfast",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-31",
+      "tag": "dictation",
+      "text": "i can hear the birds outside my window",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-32",
+      "tag": "dictation",
+      "text": "this cake needs another ten minutes in the oven",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-33",
+      "tag": "dictation",
+      "text": "perhaps the parcel will arrive later this afternoon",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-34",
+      "tag": "dictation",
+      "text": "the plumber said the water pressure was too high",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-35",
+      "tag": "dictation",
+      "text": "please remember that the appointment is on thursday",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-36",
+      "tag": "dictation",
+      "text": "could you explain why the moon looks bigger tonight",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-37",
+      "tag": "dictation",
+      "text": "my favourite colour is green because it reminds me of spring",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-38",
+      "tag": "dictation",
+      "text": "the last chapter ends with everyone returning home",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-39",
+      "tag": "dictation",
+      "text": "she is learning to play the piano after work",
+      "expected": "dictation",
+      "command_like_start": false
+    },
+    {
+      "id": "dictation-40",
+      "tag": "dictation",
+      "text": "we need milk bread and something for dinner",
+      "expected": "dictation",
+      "command_like_start": false
+    }
+  ]
+}
