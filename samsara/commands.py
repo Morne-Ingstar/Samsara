@@ -770,6 +770,12 @@ class CommandExecutor:
         # One scope context for the whole utterance (queue 68): every match
         # below sees the same foreground app and tags.
         context = self._matcher.current_context()
+        # 399: only an explicit command lane may replace a prefix hit with a
+        # fully understood chain. Free text and conflicting readings fall through.
+        if self._grammar_enabled(effective_app, force_commands) and re.search(r'\b(?:and|then)\b', text, re.I):
+            chain = self._grammar_chain(text, match_text, context, effective_app, generation)
+            if chain is not None:
+                return chain
         entry, remainder = self._matcher.match(match_text, context)
         if entry is None:
             entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
@@ -798,6 +804,10 @@ class CommandExecutor:
                     if self._try_smart_actions_route(text):
                         return DispatchResult(DispatchState.QUEUED, text, None,
                                               {'route': 'smart_actions'})
+            if self._grammar_enabled(effective_app, force_commands):
+                single = self._grammar_single(text, context, effective_app, generation)
+                if single is not None:
+                    return single
             return DispatchResult.miss(text)
         # The wash lowercases and scrubs punctuation for matching; the command
         # argument must come from what the user actually said.
@@ -822,6 +832,211 @@ class CommandExecutor:
         if result.state is DispatchState.MISS:
             return DispatchResult.miss(text, dict(result.detail))
         return result
+
+    def _grammar_enabled(self, app, force_commands):
+        # Some lanes capture the same app generation for successive utterances.
+        # Keep a local request identity too, without changing legacy generations.
+        guard = getattr(self, '_matcher_lock', None) or threading.RLock()
+        with guard:
+            self._grammar_request_serial = getattr(self, '_grammar_request_serial', 0) + 1
+        if not (force_commands or getattr(app, 'command_mode_active', False) is True):
+            return False
+        config = getattr(app, 'config', {})
+        config = config if isinstance(config, dict) else {}
+        return (config.get('commands') or {}).get('grammar_tier', True) is not False
+
+    def _grammar_catalog(self):
+        """One live snapshot per frozen matcher; a reload invalidates by identity."""
+        from .command_catalog import build_catalog, canonical_phrase
+        with self._matcher_lock:
+            cached = getattr(self, '_grammar_cached', None)
+            if cached is None or cached[0] is not self._matcher:
+                records = [spec.to_dict() for spec in build_catalog(self)]
+                by_id = {r['canonical_id']: (r, canonical_phrase(r)) for r in records}
+                cached = (self._matcher, records, by_id)
+                self._grammar_cached = cached
+            return cached[1], cached[2]
+
+    def _grammar_steps(self, text, parsed, by_id, context):
+        from . import grammar
+        tokens = list(grammar._TOKEN_RE.finditer(text))
+        steps = []
+        for cid, values, (start, end), _confidence in parsed:
+            record, phrase = by_id[cid]
+            entry = self._registry_entry(phrase)
+            if entry is None:
+                return []
+            # Keep the user's original argument, including case and punctuation.
+            segment = text[tokens[start].start():tokens[end].start() if end < len(tokens) else len(text)]
+            segment = re.sub(r'^please\s+', '', segment, flags=re.I).strip()
+            matched, remainder = self._matcher.match(segment, context)
+            if matched is None or matched.phrase != phrase:
+                # An alias may be unavailable here; policy decides availability.
+                aliases = sorted(record['aliases'], key=lambda alias: len(alias.split()), reverse=True)
+                remainder = ''
+                for alias in aliases:
+                    n = len(grammar._tokens(alias))
+                    words = list(grammar._TOKEN_RE.finditer(segment))
+                    if grammar._tokens(segment)[:n] == grammar._tokens(alias):
+                        remainder = segment[words[n - 1].end():].strip()
+                        break
+            args = {key: value for key, value in values.items() if key in entry.param_schema
+                    and entry.param_schema[key].get('type') in {'int', 'float', 'bool', 'str'}}
+            # A repeat is not silently discarded: policy must reject unsupported slots.
+            if 'repeat' in values:
+                args['repeat'] = values['repeat']
+            if entry.source == 'plugin' and remainder:
+                args['remainder'] = remainder
+            steps.append((entry, args, segment, record, values))
+        return steps
+
+    def _grammar_single(self, text, context, app, generation):
+        from . import grammar
+        records, by_id = self._grammar_catalog()
+        parsed = grammar.parse(text, records)
+        if len(parsed) != 1:
+            return None
+        steps = self._grammar_steps(text, parsed, by_id, context)
+        if not steps:
+            return None
+        entry, args, _segment, _record, _values = steps[0]
+        result = self.execute_canonical(entry.phrase, app, route=Route.GRAMMAR,
+                                        generation=generation, args=args, source_text=text)
+        if result.state is DispatchState.MISS:
+            return DispatchResult.miss(text, result.detail)
+        return result
+
+    def _grammar_chain(self, text, match_text, context, app, generation):
+        from . import grammar
+        request_serial = getattr(self, '_grammar_request_serial', 0)
+        records, by_id = self._grammar_catalog()
+        parsed = grammar.parse(text, records)
+        if len(parsed) < 2:
+            return None  # R2: partial understanding retains the existing prefix path.
+        # R3: a text slot makes the entire sentence legacy user content.
+        if any(any(a.get('type', 'text') == 'text' and a['name'] in p[1]
+                   for a in by_id[p[0]][0]['args']) for p in parsed):
+            return None
+        prefix, _remainder = self._matcher.match(match_text, context)
+        first_phrase = by_id[parsed[0][0]][1]
+        if prefix is not None and prefix.phrase != first_phrase:
+            logger.info('[GRAMMAR] conflicting first commands: prefix=%s grammar=%s', prefix.phrase, first_phrase)
+            return None
+        steps = self._grammar_steps(text, parsed, by_id, context)
+        if len(steps) != len(parsed):
+            return DispatchResult.miss(text)
+        return self.run_chain(steps, text=text, app=app, generation=generation,
+                              route=Route.GRAMMAR, request_serial=request_serial)
+
+    def run_chain(self, steps, *, text, app, generation, route=Route.GRAMMAR,
+                  request_serial=None) -> DispatchResult:
+        """Run validated (entry, args, segment, record, values) steps in order.
+
+        entry is a registry entry, args its execution arguments, and segment
+        the step's source text. Non-grammar callers may pass None or empty
+        mappings for record and values; labels then use the handler chip or
+        entry.phrase. route applies to both quiet preflight and execution.
+        request_serial=None disables only the newer-utterance serial check;
+        policy generation freshness still applies.
+        """
+        steps = list(steps)
+        if len(steps) > 4:
+            return self._grammar_finish(app, text, DispatchState.REJECTED, [],
+                                        steps[0][0].phrase, 'too_many_steps', len(steps))
+        # Decide EVERY step quietly, before running any of them. No pending question.
+        decisions = [execution_policy.authorize(
+            Invocation(entry.phrase, args, route, generation, source_text=segment),
+            app=app, executor=self, quiet=True) for entry, args, segment, _r, _v in steps]
+        for step, decision in zip(steps, decisions):
+            if not isinstance(decision, execution_policy.Allowed):
+                return self._grammar_finish(app, text, DispatchState.REJECTED, [],
+                                            step[0].phrase, getattr(decision, 'reason', 'refused'), len(steps))
+
+        # A per-chain host intercepts direct handler chips without mutating the live app.
+        class FeedbackHost:
+            def __init__(self, host):
+                object.__setattr__(self, '_host', host)
+                object.__setattr__(self, 'labels', [])
+            def __getattr__(self, name):
+                return getattr(self._host, name)
+            def __setattr__(self, name, value):
+                setattr(self._host, name, value)
+            def _show_outcome_chip(self, label, *args, **kwargs):
+                self.labels.append(str(label))
+            def _show_dispatch_outcome_chip(self, *args, **kwargs):
+                pass
+            def _speak_session_notice(self, *args, **kwargs):
+                pass
+
+        host = FeedbackHost(app) if app is not None else None
+        done = []
+        for index, (entry, args, segment, record, values) in enumerate(steps):
+            if not self._grammar_is_fresh(app, generation, request_serial):
+                return self._grammar_finish(app, text, DispatchState.CANCELLED, done,
+                                            entry.phrase, 'stale', len(steps))
+            if getattr(app, 'command_mode_active', False) is True and self._matcher.should_suppress(entry):
+                return self._grammar_finish(app, text, DispatchState.REJECTED, done,
+                                            entry.phrase, 'debounce', len(steps))
+            follows = (index < len(steps) - 1 and
+                       ((entry.data or {}).get('type') == 'launch' or
+                        entry.phrase.split()[0] in {'open', 'focus', 'bring', 'switch', 'activate'}))
+            before = self._grammar_foreground() if follows else None
+            if host is not None:
+                host.labels.clear()
+            result = self.execute_canonical(entry.phrase, host, route=route,
+                                            generation=generation, args=args, source_text=segment)
+            if result.state is not DispatchState.COMPLETED:
+                state = DispatchState.FAILED if result.state is DispatchState.MISS else result.state
+                return self._grammar_finish(app, text, state, done, entry.phrase,
+                                            result.detail.get('reason') or result.state.value, len(steps))
+            label = host.labels[-1] if host is not None and host.labels else entry.phrase
+            values = values or {}
+            if entry.phrase == 'open' and values.get('app_name'):
+                label = 'opened ' + values['app_name'].title()
+            elif entry.phrase == 'set volume' and 'level' in values:
+                label = f"Windows volume {values['level']}%"
+            done.append(label)
+            if follows and not self._grammar_wait_target(before, app, generation, request_serial):
+                state = DispatchState.FAILED if self._grammar_is_fresh(app, generation, request_serial) else DispatchState.CANCELLED
+                return self._grammar_finish(app, text, state, done, steps[index + 1][0].phrase,
+                                            'target_timeout' if state is DispatchState.FAILED else 'stale', len(steps))
+        return self._grammar_finish(app, text, DispatchState.COMPLETED, done, '', '', len(steps))
+
+    @staticmethod
+    def _grammar_foreground():
+        from .handlers import _get_foreground_hwnd
+        return _get_foreground_hwnd()
+
+    def _grammar_is_fresh(self, app, generation, request_serial):
+        return (execution_policy.is_fresh(app, generation) and
+                (request_serial is None or request_serial == getattr(self, '_grammar_request_serial', 0)))
+
+    def _grammar_wait_target(self, before, app, generation, request_serial=None):
+        deadline = time.monotonic() + 1.5
+        while self._grammar_is_fresh(app, generation, request_serial):
+            current = self._grammar_foreground()
+            if before and current and current != before:
+                return True
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(.025)
+        return False
+
+    @staticmethod
+    def _grammar_finish(app, text, state, done, stopped, reason, count):
+        from .session_modes import DispatchOutcome, outcome_chip
+        detail = {'chain_done': list(done), 'chain_stopped': stopped,
+                  'chain_count': count, 'reason': reason, 'state': state.value}
+        outcome = DispatchOutcome(kind='command_chain', detail=detail)
+        chip = outcome_chip(outcome.kind, detail)
+        show = getattr(app, '_show_dispatch_outcome_chip', None)
+        if callable(show):
+            show(outcome)
+            detail['chain_feedback_sent'] = True
+        speak = getattr(app, '_speak_session_notice', None)
+        if callable(speak) and chip is not None:
+            speak(chip[0], category='command')  # coordinator applies silent / brief / full.
+        return DispatchResult(state, 'command chain', 'command chain', detail)
 
     def _original_remainder(self, text: str, match_text: str, entry, washed_remainder: str,
                             context=None) -> str:

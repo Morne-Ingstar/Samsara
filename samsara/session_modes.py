@@ -1433,6 +1433,10 @@ _CHIP_TTL_OVERRIDES = {
 # OWNER COPY — placeholder. Command-lane wording belongs in this one table so
 # the owner can revise it without hunting through dispatch logic.
 COMMAND_CHIP_COPY = {
+    "chain_done": "Did {count} things: {done}",
+    "chain_yes": 'One at a time: "{step}" needs a yes',
+    "chain_refused": 'One at a time: "{step}" — {reason}',
+    "chain_stopped": "Did {count} things: {done} · stopped at {step}: {reason}",
     "miss": "heard: {heard} — not a command",
     "pack_off": "heard: {heard} — {pack} is off",
     "suggestion": "heard: {heard} — did you mean {phrase}? say yes or no",
@@ -1563,6 +1567,24 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     purpose, so it gets noticed and mapped; the caller logs it at WARNING.
     """
     detail = detail if isinstance(detail, dict) else {}
+    if detail.get('chain_feedback_sent'):
+        return None  # 399: executor already emitted the utterance's one shared chip.
+    if kind == 'command_chain' or 'chain_count' in detail:
+        done = detail.get('chain_done') or []
+        step = detail.get('chain_stopped') or 'chain'
+        reason = detail.get('reason') or 'stopped'
+        reason = {'target_timeout': 'window did not change', 'too_many_steps': 'four commands at most',
+                  'stale': 'cancelled', 'pack_disabled': 'pack is off',
+                  'out_of_scope': 'command unavailable here', 'invalid_args': 'could not understand that step',
+                  'queued': 'waiting for that step'}.get(reason, reason)
+        if detail.get('state') == 'completed':
+            return (_command_copy('chain_done', count=len(done), done=' · '.join(done)), 'success')
+        if done:
+            return (_command_copy('chain_stopped', count=len(done), done=' · '.join(done),
+                                  step=step, reason=reason), 'warning')
+        if reason == 'confirmation_required':
+            return (_command_copy('chain_yes', step=step), 'warning')
+        return (_command_copy('chain_refused', step=step, reason=reason), 'warning')
     if kind in ("active_capture_stopped", "active_capture_cancelled",
                 "active_capture_failed"):
         default_kind = "success" if kind == "active_capture_stopped" else "warning"

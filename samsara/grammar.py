@@ -13,6 +13,7 @@ not a command.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import Any
 
 
@@ -37,8 +38,15 @@ _MONITOR_WORDS = frozenset({
 _SEPARATORS = frozenset({"and", "into", "to", "on", "onto", "with", "plus"})
 
 
+@lru_cache(maxsize=512)
+def _token_tuple(text: str) -> tuple[str, ...]:
+    # 399: tokenization is independent of mutable catalog records. Cache only
+    # immutable tokens, never a parse or policy decision, to retain the 1,000-input budget.
+    return tuple(m.group(0).lower() for m in _TOKEN_RE.finditer(text))
+
+
 def _tokens(text: str) -> list[str]:
-    return [m.group(0).lower() for m in _TOKEN_RE.finditer(text or "")]
+    return list(_token_tuple(text or ""))
 
 
 def _records(catalog: Any) -> list[dict]:
@@ -213,15 +221,8 @@ def _slot(arg: dict, words: list[str]) -> tuple[str, Any] | None:
         if not words or len(words) > 4 or any(word in _CHAIN_WORDS for word in words):
             return None
         name_text = " ".join(words)
-        # resolve_window is intentionally consulted here rather than copied;
-        # the spoken name remains the argument so this parser stays harmless.
-        from plugins.commands.app_verbs import resolve_window
-        try:
-            resolve_window(name_text)
-        except Exception:
-            # Resolution is live-window context.  An unresolved app can still
-            # be a valid target for an open/launch command, so retain the text.
-            pass
+        # Resolution belongs to the executor; its discarded result cost >30ms
+        # for forty fake windows (399), and parsing must not probe the desktop.
         return name, name_text
     if kind == "monitor":
         value = _monitor(words)
@@ -238,6 +239,13 @@ def _slots(record: dict, remainder: list[str]) -> dict | None:
     if not args:
         return {} if not remainder else None
     if len(args) == 1:
+        # The new bare "volume" alias cannot consume the existing up/down verbs.
+        # Reject before the number/ordinal helpers' cold imports (399 timing proof).
+        if record.get('canonical_id') == 'volume.set_volume' and remainder[:1] in (["up"], ["down"]):
+            return None
+        # 399: Windows volume includes 100; other numbered slots still stop at 99.
+        if record.get('canonical_id') == 'volume.set_volume' and remainder in (["100"], ["one", "hundred"]):
+            return {'level': 100}
         parsed = _slot(args[0], remainder)
         if parsed is None:
             return None

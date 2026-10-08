@@ -259,6 +259,29 @@ _audio = _CoreAudio()
 
 # ── Commands ───────────────────────────────────────────────────────────────
 
+@command("set volume", aliases=[
+    "volume", "volume to", "set volume to", "set the volume to",
+    "lower volume to", "lower the volume to", "raise volume to",
+], pack="media", risk_class="safe", ai_composable=True, side_effects=["audio"],
+    param_schema={"level": {"type": "int", "required": False, "min": 0, "max": 100}})
+def handle_set_volume(app, remainder):
+    """Sets Windows volume to a spoken number from zero to one hundred."""
+    from samsara.grammar import _number
+    words = str(remainder or "").strip().lower().split()
+    if words[:1] == ["to"]:
+        words = words[1:]
+    level = 100 if words in (["100"], ["one", "hundred"]) else _number(words)
+    if level is None or not 0 <= level <= 100:
+        return False
+    if not _audio.set_volume(level / 100):
+        from samsara.command_registry import DispatchState
+        return DispatchState.FAILED
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        show(f"Windows volume {level}%", "success", 3500)
+    return True
+
+
 @command("volume up", aliases=[
     "turn it up", "louder", "increase volume",
     "turn up the volume", "raise the volume"

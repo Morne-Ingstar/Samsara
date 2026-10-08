@@ -9395,7 +9395,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "destructive",
-      "source": "plugins/commands/tasks.py:207",
+      "source": "plugins/commands/tasks.py:220",
       "undoable": false,
       "verb": "clear",
       "whole_utterance": false
@@ -9422,7 +9422,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "write",
-      "source": "plugins/commands/tasks.py:161",
+      "source": "plugins/commands/tasks.py:174",
       "undoable": false,
       "verb": "complete",
       "whole_utterance": false
@@ -9441,7 +9441,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "ui",
-      "source": "plugins/commands/tasks.py:148",
+      "source": "plugins/commands/tasks.py:161",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -9461,7 +9461,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "read",
-      "source": "plugins/commands/tasks.py:224",
+      "source": "plugins/commands/tasks.py:237",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -9485,7 +9485,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "destructive",
-      "source": "plugins/commands/tasks.py:184",
+      "source": "plugins/commands/tasks.py:197",
       "undoable": false,
       "verb": "remove",
       "whole_utterance": false
@@ -9506,7 +9506,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "ui",
-      "source": "plugins/commands/tasks.py:136",
+      "source": "plugins/commands/tasks.py:149",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -9524,7 +9524,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "write",
-      "source": "plugins/commands/tasks.py:95",
+      "source": "plugins/commands/tasks.py:108",
       "undoable": false,
       "verb": "sync",
       "whole_utterance": false
@@ -9543,7 +9543,7 @@
       "pack": "tasks",
       "plugin": "tasks",
       "risk": "read",
-      "source": "plugins/commands/tasks.py:117",
+      "source": "plugins/commands/tasks.py:130",
       "undoable": true,
       "verb": "whats",
       "whole_utterance": false
@@ -9746,6 +9746,36 @@
     },
     {
       "aliases": [
+        "lower the volume to",
+        "lower volume to",
+        "raise volume to",
+        "set the volume to",
+        "set volume",
+        "set volume to",
+        "volume",
+        "volume to"
+      ],
+      "args": [
+        {
+          "name": "level",
+          "required": false,
+          "type": "int"
+        }
+      ],
+      "canonical_id": "volume.set_volume",
+      "description": "Sets Windows volume to a spoken number from zero to one hundred.",
+      "kind": "plugin",
+      "object": "volume",
+      "pack": "media",
+      "plugin": "volume",
+      "risk": "ui",
+      "source": "plugins/commands/volume.py:262",
+      "undoable": true,
+      "verb": "set",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "silence",
         "toggle mute",
         "unsilence"
@@ -9758,7 +9788,7 @@
       "pack": "media",
       "plugin": "volume",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:304",
+      "source": "plugins/commands/volume.py:327",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -9781,7 +9811,7 @@
       "pack": "media",
       "plugin": "volume",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:283",
+      "source": "plugins/commands/volume.py:306",
       "undoable": true,
       "verb": "volume",
       "whole_utterance": false
@@ -9803,7 +9833,7 @@
       "pack": "media",
       "plugin": "volume",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:262",
+      "source": "plugins/commands/volume.py:285",
       "undoable": true,
       "verb": "volume",
       "whole_utterance": false

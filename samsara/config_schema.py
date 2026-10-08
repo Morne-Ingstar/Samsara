@@ -154,6 +154,11 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Advanced config-only timeout for a desktop Claude reply.",
     },
+    "commands.grammar_tier": {
+        "type": "bool", "default": True, "tab": "commands",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only switch for deterministic command phrases and chains.",
+    },
     "tasks.todoist.enabled": {"type": "bool", "default": False, "tab": "commands"},
     "tasks.todoist.api_token": {"type": "str", "default": "", "tab": "commands"},
     "tasks.capture.ava_parse": {

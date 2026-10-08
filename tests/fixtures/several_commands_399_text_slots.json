@@ -1,0 +1,637 @@
+{
+  "alarm_commands.disable_alarm": {
+    "calls": [
+      [
+        "disable alarm",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "disable alarm alpha and volume down"
+  },
+  "alarm_commands.enable_alarm": {
+    "calls": [
+      [
+        "enable alarm",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "enable alarm alpha and volume down"
+  },
+  "app_lifecycle.restart_ariadne": {
+    "calls": [],
+    "detail": {
+      "awaiting_confirmation": true,
+      "prompt": "Restart samsara?"
+    },
+    "state": "queued",
+    "text": "restart ariadne alpha and volume down"
+  },
+  "app_lifecycle.restart_sigil_server": {
+    "calls": [],
+    "detail": {
+      "awaiting_confirmation": true,
+      "prompt": "Restart samsara?"
+    },
+    "state": "queued",
+    "text": "restart sigil server alpha and volume down"
+  },
+  "app_lifecycle.restart_strata": {
+    "calls": [],
+    "detail": {
+      "awaiting_confirmation": true,
+      "prompt": "Restart samsara?"
+    },
+    "state": "queued",
+    "text": "restart strata alpha and volume down"
+  },
+  "app_lifecycle.start_ariadne": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "start ariadne alpha and volume down"
+  },
+  "app_lifecycle.start_sigil_server": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "start sigil server alpha and volume down"
+  },
+  "app_lifecycle.start_strata": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "start strata alpha and volume down"
+  },
+  "app_lifecycle.stop_ariadne": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "stop ariadne alpha and volume down"
+  },
+  "app_lifecycle.stop_sigil_server": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "stop sigil server alpha and volume down"
+  },
+  "app_lifecycle.stop_strata": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "stop strata alpha and volume down"
+  },
+  "ask_agent.ask_gpt": {
+    "calls": [
+      [
+        "ask gpt",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "ask gpt alpha and volume down"
+  },
+  "ask_agent.new_conversation_with": {
+    "calls": [
+      [
+        "new conversation with",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "new conversation with alpha and volume down"
+  },
+  "ask_ollama.hey_ava": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "hey ava alpha and volume down"
+  },
+  "ask_ollama.is_it_safe_to": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "is it safe to alpha and volume down"
+  },
+  "audio_switch.switch_audio_to": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "switch audio to alpha and volume down"
+  },
+  "audio_switch.switch_mic_to": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "switch mic to alpha and volume down"
+  },
+  "comfy.make_an_image_of": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "make an image of alpha and volume down"
+  },
+  "comfy.make_it_again_but": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "make it again but alpha and volume down"
+  },
+  "core_utils.move_preview_to_this_screen": {
+    "calls": [
+      [
+        "move preview to this screen",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "move preview to this screen alpha and volume down"
+  },
+  "core_utils.reset_floating_windows": {
+    "calls": [
+      [
+        "reset floating windows",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "reset floating windows alpha and volume down"
+  },
+  "core_utils.save_alias": {
+    "calls": [
+      [
+        "save alias",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "save alias alpha and volume down"
+  },
+  "dispatch_voice.send_prompt": {
+    "calls": [
+      [
+        "send prompt",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "send prompt alpha and volume down"
+  },
+  "flashforge_printer.start_print": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "start print alpha and volume down"
+  },
+  "gif_search.search_for_a_gif_of": {
+    "calls": [
+      [
+        "search music",
+        "for a gif of alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "search for a gif of alpha and volume down"
+  },
+  "health_tracker.health_summary": {
+    "calls": [
+      [
+        "health summary",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "health summary alpha and volume down"
+  },
+  "health_tracker.pain_level": {
+    "calls": [
+      [
+        "pain level",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "pain level alpha and volume down"
+  },
+  "health_tracker.symptom": {
+    "calls": [
+      [
+        "symptom",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "symptom alpha and volume down"
+  },
+  "health_tracker.took": {
+    "calls": [
+      [
+        "took",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "took alpha and volume down"
+  },
+  "hyperion_lights.light_effect": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "light effect alpha and volume down"
+  },
+  "hyperion_lights.lights": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "lights alpha and volume down"
+  },
+  "interact.interact_close": {
+    "calls": [],
+    "detail": {
+      "detail": "missing required argument 'subject_token'",
+      "reason": "invalid_args"
+    },
+    "state": "rejected",
+    "text": "interact close alpha and volume down"
+  },
+  "interact.interact_focus": {
+    "calls": [],
+    "detail": {
+      "detail": "missing required argument 'subject_token'",
+      "reason": "invalid_args"
+    },
+    "state": "rejected",
+    "text": "interact focus alpha and volume down"
+  },
+  "interact.interact_maximize": {
+    "calls": [],
+    "detail": {
+      "detail": "missing required argument 'subject_token'",
+      "reason": "invalid_args"
+    },
+    "state": "rejected",
+    "text": "interact maximize alpha and volume down"
+  },
+  "interact.interact_minimize": {
+    "calls": [],
+    "detail": {
+      "detail": "missing required argument 'subject_token'",
+      "reason": "invalid_args"
+    },
+    "state": "rejected",
+    "text": "interact minimize alpha and volume down"
+  },
+  "interact.interact_move": {
+    "calls": [],
+    "detail": {
+      "detail": "missing required argument 'subject_token'",
+      "reason": "invalid_args"
+    },
+    "state": "rejected",
+    "text": "interact move alpha and volume down"
+  },
+  "interact.interact_snap": {
+    "calls": [],
+    "detail": {
+      "detail": "missing required argument 'subject_token'",
+      "reason": "invalid_args"
+    },
+    "state": "rejected",
+    "text": "interact snap alpha and volume down"
+  },
+  "message_claude.claude_message_prepare": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "claude message prepare alpha and volume down"
+  },
+  "message_claude.claude_message_submit": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "claude message submit alpha and volume down"
+  },
+  "music.play": {
+    "calls": [
+      [
+        "play",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "play alpha and volume down"
+  },
+  "music.play_album": {
+    "calls": [
+      [
+        "play album",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "play album alpha and volume down"
+  },
+  "music.play_artist": {
+    "calls": [
+      [
+        "play artist",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "play artist alpha and volume down"
+  },
+  "music.play_playlist": {
+    "calls": [
+      [
+        "play playlist",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "play playlist alpha and volume down"
+  },
+  "queue_voice.accept_prompt": {
+    "calls": [
+      [
+        "accept prompt",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "accept prompt alpha and volume down"
+  },
+  "queue_voice.read_report": {
+    "calls": [
+      [
+        "read report",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "read report alpha and volume down"
+  },
+  "queue_voice.what_did": {
+    "calls": [
+      [
+        "what did",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "what did alpha and volume down"
+  },
+  "quick_ask.ask": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "ask alpha and volume down"
+  },
+  "reminders.cancel_reminder": {
+    "calls": [
+      [
+        "cancel",
+        ""
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "cancel reminder alpha and volume down"
+  },
+  "reminders.remind_me_to": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "remind me to alpha and volume down"
+  },
+  "screen_gif.record_my_screen": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "record my screen alpha and volume down"
+  },
+  "screen_gif.record_this_window": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "record this window alpha and volume down"
+  },
+  "show_numbers.mouse_grid": {
+    "calls": [
+      [
+        "mouse grid",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "mouse grid alpha and volume down"
+  },
+  "smart_actions.brain_dump": {
+    "calls": [
+      [
+        "brain dump",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "brain dump alpha and volume down"
+  },
+  "smart_actions.note": {
+    "calls": [
+      [
+        "note",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "note alpha and volume down"
+  },
+  "snippets.insert": {
+    "calls": [
+      [
+        "insert",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "insert alpha and volume down"
+  },
+  "snippets.save_snippet": {
+    "calls": [
+      [
+        "save snippet",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "save snippet alpha and volume down"
+  },
+  "tab_finder.find_tab": {
+    "calls": [
+      [
+        "find tab",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "find tab alpha and volume down"
+  },
+  "tab_finder.find_text": {
+    "calls": [
+      [
+        "find text",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "find text alpha and volume down"
+  },
+  "tab_finder.tab_number": {
+    "calls": [
+      [
+        "tab number",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "tab number alpha and volume down"
+  },
+  "tasks.add_to_list": {
+    "calls": [
+      [
+        "add to list",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "add to list alpha and volume down"
+  },
+  "timer.set_a_timer": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "set a timer alpha and volume down"
+  },
+  "web_shortcuts.go_to": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "go to alpha and volume down"
+  },
+  "web_shortcuts.search_for": {
+    "calls": [
+      [
+        "search music",
+        "for alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "search for alpha and volume down"
+  },
+  "window_cube.refresh_cube": {
+    "calls": [
+      [
+        "refresh cube",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "refresh cube alpha and volume down"
+  },
+  "windows.delete_layout": {
+    "calls": [],
+    "detail": {
+      "awaiting_confirmation": true,
+      "prompt": "Delete layout?"
+    },
+    "state": "queued",
+    "text": "delete layout alpha and volume down"
+  },
+  "windows.restore_layout": {
+    "calls": [
+      [
+        "restore layout",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "restore layout alpha and volume down"
+  },
+  "windows.save_layout": {
+    "calls": [
+      [
+        "save layout",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "save layout alpha and volume down"
+  },
+  "word.font_size": {
+    "calls": [
+      [
+        "font size",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "font size alpha and volume down"
+  },
+  "word.line_spacing": {
+    "calls": [
+      [
+        "line spacing",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "line spacing alpha and volume down"
+  },
+  "word.set_font": {
+    "calls": [
+      [
+        "set font",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "set font alpha and volume down"
+  }
+}
