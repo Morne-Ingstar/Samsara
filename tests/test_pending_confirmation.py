@@ -22,7 +22,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from plugins.commands import ask_ollama  # noqa: E402
-from samsara import commands as commands_mod, execution_policy as ep  # noqa: E402
+from samsara import ai_preferences, commands as commands_mod, execution_policy as ep  # noqa: E402
 from samsara.command_registry import DispatchState  # noqa: E402
 from samsara.commands import CommandExecutor  # noqa: E402
 from samsara.execution_policy import Invocation, NeedsConfirmation, Route  # noqa: E402
@@ -59,9 +59,16 @@ def executor(tmp_path, effects, monkeypatch):
 
 
 @pytest.fixture
-def app(executor):
+def app(executor, monkeypatch):
+    monkeypatch.setattr(ep, 'foreground_window_identity', lambda: {
+        'hwnd': 42, 'pid': 7, 'process': 'notepad.exe', 'title_hash': 'test-title'})
     a = types.SimpleNamespace()
-    a.config = {"ollama": {"enabled": True}}
+    config = {'ollama': {'host': 'http://127.0.0.1:11434', 'model': 'test-model'}}
+    consent = ai_preferences.accept_consent(
+        config, provider=ai_preferences.provider_for(config, 'local'),
+        accepted_at='2026-10-08T12:00:00Z')
+    a.config = ai_preferences.apply_preferences(
+        config, policy='local', ava=True, consent=consent, local_model='test-model')
     a.audio_coordinator = Mock()
     a.play_sound = Mock()
     a.command_executor = executor
@@ -160,9 +167,15 @@ class TestRecord:
         real_exists = ask_ollama.execution_policy.command_exists
         monkeypatch.setattr(ask_ollama.execution_policy, "command_exists",
                             lambda cid, **kw: cid == "yes" or real_exists(cid, **kw))
+        # Queue 341 turns a hidden model command into speech-only recovery.
+        retry = Mock(return_value=ask_ollama.AvaReply('Only you can confirm it.', 'ollama', 1))
+        monkeypatch.setattr(ask_ollama, 'ask_model', retry)
         model = ask_ollama.handle_response(
             app, "CONFIRM acknowledgement.\nACTION yes", original_text="x", generation=7)
-        assert model.state == "refused" and model.reason == "not_offered"
+        assert model.kind == "conversation" and model.state == "spoken"
+        assert model.reason == "action_refused_conversational"
+        retry.assert_called_once()
+        assert retry.call_args.kwargs['allow_search'] is False
         assert started == [] and ep.pending_operation() is op and op.approved is None
 
         ask_ollama.handle_ava_confirm(app)
@@ -212,11 +225,13 @@ class TestYes:
         assert result.detail["answer"] == "refused:stale"
         assert effects == [] and op.cancel_reason == "stale"
 
-    def test_model_emitted_yes_is_rejected(self, app, executor, effects):
+    def test_model_emitted_yes_is_rejected(self, app, executor, effects, monkeypatch):
         op = _propose_delete(app, executor)
         assert ep.answer_pending(app, "yes", source=ep.ANSWER_MODEL) == "refused:model"
         assert op.approve(source=ep.ANSWER_MODEL) is False
         # ...and a model response cannot answer it by naming "yes" either.
+        monkeypatch.setattr(ask_ollama, 'ask_model', lambda *_a, **_kw:
+                            ask_ollama.AvaReply('Only you can confirm it.', 'ollama', 1))
         ask_ollama.handle_response(app, "CONFIRM Yes.\nACTION yes", original_text="x", generation=7)
         assert effects == []
         assert op.approved is None and ep.pending_operation() is op   # still the user's to answer

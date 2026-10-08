@@ -8,6 +8,7 @@ final OS effects: volume.py's audio device and the built-in handler registry.
 dictation is never imported.
 """
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from samsara import ava_command_session, command_scope, commands as commands_mod
+from samsara import ai_preferences, ava_command_session, ava_readiness, command_scope, commands as commands_mod
 from samsara import execution_policy as ep
 from samsara.command_registry import DispatchState
 from samsara.commands import CommandExecutor
@@ -75,9 +76,15 @@ class _Coordinator:
 
 
 def _app(executor, **over):
+    config = {'ollama': {'host': 'http://127.0.0.1:11434', 'model': 'test-model'}}
+    consent = ai_preferences.accept_consent(
+        config, provider=ai_preferences.provider_for(config, 'local'),
+        accepted_at='2026-10-08T12:00:00Z')
+    config = ai_preferences.apply_preferences(
+        config, policy='local', ava=True, consent=consent, local_model='test-model')
     app = SimpleNamespace(
         command_executor=executor,
-        config={'ollama': {'enabled': True}},
+        config=config,
         audio_coordinator=_Coordinator(),
         _ava_cmd_generation=0,
     )
@@ -88,7 +95,10 @@ def _app(executor, **over):
 
 
 @pytest.fixture
-def app(executor):
+def app(executor, monkeypatch):
+    # Queue 250 binds input confirmations to a real window identity.
+    monkeypatch.setattr(ep, 'foreground_window_identity', lambda: {
+        'hwnd': 42, 'pid': 7, 'process': 'notepad.exe', 'title_hash': 'test-title'})
     app = _app(executor)
     yield app
     pending = ep.pending_operation()
@@ -133,6 +143,19 @@ def builtin_effects(monkeypatch):
 def _disable_pack(executor, app, pack):
     app.config['command_packs'] = {pack: False}
     executor.rebuild_matcher()
+
+
+def _disable_pack_after_offer(executor, app, pack, monkeypatch):
+    """Exercise policy refusal when availability changes after the menu check."""
+    real_menu = ask_ollama.offered_menu
+
+    def offer_then_disable(app_, utterance=''):
+        menu = real_menu(app_, utterance)
+        assert 'volume up' in menu
+        _disable_pack(executor, app, pack)
+        return menu
+
+    monkeypatch.setattr(ask_ollama, 'offered_menu', offer_then_disable)
 
 
 # ---------------------------------------------------------------------------
@@ -242,14 +265,14 @@ class TestOneExecutionApi:
 # ---------------------------------------------------------------------------
 
 class TestNoSuccessChipAfterFailure:
-    def _refused_outcome(self, executor, app, gen):
-        _disable_pack(executor, app, "media")
+    def _refused_outcome(self, executor, app, gen, monkeypatch):
+        _disable_pack_after_offer(executor, app, "media", monkeypatch)
         return ask_ollama.handle_response(
             app, "CONFIRM Turning the volume up\nACTION volume up",
             original_text="turn it up", generation=gen)
 
-    def test_a_refused_action_is_spoken_and_chipped_as_a_refusal(self, executor, app, gen, volume):
-        outcome = self._refused_outcome(executor, app, gen)
+    def test_a_refused_action_is_spoken_and_chipped_as_a_refusal(self, executor, app, gen, volume, monkeypatch):
+        outcome = self._refused_outcome(executor, app, gen, monkeypatch)
         assert outcome.state == "refused" and outcome.reason == "pack_disabled"
         assert volume == [], "nothing ran"
         label, kind = ask_ollama._outcome_chip(app, outcome)
@@ -261,7 +284,7 @@ class TestNoSuccessChipAfterFailure:
             self, executor, app, gen, volume, monkeypatch):
         """End of the F1 path: handle_ask_ava used to stamp "Ava ✓" whatever
         handle_response did -- including a command that never ran."""
-        _disable_pack(executor, app, "media")
+        _disable_pack_after_offer(executor, app, "media", monkeypatch)
         monkeypatch.setattr(ask_ollama, "ask_ollama",
                             lambda prompt, app_, model=None, system=None:
                             "CONFIRM Turning the volume up\nACTION volume up")
@@ -294,26 +317,32 @@ class TestNoSuccessChipAfterFailure:
         label, kind = ask_ollama._outcome_chip(app, outcome)
         assert kind == "warning" and "yes" in label
 
-    def test_the_command_session_counts_a_refused_proposal_as_a_miss(
+    def test_the_resolver_rejects_a_proposal_outside_the_live_menu(
             self, executor, app, gen, volume, monkeypatch):
         _disable_pack(executor, app, "media")
         monkeypatch.setattr(ask_ollama, "ask_ollama",
                             lambda prompt, app_, model=None, system=None:
                             "CONFIRM Turning the volume up\nACTION volume up")
         monkeypatch.setattr(ask_ollama, "get_system_prompt", lambda a: "{COMMAND_LIST}")
-        hit = ava_command_session._stage_c_llm_fallback(
-            app, "turn the volume up", ["volume up"], gen, ava_command_session._DEFAULTS)
-        assert hit is False, "a refused proposal is a miss, not a hit"
+        monkeypatch.setattr(ava_readiness, "readiness_for", lambda a: SimpleNamespace(ready=True))
+        proposal = ava_command_session.resolve(
+            app, "turn the volume up", "contract-refused", time.monotonic() + 30)
+        assert proposal is None, "an unavailable command is not a proposal"
         assert volume == []
 
-    def test_the_command_session_still_counts_a_real_hit(self, executor, app, gen, volume, monkeypatch):
+    def test_the_resolver_proposes_and_the_executor_runs_a_real_hit(self, executor, app, gen, volume, monkeypatch):
         monkeypatch.setattr(ask_ollama, "ask_ollama",
                             lambda prompt, app_, model=None, system=None:
                             "CONFIRM Turning the volume up\nACTION volume up")
         monkeypatch.setattr(ask_ollama, "get_system_prompt", lambda a: "{COMMAND_LIST}")
-        hit = ava_command_session._stage_c_llm_fallback(
-            app, "turn the volume up", ["volume up"], gen, ava_command_session._DEFAULTS)
-        assert hit is True and volume == [0.7]
+        monkeypatch.setattr(ava_readiness, "readiness_for", lambda a: SimpleNamespace(ready=True))
+        proposal = ava_command_session.resolve(
+            app, "turn the volume up", "contract-hit", time.monotonic() + 30)
+        assert proposal is not None and proposal.command_id == "volume up"
+        assert volume == [], "resolution must not execute the proposal"
+        result = executor.execute_canonical(
+            proposal.command_id, app, args=proposal.args, route=Route.MODEL, generation=gen)
+        assert result.state is DispatchState.COMPLETED and volume == [0.7]
 
 
 # ---------------------------------------------------------------------------
