@@ -232,6 +232,8 @@ datas.append((str(app_dir / 'commands.json'), '.'))
 # is for commands.json.  The execution-policy risk fallback needs this exact
 # checked-in catalog; release smoke verifies the staged copy is parseable.
 datas.append((str(app_dir / 'commands_catalog.json'), '.'))
+# Home's "What's new" note reads this at the data root (samsara/ui/home_qt.py CHANGELOG_PATH).
+datas.append((str(app_dir / 'CHANGELOG.md'), '.'))
 # Plugins are runtime-loaded Python/data files, so preserve their relative
 # paths while applying the same tracked-file release manifest.
 datas += tracked_tree_datas(app_dir, 'plugins', 'plugins')
