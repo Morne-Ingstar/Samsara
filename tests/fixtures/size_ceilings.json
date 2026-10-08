@@ -1,0 +1,19 @@
+{
+  "ceilings": {
+    "dictation.py": 14006,
+    "plugins/commands/ask_ollama.py": 3501,
+    "plugins/commands/show_numbers.py": 2314,
+    "samsara/audio_ducking.py": 1545,
+    "samsara/audio_engine/wake_consumer.py": 1688,
+    "samsara/execution_policy.py": 2026,
+    "samsara/session_modes.py": 4358,
+    "samsara/streaming.py": 3290,
+    "samsara/ui/first_run_wizard_qt.py": 1557,
+    "samsara/ui/history_view.py": 1781,
+    "samsara/ui/home_qt.py": 2442,
+    "samsara/ui/tray_qt.py": 1514,
+    "samsara/updater.py": 1648
+  },
+  "slack": 25,
+  "threshold": 1500
+}
