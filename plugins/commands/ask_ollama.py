@@ -938,6 +938,9 @@ def speak(app, text, category="ava_response"):
         if getattr(handle, "utterance_id", None) == "noop-cmd-mode":
             _record_speech(False, "suppressed by command_mode.tts_char_limit", chars)
             return False
+        if str(getattr(handle, "utterance_id", "")).startswith("noop-"):
+            _record_speech(False, "speech skipped by current feedback policy/runtime", chars)
+            return False
         _record_speech(True, "tts", chars)
         if getattr(_turn_local, "spoken_text", None) is not None:
             _turn_local.spoken_text.append(text)

@@ -386,41 +386,9 @@ class SettingsServices:
     # ------------------------------------------------------------------
 
     def _replace_tts_runtime(self, requested: dict) -> None:
-        """Revoke the old engine before exposing a changed TTS provider."""
-        old_coordinator = getattr(self.app, 'audio_coordinator', None)
-        old_engine = getattr(self.app, 'tts_engine', None)
-        if old_coordinator is not None:
-            old_coordinator.cancel_speech()
-        elif old_engine is not None:
-            old_engine.cancel_all()
-
-        self.app.tts_engine = None
-        self.app.audio_coordinator = None
-        if old_engine is not None:
-            shutdown = getattr(old_engine, 'shutdown', None)
-            if callable(shutdown):
-                shutdown()
-
-        if not requested.get('enabled', False):
-            return
-        try:
-            from samsara.tts import AudioCoordinator, EdgeTTSEngine, WinRTEngine
-            resolver = getattr(self.app, '_resolve_playback_output', None)
-            provider = str(requested.get('engine', 'winrt')).lower()
-            if provider == 'edge':
-                engine = EdgeTTSEngine(output_device_resolver=resolver)
-            elif provider == 'winrt':
-                engine = WinRTEngine(output_device_resolver=resolver)
-            else:
-                raise ValueError(f'Unsupported TTS provider: {provider}')
-            coordinator = AudioCoordinator(
-                self.app, engine,
-                config=self.app.config.get('audio_coordinator', {}) or {},
-            )
-            self.app.tts_engine = engine
-            self.app.audio_coordinator = coordinator
-        except Exception:
-            logger.exception('[TTS] Could not start selected engine; speech remains off')
+        """Delegate while Apply holds the shared runtime/config lock."""
+        from samsara.tts.runtime import rebuild_tts_runtime
+        rebuild_tts_runtime(self.app, requested)
 
     def _apply_and_close(self):
         """Collect updates from each tab's registered save fn, in
@@ -467,34 +435,33 @@ class SettingsServices:
             (self.app.config.get('command_packs', {}) or {}).get('ai', False)
         )
 
-        old_tts = self.app.config.get('tts', {}) or {}
-        requested_tts = updates.get('tts', old_tts) or {}
-        replace_tts = ('tts' in updates and (
-            bool(old_tts.get('enabled')) != bool(requested_tts.get('enabled'))
-            or old_tts.get('engine') != requested_tts.get('engine')
-            or (not requested_tts.get('enabled') and getattr(self.app, 'tts_engine', None) is not None)
-            or (requested_tts.get('enabled') and getattr(self.app, 'tts_engine', None) is None)
-        ))
-        old_coordinator = getattr(self.app, 'audio_coordinator', None)
-        dispatch_lock = (getattr(old_coordinator, '_dispatch_lock', None)
-                         if replace_tts else None)
-        with dispatch_lock or nullcontext():
-            with self.app._config_lock:
-                self.app.config.update(updates)
-                if replace_tts:
-                    self._replace_tts_runtime(requested_tts)
-                self.app.save_config()
-                if 'diagnostics' in updates:
-                    # Recording paths use this cached flag; Apply takes effect on
-                    # the next utterance without restarting the running app.
-                    self.app._stage_timing_enabled = bool(
-                        (self.app.config.get('diagnostics', {}) or {}).get('stage_timing', False)
-                    )
+        from samsara.tts.runtime import tts_runtime_lock
+        with tts_runtime_lock(self.app):
+            old_tts = self.app.config.get('tts', {}) or {}
+            requested_tts = updates.get('tts', old_tts) or {}
+            replace_tts = ('tts' in updates and (
+                bool(old_tts.get('enabled')) != bool(requested_tts.get('enabled'))
+                or old_tts.get('engine') != requested_tts.get('engine')
+                or (not requested_tts.get('enabled') and getattr(self.app, 'tts_engine', None) is not None)
+                or (requested_tts.get('enabled') and getattr(self.app, 'tts_engine', None) is None)
+                or getattr(self.app, 'audio_coordinator', None) is None
+            ))
+            self.app.config.update(updates)
+            if replace_tts:
+                self._replace_tts_runtime(requested_tts)
+            self.app.save_config()
+            if 'diagnostics' in updates:
+                # Recording paths use this cached flag; Apply takes effect on
+                # the next utterance without restarting the running app.
+                self.app._stage_timing_enabled = bool(
+                    (self.app.config.get('diagnostics', {}) or {}).get('stage_timing', False)
+                )
 
-        if "feedback" in updates:
+        if "tts" in updates:
+            from samsara.config_schema import spoken_notices_for_level
             setter = getattr(getattr(self.app, "_session_mode_manager", None), "set_spoken_notices", None)
             if callable(setter):
-                setter((updates["feedback"] or {}).get("spoken_notices"))
+                setter(spoken_notices_for_level((updates["tts"] or {}).get("feedback_level")))
 
         now_ai_pack_enabled = bool(
             (self.app.config.get('command_packs', {}) or {}).get('ai', False)

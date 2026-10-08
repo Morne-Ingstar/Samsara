@@ -26,6 +26,17 @@ from samsara.ui import theme
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
+from samsara.config_schema import (
+    FEEDBACK_LEVEL_CHOICES, FEEDBACK_LEVEL_FRESH_DEFAULT, apply_feedback_level,
+)
+
+
+class _FeedbackLevelCombo(QComboBox):
+    """Refresh destination help after assembly has reparented the control."""
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_help()
 
 
 class TTSPage:
@@ -52,10 +63,33 @@ class TTSPage:
         layout.addWidget(self._section_title("Text-to-Speech"))
         layout.addSpacing(4)
 
-        tts_enabled = QCheckBox("Enable text-to-speech")
-        tts_enabled.setChecked(bool(cfg.get('enabled', False)))
+        # Queue 359 owns assembly.py, whose conditions still read this mirror.
+        # Keep it out of every layout; the combo is the only visible control.
+        tts_enabled = QCheckBox()
         self._widgets['tts_enabled'] = tts_enabled
-        layout.addWidget(tts_enabled)
+        feedback_combo = _FeedbackLevelCombo()
+        for level, (label, help_text) in FEEDBACK_LEVEL_CHOICES.items():
+            feedback_combo.addItem(label, level)
+            feedback_combo.setItemData(feedback_combo.count() - 1, help_text, Qt.ItemDataRole.ToolTipRole)
+        level = cfg.get('feedback_level', FEEDBACK_LEVEL_FRESH_DEFAULT)
+        index = feedback_combo.findData(level)
+        feedback_combo.setCurrentIndex(index if index >= 0 else feedback_combo.findData(FEEDBACK_LEVEL_FRESH_DEFAULT))
+        self._widgets['tts_feedback_level'] = feedback_combo
+
+        def sync_feedback():
+            selected = feedback_combo.currentData()
+            tts_enabled.setChecked(selected != 'silent')
+            help_text = FEEDBACK_LEVEL_CHOICES[selected][1]
+            feedback_combo.setAccessibleDescription(help_text)
+            row = getattr(self, '_rows_by_widget', {}).get('tts_feedback_level')
+            if row is not None:
+                row.detail.setText(help_text)
+                row.description = help_text
+
+        feedback_combo.refresh_help = sync_feedback
+        feedback_combo.currentIndexChanged.connect(sync_feedback)
+        sync_feedback()
+        layout.addWidget(feedback_combo)
 
         restart_note = QLabel("Enable, disable, and engine changes take effect on Apply.")
         restart_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
@@ -68,7 +102,7 @@ class TTSPage:
 
         engine_combo = QComboBox()
         engine_combo.addItems(['winrt', 'edge'])
-        engine_combo.setCurrentText(cfg.get('engine', 'edge'))
+        engine_combo.setCurrentText(cfg.get('engine', 'winrt'))
         self._widgets['tts_engine'] = engine_combo
         layout.addLayout(self._setting_row(
             "Engine",
@@ -222,9 +256,9 @@ class TTSPage:
 
         def _save(_acc):
             updates = {}
-            if 'tts_enabled' in self._widgets:
+            if 'tts_feedback_level' in self._widgets:
                 tts_cfg = dict(self.app.config.get('tts', {}) or {})
-                tts_cfg['enabled'] = self._widgets['tts_enabled'].isChecked()
+                apply_feedback_level({'tts': tts_cfg}, self._widgets['tts_feedback_level'].currentData())
                 tts_cfg['engine']  = self._widgets['tts_engine'].currentText()
                 voice_label = self._widgets['tts_voice_combo'].currentText()
                 voice_id    = self._widgets.get('tts_voice_label_to_id', {}).get(voice_label)
@@ -247,7 +281,7 @@ class TTSPage:
     def _test_tts(self) -> None:
         coordinator = getattr(self.app, 'audio_coordinator', None)
         status = self._widgets.get('tts_test_status')
-        if coordinator is None:
+        if coordinator is None or coordinator.engine is None:
             if status:
                 status.setText("TTS is off. Enable it and Apply settings.")
             return
@@ -260,7 +294,7 @@ class TTSPage:
         _PHRASE = "Note saved. Your reminder will be in the brain dump."
         try:
             coordinator.speak(
-                _PHRASE, voice_id=voice_id, speed=speed, volume=volume, category="general"
+                _PHRASE, voice_id=voice_id, speed=speed, volume=volume, category="readback"
             )
             if status:
                 status.setText(f'Speaking: "{_PHRASE}"')

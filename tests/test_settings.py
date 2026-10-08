@@ -611,7 +611,7 @@ class TestApplyAndCloseSnapshot:
         # left to the chip. The page writes the whole `feedback` section so
         # any future sibling key survives a save; with an empty starting
         # config there is nothing to preserve.
-        expected['feedback'] = {'spoken_notices': 'questions'}
+        expected['tts'].update({'feedback_level': 'brief', 'enabled': True})  # 372: one speech-level control replaces notices.
         # Queue 129 delta: the General page gained the light/dark/system
         # theme, so Apply writes its default. The page writes the whole `ui`
         # section so a future sibling key survives a save; with an empty
@@ -652,7 +652,7 @@ class TestApplyAndCloseSnapshot:
         expected['ava_command_session']['keep_warm'] = False
         expected['command_packs'].pop('mouse', None)
         expected['command_packs']['word'] = True
-        expected['tts']['engine'] = 'edge'
+        expected['tts']['engine'] = 'winrt'  # 372: local voice is the default.
         expected['ducking'].pop('enabled', None)
         expected['launch_at_login'] = False
         expected['start_hidden'] = False

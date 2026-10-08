@@ -176,32 +176,6 @@ class SoundsPage:
         theme_instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(theme_instant_note)
 
-        # Queue 103: which of the session's own spoken notices are spoken.
-        # Nothing but Ava talks in this app, so a voice after a mouse click
-        # reads as a malfunction -- the incident was clicking "Clear draft"
-        # and being told out loud to say "bring back my draft", which the
-        # chip was already showing.
-        from samsara.config_defaults import cfg_get   # noqa: PLC0415
-        from samsara import session_modes             # noqa: PLC0415
-
-        notices_combo = QComboBox()
-        notices_combo.addItem("Only when it needs an answer", "questions")
-        notices_combo.addItem("Everything it does", "everything")
-        current_notices = cfg_get(cfg, session_modes.SPOKEN_NOTICES_KEY)
-        index = notices_combo.findData(current_notices)
-        notices_combo.setCurrentIndex(index if index >= 0 else 0)
-        self._widgets['spoken_notices_combo'] = notices_combo
-
-        layout.addLayout(self._setting_row(
-            "Spoken notices",
-            "What Samsara says out loud about your draft.  "
-            "\"Only when it needs an answer\" leaves what it has already done "
-            "to the chip.  Choose \"Everything it does\" if you cannot see the "
-            "chip.",
-            notices_combo,
-        ))
-        layout.addSpacing(20)
-
         # ---- Section: Earcon Preview -------------------------------------------
         layout.addWidget(self._section_title("Earcon Preview"))
         desc = QLabel("Preview the audio cues for the active theme.")
@@ -315,18 +289,6 @@ class SoundsPage:
                 updates['audio_feedback'] = self._widgets['sound_feedback'].isChecked()
                 updates['sound_volume'] = self._widgets['sound_volume_slider'].value() / 100.0
                 updates['sound_theme'] = self._widgets['sound_theme_combo'].currentText()
-            if 'spoken_notices_combo' in self._widgets:
-                # NESTED, not the dotted key. settings_qt does a FLAT
-                # config.update(updates), while cfg_get() walks the dotted
-                # path -- so writing "feedback.spoken_notices" as a literal
-                # key would store something cfg_get can never find and the
-                # setting would silently do nothing. Copy the section and
-                # replace it, the same way the Advanced tab writes
-                # smart_corrections.
-                feedback_out = dict(self.app.config.get('feedback', {}) or {})
-                feedback_out['spoken_notices'] = (
-                    self._widgets['spoken_notices_combo'].currentData())
-                updates['feedback'] = feedback_out
             return updates
         self._save_fns.append(_save)
 

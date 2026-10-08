@@ -127,6 +127,8 @@ def check_stage(app, key: str) -> tuple:
         coordinator = getattr(app, "audio_coordinator", None)
         if coordinator is None:
             return home_signals.UNKNOWN, "The audio coordinator is not running."
+        if coordinator.engine is None:
+            return home_signals.UNKNOWN, "Speech is off or unavailable."
         ava = home_signals.capability_states(app)[home_signals.AVA]
         if ava.status == home_signals.UNAVAILABLE:
             return home_signals.UNKNOWN, (

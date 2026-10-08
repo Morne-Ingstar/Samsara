@@ -93,6 +93,23 @@ AVA_SPEECH_CATEGORIES = frozenset({
 #: Returned when Ava's audio is muted: the caption was shown, nothing spoke.
 MUTED_AVA_ID = 'noop-ava-muted'
 SUPPRESSED_TTS_ID = 'noop-tts-disabled'
+SILENT_FEEDBACK_ID = 'noop-silent'
+BRIEF_FEEDBACK_ID = 'noop-brief-earcon'
+VOICED_FEEDBACK_CATEGORIES = AVA_SPEECH_CATEGORIES | {'confirmation', 'readback'}
+
+_FEEDBACK_DECISIONS = {
+    'full': {'voiced': 'speak', 'error': 'speak', 'other': 'speak'},
+    'brief': {'voiced': 'speak', 'error': 'error', 'other': 'action_complete'},
+    'silent': {'voiced': 'caption', 'error': 'skip', 'other': 'skip'},
+}
+
+
+def _feedback_decision(level, category):
+    if level not in ('silent', 'brief', 'full'):
+        return 'speak'  # Unmigrated/invalid config retains the legacy path.
+    kind = ('voiced' if category in VOICED_FEEDBACK_CATEGORIES
+            else 'error' if category == 'error' else 'other')
+    return _FEEDBACK_DECISIONS[level][kind]
 
 
 @dataclass(frozen=True)
@@ -249,6 +266,26 @@ class AudioCoordinator:
                 )
                 return SpeechHandle(utterance_id=SUPPRESSED_CMD_MODE_ID)
 
+        level = (self.app.config.get('tts', {}) or {}).get('feedback_level')
+        decision = _feedback_decision(level, category)
+        if decision != 'speak':
+            if decision == 'caption':
+                self._emit_caption(text, hold=False)
+            elif decision in ('error', 'action_complete'):
+                try:
+                    self.app.play_sound(decision)
+                except Exception:
+                    logger.debug('AudioCoordinator: feedback sound failed', exc_info=True)
+            logger.info(
+                'AudioCoordinator: TTS suppressed (level=%s, category=%s, decision=%s)',
+                level, category, decision,
+            )
+            handle = SpeechHandle(utterance_id=(
+                SILENT_FEEDBACK_ID if level == 'silent' else BRIEF_FEEDBACK_ID))
+            # As with muted Ava, callers handle noop returns; no on_done call.
+            self._last_spoken_handle = handle
+            return handle
+
         # Queue 176: Ava's captions and Ava's audio mute. This is the one
         # place every Ava utterance passes through with its text intact, so
         # it is where the visual channel is fed and where the audio channel
@@ -380,7 +417,8 @@ class AudioCoordinator:
         restore after the earcon's known duration.
         """
         # Only duck during SPEAKING when we have an active engine stream.
-        if self.engine.get_engine_state() != 'playing':
+        engine = self.engine
+        if engine is None or engine.get_engine_state() != 'playing':
             return
 
         with self._state_lock:
@@ -396,7 +434,7 @@ class AudioCoordinator:
 
             if was_zero:
                 # First earcon: initiate the duck.
-                self.engine.set_volume(handle, self._duck_factor, fade_ms=self._duck_fade_ms)
+                engine.set_volume(handle, self._duck_factor, fade_ms=self._duck_fade_ms)
 
         # Schedule restore outside the lock to avoid holding it during Timer
         # construction (the Timer callback itself acquires the lock).
@@ -462,7 +500,9 @@ class AudioCoordinator:
         with self._state_lock:
             self._speech_generation += 1
             self._speech_pending = 0
-        self.engine.cancel_all()
+        engine = self.engine
+        if engine is not None:
+            engine.cancel_all()
         self._stop_interrupt_poll()
         self._stop_thinking_pulse()
         self._cancel_duck_timers()
@@ -533,12 +573,17 @@ class AudioCoordinator:
 
     def _schedule_interrupt_grace(self) -> None:
         """Wait until engine is in 'playing' state, then start grace timer."""
+        if self.engine is None:
+            return
         def _watch_for_playing():
             deadline = time.monotonic() + 10.0  # safety cap
             while time.monotonic() < deadline:
                 if not self._interrupt_poll_active:
                     return
-                if self.engine.get_engine_state() == 'playing':
+                engine = self.engine
+                if engine is None:
+                    return
+                if engine.get_engine_state() == 'playing':
                     break
                 time.sleep(0.02)
             # Engine is now playing (or timed out). Start the grace timer.
@@ -582,11 +627,14 @@ class AudioCoordinator:
 
     def _on_user_speech_interrupt(self) -> None:
         """Cancel TTS and transition to LISTENING when user speaks."""
+        engine = self.engine
+        if engine is None:
+            return
         logger.info("AudioCoordinator: user speech detected — interrupting TTS")
         with self._state_lock:
             self._speech_generation += 1
             self._speech_pending = 0
-        self.engine.cancel_all()
+        engine.cancel_all()
         self.transition_to(LISTENING, context={'reason': 'user_speech_interrupt'})
 
     # ------------------------------------------------------------------
@@ -595,13 +643,16 @@ class AudioCoordinator:
 
     def _on_duck_restore(self) -> None:
         """Called by threading.Timer when an earcon's duration has elapsed."""
+        engine = self.engine
+        if engine is None:
+            return
         with self._state_lock:
             self._duck_depth = max(0, self._duck_depth - 1)
             restore = self._duck_depth == 0
             handle = self._active_handle if self._state == SPEAKING else None
 
         if restore and handle is not None:
-            self.engine.set_volume(handle, 1.0, fade_ms=self._duck_fade_ms)
+            engine.set_volume(handle, 1.0, fade_ms=self._duck_fade_ms)
 
     def _cancel_duck_timers(self) -> None:
         with self._state_lock:

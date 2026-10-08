@@ -30,6 +30,38 @@ Cross-field dependencies use one of two forms:
 
 import sys
 
+FEEDBACK_LEVELS = ("silent", "brief", "full")
+FEEDBACK_LEVEL_FRESH_DEFAULT = "brief"
+# Placeholder copy pending owner review; insertion order is the UI order.
+FEEDBACK_LEVEL_CHOICES = {
+    "silent": ("Silent", "Nothing is spoken. Questions and replies show on screen."),
+    "brief": ("Brief", "A short sound for most outcomes. Questions and read-backs are spoken."),
+    "full": ("Full", "Everything is spoken."),
+}
+
+
+def apply_feedback_level(config: dict, level: str) -> None:
+    """Write the speech level and its compatibility switch together."""
+    if level not in FEEDBACK_LEVELS:
+        raise ValueError(f"Unknown voice feedback level: {level!r}")
+    tts = config.get("tts")
+    if not isinstance(tts, dict):
+        tts = {}
+        config["tts"] = tts
+    tts["feedback_level"] = level
+    tts["enabled"] = level != "silent"
+
+
+# Queue 103 history: mouse-triggered draft acknowledgements used to speak
+# redundantly over their chip. "questions" limited speech to prompts awaiting
+# an answer; "everything" was the accessibility escape hatch for users who
+# cannot see the chip, and must remain available. Full preserves that choice.
+# There was no "off": spelling questions have no outcome chip. Queue 372's
+# Silent now captions questions explicitly, so they remain answerable.
+def spoken_notices_for_level(level) -> str:
+    return "everything" if level == "full" else "questions"
+
+
 SETTINGS_SCHEMA = {
     "comfy.base_url": {
         "type": "str", "default": "http://127.0.0.1:8001", "tab": "general",
@@ -556,35 +588,16 @@ SETTINGS_SCHEMA = {
         "default": "cute",
         "tab": "sounds",
     },
-    # Queue 103. Which of the session's own spoken notices are actually
-    # spoken. Nothing in this app talks except Ava, so a voice arriving after
-    # a MOUSE CLICK reads as a malfunction -- the incident was clicking
-    # "Clear draft" and being told out loud to say "bring back my draft",
-    # a sentence the chip was already showing.
-    #
-    #   "questions"   -- the app speaks only when it is WAITING on an answer
-    #                    (the clear-draft yes/no, the spelling prompt). What
-    #                    it has already done is left to the chip. DEFAULT.
-    #   "everything"  -- today's behaviour, kept for a user who cannot see
-    #                    the chip at all. This is the accessibility escape
-    #                    hatch and must never be removed.
-    #
-    # There is deliberately no "off". See the queue 103 report: neither
-    # QUESTION-class prompt carries an earcon, and the spelling prompt has no
-    # outcome chip at all, so "off" would leave the app waiting on an answer
-    # it had given no sign of wanting. Adding earcons is out of scope here,
-    # so the value is not offered rather than shipped as a trap.
-    "feedback.spoken_notices": {
-        "type": "enum",
-        "options": ["questions", "everything"],
-        "default": "questions",
-        "tab": "sounds",
-    },
+    # Queue 372: session notices derive from tts.feedback_level.
 
     # -------------------------------------------------------------------------
     # TTS tab
     # -------------------------------------------------------------------------
-    "tts.enabled":  {"type": "bool", "default": False, "tab": "tts"},
+    "tts.enabled":  {"type": "bool", "default": True, "tab": "tts"},
+    "tts.feedback_level": {
+        "type": "enum", "options": list(FEEDBACK_LEVELS),
+        "default": FEEDBACK_LEVEL_FRESH_DEFAULT, "tab": "tts",
+    },
     "tts.self_hear_grace_ms": {
         "type": "int", "min": 0, "max": 2000, "step": 50, "default": 400,
         "tab": "tts", "settings_ui": False,
@@ -593,7 +606,7 @@ SETTINGS_SCHEMA = {
     "tts.engine": {
         "type": "enum",
         "options": ["winrt", "edge"],
-        "default": "edge",
+        "default": "winrt",
         "tab": "tts",
     },
     "tts.voice_id": {"type": "str", "default": "en-US-AvaNeural", "tab": "tts"},
@@ -1187,12 +1200,23 @@ if not getattr(sys, "frozen", False):
 
 # Prompt 284: pure, idempotent removal/mapping before defaults merge.
 _REMOVED_SETTING_KEYS = {
+    "feedback": {"spoken_notices"},
     "tts": {"pitch", "use_for_agent_responses", "use_for_confirmations", "use_for_warnings", "use_for_status_updates", "use_for_dictation_readback", "use_for_errors"},
     "audio_coordinator": {"enabled"},
     "smart_corrections": {"backend", "allow_cloud_fallback"},
 }
 def migrate_removed_settings(config: dict) -> bool:
-    changed = False
+    tts = config.get("tts")
+    tts = tts if isinstance(tts, dict) else {}
+    level = tts.get("feedback_level")
+    if level not in FEEDBACK_LEVELS:
+        feedback = config.get("feedback")
+        feedback = feedback if isinstance(feedback, dict) else {}
+        level = ("full" if feedback.get("spoken_notices") == "everything" else "brief"
+                 ) if tts.get("enabled") is True else "silent"
+    changed = (tts.get("feedback_level") != level
+               or tts.get("enabled") is not (level != "silent"))
+    apply_feedback_level(config, level)
     for section, keys in _REMOVED_SETTING_KEYS.items():
         value = config.get(section)
         if isinstance(value, dict):

@@ -2136,7 +2136,7 @@ class DictationApp:
         self._camera_service = None
         self._gesture_loop = None
 
-        # TTS engine + AudioCoordinator (optional; off by default)
+        # The policy/caption router always exists after this worker finishes.
         # engine selection: config tts.engine = "winrt" (default) or "edge"
         # Constructed on a worker once the tray/main window are scheduled
         # (boot fix 3: `import edge_tts` + engine ctor cost 1.6 s cold on this
@@ -2145,13 +2145,7 @@ class DictationApp:
         self.tts_engine = None
         self.audio_coordinator = None
         self.tts_ready = threading.Event()
-        if self.config.get('tts', {}).get('enabled', False):
-            thread_registry.spawn("dictation.tts_init", self._tts_init_worker, daemon=True)
-        else:
-            self.tts_ready.set()
-            # Ava Front Door spec v2 "Migration" notice (toast only: no TTS).
-            # With TTS enabled the worker announces once the engine exists.
-            self._maybe_announce_ava_command_session_migration()
+        thread_registry.spawn("dictation.tts_init", self._tts_init_worker, daemon=True)
         _boot("TTS engine init (deferred)")
         _bdiag("TTS engine init (deferred)")
 
@@ -2366,36 +2360,17 @@ class DictationApp:
         self.create_tray_icon()
 
     def _tts_init_worker(self) -> None:
-        """Build the TTS engine + AudioCoordinator off the boot thread, after
-        create_tray_icon() has scheduled the tray and main window. Publishes
-        the coordinator last so a speaker never sees a coordinator without
-        its engine, then runs the startup announcements that need a voice."""
+        """Install the speech/caption runtime off the boot thread, then announce."""
         shell_ready = getattr(self, "_startup_shell_ready", None)
         if shell_ready is not None:
             shell_ready.wait()
         _t = time.perf_counter()
         try:
-            from samsara.tts import WinRTEngine, EdgeTTSEngine, AudioCoordinator
-            tts_engine_name = self.config.get('tts', {}).get('engine', 'winrt').lower()
-            if tts_engine_name == 'edge':
-                engine = EdgeTTSEngine(output_device_resolver=self._resolve_playback_output)
-                logger.info("[TTS] Initialized EdgeTTS engine (Azure Neural voices)")
-            else:
-                engine = WinRTEngine(output_device_resolver=self._resolve_playback_output)
-                logger.info("[TTS] Initialized WinRT engine")
-            coordinator = AudioCoordinator(
-                self,
-                engine=engine,
-                config=self.config.get('audio_coordinator', {}),
-            )
-            self.tts_engine = engine
-            self.audio_coordinator = coordinator
+            from samsara.tts.runtime import rebuild_tts_runtime, tts_runtime_lock
+            with tts_runtime_lock(self):
+                rebuild_tts_runtime(self, self.config.get('tts', {}) or {})
             logger.info(f"[TTS] AudioCoordinator ready (tts_ready in "
                         f"{(time.perf_counter() - _t) * 1000:.0f}ms, off the boot thread)")
-        except Exception as e:
-            logger.exception(f"[TTS] Failed to initialize: {e}")
-            self.tts_engine = None
-            self.audio_coordinator = None
         finally:
             self.tts_ready.set()
         # Ava Front Door spec v2 "Migration": one-time first-run-after-update
@@ -3038,7 +3013,8 @@ class DictationApp:
             },
             # TTS subsystem (WinRTEngine + AudioCoordinator)
             "tts": {
-                "enabled": False,   # opt-in; toggle in Settings → Text-to-Speech
+                "enabled": True,
+                "feedback_level": "brief",
                 "voice_id": None,   # None = OS default voice
                 "speed": 1.0,
                 "pitch": 1.0,
@@ -5700,9 +5676,9 @@ class DictationApp:
             live_surface_enabled=bool((self.config.get('ui', {}) or {}).get(
                 'live_surface', {}).get('enabled', False)),
         )
-        from samsara.config_defaults import cfg_get
+        from samsara.config_schema import spoken_notices_for_level
         self._session_mode_manager.set_spoken_notices(
-            cfg_get(self.config, "feedback.spoken_notices"))
+            spoken_notices_for_level((self.config.get("tts", {}) or {}).get("feedback_level")))
         return self._session_mode_manager
 
     def register_active_capture_interceptor(self, callback):
@@ -10612,6 +10588,22 @@ class DictationApp:
     def _verbatim_forced(self) -> bool:
         """The spoken toggle. Cleared when a hands-free session ends."""
         return bool(getattr(self, '_verbatim_force', False))
+
+    def set_feedback_level(self, level: str) -> str:
+        """Persist the shared speech policy and update session notices live."""
+        from samsara.config_schema import apply_feedback_level, spoken_notices_for_level
+        from samsara.tts.runtime import rebuild_tts_runtime, tts_runtime_lock
+        with tts_runtime_lock(self):
+            was_enabled = bool((self.config.get('tts', {}) or {}).get('enabled', False))
+            apply_feedback_level(self.config, level)
+            if was_enabled != self.config['tts']['enabled']:
+                rebuild_tts_runtime(self, self.config['tts'])
+            manager = getattr(self, '_session_mode_manager', None)
+            if manager is not None:
+                manager.set_spoken_notices(spoken_notices_for_level(level))
+            self.save_config()
+        logger.info('[TTS] feedback level=%s', level)
+        return level
 
     def set_verbatim_forced(self, on: bool) -> None:
         self._verbatim_force = bool(on)

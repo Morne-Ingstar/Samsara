@@ -61,7 +61,7 @@ def test_disable_revokes_engine_and_stale_coordinator():
     _Settings(app, {'enabled': False, 'engine': 'edge'})._apply_and_close()
 
     assert old_engine.cancelled >= 1 and old_engine.stopped
-    assert app.tts_engine is None and app.audio_coordinator is None
+    assert app.tts_engine is None and app.audio_coordinator is not None and app.audio_coordinator.engine is None  # 372: router survives disabled speech.
     assert old_coordinator.speak('later').utterance_id == SUPPRESSED_TTS_ID
     assert old_engine.calls == []
 

@@ -114,12 +114,11 @@ KEYS_BEFORE_SPLIT = {
         'wake_word_config.phrase', 'wake_word_config.quick_silence_timeout',
         'wake_word_config.wake_abort_phrase', 'wake_word_enabled', 'wake_word_hotkey',
     ],
-    # Queue 103 added feedback.spoken_notices: the Sounds page now also
-    # writes which of the session's own notices are spoken out loud.
-    "_build_sounds_tab": ['audio_feedback', 'feedback.spoken_notices', 'sound_theme',
+    # 372: speech-level persistence moved from Sounds to TTS.
+    "_build_sounds_tab": ['audio_feedback', 'sound_theme',
                           'sound_volume'],
     "_build_tts_tab": [
-        'audio_coordinator.duck_factor', 'tts.enabled', 'tts.engine',
+        'audio_coordinator.duck_factor', 'tts.enabled', 'tts.engine', 'tts.feedback_level',  # 372: replacement control.
         'tts.rate', 'tts.speed',
         'tts.volume',
     ],

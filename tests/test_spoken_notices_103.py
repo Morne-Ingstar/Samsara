@@ -131,14 +131,14 @@ class TestThePolicy:
 
 class TestTheConfigKey:
     def test_it_is_registered_in_the_sounds_tab_with_the_right_default(self):
-        entry = SETTINGS_SCHEMA[SPOKEN_NOTICES_KEY]
-        assert entry["default"] == SPOKEN_NOTICES_QUESTIONS
-        assert entry["tab"] == "sounds"
+        entry = SETTINGS_SCHEMA["tts.feedback_level"]  # 372: replacement key; manager API unchanged.
+        assert entry["default"] == "brief"  # 372: fresh speech default.
+        assert entry["tab"] == "tts"  # 372: unified speech control.
         assert entry["type"] == "enum"
 
     def test_the_default_reaches_cfg_get_without_any_config(self):
-        assert cfg_get({}, SPOKEN_NOTICES_KEY) == SPOKEN_NOTICES_QUESTIONS
-        assert DEFAULTS[SPOKEN_NOTICES_KEY] == SPOKEN_NOTICES_QUESTIONS
+        assert cfg_get({}, "tts.feedback_level") == "brief"  # 372: replacement default.
+        assert SPOKEN_NOTICES_KEY not in DEFAULTS  # 372: retired key is migrated away.
 
     def test_a_nested_config_value_is_read_back(self):
         """The settings page writes config["feedback"]["spoken_notices"].
@@ -153,9 +153,9 @@ class TestOffIsNotOffered:
     answerable without speech, drop the value. It cannot be, so it is dropped."""
 
     def test_off_is_not_a_legal_value(self):
-        assert "off" not in SETTINGS_SCHEMA[SPOKEN_NOTICES_KEY]["options"]
-        assert set(SETTINGS_SCHEMA[SPOKEN_NOTICES_KEY]["options"]) == {
-            SPOKEN_NOTICES_QUESTIONS, SPOKEN_NOTICES_EVERYTHING}
+        assert "off" not in SETTINGS_SCHEMA["tts.feedback_level"]["options"]  # 372: Silent explicitly captions prompts.
+        assert set(SETTINGS_SCHEMA["tts.feedback_level"]["options"]) == {
+            "silent", "brief", "full"}  # 372: questions remain visible in Silent.
 
     def test_the_spelling_prompt_has_no_chip_to_fall_back_on(self):
         """request_word_correction returns a plain dict, never a

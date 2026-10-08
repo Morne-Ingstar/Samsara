@@ -460,6 +460,7 @@ def _wake_options_text(phrase: str = DEFAULT_WAKE_PHRASE) -> str:
             + ". Change the phrase later in Settings -> Modes.")
 
 _DEFAULTS = {
+    "tts": {"feedback_level": config_defaults.cfg_get({}, "tts.feedback_level"), "enabled": True},
     "hotkey":              "ctrl+shift",
     "continuous_hotkey":   "ctrl+alt+d",
     "wake_word_hotkey":    "ctrl+alt+w",

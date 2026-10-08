@@ -108,7 +108,7 @@ AUDITED_KEYS = set([
     "ducking.recording_mode",
     "echo_cancellation.enabled",
     "echo_cancellation.latency_ms",
-    "feedback.spoken_notices",
+    "tts.feedback_level",  # 372: one speech-level row replaces Spoken notices.
     "format_numbers",
     "gesture.enabled",
     "hints_enabled",

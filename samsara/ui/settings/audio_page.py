@@ -28,10 +28,10 @@ BASE = [
         "sound_theme"
     ],
     [
-        "Text-to-speech",
-        "Let Samsara speak responses aloud.",
-        "tts_enabled",
-        "tts.enabled"
+        "Voice feedback",
+        "Choose how much Samsara says aloud.",
+        "tts_feedback_level",
+        "tts.feedback_level,tts.enabled"
     ],
     [
         "Ava captions",
@@ -47,12 +47,6 @@ BASE = [
     ]
 ]
 ADVANCED = [
-    [
-        "Spoken notices",
-        "Choose which session notices are spoken.",
-        "spoken_notices_combo",
-        "feedback.spoken_notices"
-    ],
     [
         "Speech engine",
         "Choose local Windows speech or a network voice.",

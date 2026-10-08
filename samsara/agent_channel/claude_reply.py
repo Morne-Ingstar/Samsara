@@ -226,8 +226,10 @@ def _speak(app, text: str, token, on_done=None):
         state["handle"] = coordinator.speak(text, category="conversation",
                                              interruptible=True, on_done=done)
         logger.info("[CLAUDE-VOICE] speak chars=%s", len(text))
-        if getattr(state["handle"], "utterance_id", None) == "noop-ava-muted":
+        if str(getattr(state["handle"], "utterance_id", "")).startswith("noop-"):
             done()
+    else:
+        done()
 
 
 def _active(app):
