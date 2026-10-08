@@ -13,6 +13,7 @@ runtime via qt_runtime.post()):
     panel.show(rows)      # rows == list of CubeRow
     panel.refresh(rows)
     panel.hide()
+    panel.focus_review() # explicit keyboard review of an already shown cube
 
 Window-manager flags (the reason this module exists rather than reusing the
 letter overlay's widget):
@@ -33,15 +34,19 @@ valid and re-showing is always reliable (same contract as task_overlay.py).
 from __future__ import annotations
 
 import ctypes
+import weakref
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QEvent, Qt, Signal, Slot
+from PySide6.QtGui import QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
+    QApplication, QAbstractButton, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
+    QStyle, QStyleOption,
 )
 
 from samsara.ui import qt_runtime
 from samsara.ui import theme
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
 # ---------------------------------------------------------------------------
 # Win32 extended-style bits
@@ -71,12 +76,15 @@ def compute_exstyle(current: int) -> int:
     return (current | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & ~WS_EX_APPWINDOW
 
 
-def apply_toolwindow_exstyle(win_id: int) -> bool:
+def apply_toolwindow_exstyle(win_id: int, *, review: bool = False) -> bool:
     """Apply compute_exstyle() to a live native window handle."""
     try:
         user32 = ctypes.windll.user32
         current = user32.GetWindowLongW(int(win_id), GWL_EXSTYLE)
-        user32.SetWindowLongW(int(win_id), GWL_EXSTYLE, compute_exstyle(current))
+        style = compute_exstyle(current)
+        if review:
+            style &= ~WS_EX_NOACTIVATE
+        user32.SetWindowLongW(int(win_id), GWL_EXSTYLE, style)
         return True
     except Exception as exc:      # pragma: no cover - non-Windows/hostless
         print(f"[CUBE] ex-style apply failed: {exc}")
@@ -112,13 +120,21 @@ class CubeRow:
 # Widgets
 # ---------------------------------------------------------------------------
 
-class _Row(QFrame):
+class _Row(QAbstractButton):
     """A single clickable row."""
 
     def __init__(self, row: CubeRow, on_click):
         super().__init__()
         self._number = row.number
         self._on_click = on_click
+        self.setAccessibleName(row.app)
+        self.setAccessibleDescription(
+            "; ".join(filter(None, (str(row.number), row.detail,
+                                     "Closed window" if row.closed else "")))
+        )
+        self.setEnabled(not row.closed)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.clicked.connect(self._activate)
         self.setMinimumHeight(ROW_HEIGHT)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -156,18 +172,31 @@ class _Row(QFrame):
         lay.addLayout(stack, stretch=1)
 
         self.setStyleSheet(
-            f"QFrame{{background:transparent;border-radius:6px;}}"
-            f"QFrame:hover{{background:{theme.BG2};}}"
+            f"QAbstractButton{{background:transparent;border:none;border-radius:6px;}}"
+            f"QAbstractButton:hover{{background:{theme.BG2};}}"
         )
 
-    def mouseReleaseEvent(self, event):
+    def paintEvent(self, event):
+        option = QStyleOption()
+        option.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, option, painter, self)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if not event.isAutoRepeat():
+                self.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _activate(self):
         # Click-to-switch: the same action the spoken number performs.
         try:
             if self._on_click is not None:
                 self._on_click(self._number)
         except Exception as exc:
             print(f"[CUBE] row click failed: {exc}")
-        super().mouseReleaseEvent(event)
 
 
 class _CubeWindow(QWidget):
@@ -187,6 +216,21 @@ class _CubeWindow(QWidget):
         # lands in its own list: window_switcher._get_all_windows drops every
         # window whose title starts with "Samsara".
         self.setWindowTitle("Samsara Window Cube")
+        self.setAccessibleName(self.windowTitle())
+        self.setAccessibleDescription(
+            "Press Control+Alt+F6 from a Samsara window for keyboard review; "
+            "press Escape to return."
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self._reviewing = False
+        self._return_focus = None
+        self._passive_return_focus = None
+        self._announcer = LiveSurfaceAnnouncer(self)
+        self._announced_rows = ()
+        self._announcement = "No windows"
+        self._review_shortcut = QShortcut(QKeySequence("Ctrl+Alt+F6"), self)
+        self._review_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._review_shortcut.activated.connect(self.focus_review)
         self._on_click = on_click
         self._requested_position = position
         self.setWindowOpacity(opacity)
@@ -214,11 +258,18 @@ class _CubeWindow(QWidget):
 
     @Slot(list)
     def _on_render(self, rows: list):
+        self._announced_rows = tuple(rows)
+        self._announcement = "; ".join(
+            " ".join(filter(None, (str(row.number), row.app, row.detail,
+                                    "Closed window" if row.closed else "")))
+            for row in rows
+        ) or "No windows"
         while self._rows_layout.count():
             item = self._rows_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.setParent(None)
+                widget.deleteLater()
         if not rows:
             empty = QLabel("No windows")
             empty.setStyleSheet(
@@ -227,9 +278,102 @@ class _CubeWindow(QWidget):
             self._rows_layout.addWidget(empty)
         else:
             for row in rows:
-                self._rows_layout.addWidget(_Row(row, self._on_click))
+                button = _Row(row, self._activate_number)
+                button.setFocusPolicy(Qt.FocusPolicy.StrongFocus if self._reviewing
+                                      else Qt.FocusPolicy.NoFocus)
+                self._rows_layout.addWidget(button)
         self.adjustSize()
         self._place()
+        if self.isVisible():
+            self._announce_rows()
+
+    def _announce_rows(self):
+        self._announcer.announce_transition(self._announced_rows, self._announcement)
+
+    def focus_review(self):
+        """Deliberate app-local shortcut/API entry; passive showing stays quiet."""
+        if not self.isVisible():
+            return
+        if not self._reviewing:
+            focused = QApplication.focusWidget()
+            self._return_focus = weakref.ref(focused) if focused is not None else None
+            self._reviewing = True
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+            for row in self.findChildren(_Row):
+                row.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False)
+            self.show()
+        apply_toolwindow_exstyle(int(self.winId()), review=True)
+        self.raise_()
+        self.activateWindow()
+        QApplication.setActiveWindow(self)
+        for row in self.findChildren(_Row):
+            if row.isEnabled():
+                row.setFocus(Qt.FocusReason.ShortcutFocusReason)
+                break
+
+    def _restore_passive(self, *, restore_focus=True):
+        if not self._reviewing:
+            return
+        self._reviewing = False
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        for row in self.findChildren(_Row):
+            row.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, True)
+        if visible:
+            self.show()
+        apply_toolwindow_exstyle(int(self.winId()))
+        previous = self._return_focus() if self._return_focus else None
+        self._return_focus = None
+        if restore_focus and previous is not None:
+            try:
+                if previous.isVisible():
+                    previous.window().activateWindow()
+                    previous.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            except RuntimeError:
+                pass  # the invoking field may have been destroyed during review
+
+    def _activate_number(self, number):
+        # Let the existing switch callback focus its target after review ends.
+        self._restore_passive(restore_focus=False)
+        if self._on_click is not None:
+            self._on_click(number)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self._reviewing:
+            self._restore_passive()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def hide(self):
+        self._restore_passive()
+        super().hide()
+
+    def show(self):
+        if not self._reviewing:
+            focused = QApplication.focusWidget()
+            self._passive_return_focus = (
+                weakref.ref(focused) if focused is not None and focused.window() is not self
+                else None
+            )
+        super().show()
+
+    def event(self, event):
+        result = super().event(event)
+        # Some Qt platforms activate Tool windows despite the passive flags.
+        # Keep the invoking Qt field active if such an activation slips through.
+        if event.type() == QEvent.Type.WindowActivate and not self._reviewing:
+            previous = self._passive_return_focus() if self._passive_return_focus else None
+            if previous is not None:
+                try:
+                    if previous.isVisible():
+                        QApplication.setActiveWindow(previous.window())
+                        previous.setFocus(Qt.FocusReason.OtherFocusReason)
+                except RuntimeError:
+                    pass
+        return result
 
     def _place(self):
         from PySide6.QtGui import QCursor
@@ -250,12 +394,14 @@ class _CubeWindow(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        apply_toolwindow_exstyle(int(self.winId()))
+        apply_toolwindow_exstyle(int(self.winId()), review=self._reviewing)
+        self._announce_rows()
 
     def closeEvent(self, event):
         # Hide, never destroy -- keeps the reference valid so re-showing the
         # cube never has to rebuild it (same policy as task_overlay.py).
         event.ignore()
+        self._restore_passive()
         self.hide()
 
 
@@ -297,6 +443,11 @@ class CubePanel:
     def hide(self):
         if self._window is not None:
             qt_runtime.post(self._window.hide)
+
+    def focus_review(self):
+        """Enter review explicitly; never invoked by show() or refresh()."""
+        if self._window is not None:
+            qt_runtime.post(self._window.focus_review)
 
     def current_position(self):
         """Where the panel actually sits, for persisting across sessions."""

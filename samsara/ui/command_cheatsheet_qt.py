@@ -23,11 +23,12 @@ from pathlib import Path
 from typing import Callable, List
 
 from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect
-from PySide6.QtGui import QColor, QCursor, QPalette, QGuiApplication
+from PySide6.QtGui import QColor, QCursor, QPalette, QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListView, QListWidget, QListWidgetItem, QLineEdit, QPushButton,
     QFrame, QSizeGrip, QSizePolicy, QSlider, QMenu, QAbstractItemView,
+    QAbstractButton, QStyle, QStyleOption,
 )
 
 from samsara import command_catalog
@@ -482,7 +483,30 @@ class _TitleBar(QWidget):
 # Static pane row (Most Used + Pinned sections)
 # ---------------------------------------------------------------------------
 
-class _StaticRow(QFrame):
+class _ActionButton(QAbstractButton):
+    """Native action semantics with the reference's existing label rendering."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+    def paintEvent(self, event):
+        option = QStyleOption()
+        option.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, option, painter, self)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if not event.isAutoRepeat():
+                self.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
+class _StaticRow(_ActionButton):
     def __init__(self, cmd: dict, count: int | None, pinned: bool,
                  execute_cb, toggle_pin_cb, parent=None):
         super().__init__(parent)
@@ -493,23 +517,34 @@ class _StaticRow(QFrame):
 
         self.setFixedHeight(32)        # 78: 28 px clipped 16 px text
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.setStyleSheet(f"QFrame{{background:{theme.BG1};border:none;}}")
+        self._set_background(theme.BG1)
+        self.clicked.connect(self._activate)
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 0, 8, 0)
         lay.setSpacing(0)
 
-        self._pin_lbl = QLabel("*" if pinned else " ")
+        self._pin_lbl = _ActionButton(self)
+        self._pin_lbl.setCheckable(True)
+        self._pin_lbl.setChecked(pinned)
         self._pin_lbl.setFixedWidth(18)
-        self._pin_lbl.setStyleSheet(
+        self._pin_lbl.setStyleSheet("QAbstractButton{background:transparent;border:none;}")
+        self._pin_mark = QLabel("*" if pinned else " ", self._pin_lbl)
+        self._pin_mark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._pin_mark.setStyleSheet(
             f"color:{theme.ACCENT if pinned else theme.TEXT_SECONDARY};"
             f"font-size:{theme.TYPE_BODY}px;font-weight:600;"
         )
+        pin_layout = QHBoxLayout(self._pin_lbl)
+        pin_layout.setContentsMargins(0, 0, 0, 0)
+        pin_layout.addWidget(self._pin_mark)
         self._pin_lbl.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self._pin_lbl.mousePressEvent = lambda _e: self._on_pin()
+        self._pin_lbl.clicked.connect(self._on_pin)
         lay.addWidget(self._pin_lbl)
 
         phrase_lbl = QLabel(cmd["phrase"].title())
+        self.setAccessibleName(phrase_lbl.text())
+        self._pin_lbl.setAccessibleName(f"Pin {phrase_lbl.text()}")
         phrase_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(phrase_lbl, stretch=1)
 
@@ -524,33 +559,43 @@ class _StaticRow(QFrame):
             lay.addWidget(right_lbl)
 
     def _on_pin(self):
+        pinned = self._pin_lbl.isChecked()
+        self._pin_mark.setText("*" if pinned else " ")
+        self._pin_mark.setStyleSheet(
+            f"color:{theme.ACCENT if pinned else theme.TEXT_SECONDARY};"
+            f"font-size:{theme.TYPE_BODY}px;font-weight:600;"
+        )
         self._toggle_pin(self._phrase)
 
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton:
-            self._flash()
-            try:
-                self._execute_cb(self._phrase)
-            except Exception as exc:
-                print(f"[CHEATSHEET] Execute '{self._phrase}': {exc}")
+    def _set_background(self, colour):
+        # QLabel inherits QFrame: the former frame rule also filled its labels.
+        self.setStyleSheet(f"QAbstractButton,QLabel{{background:{colour};border:none;}}")
+
+    def _activate(self):
+        self._flash()
+        try:
+            self._execute_cb(self._phrase)
+        except Exception as exc:
+            print(f"[CHEATSHEET] Execute '{self._phrase}': {exc}")
 
     def enterEvent(self, e):
         if not self._flashing:
-            self.setStyleSheet(f"QFrame{{background:{theme.BG2};border:none;}}")
-        self._pin_lbl.parentWidget()  # keep reference
+            self._set_background(theme.BG2)
+        super().enterEvent(e)
 
     def leaveEvent(self, e):
         if not self._flashing:
-            self.setStyleSheet(f"QFrame{{background:{theme.BG1};border:none;}}")
+            self._set_background(theme.BG1)
+        super().leaveEvent(e)
 
     def _flash(self):
         self._flashing = True
-        self.setStyleSheet(f"QFrame{{background:{_selected_bg()};border:none;}}")
-        QTimer.singleShot(300, self._unflash)
+        self._set_background(_selected_bg())
+        QTimer.singleShot(300, self, self._unflash)
 
     def _unflash(self):
         self._flashing = False
-        self.setStyleSheet(f"QFrame{{background:{theme.BG1};border:none;}}")
+        self._set_background(theme.BG1)
 
 
 # ---------------------------------------------------------------------------
@@ -783,6 +828,7 @@ class _CheatSheetWindow(QMainWindow):
 
         # Command list
         self._list = QListWidget()
+        self._list.setAccessibleName("Command list")
         self._list.setStyleSheet(_ss())
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setWordWrap(True)
@@ -934,6 +980,7 @@ class _CheatSheetWindow(QMainWindow):
         for i in reversed(range(self._static_layout.count())):
             child = self._static_layout.takeAt(i)
             if child.widget():
+                child.widget().hide()
                 child.widget().deleteLater()
 
         has_content = False
@@ -1009,6 +1056,16 @@ class _CheatSheetWindow(QMainWindow):
         self._static_has_content = has_content
         self._static_pane.setVisible(
             has_content and not bool(self._filter.text().strip()))
+        # Rebuilt children otherwise enter the focus chain after the list.
+        previous = self._filter
+        for index in range(self._static_layout.count()):
+            widget = self._static_layout.itemAt(index).widget()
+            actions = ((widget, widget._pin_lbl) if isinstance(widget, _StaticRow)
+                       else (widget,) if widget is self._most_used_button else ())
+            for action in actions:
+                QWidget.setTabOrder(previous, action)
+                previous = action
+        QWidget.setTabOrder(previous, self._category_bar._combo)
 
     def _toggle_most_used(self):
         self._most_used_expanded = not self._most_used_expanded
@@ -1078,6 +1135,8 @@ class _CheatSheetWindow(QMainWindow):
     # ----------------------------------------------------------------
 
     def _toggle_pin(self, phrase: str):
+        pin_focused = any(row._phrase == phrase and row._pin_lbl.hasFocus()
+                          for row in self.findChildren(_StaticRow))
         if phrase in self._pinned:
             self._pinned.discard(phrase)
         else:
@@ -1085,6 +1144,13 @@ class _CheatSheetWindow(QMainWindow):
         self._save_palette()
         self._rebuild_static_pane()
         self._apply_filter(self._filter.text())
+        if pin_focused:
+            for row in self.findChildren(_StaticRow):
+                if row._phrase == phrase and row.isVisibleTo(self):
+                    row._pin_lbl.setFocus(Qt.FocusReason.OtherFocusReason)
+                    break
+            else:
+                self._list.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _on_context_menu(self, pos):
         item = self._list.itemAt(pos)
