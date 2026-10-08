@@ -15,10 +15,13 @@ Phase 1b still pending (Phase 2):
   - category: accepted and stored, not yet used for arbitration.
 """
 
+import atexit
 import collections
+import functools
 import logging
 import threading
 import uuid
+import weakref
 from typing import Callable, Deque, List, Optional, Tuple
 
 import numpy as np
@@ -35,6 +38,76 @@ logger = logging.getLogger(__name__)
 
 _TARGET_SR = 44100  # safe fallback when PortAudio exposes no device rate
 _CHUNK_FRAMES = 4096  # ~93ms at 44100 Hz
+
+# Neither registry owns an engine. Failed closes retain their native callback
+# until retry at exit, before sounddevice terminates PortAudio.
+_live_engines = weakref.WeakSet()
+_stream_cleanups = set()
+_stream_cleanup_lock = threading.Lock()
+_stream_exit_registered = False
+
+
+def _close_native_streams_at_exit():
+    with _stream_cleanup_lock:
+        cleanups = tuple(_stream_cleanups)
+    for cleanup in cleanups:
+        cleanup.close()
+
+
+class _StreamCleanup:
+    """Own only the stream/callback, never the engine or completion hooks."""
+
+    def __init__(self, stream):
+        global _stream_exit_registered
+        self._stream = stream
+        self._lock = threading.Lock()
+        with _stream_cleanup_lock:
+            if not _stream_exit_registered:
+                # Constructed after importing sounddevice: LIFO exit order
+                # closes callbacks before PortAudio's own termination hook.
+                atexit.register(_close_native_streams_at_exit)
+                _stream_exit_registered = True
+            _stream_cleanups.add(self)
+
+    def close(self):
+        with self._lock:
+            stream = self._stream
+            if stream is None:
+                return None
+            error = None
+            try:
+                stream.abort()
+            except Exception as exc:
+                error = exc
+            try:
+                stream.close()
+            except Exception as exc:
+                # Keep the callback alive if the driver refused to close.
+                # The exit hook retries while PortAudio is still available.
+                return error or exc
+            self._stream = None
+            with _stream_cleanup_lock:
+                _stream_cleanups.discard(self)
+            return error
+
+
+def _drain_tts_buffer(buffer, lock, outdata, frames, time_info, status):
+    """PortAudio callback state is independent of the engine's lifetime."""
+    with lock:
+        output = np.zeros(frames, dtype=np.float32)
+        remaining = frames
+        offset = 0
+        while remaining > 0 and buffer:
+            chunk, uid = buffer[0]
+            take = min(len(chunk), remaining)
+            output[offset:offset + take] = chunk[:take]
+            if take < len(chunk):
+                buffer[0] = (chunk[take:], uid)
+            else:
+                buffer.popleft()
+            offset += take
+            remaining -= take
+    outdata[:, 0] = output
 
 
 def _import_winsdk():
@@ -170,12 +243,14 @@ class WinRTEngine(TTSEngine):
         self._tts_buffer: Deque[Tuple[np.ndarray, str]] = collections.deque()
         self._tts_buffer_lock = threading.Lock()
         self._tts_stream = None
+        self._stream_finalizer = None
         self._using_persistent_stream = False
         self._output_device = output_device
         self._output_device_resolver = output_device_resolver
         self._stream_output_device = object()
         self._output_sample_rate = _TARGET_SR
         self._open_persistent_stream()
+        _live_engines.add(self)
 
     # ------------------------------------------------------------------
     # Persistent stream management
@@ -209,10 +284,17 @@ class WinRTEngine(TTSEngine):
                 samplerate=self._output_sample_rate,
                 channels=1,
                 dtype='float32',
-                callback=self._tts_callback,
+                callback=functools.partial(
+                    _drain_tts_buffer, self._tts_buffer, self._tts_buffer_lock,
+                ),
                 blocksize=_CHUNK_FRAMES,
                 device=self._output_device,
             )
+            cleanup = _StreamCleanup(self._tts_stream)
+            self._stream_finalizer = weakref.finalize(self, cleanup.close)
+            # Our resource exit hook has explicit ordering against PortAudio;
+            # weakref's process-wide hook may have been registered earlier.
+            self._stream_finalizer.atexit = False
             self._tts_stream.start()
             self._using_persistent_stream = True
             self._stream_output_device = self._output_device
@@ -221,6 +303,7 @@ class WinRTEngine(TTSEngine):
                 self._output_sample_rate,
             )
         except Exception as exc:
+            self._close_persistent_stream()
             if self._output_device is not None:
                 logger.warning(
                     "TTS output device %s unavailable (%s); falling back to system default",
@@ -237,21 +320,18 @@ class WinRTEngine(TTSEngine):
 
     def _tts_callback(self, outdata, frames, time_info, status):
         """Drain TTS buffer into the audio callback output. Called by PortAudio."""
-        with self._tts_buffer_lock:
-            output = np.zeros(frames, dtype=np.float32)
-            remaining = frames
-            offset = 0
-            while remaining > 0 and self._tts_buffer:
-                chunk, uid = self._tts_buffer[0]
-                take = min(len(chunk), remaining)
-                output[offset:offset + take] = chunk[:take]
-                if take < len(chunk):
-                    self._tts_buffer[0] = (chunk[take:], uid)
-                else:
-                    self._tts_buffer.popleft()
-                offset += take
-                remaining -= take
-        outdata[:, 0] = output
+        _drain_tts_buffer(
+            self._tts_buffer, self._tts_buffer_lock,
+            outdata, frames, time_info, status,
+        )
+
+    def _close_persistent_stream(self):
+        finalizer = getattr(self, '_stream_finalizer', None)
+        error = finalizer() if finalizer is not None else None
+        self._stream_finalizer = None
+        self._tts_stream = None
+        self._using_persistent_stream = False
+        return error
 
     # ------------------------------------------------------------------
     # TTSEngine interface
@@ -306,9 +386,11 @@ class WinRTEngine(TTSEngine):
             # Purge this utterance's queued chunks from the persistent buffer.
             uid = handle.utterance_id
             with self._tts_buffer_lock:
-                self._tts_buffer = collections.deque(
+                retained = collections.deque(
                     (chunk, u) for chunk, u in self._tts_buffer if u != uid
                 )
+                self._tts_buffer.clear()
+                self._tts_buffer.extend(retained)
 
     def cancel_all(self) -> None:
         """Signal all active utterances to stop and clear the buffer."""
@@ -367,12 +449,9 @@ class WinRTEngine(TTSEngine):
         with self._tts_buffer_lock:
             self._tts_buffer.clear()
         if self._tts_stream is not None:
-            try:
-                self._tts_stream.abort()
-                self._tts_stream.close()
-            except Exception as e:
+            e = self._close_persistent_stream()
+            if e is not None:
                 logger.debug(f"TTS stream abort/close failed during restart: {e}")
-            self._tts_stream = None
         self._using_persistent_stream = False
         self._open_persistent_stream()
         logger.info('[TTS] Stream restarted after output device change')
@@ -391,12 +470,9 @@ class WinRTEngine(TTSEngine):
         for t in threads:
             t.join(timeout=1.0)
         if self._tts_stream is not None:
-            try:
-                self._tts_stream.abort()
-                self._tts_stream.close()
-            except Exception as e:
+            e = self._close_persistent_stream()
+            if e is not None:
                 logger.debug(f"TTS stream abort/close failed during shutdown: {e}")
-            self._tts_stream = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -626,9 +702,11 @@ class WinRTEngine(TTSEngine):
         while offset < total:
             if utterance.cancelled.is_set():
                 with self._tts_buffer_lock:
-                    self._tts_buffer = collections.deque(
+                    retained = collections.deque(
                         (c, u) for c, u in self._tts_buffer if u != uid
                     )
+                    self._tts_buffer.clear()
+                    self._tts_buffer.extend(retained)
                 break
             end = min(offset + _CHUNK_FRAMES, total)
             raw_chunk = pcm[offset:end]

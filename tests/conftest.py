@@ -101,6 +101,22 @@ def _cleanup_samsara_test_home():
 atexit.register(_cleanup_samsara_test_home)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _shutdown_live_tts_engines():
+    """Retire surviving native speech engines without importing/starting TTS."""
+    yield
+    try:
+        module = sys.modules.get('samsara.tts.winrt_engine')
+        engines = tuple(getattr(module, '_live_engines', ()))
+    except BaseException:
+        return
+    for engine in engines:
+        try:
+            engine.shutdown()
+        except BaseException:
+            pass
+
+
 @pytest.fixture(autouse=True)
 def _isolate_plugin_registry(tmp_path, monkeypatch):
     """Keep the real plugins/ directory from leaking into tests.
