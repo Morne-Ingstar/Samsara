@@ -240,6 +240,11 @@ def test_settings_apply_keeps_selected_theme_and_live_surface(
         assert saved["ui"]["theme"] == requested
         assert saved["ui"]["live_surface"]["enabled"] is live_enabled
     finally:
+        # Apply may start a native TTS stream on this test's short-lived app.
+        # Retire its callback before releasing the app and its widget tree.
+        engine = getattr(app, "tts_engine", None)
+        if engine is not None:
+            engine.shutdown()
         signal.disconnect(observed.append)
         window.close()
         window.deleteLater()
