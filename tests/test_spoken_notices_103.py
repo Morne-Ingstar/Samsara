@@ -172,13 +172,8 @@ class TestOffIsNotOffered:
             "there is no chip kind for the spelling prompt"
 
     def test_no_question_class_prompt_is_ever_silent(self):
-        """The whole reason `off` is gone, stated as an invariant over the
-        real manager: at every legal setting, both QUESTION sites speak."""
+        """The spelling QUESTION still speaks at both legacy notice settings."""
         for setting in (SPOKEN_NOTICES_QUESTIONS, SPOKEN_NOTICES_EVERYTHING):
-            m = _with_draft(_manager(setting))
-            m._request_clear_draft()
-            assert any("Say yes to clear it" in t for t, _c in m.spoken), setting
-
             m2 = _with_draft(_manager(setting))
             m2.request_word_correction("quick", 0, expected_count=1, source="preview_click")
             assert any("Say the replacement" in t for t, _c in m2.spoken), setting
@@ -212,23 +207,20 @@ class TestTheIncident:
         m.confirm_clear_draft("clear button")
         assert any("Draft cleared" in t for t, _c in m.spoken)
 
-    def test_the_yes_no_confirmation_still_speaks_at_the_default(self):
-        """The brief's other named requirement: asking still talks."""
+    def test_the_voice_clear_is_immediate_and_silent_at_the_default(self):
         m = _with_draft(_manager(SPOKEN_NOTICES_QUESTIONS))
         outcome = m._request_clear_draft()
-        assert outcome.kind == "dictate_clear_awaiting_confirmation"
-        assert len(m.spoken) == 1
-        assert "Say yes to clear it, or no to keep it" in m.spoken[0][0]
+        assert outcome.kind == "dictate_draft_cleared"
+        assert m.dictate_pending_buffer == ""
+        assert m.spoken == []
 
-    def test_asking_speaks_but_answering_does_not(self):
-        """The two halves of one exchange land in different classes, and this
-        is the clearest demonstration of the policy: the question is heard,
-        the receipt is not."""
+    def test_clear_has_no_question_or_pending_answer(self):
         m = _with_draft(_manager(SPOKEN_NOTICES_QUESTIONS))
         m._request_clear_draft()
-        assert len(m.spoken) == 1, "the question is heard"
-        m._answer_pending_clear("no", _signals())
-        assert len(m.spoken) == 1, "the receipt for the answer is not"
+        assert m.spoken == []
+        assert m.dispatch_utterance("no", _signals()).kind == "dictate_staged"
+        assert m.dictate_pending_buffer == "no"
+        assert m.spoken == []
 
 
 # ---------------------------------------------------------------------------
@@ -242,11 +234,13 @@ class TestEveryCallSiteByClass:
     # -- QUESTION (2) -------------------------------------------------------
 
     @pytest.mark.parametrize("setting,expected", [
-        (SPOKEN_NOTICES_QUESTIONS, True), (SPOKEN_NOTICES_EVERYTHING, True)])
-    def test_site_clear_draft_confirmation_is_a_QUESTION(self, setting, expected):
+        (SPOKEN_NOTICES_QUESTIONS, False), (SPOKEN_NOTICES_EVERYTHING, True)])
+    def test_site_voice_clear_is_an_ACK(self, setting, expected):
         m = _with_draft(_manager(setting))
         m._request_clear_draft()
         assert bool(m.spoken) is expected
+        if expected:
+            assert m.spoken == [("Draft cleared", "confirmation")]
 
     @pytest.mark.parametrize("setting,expected", [
         (SPOKEN_NOTICES_QUESTIONS, True), (SPOKEN_NOTICES_EVERYTHING, True)])
@@ -258,8 +252,8 @@ class TestEveryCallSiteByClass:
     # -- ACKNOWLEDGEMENT (10) ----------------------------------------------
 
     @pytest.mark.parametrize("setting,expected", [
-        (SPOKEN_NOTICES_QUESTIONS, False), (SPOKEN_NOTICES_EVERYTHING, True)])
-    def test_site_nothing_staged_to_clear_is_an_ACK(self, setting, expected):
+        (SPOKEN_NOTICES_QUESTIONS, False), (SPOKEN_NOTICES_EVERYTHING, False)])
+    def test_site_empty_voice_clear_is_always_silent(self, setting, expected):
         m = _manager(setting)
         m._dictate_pending_buffer = ""
         m._request_clear_draft()
@@ -282,12 +276,12 @@ class TestEveryCallSiteByClass:
         assert bool(m.spoken) is expected
 
     @pytest.mark.parametrize("setting,expected", [
-        (SPOKEN_NOTICES_QUESTIONS, False), (SPOKEN_NOTICES_EVERYTHING, True)])
-    def test_site_kept_the_draft_is_an_ACK(self, setting, expected):
+        (SPOKEN_NOTICES_QUESTIONS, False), (SPOKEN_NOTICES_EVERYTHING, False)])
+    def test_site_voice_take_back_is_screen_only(self, setting, expected):
         m = _with_draft(_manager(setting))
         m._request_clear_draft()
-        m.spoken.clear()          # drop the QUESTION, leaving only the answer
-        m._answer_pending_clear("no", _signals())
+        m.spoken.clear()          # drop the receipt, leaving only the take-back
+        assert m.dispatch_utterance("bring it back", _signals()).kind == "dictate_draft_recovered"
         assert bool(m.spoken) is expected
 
     @pytest.mark.parametrize("setting,expected", [

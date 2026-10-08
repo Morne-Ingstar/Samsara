@@ -291,24 +291,21 @@ def test_a_recovered_draft_is_not_restored_automatically_on_the_next_session():
     assert manager.recoverable_draft != ""                     # still available on request
 
 
-def test_a_confirmed_clear_is_recoverable_too():
-    """Queue 80's "scratch everything" is deliberate, but a deliberate clear
-    can also be a mistake."""
+def test_a_voice_clear_has_its_own_short_lived_take_back():
+    """A voice clear restores through its own phrase, without a confirmation."""
     manager = make_manager()
     stage(manager)
     draft = manager._dictate_pending_buffer
 
-    asked = manager.dispatch_utterance("scratch everything", GOOD_SIGNALS)
-    assert asked.kind == "dictate_clear_awaiting_confirmation"
-    cleared = manager.dispatch_utterance("yes", GOOD_SIGNALS)
+    cleared = manager.dispatch_utterance("scratch everything", GOOD_SIGNALS)
 
     assert cleared.kind == "dictate_draft_cleared"
     assert cleared.detail["recoverable_chars"] == len(draft)
     assert manager._dictate_pending_buffer == ""
-    assert manager.recoverable_draft == draft
+    assert manager.recoverable_draft == ""
 
-    recovered = manager.dispatch_utterance("bring back my draft", GOOD_SIGNALS)
-    assert recovered.detail["source"] == "scratch everything"
+    recovered = manager.dispatch_utterance("bring it back", GOOD_SIGNALS)
+    assert recovered.detail["source"] == "voice clear"
     assert manager._dictate_pending_buffer == draft
 
 

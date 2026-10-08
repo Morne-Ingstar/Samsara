@@ -274,7 +274,7 @@ def test_existing_scroll_commands_still_mean_the_app_not_the_draft(preview):
 # 2. clear button
 # ---------------------------------------------------------------------------
 
-def test_the_button_and_scratch_everything_take_the_same_path(preview, monkeypatch):
+def test_the_button_keeps_its_path_while_voice_clear_needs_no_yes(preview, monkeypatch):
     seen = []
     real = preview.manager.confirm_clear_draft
     monkeypatch.setattr(preview.manager, "confirm_clear_draft",
@@ -282,13 +282,12 @@ def test_the_button_and_scratch_everything_take_the_same_path(preview, monkeypat
 
     _say(preview, "A draft worth keeping.")
     preview.manager.dispatch_utterance("scratch everything", GOOD)
-    preview.manager.dispatch_utterance("yes", GOOD)
     assert preview.manager.dictate_pending_buffer == ""
 
     _say(preview, "Another draft.")
     preview.session._on_clear_clicked()
     assert preview.manager.dictate_pending_buffer == ""
-    assert seen == ["scratch everything", "clear button"], "one code path, two callers"
+    assert seen == ["clear button"], "click keeps the legacy clear; voice has a timed take-back"
 
 
 def test_a_cleared_draft_is_recoverable_by_voice_from_the_button_too(preview):

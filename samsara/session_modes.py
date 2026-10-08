@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Callable, Optional, Union
 
 from samsara.draft_document import DraftDocument
+from samsara.draft_clear_undo import ClearDraftUndo
 from samsara.stage_timing import current_stage_timing as _current_stage_timing
 
 log = logging.getLogger("Samsara.session_modes")
@@ -383,14 +384,8 @@ def is_scratch_again(raw_text: str) -> bool:
 # everything" never matches: the normalised utterance must equal a phrase.
 # Canonical catalog id: builtin.scratch_everything (commands.json).
 CLEAR_DRAFT_PHRASES = ("scratch everything", "scratch all of that", "scratch all that")
-# Destructive (queue 63): the text is gone, so it always asks first. The reply
-# must be the whole utterance. "cancel" is deliberately NOT a reply word: it is
-# an abort phrase, which is checked first and ends the session.
-CLEAR_DRAFT_CONFIRM_UTTERANCES = frozenset({
-    "yes", "yeah", "yep", "yes please", "yes clear it", "clear it", "confirm", "do it",
-})
-CLEAR_DRAFT_REJECT_UTTERANCES = frozenset({"no", "nope", "no thanks", "keep it", "no keep it", "dont"})
-CLEAR_DRAFT_CONFIRM_TTL_S = 30.0
+CLEAR_DRAFT_CONFIRM_TTL_S = 30.0  # Compatibility name; now the voice take-back window.
+CLEAR_DRAFT_RESTORE_PHRASE = "bring it back"  # Stand-in: copy.clear_draft.restore_phrase.
 
 
 #: Queue 85: a word clicked in the live preview waits for ONE utterance, which
@@ -1352,7 +1347,7 @@ class PendingTextPolicy(Enum):
     """How a hands-free command interacts with staged dictation."""
 
     PRESERVE = "preserve"  # scrolling/overlays: leave pending text untouched
-    COMMIT = "commit"      # focus/navigation: paste pending text before acting
+    COMMIT = "commit"      # legacy probe marker; exact commands now keep drafts
 
 
 @dataclass(frozen=True)
@@ -1381,8 +1376,8 @@ class DispatchOutcome:
     # "dictate_commit_failed" | "hands_free_command_executed" |
     # "hands_free_command_refused" | "hands_free_command_blocked" |
     # "hands_free_command_failed" |
-    # "dictate_clear_awaiting_confirmation" | "dictate_draft_cleared" |
-    # "dictate_clear_declined" | "dictate_clear_nothing" |
+    # "dictate_draft_cleared" |
+    # "dictate_clear_nothing" |
     # "dictate_clear_refused" (queue 80: clear the whole staged draft) |
     # "dictate_draft_recovered" | "dictate_recover_nothing" (queue 84: put
     # back the draft an abort or a confirmed clear set aside) |
@@ -1745,17 +1740,15 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind == "scratch_refuse":
         return ("refused: undo", "warning")
     # Queue 80: clear the whole staged draft.
-    if kind == "dictate_clear_awaiting_confirmation":
-        return ("clear draft? yes or no", "pending")
     if kind == "dictate_draft_cleared":
+        if detail.get("voice_clear"):
+            return ('Draft cleared - say "bring it back"', "success")  # Stand-in.
         return ("draft cleared, say bring back my draft", "success")
     # Queue 84: the draft an abort or a clear set aside, put back on request.
     if kind == "dictate_draft_recovered":
         return ("draft back", "success")
     if kind == "dictate_recover_nothing":
         return ("nothing to bring back", "warning")
-    if kind == "dictate_clear_declined":
-        return ("draft kept", "success")
     if kind == "dictate_clear_nothing":
         return ("refused: nothing staged", "warning")
     if kind == "dictate_clear_refused":
@@ -1943,7 +1936,6 @@ class SessionModeManager:
         # all. set_spoken_notices() is how the app and Settings keep it
         # current; a bad value is treated as the default by should_speak().
         self._spoken_notices = SPOKEN_NOTICES_QUESTIONS
-        self._pending_clear: Optional[dict] = None
         # One model-free command correction at a time. It shares the ordinary
         # pending-answer stage below, so a stray follow-up is never swallowed.
         self._pending_command_suggestion: Optional[dict] = None
@@ -2088,6 +2080,7 @@ class SessionModeManager:
         # destroyed. Survives reset() like the retained draft, but is only put
         # back when the user asks (RECOVER_DRAFT_PHRASES), never automatically.
         self._recoverable_draft: Optional[dict] = None
+        self._clear_draft_undo = ClearDraftUndo(self._clock, CLEAR_DRAFT_CONFIRM_TTL_S)
         # Queue 99: when the last resolved action was a scratch. Arms a bare
         # "again" (SCRATCH_AGAIN_TTL_S) and keeps a scratch run open so the
         # whole run is one undo. Cleared by ANY other resolved utterance.
@@ -2129,7 +2122,7 @@ class SessionModeManager:
         if not (self._parked_hold and self._draft.text):
             self._draft.clear()
         self._dictate_pending_audio = []
-        self._pending_clear = None
+        self._clear_draft_undo.drop()
         self._pending_command_suggestion = None
         # Queue 99: a new session never inherits an armed "again".
         self._last_scratch_at = None
@@ -2291,6 +2284,8 @@ class SessionModeManager:
             return DispatchOutcome(kind="draft_pause_unavailable")
         text = str(text or "")
         with self._dispatch_lock:
+            if text.strip():
+                self._clear_draft_undo.drop()
             self.invalidate_interact("hold entry")
             self._parked_hold = True
             self._draft.mark_manual_commit()
@@ -2422,7 +2417,7 @@ class SessionModeManager:
         return controller
 
     def _interact_input_owned(self) -> bool:
-        if (self._pending_clear is not None or self._pending_command_suggestion is not None
+        if (self._pending_command_suggestion is not None
                 or self._pending_correction is not None):
             return True
         try:
@@ -2513,6 +2508,7 @@ class SessionModeManager:
             })
 
         if normalized in self._sleep_phrases:
+            self._clear_draft_undo.drop()
             if self._interact_controller is not None:
                 self._interact_controller.exit("sleep")
             # Sleep = stop + disarm: the same stop runs FIRST, so nothing
@@ -2530,6 +2526,7 @@ class SessionModeManager:
             })
 
         if self._matches_abort_phrase(text):
+            self._clear_draft_undo.drop()
             if self._interact_controller is not None:
                 self._interact_controller.exit("abort")
             # Queue 84: an abort ends the session without committing, but it
@@ -2554,17 +2551,9 @@ class SessionModeManager:
             if reply is not None:
                 return DispatchOutcome(kind=reply.kind, detail={"message": reply.message})
 
-        # 1b-80. The answer to this session's own "clear the whole draft?"
-        # question. Answered here, before the command probe, because a bare
-        # "yes" otherwise reaches the registry through the COMMIT pending-text
-        # policy, which would paste the very draft the user asked to discard.
-        clear_reply = self._answer_pending_clear(normalized, signals)
-        if clear_reply is not None:
-            return clear_reply
-
         # 1b-85. A word clicked in the live preview is waiting for its
         # replacement: this utterance is it, not dictation. Checked after
-        # stop/sleep/abort and the clear question (all of which still win) and
+        # stop/sleep/abort (all of which still win) and
         # before the lane reads the words.
         correction = self._consume_word_correction(text, normalized, signals)
         if correction is not None:
@@ -2632,6 +2621,14 @@ class SessionModeManager:
                 return self._recover_draft_outcome()
             log.info("[SESSION] recover-draft phrase refused by the anti-hallucination gate for %r; "
                      "treating as ordinary dictation", text)
+
+        if (self._buffer_dictate_until_commit
+                and self.mode is SessionMode.DICTATE
+                and normalized == CLEAR_DRAFT_RESTORE_PHRASE
+                and passes_switch_anti_hallucination_gate(signals)):
+            restored = self._clear_draft_undo.restore(self)
+            return DispatchOutcome(kind="dictate_draft_recovered" if restored else "dictate_recover_nothing",
+                                   detail={"recovered_chars": restored, "source": "voice clear"})
 
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE
@@ -2745,9 +2742,8 @@ class SessionModeManager:
             log.info("[SESSION] control-word anti-hallucination gate failed for %r; "
                       "treating as ordinary %s text", text, self.mode.value)
 
-        # Combined hands-free lane: exact reserved commands coexist with
-        # buffered dictation. The probe is side-effect-free, allowing us to
-        # commit text transactionally BEFORE commands that move focus or submit.
+        # Combined hands-free lane: exact commands coexist with buffered
+        # dictation. A command is not permission to deliver the held draft.
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE):
             fragment_guard = (
@@ -2855,23 +2851,15 @@ class SessionModeManager:
             kind="scratch_success" if scratched else "scratch_refuse", detail=detail)
 
     def _request_clear_draft(self) -> DispatchOutcome:
-        """Ask before discarding: destructive, so never on the first utterance."""
-        buffer = self._dictate_pending_buffer
-        if not buffer.strip():
-            self._pending_clear = None
-            self._speak("There is nothing staged to clear.", ACKNOWLEDGEMENT)
-            return DispatchOutcome(kind="dictate_clear_nothing")
-        words = len(buffer.split())
-        self._pending_clear = {
-            "chars": len(buffer), "words": words,
-            "expires": self._clock() + CLEAR_DRAFT_CONFIRM_TTL_S,
-        }
-        noun = "word" if words == 1 else "words"
-        self._speak(f"Clear the whole draft, {words} {noun}? Say yes to clear it, or no to keep it.",
-                    QUESTION)
-        log.info("[SESSION] clear-draft question asked (%d chars, %d words)", len(buffer), words)
-        return DispatchOutcome(kind="dictate_clear_awaiting_confirmation", detail={
-            "pending_chars": len(buffer), "words": words,
+        """Clear by voice immediately, with a separate short-lived take-back."""
+        with self._dispatch_lock:
+            if not self._dictate_pending_buffer.strip():
+                return DispatchOutcome(kind="dictate_clear_nothing")
+            self._clear_draft_undo.arm(self)
+            removed = self.clear_pending_draft()
+        self._speak("Draft cleared", ACKNOWLEDGEMENT)  # Stand-in: copy.clear_draft.spoken_full.
+        return DispatchOutcome(kind="dictate_draft_cleared", detail={
+            "cleared_chars": removed, "recoverable_chars": removed, "voice_clear": True,
         })
 
     def _recover_draft_outcome(self) -> DispatchOutcome:
@@ -2889,42 +2877,10 @@ class SessionModeManager:
             "pending_chars": len(self._dictate_pending_buffer),
         })
 
-    def _answer_pending_clear(self, normalized: str, signals: UtteranceSignals) -> Optional[DispatchOutcome]:
-        """None when no clear-draft question is open or this utterance is not
-        a yes/no -- the question then lapses and the words are handled as usual."""
-        pending = self._pending_clear
-        if pending is None:
-            return None
-        if self._clock() > pending["expires"] or self.mode is not SessionMode.DICTATE:
-            self._pending_clear = None
-            log.info("[SESSION] clear-draft question expired unanswered; draft kept")
-            return None
-        if normalized in CLEAR_DRAFT_CONFIRM_UTTERANCES:
-            if not passes_switch_anti_hallucination_gate(signals):
-                # A "yes" the gate distrusts (possible hallucination on noise)
-                # never discards text; the question stays open for a real one.
-                return DispatchOutcome(kind="dictate_clear_refused", detail={
-                    "pending_chars": len(self._dictate_pending_buffer),
-                })
-            self._pending_clear = None
-            return self.confirm_clear_draft("scratch everything")
-        if normalized in CLEAR_DRAFT_REJECT_UTTERANCES:
-            self._pending_clear = None
-            self._speak("Kept the draft.", ACKNOWLEDGEMENT)
-            return DispatchOutcome(kind="dictate_clear_declined", detail={
-                "pending_chars": len(self._dictate_pending_buffer),
-            })
-        self._pending_clear = None
-        log.info("[SESSION] clear-draft question dropped: the next utterance was not yes or no; draft kept")
-        return None
-
     def confirm_clear_draft(self, source: str = "scratch everything") -> DispatchOutcome:
-        """THE clear. The spoken "scratch everything" -> "yes" path and the
-        preview's Clear draft button (queue 85) both end here, so the phrase
-        and the button can never mean different things. Queue 84's recovery
-        slot is filled first: a deliberate clear can also be a mistake."""
+        """Legacy click/quit clear; keep its existing recovery and feedback."""
         with self._dispatch_lock:
-            self._pending_clear = None
+            self._clear_draft_undo.drop()
             self._stash_recoverable_draft(source)
             removed = self.clear_pending_draft()
         log.info("[SESSION] draft cleared via %s (%d chars, recoverable)", source, removed)
@@ -2937,7 +2893,7 @@ class SessionModeManager:
     def clear_pending_draft(self) -> int:
         """Discard the staged-but-uncommitted DICTATE draft (text, audio and the
         staged-chunk undo entries). Returns the number of characters removed.
-        Nothing is pasted or typed. Callers are responsible for having asked."""
+        Nothing is pasted or typed."""
         with self._dispatch_lock:
             removed = len(self._dictate_pending_buffer)
             self._dictate_pending_buffer = ""
@@ -2946,7 +2902,6 @@ class SessionModeManager:
             kept = [item for item in self._stack._items if item.kind != "dictation_staged_chunk"]
             self._stack._items.clear()
             self._stack._items.extend(kept)
-            self._pending_clear = None
             self._parked_hold = False
         log.info("[SESSION] staged draft cleared (%d chars)", removed)
         return removed
@@ -3560,11 +3515,10 @@ class SessionModeManager:
     def _dispatch_hands_free_command(
         self, match: HandsFreeCommandMatch, *, deferred: bool = False,
     ) -> DispatchOutcome:
-        """Execute one reserved command without leaving the DICTATE lane."""
+        """Execute one exact command while retaining the DICTATE draft/lane."""
         if not deferred and self._cancel_window_fn is not None:
-            # Queue 69: the window wraps the WHOLE dispatch -- the pending-text
-            # commit included -- so a cancel inside it leaves the draft staged
-            # and nothing pasted or pressed.
+            # Queue 69: the window wraps the whole command dispatch. A cancel
+            # leaves the draft staged and no command effect runs.
             epoch = self._session_epoch
             delay = self._cancel_window_fn(match, lambda: self._run_deferred_hands_free(match, epoch))
             if delay and delay > 0:
@@ -3577,16 +3531,8 @@ class SessionModeManager:
                     "mode_retained": self.mode,
                 })
         commit_detail = None
-        if match.pending_policy is PendingTextPolicy.COMMIT:
-            committed = self._commit_dictate_buffer(target_mode=None)
-            if committed.kind != "dictate_committed":
-                return DispatchOutcome(kind="hands_free_command_blocked", detail={
-                    "phrase": match.phrase,
-                    "commit_outcome": committed.kind,
-                    **committed.detail,
-                })
-            commit_detail = committed.detail
-
+        # 447: even focus/navigation commands retain the draft. Delivery is
+        # owned by explicit commit triggers, never by command completion.
         result = self._command_dispatch_fn(match.dispatch_text)
         state = _command_state(result)
         if not result.matched or state in COMMAND_UNSUCCESSFUL_STATES:
@@ -3794,6 +3740,7 @@ class SessionModeManager:
         if not to_stage:
             return DispatchOutcome(kind="empty")
 
+        self._clear_draft_undo.drop()
         self._dictate_pending_audio.append(audio_ref)
         self._draft.append(to_stage)
         self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)

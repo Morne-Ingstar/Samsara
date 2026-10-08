@@ -74,41 +74,35 @@ def _stage(mgr, *chunks):
 
 # --- 4. clear the whole staged draft ------------------------------------------
 
-def test_scratch_everything_asks_first_and_the_draft_survives_the_question():
+def test_scratch_everything_clears_at_once_with_a_take_back_chip():
     mgr, speak, inject = _manager()
     _stage(mgr, "First thought.", "second thought", "third thought")
     before = mgr.dictate_pending_buffer
 
     out = mgr.dispatch_utterance("Scratch everything.", GOOD)
 
-    assert out.kind == "dictate_clear_awaiting_confirmation"
-    assert mgr.dictate_pending_buffer == before
-    text, category = speak.call_args.args
-    assert category == "confirmation"
-    assert "Clear the whole draft" in text and "yes" in text and "no" in text
-    assert "cancel" not in text.lower()  # "cancel" would abort the session, not answer
-    assert outcome_chip(out.kind, out.detail)[0] == "clear draft? yes or no"
+    assert out.kind == "dictate_draft_cleared"
+    assert out.detail["cleared_chars"] == len(before)
+    assert mgr.dictate_pending_buffer == ""
+    speak.assert_not_called()
+    assert outcome_chip(out.kind, out.detail)[0] == 'Draft cleared - say "bring it back"'
     inject.assert_not_called()
 
 
-def test_yes_clears_text_audio_and_undo_entries_and_says_so():
+def test_clear_clears_text_audio_and_undo_entries_without_a_yes():
     mgr, speak, inject = _manager()
     for i, chunk in enumerate(("One.", "two", "three")):
         mgr.dispatch_utterance(chunk, UtteranceSignals(
             has_contiguous_speech=True, compression_ratios=(1.3,), audio_ref=f"audio-{i}"))
-    mgr.dispatch_utterance("scratch all of that", GOOD)
-
-    out = mgr.dispatch_utterance("Yes.", GOOD)
+    out = mgr.dispatch_utterance("scratch all of that", GOOD)
 
     assert out.kind == "dictate_draft_cleared"
     assert out.detail["cleared_chars"] > 0
     assert mgr.dictate_pending_buffer == ""
     assert mgr._dictate_pending_audio == []
     assert not [i for i in mgr._stack._items if i.kind == "dictation_staged_chunk"]
-    # Queue 84: the clear is now recoverable, and the confirmation says how.
-    assert speak.call_args.args == (
-        "Draft cleared. Say bring back my draft if you want it back.", "confirmation")
-    assert mgr.recoverable_draft != ""
+    speak.assert_not_called()
+    assert mgr._clear_draft_undo._snapshot is not None
     inject.assert_not_called()  # nothing was pasted on the way
     # Nothing left to commit: "end" reports an empty commit and pastes nothing.
     after = mgr.dispatch_utterance("end", GOOD)
@@ -116,51 +110,51 @@ def test_yes_clears_text_audio_and_undo_entries_and_says_so():
     inject.assert_not_called()
 
 
-def test_no_keeps_the_draft():
+def test_no_after_a_clear_is_a_new_thought():
     mgr, speak, _ = _manager()
     _stage(mgr, "Keep this.")
     mgr.dispatch_utterance("scratch everything", GOOD)
     out = mgr.dispatch_utterance("no", GOOD)
-    assert out.kind == "dictate_clear_declined"
-    assert mgr.dictate_pending_buffer.strip() == "Keep this."
-    assert speak.call_args.args == ("Kept the draft.", "confirmation")
+    assert out.kind == "dictate_staged"
+    assert mgr.dictate_pending_buffer.strip() == "no"
+    speak.assert_not_called()
 
 
-def test_any_other_utterance_drops_the_question_and_is_dictated_as_usual():
+def test_any_other_utterance_after_clear_is_dictated_as_usual():
     mgr, _, _ = _manager()
     _stage(mgr, "Keep this.")
     mgr.dispatch_utterance("scratch everything", GOOD)
     assert mgr.dispatch_utterance("and another sentence", GOOD).kind == "dictate_staged"
-    # A later "yes" no longer discards anything.
+    # A later "yes" is also ordinary dictation.
     out = mgr.dispatch_utterance("yes", GOOD)
     assert out.kind != "dictate_draft_cleared"
-    assert "Keep this" in mgr.dictate_pending_buffer
+    assert "Keep this" not in mgr.dictate_pending_buffer
+    assert "another sentence" in mgr.dictate_pending_buffer
 
 
-def test_question_expires():
+def test_take_back_window_expires():
     clock = _Clock()
     mgr, _, _ = _manager(clock)
     _stage(mgr, "Keep this.")
     mgr.dispatch_utterance("scratch everything", GOOD)
     clock.now += CLEAR_DRAFT_CONFIRM_TTL_S + 1
-    assert mgr.dispatch_utterance("yes", GOOD).kind != "dictate_draft_cleared"
-    assert "Keep this" in mgr.dictate_pending_buffer
+    assert mgr.dispatch_utterance("bring it back", GOOD).kind == "dictate_recover_nothing"
+    assert mgr.dictate_pending_buffer == ""
 
 
-def test_a_yes_the_gate_distrusts_never_discards_text():
+def test_a_clear_the_gate_distrusts_never_discards_text():
     mgr, _, _ = _manager()
     _stage(mgr, "Keep this.")
-    mgr.dispatch_utterance("scratch everything", GOOD)
-    assert mgr.dispatch_utterance("yes", NOISE).kind == "dictate_clear_refused"
-    assert "Keep this." in mgr.dictate_pending_buffer
-    assert mgr.dispatch_utterance("yes", GOOD).kind == "dictate_draft_cleared"
+    assert mgr.dispatch_utterance("scratch everything", NOISE).kind != "dictate_draft_cleared"
+    assert "Keep this" in mgr.dictate_pending_buffer
+    assert mgr.dispatch_utterance("scratch everything", GOOD).kind == "dictate_draft_cleared"
 
 
-def test_nothing_staged_is_said_out_loud():
+def test_nothing_staged_is_silent():
     mgr, speak, _ = _manager()
     out = mgr.dispatch_utterance("scratch everything", GOOD)
     assert out.kind == "dictate_clear_nothing"
-    assert speak.call_args.args[1] == "confirmation"
+    speak.assert_not_called()
 
 
 @pytest.mark.parametrize("sentence", [
@@ -198,20 +192,22 @@ def _compile_dictation_method(name):
     raise AssertionError(f"{name} not found in dictation.py")
 
 
-def test_confirmation_is_audible_in_command_mode_past_the_char_limit():
-    """The question is ~70 characters; the command-mode acknowledgement limit
-    is 50. Through the real AudioCoordinator it must still reach the engine."""
+def test_full_feedback_is_a_short_clear_receipt_through_the_coordinator():
+    """The real session-notice seam speaks only the short receipt in Full."""
     from samsara.tts.coordinator import AudioCoordinator
 
     engine = Mock()
     app = Mock()
     app.command_mode_active = True
-    app.config = {"command_mode": {"tts_char_limit": 50}, "tts": {}}
+    app.config = {"command_mode": {"tts_char_limit": 50}, "tts": {"feedback_level": "full"}}
     coordinator = AudioCoordinator(app, engine, {})
     coordinator.transition_to = Mock()
     app.audio_coordinator = coordinator
 
     speak_notice = _compile_dictation_method("_speak_session_notice")
+    import threading
+    from samsara.stage_timing import current_stage_timing
+    speak_notice.__globals__.update(threading=threading, current_stage_timing=current_stage_timing)
     mgr = SessionModeManager(
         abort_phrases=["cancel"],
         foreground_exe_resolver=Mock(return_value="notepad.exe"),
@@ -221,12 +217,13 @@ def test_confirmation_is_audible_in_command_mode_past_the_char_limit():
         speak_fn=lambda text, category: speak_notice(app, text, category),
     )
     mgr.reset(SessionMode.DICTATE)
+    mgr.set_spoken_notices("everything")
     _stage(mgr, "A sentence long enough to count several words in the draft.")
     mgr.dispatch_utterance("scratch everything", GOOD)
 
     spoken = engine.speak.call_args
-    assert spoken is not None, "confirmation was suppressed"
-    assert len(spoken.args[0]) > 50
+    assert spoken is not None, "Full feedback was suppressed"
+    assert spoken.args[0] == "Draft cleared"
     assert spoken.kwargs["category"] == "confirmation"
 
 

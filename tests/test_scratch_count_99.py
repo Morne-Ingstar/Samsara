@@ -369,9 +369,9 @@ class TestStateStaysCoherent:
         manager = _manager()
         _stage(manager, "one.", "two.", "three.")
         manager.dispatch_utterance("scratch that twice", GOOD)
+        # 443: the phrase clears at once - there is no yes / no question any more.
         assert manager.dispatch_utterance("scratch everything", GOOD).kind == \
-            "dictate_clear_awaiting_confirmation"
-        manager.dispatch_utterance("yes", GOOD)
+            "dictate_draft_cleared"
         assert manager.dictate_pending_buffer == ""
         assert _staged_count(manager) == 0
 
