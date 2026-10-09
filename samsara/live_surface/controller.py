@@ -454,7 +454,7 @@ class LiveSurfaceIndicatorAdapter:
     def set_mode(self, text: str) -> None:
         lower = str(text).lower()
         self._lane = (Lane.AVA if "ava" in lower else Lane.COMMAND if "command" in lower
-                      else Lane.CONTINUOUS if "continuous" in lower else
+                      else Lane.CONTINUOUS if "continuous" in lower else Lane.TOGGLE if "toggle" in lower else
                       Lane.HANDS_FREE_DICTATE if "wake" in lower or "dictate" in lower else Lane.HOLD)
         if self._session_lane is None:
             self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED, lane=self._lane))
@@ -495,6 +495,9 @@ class LiveSurfaceIndicatorAdapter:
         # Only entering a real session may advertise hands-free listening.
         self._wake_armed = armed
 
+    def set_snoozed(self, snoozed: bool) -> None:
+        self.controller.post(SurfaceEvent(EventKind.SNOOZE_CHANGED, snoozed=bool(snoozed)))
+
     def flash_wake(self) -> None:
         self.controller.notice(NoticeKind.RESULT, "Wake phrase heard")
 
@@ -511,15 +514,16 @@ class LiveSurfaceIndicatorAdapter:
             return
         if kind == "live":
             return  # Capture already owns the recording indication and token.
-        notice = NoticeKind.ERROR if kind == "error" else NoticeKind.RESULT
-        # These are transient outcome chips, including a refused optional-AI
-        # action. They are not persistent microphone faults or confirmations.
-        ttl = 60.0 if kind == "pending" else min(2.0 if kind == "error" else 1.0,
-                                                  (ttl_ms or 1000) / 1000)
+        notice = (NoticeKind.PENDING if kind == "pending" else
+                  NoticeKind.ERROR if kind == "error" else NoticeKind.RESULT)
+        # Pending outcomes have the legacy lifetime: until cleared or replaced.
+        ttl = None if kind == "pending" else min(2.0 if kind == "error" else 1.0,
+                                                (ttl_ms or 1000) / 1000)
         self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=notice,
                                           message=str(label), ttl_s=ttl))
 
     def clear_outcome(self) -> None:
+        self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, notice=NoticeKind.PENDING))
         self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, notice=NoticeKind.RESULT))
 
     def flash_success(self) -> None:

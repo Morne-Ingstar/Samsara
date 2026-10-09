@@ -66,6 +66,7 @@ class PresentationState(str, Enum):
 class NoticeKind(str, Enum):
     NONE = "none"
     RESULT = "result"
+    PENDING = "pending"
     CONFIRMATION = "confirmation"
     ALIAS_OFFER = "alias_offer"
     ERROR = "error"
@@ -93,6 +94,7 @@ class EventKind(str, Enum):
     DELIVERY_UNVERIFIED = "delivery_unverified"
     NOTICE = "notice"
     NOTICE_CLEARED = "notice_cleared"
+    SNOOZE_CHANGED = "snooze_changed"
     REVIEW_PINNED = "review_pinned"
     REVIEW_UNPINNED = "review_unpinned"
     CORRECTION_OPENED = "correction_opened"
@@ -121,6 +123,7 @@ class SurfaceEvent:
     notice: NoticeKind = NoticeKind.NONE
     message: str = ""
     ttl_s: Optional[float] = None
+    snoozed: bool = False
 
 
 @dataclass(frozen=True)
@@ -144,6 +147,8 @@ class SurfaceView:
     text: str
     provisional_text: str
     can_collapse: bool
+    snoozed: bool = False
+    capture_id: Optional[str] = None
 
 
 class LiveSurfaceModel:
@@ -157,6 +162,7 @@ class LiveSurfaceModel:
     def __init__(self, *, clock: Callable[[], float] = monotonic) -> None:
         self._clock = clock
         self.capture = CaptureState.OFF
+        self.snoozed = False
         self.lane: Optional[Lane] = None
         self.document = DocumentState.EMPTY
         self.presentation = PresentationState.COMPACT
@@ -243,6 +249,10 @@ class LiveSurfaceModel:
             self._set_document(event, DocumentState.DELIVERY_UNVERIFIED)
             self.presentation = PresentationState.PINNED_REVIEW
         elif kind is EventKind.NOTICE:
+            # A new host question replaces ordinary timed receipts, including
+            # errors. Persistent faults retain their existing higher priority.
+            if event.notice is NoticeKind.PENDING and self._notice.expires_at is not None:
+                self._notice = Notice(NoticeKind.NONE, "", None)
             ttl = event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice)
             candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
                                event.lane or self.lane)
@@ -253,6 +263,8 @@ class LiveSurfaceModel:
                 self._notice = Notice(NoticeKind.NONE, "", None)
             if event.notice in (NoticeKind.NONE, NoticeKind.RESULT):
                 self._clear_receipt()
+        elif kind is EventKind.SNOOZE_CHANGED:
+            self.snoozed = event.snoozed
         elif kind is EventKind.REVIEW_PINNED:
             self.presentation = PresentationState.PINNED_REVIEW
         elif kind is EventKind.REVIEW_UNPINNED:
@@ -283,6 +295,7 @@ class LiveSurfaceModel:
             presentation=self.presentation, notice=self._notice, document_id=self.document_id,
             revision=self.revision, text=self.text, provisional_text=self.provisional_text,
             can_collapse=can_collapse,
+            snoozed=self.snoozed, capture_id=self._active_capture,
         )
 
     def _clear_receipt(self) -> None:
@@ -331,7 +344,7 @@ class LiveSurfaceModel:
 
     @staticmethod
     def _notice_ttl(kind: NoticeKind) -> Optional[float]:
-        if kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER):
+        if kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING):
             return None
         return RESULT_RECEIPT_S if kind is NoticeKind.RESULT else 0.0
 
@@ -340,6 +353,7 @@ class LiveSurfaceModel:
         return {
             NoticeKind.NONE: 0,
             NoticeKind.RESULT: 1,
+            NoticeKind.PENDING: 1,
             NoticeKind.ALIAS_OFFER: 2,
             NoticeKind.CONFIRMATION: 3,
             NoticeKind.ERROR: 4,
@@ -347,7 +361,8 @@ class LiveSurfaceModel:
 
     def _can_collapse(self, now: float) -> bool:
         active = self.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
-        blocking = self._notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+        blocking = self.snoozed or self._notice.kind in (
+            NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING)
         protected = self.presentation in (PresentationState.PINNED_REVIEW, PresentationState.CORRECTION,
                                           PresentationState.KEYBOARD_INTERACTION)
         delivered_receipt = self.document is DocumentState.DELIVERED and self._delivered_at is not None \
@@ -363,7 +378,7 @@ class LiveSurfaceModel:
             # A waiting draft stays readable through idle, capture and notices.
             # Clear/Insert are explicit actions; time cannot collapse its text.
             return VisibleForm.LIVE
-        if (self._notice.kind in (NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+        if (self.snoozed or self._notice.kind in (NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING)
                 or self._notice.kind is NoticeKind.ERROR and self._notice.expires_at is None):
             return VisibleForm.STATUS
         if self.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING):

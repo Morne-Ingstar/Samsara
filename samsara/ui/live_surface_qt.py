@@ -48,6 +48,8 @@ def _view_from(source: Any) -> SurfaceView:
 
 
 def _capture_mark(view: SurfaceView) -> tuple[str, str]:
+    if view.snoozed:
+        return "idle", "asleep"
     capture = {
         CaptureState.OFF: "idle", CaptureState.WAKE_ARMED: "listening",
         CaptureState.HANDS_FREE_LISTENING: "listening", CaptureState.RECORDING: "recording",
@@ -59,6 +61,8 @@ def _capture_mark(view: SurfaceView) -> tuple[str, str]:
 
 
 def _mark_mode(view: SurfaceView) -> str:
+    if view.snoozed:
+        return "idle"
     if view.capture is CaptureState.RECORDING:
         return "recording"
     if view.capture is CaptureState.TRANSCRIBING:
@@ -170,6 +174,7 @@ class LiveSurfaceWidget(QWidget):
         self._motion_timer.timeout.connect(self._check_motion_preference)
         self._announcer = LiveSurfaceAnnouncer(self)
         self._follow_latest, self._unread_segments = True, 0
+        self._scroll_position = 0
         self._word_targets: list[dict[str, object]] = []
         self._selection: dict[str, object] | None = None
         self._picker_active = False
@@ -205,8 +210,7 @@ class LiveSurfaceWidget(QWidget):
         bar.actionTriggered.connect(lambda _: self._scroll_value_changed(bar.sliderPosition()))
         # Qt can reset the scroll position after emitting rangeChanged during
         # layout. Follow after that layout completes, not inside its callback.
-        bar.rangeChanged.connect(lambda *_: QTimer.singleShot(
-            0, self, lambda: self._scroll_to_latest() if self._follow_latest else None))
+        bar.rangeChanged.connect(lambda *_: QTimer.singleShot(0, self, self._restore_transcript_scroll))
         bar.installEventFilter(self)
         self._transcript.viewport().installEventFilter(self)
         self._provisional = QLabel(self); self._provisional.setWordWrap(True)
@@ -379,6 +383,7 @@ class LiveSurfaceWidget(QWidget):
             bar.setValue(min(bar.maximum(), bar.value() + step))
         else:
             return
+        self._scroll_position = bar.value()
         self._follow_latest = bar.value() >= bar.maximum()
         self.scroll_requested.emit(bar.value())
         self._layout_children()
@@ -422,14 +427,20 @@ class LiveSurfaceWidget(QWidget):
         # actual reader scroll should stop following incoming text.
         bar = self._transcript.verticalScrollBar()
         position = bar.value()
+        self._scroll_position = position
         with QSignalBlocker(bar):
             self._apply_view_content(view, animate=animate)
             bar.setValue(bar.maximum() if self._follow_latest else position)
+        # Layout signals were blocked above; always restore after deferred Qt
+        # document/font layout, including when rangeChanged was suppressed.
+        QTimer.singleShot(0, self, self._restore_transcript_scroll)
 
     def _apply_view_content(self, view: SurfaceView, *, animate: bool) -> None:
         self._advance_mark()  # settle the previous state before a new colour target
         previous, previous_text = self._view, self._view.text
-        if view.document_id != previous.document_id or not (view.text or view.provisional_text):
+        new_utterance = ((view.capture_id is not None and view.capture_id != previous.capture_id)
+                         or view.capture is CaptureState.RECORDING and previous.capture is not CaptureState.RECORDING)
+        if new_utterance or view.document_id != previous.document_id or not (view.text or view.provisional_text):
             self._follow_latest, self._unread_segments = True, 0
         if self._selection is not None and (view.document_id != self._selection.get("document_id")
                 or view.revision != self._selection.get("revision")):
@@ -445,10 +456,12 @@ class LiveSurfaceWidget(QWidget):
         self._update_mark()
         state = self._state_text(view)
         self._state.setText(state); self._render_transcript()
+        self._state.setAccessibleDescription(state)
+        self.setAccessibleDescription(state)
         self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
         self._badge.setText("Tap Insert text to send.")
-        previous_content = previous_text or previous.provisional_text
-        if previous_content != (view.text or view.provisional_text) and previous_content and not self._follow_latest:
+        previous_content = (previous_text, previous.provisional_text)
+        if previous_content != (view.text, view.provisional_text) and any(previous_content) and not self._follow_latest:
             self._unread_segments += 1
         target = self._form_rect(self._display_form())
         if self._dragging:
@@ -692,7 +705,8 @@ class LiveSurfaceWidget(QWidget):
         if (event.type() == QEvent.Type.Wheel and watched in
                 (self._transcript.viewport(), self._transcript.verticalScrollBar())):
             self._follow_latest = False
-            QTimer.singleShot(0, self, self._layout_children)
+            QTimer.singleShot(0, self, lambda: self._scroll_value_changed(
+                self._transcript.verticalScrollBar().value()))
         return super().eventFilter(watched, event)
 
     def closeEvent(self,event:QCloseEvent)->None: self.hide(); self.collapse_requested.emit(); event.ignore()
@@ -719,12 +733,19 @@ class LiveSurfaceWidget(QWidget):
     def _latest_clicked(self)->None:self._follow_latest=True; self._unread_segments=0; self._scroll_to_latest(); self._layout_children()
     def _scroll_value_changed(self,value:int)->None:
         bar=self._transcript.verticalScrollBar()
+        self._scroll_position = value
         self._follow_latest = value >= bar.maximum()
         if self._follow_latest:
             self._unread_segments = 0
         QTimer.singleShot(0, self, self._layout_children)
     def _scroll_to_latest(self)->None:
         self._transcript.verticalScrollBar().setValue(self._transcript.verticalScrollBar().maximum())
+    def _restore_transcript_scroll(self)->None:
+        bar = self._transcript.verticalScrollBar()
+        if self._follow_latest:
+            self._scroll_to_latest()
+        else:
+            bar.setValue(self._scroll_position)
     def _open_editor(self,mode:str)->None:
         self._editor_mode=mode; self._editor.clear(); self._editor.setAccessibleName("Spelled replacement" if mode=="spell" else "Edit replacement")
         self._apply_view(self._view, animate=False)
@@ -745,8 +766,10 @@ class LiveSurfaceWidget(QWidget):
         self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
     def _state_text(self,view:SurfaceView)->str:
-        labels = {"hold": "Hold", "toggle": "Hold", "hands_free_dictate": "Hands-free",
-                  "continuous": "Hands-free", "command": "Command", "ava": "Ava"}
+        labels = {"hold": "Hold", "toggle": "Toggle", "hands_free_dictate": "Hands-free",
+                  "continuous": "Continuous", "command": "Command", "ava": "Ava"}
+        if view.snoozed:
+            return "Snoozed" + (f" — {view.notice.message}" if view.notice.expires_at is None and view.notice.message else "")
         lane = view.lane
         if view.notice.message and (view.notice.expires_at is None or view.capture not in
                                     (CaptureState.RECORDING, CaptureState.TRANSCRIBING)):
@@ -765,6 +788,8 @@ class LiveSurfaceWidget(QWidget):
         label = labels.get(lane.value if lane is not None else "", "Hold")
         return f"{label} — {activity}"
     def _announce_transition(self,previous:SurfaceView,current:SurfaceView)->None:
-        if previous.capture is not current.capture:self._announce(("capture",current.capture),self._state_text(current))
+        if previous.snoozed != current.snoozed:self._announce(("snoozed",current.snoozed),self._state_text(current))
+        elif current.notice.kind is NoticeKind.PENDING and current.notice != previous.notice:self._announce(("pending",current.notice.message),self._state_text(current))
+        elif previous.capture is not current.capture:self._announce(("capture",current.capture),self._state_text(current))
         elif previous.document is not current.document and current.document is DocumentState.PARKED_DRAFT:self._announce(("parked",current.document_id,current.revision),"Draft parked")
         elif previous.notice.kind is not current.notice.kind and current.notice.kind in (NoticeKind.ERROR,NoticeKind.CONFIRMATION):self._announce(("notice",current.notice.kind,current.notice.message),self._state_text(current))

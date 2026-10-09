@@ -126,7 +126,8 @@ def test_streaming_token_survives_delayed_legacy_indicator_callbacks(surface):
     c.drain()
     assert c.view().document is DocumentState.DELIVERED
     assert c.view().text == "Synthetic final."
-    assert c.view().notice.kind is NoticeKind.NONE
+    # Finishing capture is not an answer/cancellation of a pending outcome.
+    assert c.view().notice.kind is NoticeKind.PENDING
 
 
 def test_preview_pause_does_not_stop_hold_and_resume_can_publish(surface):
