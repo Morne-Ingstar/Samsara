@@ -312,9 +312,15 @@ class LiveSurfaceWidget(QWidget):
 
     def _button(self, name: str, label: str, callback) -> QPushButton:
         button = QPushButton(label, self); button.setAccessibleName(name)
+        button.setFont(theme.qfont(theme.TYPE_BODY))
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus); button.setMinimumHeight(MARK_SIZE)
         button.clicked.connect(callback)
         return button
+
+    def _button_width(self, button: QPushButton, minimum: int = MARK_SIZE) -> int:
+        button.ensurePolished()
+        return max(MARK_SIZE, minimum, button.sizeHint().width(),
+                   button.fontMetrics().horizontalAdvance(button.text()) + 2*theme.SPACE_2 + 2)
 
     @property
     def view(self) -> SurfaceView: return self._view
@@ -626,15 +632,18 @@ class LiveSurfaceWidget(QWidget):
             self._state.show(); return
         if form is VisibleForm.DRAFT_BADGE:
             self._mark.setGeometry(8, 8, MARK_SIZE, MARK_SIZE)
-            self._state.setGeometry(64, 8, self.width()-152, MARK_SIZE); self._state.show()
-            self._clear.setGeometry(self.width()-72, 8, 64, MARK_SIZE); self._clear.show()
-            self._badge.setGeometry(16, 60, self.width()-164, MARK_SIZE); self._badge.show()
-            self._insert.setGeometry(self.width()-140, 60, 132, MARK_SIZE); self._insert.show(); return
+            clear_width = self._button_width(self._clear, 64)
+            insert_width = self._button_width(self._insert, 132)
+            self._state.setGeometry(64, 8, self.width()-72-clear_width-REGION_GAP, MARK_SIZE); self._state.show()
+            self._clear.setGeometry(self.width()-8-clear_width, 8, clear_width, MARK_SIZE); self._clear.show()
+            self._badge.setGeometry(16, 60, self.width()-24-insert_width-REGION_GAP, MARK_SIZE); self._badge.show()
+            self._insert.setGeometry(self.width()-8-insert_width, 60, insert_width, MARK_SIZE); self._insert.show(); return
         content = self.card_content_rect
         self._mark.setGeometry(content.x(), content.y(), MARK_SIZE, MARK_SIZE)
         state_x = content.x()+MARK_SIZE+12
-        self._lane.setGeometry(state_x, content.y(), content.width()-MARK_SIZE-12-72, 24)
-        self._state.setGeometry(state_x, content.y()+24, content.width()-MARK_SIZE-12-72, 24)
+        clear_width = self._button_width(self._clear, 64)
+        self._lane.setGeometry(state_x, content.y(), content.width()-MARK_SIZE-12-clear_width-REGION_GAP, 24)
+        self._state.setGeometry(state_x, content.y()+24, content.width()-MARK_SIZE-12-clear_width-REGION_GAP, 24)
         self._lane.show(); self._state.show()
         band_y = content.y()+HEADER_HEIGHT+12
         primary_height = self._band.required_height(content.width())
@@ -648,7 +657,7 @@ class LiveSurfaceWidget(QWidget):
             clearable = self._view.capture is CaptureState.RECORDING or self._view.notice.kind in (
                 NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
             if clearable:
-                self._clear.setGeometry(content.right()-63, content.y(), 64, MARK_SIZE); self._clear.show()
+                self._clear.setGeometry(content.right()+1-clear_width, content.y(), clear_width, MARK_SIZE); self._clear.show()
             return
         if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
             self._layout_correction(content); return
@@ -662,6 +671,7 @@ class LiveSurfaceWidget(QWidget):
             actions.insert(0, (self._latest, 104))
         right = content.right()+1
         for button, width in reversed(actions):
+            width = self._button_width(button, width)
             right -= width
             button.setGeometry(right, content.y(), width, MARK_SIZE); button.show()
             right -= REGION_GAP
@@ -676,9 +686,11 @@ class LiveSurfaceWidget(QWidget):
         self._transcript.show()
 
     def _layout_row(self, controls, x: int, y: int, width: int) -> None:
-        available = width - REGION_GAP*(len(controls)-1); base, rem = divmod(available, len(controls))
+        widths = [self._button_width(control) for control in controls]
+        available = width - REGION_GAP*(len(controls)-1)
+        base, rem = divmod(max(0, available-sum(widths)), len(controls))
         for index, control in enumerate(controls):
-            w=base+(1 if index<rem else 0); control.setGeometry(x,y,w,MARK_SIZE); control.show(); x += w+REGION_GAP
+            w=widths[index]+base+(1 if index<rem else 0); control.setGeometry(x,y,w,MARK_SIZE); control.show(); x += w+REGION_GAP
 
     def _layout_correction(self, content: QRect) -> None:
         y=content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+12
@@ -704,7 +716,7 @@ class LiveSurfaceWidget(QWidget):
             if choice is None: button.hide(); continue
             label = getattr(choice, "replacement", None) if selecting else choice["word"]
             button.setText(f"{start+index+1}. {label}"); button.setAccessibleName(f"Choice {start+index+1}: {label}")
-            button.setGeometry(content.x()+(index%2)*(content.width()//2+REGION_GAP//2), y+(index//2)*(MARK_SIZE+REGION_GAP), content.width()//2-REGION_GAP//2, MARK_SIZE); button.show()
+            button.setGeometry(content.x()+(index%2)*(content.width()//2+REGION_GAP//2), y+(index//2)*(MARK_SIZE+REGION_GAP), self._button_width(button, content.width()//2-REGION_GAP//2), MARK_SIZE); button.show()
         y += (MARK_SIZE+REGION_GAP) * ceil(min(4, max(0, len(source)-start))/2)
         if self._selection is not None:
             self._layout_row((self._keep,self._spell,self._edit,self._more), content.x(), y, content.width())
@@ -721,7 +733,7 @@ class LiveSurfaceWidget(QWidget):
         self.setMask(region)
 
     def _restyle(self) -> None:
-        self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QTextBrowser a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }} QPushButton#quietClear {{ background: transparent; border: 0; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; }}")
+        self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QTextBrowser a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }} QPushButton {{ font-family: {theme.FONT_FAMILY}; padding: 0 {theme.SPACE_2}px; }} QPushButton#quietClear {{ background: transparent; border: 0; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; }}")
         active = not self._view.snoozed and self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
         state_color = theme.ERROR if self._view.capture is CaptureState.UNAVAILABLE else theme.TEXT_PRIMARY if active else theme.TEXT_SECONDARY
         self._lane.setFont(theme.qfont(theme.TYPE_EMPHASIS, weight=QFont.Weight.Bold))
