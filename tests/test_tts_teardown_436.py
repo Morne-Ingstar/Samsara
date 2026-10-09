@@ -259,6 +259,7 @@ def _run_child(tmp_path, script, case):
     return output
 
 
+@pytest.mark.real_audio
 @pytest.mark.skipif(sys.platform != 'win32', reason='WinRT native lifetime requires Windows')
 @pytest.mark.parametrize('case', ['idle', 'speaking', 'two_forward', 'two_reverse',
                                  'shutdown_twice', 'exit_alive', 'exit_speaking'])

@@ -80,6 +80,287 @@ _SAMSARA_TEST_HOME = tempfile.mkdtemp(prefix="samsara_test_home_")
 os.environ["SAMSARA_HOME_DIR"] = _SAMSARA_TEST_HOME
 
 
+# BEGIN SILENT AUDIO 446
+def _install_silent_audio_446():
+    import ctypes
+    import importlib.abc
+    import importlib.machinery
+    import json
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    import tempfile
+    import threading
+    import traceback
+    import types
+
+    name = '_samsara_test_audio_446'
+    if name in sys.modules:
+        return sys.modules[name]
+    state = types.ModuleType(name)
+    state.calls = []
+    state.nodeid = '<collection>'
+    state.source = str(Path(__file__).resolve())
+    state.real = (os.environ.get('SAMSARA_TEST_AUDIO_ALLOW_REAL') == '1'
+                  and os.environ.get('SAMSARA_TEST_REAL_AUDIO') == '1')
+    state.originals = {}
+    state.lock = threading.RLock()
+    sys.modules[name] = state
+
+    def describe(value):
+        # Do not persist speech, dictation, raw audio or potentially secret strings.
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        if isinstance(value, str):
+            if value in ('SystemHand', 'SystemAsterisk', 'SystemExclamation', 'SystemDefault'):
+                return value
+            return {'type': 'str', 'length': len(value)}
+        result = {'type': type(value).__name__}
+        if hasattr(value, 'shape'):
+            result['shape'] = list(value.shape)
+        elif isinstance(value, (bytes, bytearray, memoryview)):
+            result['length'] = len(value)
+        return result
+
+    def record(call, args=(), kwargs=None, test_id=None):
+        frames = traceback.extract_stack(limit=10)[:-2]
+        event = {'test': test_id or (state.nodeid if state.nodeid != '<collection>' else
+                 os.environ.get('SAMSARA_TEST_AUDIO_NODE', '<collection>')),
+                 'pid': os.getpid(), 'call': call,
+                 'args': [describe(arg) for arg in args],
+                 'kwargs': {key: describe(value) for key, value in (kwargs or {}).items()},
+                 'stack': [f'{frame.filename}:{frame.lineno}:{frame.name}' for frame in frames[-5:]],
+                 'blocked': True, 'guard': name}
+        with state.lock:
+            state.calls.append(event)
+            path = os.environ.get('SAMSARA_TEST_AUDIO_LOG')
+            if path:
+                # Separate files avoid interleaving parent/child/thread writes on Windows.
+                with open(f'{path}.{os.getpid()}.jsonl', 'a', encoding='utf-8') as handle:
+                    handle.write(json.dumps(event) + '\n')
+        return event
+
+    state.record = record
+
+    class SilentStream:
+        """PortAudio-shaped sink; callbacks run against disposable memory only."""
+        def __init__(self, call, *args, **kwargs):
+            self._nodeid = record(call, args, kwargs)['test']
+            self._call = call
+            self.callback = kwargs.get('callback')
+            self.samplerate = kwargs.get('samplerate') or 44100
+            self.channels = kwargs.get('channels') or 1
+            if isinstance(self.channels, (tuple, list)):
+                self.channels = self.channels[-1]
+            self.blocksize = kwargs.get('blocksize') or 4096
+            self.dtype = kwargs.get('dtype', 'float32')
+            self.device = kwargs.get('device')
+            self.latency = 0
+            self.active = False
+            self.closed = False
+            self._stop = threading.Event()
+            self._thread = None
+
+        @property
+        def stopped(self):
+            return not self.active
+
+        @property
+        def write_available(self):
+            return self.blocksize
+
+        def start(self):
+            record(self._call + '.start')
+            self.active = True
+            self._stop.clear()
+            if self.callback and not self._thread:
+                def drain():
+                    import numpy as np
+                    while not self._stop.wait(self.blocksize / self.samplerate):
+                        output = np.zeros((self.blocksize, self.channels), dtype=self.dtype)
+                        try:
+                            self.callback(output, self.blocksize, None, None)
+                            if np.any(output):
+                                record(self._call + '.callback', (output,), test_id=self._nodeid)
+                        except Exception:
+                            self.active = False
+                            break
+                self._thread = threading.Thread(target=drain, daemon=True)
+                self._thread.start()
+            return self
+
+        def write(self, data):
+            record(self._call + '.write', (data,))
+            return False
+
+        def stop(self, *args, **kwargs):
+            self.active = False
+            self._stop.set()
+            thread = self._thread
+            if thread and thread is not threading.current_thread():
+                thread.join(timeout=1)
+            self._thread = None
+
+        abort = stop
+
+        def close(self, *args, **kwargs):
+            self.stop()
+            self.closed = True
+
+        def __enter__(self):
+            return self.start()
+
+        def __exit__(self, *args):
+            self.close()
+
+    state.SilentStream = SilentStream
+
+    def replace(target, attribute, call, stream=False, result=None):
+        key = (id(target), attribute)
+        if not hasattr(target, attribute):
+            return
+        original = getattr(target, attribute)
+        if getattr(original, '_silent_audio_446', None) is state:
+            return
+        state.originals[key] = original
+
+        def silent(*args, **kwargs):
+            if state.real:
+                return original(*args, **kwargs)
+            if stream:
+                return SilentStream(call, *args, **kwargs)
+            record(call, args, kwargs)
+            return result
+
+        silent._silent_audio_446 = state
+        setattr(target, attribute, silent)
+
+    def patch_module(module):
+        if module.__name__ == 'winsound':
+            for attribute in ('PlaySound', 'Beep', 'MessageBeep'):
+                replace(module, attribute, 'winsound.' + attribute)
+        elif module.__name__ == 'sounddevice':
+            for attribute in ('play', 'playrec'):
+                replace(module, attribute, 'sounddevice.' + attribute)
+            for attribute in ('OutputStream', 'RawOutputStream', 'Stream', 'RawStream'):
+                replace(module, attribute, 'sounddevice.' + attribute, stream=True)
+        elif module.__name__ == 'PySide6.QtWidgets':
+            replace(module.QApplication, 'beep', 'QApplication.beep')
+
+    targets = {'winsound', 'sounddevice', 'PySide6.QtWidgets'}
+
+    class Loader:
+        def __init__(self, original):
+            self.original = original
+
+        def create_module(self, spec):
+            return self.original.create_module(spec)
+
+        def exec_module(self, module):
+            self.original.exec_module(module)
+            patch_module(module)
+
+        def __getattr__(self, attribute):
+            return getattr(self.original, attribute)
+
+    class Finder(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname in targets:
+                spec = importlib.machinery.PathFinder.find_spec(fullname, path)
+                if spec and spec.loader:
+                    spec.loader = Loader(spec.loader)
+                return spec
+            return None
+
+    sys.meta_path.insert(0, Finder())
+    for target in targets:
+        module = sys.modules.get(target)
+        if module is not None:
+            patch_module(module)
+    if sys.platform == 'win32':
+        replace(ctypes.windll.user32, 'MessageBeep', 'ctypes.windll.user32.MessageBeep', result=1)
+
+    # Python children normally replace PYTHONPATH (436 does). Restore the guard
+    # at the spawn boundary, not just in the parent's environment.
+    guard_dir = os.environ.get('SAMSARA_TEST_AUDIO_GUARD')
+    if not guard_dir:
+        guard_dir = tempfile.mkdtemp(prefix='samsara_silent_audio_446_')
+        source = Path(__file__).read_text(encoding='utf-8')
+        block = source.split('# BEGIN SILENT AUDIO 446\n', 1)[1].split('\n# END SILENT AUDIO 446\n', 1)[0]
+        Path(guard_dir, 'sitecustomize.py').write_text(
+            block + '\n_install_silent_audio_446()\n', encoding='utf-8')
+        os.environ['SAMSARA_TEST_AUDIO_GUARD'] = guard_dir
+    state.guard_dir = guard_dir
+    os.environ['PYTHONPATH'] = guard_dir + os.pathsep + os.environ.get('PYTHONPATH', '')
+    original_popen = subprocess.Popen
+
+    class SilentPopen(original_popen):
+        def __init__(self, args, *positional, **kwargs):
+            if not state.real:
+                supplied_env = kwargs.get('env')
+                env = dict(os.environ if supplied_env is None else supplied_env)
+                env['SAMSARA_TEST_AUDIO_GUARD'] = guard_dir
+                env['SAMSARA_TEST_AUDIO_NODE'] = state.nodeid if state.nodeid != '<collection>' else os.environ.get('SAMSARA_TEST_AUDIO_NODE', '<collection>')
+                if os.environ.get('SAMSARA_TEST_AUDIO_LOG'):
+                    env['SAMSARA_TEST_AUDIO_LOG'] = os.environ['SAMSARA_TEST_AUDIO_LOG']
+                env['PYTHONPATH'] = guard_dir + os.pathsep + env.get('PYTHONPATH', '')
+                kwargs['env'] = env
+                if isinstance(args, (list, tuple)) and args:
+                    executable = Path(str(args[0])).name.lower()
+                    if executable.startswith(('python', 'pypy')):
+                        flags = list(args[1:])
+                        flags = flags[:flags.index('-c')] if '-c' in flags else flags
+                        if any(flag in ('-I', '-E', '-S') for flag in flags):
+                            raise RuntimeError('silent audio guard requires Python site initialization and PYTHONPATH')
+            super().__init__(args, *positional, **kwargs)
+
+    subprocess.Popen = SilentPopen
+    return state
+# END SILENT AUDIO 446
+
+
+# Install before test collection can bind output aliases. The one autouse
+# fixture below provides the per-test recorder and explicit hardware policy.
+_silent_audio_446 = _install_silent_audio_446()
+
+
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'real_audio: requires actual audio hardware; opt in with SAMSARA_TEST_REAL_AUDIO=1')
+
+
+def pytest_collection_modifyitems(config, items):
+    if os.environ.get('SAMSARA_TEST_REAL_AUDIO') != '1':
+        skip = pytest.mark.skip(reason='real audio disabled; set SAMSARA_TEST_REAL_AUDIO=1 to opt in')
+        for item in items:
+            if item.get_closest_marker('real_audio'):
+                item.add_marker(skip)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    _silent_audio_446.calls.clear()
+    _silent_audio_446.nodeid = item.nodeid
+
+
+@pytest.fixture(autouse=True)
+def silent_audio(request, monkeypatch):
+    """Record output requests without devices, including inherited Python children."""
+    real = request.node.get_closest_marker('real_audio') is not None
+    if real and os.environ.get('SAMSARA_TEST_REAL_AUDIO') != '1':
+        pytest.skip('real audio disabled; set SAMSARA_TEST_REAL_AUDIO=1 to opt in')
+    _silent_audio_446.real = real
+    monkeypatch.setenv('SAMSARA_TEST_AUDIO_NODE', request.node.nodeid)
+    if real:
+        monkeypatch.setenv('SAMSARA_TEST_AUDIO_ALLOW_REAL', '1')
+    else:
+        monkeypatch.delenv('SAMSARA_TEST_AUDIO_ALLOW_REAL', raising=False)
+    try:
+        yield _silent_audio_446
+    finally:
+        _silent_audio_446.real = False
+
+
 def _cleanup_samsara_test_home():
     """Close tagged Samsara log handlers before removing the temp home dir --
     Windows refuses to delete a file that still has an open handle, and the
