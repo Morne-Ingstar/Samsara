@@ -98,3 +98,21 @@ def settings_control(config):
     combo.currentIndexChanged.connect(lambda _: combo.setProperty("display_chosen", True))
     combo.activated.connect(lambda _: combo.setProperty("display_chosen", True))
     return combo
+
+
+def bind_settings_description(owner):
+    """Explain the selected option using the same accepted copy as setup."""
+    row = owner._rows_by_widget['listening_display']
+    combo = owner._widgets['listening_display']
+
+    def update_description(*_):
+        description = choice.DESCRIPTIONS[combo.currentData()]
+        row.description = row.full_help = description
+        row.detail.setText(description)
+        combo.setAccessibleDescription(description)
+        # Short-choice controls may present the canonical combo as buttons.
+        for control in row.value.findChildren(QWidget):
+            control.setAccessibleDescription(description)
+
+    combo.currentIndexChanged.connect(update_description)
+    update_description()

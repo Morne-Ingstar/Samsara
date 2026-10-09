@@ -346,3 +346,22 @@ def test_long_setup_descriptions_fit_the_scroll_body(qapp):
     finally:
         page.hide()
         page.deleteLater()
+
+
+def test_settings_row_uses_shared_description_and_tracks_selection(qapp, tmp_path, monkeypatch):
+    app, window, path, notices = _settings(qapp, tmp_path, monkeypatch, {'ui': {'listening_display': 'full'}})
+    try:
+        combo = window._widgets['listening_display']
+        row = window._rows_by_widget['listening_display']
+        frozen = display.run_display(app)
+        for value in ('full', 'compact', 'full'):
+            combo.setCurrentIndex(combo.findData(value))
+            assert row.detail.text() == display.DESCRIPTIONS[value]
+            assert row.description == row.full_help == display.DESCRIPTIONS[value]
+            assert combo.accessibleDescription() == display.DESCRIPTIONS[value]
+            assert row.detail.wordWrap()
+            assert display.run_display(app) is frozen
+        assert not path.exists()
+        assert not notices
+    finally:
+        window.deleteLater()

@@ -349,7 +349,7 @@ class AdvancedPage:
         display_combo = settings_control(cfg)
         self._widgets['listening_display'] = display_combo
         layout.addLayout(self._setting_row(
-            listening_display.LABEL, listening_display.QUESTION, display_combo,
+            listening_display.LABEL, listening_display.DESCRIPTIONS[display_combo.currentData()], display_combo,
         ))
 
         pos_options = [

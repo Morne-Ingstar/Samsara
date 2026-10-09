@@ -82,4 +82,7 @@ ADVANCED = [
 ]
 
 def build(owner):
-    return owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    from samsara.ui.listening_display_page import bind_settings_description
+    page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    bind_settings_description(owner)
+    return page
