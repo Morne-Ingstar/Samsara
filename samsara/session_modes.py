@@ -1347,7 +1347,7 @@ class PendingTextPolicy(Enum):
     """How a hands-free command interacts with staged dictation."""
 
     PRESERVE = "preserve"  # scrolling/overlays: leave pending text untouched
-    COMMIT = "commit"      # legacy probe marker; exact commands now keep drafts
+    COMMIT = "commit"      # text-field effects: paste first, block on failure
 
 
 @dataclass(frozen=True)
@@ -2742,8 +2742,8 @@ class SessionModeManager:
             log.info("[SESSION] control-word anti-hallucination gate failed for %r; "
                       "treating as ordinary %s text", text, self.mode.value)
 
-        # Combined hands-free lane: exact commands coexist with buffered
-        # dictation. A command is not permission to deliver the held draft.
+        # Combined hands-free lane: window commands retain buffered dictation;
+        # explicit text-field metadata alone permits paste before the effect.
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE):
             fragment_guard = (
@@ -3515,7 +3515,7 @@ class SessionModeManager:
     def _dispatch_hands_free_command(
         self, match: HandsFreeCommandMatch, *, deferred: bool = False,
     ) -> DispatchOutcome:
-        """Execute one exact command while retaining the DICTATE draft/lane."""
+        """Execute one exact command using its draft policy; retain the lane."""
         if not deferred and self._cancel_window_fn is not None:
             # Queue 69: the window wraps the whole command dispatch. A cancel
             # leaves the draft staged and no command effect runs.
@@ -3531,8 +3531,15 @@ class SessionModeManager:
                     "mode_retained": self.mode,
                 })
         commit_detail = None
-        # 447: even focus/navigation commands retain the draft. Delivery is
-        # owned by explicit commit triggers, never by command completion.
+        if match.pending_policy is PendingTextPolicy.COMMIT:
+            committed = self._commit_dictate_buffer(target_mode=None)
+            if committed.kind != "dictate_committed":
+                return DispatchOutcome(kind="hands_free_command_blocked", detail={
+                    "phrase": match.phrase,
+                    "commit_outcome": committed.kind,
+                    **committed.detail,
+                })
+            commit_detail = committed.detail
         result = self._command_dispatch_fn(match.dispatch_text)
         state = _command_state(result)
         if not result.matched or state in COMMAND_UNSUCCESSFUL_STATES:

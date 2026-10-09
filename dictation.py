@@ -484,12 +484,8 @@ from samsara.session_modes import (
     is_self_hear_capture,
 )
 
-# Commands with special pending-text behavior inside the combined hands-free
-# lane. These are checked first; any other enabled command or user macro may
-# still execute when it consumes the COMPLETE silence-bounded utterance (see
-# CommandExecutor.find_exact_command). That exact-only fallback makes short
-# hands-free commands useful without stealing command phrases embedded in
-# ordinary prose. ``literal ...`` remains the explicit dictation escape.
+# Curated combined-lane admission; historical COMMIT names reserve commands,
+# while the canonical paste-first set below decides pending-text behavior.
 _HANDS_FREE_PRESERVE_COMMANDS = frozenset({
     "scroll up", "scroll down", "scroll up a little", "scroll down a little",
     "scroll up medium", "scroll down medium", "scroll up high", "scroll down high",
@@ -512,6 +508,12 @@ _HANDS_FREE_COMMIT_PREFIXES = (
     "focus ", "switch to ", "window switch ", "go to window ",
     "click ", "tap ",
 )
+# Paste before field submission, traversal or formatting; a failed paste blocks
+# the effect. The owner ruled window commands out on 2026-10-08 (447).
+_HANDS_FREE_PASTE_FIRST_COMMANDS = frozenset({
+    "submit", "enter", "press tab", "next field", "previous field", "back field",
+    "back tab", "bold", "italic", "underline",
+})
 
 _PENDING_CANCEL_UTTERANCES = frozenset({"nevermind", "never mind"})
 def _is_pending_cancel_utterance(text: str) -> bool:
@@ -5143,9 +5145,8 @@ class DictationApp:
     def _probe_hands_free_command(self, text: str):
         """Classify one utterance without executing it.
 
-        The SessionModeManager needs this side-effect-free probe so it can
-        commit staged text before focus-changing commands, then execute the
-        command only if the paste succeeded. None means ordinary dictation.
+        The SessionModeManager uses this side-effect-free probe to execute
+        commands with their pending-text policy. None means ordinary dictation.
         """
         media_match = self._probe_media_transport(text)
         if media_match is not None:
@@ -5160,9 +5161,9 @@ class DictationApp:
         if normalized in _HANDS_FREE_PRESERVE_COMMANDS:
             policy = PendingTextPolicy.PRESERVE
         elif normalized in _HANDS_FREE_COMMIT_COMMANDS:
-            policy = PendingTextPolicy.COMMIT
+            policy = PendingTextPolicy.PRESERVE
         elif any(normalized.startswith(prefix) for prefix in _HANDS_FREE_COMMIT_PREFIXES):
-            policy = PendingTextPolicy.COMMIT
+            policy = PendingTextPolicy.PRESERVE
         else:
             # While Show Numbers owns the screen, a sole spoken number is an
             # implicit "click <number>" and then control returns here.
@@ -5176,15 +5177,13 @@ class DictationApp:
                 if (_show_numbers.is_overlay_active() and number_only
                         and _show_numbers._parse_spoken_number(normalized) is not None):
                     dispatch_text = f"click {normalized}"
-                    policy = PendingTextPolicy.COMMIT
+                    policy = PendingTextPolicy.PRESERVE
             except Exception as exc:
                 logger.debug(f"[SESSION] Show Numbers command probe unavailable: {exc}")
 
         # Every enabled command and user macro is available when (and only
-        # when) it consumes the entire utterance. Unknown command types commit
-        # pending text first because they may move focus, submit, launch a
-        # process, or invalidate the current target. Curated navigation above
-        # retains its more precise PRESERVE/COMMIT policy.
+        # when) it consumes the entire utterance. Canonical field metadata
+        # decides paste-first; the generic fallback otherwise keeps the draft.
         # Queue 69: curated everyday words (and a Show Numbers click) are
         # "reserved"; only the generic fallback below is not. The cancel
         # window applies to reserved words only when the user extends it.
@@ -5197,7 +5196,7 @@ class DictationApp:
             if find_exact is not None:
                 canonical = find_exact(dispatch_text)
                 if canonical is not None:
-                    policy = PendingTextPolicy.COMMIT
+                    policy = PendingTextPolicy.PRESERVE
 
         if policy is None:
             return None
@@ -5207,6 +5206,7 @@ class DictationApp:
             # Disabled command pack or stale/unavailable command: preserve the
             # user's words as dictation instead of pretending an action exists.
             return None
+        policy = PendingTextPolicy.COMMIT if canonical in _HANDS_FREE_PASTE_FIRST_COMMANDS else PendingTextPolicy.PRESERVE
         return HandsFreeCommandMatch(
             dispatch_text=dispatch_text,
             phrase=canonical,
