@@ -134,4 +134,4 @@ ADVANCED = [
 ]
 
 def build(owner):
-    return owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    return owner.make_page(TITLE, SUBTITLE, BASE, [row for row in ADVANCED if not row[3].startswith("echo_cancellation.")])

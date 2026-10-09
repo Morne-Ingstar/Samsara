@@ -1471,7 +1471,7 @@ class SamsaraTrayQt(QObject):
             add(dev_sub, "Wake Word Debug", lambda: app.open_wake_word_debug())
             add(dev_sub, "View Live Log", lambda: app.open_log_viewer())
             dev_sub.addSeparator()
-            add(dev_sub, "Calibrate Echo Cancellation", lambda: app.calibrate_echo_cancellation())
+            # 2026-10-08: retired pending a better method; add(dev_sub, "Calibrate Echo Cancellation", lambda: app.calibrate_echo_cancellation())
             dev_sub.addSeparator()
             add(dev_sub, "Open Config Folder", lambda: app.open_config_folder())
             dev_sub.addSeparator()

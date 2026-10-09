@@ -751,16 +751,10 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
         "depends_on": "threshold_mode=='manual'",
     },
-    # Default OFF (2026-07-10): the homegrown NLMS adaptive filter
-    # (samsara/echo_cancel.py) converges to only 3-8% echo reduction --
-    # its latency-alignment assumption doesn't hold in practice -- and
-    # adversarial review concluded it likely adds artifacts/distortion to
-    # the capture path, i.e. net-negative. Retired pending evaluation of
-    # WebRTC AEC3 / Windows communications-mode capture as a replacement
-    # (separate, post-release item). The code is intentionally NOT
-    # deleted -- this only flips the default; see samsara/echo_cancel.py
-    # for the still-functional implementation.
-    "echo_cancellation.enabled":  {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "This experimental option tries to remove playback picked up by the microphone. Use it when Samsara hears its own voice or other speaker audio. It is off by default because results depend on your speakers, microphone, and timing.", "docs": "https://morneis.com/samsara/docs/settings/#echo_cancellation.enabled"}},
+    # Retired and hidden (2026-10-08); keep legacy keys and defaults so
+    # saved configurations still validate. The app always creates a disabled
+    # compatibility object; samsara/echo_cancel.py remains for future research.
+    "echo_cancellation.enabled": {"type": "bool", "default": False, "tab": "advanced", "settings_ui": False, "ui_less_reason": "Legacy echo cancellation is retired and hidden.", "help": {"why": "This option is inactive because echo cancellation was retired.", "docs": "https://morneis.com/samsara/docs/settings/#echo_cancellation.enabled"}},
     "echo_cancellation.latency_ms": {
         "type": "float",
         "min": 0.0,
@@ -769,6 +763,9 @@ SETTINGS_SCHEMA = {
         "default": 30.0,
         "tab": "advanced",
         "depends_on": "echo_cancellation.enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Legacy echo cancellation is retired and hidden.",
+        "help": {"why": "This option is inactive because echo cancellation was retired.", "docs": "https://morneis.com/samsara/docs/settings/#echo_cancellation.latency_ms"},
     },
     # Audio ducking (2026-07-10) -- attenuates OTHER apps' audio sessions
     # while dictating instead of subtracting echo after capture (the

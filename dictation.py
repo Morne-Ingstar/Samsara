@@ -2116,16 +2116,15 @@ class DictationApp:
         _boot("smart actions init")
         _bdiag("smart actions init")
 
-        # Echo cancellation (removes system audio from mic input)
+        # Legacy echo cancellation retired (2026-10-08); keep inactive compatibility object.
         aec_config = self.config.get('echo_cancellation', {})
         self.echo_canceller = EchoCanceller(
             sample_rate=self.capture_rate,
-            enabled=aec_config.get('enabled', False),
+            enabled=False,
             latency_ms=aec_config.get('latency_ms', 30.0),
         )
-        if self.echo_canceller.enabled:
-            if self.echo_canceller.start():
-                self._aec_open_t = time.perf_counter()
+        if aec_config.get('enabled', False):
+            logger.info("[AEC] echo cancellation is retired; the saved setting is ignored")
 
         # Hands-free audio ducking (2026-07-24) -- see the "ducking"
         # default_config block's own comment for the two-stage design.
@@ -13350,34 +13349,8 @@ class DictationApp:
         self._update_snooze_tooltip()
 
     def calibrate_echo_cancellation(self):
-        """Run AEC lag calibration on a worker thread (blocking sd.play/rec)."""
-        if self._is_audio_capture_active():
-            logger.debug("[AEC-CAL] Cannot calibrate while audio capture is active. "
-                  "Stop dictation and try again.")
-            return
-
-        def _run():
-            logger.debug("[AEC-CAL] Starting calibration...")
-            try:
-                result = self.echo_canceller.calibrate_lag(
-                    mic_device_index=self.config.get('microphone'),
-                    mic_rate=self.capture_rate,
-                )
-            except Exception as e:
-                logger.exception(f"[AEC-CAL] Calibration failed with exception: {e}")
-                return
-
-            logger.debug(f"[AEC-CAL] Result: {result}")
-            if result['success']:
-                lag = result['lag_ms']
-                logger.debug(
-                    f"[AEC-CAL] To apply this value, edit config.json: "
-                    f'"echo_cancellation": {{"latency_ms": {lag:.1f}}}'
-                )
-            else:
-                logger.debug(f"[AEC-CAL] Calibration not reliable: {result['message']}")
-
-        thread_registry.spawn("aec-calibrate", _run, daemon=True)
+        """Legacy entry point retained without audio or configuration side effects."""
+        logger.info("[AEC] echo cancellation calibration is retired")
 
     def _dispatch_command(self, _cmd):
         """Re-execute self._last_command_name via the normal dispatch path."""
