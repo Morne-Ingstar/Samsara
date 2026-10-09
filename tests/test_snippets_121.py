@@ -432,14 +432,26 @@ def test_the_command_declares_a_required_named_argument(plugin):
     to Ava, because the menu cannot say what to pass it."""
     from samsara import command_catalog as cc
 
-    entry = {"name": {"type": "str", "required": True}}
-    args = cc.infer_args("plugin", "insert", entry, plugin.insert_snippet)
-    assert [(a.name, a.required) for a in args] == [("name", True)]
-    assert args[0].type == "text"
+    import ast
+    from samsara.execution_policy import Route, validate_args
 
     source = (REPO / "plugins" / "commands" / "snippets.py").read_text(encoding="utf-8")
-    assert 'param_schema={"name": {"type": "str", "required": True}}' in source
-    assert 'risk_class="write"' in source           # it types into a document
+    tree = ast.parse(source)
+    for function_name, phrase in (('insert_snippet', 'insert'), ('save_snippet', 'save snippet')):
+        function = next(node for node in tree.body
+                        if isinstance(node, ast.FunctionDef) and node.name == function_name)
+        registration = next(node for node in function.decorator_list
+                            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                            and node.func.id == 'command')
+        declared = {kw.arg: kw.value for kw in registration.keywords}
+        schema = ast.literal_eval(declared['param_schema'])
+        assert schema == {"remainder": {"type": "str", "required": True, "max_len": 120}}
+        args = cc.infer_args("plugin", phrase, schema, getattr(plugin, function_name))
+        assert [(a.name, a.type, a.required) for a in args] == [("remainder", "text", True)]
+        assert validate_args(schema, {"remainder": "sign off"}, route=Route.EXACT) is None
+        assert validate_args(schema, {"remainder": " "}, route=Route.EXACT) == (
+            "invalid_args", "missing required argument 'remainder'")
+        assert ast.literal_eval(declared['risk_class']) == "write"
 
 
 def test_the_command_is_offered_to_ava():

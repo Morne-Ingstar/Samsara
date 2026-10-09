@@ -838,9 +838,20 @@ class CommandExecutor:
         # proposal or a scheduled repeat does, and reports what it returns. A
         # claimed-but-failed command stays claimed -- only a plugin's own
         # decline (MISS) gives the utterance back as dictation.
+        exact_args = {'remainder': remainder} if entry.source == 'plugin' else None
+        if (route in execution_policy.USER_ROUTES and entry.phrase == 'send' and entry.source == 'plugin'
+                and getattr(entry.handler, '__module__', '') == 'plugins.commands.windows'):
+            from plugins.commands.windows import parse_send_slots
+            try:
+                slots = parse_send_slots(remainder)
+            except Exception as exc:
+                logger.debug("send slot parser failed: %s", type(exc).__name__)
+                slots = {}  # the required-slot check still refuses parser failures
+            exact_args.update({key: value for key, value in slots.items()
+                               if key in entry.param_schema})
         result = self.execute_canonical(
             entry.phrase, effective_app, route=route, generation=generation,
-            args=({'remainder': remainder} if entry.source == 'plugin' else None),
+            args=exact_args,
             source_text=text)
         if result.state is DispatchState.MISS:
             return DispatchResult.miss(text, dict(result.detail))

@@ -1,5 +1,5 @@
-"""Queue 62: the five command_mode keys the app reads now have Modes-tab
-controls (tts_char_limit landed with queue 57). Each control round-trips
+"""Queue 62: command_mode controls now live on Dictation and Audio (285).
+Each control round-trips
 through save, the engine reads the saved value, and a value that would
 silence or break the feature is prevented or warned about.
 
@@ -39,17 +39,17 @@ class _App:
 
 
 def _win(config=None):
-    from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+    from samsara.ui.settings_qt import _SettingsWindow
     app = _App(config)
     win = _SettingsWindow(app)
-    return app, win, win._save_fns[_TAB_NAMES.index('Modes')]
+    return app, win, win._collect_destination_updates
 
 
 def _reload(app):
     """Apply to the app's config as _apply_and_close does, then rebuild."""
-    from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+    from samsara.ui.settings_qt import _SettingsWindow
     win = _SettingsWindow(app)
-    return win, win._save_fns[_TAB_NAMES.index('Modes')]
+    return win, win._collect_destination_updates
 
 
 # -- the list is empty ----------------------------------------------------
@@ -57,16 +57,27 @@ def test_config_only_list_is_empty_and_note_is_gone(qapp):
     assert mq._MODES_CONFIG_ONLY_KEYS == ()
     _app, win, _save = _win()
     assert 'modes_config_only_note' not in win._widgets
+    from samsara.ui.settings_qt import _TAB_NAMES
+    assert 'Modes' not in _TAB_NAMES
+    for key in ('cmd_utterance_silence', 'cmd_dictate_utterance_silence',
+                'cmd_matching_enabled', 'cmd_abort_phrases'):
+        row = win._rows_by_widget[key]
+        assert row.page_name == 'Dictation'
+        assert row.isAncestorOf(win._widgets[key])
+    assert win._rows_by_widget['cmd_exit_earcon'].page_name == 'Audio'
 
 
 # -- round trips ------------------------------------------------------------
-def test_every_new_control_round_trips_through_apply_and_reload(qapp):
+def test_every_new_control_round_trips_through_apply_and_reload(qapp, monkeypatch):
     app, win, _save = _win({"command_mode": {}})
     win._widgets['cmd_utterance_silence'].setValue(1.35)
     win._widgets['cmd_dictate_utterance_silence'].setValue(0.9)
     win._widgets['cmd_exit_earcon'].setChecked(False)
     win._widgets['cmd_matching_enabled'].setChecked(True)
     win._widgets['cmd_abort_phrases'].setPlainText("that's all folks\n\n  done for now \nthat's all folks")
+    # Applying all destinations may replace TTS. This test owns config saving,
+    # not a speech provider or audio device.
+    monkeypatch.setattr(win, '_replace_tts_runtime', lambda _cfg: None)
     win._apply_and_close()
 
     cm = app.config['command_mode']
@@ -201,10 +212,13 @@ def test_abort_phrase_that_breaks_a_built_in_is_warned(qapp, phrase, fragment):
 
 def test_descriptions_state_the_edges(qapp):
     _app, win, _save = _win({})
-    from PySide6.QtWidgets import QLabel
-    labels = [lbl.text() for lbl in win.findChildren(QLabel)]
-    assert mq._CMD_MATCHING_DESC in labels and "typed as text" in mq._CMD_MATCHING_DESC
-    assert mq._CMD_EXIT_EARCON_DESC in labels and "no sound" in mq._CMD_EXIT_EARCON_DESC
-    assert mq._CMD_SILENCE_DESC in labels and mq._DICTATE_SILENCE_DESC in labels
+    explanations = {key: row.full_help for key, row in win._rows_by_widget.items()}
+    assert mq._CMD_MATCHING_DESC in explanations['cmd_matching_enabled']
+    assert "typed as text" in explanations['cmd_matching_enabled']
+    assert mq._CMD_EXIT_EARCON_DESC in explanations['cmd_exit_earcon']
+    assert "no sound" in explanations['cmd_exit_earcon']
+    assert mq._CMD_SILENCE_DESC in explanations['cmd_utterance_silence']
+    assert mq._DICTATE_SILENCE_DESC in explanations['cmd_dictate_utterance_silence']
     abort_desc = mq._ABORT_PHRASES_DESC.format(sleep=sm.SESSION_SLEEP_PHRASES[0])
-    assert abort_desc in labels and "Empty means" in abort_desc and "next time Samsara starts" in abort_desc
+    assert abort_desc in explanations['cmd_abort_phrases']
+    assert "Empty means" in abort_desc and "next time Samsara starts" in abort_desc

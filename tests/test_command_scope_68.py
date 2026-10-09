@@ -296,15 +296,19 @@ def test_every_unscoped_phrase_matches_as_before_in_every_context(executor):
             before = base.match_detail(variant)
             before = (before.entry.phrase, before.remainder) if before else None
             for ctx in ALL_CONTEXTS:
-                now = m.match_detail(variant, ctx)
-                now = (now.entry.phrase, now.remainder) if now else None
+                detail = m.match_detail(variant, ctx)
+                now = (detail.entry.phrase, detail.remainder) if detail else None
                 if before is not None and before[0] in scoped_phrases:
-                    # Before scoping a cube number prefix-matched this utterance
-                    # ("three d print a gun ..." -> "three"). That is the false
-                    # match scoping removes: it must not come back, and nothing
-                    # else changes.
+                    # Browser and Word commands now join the overlay scopes
+                    # (265/283). The old winner remains valid in its live app;
+                    # elsewhere only a live fallback may win.
                     swallowed_before.add(variant)
-                    assert now is None or now[0] not in scoped_phrases, (variant, now)
+                    winner = m._entries[before[0]]
+                    if m.is_live(winner, ctx, before[1]):
+                        assert now == before, (variant, ctx.exe or ctx.reason, now)
+                    elif detail is not None:
+                        assert detail.entry is not winner, (variant, now)
+                        assert cs.scope_live(detail.entry.scope, ctx, detail.remainder)[0], (variant, now)
                     continue
                 assert now == before, (variant, ctx.exe or ctx.reason)
         checked += 1
@@ -312,8 +316,7 @@ def test_every_unscoped_phrase_matches_as_before_in_every_context(executor):
     assert swallowed_before, "expected at least one utterance a cube number used to swallow"
 
 
-def test_scoped_commands_are_exactly_the_cube_numbers_and_the_mouse_grid(executor):
-    scoped = {e.phrase: e.scope.to_json() for e in executor._matcher._sorted if e.scope is not None}
+def _expected_scopes():
     expected = {w: {"tags": ["window_cube.visible"]}
                 for w in ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")}
     # Queue 71 reuses this mechanism for the mouse grid's own phrases, so they
@@ -322,6 +325,28 @@ def test_scoped_commands_are_exactly_the_cube_numbers_and_the_mouse_grid(executo
                      for p in ("hide grid", "grid back", "move here")})
     expected.update({p: {"argument_tags": ["show_numbers.visible"]}
                      for p in ("click", "left click", "right click", "double click")})
+    browsers = ['brave.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe', 'opera.exe', 'vivaldi.exe']
+    # 265 deliberately scopes browser accelerators, including inherited pack
+    # scope. Launch commands explicitly opt out and stay global.
+    expected.update({p: {'apps': browsers} for p in (
+        'new tab', 'close tab', 'reopen tab', 'next tab', 'previous tab',
+        'refresh page', 'go back', 'go forward', 'reset zoom', 'page zoom in',
+        'page zoom out', 'address bar', 'go to address bar', 'open downloads',
+        'open history', 'open bookmarks', 'bookmark this', 'duplicate tab',
+        'mute tab', 'pin tab', 'open devtools', 'hard refresh',
+        'tab one', 'tab two', 'tab three', 'tab four', 'tab five', 'tab six',
+        'tab seven', 'tab eight', 'tab nine', 'last tab', 'private window',
+        'reading view', 'find tab', 'find text', 'tab number',
+    )})
+    expected.update({p: {'apps': ['winword.exe']} for p in (
+        'select all', 'heading one', 'heading two', 'heading three', 'normal text',
+    )})
+    return expected
+
+
+def test_scoped_commands_are_exactly_the_cube_numbers_and_the_mouse_grid(executor):
+    scoped = {e.phrase: e.scope.to_json() for e in executor._matcher._sorted if e.scope is not None}
+    expected = _expected_scopes()
     assert scoped == expected
 
 
@@ -392,9 +417,11 @@ def test_catalog_carries_scope_and_regenerates_identically(executor):
     doc = cc.to_document(specs)
     assert cc.validate_catalog(doc) == []
     scoped = {c["canonical_id"]: c["scope"] for c in doc["commands"] if "scope" in c}
-    # 9 window-cube numbers + queue 71's 3 mouse-grid phrases + queue 148's
-    # argument-only Show Numbers click forms.
-    assert len(scoped) == 16 and scoped["window_cube.two"] == {"tags": ["window_cube.visible"]}
+    ids_by_phrase = {alias: spec.canonical_id for spec in specs for alias in spec.aliases}
+    expected = {ids_by_phrase[phrase]: scope for phrase, scope in _expected_scopes().items()}
+    assert scoped == expected
+    assert cc.to_document(cc.build_catalog(executor)) == doc
+    assert scoped["window_cube.two"] == {"tags": ["window_cube.visible"]}
     assert scoped["show_numbers.hide_grid"] == {"tags": ["mouse_grid.visible"]}
     assert scoped["show_numbers.right_click"] == {"argument_tags": ["show_numbers.visible"]}
 
@@ -433,10 +460,21 @@ def test_cheatsheet_window_hides_not_live_and_says_how_many(qapp, executor, tmp_
     try:
         ids = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert "window_cube.two" not in ids and "window_cube.window_two" in ids
-        # 9 window-cube numbers + queue 71's 3 mouse-grid phrases.
-        assert win._category_bar._hidden_lbl.text() == "(12 not live here)"
+        # 12 overlay-only + 37 browser + 5 Word commands are hidden in Warp;
+        # bare Show Numbers click forms stay global.
+        hidden = {'window_cube.' + word for word in (
+            'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine')}
+        hidden.update({'show_numbers.hide_grid', 'show_numbers.grid_back', 'show_numbers.move_here'})
+        specs = cc.build_catalog(executor)
+        ids_by_phrase = {alias: spec.canonical_id for spec in specs for alias in spec.aliases}
+        hidden.update(ids_by_phrase[phrase]
+                      for phrase, scope in _expected_scopes().items() if 'apps' in scope)
+        all_ids = {spec.canonical_id for spec in specs}
+        assert all_ids - ids == hidden
+        assert win._category_bar._hidden_lbl.text() == f"({len(hidden)} not live here)"
         win._category_bar._live_only.setChecked(False)
         ids = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert "window_cube.two" in ids and win._category_bar._hidden_lbl.text() == ""
+        assert ids == all_ids
     finally:
         win.deleteLater()

@@ -19,9 +19,9 @@ from tools.dump_command_metadata import build_executor
 
 
 REQUIRED_VOICE_PHRASES = {
-    "playlist",
-    "album",
-    "artist",
+    "play playlist",
+    "play album",
+    "play artist",
     "insert",
     "save snippet",
     "find text",
@@ -32,17 +32,31 @@ REQUIRED_VOICE_PHRASES = {
     "claude message submit",
 }
 
+# 345b's controller identities have required tokens, but are never voice slots.
+# 262b's send.monitor is a typed slot, not a required free-text remainder.
+REQUIRED_TYPED_PHRASES = {
+    'send', 'interact focus', 'interact minimize', 'interact maximize',
+    'interact move', 'interact snap', 'interact close',
+}
+
 
 @pytest.fixture(scope="module")
 def voice_executor():
     """A production registry snapshot, built before per-test registry isolation."""
     executor = build_executor()
-    entries = {
+    required = {
         entry.phrase: entry
         for entry in executor._matcher._sorted
         if any(spec.get("required") for spec in entry.param_schema.values())
     }
+    assert set(required) == REQUIRED_VOICE_PHRASES | REQUIRED_TYPED_PHRASES
+    entries = {phrase: entry for phrase, entry in required.items()
+               if entry.param_schema.get('remainder', {}).get('required')}
     assert set(entries) == REQUIRED_VOICE_PHRASES
+    assert all(entry.voice_triggerable for entry in entries.values())
+    assert all(not required[phrase].voice_triggerable
+               for phrase in REQUIRED_TYPED_PHRASES if phrase.startswith('interact '))
+    assert required['send'].param_schema['monitor'] == {'type': 'monitor', 'required': True}
     return executor, entries, dict(plugin_commands._REGISTRY)
 
 
@@ -69,6 +83,9 @@ def test_required_slots_accept_the_actual_exact_voice_remainder(live_voice_regis
                       lambda: MatchContext.for_app("chrome.exe"))
         for phrase in sorted(entries):
             executor.process_text(f"{phrase} foo", force_commands=True)
+        for alias in ('playlist', 'album', 'artist'):
+            result = executor.process_text(f"{alias} foo", force_commands=True)
+            assert result.phrase == f'play {alias}'
 
     assert set(captured) == REQUIRED_VOICE_PHRASES
     for phrase, entry in entries.items():
@@ -88,3 +105,38 @@ def test_bare_playlist_is_denied_as_a_missing_required_remainder(live_voice_regi
         "reason": "invalid_args",
         "detail": "missing required argument 'remainder'",
     }
+
+
+def test_send_with_a_spoken_monitor_satisfies_its_required_slot(live_voice_registry, monkeypatch):
+    """A named monitor reaches policy using synthetic screens, without effects."""
+    from plugins.commands import windows
+
+    executor, _entries = live_voice_registry
+    captured = {}
+    # Collection may install Win32 mocks; neither those nor the real desktop
+    # should decide whether this voice-slot regression passes.
+    monitors = [
+        {'handle': 1, 'index': 1, 'rect': (0, 0, 1920, 1080),
+         'primary': True, 'device': 'left'},
+        {'handle': 2, 'index': 2, 'rect': (1920, 0, 3840, 1080),
+         'primary': False, 'device': 'right'},
+    ]
+    monkeypatch.setattr(windows, 'get_monitors', lambda: monitors)
+    monkeypatch.setattr(windows.win32api, 'EnumDisplayMonitors',
+                        lambda: [(m['handle'], None, m['rect']) for m in monitors])
+
+    def capture(command_id, app_instance=None, **kwargs):
+        captured.update(command_id=command_id, **kwargs)
+        return DispatchResult(DispatchState.REJECTED, command_id, command_id)
+
+    monkeypatch.setattr(executor, 'execute_canonical', capture)
+    executor._matcher.set_enabled_packs({'window-management'})
+    executor.process_text('send chrome to left screen', force_commands=True)
+    assert captured['command_id'] == 'send'
+    assert captured['route'] is Route.EXACT
+    assert captured['args'] == {
+        'app_name': 'chrome', 'monitor': 'left screen',
+        'remainder': 'chrome to left screen',
+    }
+    entry = executor._matcher._entries['send']
+    assert validate_args(entry.param_schema, captured['args'], route=captured['route']) is None

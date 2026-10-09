@@ -508,7 +508,7 @@ def _monitor_by_position(position, monitors, text=''):
     return UnresolvedDestination(text, f'unknown position {position!r}')
 
 
-def _parse_destination(dest_text, app, monitors=None):
+def _parse_destination(dest_text, app, monitors=None, *, strict=False):
     """Resolve spoken destination text to a monitor dict, or an
     UnresolvedDestination (falsy) saying why.
 
@@ -520,9 +520,12 @@ def _parse_destination(dest_text, app, monitors=None):
                                  -> by physical position (_monitor_by_position)
         the other screen         -> the monitor the cursor is NOT on (2 monitors)
         main / primary [screen]  -> the primary monitor
+
+    Policy uses strict=True: failed live-state reads propagate, without the
+    handler reader's best-effort fallback. Destination grammar is unchanged.
     """
     if monitors is None:
-        monitors = get_monitors()
+        monitors = _strict_monitors() if strict else get_monitors()
     t = _strip_leading_the((dest_text or '').lower().strip())
     words = t.split()
     if not words:
@@ -532,7 +535,7 @@ def _parse_destination(dest_text, app, monitors=None):
         m = get_tv_monitor(app, monitors)
         return m if m else UnresolvedDestination(dest_text, 'no tv monitor')
     if 'here' in words:
-        m = get_monitor_under_cursor(monitors)
+        m = _strict_cursor_monitor(monitors) if strict else get_monitor_under_cursor(monitors)
         return m if m else UnresolvedDestination(dest_text, 'no monitor under the cursor')
     for word in words:
         if word.isdigit():
@@ -544,7 +547,7 @@ def _parse_destination(dest_text, app, monitors=None):
     if 'other' in words:
         if len(monitors) != 2:
             return UnresolvedDestination(dest_text, f"'other' is ambiguous with {len(monitors)} monitors")
-        here = get_monitor_under_cursor(monitors)
+        here = _strict_cursor_monitor(monitors) if strict else get_monitor_under_cursor(monitors)
         return next((m for m in monitors if m is not here), monitors[0])
     if 'main' in words or 'primary' in words:
         m = next((m for m in monitors if m.get('primary')), None)
@@ -604,6 +607,75 @@ def _parse_placements(remainder):
         if first[1] and second[1] and _is_destination_text(first[1]) and _is_destination_text(second[1]):
             return [first] + _parse_placements(right)
     return [_parse_send_remainder(r)]
+
+
+def _strict_monitors():
+    """Read-only policy snapshot; detect enumeration/monitor-info failures
+    that the handler's best-effort monitor reader otherwise tolerates."""
+    monitors = get_monitors()
+    handles = {int(handle) for handle, _hdc, _rect in win32api.EnumDisplayMonitors()}
+    if not handles or {int(m['handle']) for m in monitors} != handles:
+        raise ValueError('incomplete monitor enumeration')
+    return monitors
+
+
+def _strict_cursor_monitor(monitors):
+    """Read the cursor without the handler reader's exception fallback."""
+    x, y = win32api.GetCursorPos()  # a failed read propagates to validation
+    for monitor in monitors:
+        l, t, r, b = monitor['rect']
+        if l <= x < r and t <= y < b:
+            return monitor
+    return next((m for m in monitors if m['primary']), monitors[0] if monitors else None)
+
+
+def parse_send_slots(remainder):
+    """Extract declared slots with the handler's parser, without any effects.
+    Compound placements carry all destinations so policy checks every one
+    before the handler can move the first window."""
+    placements = _parse_placements(remainder)
+    if not placements:
+        return {}
+    destinations = tuple(dest for _name, dest in placements)
+    slots = {'monitor': destinations[0] if len(destinations) == 1 else destinations}
+    names = tuple(name for name, _dest in placements if name is not None)
+    if names:
+        slots['app_name'] = names[0] if len(names) == 1 else names
+    return slots
+
+
+def _validate_monitor(value, *, app=None):
+    destinations = (value,) if isinstance(value, str) else value
+    if not isinstance(destinations, (list, tuple)) or not destinations:
+        return False
+    if not all(isinstance(dest, str) and dest.strip() for dest in destinations):
+        return False
+    monitors = _strict_monitors()
+    return all(bool(_parse_destination(dest, app, monitors, strict=True))
+               for dest in destinations)
+
+
+def _validate_app_name(value, *, app=None):
+    """Normalize each single name as the handler does, without placement
+    splitting or window lookup. Window existence remains the handler's check."""
+    names = (value,) if isinstance(value, str) else value
+    if not isinstance(names, (list, tuple)) or not names:
+        return False
+    for name in names:
+        if not isinstance(name, str) or not name.strip():
+            return False
+        normalized = _strip_leading_the(name.lower().strip())
+        if normalized in ('', 'this'):
+            return False
+    return True
+
+
+# Static registration by the module that owns both parsers. No transcript,
+# config or model-provided field can install or choose a validator.
+from samsara.arg_types import register_arg_type  # noqa: E402
+
+register_arg_type('monitor', _validate_monitor)
+register_arg_type('app_name', _validate_app_name)
 
 
 # ---------------------------------------------------------------------------

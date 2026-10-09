@@ -85,7 +85,8 @@ class Route(str, Enum):
 
 # Routes where the tool id was chosen by a model, not spoken by the user.
 MODEL_ROUTES = frozenset({Route.MODEL, Route.SMART_ACTION})
-# Routes that count as "the user said exactly this".
+# User-authored routes alone may validate semantic slots; expanding this
+# authority to model routes requires the owner's decision.
 USER_ROUTES = frozenset({Route.EXACT, Route.GRAMMAR, Route.MACRO, Route.SCHEDULE})
 
 RISK_READ, RISK_UI, RISK_WRITE, RISK_DESTRUCTIVE, RISK_UNKNOWN = (
@@ -570,19 +571,10 @@ def model_may_call(command_id: str, *, app=None, executor=None, risk: Optional[s
 SPOKEN_REMAINDER_KEY = "remainder"
 
 
-def _type_ok(typ, value) -> bool:
-    if typ == "int":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if typ == "float":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    if typ == "bool":
-        return isinstance(value, bool)
-    if typ == "str":
-        return isinstance(value, str)
-    return False          # an unknown type name in a schema validates nothing
+from samsara.arg_types import type_ok as _type_ok
 
 
-def validate_args(schema, args: dict, *, route: Route = Route.EXACT) -> Optional[tuple]:
+def validate_args(schema, args: dict, *, route: Route = Route.EXACT, app=None) -> Optional[tuple]:
     """Check ``args`` against ``schema``. Returns None when valid, else
     ``(reason, detail)`` with reason "unvalidated" or "invalid_args".
 
@@ -630,7 +622,7 @@ def validate_args(schema, args: dict, *, route: Route = Route.EXACT) -> Optional
             continue
         value = args[name]
         typ = spec.get("type")
-        if not _type_ok(typ, value):
+        if not _type_ok(typ, value, app=app, allow_semantic=user_route):
             return "invalid_args", f"argument '{name}' must be a {typ}"
         if typ == "str":
             if spec.get("required") and not value.strip():
@@ -955,7 +947,7 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
 
     # 3. Arguments must satisfy the command's own schema; an undeclared schema
     # makes the tool unavailable to a model.
-    err = validate_args(schema, inv.args, route=inv.route)
+    err = validate_args(schema, inv.args, route=inv.route, app=app)
     if (err and err[0] == "unvalidated" and not inv.args and risk in (RISK_READ, RISK_UI)):
         # Queue 107 / Astra F1, narrowly: a proposal carrying NO arguments has
         # nothing to validate -- an ACTION line is the whole instruction (the

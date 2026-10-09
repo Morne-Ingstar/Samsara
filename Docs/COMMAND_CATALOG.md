@@ -763,18 +763,18 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `windows.bring` | `bring`, `bring back`, `fetch`, `get`, `grab` | app_name:app_name | ui | yes |  | Brings the app you name to the screen your pointer is on. | `plugins/commands/windows.py:613` |
-| `windows.cursor_to` | `cursor to`, `mouse to`, `move cursor to`, `move mouse to`, `move the cursor to`, `move the mouse to`, `pointer to`, `teleport cursor to`, `teleport mouse to` | monitor:monitor | ui | yes |  | Moves the mouse pointer to the screen or place you name. | `plugins/commands/windows.py:1128` |
-| `windows.delete_layout` | `delete layout`, `forget layout`, `remove layout` | name:text | destructive | no |  | Deletes the saved window layout you name. | `plugins/commands/windows.py:1043` |
-| `windows.find_lost_windows` | `find lost windows`, `lost windows`, `where are my windows` | - | read | yes |  | Reports any windows sitting off-screen where you cannot reach them. | `plugins/commands/windows.py:1062` |
-| `windows.find_window` | `find window` | app_name:app_name | ui | yes |  | Finds the window for the app you name and brings it to the front. | `plugins/commands/windows.py:1097` |
-| `windows.list_layouts` | `list layouts`, `show layouts`, `what layouts` | - | read | yes |  | Reads out the window layouts you have saved. | `plugins/commands/windows.py:1028` |
-| `windows.movie_mode` | `couch mode`, `movie mode`, `movie time`, `tv mode` | - | ui | yes |  | Puts video on the TV screen and clears the other screens. | `plugins/commands/windows.py:739` |
-| `windows.rescue_lost_windows` | `bring back lost windows`, `recover windows`, `rescue lost windows` | - | ui | yes |  | Pulls windows that are off-screen back onto a screen you can see. | `plugins/commands/windows.py:1079` |
-| `windows.restore_layout` | `load layout`, `restore layout`, `restore window layout` | name:text | ui | yes |  | Puts your windows back the way a saved layout had them. | `plugins/commands/windows.py:1013` |
-| `windows.save_layout` | `save layout`, `save this layout`, `save window layout` | name:text | write | no |  | Saves where your windows are now, under the name you give it. | `plugins/commands/windows.py:998` |
-| `windows.send` | `move`, `put`, `send`, `throw` | app_name:app_name, monitor:monitor* | ui | yes |  | Moves the app you name to the screen you name, such as the left one. | `plugins/commands/windows.py:692` |
-| `windows.snap` | `dock`, `snap` | side:side | ui | yes |  | Legacy foreground snap delegates to the exact-HWND helper. | `plugins/commands/windows.py:1264` |
+| `windows.bring` | `bring`, `bring back`, `fetch`, `get`, `grab` | app_name:app_name | ui | yes |  | Brings the app you name to the screen your pointer is on. | `plugins/commands/windows.py:685` |
+| `windows.cursor_to` | `cursor to`, `mouse to`, `move cursor to`, `move mouse to`, `move the cursor to`, `move the mouse to`, `pointer to`, `teleport cursor to`, `teleport mouse to` | monitor:monitor | ui | yes |  | Moves the mouse pointer to the screen or place you name. | `plugins/commands/windows.py:1200` |
+| `windows.delete_layout` | `delete layout`, `forget layout`, `remove layout` | name:text | destructive | no |  | Deletes the saved window layout you name. | `plugins/commands/windows.py:1115` |
+| `windows.find_lost_windows` | `find lost windows`, `lost windows`, `where are my windows` | - | read | yes |  | Reports any windows sitting off-screen where you cannot reach them. | `plugins/commands/windows.py:1134` |
+| `windows.find_window` | `find window` | app_name:app_name | ui | yes |  | Finds the window for the app you name and brings it to the front. | `plugins/commands/windows.py:1169` |
+| `windows.list_layouts` | `list layouts`, `show layouts`, `what layouts` | - | read | yes |  | Reads out the window layouts you have saved. | `plugins/commands/windows.py:1100` |
+| `windows.movie_mode` | `couch mode`, `movie mode`, `movie time`, `tv mode` | - | ui | yes |  | Puts video on the TV screen and clears the other screens. | `plugins/commands/windows.py:811` |
+| `windows.rescue_lost_windows` | `bring back lost windows`, `recover windows`, `rescue lost windows` | - | ui | yes |  | Pulls windows that are off-screen back onto a screen you can see. | `plugins/commands/windows.py:1151` |
+| `windows.restore_layout` | `load layout`, `restore layout`, `restore window layout` | name:text | ui | yes |  | Puts your windows back the way a saved layout had them. | `plugins/commands/windows.py:1085` |
+| `windows.save_layout` | `save layout`, `save this layout`, `save window layout` | name:text | write | no |  | Saves where your windows are now, under the name you give it. | `plugins/commands/windows.py:1070` |
+| `windows.send` | `move`, `put`, `send`, `throw` | app_name:app_name, monitor:monitor* | ui | yes |  | Moves the app you name to the screen you name, such as the left one. | `plugins/commands/windows.py:764` |
+| `windows.snap` | `dock`, `snap` | side:side | ui | yes |  | Legacy foreground snap delegates to the exact-HWND helper. | `plugins/commands/windows.py:1336` |
 
 ## word (24)
 

@@ -19,12 +19,24 @@ from tools import hf_bench
 
 def load_gate_methods():
     root = Path(__file__).resolve().parents[1]
-    from samsara import audio_tools, session_modes, transcript_gates
+    from samsara import audio_tools, config_defaults, diagnostics, session_modes, transcript_gates
+    from samsara.hallucination_filter import SignoffContext, is_signoff_hallucination
+    from samsara.stage_timing import (
+        StageTiming, outcome_label, set_current_stage_timing, reset_current_stage_timing,
+    )
     spec = importlib.util.spec_from_file_location("offline_languages", root / "samsara/languages.py")
     languages = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(languages)
     module = hf_bench.load_production_adapter()
     module.__dict__.update(_languages=languages, collections=collections, math=math, time=time,
+                           StageTiming=StageTiming,
+                           config_defaults=config_defaults, diagnostics=diagnostics,
+                           SignoffContext=SignoffContext,
+                           is_signoff_hallucination=is_signoff_hallucination,
+                           outcome_label=outcome_label,
+                           set_current_stage_timing=set_current_stage_timing,
+                           reset_current_stage_timing=reset_current_stage_timing,
+                           is_self_hear_capture=session_modes.is_self_hear_capture,
                            logger=logging.getLogger("language_gate_test"),
                            flight_recorder=SimpleNamespace(record=Mock()),
                            # Queue 128's pure gates are imported directly;
@@ -300,6 +312,7 @@ def test_toggle_gates_only_free_form_lanes(app, lane, caplog):
     app._dictate_preview = None
     app._compute_switch_gate_signals = Mock()
     app._handle_session_dispatch_outcome = Mock()
+    app._resolve_command_miss = lambda outcome, _text: outcome
     app.production._drop_trailing_garbage_segments = lambda segs: segs
     app.production._trim_trailing_garbage_run = lambda text: text
     set_decode(app, text="これはひらがなです", language="en", probability=1.0)

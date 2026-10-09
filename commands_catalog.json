@@ -10674,7 +10674,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:613",
+      "source": "plugins/commands/windows.py:685",
       "undoable": true,
       "verb": "bring",
       "whole_utterance": false
@@ -10705,7 +10705,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1128",
+      "source": "plugins/commands/windows.py:1200",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -10730,7 +10730,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:1043",
+      "source": "plugins/commands/windows.py:1115",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -10749,7 +10749,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1062",
+      "source": "plugins/commands/windows.py:1134",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -10772,7 +10772,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1097",
+      "source": "plugins/commands/windows.py:1169",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -10791,7 +10791,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1028",
+      "source": "plugins/commands/windows.py:1100",
       "undoable": true,
       "verb": "list",
       "whole_utterance": false
@@ -10811,7 +10811,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:739",
+      "source": "plugins/commands/windows.py:811",
       "undoable": true,
       "verb": "movie",
       "whole_utterance": false
@@ -10830,7 +10830,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1079",
+      "source": "plugins/commands/windows.py:1151",
       "undoable": true,
       "verb": "rescue",
       "whole_utterance": false
@@ -10855,7 +10855,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1013",
+      "source": "plugins/commands/windows.py:1085",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -10880,7 +10880,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "write",
-      "source": "plugins/commands/windows.py:998",
+      "source": "plugins/commands/windows.py:1070",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -10911,7 +10911,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:692",
+      "source": "plugins/commands/windows.py:764",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -10935,7 +10935,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1264",
+      "source": "plugins/commands/windows.py:1336",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
