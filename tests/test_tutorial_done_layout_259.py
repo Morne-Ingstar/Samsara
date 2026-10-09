@@ -31,7 +31,8 @@ def test_done_page_keeps_body_text_and_open_targets_unclipped(qapp):
         assert not clipped, f"tutorial finish labels clipped to less than one line: {clipped}"
 
         body_fragments = (
-            "Dictated text", "Ran a command", "Say ", "Ava (your on-device",
+            # Queue 315 already replaced the readiness promise with observed Settings state.
+            "Dictated text", "Ran a command", "Say ", "Ava availability",
             "Hands-free", "Fine-tune your microphone", "Install Ollama",
             "Teach Samsara your specific words",
         )

@@ -93,8 +93,10 @@ def main() -> int:
         # placed next to Next (Back then Next), same secondary styling as
         # "Skip this step" -- see samsara/ui/tutorial_qt.py's _go_back.
         _settle_and_grab(app, tut, OUT_DIR / "tutorial_step3_back_button.png")
-        tut._go_next()  # command -> done
-        _settle_and_grab(app, tut, OUT_DIR / "tutorial_step4_done.png")
+        tut._go_next()  # command -> ways (passive)
+        _settle_and_grab(app, tut, OUT_DIR / "tutorial_step4_ways.png")
+        tut._go_next()  # ways -> done
+        _settle_and_grab(app, tut, OUT_DIR / "tutorial_step5_done.png")
         tut.close()
     except Exception:
         import traceback

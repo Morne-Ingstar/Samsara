@@ -75,7 +75,8 @@ def test_C0140_C0157_C0174_C0175_C0176_done_uses_observed_readiness(ava_guide, m
 def test_C0226_C2509_tutorial_glyphs_follow_practice_on_done(qapp):
     window = tutorial_qt.TutorialWindow(SimpleNamespace(config={}))
     try:
-        window._step = 3
+        # Queue 378 inserts a passive overview before done; locate done by name.
+        window._step = next(i for i, (key, _) in enumerate(window._steps) if key == "done")
         window._show_step()
         dictation = window.findChild(QLabel, "tutorialDoneCheck1")
         command = window.findChild(QLabel, "tutorialDoneCheck2")
@@ -211,7 +212,8 @@ def test_C0177_C0178_consent_does_not_claim_readiness(ava_guide, monkeypatch):
 def test_C0216_C0225_skipped_tutorial_has_neutral_completion_heading(qapp):
     window = tutorial_qt.TutorialWindow(SimpleNamespace(config={}))
     try:
-        window._step = 3
+        # Queue 378 inserts a passive overview before done; locate done by name.
+        window._step = next(i for i, (key, _) in enumerate(window._steps) if key == "done")
         window._show_step()
         assert window._title_lbl.text() == "Tutorial complete"
         assert "You know" not in " ".join(label.text() for label in window.findChildren(QLabel))

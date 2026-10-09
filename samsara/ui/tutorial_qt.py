@@ -14,7 +14,8 @@ Steps:
   0  Welcome     — passive: "takes two minutes" + Let's go
   1  Dictation   — speak → text lands in box → green check
   2  Command     — say any command → green check
-  3  Done        — checklist recap, all items ticked; points to Ava and
+  3  Ways        — passive overview of the user's current capture controls
+  4  Done        — checklist recap, all items ticked; points to Ava and
                    the click-by-number overlay as things to try once set up
 
 Every "try saying ..." example and every command named in the text is read
@@ -38,6 +39,8 @@ from PySide6.QtWidgets import (
 from samsara import command_catalog
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
+from samsara.onboarding.guidance_facts import facts_from_config
+from samsara.onboarding.mode_details import detail_from_config
 from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
 from samsara.ui.widgets.step_indicator import StepIndicator
@@ -194,7 +197,7 @@ def _commands_banner_text(count) -> str:
             "manage windows, type shortcuts, and more.")
 
 
-def _hands_free_text(config: dict) -> str:
+def _hands_free_text(config: dict, *, recovery_only: bool = False) -> str:
     """Audit row 165: the session, its commit/undo words, undo and cancel keys."""
     from samsara import session_modes  # noqa: PLC0415
     from samsara.ui.quick_reference_qt import _HOTKEY_FALLBACKS, _pretty_button, _pretty_key_combo  # noqa: PLC0415
@@ -202,12 +205,83 @@ def _hands_free_text(config: dict) -> str:
     button = _pretty_button(cm.get('button', 'rctrl')).replace(' (default)', '')
     undo = _pretty_key_combo(config.get('undo_hotkey', _HOTKEY_FALLBACKS['undo_hotkey']))
     cancel = _pretty_key_combo(config.get('cancel_hotkey', _HOTKEY_FALLBACKS['cancel_hotkey']))
+    if recovery_only:
+        # PLACEHOLDER COPY (378)
+        spoken_undo = (f'Say "{session_modes.SCRATCH_THAT_PHRASE}" to undo a thought. '
+                       if cm.get('enabled', False) else '')
+        return (f"Hands-free undo: {spoken_undo}Undo the last dictation with {undo}; "
+                f"cancel a recording with {cancel}.")
     state = '' if cm.get('enabled', False) else ' (turn it on in Settings -> Modes)'
     action = "tap" if cm.get('mode', 'hold') == 'toggle' else "hold"
     return (f"Hands-free{state}: {action} {button} to start a session, say "
-            f"\"{session_modes.DICTATE_COMMIT_PHRASE}\" to paste a thought and "
+            f"\"{_paste_word(config)}\" to paste a thought and "
             f"\"{session_modes.SCRATCH_THAT_PHRASE}\" to undo it. Undo the last dictation with {undo}; "
             f"cancel a recording with {cancel}.")
+
+
+def _paste_word(config: dict) -> str:
+    """Valid/missing values use guidance facts; rejected overrides keep runtime word."""
+    from samsara import session_modes
+    cm = config.get('command_mode') or {}
+    if 'dictate_commit_word' in cm:
+        candidate = session_modes.normalize_utterance(cm['dictate_commit_word'] or '')
+        if len(candidate.split()) != 1:
+            # set_commit_phrase refuses this override and keeps the installed word.
+            return session_modes.DICTATE_COMMIT_PHRASE
+    return facts_from_config(config).session_end.commit_word
+
+
+def _mode_detail(mode_id: str, app, records) -> str:
+    from samsara.ui.quick_reference_qt import _resolve_session_phrases
+    cfg = getattr(app, 'config', None) or {}
+    session = _resolve_session_phrases(app)
+    phrase = _catalog_phrase(records, _HELP_COMMAND_ID)
+    configured_exits = (cfg.get('command_mode') or {}).get('abort_phrases') or []
+    if isinstance(configured_exits, str):
+        configured_exits = [configured_exits]
+    exits = [p.strip() for p in configured_exits if isinstance(p, str) and p.strip()]
+    return detail_from_config(
+        mode_id, cfg, paste_word=_paste_word(cfg), help_phrase=phrase,
+        exit_phrase=(exits or session['sleep']['words'])[0],
+    )
+
+
+def _ways_rows(app) -> list[dict]:
+    """Use Quick Reference's resolved controls, phrases and feature states."""
+    from samsara.ui.home_qt import wake_phrase
+    from samsara.ui.quick_reference_qt import (
+        _DICTATE_MODE_LABELS, _resolve_hotkeys, _resolve_session_phrases,
+    )
+
+    controls = _resolve_hotkeys(app)
+    session = _resolve_session_phrases(app)
+    # These are the shared resolver's ordered rows, not a second key table.
+    main, continuous, wake, commands, _cancel, hands_free = controls[:6]
+    mode = next((key for key, label in _DICTATE_MODE_LABELS.items()
+                 if label == main['label']), None)
+    hf = session['hands_free_toggle']
+    # PLACEHOLDER COPY (378): owner supplies final wording.
+    main_name, main_start = {
+        'hold': ('Hold to talk', f"Hold {main['value']}; release to finish."),
+        'toggle': ('Tap to talk', f"Tap {main['value']} to start; tap again to finish."),
+        'continuous': ('Continuous on the main key', f"Tap {main['value']} to start or stop."),
+    }.get(mode, (main['label'], main['value']))
+    return [
+        dict(key='main', name=main_name, start=main_start,
+             purpose='Speak to turn your words into text.', enabled=main['enabled']),
+        dict(key='continuous', name='Continuous',
+             start=f"Tap {continuous['value']} to start or stop.",
+             purpose='Keep dictating without holding a key.', enabled=continuous['enabled']),
+        dict(key='commands', name='Commands only', start=f"Hold {commands['value']} while speaking.",
+             purpose='Speak commands to control your computer.', enabled=commands['enabled']),
+        dict(key='wake', name='Wake word',
+             start=f'Say "{wake_phrase(getattr(app, "config", None) or {})}"; tap {wake["value"]} to toggle the listener.',
+             purpose='Start speaking by saying your wake phrase.', enabled=session['wake']['enabled']),
+        dict(key='hands_free', name='Hands-free',
+             start=(f'{"Tap" if hf["mode"] == "toggle" else "Hold"} {hands_free["value"]}; '
+                    f'say "{_paste_word(getattr(app, "config", None) or {})}" to paste a thought.'),
+             purpose='Dictate thoughts and speak commands in a voice session.', enabled=hands_free['enabled']),
+    ]
 
 
 def show_tutorial(app) -> None:
@@ -230,6 +304,15 @@ def show_tutorial(app) -> None:
 # ---------------------------------------------------------------------------
 # Tutorial window
 # ---------------------------------------------------------------------------
+
+class _ModeDetailButton(QPushButton):
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
 
 class TutorialWindow(QMainWindow):
     """Interactive post-wizard tutorial.
@@ -280,7 +363,7 @@ class TutorialWindow(QMainWindow):
         # ---- Header bar: step counter + dots --------------------------------
         header = QWidget()
         header.setStyleSheet(f"background:{theme.BG0};")
-        header.setFixedHeight(64)
+        header.setFixedHeight(32)
         hl = QHBoxLayout(header)
         hl.setContentsMargins(28, 0, 28, 0)
 
@@ -290,8 +373,9 @@ class TutorialWindow(QMainWindow):
         hl.addStretch()
 
         root.addWidget(header)
-        self._step_indicator = StepIndicator([title for _, title in self._steps])
+        self._step_indicator = StepIndicator([key.capitalize() for key, _ in self._steps])
         root.addWidget(self._step_indicator)
+        root.addSpacing(12)
 
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
@@ -300,10 +384,11 @@ class TutorialWindow(QMainWindow):
 
         # ---- Page title -----------------------------------------------------
         title_bar = QWidget()
-        title_bar.setFixedHeight(60)
+        title_bar.setMinimumHeight(48)
         tbl = QVBoxLayout(title_bar)
-        tbl.setContentsMargins(28, 14, 28, 8)
+        tbl.setContentsMargins(28, 10, 28, 4)
         self._title_lbl = QLabel()
+        self._title_lbl.setWordWrap(True)
         self._title_lbl.setStyleSheet(
             f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
         )
@@ -379,6 +464,13 @@ class TutorialWindow(QMainWindow):
         root.addWidget(nav)
 
         theme.apply_design_scale(self)
+        # The shared design pass reapplies button minimums; these compact
+        # detail controls retain an exact 44px target including their border.
+        for button, _detail in self._way_details.values():
+            button.setStyleSheet(button.styleSheet() +
+                                'QPushButton{min-height:42px;min-width:42px;'
+                                'max-height:42px;max-width:42px;padding:0px;}')
+            button.setFixedSize(44, 44)
         self._show_step()
 
     # ------------------------------------------------------------------
@@ -404,6 +496,12 @@ class TutorialWindow(QMainWindow):
         if content is None or layout is None:
             return
         layout.activate()
+        if self._steps[self._step][0] == 'ways':
+            natural_height = max(content.minimumSizeHint().height(), layout.minimumSize().height())
+            chrome = self.height() - page.viewport().height()
+            self.resize(self.width(), min(self.maximumHeight(),
+                        max(self._default_window_height, chrome + natural_height)))
+            return
         natural_height = max(
             content.height(), content.minimumSizeHint().height(),
             layout.sizeHint().height(),
@@ -421,6 +519,8 @@ class TutorialWindow(QMainWindow):
             ("welcome",   "Welcome to Samsara"),
             ("dictation", "Talk → It Types"),
             ("command",   "Say a Command"),
+            # PLACEHOLDER COPY (378)
+            ("ways",      "Ways to talk to Samsara"),
             ("done",      "Tutorial complete"),
         ]
 
@@ -475,9 +575,87 @@ class TutorialWindow(QMainWindow):
             "welcome":   self._build_welcome,
             "dictation": self._build_dictation,
             "command":   self._build_command,
+            "ways":      self._build_ways,
             "done":      self._build_done,
         }
         return builders[key]()
+
+    def _build_ways(self) -> QWidget:
+        content, lay = self._padded()
+        lay.setContentsMargins(28, 0, 28, 0)
+        lay.setSpacing(theme.SPACE_SCALE[1])
+        self._way_details = {}
+        cfg = getattr(self._app, 'config', None) or {}
+        mode_ids = {'main': {'hold': 'hold', 'toggle': 'tap', 'continuous': 'continuous'}.get(cfg.get('mode', 'hold'), 'hold'),
+                    'continuous': 'continuous', 'commands': 'commands_only',
+                    'wake': 'wake_word', 'hands_free': 'hands_free'}
+        for row in _ways_rows(self._app):
+            frame = self._instruction_box('')
+            frame.setObjectName(f'tutorialWay_{row["key"]}')
+            labels = frame.layout()
+            labels.setContentsMargins(12, 12, 12, 12)
+            labels.setSpacing(0)
+            title = labels.itemAt(0).widget()
+            title.setText(row['name'])
+            title.setTextFormat(Qt.TextFormat.PlainText)
+            title.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
+            labels.removeWidget(title)
+            card_row = QHBoxLayout()
+            card_row.setSpacing(12)
+            text_column = QVBoxLayout()
+            text_column.setSpacing(4)
+            text_column.addWidget(title)
+            card_row.addLayout(text_column, stretch=1)
+            button = _ModeDetailButton('?')
+            button.setObjectName(f'tutorialWayHelp_{row["key"]}')
+            button.setAccessibleName(f'More about {row["name"]}')
+            button.setCheckable(True)
+            button.setMinimumSize(44, 44)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            theme.make_secondary(button)
+            button.setFixedSize(44, 44)
+            card_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
+            labels.addLayout(card_row)
+            # PLACEHOLDER COPY (378)
+            off = '\nOff — turn it on in Settings -> Dictation.' if not row['enabled'] else ''
+            detail = QLabel(row['start'] + '\n' + row['purpose'] + off)
+            detail.setTextFormat(Qt.TextFormat.PlainText)
+            detail.setWordWrap(True)
+            detail.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
+            text_column.addWidget(detail)
+            expanded = QLabel(_mode_detail(mode_ids[row['key']], self._app, self._catalog))
+            expanded.setObjectName(f'tutorialWayDetail_{row["key"]}')
+            expanded.setTextFormat(Qt.TextFormat.PlainText)
+            expanded.setWordWrap(True)
+            expanded.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
+            expanded.hide()
+            text_column.addWidget(expanded)
+            self._way_details[row['key']] = (button, expanded)
+            button.clicked.connect(lambda checked=False, key=row['key']: self._toggle_way_detail(key, checked))
+            lay.addWidget(frame)
+        lay.addStretch()
+        lay.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        scroll = QScrollArea()
+        scroll.setObjectName('tutorialWaysScrollArea')
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        return scroll
+
+    def _toggle_way_detail(self, key, opened):
+        for row_key, (button, detail) in self._way_details.items():
+            active = row_key == key and opened
+            button.setChecked(active)
+            detail.setVisible(active)
+        QTimer.singleShot(0, self, self._fit_done_page_height)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self._steps[self._step][0] == 'ways':
+            self._toggle_way_detail(None, False)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _build_welcome(self) -> QWidget:
         w, lay = self._padded()
@@ -509,7 +687,7 @@ class TutorialWindow(QMainWindow):
         ]:
             row = QHBoxLayout()
             i_lbl = QLabel(icon)
-            i_lbl.setFixedWidth(28)
+            i_lbl.setMinimumWidth(28)
             i_lbl.setStyleSheet(f"font-size:{theme.TYPE_HEADING}px;")
             row.addWidget(i_lbl)
             t_lbl = QLabel(label)
@@ -588,7 +766,7 @@ class TutorialWindow(QMainWindow):
         inner_lay.setSpacing(4)
         for i in range(1, 15):
             lbl = QLabel(f"Line {i} — more of this area continues below")
-            lbl.setStyleSheet(f"color:{theme.BORDER};font-size:{theme.TYPE_MIN}px;")
+            lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             inner_lay.addWidget(lbl)
         self._scroll_area.setWidget(inner)
         lay.addWidget(self._scroll_area)
@@ -638,17 +816,17 @@ class TutorialWindow(QMainWindow):
                 f"color:{theme.ACCENT if completed else theme.TEXT_DISABLED};"
                 f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
             )
-            icon_lbl.setFixedWidth(24)
+            icon_lbl.setMinimumWidth(24)
             icon_lbl.setMinimumHeight(theme.HIT_TARGET_MIN)
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text[2:] if text.startswith("✓  ") else text)
+            text_lbl.setWordWrap(True)
             text_lbl.setStyleSheet(
                 f"color:{theme.TEXT_PRIMARY if completed else theme.TEXT_DISABLED};"
                 f"font-size:{theme.TYPE_BODY}px;"
             )
             text_lbl.setMinimumHeight(theme.HIT_TARGET_MIN)
-            row.addWidget(text_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
-            row.addStretch()
+            row.addWidget(text_lbl, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
             cl.addLayout(row)
             self._done_checks[step_idx] = (icon_lbl, text_lbl)
 
@@ -666,7 +844,9 @@ class TutorialWindow(QMainWindow):
         pointer_lbl.setWordWrap(True)
         pointer_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(pointer_lbl)
-        hf_lbl = QLabel(_hands_free_text(self._app.config if hasattr(self._app, 'config') else {}))
+        hf_lbl = QLabel(_hands_free_text(
+            self._app.config if hasattr(self._app, 'config') else {}, recovery_only=True,
+        ))
         hf_lbl.setWordWrap(True)
         hf_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(hf_lbl)
@@ -674,6 +854,7 @@ class TutorialWindow(QMainWindow):
 
         # --- Advanced guides ---
         next_lbl = QLabel("Go deeper when you're ready:")
+        next_lbl.setWordWrap(True)
         next_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
         # Shares the header row: the window is fixed-height and a row of its
         # own squeezes the checklist card above.
@@ -713,8 +894,10 @@ class TutorialWindow(QMainWindow):
             text_col = QVBoxLayout()
             text_col.setSpacing(2)
             title_lbl = QLabel(title)
+            title_lbl.setWordWrap(True)
             title_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;")
             desc_lbl = QLabel(desc)
+            desc_lbl.setWordWrap(True)
             desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
             text_col.addWidget(title_lbl)
             text_col.addWidget(desc_lbl)
@@ -753,6 +936,7 @@ class TutorialWindow(QMainWindow):
     def _show_step(self):
         # Cancel any running hint timer from the previous step
         self._cancel_hint_timer()
+        self._remove_all_hooks()
 
         # Swap page
         page = self._pages[self._step]
@@ -790,7 +974,7 @@ class TutorialWindow(QMainWindow):
         else:
             already_done = self._step in self._completed
             self._next_btn.setText("Next")
-            self._next_btn.setEnabled(already_done)
+            self._next_btn.setEnabled(already_done or not is_interactive)
 
         # Register hook for interactive steps
         if is_interactive and self._step not in self._completed:
@@ -800,7 +984,9 @@ class TutorialWindow(QMainWindow):
         # Focus the dictation box so the hotkey routes text to it
         if key == "dictation" and self._dictation_box:
             QTimer.singleShot(100, self, lambda: self._dictation_box.setFocus())
-        if is_done:
+        if isinstance(page, QScrollArea):
+            if key == 'ways':
+                self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
             QTimer.singleShot(0, self, self._fit_done_page_height)
         else:
             self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))

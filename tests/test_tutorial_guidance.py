@@ -45,8 +45,18 @@ class TestHandsFreeText:
         text = tut._hands_free_text({"command_mode": {"enabled": True, "button": "f13", "mode": "toggle"},
                                      "undo_hotkey": "ctrl+alt+u", "cancel_hotkey": "escape"})
         assert "tap F13" in text
-        assert f'"{session_modes.DICTATE_COMMIT_PHRASE}"' in text
+        # 378: absent override uses the config guidance default, not legacy global.
+        assert f'"{session_modes.DEFAULT_DICTATE_COMMIT_PHRASE}"' in text
         assert f'"{session_modes.SCRATCH_THAT_PHRASE}"' in text
         assert "Ctrl+Alt+U" in text and "Escape" in text
         assert "(turn it on" not in text
         assert "(turn it on" in tut._hands_free_text({})
+
+    def test_done_keeps_recovery_without_repeating_start_and_paste(self):
+        text = tut._hands_free_text(
+            {"command_mode": {"enabled": True, "button": "f13", "mode": "toggle"},
+             "undo_hotkey": "ctrl+alt+u", "cancel_hotkey": "f14"}, recovery_only=True,
+        )
+        assert f'"{session_modes.SCRATCH_THAT_PHRASE}"' in text
+        assert "Ctrl+Alt+U" in text and "F14" in text
+        assert "F13" not in text and "to start" not in text and "to paste" not in text
