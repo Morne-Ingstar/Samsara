@@ -785,6 +785,193 @@ def make_ghost(btn: QPushButton) -> None:
     btn.style().polish(btn)
 
 
+class _SettingsInputLayout(QObject):
+    """Keep ink inside the visible input, independently of its 44px hit region."""
+    def __init__(self, window):
+        super().__init__(window)
+        self.busy = False
+        self.window = window
+        self.pending = False
+        window.installEventFilter(self)
+
+    def refresh(self):
+        self.pending = False
+        for widget in self.window.findChildren(QWidget):
+            if not widget.property('settingsInputObserved'):
+                widget.setProperty('settingsInputObserved', True)
+                self.apply(widget)
+
+    def apply(self, widget):
+        from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit
+        widget.installEventFilter(self)
+        if isinstance(widget, QLineEdit) and isinstance(widget.parentWidget(), (QAbstractSpinBox, QComboBox)):
+            return
+        if not isinstance(widget, (QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit)) and not any(c.__name__ == '_HotkeyButton' for c in type(widget).__mro__):
+            return
+        if isinstance(widget, QAbstractSpinBox):
+            widget._settings_input_symbols = widget.buttonSymbols()
+        widget.ensurePolished()
+        widget.setProperty('settingsInputField', True)
+        if not isinstance(widget, QPlainTextEdit):
+            widget.setFixedHeight(HIT_TARGET_MIN)
+        if any(c.__name__ == '_HotkeyButton' for c in type(widget).__mro__):
+            widget.setMinimumWidth(max(widget.minimumWidth(), widget.sizeHint().width()))
+        self.style_field(widget)
+        if isinstance(widget, QComboBox):
+            widget.currentTextChanged.connect(lambda _text, w=widget: self.style_field(w))
+        if isinstance(widget, QAbstractSpinBox):
+            fm = widget.fontMetrics()
+            values = [widget.prefix() + widget.textFromValue(value) + widget.suffix()
+                      for value in (widget.minimum(), widget.maximum())] + [widget.specialValueText()]
+            # Include the widest digit at every legal decimal position (locale included).
+            digit = max('0123456789', key=fm.horizontalAdvance)
+            values += [re.sub(r'\d', digit, text) for text in values]
+            from PySide6.QtWidgets import QStyle, QStyleOptionSpinBox
+            option = QStyleOptionSpinBox(); widget.initStyleOption(option)
+            field = widget.style().subControlRect(QStyle.CC_SpinBox, option, QStyle.SC_SpinBoxEditField, widget)
+            buttons = max(0, widget.width() - field.width() - 2 * SPACE_1 - 2)
+            width = max(HIT_TARGET_MIN + 2 * SPACE_1 + 2, max(map(fm.horizontalAdvance, values)) + 2 * SPACE_1 + 6) + buttons
+            widget.setFixedWidth(width)
+
+    def style_field(self, widget):
+        if self.busy:
+            return
+        from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit
+        self.busy = True
+        try:
+            if isinstance(widget, QPlainTextEdit):
+                original = widget.styleSheet().split('/* Settings input geometry */')[0]
+                top = getattr(widget, '_settings_document_top', 0)
+                qss = f'\n/* Settings input geometry */\nQPlainTextEdit {{ padding: {top}px {SPACE_1}px 0 {SPACE_1}px; }}'
+                if widget.styleSheet() != original + qss:
+                    widget.setStyleSheet(original + qss)
+                return
+            if isinstance(widget, QAbstractSpinBox):
+                selector, top, bottom = 'QAbstractSpinBox', 0, 0
+            elif isinstance(widget, QLineEdit):
+                selector, top, bottom = 'QLineEdit', 0, 0
+            else:
+                selector = 'QComboBox' if isinstance(widget, QComboBox) else 'QPushButton'
+                text = widget.currentText() if isinstance(widget, QComboBox) else widget.text()
+                fm = widget.fontMetrics(); tight = fm.tightBoundingRect(text)
+                bias = 2 * fm.ascent() + 2 * tight.top() + tight.height() - fm.height()
+                top, bottom = max(0, -bias), max(0, bias)
+            original = widget.styleSheet().split('/* Settings input geometry */')[0]
+            field_height = TYPE_BODY + SPACE_2
+            margin = max(0, (HIT_TARGET_MIN - field_height) // 2)
+            qss = (f'\n/* Settings input geometry */\n{selector} {{ margin: {margin}px 0;'
+                   f' padding: {top}px {SPACE_1}px {bottom}px {SPACE_1}px; min-height: {field_height - 2 - top - bottom}px;'
+                   f' border-width: 1px; }}'
+                   f'{selector}:focus {{ border: 1px solid {ACCENT}; }}')
+            if isinstance(widget, QAbstractSpinBox):
+                qss += f'QAbstractSpinBox {{ background: {BG2}; border: 1px solid {BORDER}; border-radius: 6px; }}'
+                qss += 'QAbstractSpinBox QLineEdit { margin: 0; padding: 0; border: none; background: transparent; }'
+            if widget.styleSheet() != original + qss:
+                widget.setStyleSheet(original + qss)
+            if isinstance(widget, QAbstractSpinBox) and widget.buttonSymbols() != widget._settings_input_symbols:
+                widget.setButtonSymbols(widget._settings_input_symbols)
+        finally:
+            self.busy = False
+
+    def centre_document(self, editor):
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QFontMetricsF, QTextCursor
+        self.busy = True
+        try:
+            metrics = QFontMetricsF(editor.font())
+            ink = QRectF()
+            block = editor.document().firstBlock()
+            while block.isValid():
+                editor.document().documentLayout().blockBoundingRect(block)
+                layout = block.layout()
+                encoded = block.text().encode('utf-16-le')
+                for i in range(layout.lineCount()):
+                    line = layout.lineAt(i)
+                    text = encoded[2*line.textStart():2*(line.textStart()+line.textLength())].decode('utf-16-le')
+                    cursor = QTextCursor(editor.document())
+                    cursor.setPosition(block.position() + line.textStart())
+                    rect = metrics.tightBoundingRect(text)
+                    rect.translate(0, editor.cursorRect(cursor).y() + line.ascent())
+                    ink = ink.united(rect)
+                block = block.next()
+            current = getattr(editor, '_settings_document_top', 0)
+            top = 0
+            if not ink.isEmpty() and ink.height() + 2 * editor.document().documentMargin() < editor.height() - 2:
+                centre = ink.y() + ink.height()/2 + editor.viewport().y()
+                from math import ceil
+                top = max(0, ceil(current + editor.height()/2 - centre))
+            editor._settings_document_top = top
+        finally:
+            self.busy = False
+        # QSS owns viewport geometry; setViewportMargins is overwritten by it.
+        self.style_field(editor)
+
+    def eventFilter(self, widget, event):
+        from PySide6.QtCore import QEvent, QPoint, QTimer
+        from PySide6.QtWidgets import QAbstractSpinBox, QLineEdit, QPlainTextEdit, QStyle, QStyleOptionSpinBox, QStyleOptionFrame
+        if self.busy:
+            return False
+        if event.type() == QEvent.Type.ChildAdded and not self.pending:
+            self.pending = True
+            QTimer.singleShot(0, self, self.refresh)
+        if event.type() == QEvent.Type.Paint and isinstance(widget, QPlainTextEdit):
+            self.centre_document(widget)
+        if event.type() == QEvent.Type.Paint and isinstance(widget.parentWidget(), QPlainTextEdit):
+            self.centre_document(widget.parentWidget())
+        if (event.type() == QEvent.Type.StyleChange or event.type() == QEvent.Type.Paint) and widget.property('settingsInputField') and not isinstance(widget, QLineEdit):
+            self.style_field(widget)
+        if event.type() == QEvent.Type.Paint and isinstance(widget, QAbstractSpinBox):
+            option = QStyleOptionSpinBox(); widget.initStyleOption(option)
+            frame = widget.style().subControlRect(QStyle.CC_SpinBox, option, QStyle.SC_SpinBoxFrame, widget)
+            editor = widget.findChild(QLineEdit)
+            if editor is not None:
+                # Retain the existing editor hit region; centre it in the visible frame.
+                y = round(frame.y() + frame.height() / 2 - editor.height() / 2)
+                if editor.y() != y:
+                    editor.move(editor.x(), y)
+        if event.type() != QEvent.Type.Paint or not isinstance(widget, QLineEdit):
+            return False
+        self.busy = True
+        try:
+            fm = widget.fontMetrics(); text = widget.displayText() or widget.placeholderText()
+            tight = fm.tightBoundingRect(text)
+            if not tight.isEmpty():
+                # cursorRect caches the previous paint. Compute Qt's rounded
+                # native line baseline before text margins, without feedback.
+                option = QStyleOptionFrame(); widget.initStyleOption(option)
+                content = widget.style().subElementRect(QStyle.SE_LineEditContents, option, widget)
+                target = content
+                parent = widget.parentWidget()
+                if isinstance(parent, QAbstractSpinBox):
+                    option = QStyleOptionSpinBox(); parent.initStyleOption(option)
+                    target = parent.style().subControlRect(QStyle.CC_SpinBox, option, QStyle.SC_SpinBoxFrame, parent)
+                    target.translate(-widget.mapTo(parent, QPoint()))
+                baseline = content.y() + (content.height() - fm.height() + 1) // 2 + fm.ascent()
+                from math import ceil, floor
+                centre = target.y() + target.height()/2 - tight.top() - tight.height()/2
+                wanted = floor(centre) if isinstance(parent, QAbstractSpinBox) else ceil(centre)
+                correction = 2 * (baseline - wanted)
+                margins = widget.textMargins()
+                top, bottom = max(0, -correction), max(0, correction)
+                if (margins.top(), margins.bottom()) != (top, bottom):
+                    widget.setTextMargins(margins.left(), top, margins.right(), bottom)
+        finally:
+            self.busy = False
+        return False
+
+
+def _style_settings_inputs(window):
+    layout = getattr(window, '_settings_input_layout', None)
+    if layout is None:
+        layout = window._settings_input_layout = _SettingsInputLayout(window)
+        layout.refresh()
+    else:
+        from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit
+        for widget in window.findChildren(QWidget):
+            if isinstance(widget, (QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit)) and not isinstance(widget.parentWidget(), (QAbstractSpinBox, QComboBox)):
+                layout.style_field(widget)
+
+
 def apply_design_scale(widget: QWidget) -> None:
     """Apply queue 314's approved B treatment to a completed Settings/guide tree.
 
@@ -794,6 +981,8 @@ def apply_design_scale(widget: QWidget) -> None:
     """
     from samsara.ui import design_scale  # noqa: PLC0415
     design_scale.apply(widget, "B")
+    if hasattr(widget, "_destination_rows"):
+        _style_settings_inputs(widget)
 
 
 def footer_qss() -> str:

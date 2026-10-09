@@ -59,10 +59,6 @@ class PageAssembly:
         elif isinstance(widget, QAbstractSpinBox):
             widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
             widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            # Margins keep the outer event rectangle at 44px while the
-            # visible single-line field is 32px, matching line edits.
-            widget.setStyleSheet(f"QAbstractSpinBox {{ margin: 6px 0; padding: 0 10px; min-height: 30px; background: {theme.BG2}; border: 1px solid {theme.BORDER}; border-radius: 6px; }}")
-            widget.setFixedWidth(min(190, max(108, widget.fontMetrics().horizontalAdvance(str(widget.maximum()) + widget.suffix()) + 30)))
         elif isinstance(widget, QCheckBox):
             widget.setText("On" if widget.isChecked() else "Off")
             widget.toggled.connect(lambda on, w=widget: w.setText("On" if on else "Off"))
