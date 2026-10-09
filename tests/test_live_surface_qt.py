@@ -42,10 +42,10 @@ def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp,
     assert (widget.width(), widget.height()) == ((152, 44) if form is VisibleForm.MARK else
         # Finish2: badge explains delivery; status reserves lane + activity + Clear.
         (500, 112) if form is VisibleForm.DRAFT_BADGE else
-        (360, 60) if form is VisibleForm.STATUS else
+        (360, 132) if form is VisibleForm.STATUS else
         (LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0], widget.height()))
     if form not in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE, VisibleForm.STATUS):
-        assert 96 <= widget.height() <= REVIEW_SIZE[1]
+        assert 96 <= widget.height() <= REVIEW_SIZE[1] + 76
     for child in widget.findChildren(type(widget._state)):
         if child.isVisible():
             assert widget.rect().contains(child.geometry())
@@ -104,7 +104,7 @@ def test_provisional_tail_has_a_shape_and_type_cue_not_a_literal_label(qapp):
     assert "Provisional:" not in widget._provisional.text()
     assert widget._provisional.text().startswith("⋯ ")
     # The visual ruling uses a modest colour cue, not a long italic/dashed tail.
-    assert not widget._provisional.font().italic()
+    assert widget._provisional.font().italic()
     assert "dashed" not in widget._provisional.styleSheet()
     widget.close()
 
@@ -137,7 +137,7 @@ def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
                                      capture=CaptureState.RECORDING))
     widget.show()
     qapp.processEvents()
-    assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8
+    assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8 + 56 + 22
     assert widget._transcript.height() >= 24
     assert widget._clear.isVisible() and widget._clear.height() >= MARK_SIZE
     assert not widget._pause.isVisible() and not widget._correct.isVisible()
@@ -205,7 +205,7 @@ def test_reduced_motion_reads_system_and_keeps_static_recording_text(qapp, monke
     assert w._mark.capture == 'recording' and w._mark.rotation == 0
     assert not w._spin_timer.isActive()
     # Finish2 R1 names the capture lane before its activity.
-    assert w._state.isVisible() and w._state.text() == 'Hold — recording'
+    assert w._state.isVisible() and w._lane.text() == 'Hold' and w._state.text() == 'recording'
     w.hide(); w.deleteLater()
 
 

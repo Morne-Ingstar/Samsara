@@ -6,18 +6,20 @@ from enum import Enum
 from time import monotonic
 from typing import Callable, Optional
 
+from samsara.live_surface.feedback import FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS
+
 # Geometry/timing are design constants, never per-user tuning knobs.
 MARK_TARGET_DIP = 44
 BRAND_MARK_DIP = 24
 CARD_CORNER_RADIUS_DIP = 12
-STATUS_SIZE_DIP = (360, 64)
+STATUS_SIZE_DIP = (360, 132)
 LIVE_SIZE_DIP = (500, 240)
 REVIEW_SIZE_DIP = (500, 360)
 DRAFT_BADGE_SIZE_DIP = (120, 44)
 ATTACHMENT_GAP_DIP = 4
 IDLE_DELAY_S = 5.0
 RESULT_RECEIPT_S = 1.0
-ORDINARY_NOTICE_S = 6.0
+ORDINARY_NOTICE_S = DEFAULT_TTL_MS / 1000
 AVA_CAPTION_LINGER_S = 6.0
 
 
@@ -70,6 +72,10 @@ class NoticeKind(str, Enum):
     CONFIRMATION = "confirmation"
     ALIAS_OFFER = "alias_offer"
     ERROR = "error"
+    SUCCESS = "success"
+    WARNING = "warning"
+    INFORMATION = "information"
+    RUNNING = "running"
 
 
 class VisibleForm(str, Enum):
@@ -95,6 +101,7 @@ class EventKind(str, Enum):
     NOTICE = "notice"
     NOTICE_CLEARED = "notice_cleared"
     SNOOZE_CHANGED = "snooze_changed"
+    DEVICE_CHANGED = "device_changed"
     REVIEW_PINNED = "review_pinned"
     REVIEW_UNPINNED = "review_unpinned"
     CORRECTION_OPENED = "correction_opened"
@@ -124,6 +131,12 @@ class SurfaceEvent:
     message: str = ""
     ttl_s: Optional[float] = None
     snoozed: bool = False
+    device_lost: bool = False
+    feedback: FeedbackKind | None = None
+    purpose: FeedbackPurpose | None = None
+    owner: str = ""
+    resolves: str = ""
+    persistent: bool = False
 
 
 @dataclass(frozen=True)
@@ -132,6 +145,9 @@ class Notice:
     message: str
     expires_at: Optional[float]
     lane: Optional[Lane] = None
+    feedback: FeedbackKind = FeedbackKind.INFORMATION
+    purpose: FeedbackPurpose = FeedbackPurpose.RESULT
+    owner: str = ""
 
 
 @dataclass(frozen=True)
@@ -149,6 +165,9 @@ class SurfaceView:
     can_collapse: bool
     snoozed: bool = False
     capture_id: Optional[str] = None
+    secondary_notice: Notice | None = None
+    feedback_event: Notice | None = None
+    feedback_revision: int = 0
 
 
 class LiveSurfaceModel:
@@ -163,6 +182,7 @@ class LiveSurfaceModel:
         self._clock = clock
         self.capture = CaptureState.OFF
         self.snoozed = False
+        self.device_lost = False
         self.lane: Optional[Lane] = None
         self.document = DocumentState.EMPTY
         self.presentation = PresentationState.COMPACT
@@ -175,6 +195,9 @@ class LiveSurfaceModel:
         self._sequence: dict[str, int] = {}
         self._cleared_documents: set[str] = set()
         self._notice = Notice(NoticeKind.NONE, "", None)
+        self._question: Notice | None = None
+        self._feedback_event: Notice | None = None
+        self._feedback_revision = 0
         self._last_activity = clock()
         self._delivered_at: Optional[float] = None
 
@@ -228,6 +251,8 @@ class LiveSurfaceModel:
             self._set_document(event, DocumentState.PARKED_DRAFT)
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.DOCUMENT_CLEARED:
+            if self._notice.owner == "draft":
+                self._notice = Notice(NoticeKind.NONE, "", None)
             if event.document_id:
                 self._cleared_documents.add(event.document_id)
             self.document = DocumentState.EMPTY
@@ -249,20 +274,17 @@ class LiveSurfaceModel:
             self._set_document(event, DocumentState.DELIVERY_UNVERIFIED)
             self.presentation = PresentationState.PINNED_REVIEW
         elif kind is EventKind.NOTICE:
-            # A new host question replaces ordinary timed receipts, including
-            # errors. Persistent faults retain their existing higher priority.
-            if event.notice is NoticeKind.PENDING and self._notice.expires_at is not None:
-                self._notice = Notice(NoticeKind.NONE, "", None)
-            ttl = event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice)
-            candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
-                               event.lane or self.lane)
-            if self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind):
-                self._notice = candidate
+            self._receive_notice(event, now)
         elif kind is EventKind.NOTICE_CLEARED:
-            if event.notice in (NoticeKind.NONE, self._notice.kind):
+            if self._question is not None and (not event.owner or event.owner == self._question.owner):
+                if event.notice in (NoticeKind.NONE, self._question.kind):
+                    self._question = None
+            if (not event.owner or event.owner == self._notice.owner) and event.notice in (NoticeKind.NONE, self._notice.kind):
                 self._notice = Notice(NoticeKind.NONE, "", None)
-            if event.notice in (NoticeKind.NONE, NoticeKind.RESULT):
+            if event.notice in (NoticeKind.NONE, NoticeKind.RESULT) and not event.owner:
                 self._clear_receipt()
+        elif kind is EventKind.DEVICE_CHANGED:
+            self.device_lost = event.device_lost
         elif kind is EventKind.SNOOZE_CHANGED:
             self.snoozed = event.snoozed
         elif kind is EventKind.REVIEW_PINNED:
@@ -291,12 +313,42 @@ class LiveSurfaceModel:
         can_collapse = self._can_collapse(now)
         form = self._form(now, can_collapse)
         return SurfaceView(
-            form=form, capture=self.capture, lane=self.lane, document=self.document,
-            presentation=self.presentation, notice=self._notice, document_id=self.document_id,
+            form=form, capture=CaptureState.UNAVAILABLE if self.device_lost else self.capture, lane=self.lane, document=self.document,
+            presentation=self.presentation, notice=self._question or self._notice, document_id=self.document_id,
             revision=self.revision, text=self.text, provisional_text=self.provisional_text,
             can_collapse=can_collapse,
             snoozed=self.snoozed, capture_id=self._active_capture,
+            secondary_notice=self._notice if self._question and self._notice.kind is not NoticeKind.NONE else None,
+            feedback_event=self._feedback_event, feedback_revision=self._feedback_revision,
         )
+
+    def _receive_notice(self, event: SurfaceEvent, now: float) -> None:
+        if event.resolves and self._question is not None and event.resolves == self._question.owner:
+            self._question = None
+        purpose = event.purpose or (FeedbackPurpose.QUESTION if event.notice in
+            (NoticeKind.PENDING, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER) else
+            FeedbackPurpose.RUNNING if event.notice is NoticeKind.RUNNING else FeedbackPurpose.RESULT)
+        feedback = event.feedback or (FeedbackKind.QUESTION if purpose is FeedbackPurpose.QUESTION else
+            FeedbackKind.RUNNING if purpose is FeedbackPurpose.RUNNING else
+            FeedbackKind.ERROR if event.notice is NoticeKind.ERROR else
+            FeedbackKind.WARNING if event.notice is NoticeKind.WARNING else
+            FeedbackKind.SUCCESS if event.notice is NoticeKind.SUCCESS else FeedbackKind.INFORMATION)
+        ttl = None if event.persistent or purpose is not FeedbackPurpose.RESULT else (
+            event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice))
+        candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
+                           event.lane or self.lane, feedback, purpose, event.owner)
+        self._feedback_revision += 1
+        self._feedback_event = candidate
+        if purpose is FeedbackPurpose.QUESTION:
+            self._question = candidate
+            if self._notice.expires_at is not None or self._notice.purpose is FeedbackPurpose.RUNNING:
+                self._notice = Notice(NoticeKind.NONE, "", None)
+        elif self._question is not None:
+            if feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING):
+                self._notice = candidate
+        elif (self._notice.expires_at is not None or self._notice.purpose is FeedbackPurpose.RUNNING
+              or self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind)):
+            self._notice = candidate
 
     def _clear_receipt(self) -> None:
         """An expired delivery is history, never the next idle/lane status."""
@@ -346,13 +398,17 @@ class LiveSurfaceModel:
     def _notice_ttl(kind: NoticeKind) -> Optional[float]:
         if kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING):
             return None
-        return RESULT_RECEIPT_S if kind is NoticeKind.RESULT else 0.0
+        return None if kind is NoticeKind.RUNNING else DEFAULT_TTL_MS / 1000
 
     @staticmethod
     def _notice_priority(kind: NoticeKind) -> int:
         return {
             NoticeKind.NONE: 0,
             NoticeKind.RESULT: 1,
+            NoticeKind.SUCCESS: 1,
+            NoticeKind.WARNING: 2,
+            NoticeKind.INFORMATION: 1,
+            NoticeKind.RUNNING: 1,
             NoticeKind.PENDING: 1,
             NoticeKind.ALIAS_OFFER: 2,
             NoticeKind.CONFIRMATION: 3,
@@ -361,7 +417,7 @@ class LiveSurfaceModel:
 
     def _can_collapse(self, now: float) -> bool:
         active = self.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
-        blocking = self.snoozed or self._notice.kind in (
+        blocking = self._question is not None or self._notice.purpose is FeedbackPurpose.RUNNING or self.device_lost or self.capture is CaptureState.UNAVAILABLE or self.snoozed or self._notice.kind in (
             NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING)
         protected = self.presentation in (PresentationState.PINNED_REVIEW, PresentationState.CORRECTION,
                                           PresentationState.KEYBOARD_INTERACTION)
@@ -378,7 +434,7 @@ class LiveSurfaceModel:
             # A waiting draft stays readable through idle, capture and notices.
             # Clear/Insert are explicit actions; time cannot collapse its text.
             return VisibleForm.LIVE
-        if (self.snoozed or self._notice.kind in (NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING)
+        if (self._question is not None or self.device_lost or self.capture is CaptureState.UNAVAILABLE or self.snoozed or self._notice.kind in (NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER, NoticeKind.PENDING)
                 or self._notice.kind is NoticeKind.ERROR and self._notice.expires_at is None):
             return VisibleForm.STATUS
         if self.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING):

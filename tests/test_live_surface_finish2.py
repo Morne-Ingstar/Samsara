@@ -41,22 +41,22 @@ def flush(posted):
 def test_hold_then_handsfree_uses_current_lane_and_vad_before_any_partial(surface):
     c, app, _, posted, _ = surface
     hold = c.begin_capture(Lane.HOLD); c.drain()
-    assert c.widget._state.text() == 'Hold — recording'
+    assert c.widget._lane.text() == 'Hold' and c.widget._state.text() == 'recording'
     assert c.widget._mark.capture == 'recording'
     c.stop_capture(capture_id=hold)
     indicator = LiveSurfaceIndicatorAdapter(c); indicator.set_session_mode('HANDS FREE')
     session = DictatePreviewSession(app)
     c.drain(); c.refresh_expired()
     assert c.view().lane is Lane.HANDS_FREE_DICTATE
-    assert c.widget._state.text() == 'Hands-free — listening'
+    assert c.widget._lane.text() == 'Hands-free' and c.widget._state.text() == 'listening'
     assert c.widget._mark.capture == 'listening' and c.widget._spin_timer.isActive()
     app.is_speaking = True
     c.refresh_expired()
-    assert c.widget._state.text() == 'Hands-free — recording'
+    assert c.widget._lane.text() == 'Hands-free' and c.widget._state.text() == 'recording'
     assert c.widget._mark.capture == 'recording' and c.widget._spin_timer.isActive()
     app.is_speaking = False
     c.refresh_expired()
-    assert c.widget._state.text() == 'Hands-free — listening'
+    assert c.widget._lane.text() == 'Hands-free' and c.widget._state.text() == 'listening'
     assert c.widget._mark.capture == 'listening' and c.widget._spin_timer.isActive()
     session._overlay.close()
 
@@ -120,7 +120,7 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
     assert not app.recording and app._streaming_session is None
     assert app._session_mode_manager.draft_document.text == ''
     assert c.view().text == '' and c.view().provisional_text == ''
-    assert c.widget._state.text() == 'Hold — cleared; nothing inserted'
+    assert c.widget._band.label.text() == 'cleared; nothing inserted'
     assert c.widget._mark.capture != 'recording'
     app._paste_preserving_clipboard.assert_not_called()
     assert injected == []
@@ -142,7 +142,7 @@ def test_waiting_draft_stays_visible_and_insert_routes_to_existing_commit(surfac
     c.sync_draft(app._session_mode_manager); c.drain()
     clock[0] += 6; c.refresh_expired()
     assert c.view().form is VisibleForm.LIVE
-    assert c.widget._state.text() == 'Hold — staged'
+    assert c.widget._lane.text() == 'Hold' and c.widget._state.text() == 'staged'
     assert 'Synthetic words' in c.widget._transcript.toPlainText()
     assert c.widget._transcript.isVisible()
     assert c.widget._insert.isVisible() and c.widget._clear.isVisible()
@@ -182,7 +182,7 @@ def test_outcomes_expire_and_wake_settings_cannot_resurrect_them(surface):
     clock[0] += 1.1;c.refresh_expired()
     assert c.view().document is DocumentState.EMPTY and c.widget._state.text() == 'Idle'
     indicator.show_outcome('Sent','success');c.drain()
-    clock[0] += 1.1;c.refresh_expired()
+    clock[0] += 1.9;c.refresh_expired()
     indicator.set_wake_armed(True);c.drain()
     assert c.widget._state.text() == 'Idle'
     indicator.set_wake_armed(False);c.drain()

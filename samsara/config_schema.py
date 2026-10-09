@@ -32,7 +32,8 @@ import sys
 
 FEEDBACK_LEVELS = ("silent", "brief", "full")
 FEEDBACK_LEVEL_FRESH_DEFAULT = "brief"
-# Placeholder copy pending owner review; insertion order is the UI order.
+# Silent is the owner's wording; Brief and Full are stand-ins he may rewrite. Insertion order is the UI order.
+from .result_messages import AVA_INTERPRET_HELP_LONG
 FEEDBACK_LEVEL_CHOICES = {
     "silent": ("Silent", "Nothing is spoken. Questions and replies show on screen."),
     "brief": ("Brief", "A short sound for most outcomes. Questions and read-backs are spoken."),
@@ -390,6 +391,11 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Phase 2A compatibility key; command_mode.button is the current Settings control.",
     },
+    # 415: stand-in Settings wording; owner review is in the report inbox.
+    "command_mode.dictation_literal_commands_only": {
+        "type": "bool", "default": True, "tab": "commands",
+        "help": {"why": "While dictating, commands that need an app, number or other argument are typed as text. Use the command key or say command first to run them; turn this off to restore the old behavior.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.dictation_literal_commands_only"},
+    },
     "command_mode.enabled": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "A session stays open across commands and dictation so you can keep working by voice. Enable this when you want that flow, then choose its button in Shortcuts. It is off by default, and the button setting has no session to open until this is enabled.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.enabled"}},
     "command_mode.button": {
         "type": "enum",
@@ -577,7 +583,7 @@ SETTINGS_SCHEMA = {
         "ui_less_reason": "Interpreter candidate-budget tuning; the supported user choice is whether command-miss interpretation is enabled.",
     },
     "ava_command_session.keep_warm": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "Keeping the local model loaded reduces the delay before the next Ava request. Enable it when you use Ava frequently and have enough memory; leave it off to free resources between requests. It is off by default.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.keep_warm"}},
-    "ava_command_session.interpret_misses": {"type": "bool", "default": True, "tab": "commands", "help": {"why": "After the normal matcher misses, Ava may interpret the phrase against available commands. It is on by default and can be turned off when you want only direct matches. Ava still follows the command execution policy.", "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.interpret_misses"}},
+    "ava_command_session.interpret_misses": {"type": "bool", "default": True, "tab": "commands", "help": {"why": AVA_INTERPRET_HELP_LONG, "docs": "https://morneis.com/samsara/docs/settings/#ava_command_session.interpret_misses"}},
 
     "click.type": {
         "type": "enum",

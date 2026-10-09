@@ -43,6 +43,12 @@ BASE = [
         "Recognise commands in a dictation session.",
         "cmd_matching_enabled",
         "command_mode.command_matching_enabled"
+    ],
+    [
+        "Whole commands while dictating",
+        "Use the command lane for commands that need an app, number or other argument.",
+        "cmd_dictation_literal_only",
+        "command_mode.dictation_literal_commands_only"
     ]
 ]
 ADVANCED = [

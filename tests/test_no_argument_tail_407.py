@@ -133,6 +133,8 @@ def test_rejected_prefix_reaches_single_grammar_tier(rig, monkeypatch):
 
 def replay_corpus(rig, monkeypatch, rule_enabled):
     executor, app, calls = rig
+    # 415: measure the independent 407 tail rule under its legacy admission setting.
+    app.config.setdefault("command_mode", {})["dictation_literal_commands_only"] = False
     records = [s.to_dict() for s in build_catalog(executor)]
     ids = {canonical_phrase(r): r['canonical_id'] for r in records}
     args = {r['canonical_id']: bool(r['args']) for r in records}

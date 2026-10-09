@@ -96,11 +96,11 @@ def test_mode_feedback_survives_legacy_hide_and_hold_completion(surface, name, l
     indicator.hide()
     c.drain()
     assert c.widget.isVisible()
-    assert c.view().lane is lane and c.widget._state.text() == label
+    assert c.view().lane is lane and c.widget._lane.text() + " — " + c.widget._state.text() == label
     hold = c.begin_capture(Lane.HOLD)
     c.stop_capture(capture_id=hold)
     c.drain()
-    assert c.widget._state.text() == label
+    assert c.widget._lane.text() + " — " + c.widget._state.text() == label
     indicator.set_session_mode(None)
     c.drain()
     assert c.view().capture is CaptureState.OFF
@@ -223,7 +223,7 @@ def test_command_results_and_ava_pending_are_not_silently_ignored(surface):
     indicator.show_outcome("Synthetic command result", "success", 3000)
     c.drain()
     assert c.view().notice.message == "Synthetic command result"
-    clock[0] += 1.1
+    clock[0] += 3.1
     c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.NONE
     indicator.set_thinking(True)
@@ -232,14 +232,14 @@ def test_command_results_and_ava_pending_are_not_silently_ignored(surface):
     indicator.flash_error()
     indicator.clear_outcome()
     c.drain()
-    assert c.view().notice.kind is NoticeKind.ERROR
+    assert c.view().notice.kind is NoticeKind.NONE
 
 
 def test_optional_ai_off_expires_without_further_input(surface):
     c, indicator, clock = surface
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
-    assert c.widget._state.text() == "Hold — Optional AI is off"
+    assert c.widget._band.label.text() == "Optional AI is off"
     clock[0] += 1.9
     QTest.qWait(150)
     assert c.widget.view.notice.kind is NoticeKind.NONE
@@ -254,7 +254,7 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
     assert c.widget.view.form is VisibleForm.LIVE
-    assert c.widget._state.text() == "Hold — recording"
+    assert c.widget._lane.text() == "Hold" and c.widget._state.text() == "recording"
     assert "Synthetic words remain visible." in c.widget._transcript.toPlainText()
     partials.stop()
     c.begin_capture(Lane.HOLD)

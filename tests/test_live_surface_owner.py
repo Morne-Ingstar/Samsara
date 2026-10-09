@@ -151,7 +151,7 @@ def test_clock_driven_mark_rotation_colour_reversal_and_reduced_motion(qapp):
     model.consume(SurfaceEvent(EventKind.CAPTURE_CHANGED, capture=CaptureState.RECORDING))
     widget.refresh()
     assert widget._mark.color == recording
-    assert widget._state.text() == "Hold — recording"
+    assert widget._lane.text() == "Hold" and widget._state.text() == "recording"
     model.consume(SurfaceEvent(EventKind.DOCUMENT_UPDATED, document_id="synthetic-motion",
                                revision=2, text="Synthetic visible draft."))
     model.consume(SurfaceEvent(EventKind.DOCUMENT_PARKED, document_id="synthetic-motion",

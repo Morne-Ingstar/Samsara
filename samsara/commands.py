@@ -28,6 +28,7 @@ from .handlers import CommandContext, get_handler
 from . import execution_policy
 from .execution_policy import Invocation, Route
 from .phonetic_wash import apply_phonetic_wash
+from .dictation_commands import literal_only, command_payload, accepts_dictation, command_lane
 
 from samsara.log import get_logger
 
@@ -387,7 +388,7 @@ class CommandExecutor:
         return DispatchResult(DispatchState.REJECTED, name, name,
                               {'reason': reason, 'text': text})
 
-    def _session_control_effect(self, text: str, text_lower: str, app):
+    def _session_control_effect(self, text: str, text_lower: str, app, literals_only=False):
         """The three ex-preprocessing effects, each now an authorized
         invocation. Returns a DispatchResult when one claimed the utterance,
         else None.
@@ -415,7 +416,7 @@ class CommandExecutor:
         # Reminders. parse_remind_command is an re.search, so it matches
         # inside prose too; the whole-utterance rule is applied here rather
         # than in notifications.py, which is not this prompt's to change.
-        if app and hasattr(app, 'notification_manager'):
+        if not literals_only and app and hasattr(app, 'notification_manager'):
             parsed = app.notification_manager.parse_remind_command(whole)
             if parsed and self._is_whole_reminder(whole):
                 minutes, task = parsed
@@ -683,6 +684,10 @@ class CommandExecutor:
             return None
         return entry.phrase
 
+    def accepts_dictation_command(self, text, app=None):
+        """Classify without policy or effects, including the hands-free probe."""
+        return accepts_dictation(self, text, app if app is not None else self._app)
+
     def process_text(
         self,
         text: str,
@@ -715,6 +720,10 @@ class CommandExecutor:
             return DispatchResult.miss(None)
 
         effective_app = app_instance if app_instance is not None else self._app
+        payload = command_payload(text, effective_app)
+        if payload is not None:
+            text, force_commands = payload, True
+        literals_only = literal_only(effective_app, force_commands)
         if generation is None:
             # This call is where a spoken exact request is created; bind it to
             # the generation current NOW (a caller holding a capture-time
@@ -752,18 +761,18 @@ class CommandExecutor:
         # They keep the property that mattered -- "always processed,
         # regardless of mode state" -- because the command_matching_enabled
         # gate below still comes after them.
-        session_effect = self._session_control_effect(text, text_lower, effective_app)
+        session_effect = self._session_control_effect(text, text_lower, effective_app, literals_only)
         if session_effect is not None:
             return session_effect
 
         # Gate on command_matching_enabled — bypassed by wake word mode via force_commands
-        if not force_commands:
+        if not command_lane(effective_app, force_commands):
             if effective_app and not effective_app.command_matching_enabled:
                 return DispatchResult.miss(text)
 
         # The queue id sits between "send" and "to <agent>", so a fixed
         # prefix matcher cannot express this complete, bounded grammar.
-        if text.lstrip().lower().startswith("send "):
+        if not literals_only and text.lstrip().lower().startswith("send "):
             from plugins.commands.dispatch_voice import match_send
             if match_send(text):
                 return self.execute_canonical(
@@ -779,19 +788,22 @@ class CommandExecutor:
         context = self._matcher.current_context()
         # 399: only an explicit command lane may replace a prefix hit with a
         # fully understood chain. Free text and conflicting readings fall through.
-        if self._grammar_enabled(effective_app, force_commands) and re.search(r'\b(?:and|then)\b', text, re.I):
+        if not literals_only and self._grammar_enabled(effective_app, force_commands) and re.search(r'\b(?:and|then|in|an|end|n|than)\b', text, re.I):
             chain = self._grammar_chain(text, match_text, context, effective_app, generation)
             if chain is not None:
                 return chain
         entry, remainder = self._matcher.match(match_text, context)
         if entry is None:
             entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
+        if literals_only and not accepts_dictation(self, text, effective_app, entry, context):
+            return DispatchResult.miss(text)
+        rejected_prefix = None
         if entry is not None and remainder and not self._takes_argument(entry):
             filler = '|'.join(re.escape(unit) for unit in _NO_ARGUMENT_TAIL_UNITS)
             if not re.fullmatch(rf'(?:{filler})(?:\s+(?:{filler}))*', remainder.strip()):
                 logger.info("[CMD] '%s' needs the whole sentence; treating '%s extra words' as not a command",
                             entry.phrase, len(remainder.split()))
-                entry = None  # Continue the miss path without trying a shorter prefix.
+                rejected_prefix, entry = entry, None  # Do not reopen discarded words as an argument.
         if entry is None:
             disabled_pack = self._matcher.disabled_pack_for(match_text)
             if disabled_pack:
@@ -818,7 +830,7 @@ class CommandExecutor:
                         return DispatchResult(DispatchState.QUEUED, text, None,
                                               {'route': 'smart_actions'})
             if self._grammar_enabled(effective_app, force_commands):
-                single = self._grammar_single(text, context, effective_app, generation)
+                single = self._grammar_single(text, context, effective_app, generation, rejected_prefix)
                 if single is not None:
                     return single
             return DispatchResult.miss(text)
@@ -869,7 +881,7 @@ class CommandExecutor:
         guard = getattr(self, '_matcher_lock', None) or threading.RLock()
         with guard:
             self._grammar_request_serial = getattr(self, '_grammar_request_serial', 0) + 1
-        if not (force_commands or getattr(app, 'command_mode_active', False) is True):
+        if not command_lane(app, force_commands):
             return False
         config = getattr(app, 'config', {})
         config = config if isinstance(config, dict) else {}
@@ -920,11 +932,12 @@ class CommandExecutor:
             steps.append((entry, args, segment, record, values))
         return steps
 
-    def _grammar_single(self, text, context, app, generation):
+    def _grammar_single(self, text, context, app, generation, rejected_prefix=None):
         from . import grammar
         records, by_id = self._grammar_catalog()
         parsed = grammar.parse(text, records)
-        if len(parsed) != 1:
+        from .chain_recovery import argument_reopens_rejected_prefix
+        if len(parsed) != 1 or (rejected_prefix is not None and argument_reopens_rejected_prefix(parsed, by_id)):
             return None
         steps = self._grammar_steps(text, parsed, by_id, context)
         if not steps:
@@ -940,7 +953,8 @@ class CommandExecutor:
         from . import grammar
         request_serial = getattr(self, '_grammar_request_serial', 0)
         records, by_id = self._grammar_catalog()
-        parsed = grammar.parse(text, records)
+        from .chain_recovery import parse_command_chain
+        parsed = parse_command_chain(text, records)
         if len(parsed) < 2:
             return None  # R2: partial understanding retains the existing prefix path.
         # R3: a text slot makes the entire sentence legacy user content.
@@ -948,6 +962,8 @@ class CommandExecutor:
                    for a in by_id[p[0]][0]['args']) for p in parsed):
             return None
         prefix, _remainder = self._matcher.match(match_text, context)
+        from .chain_recovery import align_named_app_prefix
+        parsed = align_named_app_prefix(parsed, by_id, prefix)
         first_phrase = by_id[parsed[0][0]][1]
         if prefix is not None and prefix.phrase != first_phrase:
             logger.info('[GRAMMAR] conflicting first commands: prefix=%s grammar=%s', prefix.phrase, first_phrase)
@@ -1023,6 +1039,8 @@ class CommandExecutor:
             values = values or {}
             if entry.phrase == 'open' and values.get('app_name'):
                 label = 'opened ' + values['app_name'].title()
+            elif entry.phrase.startswith('open ') and not (record or {}).get('args'):
+                label = 'opened ' + entry.phrase[5:].title()
             elif entry.phrase == 'set volume' and 'level' in values:
                 label = f"Windows volume {values['level']}%"
             done.append(label)

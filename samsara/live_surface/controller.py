@@ -12,6 +12,7 @@ from samsara.live_surface.placement import (Edge, Placement, Rect, Screen,
                                              place_inline_form, free_placement_for_mark,
                                              placement_for_screens, placement_record)
 from samsara.ui import qt_runtime
+from samsara.live_surface.feedback import Feedback, FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS, BAND_HEIGHT_DIP, feedback_for
 
 
 class LiveSurfaceController:
@@ -40,6 +41,7 @@ class LiveSurfaceController:
         # on non-Windows and in deterministic tests.
         self._caret_locator = caret_locator or getattr(app, "live_surface_caret_locator", None)
         self._last_caret = None
+        self._placement_anchor = None
 
     def view(self):
         return self.model.view()
@@ -87,6 +89,9 @@ class LiveSurfaceController:
 
     def refresh_expired(self) -> None:
         """Expire receipts without another utterance or a forced window show."""
+        adapter = getattr(self, "_feedback_adapter", None)
+        if adapter is not None:
+            adapter.reconcile_interactions()
         self._refresh_capture_activity()
         if self.widget is not None and not self.widget.is_dragging:
             view = self.model.view()
@@ -223,9 +228,23 @@ class LiveSurfaceController:
         mark = self.widget.mark_rect
         dimensions = dict(width=self.widget.width(), height=self.widget.height(),
                           mark_offset=(mark.x(), mark.y()))
-        placed = place_inline_form(resolved.placement, resolved.screen, **dimensions)
+        from samsara.live_surface.model import VisibleForm, REVIEW_SIZE_DIP
+        anchor_key = (resolved.screen.id, resolved.placement)
+        cached = self._placement_anchor is not None and self._placement_anchor[0] == anchor_key
+        active = getattr(self.widget, "view", self.model.view()).form is not VisibleForm.MARK
+        placement_dimensions = dict(dimensions)
+        if active and not cached:
+            # Reserve the supported draft/review envelope once when entering
+            # the active form; ordinary receipts cannot move its header mark.
+            placement_dimensions.update(width=max(500, dimensions["width"]),
+                                        height=max(REVIEW_SIZE_DIP[1]+BAND_HEIGHT_DIP+20, dimensions["height"]))
+        placed = place_inline_form(resolved.placement, resolved.screen, **placement_dimensions)
+        if cached:
+            anchor = free_placement_for_mark(self._placement_anchor[1], resolved.screen.work_area)
+            placed = place_inline_form(anchor, resolved.screen, **dimensions)
         # A deliberate free drop wins over automatic caret avoidance.
-        if self._caret_locator is not None and resolved.placement.edge is not Edge.FREE:
+        if (not cached and self._caret_locator is not None
+                and resolved.placement.edge is not Edge.FREE):
             caret = self._caret_locator.request()
             if caret is not None:
                 self._last_caret = caret
@@ -235,13 +254,17 @@ class LiveSurfaceController:
                 if _overlaps(placed.bounds, protected):
                     for edge in (resolved.placement.edge, Edge.TOP, Edge.BOTTOM, Edge.LEFT, Edge.RIGHT):
                         for t in (.15, .85, 0., 1.):
-                            candidate = place_inline_form(Placement(edge, t), resolved.screen, **dimensions)
+                            candidate = place_inline_form(Placement(edge, t), resolved.screen, **placement_dimensions)
                             if not _overlaps(candidate.bounds, protected):
                                 placed = candidate
                                 break
                         else:
                             continue
                         break
+        if active and not cached:
+            self._placement_anchor = (anchor_key, (placed.mark.x + 22, placed.mark.y + 22))
+            anchor = free_placement_for_mark(self._placement_anchor[1], resolved.screen.work_area)
+            placed = place_inline_form(anchor, resolved.screen, **dimensions)
         self.widget.apply_placement(placed)
 
     def _move_requested(self, detail: object) -> None:
@@ -260,6 +283,7 @@ class LiveSurfaceController:
         placement = free_placement_for_mark((float(cx), float(cy)), screen.work_area)
         records[screen.id] = placement_record(placement)
         self._save_placement({"preferred_monitor": screen.id, "monitors": records})
+        self._placement_anchor = None
         self._place_widget()
 
     def _save_placement(self, placement: dict) -> None:
@@ -349,8 +373,8 @@ class LiveSurfaceController:
             def cleared():
                 if generation != self._capture_seq:
                     return
-                self.post(SurfaceEvent(EventKind.NOTICE_CLEARED))
-                self.post(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.RESULT,
+                self.post(SurfaceEvent(EventKind.NOTICE_CLEARED, owner="hold"))
+                self.post(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.SUCCESS,
                                       message="cleared; nothing inserted", lane=Lane.HOLD, ttl_s=2.0))
             qt_runtime.post(cleared)
 
@@ -450,6 +474,9 @@ class LiveSurfaceIndicatorAdapter:
         self._session_lane = None
         self._wake_armed = False
         self._capture_id = None
+        self._device_lost = False
+        self._interactions = {}
+        controller._feedback_adapter = self
 
     def set_mode(self, text: str) -> None:
         lower = str(text).lower()
@@ -503,31 +530,59 @@ class LiveSurfaceIndicatorAdapter:
 
     def set_thinking(self, active: bool) -> None:
         if active:
-            self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.RESULT,
-                                              message="Ava thinking", ttl_s=60.0))
+            self.show_feedback("Ava thinking", "accent", None,
+                               Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, "ava"))
         else:
-            self.clear_outcome()
+            self.clear_feedback("ava")
 
-    def show_outcome(self, label: str, kind: str, ttl_ms=1000) -> None:
+    def show_outcome(self, label: str, kind: str, ttl_ms=DEFAULT_TTL_MS) -> None:
+        self.show_feedback(label, kind, ttl_ms, feedback_for(kind))
+
+    def show_feedback(self, label: str, kind: str, ttl_ms, feedback: Feedback) -> None:
+        self.reconcile_interactions(queued=True)
         if not label:
-            self.clear_outcome()
+            self.clear_feedback(feedback.owner)
             return
         if kind == "live":
             return  # Capture already owns the recording indication and token.
-        notice = (NoticeKind.PENDING if kind == "pending" else
-                  NoticeKind.ERROR if kind == "error" else NoticeKind.RESULT)
-        # Pending outcomes have the legacy lifetime: until cleared or replaced.
-        ttl = None if kind == "pending" else min(2.0 if kind == "error" else 1.0,
-                                                (ttl_ms or 1000) / 1000)
+        notice = {FeedbackKind.SUCCESS: NoticeKind.SUCCESS, FeedbackKind.WARNING: NoticeKind.WARNING,
+                  FeedbackKind.ERROR: NoticeKind.ERROR, FeedbackKind.INFORMATION: NoticeKind.INFORMATION,
+                  FeedbackKind.QUESTION: NoticeKind.PENDING, FeedbackKind.RUNNING: NoticeKind.RUNNING}[feedback.kind]
+        if feedback.alive is not None:
+            if not feedback.alive():
+                return  # The producer resolved before this queued handoff.
+            self._interactions[feedback.owner] = feedback.alive
         self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=notice,
-                                          message=str(label), ttl_s=ttl))
+            message=str(label), ttl_s=None if ttl_ms is None else float(ttl_ms) / 1000,
+            persistent=ttl_ms is None, feedback=feedback.kind, purpose=feedback.purpose,
+            owner=feedback.owner, resolves=feedback.resolves))
+
+    def clear_feedback(self, owner: str) -> None:
+        self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, owner=owner))
+        self._interactions.pop(owner, None)
+
+    def reconcile_interactions(self, *, queued: bool = False) -> None:
+        for owner, alive in tuple(self._interactions.items()):
+            if not alive():
+                event = SurfaceEvent(EventKind.NOTICE_CLEARED, owner=owner)
+                if queued:
+                    self.controller.post(event)
+                else:
+                    self.controller.model.consume(event)
+                self._interactions.pop(owner, None)
+
+    def set_device_lost(self, lost: bool) -> None:
+        lost = bool(lost)
+        if lost == self._device_lost:
+            return
+        self._device_lost = lost
+        self.controller.post(SurfaceEvent(EventKind.DEVICE_CHANGED, device_lost=lost))
 
     def clear_outcome(self) -> None:
-        self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, notice=NoticeKind.PENDING))
-        self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, notice=NoticeKind.RESULT))
+        self.clear_feedback("")
 
     def flash_success(self) -> None:
-        self.controller.notice(NoticeKind.RESULT, "Captured")
+        self.show_outcome("Captured", "success", 1000)
 
     def flash_error(self) -> None:
         self.show_outcome("Recording failed", "error", 2000)

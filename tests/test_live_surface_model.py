@@ -55,9 +55,11 @@ def test_state_table_notices_delivery_and_active_collapse_guards():
     model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.CONFIRMATION, message="Proceed?"))
     assert model.view().form is VisibleForm.STATUS and not model.view().can_collapse
     model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.ERROR, message="Microphone unavailable"))
-    assert model.view().notice.kind is NoticeKind.ERROR
+    assert model.view().notice.kind is NoticeKind.CONFIRMATION
+    assert model.view().secondary_notice.kind is NoticeKind.ERROR
     model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.RESULT, message="late success"))
-    assert model.view().notice.kind is NoticeKind.ERROR
+    assert model.view().notice.kind is NoticeKind.CONFIRMATION
+    assert model.view().secondary_notice.kind is NoticeKind.ERROR
 
 
 def test_stale_sequences_stop_clear_lane_and_new_capture_are_dropped():

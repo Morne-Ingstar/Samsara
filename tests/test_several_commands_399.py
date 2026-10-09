@@ -366,7 +366,7 @@ def test_one_aggregate_chip_and_feedback_category(rig, monkeypatch):
     app._show_dispatch_outcome_chip = lambda outcome: shown.append(outcome_chip(outcome.kind, outcome.detail))
     result = executor.process_text('volume thirty then volume fifty', force_commands=True)
     assert result.state is State.COMPLETED
-    assert shown == [('Did 2 things: Windows volume 30% · Windows volume 50%', 'success')]
+    assert shown == [('Done: Windows volume 30% · Windows volume 50%', 'success')]
     app._show_outcome_chip.assert_not_called()
     assert outcome_chip('command_executed', result.detail) is None
     assert app._speak_session_notice.call_args.kwargs == {'category': 'command'}

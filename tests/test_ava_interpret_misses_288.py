@@ -49,5 +49,5 @@ def test_ava_success_chip_is_emitted_only_for_completed_execution():
         "phrase": "increase font size", "state": "queued", "origin": "model",
     })
     # 400: the shared Ava outcome names the completed command in full.
-    assert completed == ("Ava: increase font size", "success")
+    assert completed == ("increase font size", "success")
     assert queued != completed

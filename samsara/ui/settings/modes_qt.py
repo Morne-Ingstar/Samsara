@@ -808,6 +808,14 @@ class ModesPage:
         _add_row(dictation_layout, "Commands while dictating", _CMD_MATCHING_DESC,
                  matching_cb, width=220)
 
+        literal_cb = QCheckBox()
+        literal_cb.setChecked(bool(config_defaults.cfg_get(
+            cfg, 'command_mode.dictation_literal_commands_only')))
+        self._widgets['cmd_dictation_literal_only'] = literal_cb
+        _add_row(dictation_layout, "Whole commands while dictating",
+                 "Use the command lane for commands that need an app, number or other argument.",
+                 literal_cb, width=220)
+
         mode_combo = QComboBox()
         mode_combo.addItems(['hold', 'toggle'])
         legacy_continuous = cfg.get('mode') == 'continuous'
@@ -1177,6 +1185,7 @@ class ModesPage:
                     self._widgets['cmd_stop_phrases'].toPlainText())
                 matching = self._widgets['cmd_matching_enabled'].isChecked()
                 cmd_cfg['command_matching_enabled'] = matching
+                cmd_cfg['dictation_literal_commands_only'] = self._widgets['cmd_dictation_literal_only'].isChecked()
                 # commands.py gates on the attribute, set once at startup;
                 # keep it in step so the change applies without a restart.
                 if hasattr(self.app, 'command_matching_enabled'):

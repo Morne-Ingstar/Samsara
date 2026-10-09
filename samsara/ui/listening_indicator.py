@@ -1122,7 +1122,8 @@ class ListeningIndicator(QWidget):
         return f
 
     def _chip_width(self, label: str) -> int:
-        return QFontMetrics(self._chip_font()).horizontalAdvance(label) + 2 * _CHIP_PAD_X
+        from samsara.ui.result_message_rendering import result_width
+        return result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X
 
     def _layout(self):
         """(total_w, total_h, pill_rect|None, chip_rect|None) in widget coords.
@@ -1309,10 +1310,9 @@ class ListeningIndicator(QWidget):
         radius = rect.height() / 2.0
         path = QPainterPath()
         path.addRoundedRect(rect, radius, radius)
-        painter.fillPath(path, QColor(_chip_fill().get(kind, theme.WARNING)))
-        painter.setPen(QColor(theme.TEXT_ON_ACCENT))
-        painter.setFont(self._chip_font())
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+        from samsara.ui.result_message_rendering import is_ava_chain_result, paint_result
+        painter.fillPath(path, QColor(theme.AVA if is_ava_chain_result(label) else _chip_fill().get(kind, theme.WARNING)))
+        paint_result(painter, rect, label, self._chip_font(), QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT))
 
     # ------------------------------------------------------------------
     # Pulse animation — Qt timer on main event loop (no background thread)

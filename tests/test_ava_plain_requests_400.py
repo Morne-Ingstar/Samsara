@@ -129,11 +129,11 @@ def test_one_two_three_steps_route_and_feedback(rig, names):
     assert all(c[1]['route'] is policy.Route.MODEL for c in rig.calls)
     assert rig.app._command_mode_miss_count == 0
     if len(names) == 1:
-        assert outcome_chip(result.kind, result.detail) == ('Ava: paused Spotify', 'success')
+        assert outcome_chip(result.kind, result.detail) == ('paused Spotify', 'success')
         assert rig.chips == ['paused Spotify']  # original app passed to the single handler
     else:
         assert all(i.route is policy.Route.MODEL and kw['quiet'] for i, kw in rig.preflight)
-        assert rig.chips == [(f"Ava did {len(names)} things: " + ' · '.join(
+        assert rig.chips == [("Completed (Ava): " + ' · '.join(
             ['paused Spotify', *names[1:]]), 'success')]
         assert rig.speech[0][0] == rig.chips[0][0]
         assert rig.speech[0][1]['category'] == 'command'
@@ -147,9 +147,9 @@ def test_chain_preflight_refuses_everything_before_effects(rig, monkeypatch, dec
     result = rig.run()
     assert not rig.calls
     assert result.kind == 'ava_command_chain'
-    assert rig.chips[0][0].startswith('One at a time:')
+    assert rig.chips[0][0].startswith(('Say ', 'I could not do '))
     if isinstance(decision, policy.NeedsConfirmation):
-        assert 'needs a yes' in rig.chips[0][0]
+        assert 'needs your yes' in rig.chips[0][0]
 
 
 def test_single_keeps_confirmation_path(rig, monkeypatch):
@@ -308,7 +308,7 @@ def test_all_three_callers_are_inside_command_boundaries():
 def test_ava_chip_examples_and_miss_unchanged():
     assert outcome_chip('ava_command_chain', dict(state='completed', chain_count=2,
         chain_done=['opened Notepad', 'Windows volume 30%'])) == (
-        'Ava did 2 things: opened Notepad · Windows volume 30%', 'success')
+        'Completed (Ava): opened Notepad · Windows volume 30%', 'success')
     assert outcome_chip('command_miss', {'heard': 'purple cloud'}) == (
         'heard: purple cloud — not a command', 'error')
 

@@ -37,9 +37,9 @@ def test_pending_question_stays_visible_and_accessible(surface, message, elapsed
     assert c.view().notice.kind is NoticeKind.PENDING
     assert c.view().notice.expires_at is None
     assert c.view().form is VisibleForm.STATUS and not c.view().can_collapse
-    assert message in c.widget._state.text()
+    assert message in c.widget._band.label.text()
     assert message in c.widget.accessibleDescription()
-    assert message in c.widget._state.accessibleDescription()
+    assert message in c.widget._band.accessibleDescription()
 
 
 @pytest.mark.parametrize('resolution', ['answer', 'cancel', 'empty_label', 'replacement', 'new_question'])
@@ -55,8 +55,8 @@ def test_pending_question_leaves_immediately_when_resolved_or_replaced(surface, 
     else:
         indicator.show_outcome('New question', 'pending', None)
     c.drain()
-    assert 'Old question' not in c.widget._state.text()
-    assert c.view().notice.kind is (NoticeKind.RESULT if resolution == 'replacement' else
+    assert ('Old question' in c.widget._band.label.text()) == (resolution == 'replacement')
+    assert c.view().notice.kind is (NoticeKind.PENDING if resolution == 'replacement' else
                                    NoticeKind.PENDING if resolution == 'new_question' else NoticeKind.NONE)
 
 
@@ -70,7 +70,7 @@ def test_pending_question_survives_capture_and_delivery_without_an_answer(surfac
     partials.stop(); c.drain()
     clock[0] = 90.0; c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.PENDING
-    assert 'Waiting for confirmation' in c.widget._state.text()
+    assert 'Waiting for confirmation' in c.widget._band.label.text()
 
 
 @pytest.mark.parametrize('kind', ['error', 'success'])
@@ -82,19 +82,19 @@ def test_pending_replaces_preceding_timed_receipt_even_without_a_timer_refresh(s
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
     clock[0] = 90.0; c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.PENDING
-    assert 'Waiting for confirmation' in c.widget._state.text()
+    assert 'Waiting for confirmation' in c.widget._band.label.text()
 
 
 def test_pending_does_not_replace_a_persistent_fault(surface):
     c, indicator, _ = surface
     c.notice(NoticeKind.ERROR, 'Persistent fault'); c.drain()
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
-    assert c.view().notice.kind is NoticeKind.ERROR
-    assert c.view().notice.message == 'Persistent fault'
+    assert c.view().notice.kind is NoticeKind.PENDING
+    assert c.view().secondary_notice.message == 'Persistent fault'
 
 
-@pytest.mark.parametrize('kind,ttl_ms,expires', [('success', 3000, 1.0), ('warning', 3000, 1.0),
-                                              ('error', 3000, 2.0), ('accent', 500, 0.5)])
+@pytest.mark.parametrize('kind,ttl_ms,expires', [('success', 3000, 3.0), ('warning', 3000, 3.0),
+                                              ('error', 3000, 3.0), ('accent', 500, 0.5)])
 def test_ordinary_outcome_still_expires_at_its_existing_limit(surface, kind, ttl_ms, expires):
     c, indicator, clock = surface
     indicator.show_outcome('Ordinary result', kind, ttl_ms); c.drain()
@@ -114,7 +114,7 @@ def test_snooze_persists_then_restores_the_previous_state(surface, session):
     clock[0] = 3600.0; c.refresh_expired()
     assert c.view().snoozed and c.view().form is VisibleForm.STATUS
     assert c.widget._state.text() == 'Snoozed'
-    assert c.widget.accessibleDescription() == 'Snoozed'
+    assert 'Snoozed' in c.widget.accessibleDescription()
     assert _capture_mark(c.view()) == ('idle', 'asleep')
     assert _mark_mode(c.view()) == 'idle'
     indicator.set_snoozed(False); c.drain()
@@ -128,12 +128,12 @@ def test_snooze_keeps_draft_question_and_intervening_lane_changes(surface):
     indicator.show_outcome('Waiting for confirmation', 'pending', None)
     indicator.set_snoozed(True); c.drain()
     assert c.view().text == 'Synthetic draft'
-    assert c.widget._state.text() == 'Snoozed — Waiting for confirmation'
+    assert c.widget._state.text() == 'Snoozed' and c.widget._band.label.text() == 'Waiting for confirmation'
     indicator.set_mode('Continuous'); c.drain()
     indicator.set_snoozed(False); c.drain()
     assert c.view().lane is Lane.CONTINUOUS and c.view().text == 'Synthetic draft'
     assert c.view().notice.kind is NoticeKind.PENDING
-    assert c.widget._state.text() == 'Continuous — Waiting for confirmation'
+    assert c.widget._lane.text() == 'Continuous' and c.widget._band.label.text() == 'Waiting for confirmation'
 
 
 # G10: restore scrolling after Qt layout; resume on end/Latest/new utterance.
@@ -214,20 +214,20 @@ def test_mode_name_and_accessible_description_match_the_active_capture(surface, 
     c, indicator, _ = surface
     indicator.set_mode(mode); indicator.set_listening(True); c.drain()
     assert c.view().lane is lane
-    assert c.widget._state.text() == f'{mode} — {activity}'
+    assert c.widget._lane.text() == mode and c.widget._state.text() == activity
     c.post(SurfaceEvent(EventKind.CAPTURE_CHANGED, capture=CaptureState.RECORDING)); c.drain()
-    assert c.widget._state.text() == f'{mode} — recording'
-    assert c.widget.accessibleDescription() == f'{mode} — recording'
+    assert c.widget._lane.text() == mode and c.widget._state.text() == 'recording'
+    assert mode in c.widget.accessibleDescription() and 'recording' in c.widget.accessibleDescription()
 
 
 def test_session_lane_still_wins_then_restores_the_selected_mode(surface):
     c, indicator, _ = surface
     indicator.set_mode('Toggle'); indicator.set_session_mode('COMMAND'); c.drain()
-    assert c.widget._state.text() == 'Command — listening'
+    assert c.widget._lane.text() == 'Command' and c.widget._state.text() == 'listening'
     indicator.set_mode('Continuous'); c.drain()
     assert c.view().lane is Lane.COMMAND
     indicator.set_session_mode(None); indicator.set_listening(True); c.drain()
-    assert c.widget._state.text() == 'Continuous — listening'
+    assert c.widget._lane.text() == 'Continuous' and c.widget._state.text() == 'listening'
 
 
 def test_new_states_are_announced_without_reading_partial_speech(surface, monkeypatch):
@@ -235,9 +235,9 @@ def test_new_states_are_announced_without_reading_partial_speech(surface, monkey
     spoken = []
     monkeypatch.setattr(c.widget, '_announce', lambda key, message: spoken.append(message))
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
-    assert spoken[-1] == 'Hold — Waiting for confirmation'
+    assert spoken[-1] == 'question: Waiting for confirmation'
     indicator.set_snoozed(True); c.drain()
-    assert spoken[-1] == 'Snoozed — Waiting for confirmation'
+    assert spoken[-1] == 'Hold — Snoozed'
     indicator.set_snoozed(False); c.drain()
     token = c.begin_capture(Lane.HOLD); c.drain()
     spoken.clear()

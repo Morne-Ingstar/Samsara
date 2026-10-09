@@ -253,10 +253,15 @@ class AudioCoordinator:
 
         Plugins and subsystems should call this instead of engine.speak().
         """
+        from samsara.ava_action_feedback import scoped_decision, defer_speech
+        if defer_speech(self, text, category, queue_mode=queue_mode, voice_id=voice_id,
+                        speed=speed, volume=volume, on_done=on_done, interruptible=interruptible):
+            return SpeechHandle(utterance_id='noop-ava-action-pending')
+        ava_decision = scoped_decision((self.app.config.get('tts', {}) or {}).get('feedback_level'), category)
         # Suppress long acknowledgements while command mode is active so the
         # assistant doesn't talk over the user's next command. Ava speech is
         # exempt -- see TTS_CHAR_LIMIT_EXEMPT_CATEGORIES.
-        if (getattr(self.app, 'command_mode_active', False)
+        if (ava_decision is None and getattr(self.app, 'command_mode_active', False)
                 and category not in TTS_CHAR_LIMIT_EXEMPT_CATEGORIES):
             char_limit = command_mode_char_limit(getattr(self.app, 'config', {}))
             if char_limit is not None and len(text) > char_limit:
@@ -267,7 +272,7 @@ class AudioCoordinator:
                 return SpeechHandle(utterance_id=SUPPRESSED_CMD_MODE_ID)
 
         level = (self.app.config.get('tts', {}) or {}).get('feedback_level')
-        decision = _feedback_decision(level, category)
+        decision = ava_decision or _feedback_decision(level, category)
         if decision != 'speak':
             if decision == 'caption':
                 self._emit_caption(text, hold=False)

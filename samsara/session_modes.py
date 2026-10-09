@@ -385,7 +385,8 @@ def is_scratch_again(raw_text: str) -> bool:
 # Canonical catalog id: builtin.scratch_everything (commands.json).
 CLEAR_DRAFT_PHRASES = ("scratch everything", "scratch all of that", "scratch all that")
 CLEAR_DRAFT_CONFIRM_TTL_S = 30.0  # Compatibility name; now the voice take-back window.
-CLEAR_DRAFT_RESTORE_PHRASE = "bring it back"  # Stand-in: copy.clear_draft.restore_phrase.
+from .result_messages import CLEAR_RESTORE_PHRASES
+CLEAR_DRAFT_RESTORE_PHRASE = CLEAR_RESTORE_PHRASES[0]
 
 
 #: Queue 85: a word clicked in the live preview waits for ONE utterance, which
@@ -1425,15 +1426,14 @@ _CHIP_TTL_OVERRIDES = {
     "command_suggestion_pending": 8000,
 }
 
-# OWNER COPY — placeholder. Command-lane wording belongs in this one table so
-# the owner can revise it without hunting through dispatch logic.
+# OWNER COPY: command-lane wording stays together for owner revision.
 COMMAND_CHIP_COPY = {
-    "ava_done": "Ava: {done}",
-    "ava_chain_done": "Ava did {count} things: {done}",
-    "chain_done": "Did {count} things: {done}",
-    "chain_yes": 'One at a time: "{step}" needs a yes',
-    "chain_refused": 'One at a time: "{step}" — {reason}',
-    "chain_stopped": "Did {count} things: {done} · stopped at {step}: {reason}",
+    "ava_done": "{done}",
+    "ava_chain_done": "Completed (Ava): {done}",
+    "chain_done": "Done: {done}",
+    "chain_yes": 'Say "{step}" on its own; it needs your yes.',
+    "chain_refused": 'I could not do "{step}": {reason}. Nothing ran.',
+    "chain_stopped": "Done: {done} · stopped at {step}: {reason}",
     "miss": "heard: {heard} — not a command",
     "pack_off": "heard: {heard} — {pack} is off",
     "suggestion": "heard: {heard} — did you mean {phrase}? say yes or no",
@@ -2616,7 +2616,7 @@ class SessionModeManager:
         # like the clear phrase -- on a gate failure it is ordinary dictation.
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE
-                and is_recover_draft(text)):
+                and is_recover_draft(text) and not (normalized in CLEAR_RESTORE_PHRASES and self._clear_draft_undo.pending)):
             if passes_switch_anti_hallucination_gate(signals):
                 return self._recover_draft_outcome()
             log.info("[SESSION] recover-draft phrase refused by the anti-hallucination gate for %r; "
@@ -2624,7 +2624,7 @@ class SessionModeManager:
 
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE
-                and normalized == CLEAR_DRAFT_RESTORE_PHRASE
+                and normalized in CLEAR_RESTORE_PHRASES
                 and passes_switch_anti_hallucination_gate(signals)):
             restored = self._clear_draft_undo.restore(self)
             return DispatchOutcome(kind="dictate_draft_recovered" if restored else "dictate_recover_nothing",

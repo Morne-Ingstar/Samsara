@@ -12,13 +12,15 @@ from time import monotonic
 from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QEasingCurve, QRect, QRectF, QPropertyAnimation, QSignalBlocker, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import (QCloseEvent, QColor, QImage, QKeyEvent, QMouseEvent, QPainter,
+from PySide6.QtGui import (QCloseEvent, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter,
                            QPaintEvent, QPainterPath, QPen, QRegion)
-from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget, QSizePolicy
 
 from samsara.live_surface.model import (CaptureState, DocumentState, NoticeKind,
                                         PresentationState, SurfaceView, VisibleForm)
 from samsara.ui import theme
+from samsara.live_surface.feedback import (BAND_HEIGHT_DIP, FILL_TOKENS, KIND_WORDS,
+                                           FeedbackKind, paint_glyph)
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer, system_reduced_motion
 from samsara.ui.tray_qt import paint_mark
 
@@ -31,7 +33,7 @@ CARD_RADIUS = 12
 CARD_INSET = 8
 HEADER_HEIGHT = 44
 REGION_GAP = 8
-STATUS_SIZE = (360, 64)
+STATUS_SIZE = (360, 132)
 LIVE_SIZE = (500, 240)
 REVIEW_SIZE = (500, 360)
 RESIZE_DURATION_MS = 120
@@ -136,6 +138,59 @@ class _Mark(QWidget):
             painter.end()
 
 
+class _FeedbackBand(QWidget):
+    def __init__(self, parent, name):
+        super().__init__(parent)
+        self.notice = None
+        self.setAccessibleName("Live surface feedback")
+        self.label = QLabel(self)
+        self.label.setObjectName(name)
+        self.label.setWordWrap(True)
+        self.label.setTextFormat(Qt.TextFormat.PlainText)
+        self.label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.label.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.Bold))
+        self.label.setAccessibleName("Live surface feedback")
+
+    def set_notice(self, notice):
+        self.notice = notice
+        from samsara.ui.result_message_rendering import set_result_label
+        set_result_label(self.label, notice.message if notice else "", self.ink.name() if hasattr(self, "ink") else theme.TEXT_PRIMARY)
+        description = (KIND_WORDS[notice.feedback] + ": " + notice.message) if notice else ""
+        self.setAccessibleDescription(description)
+        self.label.setAccessibleDescription(description)
+
+    def required_height(self, width):
+        return max(BAND_HEIGHT_DIP, self.label.heightForWidth(max(1, width-52)) + 16)
+
+    def restyle(self):
+        kind = self.notice.feedback if self.notice else FeedbackKind.INFORMATION
+        from samsara.result_messages import is_ava_chain_result
+        fill = theme.AVA if self.notice and is_ava_chain_result(self.notice.message) else getattr(theme, FILL_TOKENS[kind])
+        self.ink = theme.qcolor(theme.ink_on(fill))
+        self.fill = theme.qcolor(fill)
+        self.label.setStyleSheet(f"QLabel#{self.label.objectName()} {{ color: {self.ink.name()}; font-size: {theme.TYPE_MIN}px; font-weight: 700; background: transparent; border: 0; }}")
+        if self.notice:
+            self.set_notice(self.notice)
+        self.update()
+
+    def resizeEvent(self, event):
+        self.label.setGeometry(44, 8, max(1, self.width()-52), max(1, self.height()-16))
+        super().resizeEvent(event)
+
+    def paintEvent(self, event):
+        del event
+        if not self.notice or not self.notice.message:
+            return
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(self.fill)
+            painter.drawRoundedRect(QRectF(self.rect()), 8, 8)
+            paint_glyph(painter, self.notice.feedback, QRectF(8, (self.height()-28)/2, 28, 28), self.ink)
+        finally:
+            painter.end()
+
+
 class LiveSurfaceWidget(QWidget):
     """One shaped HWND for M/D/S/L/R with review kept inside the same card."""
 
@@ -193,7 +248,12 @@ class LiveSurfaceWidget(QWidget):
 
         self._mark = _Mark(self)
         self._mark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._state = QLabel(self); self._state.setWordWrap(True)
+        self._lane = QLabel(self); self._lane.setObjectName("surfaceLane")
+        self._lane.setAccessibleName("Live surface lane")
+        self._band = _FeedbackBand(self, "surfaceFeedback")
+        self._secondary_band = _FeedbackBand(self, "surfaceFailure")
+        self._band_height = BAND_HEIGHT_DIP
+        self._state = QLabel(self); self._state.setObjectName("surfaceState"); self._state.setWordWrap(True)
         self._state.setAccessibleName("Live surface state")
         self._correction_hint = QLabel(self); self._correction_hint.setWordWrap(True)
         self._correction_hint.setAccessibleName("Correction choices")
@@ -214,6 +274,7 @@ class LiveSurfaceWidget(QWidget):
         bar.installEventFilter(self)
         self._transcript.viewport().installEventFilter(self)
         self._provisional = QLabel(self); self._provisional.setWordWrap(True)
+        self._provisional.setObjectName("surfaceProvisional")
         self._provisional.setAccessibleName("Provisional transcript")
         self._badge = QLabel(self); self._badge.setText("▣  Draft")
         self._badge.setAccessibleName("Draft pending")
@@ -455,9 +516,15 @@ class LiveSurfaceWidget(QWidget):
                 self._sent_receipts.pop(0)
         self._update_mark()
         state = self._state_text(view)
-        self._state.setText(state); self._render_transcript()
+        self._state.setText(state); self._lane.setText(self._lane_text(view)); self._render_transcript()
+        self._lane.setAccessibleDescription(self._lane.text())
+        self._band.set_notice(view.notice if view.notice.message else None)
+        self._secondary_band.set_notice(view.secondary_notice)
+        self._band.restyle(); self._secondary_band.restyle()
         self._state.setAccessibleDescription(state)
-        self.setAccessibleDescription(state)
+        self.setAccessibleDescription("; ".join(part for part in (
+            self._lane.text(), state, self._band.accessibleDescription(),
+            self._secondary_band.accessibleDescription(), view.document.value.replace("_", " ")) if part))
         self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
         self._badge.setText("Tap Insert text to send.")
         previous_content = (previous_text, previous.provisional_text)
@@ -497,7 +564,7 @@ class LiveSurfaceWidget(QWidget):
         if self._view.provisional_text:
             if self._view.text:
                 parts.append("<br/>")
-            parts.append(f'<span style="color: {theme.TEXT_SECONDARY}">⋯ '
+            parts.append(f'<span style="color: {theme.TEXT_SECONDARY}; font-style: italic;">⋯ '
                          + escape(self._view.provisional_text) + '</span>')
         self._transcript.setHtml(
             f"<style>body,a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }}</style><p>"
@@ -506,9 +573,12 @@ class LiveSurfaceWidget(QWidget):
     def _form_rect(self, form: VisibleForm) -> QRect:
         if form is VisibleForm.MARK: return QRect(self.x(), self.y(), COMPACT_WIDTH, MARK_SIZE)
         if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), LIVE_SIZE[0], 112)
+        width = STATUS_SIZE[0] if form is VisibleForm.STATUS else LIVE_SIZE[0]
+        self._band_height = self._band.required_height(width-2*CARD_INSET)
+        if self._view.secondary_notice:
+            self._band_height += REGION_GAP + self._secondary_band.required_height(width-2*CARD_INSET)
         if form is VisibleForm.STATUS:
-            blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
-            return QRect(self.x(), self.y(), STATUS_SIZE[0], 68 if blocking else 60)
+            return QRect(self.x(), self.y(), STATUS_SIZE[0], 76+self._band_height)
         width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
         if self._selection is not None or self._picker_active:
             source = self._candidates if self._selection is not None else self._word_targets
@@ -522,7 +592,7 @@ class LiveSurfaceWidget(QWidget):
             lines = max(1, ceil((len(self._view.text) + len(self._view.provisional_text)) / chars_per_line))
             height = 64 + min(10, lines) * 24 + (24 if self._view.provisional_text else 0) + 20
             height = max(132, min(REVIEW_SIZE[1], height))
-        return QRect(self.x(), self.y(), width, height)
+        return QRect(self.x(), self.y(), width, height + self._band_height + 20)
 
     def _animate_geometry(self, target: QRect) -> None:
         if self._animation is not None:
@@ -535,7 +605,7 @@ class LiveSurfaceWidget(QWidget):
         self._animation = animation; animation.start()
 
     def _hide_children(self) -> None:
-        for child in (self._state, self._correction_hint, self._transcript, self._provisional, self._badge, self._latest, self._insert,
+        for child in (self._lane, self._band, self._secondary_band, self._state, self._correction_hint, self._transcript, self._provisional, self._badge, self._latest, self._insert,
                       *self._controls, *self._picker_buttons, *self._candidate_buttons,
                       self._keep, self._spell, self._edit, self._more, self._apply, self._cancel, self._editor): child.hide()
 
@@ -544,6 +614,9 @@ class LiveSurfaceWidget(QWidget):
         position = bar.value()
         with QSignalBlocker(bar):
             self._layout_content()
+            if self._view.capture is CaptureState.UNAVAILABLE:
+                state = self._state.geometry()
+                self._state.setGeometry(state.x()+26, state.y(), max(1, state.width()-26), state.height())
             bar.setValue(bar.maximum() if self._follow_latest else position)
 
     def _layout_content(self) -> None:
@@ -559,19 +632,26 @@ class LiveSurfaceWidget(QWidget):
             self._insert.setGeometry(self.width()-140, 60, 132, MARK_SIZE); self._insert.show(); return
         content = self.card_content_rect
         self._mark.setGeometry(content.x(), content.y(), MARK_SIZE, MARK_SIZE)
-        clear_width = 88
+        state_x = content.x()+MARK_SIZE+12
+        self._lane.setGeometry(state_x, content.y(), content.width()-MARK_SIZE-12-72, 24)
+        self._state.setGeometry(state_x, content.y()+24, content.width()-MARK_SIZE-12-72, 24)
+        self._lane.show(); self._state.show()
+        band_y = content.y()+HEADER_HEIGHT+12
+        primary_height = self._band.required_height(content.width())
+        self._band.setGeometry(content.x(), band_y, content.width(), primary_height)
+        self._band.show()
+        if self._view.secondary_notice:
+            self._secondary_band.setGeometry(content.x(), band_y+primary_height+REGION_GAP,
+                content.width(), self._secondary_band.required_height(content.width()))
+            self._secondary_band.show()
         if form is VisibleForm.STATUS:
-            blocking = self._view.notice.kind in (NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
-            clearable = blocking or self._view.capture is CaptureState.RECORDING
-            reserve = clear_width + REGION_GAP if clearable else 0
-            self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-12-reserve, content.height()); self._state.show()
+            clearable = self._view.capture is CaptureState.RECORDING or self._view.notice.kind in (
+                NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
             if clearable:
-                self._clear.setGeometry(content.right()-clear_width+1, content.y(), clear_width, MARK_SIZE)
-                self._clear.show()
+                self._clear.setGeometry(content.right()-63, content.y(), 64, MARK_SIZE); self._clear.show()
             return
         if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
-            self._state.setGeometry(content.x()+MARK_SIZE+12, content.y(), content.width()-MARK_SIZE-12, HEADER_HEIGHT)
-            self._state.show(); self._layout_correction(content); return
+            self._layout_correction(content); return
         # Reserve each action's space once. Pending-text recovery is separate
         # from ordinary capture, whose final is inserted automatically.
         actions = [(self._clear, 64)]
@@ -586,9 +666,9 @@ class LiveSurfaceWidget(QWidget):
             button.setGeometry(right, content.y(), width, MARK_SIZE); button.show()
             right -= REGION_GAP
         state_x = content.x()+MARK_SIZE+12
-        self._state.setGeometry(state_x, content.y(), max(1, right-state_x), HEADER_HEIGHT)
-        self._state.show()
-        y = content.y()+HEADER_HEIGHT+REGION_GAP
+        self._lane.setGeometry(state_x, content.y(), max(1, right-state_x), 24)
+        self._state.setGeometry(state_x, content.y()+24, max(1, right-state_x), 24)
+        y = content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+22
         available = content.bottom() - y + 1
         # Both settled and incoming words need the same scrollable viewport.
         # A capped QLabel otherwise clips long speech below a retained draft.
@@ -601,7 +681,7 @@ class LiveSurfaceWidget(QWidget):
             w=base+(1 if index<rem else 0); control.setGeometry(x,y,w,MARK_SIZE); control.show(); x += w+REGION_GAP
 
     def _layout_correction(self, content: QRect) -> None:
-        y=content.y()+HEADER_HEIGHT+REGION_GAP
+        y=content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+12
         hint = (f'Correct “{self._selection.get("word", "") }” — choose a replacement'
                 if self._selection is not None else "Choose a word to correct")
         if self._selection is not None and not self._candidates:
@@ -642,9 +722,16 @@ class LiveSurfaceWidget(QWidget):
 
     def _restyle(self) -> None:
         self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QTextBrowser a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }} QPushButton#quietClear {{ background: transparent; border: 0; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; }}")
-        self._state.setFont(theme.qfont(theme.TYPE_HEADING)); self._transcript.setFont(theme.qfont(theme.TYPE_BODY))
-        self._provisional.setFont(theme.qfont(theme.TYPE_MIN)); self._badge.setFont(theme.qfont(theme.TYPE_MIN))
-        self._provisional.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
+        active = not self._view.snoozed and self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
+        state_color = theme.ERROR if self._view.capture is CaptureState.UNAVAILABLE else theme.TEXT_PRIMARY if active else theme.TEXT_SECONDARY
+        self._lane.setFont(theme.qfont(theme.TYPE_EMPHASIS, weight=QFont.Weight.Bold))
+        self._lane.setStyleSheet(f"QLabel#surfaceLane {{ color: {theme.ACCENT}; font-size: {theme.TYPE_EMPHASIS}px; font-weight: 700; }}")
+        self._state.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.Medium if active else QFont.Weight.Normal))
+        self._state.setStyleSheet(f"QLabel#surfaceState {{ color: {state_color}; font-size: {theme.TYPE_BODY}px; font-weight: {500 if active else 400}; }}")
+        self._band.restyle(); self._secondary_band.restyle()
+        self._transcript.setFont(theme.qfont(theme.TYPE_BODY))
+        self._provisional.setFont(theme.qfont(theme.TYPE_BODY, italic=True)); self._badge.setFont(theme.qfont(theme.TYPE_MIN))
+        self._provisional.setStyleSheet(f"QLabel#surfaceProvisional {{ color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; font-style: italic; }}")
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
@@ -656,6 +743,12 @@ class LiveSurfaceWidget(QWidget):
         painter=QPainter(self)
         try:
             painter.setPen(QPen(theme.qcolor(theme.BORDER),1)); painter.setBrush(theme.qcolor(theme.BG1)); painter.drawRoundedRect(QRectF(self.card_rect).adjusted(.5,.5,-.5,-.5),CARD_RADIUS,CARD_RADIUS)
+            if self._display_form() in (VisibleForm.LIVE, VisibleForm.REVIEW):
+                y = CARD_INSET+HEADER_HEIGHT+REGION_GAP+self._band_height+16
+                painter.setPen(QPen(theme.qcolor(theme.BORDER_FAINT), 1))
+                painter.drawLine(CARD_INSET, y, self.width()-CARD_INSET, y)
+            if self._view.capture is CaptureState.UNAVAILABLE:
+                paint_glyph(painter, FeedbackKind.ERROR, QRectF(self._state.x()-26, self._state.y(), 24, 24), theme.qcolor(theme.ERROR))
         finally:painter.end()
 
     def mousePressEvent(self,event: QMouseEvent)->None:
@@ -765,31 +858,30 @@ class LiveSurfaceWidget(QWidget):
         self._restore_passive()
         self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
-    def _state_text(self,view:SurfaceView)->str:
+    def _lane_text(self, view: SurfaceView) -> str:
         labels = {"hold": "Hold", "toggle": "Toggle", "hands_free_dictate": "Hands-free",
                   "continuous": "Continuous", "command": "Command", "ava": "Ava"}
-        if view.snoozed:
-            return "Snoozed" + (f" — {view.notice.message}" if view.notice.expires_at is None and view.notice.message else "")
-        lane = view.lane
-        if view.notice.message and (view.notice.expires_at is None or view.capture not in
-                                    (CaptureState.RECORDING, CaptureState.TRANSCRIBING)):
-            activity = view.notice.message
-            lane = view.notice.lane or lane
-        elif view.capture is CaptureState.RECORDING: activity = "recording"
-        elif view.capture is CaptureState.TRANSCRIBING: activity = "transcribing"
-        elif view.capture is CaptureState.UNAVAILABLE: activity = "microphone unavailable"
-        elif view.form is VisibleForm.DRAFT_BADGE:
+        return labels.get(view.lane.value, "") if view.lane is not None else ("Hold" if view.form is not VisibleForm.MARK else "")
+
+    def _state_text(self, view: SurfaceView) -> str:
+        if view.capture is CaptureState.UNAVAILABLE: return "microphone unavailable"
+        if view.snoozed: return "Snoozed"
+        if view.capture is CaptureState.RECORDING: return "recording"
+        if view.capture is CaptureState.TRANSCRIBING: return "transcribing"
+        if view.form is VisibleForm.DRAFT_BADGE:
             words = len(view.text.split())
-            activity = f"{words} word{'s' if words != 1 else ''} waiting"
-        elif view.document is DocumentState.DELIVERED: activity = "inserted"
-        elif view.text: activity = "staged"
-        elif view.capture in (CaptureState.WAKE_ARMED,CaptureState.HANDS_FREE_LISTENING): activity = "listening"
-        else: return "Idle"
-        label = labels.get(lane.value if lane is not None else "", "Hold")
-        return f"{label} — {activity}"
-    def _announce_transition(self,previous:SurfaceView,current:SurfaceView)->None:
-        if previous.snoozed != current.snoozed:self._announce(("snoozed",current.snoozed),self._state_text(current))
-        elif current.notice.kind is NoticeKind.PENDING and current.notice != previous.notice:self._announce(("pending",current.notice.message),self._state_text(current))
-        elif previous.capture is not current.capture:self._announce(("capture",current.capture),self._state_text(current))
-        elif previous.document is not current.document and current.document is DocumentState.PARKED_DRAFT:self._announce(("parked",current.document_id,current.revision),"Draft parked")
-        elif previous.notice.kind is not current.notice.kind and current.notice.kind in (NoticeKind.ERROR,NoticeKind.CONFIRMATION):self._announce(("notice",current.notice.kind,current.notice.message),self._state_text(current))
+            return f"{words} word{'s' if words != 1 else ''} waiting"
+        if view.document is DocumentState.DELIVERED: return "inserted"
+        if view.text: return "staged"
+        if view.capture in (CaptureState.WAKE_ARMED, CaptureState.HANDS_FREE_LISTENING): return "listening"
+        return "Idle"
+
+    def _announce_transition(self, previous: SurfaceView, current: SurfaceView) -> None:
+        if previous.lane is not current.lane or previous.capture is not current.capture or previous.snoozed != current.snoozed:
+            self._announce(("state", current.lane, current.capture, current.snoozed),
+                           " — ".join(p for p in (self._lane_text(current), self._state_text(current)) if p))
+        if current.feedback_revision != previous.feedback_revision and current.feedback_event and current.feedback_event.message:
+            notice = current.feedback_event
+            self._announce(("feedback", current.feedback_revision), KIND_WORDS[notice.feedback] + ": " + notice.message)
+        if previous.document is not current.document and current.document is DocumentState.PARKED_DRAFT:
+            self._announce(("parked", current.document_id, current.revision), "Draft parked")

@@ -2991,9 +2991,8 @@ class DictationApp:
             # dictate/Ava voice switching -- when mode is "toggle")
             "command_mode": {
                 "enabled": False,           # opt-in; see Modes tab -> Command Mode
-                "command_matching_enabled": False,  # gates command MATCHING during
-                                            # regular dictation (spoken "command mode
-                                            # on/off") -- distinct from "enabled" above
+                "command_matching_enabled": False,  # matching during ordinary dictation
+                "dictation_literal_commands_only": True,  # 415; False restores argument matching
                 "mode": "hold",             # "hold" (hold to talk) or "toggle"
                 "button": "rctrl",          # "rctrl" (default), "mouse4"/"mouse5" (XButton1/2), or other keys -- see _CMD_BUTTON_OPTIONS
                 "enter_debounce_ms": 200,   # delay before playing enter earcon
@@ -5142,11 +5141,16 @@ class DictationApp:
         )
 
     def _probe_hands_free_command(self, text: str):
-        """Classify one utterance without executing it.
-
-        The SessionModeManager uses this side-effect-free probe to execute
-        commands with their pending-text policy. None means ordinary dictation.
-        """
+        """Read-only command probe; None retains the utterance as dictation."""
+        from samsara.dictation_commands import command_payload
+        payload = command_payload(text, self)
+        if payload is not None:
+            return HandsFreeCommandMatch(dispatch_text=text,
+                phrase=self.command_executor.find_command(payload) or payload,
+                pending_policy=PendingTextPolicy.PRESERVE, reserved=True)
+        check = getattr(self.command_executor, 'accepts_dictation_command', None)
+        if check is not None and not check(text, self):
+            return None
         media_match = self._probe_media_transport(text)
         if media_match is not None:
             return media_match
@@ -5180,12 +5184,8 @@ class DictationApp:
             except Exception as exc:
                 logger.debug(f"[SESSION] Show Numbers command probe unavailable: {exc}")
 
-        # Every enabled command and user macro is available when (and only
-        # when) it consumes the entire utterance. Canonical field metadata
-        # decides paste-first; the generic fallback otherwise keeps the draft.
-        # Queue 69: curated everyday words (and a Show Numbers click) are
-        # "reserved"; only the generic fallback below is not. The cancel
-        # window applies to reserved words only when the user extends it.
+        # 415 filters argument commands above. Whole literals retain their
+        # canonical paste policy; reserved controls retain the cancel window.
         reserved = policy is not None
         if policy is None:
             if not (self.config.get('hands_free') or {}).get('exact_commands', True):
@@ -7388,9 +7388,9 @@ class DictationApp:
                     if host.chain_detail:
                         chip = outcome_chip('ava_command_chain', host.chain_detail)
                         label = chip[0] if chip else label
-                    speak = getattr(host._host, '_speak_session_notice', None)
-                    if callable(speak):
-                        speak(label, **kwargs)
+                    from samsara.ava_action_feedback import speak_result
+                    speak_result(host._host, label, host.chain_detail or {"state": "completed"},
+                                 steps[0].command_id if len(steps) == 1 else None)
 
             host = AvaFeedbackHost(self)
             if len(steps) > 1:
@@ -7408,9 +7408,9 @@ class DictationApp:
                     self._command_mode_miss_count = 0
                 return DispatchOutcome(kind='ava_command_chain', detail={
                     **result.detail, 'origin': proposal.origin, 'heard': outcome.detail.get('heard', '')})
-            result = self.command_executor.execute_canonical(
-                steps[0].command_id, self, route=Route.MODEL,
-                generation=generation, args=steps[0].args, source_text=text)
+            from samsara.ava_action_feedback import execute_action
+            result = execute_action(self.command_executor, steps[0].command_id, self,
+                route=Route.MODEL, generation=generation, args=steps[0].args, source_text=text)
             state = getattr(getattr(result, "state", None), "value", "failed")
             if state == "completed":
                 self._command_mode_miss_count = 0
@@ -7537,7 +7537,7 @@ class DictationApp:
             offer = personal_alias_offer_after_outcome(self, outcome, text)
             if offer:
                 from samsara.session_modes import outcome_chip
-                chip = outcome_chip("personal_alias_offer", offer)
+                chip = outcome_chip("personal_alias_offer", offer); from samsara.live_surface.feedback import alias_handoff
                 if chip:
                     self._show_outcome_chip(*chip, 8000)
         except Exception as exc:
@@ -7616,7 +7616,7 @@ class DictationApp:
         except Exception as exc:
             logger.debug(f"[AVA-READY] change handler failed: {exc}")
 
-    def _show_outcome_chip(self, label, kind, ttl_ms="default", *, source=""):
+    def _show_outcome_chip(self, label, kind, ttl_ms="default", *, source="", detail=None):
         """Schedule a chip on the indicator. Any chip shown here also counts
         as the resolution of a pending hold "..." -- see _resolve_hold_chip.
 
@@ -7645,7 +7645,7 @@ class DictationApp:
             from samsara.session_modes import CHIP_TTL_MS
             ttl_ms = None if kind in ('pending', 'live') else CHIP_TTL_MS
         try:
-            self._schedule_ui(indicator.show_outcome, label, kind, ttl_ms)
+            from samsara.live_surface.feedback import schedule_feedback; schedule_feedback(self, label, kind, ttl_ms, source=source, detail=detail)
         except Exception as exc:
             logger.debug(f"[CHIP] schedule failed: {exc}")
 
@@ -7668,7 +7668,7 @@ class DictationApp:
             # (queue 109): it is the only field that says which lane the
             # outcome belongs to once the label has been rendered.
             self._show_outcome_chip(label, chip_kind, chip_ttl_ms(outcome.kind, chip_kind),
-                                    source=outcome.kind)
+                                    source=outcome.kind, detail=outcome.detail)
         except Exception as exc:
             logger.debug(f"[CHIP] outcome chip failed for {outcome.kind!r}: {exc}")
 
@@ -7683,7 +7683,7 @@ class DictationApp:
         indicator = getattr(self, 'listening_indicator', None)
         if indicator is not None and hasattr(indicator, 'show_outcome'):
             try:
-                self._schedule_ui(indicator.show_outcome, CHIP_ELLIPSIS, "pending", None)
+                from samsara.live_surface.feedback import schedule_feedback; schedule_feedback(self, CHIP_ELLIPSIS, "pending", None, source="hold_pending")
             except Exception as exc:
                 logger.debug(f"[CHIP] pending chip failed: {exc}")
         return seq
@@ -7701,7 +7701,7 @@ class DictationApp:
         indicator = getattr(self, 'listening_indicator', None)
         if indicator is not None and hasattr(indicator, 'clear_outcome'):
             try:
-                self._schedule_ui(indicator.clear_outcome)
+                from samsara.live_surface.feedback import schedule_hold_clear; schedule_hold_clear(self)
             except Exception as exc:
                 logger.debug(f"[CHIP] pending chip clear failed: {exc}")
 
@@ -12182,11 +12182,9 @@ class DictationApp:
                         self.exit_command_mode()
                         return
 
-                    # Command matching ONLY runs in command mode (Right Ctrl / Mouse 4).
-                    # Hold-to-dictate (Ctrl+Shift) always outputs text — never matches
-                    # commands, so words like "bring", "copy", "cut" are transcribed
-                    # as-is rather than firing the corresponding voice command.
-                    if is_command_mode:
+                    # 415: a spoken command prefix explicitly chooses the command lane.
+                    from samsara.dictation_commands import command_payload
+                    if is_command_mode or (not is_ava_mode and command_payload(text, self) is not None):
                         try:
                             diagnostics.record(diagnostics.DiagRecord(
                                 mode="command",

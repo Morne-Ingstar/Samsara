@@ -21,6 +21,12 @@ class ClearDraftUndo:
                 self._timer.cancel()
                 self._timer = None
 
+    @property
+    def pending(self) -> bool:
+        """A voice-clear snapshot owns shared restore words until it expires."""
+        with self._lock:
+            return self._snapshot is not None
+
     def arm(self, manager) -> None:
         with self._lock:
             self.drop()
