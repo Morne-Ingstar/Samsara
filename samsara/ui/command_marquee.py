@@ -1,8 +1,8 @@
 """The status strip's command example (queue 89, replaced in 111).
 
 ONE complete, stationary command phrase in the blank right-hand end of the
-hub's bottom status strip, with a left and a right arrow either side to step
-to the previous or next example.
+hub's bottom status strip, with one quiet drawn chevron to step forward.
+Left / Right on that control step backwards / forwards; the phrase clicks too.
 
 Why it stopped scrolling (111, Astra's second Home review, owner agreed).
 The marquee was the visually weakest thing on the page, and partially-visible
@@ -25,8 +25,8 @@ The rules it keeps, unchanged from 89:
     catalog's universal pack allow-list.
   * The strip never takes focus and never announces a new sentence: the
     example label is NoFocus and its accessible name is updated in place,
-    which a screen reader does not speak. Only the two arrows are in the
-    tab chain, and their names never change.
+    which a screen reader does not speak. Only the next control is in the
+    tab chain in S1, and its name never changes. S2 focuses the phrase instead.
 
 The rules that changed:
 
@@ -39,10 +39,11 @@ The rules that changed:
 from __future__ import annotations
 
 import random
+import re
 from typing import Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from samsara import command_catalog, command_scope
@@ -56,11 +57,6 @@ ACCESSIBLE_NAME = "Command examples"
 #: The lead-in, then the phrase in double quotes -- the same convention Home
 #: uses for anything spoken (home_qt.quoted).
 PREFIX = "Try saying"
-#: The two arrows. Visible glyph and accessible name are separate here (a
-#: glyph is not a name), which is why each carries an explicit one.
-PREV_GLYPH = chr(0x2039)          # single left-pointing angle quote
-NEXT_GLYPH = chr(0x203A)          # single right-pointing angle quote
-PREV_NAME = "previous example"
 NEXT_NAME = "next example"
 #: Minimum hit target, the same 44 px floor home_qt._button uses.
 MIN_TARGET = 44
@@ -156,6 +152,7 @@ def example_phrases(records, *, ctx=None, count: int = PHRASE_COUNT,
 
 def example_text(phrase: str) -> str:
     """One complete example: 'Try saying "close this window"'."""
+    phrase = re.sub(r"\bi\b", "I", str(phrase or "").strip())
     return f'{PREFIX} "{phrase}"' if phrase else ""
 
 
@@ -194,8 +191,33 @@ def pick_fitting(metrics: QFontMetrics, phrases, width: int, start: int,
     return None
 
 
+class _NextExampleButton(QPushButton):
+    """A drawn chevron, with a transparent 44 px keyboard/click target."""
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        ink = theme.ACCENT if self.underMouse() or self.hasFocus() else theme.TEXT_SECONDARY
+        pen = QPen(theme.qcolor(ink), 1.75)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        x, y = self.width() / 2, self.height() / 2
+        painter.drawPolyline([QPointF(x-2, y-4), QPointF(x+2, y), QPointF(x-2, y+4)])
+        if self.hasFocus():
+            painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 4, 4)
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+
 class CommandExampleStrip(QWidget):
-    """One stationary example between a previous and a next arrow.
+    """One stationary complete example at the right end of the bar.
 
     `rng` exists so a test can pin the pool; in the app it is real
     randomness.
@@ -203,80 +225,73 @@ class CommandExampleStrip(QWidget):
 
     def __init__(self, records=None, parent=None, *,
                  rng: Optional[random.Random] = None, ctx=None,
-                 background: Optional[str] = None, fallback_phrase: Optional[str] = None):
+                 background: Optional[str] = None, fallback_phrase: Optional[str] = None,
+                 show_control: bool = True):
         super().__init__(parent)
         self.setObjectName("commandExampleStrip")
         self.setAccessibleName(ACCESSIBLE_NAME)
-        # The strip itself is never a tab stop; only its two arrows are.
+        # S1 has one tab stop; S2 makes the clickable phrase keyboard reachable.
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._background = background or theme.BG1
         self._phrases = example_phrases(records, ctx=ctx, rng=rng)
         if not self._phrases and fallback_phrase:
             self._phrases = [fallback_phrase]
         self._index = 0
+        self._show_control = show_control
+        self._applying = False
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
 
-        self._prev_btn = self._arrow(PREV_GLYPH, PREV_NAME)
-        self._prev_btn.clicked.connect(self.previous)
-        lay.addWidget(self._prev_btn)
-
         self._label = QLabel("")
         # Ambient text, not a control: it is not in the tab chain, and its
         # accessible name is updated rather than announced.
-        self._label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._label.setFocusPolicy(Qt.FocusPolicy.NoFocus if show_control else Qt.FocusPolicy.StrongFocus)
         font = self._label.font()
         # The same px token the status segments beside it use, so the example
         # reads as part of the strip rather than a second type scale.
         font.setPixelSize(theme.TYPE_BODY)
         self._label.setFont(font)
         self._label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; background: transparent;")
+            f"QLabel {{ color: {theme.TEXT_SECONDARY}; background: transparent; padding: 0; border: none; }}"
+            f"QLabel:focus {{ border: 1px solid {theme.ACCENT}; }}")
+        self._label.setMinimumWidth(0)
         self._label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         lay.addWidget(self._label, 1)
 
-        self._next_btn = self._arrow(NEXT_GLYPH, NEXT_NAME)
+        self._next_btn = _NextExampleButton()
+        self._next_btn.setAccessibleName(NEXT_NAME)
+        self._next_btn.setToolTip("Next example; Left / Right to step")
+        self._next_btn.setFixedSize(MIN_TARGET, MIN_TARGET)
+        self._next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._next_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus if show_control else Qt.FocusPolicy.NoFocus)
+        self._next_btn.setStyleSheet("QPushButton { background: transparent; border: none; padding: 0; }")
+        policy = self._next_btn.sizePolicy()
+        policy.setRetainSizeWhenHidden(show_control)
+        self._next_btn.setSizePolicy(policy)
         self._next_btn.clicked.connect(self.next)
         lay.addWidget(self._next_btn)
-
-        self._metrics = QFontMetrics(self._label.font())
+        self._next_btn.setVisible(show_control and len(self._phrases) > 1)
+        self._label.installEventFilter(self)
+        self._next_btn.installEventFilter(self)
+        self._label.ensurePolished()
         self.setMinimumHeight(max(MIN_TARGET, self._metrics.height()))
         # The status bar gives it whatever is left; it never demands the
         # width an example would need, because when the width is not there
         # the answer is a shorter example, not a wider strip.
-        self.setMinimumWidth(2 * MIN_TARGET + 12)
-        self._arrows_visible(bool(self._phrases))
+        self.setMinimumWidth(0)
         self._apply(self._index)
 
     # ---- Construction ----------------------------------------------------
 
-    def _arrow(self, glyph: str, name: str) -> QPushButton:
-        """A 44 x 44 arrow whose ACCESSIBLE NAME is words, not a glyph."""
-        btn = QPushButton(glyph)
-        btn.setAccessibleName(name)
-        btn.setToolTip(name.capitalize())
-        btn.setFixedSize(MIN_TARGET, MIN_TARGET)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
-            f" font-size: {theme.TYPE_BODY}px; }}"
-            f"QPushButton:hover {{ border-color: {theme.ACCENT};"
-            f" color: {theme.TEXT_PRIMARY}; }}"
-            f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
-        )
-        return btn
-
-    def _arrows_visible(self, visible: bool) -> None:
-        """With fewer than two examples there is nothing to step to, and an
-        arrow that cannot do anything is a lie about what is available."""
-        show = visible and len(self._phrases) > 1
-        self._prev_btn.setVisible(show)
-        self._next_btn.setVisible(show)
+    @property
+    def _metrics(self) -> QFontMetrics:
+        """Measure the polished, current font, including later font/QSS changes."""
+        return QFontMetrics(self._label.font())
 
     # ---- State -----------------------------------------------------------
 
@@ -301,10 +316,6 @@ class CommandExampleStrip(QWidget):
         return self._label.text()
 
     @property
-    def prev_button(self) -> QPushButton:
-        return self._prev_btn
-
-    @property
     def next_button(self) -> QPushButton:
         return self._next_btn
 
@@ -316,15 +327,10 @@ class CommandExampleStrip(QWidget):
 
     def _available(self) -> int:
         """The width the label actually has for text."""
-        width = self._label.width()
-        if width > 0:
-            return width
-        # Before the first layout pass the label has no width yet; derive it
-        # from the strip so the first example is chosen against a real
-        # budget rather than shown and then swapped.
-        spacing = 6 * 2
-        arrows = 2 * MIN_TARGET if len(self._phrases) > 1 else 0
-        return max(0, self.width() - arrows - spacing)
+        # Activate before measuring: neither an outer width (which includes
+        # QSS padding) nor yesterday's layout geometry is a text budget.
+        self.layout().activate()
+        return max(0, self._label.contentsRect().width())
 
     def _apply(self, index: int, step: int = 1) -> None:
         """Show the phrase at `index`, or the first one from there that fits.
@@ -334,23 +340,22 @@ class CommandExampleStrip(QWidget):
         strip reads the current example, and one who does not is never
         interrupted.
         """
-        if not self._phrases:
-            self._label.setText("")
-            self._label.setAccessibleName(ACCESSIBLE_NAME)
+        if self._applying:
             return
-        found = pick_fitting(self._metrics, self._phrases, self._available(),
-                             index, step)
-        if found is None:
-            # Nothing in the pool fits this width. Show nothing rather than
-            # a fragment: a clipped command cannot be spoken.
-            self._index = index % len(self._phrases)
-            self._label.setText("")
-            self._label.setAccessibleName(ACCESSIBLE_NAME)
-            return
-        self._index = found
-        text = example_text(self._phrases[found])
-        self._label.setText(text)
-        self._label.setAccessibleName(text)
+        self._applying = True
+        try:
+            found = pick_fitting(self._metrics, self._phrases, self._available(), index, step)
+            if found is None:
+                self._index = index % len(self._phrases) if self._phrases else 0
+                text = ""
+            else:
+                self._index = found
+                text = example_text(self._phrases[found])
+            self._label.setText(text)
+            self._label.setAccessibleName(text or ACCESSIBLE_NAME)
+            self._next_btn.setVisible(bool(text) and self._show_control and len(self._phrases) > 1)
+        finally:
+            self._applying = False
 
     def next(self) -> None:
         """Step forward to the next example that fits."""
@@ -365,6 +370,27 @@ class CommandExampleStrip(QWidget):
         self._apply(self._index - 1, step=-1)
 
     # ---- Layout ----------------------------------------------------------
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Right:
+                self.next()
+                return True
+            if event.key() == Qt.Key.Key_Left:
+                self.previous()
+                return True
+        if watched is self._label:
+            if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                self.next()
+                return True
+            if event.type() in (QEvent.Type.Resize, QEvent.Type.FontChange,
+                                QEvent.Type.StyleChange, QEvent.Type.ContentsRectChange):
+                self._apply(self._index)
+        return super().eventFilter(watched, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._apply(self._index)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

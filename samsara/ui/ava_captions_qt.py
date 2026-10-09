@@ -15,7 +15,7 @@ A frameless, always-on-top panel that never takes focus (the user is dictating
 INTO another window; a caption that steals the caret would break the thing it
 is helping with). Ava's reply is held on screen while she speaks, then lingers
 for `accessibility.ava_captions_linger_s` seconds so a slow reader is not raced
-by the end of the audio. Click to dismiss, drag to move.
+by the end of the audio. Click anywhere to dismiss; Drag to move.
 
 Threading
 ---------
@@ -215,9 +215,9 @@ class _CaptionsWindow(QWidget):
         self._text.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         inner.addWidget(self._text)
 
-        self._hint = QLabel("Click to dismiss  |  drag to move")
+        self._hint = QLabel("Click anywhere to dismiss " + chr(0xB7) + " Drag to move")
         self._hint.setObjectName("avaCaptionHint")
-        self._hint.setAccessibleName("Caption controls")
+        self._hint.setAccessibleName("Click anywhere on the caption to dismiss it. Drag it to move it.")
         inner.addWidget(self._hint)
 
         # Linger / hard-cap timer. One timer, restarted -- a held caption

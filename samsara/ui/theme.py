@@ -641,6 +641,8 @@ def qfont(px: int, family: str = "Segoe UI", weight=None, italic: bool = False):
 # texture. Every family in the stack ships with Windows or Office, and the
 # generic serif closes the fallback chain.
 FONT_FAMILY_DISPLAY = "'Perpetua Titling MT', 'Palatino Linotype', 'Book Antiqua', Georgia, serif"
+FONT_WEIGHT_CREED = 400             # Original Light face (384 owner preference)
+CREED_SCALE = 1.35                  # Creed-only size switch; global text scale still applies
 # The wordmark beside the mark in the hub window's header band (38): the
 # display face at a real display size, letterspaced. Additive tokens.
 FONT_SIZE_DISPLAY = TYPE_DISPLAY

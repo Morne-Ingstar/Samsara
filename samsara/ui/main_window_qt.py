@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import config_defaults
-from samsara.ui import qt_runtime, theme, window_activation
+from samsara.ui import qt_runtime, theme, window_activation, window_geometry
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 from samsara.ui.command_marquee import build_example_strip
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
@@ -177,17 +177,17 @@ def _label(text, color=None, size=theme.TYPE_SECTION_LABEL, bold=False):
 
 
 def _status_segment(label_text: str, value_text: str = "..."):
-    """Muted small-caps label + primary-colored value, e.g. 'MODE  Hold'.
-
+    """Decorated small-caps label + primary-colored value, e.g. 'MODE  Hold'.
     Returns (container_widget, value_label) so callers can update just the
-    value later without rebuilding the segment.
+    value without rebuilding it.
     """
+    from samsara.ui.widgets.status_label import StatusLabel
     w = QWidget()
     w.setStyleSheet("background: transparent;")
     lay = QHBoxLayout(w)
     lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(6)
-    label = QLabel(label_text.upper())
+    lay.setSpacing(8)
+    label = StatusLabel(label_text.upper())
     label.setStyleSheet(
         f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_SECTION_LABEL}px; font-weight: 700;"
         f" letter-spacing: {theme.LETTER_SPACING_SECTION}; background: transparent;"
@@ -214,9 +214,10 @@ def _hands_free_active(app) -> bool:
 
 def _status_separator() -> QFrame:
     line = QFrame()
-    line.setFrameShape(QFrame.Shape.VLine)
+    line.setFrameShape(QFrame.Shape.NoFrame)
     line.setFixedHeight(16)
-    line.setStyleSheet(f"color: {theme.BORDER}; background: {theme.BORDER}; max-width: 1px; border: none;")
+    line.setFixedWidth(1)
+    line.setStyleSheet(f"background: {theme.BORDER}; border: none;")
     return line
 
 
@@ -332,9 +333,9 @@ class _MainWindow(QMainWindow):
         self._theme_signal_manages_descendants = True
         self.setStyleSheet(_ss())
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
-        self._restore_geometry()
         self._build_ui()
         self._activate("Home")
+        self._restore_geometry()
         self._poll_timer.start()
         self._dictation_sig.connect(self._on_dictation)
 
@@ -348,6 +349,7 @@ class _MainWindow(QMainWindow):
                 widget.setStyleSheet(theme.retheme_stylesheet(inline))
         for name, button in self._nav_btns.items():
             self._style_nav(button, name, button.isChecked())
+        self._reset_btn.setIcon(glyph_icon("history", theme.TEXT_SECONDARY, NAV_ICON_PX))
         self._refresh_status()
         # QSystemTrayIcon is not in QApplication.topLevelWidgets(). Refresh
         # its existing MarkFrame through the app's Qt-thread method now.
@@ -411,6 +413,22 @@ class _MainWindow(QMainWindow):
         self._ava = AvaHeaderControl(
             self._app, on_click=lambda: open_settings_tab(self._app, "Ava / Cloud"))
         hlay.addStretch()
+        self._reset_btn = QPushButton()
+        self._reset_btn.setObjectName("resetWindowSize")
+        self._reset_btn.setAccessibleName("Reset window size")
+        self._reset_btn.setToolTip("Reset window size")
+        self._reset_btn.setIcon(glyph_icon("history", theme.TEXT_SECONDARY, NAV_ICON_PX))
+        self._reset_btn.setIconSize(QSize(NAV_ICON_PX, NAV_ICON_PX))
+        self._reset_btn.setFixedSize(NAV_ROW_H, NAV_ROW_H)
+        self._reset_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reset_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: 1px solid transparent;"
+            f" border-radius: 6px; padding: 0; }}"
+            f"QPushButton:hover {{ background: {theme.BG1}; border-color: {theme.BORDER}; }}"
+            f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}")
+        self._reset_btn.clicked.connect(self._reset_geometry)
+        hlay.addWidget(self._reset_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
         hlay.addWidget(self._ava, alignment=Qt.AlignmentFlag.AlignVCenter)
         hlay.addSpacing(HEADER_MARK_GAP)
         hlay.addWidget(self._paused_btn)
@@ -464,33 +482,76 @@ class _MainWindow(QMainWindow):
         # (6-8px) instead of the old 0px-vertical/horizontal-only padding.
         sb = QStatusBar()
         sb.setSizeGripEnabled(False)
-        sb.setStyleSheet(f"padding: 6px 8px;")
+        sb.setStyleSheet("QStatusBar { padding: 6px 8px; } QStatusBar::item { border: none; }")
         self.setStatusBar(sb)
+
+        from samsara.ui.widgets.status_label import StatusRow
+        row = StatusRow(self, sb, MIN_WIDTH)
+        row.setStyleSheet("background: transparent;")
+        row_layout = QHBoxLayout(row)
+        # Native QStatusBar starts its item at x=2; MODE must start at 16.
+        row_layout.setContentsMargins(14, 0, 0, 0)
+        row_layout.setSpacing(14)
+        from PySide6.QtWidgets import QLayout
+        row_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
         mode_w, self._lbl_mode = _status_segment("Mode")
         wake_w, self._lbl_wake = _status_segment("Wake")
         mic_w,  self._lbl_mic  = _status_segment("Mic")
 
-        sb.addWidget(mode_w)
-        sb.addWidget(_status_separator())
-        sb.addWidget(wake_w)
-        sb.addWidget(_status_separator())
-        sb.addWidget(mic_w)
+        for item in (mode_w, _status_separator(), wake_w, _status_separator(), mic_w):
+            row_layout.addWidget(item, 0, Qt.AlignmentFlag.AlignVCenter)
         # No "Last: ..." preview here (41): Home's outcome row is the one
         # place the newest outcome is shown.
 
         # The blank right-hand end of the strip (89, changed in 111): ONE
-        # complete command phrase from the catalog, stationary, with an arrow
-        # either side to step through the pool. It scrolled until 111;
+        # complete command phrase from the catalog, stationary, with one
+        # drawn chevron at the right. It scrolled until 111;
         # partially-visible moving text is the wrong default for someone who
         # needs to read an example long enough to say it out loud, and a
         # marquee has no "previous". It is NOT the diagnostic hint slot on
         # Home -- that one is actionable.
-        sb.addWidget(_status_separator())
         self._example_strip = build_example_strip(self._app)
         self._example_strip.setSizePolicy(QSizePolicy.Policy.Expanding,
                                           QSizePolicy.Policy.Preferred)
-        sb.addWidget(self._example_strip, 1)
+        # Keep the 44px target and behavior; offset only its painted glyph.
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QPen
+        original = self._example_strip._next_btn
+
+        class InsetChevron(type(original)):
+            def paintEvent(self, event):
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                ink = theme.ACCENT if self.underMouse() or self.hasFocus() else theme.TEXT_SECONDARY
+                pen = QPen(theme.qcolor(ink), 1.75)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                x, y = self.width() / 2 + 3, self.height() / 2
+                painter.drawPolyline([QPointF(x-2, y-4), QPointF(x+2, y), QPointF(x-2, y+4)])
+                if self.hasFocus():
+                    painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 4, 4)
+
+        control = InsetChevron()
+        control.setAccessibleName(original.accessibleName())
+        control.setToolTip(original.toolTip())
+        control.setFixedSize(original.size())
+        control.setCursor(original.cursor())
+        control.setFocusPolicy(original.focusPolicy())
+        control.setStyleSheet(original.styleSheet())
+        control.setSizePolicy(original.sizePolicy())
+        control.setProperty("paintOffsetX", 3)
+        control.clicked.connect(self._example_strip.next)
+        control.installEventFilter(self._example_strip)
+        self._example_strip.layout().replaceWidget(original, control)
+        control.setVisible(not original.isHidden())
+        self._example_strip._next_btn = control
+        original.hide()
+        original.deleteLater()
+        row_layout.addWidget(self._example_strip, 1)
+        sb.addWidget(row, 1)
+        sb.layout().setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
     @staticmethod
     def _nav_style(active: bool) -> str:
@@ -672,30 +733,64 @@ class _MainWindow(QMainWindow):
 
     # ---- Geometry -----------------------------------------------------------
 
+    def setMinimumWidth(self, width):
+        # Content can ask for a wider floor after placement (for example on
+        # a theme/layout refresh); the current monitor bound still wins.
+        super().setMinimumWidth(min(width, self.maximumWidth()))
+
+    def _frame_margins(self):
+        # Create this widget's hidden native handle so the title/frame, in
+        # logical pixels, are included before the first visible placement.
+        self.winId()
+        m = self.windowHandle().frameMargins()
+        return m.left(), m.top(), m.right(), m.bottom()
+
+    def _geometry_screens(self):
+        screens = [s.availableGeometry().getRect() for s in QApplication.screens()]
+        primary = QApplication.primaryScreen().availableGeometry().getRect()
+        return screens, primary
+
+    def _place_geometry(self, rect):
+        # A small screen may be below the normal hub minimum. Bound both
+        # minimum and maximum so layout hints cannot enlarge it off-screen.
+        screens, primary = self._geometry_screens()
+        margins = self._frame_margins()
+        frame = window_geometry.outer_rect(rect, margins)
+        target = next((s for s in screens if window_geometry.contains(s, frame)), primary)
+        left, top, right, bottom = margins
+        self.setMinimumSize(min(MIN_WIDTH, rect[2]), min(MIN_HEIGHT, rect[3]))
+        self.setMaximumSize(max(1, target[2] - left - right), max(1, target[3] - top - bottom))
+        self.setGeometry(*rect)
+
     def _restore_geometry(self):
         cfg = getattr(self._app, 'config', {}) or {}
-        w = max(MIN_WIDTH,  int(cfg.get('window_width',  DEFAULT_WIDTH)  or DEFAULT_WIDTH))
-        h = max(MIN_HEIGHT, int(cfg.get('window_height', DEFAULT_HEIGHT) or DEFAULT_HEIGHT))
-        x = cfg.get('window_x')
-        y = cfg.get('window_y')
-        if x is not None and y is not None:
-            try:
-                screens = [s.availableGeometry() for s in QApplication.screens()]
-                primary = QApplication.primaryScreen().availableGeometry()
-                nx, ny, nw, nh = placement_on_screens(int(x), int(y), w, h, screens, primary)
-                if (nx, ny, nw, nh) != (int(x), int(y), w, h):
-                    logger.info(
-                        "[MAIN] saved geometry %s,%s %sx%s is not on a current monitor; "
-                        "placed at %s,%s %sx%s", x, y, w, h, nx, ny, nw, nh)
-                self.setGeometry(nx, ny, nw, nh)
-                return
-            except Exception as e:
-                logger.debug(f"_restore_geometry: {e}")
-        self.resize(w, h)
+        stored = None
+        try:
+            stored = (int(cfg['window_x']), int(cfg['window_y']),
+                      max(MIN_WIDTH, int(cfg.get('window_width') or DEFAULT_WIDTH)),
+                      max(MIN_HEIGHT, int(cfg.get('window_height') or DEFAULT_HEIGHT)))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            pass
+        screens, primary = self._geometry_screens()
+        rect = window_geometry.restore_geometry(
+            stored, screens, primary, (DEFAULT_WIDTH, DEFAULT_HEIGHT), self._frame_margins())
+        if stored is not None and rect != stored:
+            logger.info("[MAIN] saved geometry %s does not fit a current monitor; reset to %s", stored, rect)
+        self._place_geometry(rect)
+
+    def _reset_geometry(self):
+        screens, primary = self._geometry_screens()
+        current_frame = self.frameGeometry().getRect()
+        self.showNormal()
+        rect = window_geometry.reset_geometry(
+            current_frame, screens, primary, (DEFAULT_WIDTH, DEFAULT_HEIGHT), self._frame_margins())
+        self._place_geometry(rect)
+        self._geom_timer.stop()
+        self._save_geometry()
 
     def _save_geometry(self):
         try:
-            g = self.geometry()
+            g = self.normalGeometry() if self.isMaximized() or self.isMinimized() else self.geometry()
             changes = {
                 'window_width':  g.width(),
                 'window_height': g.height(),
@@ -922,27 +1017,16 @@ class MainWindowQt:
 
 #: objectName of samsara.ui.splash_qt._SplashWidget.
 SPLASH_OBJECT_NAME = "samsaraStartupSplash"
-#: How much of the title-bar strip must lie on a monitor for the window to be
-#: reachable (grab-able) there.
-_MIN_VISIBLE_W = 120
-_MIN_VISIBLE_H = 40
 
+def placement_on_screens(x, y, w, h, screens, primary, default_size=None):
+    """QRect adapter for the pure containment rule.
 
-def placement_on_screens(x, y, w, h, screens, primary):
-    """Return (x, y, w, h) that is reachable on one of ``screens`` (QRects of
-    each monitor's available area). A saved position whose title-bar strip
-    lies on a current monitor is kept -- including secondary monitors at
-    negative or large coordinates. Otherwise (monitor disconnected, layout
-    changed) the window is centred on ``primary``, shrunk to fit."""
-    for s in screens:
-        overlap_w = min(x + w, s.x() + s.width()) - max(x, s.x())
-        overlap_h = min(y + _MIN_VISIBLE_H, s.y() + s.height()) - max(y, s.y())
-        if overlap_w >= _MIN_VISIBLE_W and overlap_h >= _MIN_VISIBLE_H:
-            return x, y, w, h
-    w = min(w, primary.width())
-    h = min(h, primary.height())
-    return (primary.x() + (primary.width() - w) // 2,
-            primary.y() + (primary.height() - h) // 2, w, h)
+    Legacy callers use their supplied size as fallback; the hub startup
+    explicitly uses its 900x650 defaults via window_geometry.
+    """
+    return window_geometry.restore_geometry(
+        (x, y, w, h), [s.getRect() for s in screens], primary.getRect(),
+        default_size if default_size is not None else (w, h))
 
 
 def _state_name(window) -> str:

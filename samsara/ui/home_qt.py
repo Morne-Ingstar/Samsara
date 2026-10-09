@@ -363,6 +363,7 @@ _CATALOG_UNAVAILABLE_SHORT = "command list unavailable"
 #: tips do NOT belong here: the status strip's marquee owns those.
 SUGGESTION_HEADING = {"diagnostic": "Suggestion", "whatsnew": "What's new"}
 DISMISS = "Dismiss"
+CHANGELOG_LINK = "Full changelog"
 CHANGELOG_PATH = Path(__file__).resolve().parent.parent.parent / "CHANGELOG.md"
 #: QSettings key holding the version whose note has already been seen.
 WHATS_NEW_SEEN_KEY = "home/whats_new_seen"
@@ -449,19 +450,14 @@ GITHUB_LINK = "GitHub"
 KOFI_LINK = "Ko-fi"
 DOCS_URL = "https://morneis.com/samsara/docs/"
 GITHUB_URL = "https://github.com/Morne-Ingstar/Samsara"
+CHANGELOG_URL = GITHUB_URL + "/blob/master/CHANGELOG.md"
 KOFI_URL = "https://ko-fi.com/morneingstar"
 IDENTITY_LINKS = (
     (DOCS_LINK, DOCS_URL),
     (GITHUB_LINK, GITHUB_URL),
 )
-#: Queue 111 (Astra, owner accepted). Was "Support is never needed. But
-#: always appreciated." -- two problems beside a help-oriented interface:
-#: "support" reads as technical support, which IS needed and IS offered
-#: two cards away, and "never needed" talks the Ko-fi link out of itself
-#: before the user reaches it. The new line keeps the same promise (the
-#: app is free and nothing is gated) without the ambiguity or the
-#: self-undercut. Same placement, same subtle styling, same link.
-SUPPORT_LINE = "Always free. Contributions welcome."
+#: Queue 388: the owner's sentence; only "spins" occasionally turns.
+SUPPORT_LINE = "Your support spins the wheel"
 
 
 def glyph_icon(key: str, colour: str, px: int = 18) -> QIcon:
@@ -1292,7 +1288,7 @@ def _card() -> QFrame:
 
 
 def _link(text: str, url: str) -> QPushButton:
-    """A small TEXT link (89): a flat, underlined button, not a card and not
+    """A small capitals link (384): quiet at rest, accent on hover/focus, not
     a filled control. It is a QPushButton and not a rich-text QLabel so it
     is in the tab order, reachable by keyboard, and its accessible name is
     its visible text (WCAG Label in Name).
@@ -1305,7 +1301,7 @@ def _link(text: str, url: str) -> QPushButton:
     btn = QPushButton(text)
     btn.setAccessibleName(text)
     btn.setAccessibleDescription(url)
-    btn.setProperty("typeRole", "note")
+    btn.setProperty("typeRole", "section label")
     btn.setProperty("homeLink", True)
     btn.setFlat(True)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1314,13 +1310,17 @@ def _link(text: str, url: str) -> QPushButton:
     btn.setMinimumWidth(MIN_TARGET)
     btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     btn.setStyleSheet(
-        f"QPushButton {{ background: transparent; border: none; padding: 0;"
-        f" color: {theme.TEXT_SECONDARY}; text-decoration: underline;"
-        f" font-size: {_px(TYPE['note'])}px; text-align: left; }}"
+        f"QPushButton {{ background: transparent; border: 1px solid transparent; padding: 0;"
+        f" color: {theme.TEXT_SECONDARY}; text-decoration: none; font-weight: 700;"
+        f" font-size: {_px(theme.TYPE_SECTION_LABEL)}px; letter-spacing: {theme.LETTER_SPACING_SECTION}; text-align: left; }}"
         f"QPushButton:hover {{ color: {theme.ACCENT}; }}"
         f"QPushButton:focus {{ color: {theme.ACCENT};"
         f" border: 1px solid {theme.ACCENT}; border-radius: 3px; }}"
     )
+    btn.ensurePolished()
+    font = btn.font()
+    font.setCapitalization(QFont.Capitalization.AllUppercase)
+    btn.setFont(font)
     btn.clicked.connect(lambda _=False, u=url: open_url(u))
     return btn
 
@@ -1394,12 +1394,8 @@ class _CapabilityCard(QPushButton):
             f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
         )
         lay = QVBoxLayout(self)
-        # 89: 10 px side padding, not 14. The card's minimum width is its
-        # title plus this padding, and at 14 the widest title ("View window
-        # commands") needed 249 px -- seven pixels too wide for THREE cards
-        # in the 760 px column, which forced the three destinations onto two
-        # rows and pushed the identity strip below the fold.
-        lay.setContentsMargins(_px(10), _px(12), _px(10), _px(12))
+        # Wrapped titles keep three destinations in the bounded default window.
+        lay.setContentsMargins(_px(10), _px(6), _px(10), _px(6))
         lay.setSpacing(_px(6))
 
         head = QHBoxLayout()
@@ -1410,7 +1406,7 @@ class _CapabilityCard(QPushButton):
             icon.setStyleSheet("background: transparent; border: none;")
             icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             head.addWidget(icon, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._title = _label(title, role="card title", weight=600)
+        self._title = _label(title, role="card title", weight=600, wrap=True)
         self._title.setAccessibleName(f"{title} title")
         head.addWidget(self._title, stretch=1)
         lay.addLayout(head)
@@ -1428,10 +1424,9 @@ class _CapabilityCard(QPushButton):
         self._fit_width()
 
     def _fit_width(self):
-        # The grid may not squeeze the card below its title and value; the
-        # description wraps instead.
+        # Titles and descriptions wrap; the live value sets the width floor.
         m = self.layout().contentsMargins()
-        head = self.layout().itemAt(0).sizeHint().width()
+        head = self.layout().itemAt(0).minimumSize().width()
         need = max(head, self._value.sizeHint().width()) + m.left() + m.right() + 4
         self.setMinimumWidth(max(MIN_TARGET, need))
 
@@ -1702,9 +1697,8 @@ class HomePage(QWidget):
         host = QWidget()
         host.setStyleSheet("background: transparent;")
         host_lay = QHBoxLayout(host)
-        # 89: the page gutter and the gap between sections come down from
-        # GRID_LG to GRID so the restored identity strip fits above the fold.
-        host_lay.setContentsMargins(GRID, GRID, GRID, GRID)
+        # Keep horizontal gutters; save vertical room for the conditional slot.
+        host_lay.setContentsMargins(GRID, _px(8), GRID, _px(8))
         host_lay.setSpacing(0)
         self._content = _ContentColumn()
         self._content.setObjectName("homeContent")
@@ -1718,9 +1712,8 @@ class HomePage(QWidget):
 
         col = QVBoxLayout(self._content)
         col.setContentsMargins(0, 0, 0, 0)
-        # 89 fit pass: 12 px between sections, not 16. Home has to fit a
-        # 548 px viewport at the 900x650 default and every gap is measured.
-        col.setSpacing(_px(12))
+        # Compact section gaps keep all three conditional slots above the fold.
+        col.setSpacing(_px(6))
 
         col.addWidget(self._build_title())
         col.addWidget(self._build_notice())
@@ -1814,22 +1807,22 @@ class HomePage(QWidget):
         card = _card()
         card.setObjectName("homeCard")
         card.setAccessibleName(SUGGESTION)
-        lay = QVBoxLayout(card)
-        lay.setContentsMargins(GRID, _px(10), GRID, _px(10))
+        lay = QGridLayout(card)
+        lay.setContentsMargins(GRID, _px(6), GRID, _px(6))
         lay.setSpacing(_px(6))
         self._hint_heading = _section_label(SUGGESTION)
-        lay.addWidget(self._hint_heading)
+        lay.addWidget(self._hint_heading, 0, 0, 1, 2)
         self._hint_text = _label("", role="card title", wrap=True)
         self._hint_text.setAccessibleName("Suggestion text")
         self._hint_text.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        lay.addWidget(self._hint_text)
+        lay.addWidget(self._hint_text, 1, 0, 1, 2)
         # The VISIBLE second line: what to do (111). For the what's-new note
         # it is the note's own sentence.
         self._hint_sub = _label("", role="note", color=theme.TEXT_SECONDARY, wrap=True)
         self._hint_sub.setAccessibleName("Suggestion action")
         self._hint_sub.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._hint_sub.setVisible(False)
-        lay.addWidget(self._hint_sub)
+        lay.addWidget(self._hint_sub, 2, 0, 1, 2)
         # The DISCLOSED line: counts, outcome kinds and the threshold. Hidden
         # until the Details button is pressed, and hidden again whenever the
         # slot changes, so "collapsed by default" holds for every suggestion
@@ -1838,7 +1831,7 @@ class HomePage(QWidget):
         self._hint_evidence.setAccessibleName("Suggestion evidence")
         self._hint_evidence.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._hint_evidence.setVisible(False)
-        lay.addWidget(self._hint_evidence)
+        lay.addWidget(self._hint_evidence, 3, 0, 1, 2)
 
         actions = QWidget()
         actions.setStyleSheet("background: transparent;")
@@ -1859,7 +1852,7 @@ class HomePage(QWidget):
         self._hint_hide_btn = _button(HIDE_SUGGESTION)
         self._hint_hide_btn.clicked.connect(self._on_hide_hint)
         row.addWidget(self._hint_hide_btn)
-        lay.addWidget(actions)
+        lay.addWidget(actions, 4, 0, 1, 2)
         self._hint_card = card
         card.setVisible(False)
         return card
@@ -1957,17 +1950,21 @@ class HomePage(QWidget):
         self._stat_size = None
         self._words_val.setText("0")
 
-        self._creed = _label(CREED, role="creed", color=theme.TEXT_SECONDARY, weight=400,
+        self._creed = _label(CREED, role="creed", color=theme.TEXT_SECONDARY, weight=theme.FONT_WEIGHT_CREED,
                              family=theme.FONT_FAMILY_DISPLAY, spacing="0.12em")
+        self._creed.setStyleSheet(self._creed.styleSheet().replace(
+            f"font-size: {_px(TYPE['creed'])}px",
+            f"font-size: {_px(theme.TYPE_EMPHASIS)}px"))
+        self._creed.ensurePolished()
+        creed_font = self._creed.font()
+        creed_font.setCapitalization(QFont.Capitalization.AllUppercase)
+        self._creed.setFont(creed_font)
         self._creed.setAccessibleName("Creed")
         self._creed.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._creed.setWordWrap(True)
-        # Stretches and wraps rather than demanding its unwrapped width, so
-        # a wide face or a large scale factor folds the creed onto two lines.
         self._creed.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
-        # The creed, the support line and the links share ONE right-hand
-        # cell, three right-aligned lines stacked beside the stat cards (89).
+        # Creed, support and links share one right-aligned cell beside the stats.
         # The support line used to be a fourth full-width row below the grid;
         # folding it into the cell gave Home back 50 px, which is what let
         # the conditional slot show a diagnostic hint at 900 x 650 without a
@@ -1978,16 +1975,27 @@ class HomePage(QWidget):
         self._creed_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         cbl = QVBoxLayout(self._creed_box)
         cbl.setContentsMargins(0, 0, 0, 0)
-        cbl.setSpacing(_px(4))
+        # The larger Light creed needs the existing identity cell's height;
+        # line boxes already separate these three rows (384 finish).
+        cbl.setSpacing(0)
         # No stretch around these lines: a stretch competes for the same
         # pixels as a wrapped label, and squeezed the creed to one line's
         # height when a larger font pushed it onto two (89, caught by the
         # scaling gate).
         cbl.addWidget(self._creed)
 
-        support_text = _label(SUPPORT_LINE, role="note", color=theme.TEXT_DISABLED, wrap=True)
+        from samsara.ui.widgets.spin_word_label import SpinWordLabel
+        support_text = SpinWordLabel(SUPPORT_LINE, word="spins")
+        support_text.setProperty("typeRole", "note")
+        support_text.setStyleSheet(_label_css("note", theme.TEXT_DISABLED, 400))
+        support_text.setWordWrap(True)
         support_text.setAccessibleName(SUPPORT_LINE)
         support_text.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        from PySide6.QtGui import QFontMetrics
+        support_text.ensurePolished()
+        # A sideways word needs its width in vertical room; QLabel still
+        # supplies the same intrinsic size hints and ordinary rest painting.
+        support_text.setMinimumHeight(QFontMetrics(support_text.font()).horizontalAdvance("spins") + 2)
         # Ignored horizontally, like the creed: the sentence wraps to the
         # room the cell has instead of demanding its unwrapped width and
         # clipping when a wide face or a large scale factor makes it longer.
@@ -2001,14 +2009,57 @@ class HomePage(QWidget):
         links_row.setAccessibleName("Links")
         lrl = QHBoxLayout(links_row)
         lrl.setContentsMargins(0, 0, 0, 0)
-        lrl.setSpacing(GRID)
+        lrl.setSpacing(0)
         lrl.addStretch(1)
-        # Ko-fi last, immediately under the owner's sentence: at the bottom,
-        # in the same subtle letters as the other two.
-        for text, url in (*IDENTITY_LINKS, (KOFI_LINK, KOFI_URL)):
-            btn = _link(text, url)
+        from PySide6.QtGui import QFontMetrics
+
+        class InkLink(QPushButton):
+            def sizeHint(self):
+                # Native QPushButton adds unused right bearings; this row's
+                # transparent target is sized to its actual capitalized ink.
+                bounds = QFontMetrics(self.font()).tightBoundingRect(self.text())
+                return QSize(max(MIN_TARGET, bounds.right() + 3), MIN_TARGET)
+
+        previous = None
+        for index, (text, url) in enumerate((*IDENTITY_LINKS, (KOFI_LINK, KOFI_URL))):
+            prototype = _link(text, url)
+            btn = InkLink(text)
+            btn.setAccessibleName(prototype.accessibleName())
+            btn.setAccessibleDescription(url)
+            btn.setProperty("typeRole", prototype.property("typeRole"))
+            btn.setProperty("homeLink", True)
+            btn.setFlat(True)
+            btn.setCursor(prototype.cursor())
+            btn.setFocusPolicy(prototype.focusPolicy())
+            btn.setStyleSheet(prototype.styleSheet())
+            btn.setFont(prototype.font())
+            btn.setMinimumHeight(MIN_TARGET)
+            btn.setSizePolicy(prototype.sizePolicy())
+            btn.clicked.connect(lambda _=False, u=url: open_url(u))
+            prototype.deleteLater()
+            btn.ensurePolished()
+            bounds = QFontMetrics(btn.font()).tightBoundingRect(text)
+            btn.setFixedWidth(btn.sizeHint().width())
+            # Put any extra target width BEFORE the ink, preserving its right
+            # edge and the adjacent 8px gaps even on the short Ko-fi label.
+            padding = btn.width() - bounds.right() - 3
+            btn.setProperty("inkPadding", padding)
+            btn.setStyleSheet(btn.styleSheet() + f" QPushButton {{ padding-left: {padding}px; }}")
+            if index:
+                dot = _label("\u00b7", role="note", color=theme.TEXT_DISABLED)
+                dot.setObjectName("homeLinkSeparator")
+                dot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                dot.ensurePolished()
+                dot_bounds = QFontMetrics(dot.font()).tightBoundingRect(dot.text())
+                dot.setFixedWidth(dot.sizeHint().width())
+                prev_bounds = QFontMetrics(previous.font()).tightBoundingRect(previous.text())
+                trailing = previous.width() - (1 + previous.property("inkPadding") + prev_bounds.right() + 1)
+                lrl.addSpacing(8 - trailing - dot_bounds.left())
+                lrl.addWidget(dot)
+                lrl.addSpacing(8 - (dot.width() - dot_bounds.right() - 1) - (1 + padding + bounds.left()))
             lrl.addWidget(btn)
             self._links[text] = btn
+            previous = btn
         cbl.addWidget(links_row)
         self._links_row = links_row
         self._support_row = links_row
@@ -2024,7 +2075,8 @@ class HomePage(QWidget):
         has room for the pair, shrunk in step when it does not, never below
         the width the live figure needs. The label wraps rather than clips,
         so the height follows the width (89)."""
-        w = max(self._stat_floor, min(self._stat_w, (width - GRID) // 2))
+        links = self._links_row.sizeHint().width()
+        w = max(self._stat_floor, min(self._stat_w, (width - links - 2 * GRID) // 2))
         h = max(self._stat_h, *(card.layout().totalHeightForWidth(w)
                                 for card in (self._words_card, self._infinity_card)))
         if (w, h) == self._stat_size:
@@ -2188,8 +2240,9 @@ class HomePage(QWidget):
             version, sentence = note
             self._whats_new = version
             self._show_slot(SUGGESTION_HEADING["whatsnew"],
-                            f"Samsara {version}", sentence, "", more=False,
+                            f"Samsara {version}", sentence, CHANGELOG_LINK, more=False,
                             hide_label=DISMISS)
+            self._hint_action_btn.setAccessibleDescription(CHANGELOG_URL)
             # A release note has no working to show.
             return
         self._whats_new = None
@@ -2212,6 +2265,15 @@ class HomePage(QWidget):
         """
         self._hint_heading.setText(heading.upper())
         self._hint_card.setAccessibleName(heading)
+        release = self._whats_new is not None
+        self._hint_text.setStyleSheet(_label_css("card title", theme.TEXT_PRIMARY, 400) + (" font-style: italic;" if release else ""))
+        layout = self._hint_card.layout()
+        layout.setSpacing(_px(10 if release else 6))
+        for widget in (self._hint_heading, self._hint_text):
+            layout.removeWidget(widget)
+        layout.addWidget(self._hint_heading, 0, 0, 1, 1 if release else 2)
+        layout.addWidget(self._hint_text, 0 if release else 1, 1 if release else 0, 1, 1 if release else 2)
+        layout.setRowMinimumHeight(1, 0)
         self._hint_text.setText(text)
         self._hint_sub.setText(subtext)
         self._hint_sub.setVisible(bool(subtext))
@@ -2244,6 +2306,8 @@ class HomePage(QWidget):
 
     def _on_hint_action(self):
         if self._hint is None:
+            if self._whats_new:
+                open_url(CHANGELOG_URL)
             return
         self._route(self._hint.action, self._hint.arg)
 
@@ -2341,6 +2405,7 @@ class HomePage(QWidget):
             DISMISS: ("inline", SUGGESTION),
             DOCS_LINK: ("url", DOCS_URL),
             GITHUB_LINK: ("url", GITHUB_URL),
+            CHANGELOG_LINK: ("url", CHANGELOG_URL),
             KOFI_LINK: ("url", KOFI_URL),
         }
         if self._hint is not None and self._hint.action_label:

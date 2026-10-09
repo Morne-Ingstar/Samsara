@@ -35,9 +35,9 @@ FEEDBACK_LEVEL_FRESH_DEFAULT = "brief"
 # Silent is the owner's wording; Brief and Full are stand-ins he may rewrite. Insertion order is the UI order.
 from .result_messages import AVA_INTERPRET_HELP_LONG
 FEEDBACK_LEVEL_CHOICES = {
-    "silent": ("Silent", "Nothing is spoken. Questions and replies show on screen."),
-    "brief": ("Brief", "A short sound for most outcomes. Questions and read-backs are spoken."),
-    "full": ("Full", "Everything is spoken."),
+    "silent": ("Silent", "Visual feedback only."),
+    "brief": ("Brief", "Speaks questions, read-backs and Ava. A short sound for the rest."),
+    "full": ("Full", "Speaks everything."),
 }
 
 

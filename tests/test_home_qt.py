@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6.QtTest import QTest
 
 from samsara import command_catalog, command_scope
 from samsara.ui import (
@@ -94,6 +95,12 @@ def _native_home_font(qapp):
     font_path = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts" / "segoeui.ttf"
     assert font_path.is_file(), f"Samsara's Windows UI font is missing: {font_path}"
     assert QFontDatabase.addApplicationFont(str(font_path)) >= 0
+    # 384 finish: offscreen must also measure the enlarged native display face
+    # and L2 bold links, rather than substituting missing-font boxes.
+    for name in ("PERTILI.TTF", "PERTIBD.TTF", "segoeuib.ttf"):
+        path = font_path.parent / name
+        if path.is_file():
+            assert QFontDatabase.addApplicationFont(str(path)) >= 0
     previous = QFont(qapp.font())
     qapp.setFont(QFont("Segoe UI", 9))
     yield
@@ -122,7 +129,7 @@ def _app(**over):
         available_mics=[{'id': 7, 'name': 'USB mic'}],
         recording=False, snoozed=False, wake_word_active=True, continuous_active=False,
         command_mode_active=False, ava_command_session_active=False, ava_mode_active=False,
-        toggle_active=False, audio_coordinator=object(),
+        toggle_active=False, audio_coordinator=types.SimpleNamespace(engine=None),
         _outcome_ring=collections.deque(maxlen=8),
         history_store=_Store(),
         snooze_calls=[], stop_calls=[],
@@ -872,7 +879,8 @@ class TestIdentityLinks:
         home = page()
         # 111 (Astra, owner accepted): "support" is ambiguous beside a
         # help-oriented interface, and "never needed" undercut the Ko-fi link.
-        assert home_qt.SUPPORT_LINE == "Always free. Contributions welcome."
+        # 384 DO7: owner's replacement avoids repeating Free in the creed.
+        assert home_qt.SUPPORT_LINE == "Your support spins the wheel"
         assert home_qt.SUPPORT_LINE in home.visible_texts()
 
     def test_kofi_is_the_last_link_in_the_strip(self, page):
@@ -898,7 +906,7 @@ class TestIdentityLinks:
         """The measurement that decides it is the links' REAL width, not the
         44 px floor a squeezed button would accept."""
         home = page()
-        cards = home._words_card.width() + home._infinity_card.width() + 2 * home_qt.GRID
+        cards = 2 * home._stat_floor + 2 * home_qt.GRID
         links = home._links_row.sizeHint().width()
         home._relayout_identity(cards + links + 8)
         assert home._identity_rows == 1
@@ -1001,14 +1009,15 @@ class TestTheExampleIsStationaryAndComplete:
         qapp.processEvents()
         assert strip.text == ""
 
-    def test_both_arrows_step_the_example(self, qapp):
+    def test_next_control_and_left_key_step_the_example(self, qapp):
+        # 384 removes the previous button; Left preserves its keyboard action.
         strip = self._strip(qapp)
         first = strip.text
         strip.next_button.click()
         qapp.processEvents()
         second = strip.text
         assert second and second != first
-        strip.prev_button.click()
+        QTest.keyClick(strip.next_button, Qt.Key.Key_Left)
         qapp.processEvents()
         assert strip.text == first, "back is back"
 
@@ -1039,19 +1048,19 @@ class TestTheExampleIsStationaryAndComplete:
             strip.next()
 
     def test_the_arrows_are_44px_targets_with_spoken_names(self, qapp):
+        # 384 has one drawn control with the same accessible target floor.
         strip = self._strip(qapp)
-        for btn, name in ((strip.prev_button, command_marquee.PREV_NAME),
-                          (strip.next_button, command_marquee.NEXT_NAME)):
+        for btn, name in ((strip.next_button, command_marquee.NEXT_NAME),):
             assert btn.width() >= 44 and btn.height() >= 44
             assert btn.accessibleName() == name
-        assert command_marquee.PREV_NAME == "previous example"
         assert command_marquee.NEXT_NAME == "next example"
 
     def test_the_arrows_are_keyboard_reachable_and_the_strip_is_not(self, qapp):
+        # 384 reduces the tab chain to the next control.
         strip = self._strip(qapp)
         assert strip.focusPolicy() == Qt.FocusPolicy.NoFocus
         assert strip.label.focusPolicy() == Qt.FocusPolicy.NoFocus
-        for btn in (strip.prev_button, strip.next_button):
+        for btn in (strip.next_button,):
             assert btn.focusPolicy() == Qt.FocusPolicy.StrongFocus
             btn.setFocus()
             qapp.processEvents()
@@ -1082,7 +1091,8 @@ class TestTheExampleIsStationaryAndComplete:
                     "pack": "utilities", "aliases": [], "args": [], "scope": None}]
         strip = self._strip(qapp, records=records)
         assert strip.phrases == ["go back"]
-        assert not strip.prev_button.isVisible()
+        # 384 offers no visible previous button, even with multiple examples.
+        assert strip.findChildren(QPushButton) == [strip.next_button]
         assert not strip.next_button.isVisible()
 
     def test_an_unreadable_catalog_shows_nothing_rather_than_inventing_tips(self, qapp):
@@ -1181,7 +1191,13 @@ _SCALE_SCRIPT = r'''
 import json, sys, types, collections
 sys.path.insert(0, sys.argv[1])
 from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QFont, QFontDatabase
+from pathlib import Path
+import os
 app = QApplication([])
+# 384: use the same native Segoe UI metrics as _native_home_font, not offscreen's missing-font substitute.
+assert QFontDatabase.addApplicationFont(str(Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeui.ttf")) >= 0
+app.setFont(QFont("Segoe UI", 9))
 if sys.argv[2] != "1":
     f = app.font(); f.setPointSizeF(f.pointSizeF() * float(sys.argv[2])); app.setFont(f)
 from samsara.ui import main_window_qt, home_qt
@@ -1746,12 +1762,133 @@ class TestTheExampleStripInTheHub:
             assert metrics.horizontalAdvance(strip.text) <= strip.label.width() + 1
 
     def test_the_arrows_step_it_in_the_real_strip(self, qapp, monkeypatch):
+        # 384 keeps previous on Left, rather than a second boxed arrow.
         win = _hub(qapp, monkeypatch)
         strip = win._example_strip
         first = strip.text
         strip.next_button.click()
         qapp.processEvents()
         assert strip.text != first
-        strip.prev_button.click()
+        QTest.keyClick(strip.next_button, Qt.Key.Key_Left)
         qapp.processEvents()
         assert strip.text == first
+
+
+class TestHomeBottom384:
+    """Painted-content measurements and the owner's unchanged identity text."""
+
+    @staticmethod
+    def records():
+        return [{"canonical_id": f"384.{i}", "phrase": phrase, "risk": "ui",
+                 "pack": "utilities", "aliases": [], "args": [], "scope": None}
+                for i, phrase in enumerate(("what can i say", "go back", "scroll down", "x" * 100))]
+
+    @pytest.mark.parametrize("scale", [1.0, 1.5])
+    @pytest.mark.parametrize("show_control", [True, False])
+    def test_width_sweep_uses_actual_content_and_current_font(self, qapp, scale, show_control):
+        strip = command_marquee.CommandExampleStrip(self.records(), show_control=show_control)
+        strip.show()
+        # Set AFTER construction, as the hub's inherited stylesheet/font does.
+        strip.label.setStyleSheet(
+            f"QLabel {{ font-family: 'Segoe UI'; font-size: {round(theme.TYPE_BODY*scale)}px; padding: 6px 8px; }}")
+        if not show_control:
+            strip.label.setFocus()
+        for width in list(range(900, 159, -20)) + list(range(160, 901, 20)):
+            strip.resize(width, 60)
+            qapp.processEvents()
+            for _ in range(len(strip.phrases)):
+                assert not strip.text or QFontMetrics(strip.label.font()).horizontalAdvance(strip.text) <= strip.label.contentsRect().width(), (width, scale, strip.text)
+                if not strip.text:
+                    assert not strip.next_button.isVisible()
+                strip.next()
+        strip.close()
+
+    @pytest.mark.parametrize("scale", [1.0, 1.5])
+    def test_real_status_bar_width_sweep(self, qapp, monkeypatch, scale):
+        win = _hub(qapp, monkeypatch)
+        strip = win._example_strip
+        strip._phrases = ["what can i say", "go back", "scroll down"]
+        strip.label.setStyleSheet(strip.label.styleSheet() + f" QLabel {{ font-size: {round(theme.TYPE_BODY*scale)}px; }}")
+        win.setMinimumWidth(0)
+        for width in range(160, 901, 20):
+            win.resize(width, 650)
+            qapp.processEvents()
+            assert not strip.text or QFontMetrics(strip.label.font()).horizontalAdvance(strip.text) <= strip.label.contentsRect().width()
+            if not strip.text:
+                assert not strip.next_button.isVisible()
+        win.hide()
+
+    def test_empty_pool_hides_control(self, qapp):
+        strip = command_marquee.CommandExampleStrip([])
+        strip.show()
+        qapp.processEvents()
+        assert strip.text == "" and not strip.next_button.isVisible()
+        strip.close()
+
+    @pytest.mark.parametrize("show_control", [True, False])
+    def test_one_tab_stop_keys_and_phrase_click(self, qapp, show_control):
+        strip = command_marquee.CommandExampleStrip(self.records(), show_control=show_control)
+        strip.resize(900, 60)
+        strip.show()
+        qapp.processEvents()
+        children = [w for w in strip.findChildren(QWidget) if w.focusPolicy() != Qt.FocusPolicy.NoFocus]
+        target = strip.next_button if show_control else strip.label
+        assert children == [target]
+        assert strip.next_button.accessibleName() == "next example"
+        assert strip.next_button.isVisible() == show_control
+        assert strip.next_button.text() == "", "drawn, never a font glyph"
+        first = strip.text
+        QTest.keyClick(target, Qt.Key.Key_Right)
+        assert strip.text and strip.text != first
+        QTest.keyClick(target, Qt.Key.Key_Left)
+        assert strip.text == first
+        QTest.mouseClick(strip.label, Qt.MouseButton.LeftButton)
+        assert strip.text and strip.text != first
+        strip.close()
+
+    def test_pronoun_matches_home(self):
+        assert command_marquee.example_text("what can i say") == 'Try saying "what can I say"'
+
+    def test_links_and_dots(self, page):
+        from PySide6.QtWidgets import QLabel
+        home = page()
+        for btn in home._links.values():
+            assert btn.accessibleName() == btn.text()
+            assert btn.height() >= 44
+            rest = btn.styleSheet().split("}", 1)[0]
+            assert "text-decoration: none" in rest
+            # 384 finish: owner's L2 pick forbids underlines in every state.
+            assert "font-weight: 700" in rest
+            assert "underline" not in btn.styleSheet()
+            assert f"letter-spacing: {theme.LETTER_SPACING_SECTION}" in rest
+            assert btn.font().capitalization() == QFont.Capitalization.AllUppercase
+            for state in ("hover", "focus"):
+                assert f"QPushButton:{state} {{ color: {theme.ACCENT};" in btn.styleSheet()
+            assert f"border: 1px solid {theme.ACCENT}" in btn.styleSheet()
+        dots = home._links_row.findChildren(QLabel, "homeLinkSeparator")
+        assert len(dots) == 2
+        assert all(dot.text() == "\u00b7" and dot.focusPolicy() == Qt.FocusPolicy.NoFocus and not isinstance(dot, QPushButton) for dot in dots)
+
+    def test_creed_font_and_owner_strings_unchanged(self, page):
+        home = page()
+        assert home._creed.font().capitalization() == QFont.Capitalization.AllUppercase
+        assert home._creed.font().weight() == theme.FONT_WEIGHT_CREED
+        # FINISH IT 3: the inscription uses the existing emphasis size.
+        assert home._creed.font().pixelSize() == theme.TYPE_EMPHASIS
+        assert theme.FONT_WEIGHT_CREED == 400
+        assert home_qt.SUPPORT_LINE == "Your support spins the wheel"
+        # FINISH IT 4: owner restored the second dot; smaller type stays.
+        assert home_qt.CREED == "Free " + chr(0xB7) + " Open source " + chr(0xB7) + " Accessibility first"
+        assert (home_qt.DOCS_LINK, home_qt.GITHUB_LINK, home_qt.KOFI_LINK) == ("Website and docs", "GitHub", "Ko-fi")
+
+    def test_status_bar_only_scoped_selectors(self, qapp, monkeypatch):
+        import re
+        win = _hub(qapp, monkeypatch)
+        css = win.statusBar().styleSheet()
+        rules = re.findall(r"([^{}]+)\{[^{}]*\}", css)
+        assert rules and all(selector.strip().startswith("QStatusBar") for selector in rules)
+        assert re.sub(r"[^{}]+\{[^{}]*\}", "", css).strip() == ""
+        assert "QStatusBar::item { border: none; }" in css
+        separator = main_window_qt._status_separator()
+        assert separator.width() == 1 and separator.height() == 16
+        win.hide()
