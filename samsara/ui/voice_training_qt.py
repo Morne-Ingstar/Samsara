@@ -999,6 +999,7 @@ class _TrainingWindow(QMainWindow):
         add_row = QHBoxLayout()
         self._vocab_input = QLineEdit()
         self._vocab_input.setPlaceholderText("Word or phrase to add...")
+        self._vocab_input.setAccessibleName(self._vocab_input.placeholderText())
         self._vocab_input.returnPressed.connect(self._add_vocab)
         add_row.addWidget(self._vocab_input, stretch=1)
         add_btn = QPushButton("Add")
@@ -1008,6 +1009,7 @@ class _TrainingWindow(QMainWindow):
         lay.addLayout(add_row)
 
         self._vocab_list = QListWidget()
+        self._vocab_list.setAccessibleName(title.text())
         for word in self._tr.custom_vocab:
             self._vocab_list.addItem(word)
         lay.addWidget(self._vocab_list, stretch=1)
@@ -1076,12 +1078,14 @@ class _TrainingWindow(QMainWindow):
         inp_row = QHBoxLayout()
         self._wrong_input = QLineEdit()
         self._wrong_input.setPlaceholderText("Whisper says...")
+        self._wrong_input.setAccessibleName(self._wrong_input.placeholderText())
         inp_row.addWidget(self._wrong_input, stretch=1)
         arrow = QLabel("->")
         arrow.setStyleSheet(f"color:{theme.TEXT_SECONDARY};padding:0 6px;")
         inp_row.addWidget(arrow)
         self._correct_input = QLineEdit()
         self._correct_input.setPlaceholderText("You meant...")
+        self._correct_input.setAccessibleName(self._correct_input.placeholderText())
         self._correct_input.returnPressed.connect(self._add_correction)
         inp_row.addWidget(self._correct_input, stretch=1)
         add_btn = QPushButton("Add")
@@ -1091,6 +1095,7 @@ class _TrainingWindow(QMainWindow):
         lay.addLayout(inp_row)
 
         self._corr_table = QTableWidget(0, 2)
+        self._corr_table.setAccessibleName(title.text())
         self._corr_table.setHorizontalHeaderLabels(["Whisper Says", "Correct Text"])
         self._corr_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._corr_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1195,8 +1200,10 @@ class _TrainingWindow(QMainWindow):
         ll = QHBoxLayout(lang_body)
         ll.setContentsMargins(12, 12, 12, 12)
         ll.setSpacing(8)
-        ll.addWidget(QLabel("Transcription language:"))
+        language_label = QLabel("Transcription language:")
+        ll.addWidget(language_label)
         self._lang_combo = QComboBox()
+        language_label.setBuddy(self._lang_combo)
         # Same source of truth as Settings -> General (samsara/languages.py)
         # -- one config key, one language list, so a value picked in either
         # place always displays correctly in the other.
@@ -1222,10 +1229,12 @@ class _TrainingWindow(QMainWindow):
         pl = QVBoxLayout(prompt_body)
         pl.setContentsMargins(12, 8, 12, 12)
         pl.setSpacing(6)
-        pl.addWidget(QLabel(
+        prompt_label = QLabel(
             "Custom context passed to Whisper (combined with vocabulary and command phrases):"
-        ))
+        )
+        pl.addWidget(prompt_label)
         self._prompt_edit = QTextEdit()
+        prompt_label.setBuddy(self._prompt_edit)
         self._prompt_edit.setFixedHeight(80)
         self._prompt_edit.setPlaceholderText(
             "E.g. 'Technical discussion about Python, React, and machine learning.'"

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara import config_defaults, session_modes
+from samsara.hold_key_rules import HOLD_DEFAULTS, capture_overrides, capture_config
 from samsara.constants import (
     DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
@@ -90,10 +91,7 @@ _PASTE_STAGED_DESC = "Toggle hands-free only; same as saying '{commit}'."
 _CMD_DEBOUNCE_DESC = "Taps shorter than this are ignored (audio discarded)."
 _CMD_TIMEOUT_DESC = "Exit after this much inactivity (max 30 min) (toggle mode only)."
 _CMD_MISS_LIMIT_DESC = "Exit after this many unmatched command utterances (toggle mode only)."
-_AVA_MODE_KEY_DESC = (
-    "A single named key -- the runtime cannot bind a combination "
-    "(dictation.py _get_pynput_command_key)."
-)
+_AVA_MODE_KEY_DESC = "Click, then press a key or a modifier and key."  # stand-in
 _AVA_KEY_UNSUPPORTED = "(unsupported: {combo}) -- pick a key"
 _CMD_TTS_CHAR_LIMIT_DESC = (
     "In a hands-free command session, spoken command acknowledgements longer "
@@ -315,6 +313,22 @@ def _button_behavior_note() -> str:
 class ModesPage:
     """Methods of the Modes settings page (moved from _SettingsWindow)."""
 
+    def _configure_ava_route_master(self, route):
+        super()._configure_ava_route_master(route)
+        note = self._widgets.get('ava_mode_key_off_note')
+        if note is not None:
+            enabled = self._widgets['ava_enabled']
+            enabled.toggled.connect(lambda on: note.setVisible(not on))
+            note.setVisible(not enabled.isChecked())
+
+    def _hold_capture(self, action, value, widget_key=None):
+        key = widget_key or action
+        button = _HotkeyButton(value, on_change=self._check_modes_collisions)
+        button.configure_hold(action, lambda: capture_config(self.app.config, self._widgets),
+                              lambda: capture_overrides(self._widgets))
+        self._widgets[key + '_warn'] = button.reason_label()
+        return button
+
     def _reset_preview_position(self):
         from samsara.streaming import reset_preview_placement  # noqa: PLC0415
         return reset_preview_placement(self.app)
@@ -500,10 +514,7 @@ class ModesPage:
         )
 
         current_btn_key = cmd_cfg.get('button', 'rctrl')
-        current_btn_label = _CMD_BUTTON_KEY_TO_LABEL.get(current_btn_key, 'Right Ctrl (default)')
-        cmd_button_combo = QComboBox()
-        cmd_button_combo.addItems(list(_CMD_BUTTON_OPTIONS.keys()))
-        cmd_button_combo.setCurrentText(current_btn_label)
+        cmd_button_combo = self._hold_capture('command_mode.button', current_btn_key, 'cmd_tab_button')
         self._widgets['cmd_tab_button'] = cmd_button_combo
         _add_row(
             hands_free_layout,
@@ -512,7 +523,6 @@ class ModesPage:
             cmd_button_combo,
             width=260,
         )
-        cmd_button_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
 
         cmd_mode_combo = QComboBox()
         cmd_mode_combo.addItems(['hold', 'toggle'])
@@ -537,9 +547,7 @@ class ModesPage:
         )
         hands_free_layout.addWidget(hold_heading)
 
-        command_hotkey_btn = _HotkeyButton(
-            cfg.get('command_hotkey', 'ctrl+alt+c'), on_change=self._check_modes_collisions
-        )
+        command_hotkey_btn = self._hold_capture('command_hotkey', cfg.get('command_hotkey', 'ctrl+alt+c'))
         self._widgets['command_hotkey'] = command_hotkey_btn
         _add_row(
             hands_free_layout,
@@ -847,6 +855,8 @@ class ModesPage:
              "Paste staged thought",
              _PASTE_STAGED_DESC.format(commit=session_modes.DICTATE_COMMIT_PHRASE)),
             # 08d: keys the app has always read but never exposed.
+            ('task_hotkey', cfg.get('task_hotkey', 'ctrl+alt+t'),
+             "Task key", "Hold to capture a task."),
             ('memo_hotkey', cfg.get('memo_hotkey', 'ctrl+alt+m'),
              "Voice memo", "Divert the next recording to your memo note instead of typing it."),
             ('correction_hotkey', cfg.get('correction_hotkey', 'ctrl+alt+r'),
@@ -859,11 +869,8 @@ class ModesPage:
              "Continuous commit", "Commits accumulated speech in continuous mode -- only when the trigger below is 'key'."),
         ]
         for config_key, default, label, desc in _dictation_hotkeys:
-            btn = _HotkeyButton(
-                default, on_change=self._check_modes_collisions,
-                # Only the primary dictation key may be a side mouse button.
-                allow_mouse=(config_key == 'hotkey'),
-            )
+            btn = (self._hold_capture(config_key, default) if config_key in HOLD_DEFAULTS
+                   else _HotkeyButton(default, on_change=self._check_modes_collisions))
             self._widgets[config_key] = btn
             dictation_layout.addLayout(
                 self._setting_row(
@@ -910,23 +917,24 @@ class ModesPage:
         )
         layout.addWidget(ava_card)
 
-        # 08d: the runtime resolves ava_mode_key with _get_pynput_command_key
-        # (single named keys only) -- a captured combo used to disable Ava
-        # silently. Same option list as the retired command-session key.
-        ava_key_combo = QComboBox()
-        ava_key_combo.addItems(list(_AI_CMD_KEY_OPTIONS.keys()))
-        stored_ava_key = str(cfg.get('ava_mode_key', 'right_alt'))
-        if stored_ava_key in _AI_CMD_KEY_TO_LABEL:
-            ava_key_combo.setCurrentText(_AI_CMD_KEY_TO_LABEL[stored_ava_key])
-        else:
-            # Unsupported (a combo, or an unknown name): show it, keep it until a real key is picked.
-            ava_key_combo.insertItem(0, _AVA_KEY_UNSUPPORTED.format(combo=stored_ava_key), userData=stored_ava_key)
-            ava_key_combo.setCurrentIndex(0)
+        ava_key_combo = self._hold_capture('ava_mode_key', str(cfg.get('ava_mode_key', 'right_alt')))
         self._widgets['ava_mode_key'] = ava_key_combo
+        # The destination row transfers this warning slot beneath the capture.
+        ava_key_notes = QWidget()
+        ava_key_notes_layout = QVBoxLayout(ava_key_notes)
+        ava_key_notes_layout.setContentsMargins(0, 0, 0, 0)
+        ava_key_notes_layout.setSpacing(theme.SPACE_1)
+        ava_key_notes_layout.addWidget(self._widgets['ava_mode_key_warn'])
+        ava_off_note = QLabel(
+            "Ava is off - this key does nothing until you turn her on in Settings > Ava.")  # stand-in
+        ava_off_note.setWordWrap(True)
+        ava_off_note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        ava_key_notes_layout.addWidget(ava_off_note)
+        self._widgets['ava_mode_key_off_note'] = ava_off_note
+        self._widgets['ava_mode_key_warn'] = ava_key_notes
         ava_layout.addLayout(
             self._setting_row("Ava mode key", _AVA_MODE_KEY_DESC, ava_key_combo, control_width=280)
         )
-        ava_key_combo.currentIndexChanged.connect(lambda _idx: self._check_modes_collisions())
 
         # ---- Card 6: Advanced tuning ------------------------------------
         advanced_card, advanced_layout = self._section_card(
@@ -1093,7 +1101,7 @@ class ModesPage:
             for key in ('hotkey', 'continuous_hotkey', 'wake_word_hotkey',
                         'command_hotkey', 'cancel_hotkey',
                         'undo_hotkey', 'dictate_commit_hotkey',
-                        'memo_hotkey', 'correction_hotkey', 'continuous_commit_hotkey'):
+                        'memo_hotkey', 'task_hotkey', 'correction_hotkey', 'continuous_commit_hotkey'):
                 btn = self._widgets.get(key)
                 if isinstance(btn, _HotkeyButton):
                     updates[key] = btn.combo
@@ -1108,15 +1116,9 @@ class ModesPage:
             if 'continuous_commit_trigger' in self._widgets:
                 updates['continuous_commit_trigger'] = self._widgets['continuous_commit_trigger'].currentText()
 
-            # Ava mode: named key from the shared list; an unsupported stored
-            # value is kept verbatim until the user picks a real key.
             ava_combo = self._widgets.get('ava_mode_key')
-            if isinstance(ava_combo, QComboBox):
-                label = ava_combo.currentText()
-                if label in _AI_CMD_KEY_OPTIONS:
-                    updates['ava_mode_key'] = _AI_CMD_KEY_OPTIONS[label]
-                else:
-                    updates['ava_mode_key'] = ava_combo.currentData() or self.app.config.get('ava_mode_key', 'right_alt')
+            if isinstance(ava_combo, _HotkeyButton):
+                updates['ava_mode_key'] = ava_combo.combo
             # Streaming preview goes through the SAME path as the tray toggle
             # (set_streaming_mode installs/uninstalls the CapsLock hook and
             # saves the flag itself), never through the bulk config write.
@@ -1190,8 +1192,7 @@ class ModesPage:
                 # keep it in step so the change applies without a restart.
                 if hasattr(self.app, 'command_matching_enabled'):
                     self.app.command_matching_enabled = matching
-                btn_label = self._widgets['cmd_tab_button'].currentText()
-                cmd_cfg['button'] = _CMD_BUTTON_OPTIONS.get(btn_label, 'rctrl')
+                cmd_cfg['button'] = self._widgets['cmd_tab_button'].combo
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
 
@@ -1242,6 +1243,7 @@ class ModesPage:
             'undo_hotkey':       'Undo',
             'dictate_commit_hotkey': 'Paste staged thought',
             'memo_hotkey':       'Voice memo',
+            'task_hotkey':       'Task',
             'correction_hotkey': 'Correction report',
             'capture_correction_hotkey': 'Correction capture',
             'continuous_commit_hotkey': 'Continuous commit',
@@ -1255,14 +1257,12 @@ class ModesPage:
                 bindings.append((label, widget.combo))
 
         ava_combo = self._widgets.get('ava_mode_key')
-        if isinstance(ava_combo, QComboBox):
-            raw = _AI_CMD_KEY_OPTIONS.get(ava_combo.currentText()) or ava_combo.currentData()
-            if raw:
-                bindings.append(("Ava mode", str(raw)))
+        if isinstance(ava_combo, _HotkeyButton):
+            bindings.append(("Ava mode", ava_combo.combo))
 
         cmd_btn_widget = self._widgets.get('cmd_tab_button')
         if cmd_btn_widget is not None:
-            raw = _CMD_BUTTON_OPTIONS.get(cmd_btn_widget.currentText(), cmd_btn_widget.currentText())
+            raw = cmd_btn_widget.combo
             bindings.append(("Command Mode button", raw))
 
         normed = [(label, combo, _normalised_binding(combo)) for label, combo in bindings]

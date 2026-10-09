@@ -303,6 +303,7 @@ SETTINGS_SCHEMA = {
     # -------------------------------------------------------------------------
     # Hotkeys tab
     # -------------------------------------------------------------------------
+    "task_hotkey": {"type": "str", "default": "ctrl+alt+t", "tab": "hotkeys"},
     "mode": {
         "type": "enum",
         "options": ["hold", "toggle", "continuous"],
@@ -398,8 +399,7 @@ SETTINGS_SCHEMA = {
     },
     "command_mode.enabled": {"type": "bool", "default": False, "tab": "commands", "help": {"why": "A session stays open across commands and dictation so you can keep working by voice. Enable this when you want that flow, then choose its button in Shortcuts. It is off by default, and the button setting has no session to open until this is enabled.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.enabled"}},
     "command_mode.button": {
-        "type": "enum",
-        "options": ["mouse4", "mouse5", "rctrl", "f13", "right_alt"],
+        "type": "str",  # new captures use hold_key_rules; retain legacy stored names
         "default": "rctrl",
         "tab": "commands",
     },
@@ -823,7 +823,9 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
         "depends_on": "ducking.hands_free_enabled",
     },
-    "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced"},
+    "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced", "settings_ui": False,
+        "ui_less_reason": "Legacy visibility retained for deriving the listening display choice."},
+    "ui.listening_display": {"type": "enum", "options": ["compact", "full"], "default": "compact", "tab": "general"},
     # Idle blink/glance on the listening indicator's mark (queue 09b3). Only
     # the idle motion -- state animation (spin, pulse, heard flash) always runs.
     "ui.idle_animation": {
@@ -831,7 +833,8 @@ SETTINGS_SCHEMA = {
         "ui_less_reason": "Config-only animation override for the legacy listening indicator, separate from indicator visibility.",
         "type": "bool", "default": True, "tab": "advanced",
     },
-    "ui.live_surface.enabled": {"type": "bool", "default": False, "tab": "advanced", "help": {"why": "This experimental display shows listening state and partial speech outside the main window. Try it if you need a persistent visual cue while dictating. It is off by default and may add another visible surface to manage.", "docs": "https://morneis.com/samsara/docs/settings/#ui.live_surface.enabled"}},
+    "ui.live_surface.enabled": {"type": "bool", "default": False, "tab": "advanced", "settings_ui": False,
+        "ui_less_reason": "Legacy implementation flag retained for deriving the listening display choice."},
     # Live surface contracts (220 A). These are additive only; package I
     # later wires migration and Settings controls. Placement's nested map is
     # validated by samsara.live_surface.config, not treated as a Qt widget.
@@ -886,7 +889,7 @@ SETTINGS_SCHEMA = {
                     "bottom-left", "bottom-center", "bottom-right", "custom"],
         "default": "bottom-center",
         "tab": "advanced",
-        "depends_on": "listening_indicator_enabled",
+        "depends_on": "ui.listening_display=='compact'",
     },
     # listening_indicator_custom_position (not itemized here -- a free-form
     # dict like gesture/command_mode/smart_corrections, only meaningful when
@@ -1104,6 +1107,11 @@ SETTINGS_SCHEMA = {
         "type": "bool",
         "default": False,
         "tab": "ava",
+    },
+    # Queue 373: explicit acknowledgement of Microsoft's network voice.
+    "tts.network_voice_accepted": {
+        "type": "bool", "default": False, "tab": "tts", "settings_ui": False,
+        "ui_less_reason": "Acknowledgement recorded by the network voice notice.",
     },
     "ava.consent": {
         "type": "dict",

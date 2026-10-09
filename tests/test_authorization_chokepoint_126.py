@@ -157,7 +157,7 @@ def test_the_deliberate_whole_utterance_still_works(executor, text, expected):
 
 def test_a_deliberate_reminder_still_works(executor):
     app = _App(executor)
-    result = executor.process_text("Remind me in 5 minutes to stretch.", app)
+    result = executor.process_text("Remind me in 5 minutes to stretch.", app, force_commands=True)
     assert result.state.value == "completed"
     assert ("reminder", 5, "stretch") in app.effects
 
@@ -196,7 +196,7 @@ def test_authorization_strictly_precedes_the_effect(executor, monkeypatch, text,
                         lambda m, msg: (order.append(("effect", "reminder")),
                                         original_add(m, msg))[-1])
 
-    executor.process_text(text, app)
+    executor.process_text(text, app, force_commands=True)  # 415: explicit command lane.
 
     kinds = [kind for kind, _what in order]
     assert "authorize" in kinds, "the effect ran with no authorization at all"
@@ -214,7 +214,7 @@ def test_a_refused_session_control_runs_nothing_and_is_not_dictation(executor, m
                         lambda inv, **kw: Denied("pack_disabled", detail="test"))
     app = _App(executor)
 
-    result = executor.process_text(text, app)
+    result = executor.process_text(text, app, force_commands=True)  # 415: claimed command refusal.
 
     assert app.effects == []
     assert app.command_matching_enabled is True

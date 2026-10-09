@@ -204,7 +204,7 @@ class TestSettingsWindowConstruction:
         expected_keys = {
             'hotkey', 'continuous_hotkey', 'wake_word_hotkey', 'command_hotkey',
             'cancel_hotkey', 'undo_hotkey', 'dictate_commit_hotkey', 'ava_mode_key',
-            'memo_hotkey', 'correction_hotkey', 'hotkeys', 'continuous_commit_hotkey',
+            'memo_hotkey', 'task_hotkey', 'correction_hotkey', 'hotkeys', 'continuous_commit_hotkey',
             'continuous_commit_trigger',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
             'ava_command_session', 'accessibility',
@@ -256,7 +256,7 @@ class TestSettingsWindowConstruction:
         not the old Mouse 4 default."""
         from samsara.ui.settings_qt import _SettingsWindow, _CMD_BUTTON_OPTIONS
         win = _SettingsWindow(_StubApp())
-        assert win._widgets['cmd_tab_button'].currentText() == 'Right Ctrl (default)'
+        assert win._widgets['cmd_tab_button'].combo == 'rctrl'
         modes_save_fn = win._source_saves['modes'][0]
         produced = modes_save_fn({})
         assert produced['command_mode']['button'] == 'rctrl'
@@ -446,14 +446,16 @@ class TestMouseMainHotkeyCapture:
         self._press(btn, Qt.MouseButton.XButton1)
         assert btn.combo == 'ctrl+alt+z'
 
-    def test_only_the_main_hotkey_field_allows_mouse(self, qapp):
+    def test_every_hold_hotkey_field_allows_mouse(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _HotkeyButton
         win = _SettingsWindow(_StubApp())
-        assert win._widgets['hotkey']._allow_mouse is True
-        others = [
-            w for key, w in win._widgets.items()
-            if key != 'hotkey' and isinstance(w, _HotkeyButton)
-        ]
+        hold_keys = {'hotkey', 'command_hotkey', 'memo_hotkey', 'task_hotkey',
+                     'ava_mode_key', 'cmd_tab_button'}
+        for key in hold_keys:
+            assert isinstance(win._widgets[key], _HotkeyButton)
+            assert win._widgets[key]._allow_mouse is True
+        others = [w for key, w in win._widgets.items()
+                  if key not in hold_keys and isinstance(w, _HotkeyButton)]
         assert others and not any(w._allow_mouse for w in others)
 
     def test_readable_hotkey_uses_command_button_labels(self):
@@ -468,7 +470,7 @@ class TestMouseMainHotkeyCapture:
         win._stack.setCurrentIndex(_TAB_NAMES.index('Shortcuts'))
 
         win._widgets['hotkey']._combo = 'mouse4'
-        win._widgets['cmd_tab_button'].setCurrentText('Mouse 4')
+        win._widgets['cmd_tab_button']._combo = 'mouse4'  # deliberately inject a legacy collision
         win._check_modes_collisions()
 
         warn = win._widgets['modes_collision_warn']
@@ -568,7 +570,7 @@ class TestApplyAndCloseSnapshot:
         # their dictation.py defaults. Regenerate the fixture to fold this in.
         expected.pop('streaming_hotkey', None)
         expected.update({
-            'memo_hotkey': 'ctrl+alt+m', 'correction_hotkey': 'ctrl+alt+r',
+            'memo_hotkey': 'ctrl+alt+m', 'task_hotkey': 'ctrl+alt+t', 'correction_hotkey': 'ctrl+alt+r',
             'hotkeys': {'capture_correction': 'ctrl+alt+x'},
             'continuous_commit_hotkey': 'ctrl+space', 'continuous_commit_trigger': 'silence',
         })
@@ -644,8 +646,10 @@ class TestApplyAndCloseSnapshot:
             'hands_free_idle_level': 0.8,
         })
         # Current post-284 snapshot: retain only live keys and current defaults.
-        # 298: Advanced adds its preference without discarding General's theme.
-        expected['ui']['live_surface'] = {'enabled': False}
+        # 448: derive Compact quietly on save; do not initialize either legacy switch.
+        expected.pop('listening_indicator_enabled', None)
+        expected['ui']['listening_display'] = 'compact'
+        expected['ui']['live_surface'] = {'show_idle_mark': False}
         # The speech-pace control shares this section with the two opted-out
         # caption controls; Apply must retain all three defaults.
         expected['accessibility'] = {
@@ -715,15 +719,29 @@ class TestApplyAndCloseSnapshot:
 
     def test_listening_indicator_setting_applies_live(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow
+        from samsara import listening_display
 
         stub = _StubApp()
+        stub.config = {'listening_indicator_enabled': True,
+                       'ui': {'live_surface': {'enabled': False}}}
+        original = stub.listening_indicator = object()
         stub.apply_listening_indicator_settings = Mock()
         win = _SettingsWindow(stub)
-        win._widgets["adv_indicator_enabled"].setChecked(True)
+        running = listening_display.run_display(stub)
+        combo = win._widgets['listening_display']
+        combo.setCurrentIndex(combo.findData('full'))
 
-        win._apply_and_close()
+        with patch('samsara.ui.settings.shared_qt.QMessageBox.information') as notice:
+            win._apply_and_close()
+        notice.assert_called_once_with(win, 'Samsara', 'Restart required to apply.')
 
+        assert stub.config['ui']['listening_display'] == 'full'
         assert stub.config["listening_indicator_enabled"] is True
+        assert stub.config['ui']['live_surface']['enabled'] is False
+        assert stub.listening_indicator is original
+        assert listening_display.run_display(stub) is running
+        assert running.value == 'compact'
+        # Position preferences still apply live; the display implementation waits for restart.
         stub.apply_listening_indicator_settings.assert_called_once_with()
 
 
@@ -981,25 +999,24 @@ class TestModesTabClaims:
         assert sq._ENABLE_VOICE_CONTROL_DESC in self._labels(win)
 
     # 3. Ava mode key -----------------------------------------------------
-    def test_ava_key_is_a_named_key_combo_sharing_the_session_key_list(self, qapp):
-        from PySide6.QtWidgets import QComboBox
-        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
+    def test_ava_key_uses_shared_capture_and_saves_the_choice(self, qapp):
+        from samsara.ui.settings_qt import _HotkeyButton
         _stub, win = self._win({"ava_mode_key": "right_alt"})
         combo = win._widgets['ava_mode_key']
-        assert isinstance(combo, QComboBox)
-        assert [combo.itemText(i) for i in range(combo.count())] == list(sq._AI_CMD_KEY_OPTIONS)
-        assert combo.currentText() == 'Right Alt'
-        combo.setCurrentText('F13')
+        assert isinstance(combo, _HotkeyButton)
+        assert combo.combo == 'right_alt'
+        assert combo.capture_candidate('f13').allowed
         assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'f13'
 
-    def test_ava_key_combo_migration_keeps_unsupported_value_until_picked(self, qapp):
-        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
+    def test_ava_capture_keeps_saved_value_until_an_allowed_key_is_picked(self, qapp):
         _stub, win = self._win({"ava_mode_key": "ctrl+alt+a"})
         combo = win._widgets['ava_mode_key']
-        assert combo.currentText() == sq._AVA_KEY_UNSUPPORTED.format(combo="ctrl+alt+a")
-        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'ctrl+alt+a'      # kept, not silently replaced
-        combo.setCurrentText('Right Ctrl')
-        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'right_ctrl'
+        assert combo.combo == 'ctrl+alt+a'
+        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'ctrl+alt+a'
+        assert not combo.capture_candidate('space').allowed
+        assert combo.combo == 'ctrl+alt+a'
+        assert combo.capture_candidate('f13').allowed
+        assert win._source_saves['modes'][0]({})['ava_mode_key'] == 'f13'
 
     def test_ava_master_exists_only_on_ava_cloud(self, qapp):
         _stub, win = self._win({})

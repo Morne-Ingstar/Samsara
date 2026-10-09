@@ -11,7 +11,7 @@ import time
 
 import keyboard
 
-from samsara import ai_preferences, flight_recorder
+from samsara import ai_preferences, flight_recorder, listening_display, hold_key_rules
 from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY, DEFAULT_CONTINUOUS_COMMIT_TRIGGER
 from samsara.runtime import thread_registry
 from samsara.session_modes import SessionMode
@@ -99,7 +99,7 @@ class HotkeyCluster:
         parts = hotkey_str.lower().split('+')
         keys = set()
         for part in parts:
-            part = part.strip()
+            part = hold_key_rules.base_modifier(next(iter(hold_key_rules.parts(part)), part.strip()))
             if part in ('ctrl', 'control'):
                 keys.add('ctrl')
             elif part in ('shift',):
@@ -151,6 +151,13 @@ class HotkeyCluster:
         This uses the keyboard library's is_pressed() for reliable simultaneous key detection,
         regardless of the order keys were pressed.
         """
+        listener = getattr(self, '_hold_key_listener', None)
+        mouse_down = getattr(self, '_hold_mouse_keys', set())
+        if (hold_key_rules.parts(hotkey_str) & {'mouse4', 'mouse5'}
+                and hotkey_str == self.config.get('hotkey')):
+            return False  # primary mouse holds belong solely to their existing mouse path
+        if listener is not None or hold_key_rules.parts(hotkey_str) & {'mouse4', 'mouse5'}:
+            return hold_key_rules.binding_down(hotkey_str, mouse_down | set(getattr(listener, 'event_down', ())))
         required_keys = self.parse_hotkey(hotkey_str)
         if not required_keys:
             # A mouse binding is never "held" on the keyboard.
@@ -240,8 +247,7 @@ class HotkeyCluster:
             return None
 
     def _live_surface_enabled(self) -> bool:
-        return bool((self.config.get('ui', {}) or {}).get(
-            'live_surface', {}).get('enabled', False))
+        return listening_display.run_display(self).full
 
     def _pause_active_hold(self) -> bool:
         """Park an owned hold capture; this is inert on the default path."""
@@ -723,6 +729,8 @@ class HotkeyCluster:
         """Hooked CapsLock handler. Runs on the keyboard library's hook
         thread -- spawn worker threads for blocking work."""
         try:
+            if hold_key_rules.route_capture('capslock', event.event_type == keyboard.KEY_DOWN):
+                return
             if self.snoozed:
                 return
             if not self.config.get('streaming_mode', False):
@@ -797,6 +805,11 @@ class HotkeyCluster:
         if hotkey in _MOUSE_HOTKEY_BUTTONS:
             buttons.add(hotkey)
             suppress.add(hotkey)
+        for path in ('command_hotkey', 'memo_hotkey', 'task_hotkey', 'ava_mode_key'):
+            button = self.config.get(path, '')
+            if button in _MOUSE_HOTKEY_BUTTONS:
+                buttons.add(button)
+                suppress.add(button)
         return frozenset(buttons), frozenset(suppress)
 
     def _install_mouse_listener(self):
@@ -993,6 +1006,18 @@ class HotkeyCluster:
         Logs every event on entry (28): the owner could not see this path
         at all before, because every guard returned in silence.
         """
+        if hold_key_rules.route_mouse_capture(button_name, pressed):
+            return
+        held = getattr(self, '_hold_mouse_keys', set())
+        held.add(button_name) if pressed else held.discard(button_name)
+        self._hold_mouse_keys = held
+        if any(self.config.get(path) == button_name for path in
+               ('command_hotkey', 'memo_hotkey', 'task_hotkey', 'ava_mode_key')):
+            from types import SimpleNamespace
+            down = held | set(getattr(getattr(self, '_hold_key_listener', None), 'event_down', ()))
+            key = SimpleNamespace(name=button_name, hold_name=button_name, hold_keys=frozenset(down))
+            (self.on_key_press if pressed else self.on_key_release)(key)
+            return
         hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
         logger.debug("[MOUSE] event button=%s pressed=%s main_hotkey=%r | %s",
                      button_name, pressed, hotkey, self._hotkey_state_text())
@@ -1174,7 +1199,11 @@ class HotkeyCluster:
         # Command mode keyboard handling (skip if disabled or mouse source)
         if cmd_enabled and not is_mouse:
             target = _get_pynput_command_key(btn_name)
-            if _matches_pynput_key(key, target):
+            match = hold_key_rules.hold_event_matches(self, key, btn_name, pressed,
+                                                      getattr(self, '_command_mode_key_held', False))
+            if target is None and not hold_key_rules.validate(btn_name).allowed:
+                match = False  # legacy unsupported/refused values retain their former behavior
+            if (match if match is not None else _matches_pynput_key(key, target)):
                 mode = cfg.get('mode', 'hold')
                 # Edge-trigger: collapse OS key auto-repeat (and any phantom
                 # press/release pairs from the LL hook) to a single rising edge
@@ -1206,7 +1235,11 @@ class HotkeyCluster:
             return
         ava_key_name = self.config.get('ava_mode_key', 'right_alt')
         ava_target = _get_pynput_command_key(ava_key_name)
-        if ava_target is not None and _matches_pynput_key(key, ava_target):
+        match = hold_key_rules.hold_event_matches(self, key, ava_key_name, pressed,
+                                                  getattr(self, '_ava_mode_key_held', False))
+        if ava_target is None and not hold_key_rules.validate(ava_key_name).allowed:
+            match = False
+        if (match if match is not None else ava_target is not None and _matches_pynput_key(key, ava_target)):
             if pressed:
                 if self._ava_mode_key_held:
                     return  # auto-repeat

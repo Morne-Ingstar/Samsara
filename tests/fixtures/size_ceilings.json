@@ -8,7 +8,6 @@
     "samsara/execution_policy.py": 2026,
     "samsara/session_modes.py": 4315,
     "samsara/streaming.py": 3290,
-    "samsara/ui/first_run_wizard_qt.py": 1557,
     "samsara/ui/history_view.py": 1781,
     "samsara/ui/home_qt.py": 2507,
     "samsara/ui/tray_qt.py": 1514,

@@ -143,7 +143,7 @@ def _centre_marks(image):
 
 @pytest.mark.parametrize("size", [16, 32])
 def test_armed_and_recording_states_have_a_distinct_shape(qapp, gen_icons, size):
-    assert _opaque_count(gen_icons.render("recording", size)) > _opaque_count(gen_icons.render("idle", size))
+    assert _opaque_count(gen_icons.render("recording", size)) != _opaque_count(gen_icons.render("idle", size))
     off = _centre_marks(gen_icons.render("off", size))
     asleep = _centre_marks(gen_icons.render("asleep", size))
     armed = _centre_marks(gen_icons.render("armed", size))

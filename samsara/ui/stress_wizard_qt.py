@@ -286,6 +286,7 @@ class _StressWizardWindow(QMainWindow):
         lay.addWidget(self._summary_label)
 
         self._results_table = QTableWidget(0, 3)
+        self._results_table.setAccessibleName(title.text())
         self._results_table.setHorizontalHeaderLabels(["Step", "Result", "Reason"])
         hh = self._results_table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)

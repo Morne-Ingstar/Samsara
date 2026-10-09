@@ -200,14 +200,10 @@ def test_session_notices_derive_from_level(level, expected):
 
 @pytest.mark.parametrize("chronic_pain", [False, True])
 def test_fresh_wizard_stays_brief_after_load(chronic_pain):
-    from samsara.ui.first_run_wizard_qt import _DEFAULTS, _USE_CASE_CONFIGS
+    from samsara.ui.first_run_wizard_qt import _DEFAULTS
     config = copy.deepcopy(_DEFAULTS)
     if chronic_pain:
-        for key, value in _USE_CASE_CONFIGS["chronic_pain"].items():
-            if isinstance(value, dict):
-                config.setdefault(key, {}).update(value)
-            else:
-                config[key] = value
+        assert '_use_case' not in config  # 373: there is no profile delta to apply.
     schema.migrate_removed_settings(config)
     assert config["tts"]["feedback_level"] == "brief"
     assert config["tts"]["enabled"] is True

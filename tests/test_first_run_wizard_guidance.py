@@ -41,8 +41,7 @@ class TestWakeConfigKeys:
 class TestHandsFreeTip:
     def test_switch_words_are_the_real_ones(self):
         cfg = copy.deepcopy(frw._DEFAULTS)
-        frw._apply_use_case_defaults_for_test = None  # sentinel: helper is pure
-        cfg["command_mode"] = dict(frw._USE_CASE_CONFIGS["chronic_pain"]["command_mode"])
+        cfg["command_mode"] = {"button": "rctrl", "inactivity_timeout_s": 900}  # 373: explicit facts, no profile.
         tip = frw._hands_free_tip(cfg)
         switches = session_modes._WHOLE_UTTERANCE_SWITCHES
         command_words = [p for p, m in switches.items() if m is session_modes.SessionMode.COMMAND]
@@ -55,7 +54,7 @@ class TestHandsFreeTip:
 
     def test_stop_and_sleep_words_are_named(self):
         cfg = copy.deepcopy(frw._DEFAULTS)
-        cfg["command_mode"] = dict(frw._USE_CASE_CONFIGS["chronic_pain"]["command_mode"])
+        cfg["command_mode"] = {"button": "rctrl", "inactivity_timeout_s": 900}  # 373: explicit facts, no profile.
         tip = frw._hands_free_tip(cfg)
         assert f"'{session_modes.SESSION_STOP_PHRASES[0]}'" in tip
         assert f"'{session_modes.SESSION_SLEEP_PHRASES[0]}'" in tip
@@ -63,7 +62,7 @@ class TestHandsFreeTip:
         assert "15 minutes without activity" in tip      # inactivity_timeout_s 900
 
     def test_static_table_no_longer_hardcodes_the_chronic_pain_tip(self):
-        assert "chronic_pain" not in frw._USE_CASE_TIPS
+        assert not hasattr(frw, "_USE_CASE_TIPS")  # 373: the use-case table is removed.
 
 
 class TestWakeOptionsAndBuiltins:

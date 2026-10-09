@@ -38,8 +38,8 @@ from samsara.log import get_logger
 from samsara.paths import newest_python_mtime
 from samsara.quick_memo import memo_file
 from samsara.ui import theme
+from samsara import listening_display
 from samsara.updater import update_check_menu_label
-
 import os
 
 logger = get_logger(__name__)
@@ -49,10 +49,8 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-#: Capture state -> ring colour token and ring drawing. Fill (not colour)
-#: is what says "recording"; spin and pulse are runtime. Ava uses the
-#: thicker brand-weight hollow ring so listening and Ava remain distinct when
-#: their colour tokens cannot be seen.
+#: Legacy state vocabulary. Recording rendering selects the listening path
+#: in mark_svg at every size; its colour token remains RECORDING.
 def mark_capture():
     return {
         "idle":      (theme.ICON_IDLE, "ring-hollow"),
@@ -115,8 +113,7 @@ HEARD_KEYFRAMES = (
 )
 #: Motion means capture (queue 19, correcting 09b3): the ring TURNS in every
 #: active capture state and stands still only at rest. Speed is the state
-#: channel: seconds per full turn of the ring. Recording keeps its filled band
-#: and red -- fill and colour are the state, rotation is the liveness.
+#: channel: seconds per full turn. State labels and motion accompany colour.
 #:   armed         wake listener armed (ambient)
 #:   listening     continuous mode waiting for speech (ambient, same pace)
 #:   recording     capturing speech
@@ -404,15 +401,15 @@ def _cap(cx, cy, normal, tangent, half, forward):
     return points
 
 
-def ring_stroke_outline(segment: int, weight: float) -> list[tuple[float, float]]:
-    """ONE closed contour: the segment's centreline stroked at weight *
-    stroke_scale -- left (outer) edge forwards, end cap, right edge back,
-    start cap. Round caps only at the tail tip and the nose; a nose with a
-    lead (the band) is its own round front, so it takes no extra cap."""
+def ring_stroke_outline(segment: int, weight: float, body_scale: float = 1.0) -> list[tuple[float, float]]:
+    """Closed contour; body_scale adds width between unchanged head/tail/joints."""
     samples = ring_centreline(segment, weight)
     left, right = [], []
     for u, angle, x, y in samples:
         half = ring_width(segment, u, weight) / 2.0
+        start = tail_fraction(weight) if segment == TAIL_SEGMENT else 0.08
+        end = 1.0 - HEAD_FRACTION if segment == HEAD_SEGMENT else 0.92
+        half += (body_scale - 1.0) * weight / 2.0 * _smoothstep(min((u - start) / 0.12, (end - u) / 0.12))
         nx, ny = math.cos(angle), math.sin(angle)          # radial (outward) normal
         left.append((x + half * nx, y + half * ny))
         right.append((x - half * nx, y - half * ny))
@@ -431,9 +428,9 @@ def ring_stroke_outline(segment: int, weight: float) -> list[tuple[float, float]
     return points
 
 
-def ring_segment_path_data(segment: int, weight: float = RING_BAND_WIDTH) -> str:
+def ring_segment_path_data(segment: int, weight: float = RING_BAND_WIDTH, body_scale: float = 1.0) -> str:
     """SVG path data for one segment's variable-width stroke at a weight."""
-    points = ring_stroke_outline(segment, weight)
+    points = ring_stroke_outline(segment, weight, body_scale)
     head = f"M {points[0][0]:.2f},{points[0][1]:.2f}"
     body = " ".join(f"L {x:.2f},{y:.2f}" for x, y in points[1:])
     path = f"{head} {body} Z"
@@ -477,10 +474,11 @@ def mark_eye_id(eye: str, brand: bool = False) -> Optional[str]:
 
 
 def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None,
-             brand: bool = False, ring_id: str | None = None) -> bytes:
-    """The SVG with only one layer ('ring' or 'eye') of one state visible.
-    brand=True selects the brand presentation (brand_capture() / BRAND_EYE);
-    the brand never uses the #small drawing."""
+             brand: bool = False, ring_id: str | None = None, body_scale: float = 1.0) -> bytes:
+    """One SVG layer; recording uses the regular listening snake in red."""
+    if capture == "recording" and layer == "ring":
+        small = False
+        ring_id = (brand_capture() if brand else mark_capture())["listening"][1]
     if brand:
         small = False
     ring_colour, eye_colour = mark_colours(capture, eye, brand)
@@ -499,6 +497,10 @@ def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | No
             el.set("display", "inline" if wanted else "none")
 
     ring = by_id[ring_id + suffix]
+    if capture == "recording" and layer == "ring" and body_scale != 1.0:
+        weight = RING_BRAND_WIDTH if brand else RING_LINE_WIDTH
+        for i, segment in enumerate(el for el in ring if el.get("data-role") == "segment"):
+            segment.set("d", ring_segment_path_data(i, weight, body_scale))
     for attr in ("fill", "stroke"):
         if ring.get(attr, "none") != "none":
             ring.set(attr, ring_colour)
@@ -543,18 +545,14 @@ def clear_mark_caches() -> None:
 
 
 def _renderer(capture: str, eye: str, small: bool, layer: str,
-              brand: bool = False) -> QSvgRenderer | None:
-    # theme.active_theme() is part of the key: the SVG is coloured from the
-    # palette, so a cached renderer from the other theme would paint the
-    # dark cyan mark onto a white header (queue 129).
-    # The brand ring also depends on eye state: resting marks have a warm
-    # head, while armed marks do not. Preserve that input for either layer.
+              brand: bool = False, ring_id: str | None = None, body_scale: float = 1.0) -> QSvgRenderer | None:
+    # Palette, eye and recording body width all affect the cached SVG.
     key = (capture, eye, small, layer,
-           brand, theme.active_theme())
+           brand, theme.active_theme(), ring_id, body_scale)
     renderer = _renderer_cache.get(key)
     if renderer is None:
         try:
-            renderer = QSvgRenderer(QByteArray(mark_svg(capture, eye, small, layer, brand=brand)))
+            renderer = QSvgRenderer(QByteArray(mark_svg(capture, eye, small, layer, brand=brand, ring_id=ring_id, body_scale=body_scale)))
         except (OSError, ET.ParseError, KeyError) as exc:
             logger.warning("[ICON] Samsara mark unavailable: %s", exc)
             # A missing small layer must not make a tray state disappear.
@@ -566,7 +564,7 @@ def _renderer(capture: str, eye: str, small: bool, layer: str,
                 try:
                     renderer = QSvgRenderer(QByteArray(
                         mark_svg(capture, eye, fallback_small, layer, brand=brand,
-                                 ring_id=fallback_ring)))
+                                 ring_id=fallback_ring or ring_id, body_scale=body_scale)))
                 except (OSError, ET.ParseError, KeyError):
                     continue
                 if renderer.isValid():
@@ -589,7 +587,9 @@ def _paint_vector(painter: QPainter, rect: QRectF, capture: str, eye: str,
                   brand: bool = False) -> None:
     """Live vector render: ring rotated, eye upright (caller holds the lock)."""
     small = False if brand else _uses_small(min(rect.width(), rect.height()), small_max)
-    ring = _renderer(capture, eye, small, "ring", brand)
+    # 455: only the three smallest recording bodies grow; the eye stays intact.
+    body_scale = 1.5 if capture == "recording" and min(rect.width(), rect.height()) <= 24 else 1.0
+    ring = _renderer(capture, eye, small, "ring", brand, body_scale=body_scale)
     eye_renderer = _renderer(capture, eye, small, "eye", brand) if mark_eye_id(eye, brand) else None
     if ring is None:
         return
@@ -624,7 +624,7 @@ def _frame(capture: str, eye: str, size: int, rotation: float,
     """
     small = False if brand else _uses_small(size, small_max)
     key = (capture, eye, size, frame_step(rotation), small, brand,
-           theme.active_theme())
+           theme.active_theme(), small_max)
     image = _frame_cache.get(key)
     if image is None:
         if len(_frame_cache) >= _FRAME_CACHE_LIMIT:
@@ -644,15 +644,11 @@ def paint_mark(painter: QPainter, rect: QRectF, capture: str, eye: str,
                small_max: Optional[int] = None, brand: bool = False) -> None:
     """Draw the mark into rect on an existing painter (Qt thread only).
 
-    THE one drawing of the mark: tray, listening indicator, splash, the
-    window header and gen_icons all come through here. rotation (degrees)
-    spins the ring only -- the eye never turns; opacity fades the whole mark.
-    Sizes up to small_max (default _SMALL_MAX = 20) use the heavy #small
-    drawing; the taskbar-facing icons pass TASKBAR_SMALL_MAX. 16-24 px draws
-    a cached 15-degree frame; 32 px and up rotates the vector live.
-    brand=True is the window-header and Home presentation: brand_capture()
-    colours at RING_BRAND_WIDTH, an empty resting centre, a restrained warm
-    head for the idle/listening brand, and never the #small drawing.
+    Shared drawing for tray, displays, headers, splash and generated icons.
+    Rotation spins only the ring; opacity fades the whole mark.
+    Recording always uses the regular snake, with a 1.5x body through 24 px.
+    Other states retain small_max and the brand presentation. Small frames
+    retain cached 15-degree rotation; larger marks rotate the vector live.
     """
     size = min(rect.width(), rect.height())
     with _renderer_lock:
@@ -681,8 +677,8 @@ def render_mark(capture: str, eye: str, size: int,
 
 def mark_icon(frame: MarkFrame) -> QIcon:
     """A multi-size QIcon for one frame, so Windows picks the DPI-right size.
-    Every tray size uses the heavy drawing (TASKBAR_SMALL_MAX): at 150%
-    scaling Windows shows the 24 px frame, which must be as present as 16."""
+    Other states/eyes retain TASKBAR_SMALL_MAX; recording uses the regular
+    snake in every DPI frame, with the modest body increase through 24 px."""
     icon = QIcon()
     for size in _TRAY_SIZES:
         icon.addPixmap(QPixmap.fromImage(
@@ -1430,7 +1426,7 @@ class SamsaraTrayQt(QObject):
                 checked=getattr(getattr(app, "cheat_sheet", None), "_visible", False))
             add(tools_sub, "Show Listening Indicator",
                 lambda _checked: app.toggle_listening_indicator(),
-                checked=app.config.get("listening_indicator_enabled", False))
+                checked=listening_display.display_visible(app))
             add(tools_sub, "Move listening indicator...",
                 lambda: app.enter_indicator_move_mode(), report_as="Move listening indicator")
             tools_sub.addSeparator()

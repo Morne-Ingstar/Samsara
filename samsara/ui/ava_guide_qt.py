@@ -12,6 +12,8 @@ Public API (same wrapper pattern as MicSetupWizardQt):
     AvaGuideQt(app).show()
 """
 
+import weakref
+
 import json
 import re
 import subprocess
@@ -24,7 +26,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QHBoxLayout,
     QLabel, QPushButton, QSizePolicy, QStackedWidget,
-    QVBoxLayout, QWidget,
+    QVBoxLayout, QWidget, QScrollArea,
 )
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
@@ -140,8 +142,6 @@ _AVA_KEY_OPTIONS = [
     ("Right Alt (default)", "right_alt"),
     ("Right Ctrl",          "rctrl"),
     ("F13",                 "f13"),
-    # No Mouse 4/5 here: _get_pynput_command_key has no mouse mapping, so they
-    # never activated Ava. Side buttons belong to the main record hotkey.
 ]
 
 
@@ -483,9 +483,11 @@ class _WizardWindow(QDialog):
         # Model selector
         model_row = QHBoxLayout()
         model_row.setSpacing(10)
-        model_row.addWidget(_label("Model:"))
+        model_label = _label("Model:")
+        model_row.addWidget(model_label)
 
         self._model_combo = QComboBox()
+        model_label.setBuddy(self._model_combo)
         self._model_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
@@ -583,22 +585,27 @@ class _WizardWindow(QDialog):
 
         key_row = QHBoxLayout()
         key_row.setSpacing(10)
-        key_row.addWidget(_label("Key:"))
+        key_label = _label("Key:")
+        key_row.addWidget(key_label)
 
-        self._key_combo = QComboBox()
-        for display, value in _AVA_KEY_OPTIONS:
-            self._key_combo.addItem(display, userData=value)
-
-        current_key = self._app.config.get("ava_mode_key", "right_alt")
-        for i, (_, value) in enumerate(_AVA_KEY_OPTIONS):
-            if value == current_key:
-                self._key_combo.setCurrentIndex(i)
-                break
-
-        self._key_combo.currentIndexChanged.connect(self._on_ava_key_changed)
+        from samsara.ui.settings.shared_qt import _HotkeyButton
+        owner_ref = weakref.ref(self)
+        def key_changed():
+            owner = owner_ref()
+            if owner is not None:
+                owner._on_ava_key_changed()
+        def key_config():
+            owner = owner_ref()
+            return owner._app.config if owner is not None else {}
+        self._key_combo = _HotkeyButton(self._app.config.get("ava_mode_key", "right_alt"),
+                                       on_change=key_changed)
+        self._key_combo.configure_hold('ava_mode_key', key_config)
+        self._key_combo.setAccessibleName('Activation key')  # 418: the name shares its source with the visible label
+        key_label.setBuddy(self._key_combo)
         key_row.addWidget(self._key_combo)
         key_row.addStretch()
         kf_lay.addLayout(key_row)
+        kf_lay.addWidget(self._key_combo.reason_label())
 
         lay.addWidget(key_frame)
 
@@ -643,7 +650,10 @@ class _WizardWindow(QDialog):
         lay.addLayout(btn_row)
 
         lay.addStretch()
-        return page
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(page)
+        return scroll
 
     # ----------------------------------------------------------------
     # Step navigation
@@ -927,13 +937,11 @@ class _WizardWindow(QDialog):
         self._enable_pack_btn.setVisible(not ready)
         self._next_btn.setText("Finish" if ready else "Set up later")
 
-    def _on_ava_key_changed(self, index: int):
-        if 0 <= index < len(_AVA_KEY_OPTIONS):
-            value = _AVA_KEY_OPTIONS[index][1]
-            try:
-                self._app.update_config({"ava_mode_key": value}, save=True)
-            except Exception as e:
-                logger.debug(f"_on_ava_key_changed: {e}")
+    def _on_ava_key_changed(self):
+        try:
+            self._app.update_config({"ava_mode_key": self._key_combo.combo}, save=True)
+        except Exception as e:
+            logger.debug(f"_on_ava_key_changed: {e}")
 
     def _enable_ai_pack(self):
         try:

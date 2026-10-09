@@ -234,7 +234,7 @@ class TestStateGlyphIsTheMark:
     @pytest.mark.parametrize("setup, expected", [
         (lambda w: None,                         ("idle", "off")),
         (lambda w: w.set_snoozed(True),          ("idle", "asleep")),
-        (lambda w: w.set_listening(True),        ("listening", "off")),
+        (lambda w: w.set_listening(True),        ("recording", "off")),
         (lambda w: w.set_command_mode(True),     ("listening", "off")),
         (lambda w: w.set_thinking(True),         ("ava", "off")),
         (lambda w: w.set_session_mode("AVA", "#a78bfa"), ("ava", "off")),

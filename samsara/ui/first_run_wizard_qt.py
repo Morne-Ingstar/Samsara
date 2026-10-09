@@ -17,17 +17,21 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QRectF, QSize, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QAbstractButton, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
+    QApplication, QRadioButton, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QComboBox, QPushButton, QButtonGroup,
-    QFrame, QScrollArea,
+    QFrame, QProgressBar, QScrollArea,
 )
 
-from samsara import config_defaults
+from samsara import config_defaults, listening_display
 from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from samsara import session_modes
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
+from samsara.ui.first_run_pages_qt import Decisions, initial_config
+from samsara.onboarding.first_run_recommend import COPY
 from samsara.ui.widgets.step_indicator import StepIndicator
+from samsara.ui.listening_display_page import setup_page, STEP_LABEL_GAP
+from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 from samsara.audio_devices import force_rescan, list_microphones, pick_index_by_name
 
 from samsara.log import get_logger
@@ -46,119 +50,20 @@ MIC_ACCESS_DENIED_MESSAGE = (
 )  # OWNER COPY — REVIEW
 
 # ---------------------------------------------------------------------------
-# Hotkey capture button (self-contained, no import from settings_qt)
+# Shared Settings/setup key capture
 # ---------------------------------------------------------------------------
-
-_MOD_KEYS = {
-    Qt.Key.Key_Control: 'ctrl',
-    Qt.Key.Key_Shift:   'shift',
-    Qt.Key.Key_Alt:     'alt',
-    Qt.Key.Key_Meta:    'win',
-}
-_SPECIAL_KEYS = {
-    Qt.Key.Key_Escape:   'escape',
-    Qt.Key.Key_Tab:      'tab',
-    Qt.Key.Key_Return:   'enter',
-    Qt.Key.Key_CapsLock: 'capslock',
-    Qt.Key.Key_Space:    'space',
-    **{getattr(Qt.Key, f'Key_F{n}'): f'f{n}' for n in range(1, 13)},
-}
-_MOD_ORDER = {'ctrl': 0, 'shift': 1, 'alt': 2, 'win': 3}
+from samsara.ui.settings.shared_qt import _HotkeyButton
 
 
-def _key_name(key: int) -> str | None:
-    if key in _MOD_KEYS:
-        return _MOD_KEYS[key]
-    if key in _SPECIAL_KEYS:
-        return _SPECIAL_KEYS[key]
-    if 0x20 <= key <= 0x7E:
-        return chr(key).lower()
-    return None
-
-
-def _combo(held: set) -> str:
-    return '+'.join(sorted(held, key=lambda k: (_MOD_ORDER.get(k, 99), k)))
-
-
-class _HotkeyBtn(QPushButton):
-    @staticmethod
-    def _idle_qss() -> str:
-        """Built per call: a stylesheet assigned in the class body is
-        evaluated once, when the module is imported, so it would keep
-        the startup palette for the life of the process (queue 129)."""
-        return (
-            f"QPushButton{{background:{theme.BG2};border:1px solid {theme.BORDER};"
-            f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;"
-            f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
-            f"QPushButton:hover{{background:{theme.BG2};border-color:{theme.ACCENT};}}"
-        )
-
-    @staticmethod
-    def _active_qss() -> str:
-        """The capturing state. See _idle_qss()."""
-        return (
-            f"QPushButton{{background:{theme.tint(theme.ACCENT, 0.08)};"
-            f"border:1px solid {theme.ACCENT};"
-            f"border-radius:6px;color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;"
-            f"font-family:'Consolas','Courier New',monospace;padding:6px 14px;}}"
-        )
-
-    def __init__(self, combo: str):
-        super().__init__(combo or "—")
-        self._combo = combo
-        self._capturing = False
-        self._held: set[str] = set()
-        self.setMinimumWidth(160)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setStyleSheet(self._idle_qss())
-        self.clicked.connect(self._start)
-
-    @property
-    def combo(self) -> str:
-        return self._combo
-
-    def _start(self):
-        self._capturing = True
-        self._held = set()
-        self.setText("Press keys…")
-        self.setStyleSheet(self._active_qss())
-        self.setFocus()
-
-    def _finish(self):
-        self._capturing = False
-        if self._held:
-            self._combo = _combo(self._held)
-        self.setText(self._combo or "—")
-        self.setStyleSheet(self._idle_qss())
-
-    def keyPressEvent(self, e):
-        if not self._capturing:
-            super().keyPressEvent(e)
-            return
-        name = _key_name(e.key())
-        if name:
-            self._held.add(name)
-            self.setText(_combo(self._held) or "Press keys…")
-        e.accept()
-
-    def keyReleaseEvent(self, e):
-        if not self._capturing:
-            super().keyReleaseEvent(e)
-            return
-        self._finish()
-        e.accept()
-
-    def focusOutEvent(self, e):
-        if self._capturing:
-            self._finish()
-        super().focusOutEvent(e)
+class _HotkeyBtn(_HotkeyButton):
+    pass
 
 
 # ---------------------------------------------------------------------------
 # Live microphone level meter
 # ---------------------------------------------------------------------------
 
-class _MicLevelMeter(QWidget):
+class _MicLevelMeter(QProgressBar):
     """Horizontal bar meter: colour zones, peak hold, smoothed ballistics.
 
     Gain mapping: sqrt(rms * 20) — a 0.01 RMS headset maps to ~45 % fill,
@@ -191,6 +96,10 @@ class _MicLevelMeter(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setRange(0, 100)
+        self.setValue(0)
+        self.setTextVisible(False)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setFixedHeight(20)
         self._level     = 0.0
         self._peak      = 0.0
@@ -209,11 +118,13 @@ class _MicLevelMeter(QWidget):
             self._peak_hold -= 1
             if self._peak_hold <= 0:
                 self._peak = max(0.0, self._peak - 0.018)
+        self.setValue(round(self._level * 100))
         self.update()
 
     def reset(self) -> None:
         self._level = self._peak = 0.0
         self._peak_hold = 0
+        self.setValue(0)
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -244,7 +155,7 @@ class _MicLevelMeter(QWidget):
         p.end()
 
 
-class _WizardChoiceIndicator(QAbstractButton):
+class _WizardChoiceIndicator(QRadioButton):
     """Painter-based circular indicator with smooth antialiased checked state."""
 
     _SIZE = 18
@@ -259,6 +170,30 @@ class _WizardChoiceIndicator(QAbstractButton):
 
     def sizeHint(self) -> QSize:
         return QSize(self._SIZE, self._SIZE)
+
+    def setChecked(self, checked: bool) -> None:
+        if checked or self.group() is not None:
+            super().setChecked(checked)
+            return
+        # Preserve the original standalone setter without changing the native
+        # radio semantics of the grouped choices in the wizard.
+        exclusive = self.autoExclusive()
+        self.setAutoExclusive(False)
+        try:
+            super().setChecked(checked)
+        finally:
+            self.setAutoExclusive(exclusive)
+
+    def hitButton(self, pos) -> bool:
+        # Keep the original QAbstractButton hit area despite native radio semantics.
+        return self.rect().contains(pos)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
@@ -319,66 +254,18 @@ class _WizardChoiceIndicator(QAbstractButton):
             p.drawEllipse(focus)
 
 
-# ---------------------------------------------------------------------------
-# Step metadata
-# ---------------------------------------------------------------------------
-
 _STEPS = [
     ("Welcome",    "Welcome to Samsara"),
-    ("Use Case",   "How Will You Use Samsara?"),
     ("Microphone", "Select Your Microphone"),
     ("Components", "Optional Components"),
-    ("Model",      "Choose Recognition Quality"),
-    ("Shortcuts",  "Shortcuts & Wake Word"),
+    # PLACEHOLDER COPY (373)
+    ("Recognition", COPY["recognition.title"]),
+    ("Talking", COPY["talking.title"]),
+    ("Music", COPY["music.title"]),
+    ("Voice", COPY["voice.title"]),
+    (listening_display.LABEL, listening_display.QUESTION),
     ("Complete",   "Setup Complete!"),
 ]
-
-# Config deltas applied when the user selects a use case.
-# Nested dicts are merged into the existing config sub-dict.
-_USE_CASE_CONFIGS = {
-    "chronic_pain": {
-        "wake_word_enabled": True,
-        "tts": {"enabled": True},
-        "mode": "hold",
-        "audio_feedback": True,
-        "command_mode": {
-            "enabled": True,
-            "mode": "toggle",
-            "command_matching_enabled": True,
-            "inactivity_timeout_s": 900,
-        },
-    },
-    "privacy": {
-        "cloud_llm": {"enabled": False},
-        "wake_word_enabled": True,
-    },
-    "power_user": {
-        "wake_word_enabled": True,
-        "streaming_mode": True,
-        "command_mode": {"command_matching_enabled": True},
-    },
-    "just_dictation": {
-        "wake_word_enabled": False,
-        "mode": "hold",
-    },
-}
-
-_USE_CASE_TIPS = {
-    # "chronic_pain" is rendered by _hands_free_tip() from live constants.
-    "privacy": (
-        "All your data stays on this machine. Voice recognition runs locally "
-        "via Whisper — nothing is sent to the cloud."
-    ),
-    "power_user": (
-        "CapsLock streaming is enabled. Hold CapsLock for live transcription. "
-        "Check out the Command Reference for all available voice commands."
-    ),
-    "just_dictation": (
-        "Hold Ctrl+Shift, speak, and release. "
-        "Text appears wherever your cursor is."
-    ),
-}
-
 
 def _merge_wake_word_config(config: dict, phrase=None, wake_command_timeout=None) -> dict:
     """Read-merge-write config["wake_word_config"] (and its "audio" sub-dict):
@@ -601,13 +488,10 @@ class _WizardWindow(QMainWindow):
         self._samsara_app = samsara_app
         self.result = None
         self._step = 0
-        # deepcopy, not dict(): _DEFAULTS now has a nested dict
-        # ("command_mode") -- a shallow copy would share that dict object
-        # across every wizard instance, so _apply_use_case_defaults()
-        # mutating it in place would leak into the next run.
-        self._config = copy.deepcopy(_DEFAULTS)
+        self._config, self._existing_config = initial_config(_DEFAULTS, config_path)
         self._mics: list[dict] = []
         self._mic_result.connect(self._on_mic_result)
+        self._mic_announcer = LiveSurfaceAnnouncer(self)
 
         self.setWindowTitle("Samsara Setup")
         _scr = QApplication.primaryScreen()
@@ -643,7 +527,7 @@ class _WizardWindow(QMainWindow):
         root.addWidget(header)
         self._step_indicator = StepIndicator([name for name, _ in _STEPS])
         root.addWidget(self._step_indicator)
-
+        root.addSpacing(STEP_LABEL_GAP)
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
         sep_top.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
@@ -652,7 +536,7 @@ class _WizardWindow(QMainWindow):
         # ---- Page title ---------------------------------------------------
         title_bar = QWidget()
         title_bar.setContentsMargins(0, 0, 0, 0)
-        title_bar.setFixedHeight(60)
+        title_bar.setMinimumHeight(60)
         tbl = QVBoxLayout(title_bar)
         tbl.setContentsMargins(28, 14, 28, 8)
         self._title_lbl = QLabel()
@@ -668,15 +552,12 @@ class _WizardWindow(QMainWindow):
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._stack, stretch=1)
 
-        # Build all pages up front (they're cheap)
         self._mic_combo: QComboBox | None = None
         self._mic_status: QLabel | None = None
         self._mic_page: QWidget | None = None
         self._model_group: QButtonGroup | None = None
         self._hotkey_btns: dict[str, _HotkeyBtn] = {}
         self._summary_labels: list[QLabel] = []
-        self._use_case_group: QButtonGroup | None = None
-        self._tip_lbl: QLabel | None = None
         self._no_hints_cb: QCheckBox | None = None
         self._meter: _MicLevelMeter | None = None
         self._meter_timer: QTimer | None = None
@@ -689,13 +570,16 @@ class _WizardWindow(QMainWindow):
         self._mic_capture_ready: bool = False
 
         self._components_page = None
+        self._decisions = Decisions(self)
         self._pages = [
             self._build_welcome(),
-            self._build_use_case(),
             self._build_microphone(),
             self._build_components(),
             self._build_model(),
-            self._build_shortcuts(),
+            self._decisions.talking(),
+            self._decisions.music(),
+            self._decisions.voice(),
+            setup_page(self),
             self._build_complete(),
         ]
         self._current_page: QWidget | None = None
@@ -707,7 +591,7 @@ class _WizardWindow(QMainWindow):
 
         # ---- Nav buttons --------------------------------------------------
         nav = QWidget()
-        nav.setFixedHeight(64)
+        nav.setFixedHeight(theme.HIT_TARGET_MIN + 24)
         theme.style_footer(nav)
         nl = QHBoxLayout(nav)
         nl.setContentsMargins(28, 12, 28, 12)
@@ -731,7 +615,9 @@ class _WizardWindow(QMainWindow):
         # Enumerate microphones in background so page 2 is ready
         thread_registry.spawn("first_run_wizard_qt._load_mics", self._load_mics, daemon=True)
 
+        self._decisions.scroll_existing_pages()
         theme.apply_design_scale(self)
+        self._decisions.prepare_navigation()
         self._show_step()
 
     # ------------------------------------------------------------------
@@ -759,15 +645,16 @@ class _WizardWindow(QMainWindow):
         sf_layout.setSpacing(10)
 
         for icon, text in [
-            ("1.", "Choose how you'll use Samsara"),
-            ("2.", "Select your microphone"),
-            ("3.", "Add optional components, now or later"),
-            ("4.", "Choose speech recognition quality"),
-            ("5.", "Set your keyboard shortcuts"),
+            # PLACEHOLDER COPY (373)
+            ("1.", "Select your microphone"),
+            ("2.", "Add optional components, now or later"),
+            ("3.", COPY["welcome.recognition"]),
+            ("4.", COPY["welcome.talking"]),
+            ("5.", "Choose a listening display"),
         ]:
             row = QHBoxLayout()
             icon_lbl = QLabel(icon)
-            icon_lbl.setFixedWidth(28)
+            icon_lbl.setMinimumWidth(28)
             icon_lbl.setStyleSheet(f"font-size:{theme.TYPE_TITLE}px;")
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text)
@@ -783,55 +670,6 @@ class _WizardWindow(QMainWindow):
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(note)
-        lay.addStretch()
-        return w
-
-    def _build_use_case(self) -> QWidget:
-        w, lay = self._padded()
-        sub = QLabel("Pick the option that fits best. You can change everything later in Settings.")
-        sub.setWordWrap(True)
-        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(sub)
-        lay.addSpacing(4)
-
-        self._use_case_group = QButtonGroup(w)
-        _CASES = [
-            ("chronic_pain",   "I have chronic pain or limited mobility",
-             "Set up for hands-free use with health tracking, voice reminders, and spoken feedback."),
-            ("privacy",        "I value privacy and want local-only voice control",
-             "Everything stays on your machine. No cloud, no accounts, no data leaves your computer."),
-            ("power_user",     "I'm a power user / developer",
-             "Scriptable voice macros, command packs, and deep customization."),
-            ("just_dictation", "Just dictation",
-             "Simple speech-to-text. Press a key, speak, release."),
-        ]
-        for i, (value, title, desc) in enumerate(_CASES):
-            card = QFrame()
-            theme.style_card(card)
-            cl = QHBoxLayout(card)
-            cl.setContentsMargins(14, 12, 14, 12)
-            cl.setSpacing(10)
-
-            rb = _WizardChoiceIndicator()
-            rb.setProperty("_value", value)
-            if value == "just_dictation":
-                rb.setChecked(True)
-            self._use_case_group.addButton(rb, i)
-            cl.addWidget(rb, alignment=Qt.AlignmentFlag.AlignTop)
-
-            text_col = QVBoxLayout()
-            text_col.setSpacing(3)
-            name_lbl = QLabel(title)
-            name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
-            desc_lbl = QLabel(desc)
-            desc_lbl.setWordWrap(True)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-            text_col.addWidget(name_lbl)
-            text_col.addWidget(desc_lbl)
-            cl.addLayout(text_col, stretch=1)
-
-            lay.addWidget(card)
-
         lay.addStretch()
         return w
 
@@ -870,9 +708,11 @@ class _WizardWindow(QMainWindow):
         lay.addWidget(meter_lbl)
 
         self._meter = _MicLevelMeter()
+        self._meter.setAccessibleName(meter_lbl.text())
         lay.addWidget(self._meter)
 
         self._mic_status = QLabel("Speak to test your microphone")
+        self._meter.setAccessibleDescription(self._mic_status.text())
         self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(self._mic_status)
 
@@ -880,185 +720,10 @@ class _WizardWindow(QMainWindow):
         return w
 
     def _build_model(self) -> QWidget:
-        w, lay = self._padded()
-        sub = QLabel(
-            "Larger models are more accurate but use more memory and are slower to start."
-        )
-        sub.setWordWrap(True)
-        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(sub)
-        lay.addSpacing(4)
-
-        self._model_group = QButtonGroup(w)
-        _MODELS = [
-            ("tiny",  "Fastest",              "~75 MB — lowest accuracy, instant startup"),
-            ("base",  "Balanced (Recommended)", "~150 MB — good accuracy, fast startup"),
-            ("small", "Best Quality",          "~500 MB — highest accuracy, slower startup"),
-        ]
-        for i, (value, title, desc) in enumerate(_MODELS):
-            card = QFrame()
-            theme.style_card(card)
-            cl = QHBoxLayout(card)
-            cl.setContentsMargins(14, 12, 14, 12)
-
-            rb = _WizardChoiceIndicator()
-            rb.setProperty("_value", value)
-            if value == "base":
-                rb.setChecked(True)
-            self._model_group.addButton(rb, i)
-            cl.addWidget(rb)
-
-            text_col = QVBoxLayout()
-            name_lbl = QLabel(title)
-            name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
-            desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-            text_col.addWidget(name_lbl)
-            text_col.addWidget(desc_lbl)
-            cl.addLayout(text_col, stretch=1)
-
-            lay.addWidget(card)
-
-        note = QLabel("The model downloads on first use (once). You can change it later in Settings.")
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(note)
-        lay.addStretch()
-        return w
-
-    def _build_shortcuts(self) -> QWidget:
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;background:transparent;}")
-
-        inner, lay = self._padded()
-        sub = QLabel("Click a button and press your desired key combination.")
-        sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(sub)
-        lay.addSpacing(4)
-
-        _HOTKEYS = [
-            ("hotkey",           "ctrl+shift",  "Hold to Record",
-             "Hold to record, release to transcribe"),
-            ("continuous_hotkey","ctrl+alt+d",  "Continuous Mode",
-             "Toggle always-on dictation"),
-            ("wake_word_hotkey", "ctrl+alt+w",  "Wake Word Mode",
-             "Toggle wake word activation"),
-            ("command_hotkey",   "ctrl+alt+c",  "Command Only",
-             "Hold to speak a command (no text output)"),
-        ]
-        for key, default, label, desc in _HOTKEYS:
-            row = QHBoxLayout()
-            row.setSpacing(12)
-
-            left = QVBoxLayout()
-            left.setSpacing(2)
-            name_lbl = QLabel(label)
-            name_lbl.setStyleSheet(f"font-weight:600;font-size:{theme.TYPE_BODY}px;color:{theme.TEXT_PRIMARY};")
-            desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-            left.addWidget(name_lbl)
-            left.addWidget(desc_lbl)
-            row.addLayout(left, stretch=1)
-
-            btn = _HotkeyBtn(default)
-            self._hotkey_btns[key] = btn
-            row.addWidget(btn, alignment=Qt.AlignmentFlag.AlignVCenter)
-            lay.addLayout(row)
-
-        builtin_note = QLabel(_builtin_hotkeys_text(self._config))
-        builtin_note.setWordWrap(True)
-        builtin_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(builtin_note)
-
-        # Separator
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"background:{theme.wash(0.06)};max-height:1px;")
-        lay.addWidget(sep)
-
-        # Wake word
-        ww_row = QHBoxLayout()
-        ww_left = QVBoxLayout()
-        ww_left.setSpacing(2)
-        ww_left.addWidget(QLabel("Wake Word Phrase"))
-        self._ww_desc = QLabel('Say "Jarvis" or "Hey Jarvis" to activate voice commands')
-        self._ww_desc.setWordWrap(True)
-        self._ww_desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        ww_left.addWidget(self._ww_desc)
-        ww_row.addLayout(ww_left, stretch=1)
-
-        ww_lbl = QLabel(DEFAULT_WAKE_PHRASE)
-        ww_lbl.setStyleSheet(
-            f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;font-weight:bold;"
-            f"font-family:'Consolas','Courier New',monospace;"
-        )
-        ww_row.addWidget(ww_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
-        lay.addLayout(ww_row)
-
-        self._ww_off_note = QLabel(
-            "Wake word is off for your setup — turn it on anytime in Settings."
-        )
-        self._ww_off_note.setWordWrap(True)
-        self._ww_off_note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;font-style:italic;")
-        self._ww_off_note.setVisible(False)
-        lay.addWidget(self._ww_off_note)
-
-        coming = QLabel(_wake_options_text(DEFAULT_WAKE_PHRASE))
-        coming.setWordWrap(True)
-        coming.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(coming)
-        lay.addStretch()
-        scroll.setWidget(inner)
-        return scroll
+        return self._decisions.recognition()
 
     def _build_complete(self) -> QWidget:
-        w, lay = self._padded()
-
-        done_lbl = QLabel("You're all set — Samsara is ready.")
-        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(done_lbl)
-        lay.addSpacing(4)
-
-        card = QFrame()
-        theme.style_card(card)
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(16, 14, 16, 14)
-        cl.setSpacing(6)
-        # Placeholder labels — populated in _show_step when we arrive here
-        for _ in range(6):
-            lbl = QLabel("")
-            lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
-            self._summary_labels.append(lbl)
-            cl.addWidget(lbl)
-        lay.addWidget(card)
-
-        # Use-case-specific tip — populated in _fill_summary()
-        tip_frame = QFrame()
-        theme.style_tip_frame(tip_frame)
-        tf_lay = QVBoxLayout(tip_frame)
-        tf_lay.setContentsMargins(16, 12, 16, 12)
-        self._tip_lbl = QLabel("")
-        self._tip_lbl.setWordWrap(True)
-        self._tip_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
-        tf_lay.addWidget(self._tip_lbl)
-        lay.addWidget(tip_frame)
-
-        note = QLabel(
-            "The model downloads on first use. "
-            "Look for the Samsara tray icon to get started."
-        )
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(note)
-        lay.addSpacing(12)
-
-        self._no_hints_cb = QCheckBox("Don't show me hints (you can re-enable this in Settings)")
-        self._no_hints_cb.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        lay.addWidget(self._no_hints_cb)
-
-        lay.addStretch()
-        return w
+        return self._decisions.complete()
 
     # ------------------------------------------------------------------
     # Navigation
@@ -1088,14 +753,11 @@ class _WizardWindow(QMainWindow):
         self._back_btn.setEnabled(self._step > 0)
         is_last = self._step == len(_STEPS) - 1
         self._next_btn.setText("Start Samsara" if is_last else "Next")
+        self._decisions.prepare_step(name)
 
         # Populate complete page summary when we reach it
         if is_last:
             self._fill_summary()
-
-        # Refresh the wake-word note against the use case picked earlier
-        if _STEPS[self._step][0] == "Shortcuts":
-            self._refresh_wake_word_note()
 
         # Start level meter on microphone step
         if _STEPS[self._step][0] == "Microphone":
@@ -1109,8 +771,6 @@ class _WizardWindow(QMainWindow):
                 self._mic_status.setText("Select a working microphone before continuing.")
                 self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
             return
-        if _STEPS[self._step][0] == "Use Case":
-            self._apply_use_case_defaults()
         if self._step == len(_STEPS) - 1:
             self._finish()
             return
@@ -1118,99 +778,41 @@ class _WizardWindow(QMainWindow):
         self._show_step()
 
     def _go_back(self):
+        self._collect_step()
         if self._step > 0:
             self._step -= 1
             self._show_step()
 
     def _collect_step(self):
-        """Read UI values for the current step into self._config."""
         step_name = _STEPS[self._step][0]
-        if step_name == "Use Case" and self._use_case_group:
-            checked = self._use_case_group.checkedButton()
-            self._config['_use_case'] = (
-                checked.property("_value") if checked else "just_dictation"
-            )
+        if step_name in ("Recognition", "Talking", "Music", "Voice"):
+            self._decisions.collect(step_name)
+        elif step_name == listening_display.LABEL:
+            self._listening_display_page.save_to(self._config)
         elif step_name == "Microphone" and self._mic_combo:
             mic_name = self._mic_combo.currentText()
             for m in self._mics:
                 if m['name'] == mic_name:
                     self._config['microphone'] = m['id']
                     break
-        elif step_name == "Model" and self._model_group:
-            checked = self._model_group.checkedButton()
-            if checked:
-                self._config['model_size'] = checked.property("_value")
-        elif step_name == "Shortcuts":
-            for key, btn in self._hotkey_btns.items():
-                self._config[key] = btn.combo
-
-    def _refresh_wake_word_note(self):
-        """Contextualize the wake-word phrase row against the use case's
-        wake_word_enabled default -- the phrase row itself always stays
-        visible, only the framing changes."""
-        enabled = self._config.get('wake_word_enabled', config_defaults.DEFAULTS['wake_word_enabled'])
-        if self._ww_desc is not None:
-            self._ww_desc.setText(
-                'Say "Jarvis" or "Hey Jarvis" to activate voice commands'
-                if enabled else
-                'The phrase you\'ll say once wake word is turned on'
-            )
-        if self._ww_off_note is not None:
-            self._ww_off_note.setVisible(not enabled)
 
     def _fill_summary(self):
-        model_names = {
-            'tiny':  'Fastest (tiny)',
-            'base':  'Balanced (base)',
-            'small': 'Best Quality (small)',
-        }
-        mic_name = self._mic_combo.currentText() if self._mic_combo else "Default"
-        model    = model_names.get(self._config.get('model_size', 'base'),
-                                   self._config.get('model_size', 'base'))
-        lines = [
-            f"Microphone:       {mic_name or 'Default'}",
-            f"Model:            {model}",
-            f"Record:           {self._config.get('hotkey', 'ctrl+shift')}  (hold)",
-            f"Continuous:       {self._config.get('continuous_hotkey', 'ctrl+alt+d')}",
-            f"Wake Word Key:    {self._config.get('wake_word_hotkey', 'ctrl+alt+w')}",
-            f"Wake Phrase:      {DEFAULT_WAKE_PHRASE}",
-        ]
-        for lbl, text in zip(self._summary_labels, lines):
-            lbl.setText(text)
-
-        # Populate the use-case tip
-        if self._tip_lbl is not None:
-            use_case = self._config.get('_use_case', 'just_dictation')
-            tip = (_hands_free_tip(self._config) if use_case == "chronic_pain"
-                   else _USE_CASE_TIPS.get(use_case, ""))
-            self._tip_lbl.setText(tip)
-            self._tip_lbl.parentWidget().setVisible(bool(tip))
+        self._decisions.summary()
 
     def _finish(self):
         if self._config.get('microphone') is None:
             return
         self._collect_step()
+        self._listening_display_page.save_to(self._config)
+        self._decisions.finish()
         self._config['first_run_complete'] = True
         if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
             self._config['hints_enabled'] = False
         self.result = _finalize_config(self._config)
         self.close()
 
-    def _apply_use_case_defaults(self):
-        """Apply config defaults for the selected use case."""
-        use_case = self._config.get('_use_case', 'just_dictation')
-        updates = _USE_CASE_CONFIGS.get(use_case, {})
-        for key, val in updates.items():
-            if isinstance(val, dict):
-                existing = self._config.setdefault(key, {})
-                if isinstance(existing, dict):
-                    existing.update(val)
-                else:
-                    self._config[key] = dict(val)
-            else:
-                self._config[key] = val
-
     def closeEvent(self, event):
+        self._decisions.shutdown()
         self._stop_meter()
         # A window close is a cancel, not a successful first run. The caller
         # keeps its existing config (or generates defaults) and can retry the
@@ -1372,8 +974,7 @@ class _WizardWindow(QMainWindow):
         if mic_id is None:
             self._mic_capture_ready = False
             if self._mic_status:
-                self._mic_status.setText("Select a working microphone before continuing.")
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
+                self._on_mic_result("Select a working microphone before continuing.", theme.WARNING)
             self._next_btn.setEnabled(False)
             return
 
@@ -1429,11 +1030,14 @@ class _WizardWindow(QMainWindow):
         self._last_meter_rms = 0.0
         self._meter_passed = False
         self._mic_capture_ready = False
+        self._mic_announcer.reset()
         if self._meter is not None:
             self._meter.reset()
         if self._mic_status is not None:
             self._mic_status.setText("Speak to test your microphone")
             self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
+            if self._meter is not None:
+                self._meter.setAccessibleDescription(self._mic_status.text())
 
     def _open_meter_stream(self, device_id):
         """Open a minimal transient InputStream for meter-only use."""
@@ -1463,8 +1067,7 @@ class _WizardWindow(QMainWindow):
                     if isinstance(exc, PermissionError) or "denied" in str(exc).lower()
                     else "Microphone could not be opened — press Refresh"
                 )
-                self._mic_status.setText(message)
-                self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
+                self._on_mic_result(message, theme.WARNING)
             return None
 
     def _meter_tick(self):
@@ -1496,6 +1099,10 @@ class _WizardWindow(QMainWindow):
             self._meter_passed = True
             self._mic_status.setText("Microphone active")
             self._mic_status.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_BODY}px;")
+            self._meter.setAccessibleDescription(self._mic_status.text())
+            self._mic_announcer.announce_transition(
+                ("microphone-active", self._mic_combo.currentData()), self._mic_status.text()
+            )
 
     def _on_mic_result(self, msg: str, color: str):
         if msg == "_load_done_":
@@ -1519,6 +1126,10 @@ class _WizardWindow(QMainWindow):
         if self._mic_status:
             self._mic_status.setText(msg)
             self._mic_status.setStyleSheet(f"color:{color};font-size:{theme.TYPE_BODY}px;")
+            self._meter.setAccessibleDescription(self._mic_status.text())
+            self._mic_announcer.announce_transition(
+                ("microphone-result", self._mic_combo.currentData(), msg), self._mic_status.text()
+            )
 
     def _populate_mic_combo(self, preserve_selection: bool = False):
         if self._mic_combo is None:

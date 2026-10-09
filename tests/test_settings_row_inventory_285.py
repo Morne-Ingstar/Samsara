@@ -117,7 +117,6 @@ AUDITED_KEYS = set([
     "intent.command_prefix",
     "language",
     "launch_at_login",
-    "listening_indicator_enabled",
     "listening_indicator_position",
     "memo_hotkey",
     "microphone",
@@ -149,7 +148,7 @@ AUDITED_KEYS = set([
     "tts.speed",
     "tts.voice_id",
     "tts.volume",
-    "ui.live_surface.enabled",
+    "ui.listening_display",  # 448: one editor replaces the two legacy switches.
     "ui.theme",
     "ui_scale",
     "undo_hotkey",
@@ -176,7 +175,7 @@ def window(qapp, monkeypatch):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 149
+    assert len(AUDITED_KEYS) == 148
     bindings = window.config_row_inventory()
     counts = Counter(key for key, _page, _widget in bindings)
     assert AUDITED_KEYS <= counts.keys(), sorted(AUDITED_KEYS - counts.keys())
@@ -295,7 +294,7 @@ def test_diagnostics_apply_saves_and_refreshes_timing_cache(window, tmp_path, en
 
 
 def test_help_keeps_accessible_text_and_large_target(window):
-    row = window._rows_by_widget['adv_live_surface_enabled']
+    row = window._rows_by_widget['diagnostics_stage_timing']
     assert row.help.width() >= 44 and row.help.height() >= 44
     assert row.help.accessibleName() == f'Help: {row.title}'
     assert row.help.accessibleDescription() == row.help_data['why']
@@ -346,11 +345,12 @@ def test_keyboard_help_and_disclosure(window, qapp):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
     window.show()
-    advanced = window._pages['General'].advanced
+    window.show_tab('Help')
+    advanced = window._pages['Help'].advanced
     advanced.toggle.setFocus()
     QTest.keyClick(advanced.toggle, Qt.Key.Key_Space)
     assert advanced.toggle.isChecked()
-    row = window._rows_by_widget['adv_live_surface_enabled']
+    row = window._rows_by_widget['diagnostics_stage_timing']
     row.help.setFocus()
     qapp.processEvents()
     assert row.help.hasFocus()
@@ -363,7 +363,7 @@ def test_keyboard_help_and_disclosure(window, qapp):
     assert row.help_panel.isVisibleTo(window)
     QTest.keyClick(row.help, Qt.Key.Key_Escape)
     assert row.help_panel.isHidden()
-    assert window._widgets['adv_live_surface_enabled'].accessibleName()
+    assert window._widgets['diagnostics_stage_timing'].accessibleName()
     window.hide()
 
 

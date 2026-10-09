@@ -395,8 +395,10 @@ class _DebugWindow(QMainWindow):
         lay.setSpacing(8)
 
         mode_row = QHBoxLayout()
-        mode_row.addWidget(_kv_label("Force mode:"))
+        mode_label = _kv_label("Force mode:")
+        mode_row.addWidget(mode_label)
         self._mode_combo = QComboBox()
+        mode_label.setBuddy(self._mode_combo)
         self._mode_combo.addItems(["(auto)", "dictate", "short_dictate", "long_dictate"])
         enter_btn = _btn("Enter Mode")
         reset_btn = _btn("Reset")
@@ -495,6 +497,7 @@ class _DebugWindow(QMainWindow):
         lbl.setFixedWidth(140)
         lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
         slider = QSlider(Qt.Horizontal)
+        lbl.setBuddy(slider)
         steps  = 1000
         slider.setRange(0, steps)
         slider.setValue(int((init - lo) / (hi - lo) * steps))
@@ -502,6 +505,7 @@ class _DebugWindow(QMainWindow):
         val_lbl.setFixedWidth(50)
         val_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         spin = QDoubleSpinBox()
+        spin.setAccessibleName(lbl.text())
         spin.setRange(lo, hi)
         spin.setDecimals(decimals)
         spin.setSingleStep(10 ** -decimals)

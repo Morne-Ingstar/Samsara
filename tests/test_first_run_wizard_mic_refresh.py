@@ -114,7 +114,7 @@ class _LoadWizard:
         self._mics = []
         self._mic_scan_error = None
         self._samsara_app = None
-        self._step = 2
+        self._step = 1  # 373: microphone follows Welcome.
         self._mic_combo = _FakeCombo()
         self._mic_status = _FakeLabel()
         self._mic_result = Mock()

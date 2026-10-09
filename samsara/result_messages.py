@@ -1,5 +1,6 @@
 """Result wording shared by the two listening displays."""
 CHAIN_CONNECTOR = " · "
+AVA_KEY_OFF = "Ava is off. Turn her on in Settings > Ava."  # stand-in
 CLEAR_RESTORE_PHRASES = ("bring it back", "undo clear", "put it back", "restore the draft")
 AVA_INTERPRET_HELP_LONG = (
     "You can ask in your own words, such as 'make the music quieter'. "

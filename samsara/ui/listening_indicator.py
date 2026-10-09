@@ -783,13 +783,17 @@ class ListeningIndicator(QWidget):
             return "listening", "heard", 0.0, 1.0
         pace = self._capture_pace()
         if self._session_mode_name:
-            capture = "ava" if str(self._session_mode_name).upper() == "AVA" else "listening"
+            capture = "recording" if pace == "recording" else (
+                "ava" if str(self._session_mode_name).upper() == "AVA" else "listening")
             return capture, "off", self._spin(pace) if pace else 0.0, 1.0
         if self._thinking:
             return "ava", "off", self._spin("thinking"), 1.0
         if self._snoozed:
             return "idle", "asleep", 0.0, 1.0
         rotation = self._spin(pace) if pace else 0.0
+        if pace == "recording":
+            eye = "armed" if self._wake_armed and not self._command_mode else "off"
+            return "recording", eye, rotation, 1.0
         if self._wake_armed and not self._command_mode:
             return "listening", "armed", rotation, 1.0
         if self._command_mode or self._listening or pace:

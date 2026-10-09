@@ -24,12 +24,12 @@ def test_advanced_live_surface_setting_reflects_opt_in_state(qapp, config, expec
     app = StubApp(config)
     window = _SettingsWindow(app)
     try:
-        checkbox = window._widgets["adv_live_surface_enabled"]
-        assert checkbox.isChecked() is expected
-        assert checkbox.accessibleName() == (
-            "Use the new live surface (experimental — incomplete; the old indicator "
-            "and preview are the default)"
-        )
+        combo = window._widgets["listening_display"]
+        assert combo.currentData() == ("full" if expected else "compact")
+        assert [combo.itemData(i) for i in range(combo.count())] == ["compact", "full"]
+        assert combo.accessibleName() == "Listening display"
+        assert "adv_live_surface_enabled" not in window._widgets
+        assert "adv_indicator_enabled" not in window._widgets
     finally:
         window.deleteLater()
 

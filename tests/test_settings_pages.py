@@ -163,7 +163,9 @@ KEYS_BEFORE_SPLIT = {
         # page writes the whole `intent` section, so shadow_enabled (which
         # has no widget, by design) is preserved through a save rather than
         # dropped -- hence both keys here, only one of them editable.
-        'intent.command_prefix', 'intent.shadow_enabled', 'listening_indicator_enabled',
+        # 448: one choice replaces the legacy visibility writer; retain its quiet state.
+        'intent.command_prefix', 'intent.shadow_enabled', 'ui.listening_display',
+        'ui.live_surface.show_idle_mark',
         'listening_indicator_position', 'min_speech_duration', 'performance_mode',
         'silence_threshold',
         'smart_corrections.enabled', 'smart_corrections.keep_alive', 'smart_corrections.min_words',

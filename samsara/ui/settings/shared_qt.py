@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
 )
 
+from samsara.hold_key_rules import HoldKeyCapture
 from samsara import config_defaults
 from samsara import session_modes
 from samsara.config_transfer import (
@@ -256,8 +257,10 @@ def _cloud_ai_state(app, *, reachable: bool | None = None) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-class _HotkeyButton(QPushButton):
+class _HotkeyButton(HoldKeyCapture, QPushButton):
     """Shows the current hotkey combo; captures a new one when clicked."""
+
+    bindingChanged = Signal(str)
 
     @staticmethod
     def _idle_qss() -> str:
@@ -298,7 +301,7 @@ class _HotkeyButton(QPushButton):
             "}"
         )
 
-    # Side mouse buttons a capture may bind (main hotkey only; see allow_mouse).
+    # Extra mouse buttons visible to the existing mouse hook.
     _MOUSE_CAPTURE = {
         Qt.MouseButton.XButton1: 'mouse4',
         Qt.MouseButton.XButton2: 'mouse5',
@@ -322,9 +325,7 @@ class _HotkeyButton(QPushButton):
 
     @staticmethod
     def _idle_text(combo: str) -> str:
-        if combo in ('mouse4', 'mouse5'):
-            return _readable_hotkey(combo)
-        return combo or "\u2014"
+        return _readable_hotkey(combo) or "\u2014"
 
     def _capture_prompt(self) -> str:
         return "Press keys or Mouse 4/5..." if self._allow_mouse else "Press keys..."
@@ -332,57 +333,14 @@ class _HotkeyButton(QPushButton):
     def _start_capture(self):
         self._capturing = True
         self._held = set()
+        self.activate_capture()
+        self._capture_reason = ''
+        if hasattr(self, '_hold_reason_label'):
+            self._hold_reason_label.hide()
         self.setText(self._capture_prompt())
         self.setStyleSheet(self._capturing_qss())
         self.setFocus()
 
-    def _finish_capture(self):
-        self._capturing = False
-        if self._held:
-            self._combo = _combo_str(self._held)
-        self.setText(self._idle_text(self._combo))
-        self.setStyleSheet(self._idle_qss())
-        if self._on_change is not None:
-            self._on_change()
-
-    def mousePressEvent(self, event):
-        if self._capturing and self._allow_mouse:
-            name = self._MOUSE_CAPTURE.get(event.button())
-            if name is not None:
-                self._held = set()
-                self._combo = name
-                self._finish_capture()
-                event.accept()
-                return
-            if event.button() in (
-                Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton, Qt.MouseButton.MiddleButton,
-            ):
-                event.accept()   # ignored while capturing: keep waiting
-                return
-        super().mousePressEvent(event)
-
-    def keyPressEvent(self, event):
-        if not self._capturing:
-            super().keyPressEvent(event)
-            return
-        name = _key_name(event.key())
-        if name:
-            self._held.add(name)
-            self.setText(_combo_str(self._held) or self._capture_prompt())
-        event.accept()
-
-    def keyReleaseEvent(self, event):
-        if not self._capturing:
-            super().keyReleaseEvent(event)
-            return
-        # Finalize on first key release (same behaviour as Tkinter version)
-        self._finish_capture()
-        event.accept()
-
-    def focusOutEvent(self, event):
-        if self._capturing:
-            self._finish_capture()
-        super().focusOutEvent(event)
 
 
 def _readable_hotkey(combo: str) -> str:
@@ -394,10 +352,14 @@ def _readable_hotkey(combo: str) -> str:
         'left_ctrl': 'Left Ctrl', 'right_ctrl': 'Right Ctrl',
         'left_shift': 'Left Shift', 'right_shift': 'Right Shift',
         'left_alt': 'Left Alt', 'right_alt': 'Right Alt',
+        'rctrl': 'Right Ctrl', 'lctrl': 'Left Ctrl',
+        'ralt': 'Right Alt', 'lalt': 'Left Alt',
+        'rshift': 'Right Shift', 'lshift': 'Left Shift',
+        **{f'numpad{n}': f'Numpad {n}' for n in range(10)},
     }
     return '+'.join(
         names.get(part, part.upper() if part.startswith('f') and part[1:].isdigit()
-                  else part.title())
+                  else part.replace('_', ' ').title())
         for part in (combo or '').split('+') if part
     )
 

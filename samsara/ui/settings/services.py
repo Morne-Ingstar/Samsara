@@ -403,6 +403,8 @@ class SettingsServices:
         `updates` dict to merge onto the Modes tab's partial write instead
         of clobbering it.
         """
+        from samsara import listening_display
+        listening_display.run_display(self.app)
         updates: dict = {}
         for save_fn in self._save_fns:
             updates.update(save_fn(updates))
@@ -483,7 +485,6 @@ class SettingsServices:
             theme.set_theme(updates['ui'].get('theme'), refresh=True)
 
         if {
-            'listening_indicator_enabled',
             'listening_indicator_position',
             'listening_indicator_custom_position',
         }.intersection(updates):
@@ -510,3 +511,6 @@ class SettingsServices:
                 logger.debug(f"[SETTINGS] Smart Corrections warm_up call failed: {e}")
 
         self.close()
+        listening_display.request_restart_once(
+            self.app, lambda text: QMessageBox.information(self, "Samsara", text),
+        )

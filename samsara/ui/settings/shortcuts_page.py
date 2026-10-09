@@ -40,6 +40,12 @@ BASE = [
         "dictate_commit_hotkey"
     ],
     [
+        "Task held key",
+        "Hold to capture a task.",
+        "task_hotkey",
+        "task_hotkey"
+    ],
+    [
         "Quick memo",
         "Capture a short voice memo.",
         "memo_hotkey",

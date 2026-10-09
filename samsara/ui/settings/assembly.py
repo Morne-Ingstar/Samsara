@@ -230,15 +230,16 @@ class PageAssembly:
             if key == 'adv_aec_latency':
                 visible = w['adv_aec_enabled'].isChecked()
             if key == 'cmd_tab_suppress':
-                visible = 'Mouse' in w['cmd_tab_button'].currentText()
+                visible = w['cmd_tab_button'].combo in ('mouse4', 'mouse5')
             row.setProperty('conditionVisible', visible)
             row.setVisible(visible)
 
     def _connect_conditions(self):
         for key in ('cloud_enabled', 'ava_edit_enabled', 'sc_enabled', 'tts_enabled', 'wake_word_enabled', 'adv_aec_enabled'):
             self._widgets[key].toggled.connect(lambda _value: self._refresh_conditions())
-        for key in ('cloud_provider', 'adv_threshold_mode', 'adv_ducking_recording_mode', 'cmd_tab_button'):
+        for key in ('cloud_provider', 'adv_threshold_mode', 'adv_ducking_recording_mode'):
             self._widgets[key].currentIndexChanged.connect(lambda _value: self._refresh_conditions())
+        self._widgets['cmd_tab_button'].bindingChanged.connect(lambda _value: self._refresh_conditions())
         self._refresh_conditions()
 
     def config_row_inventory(self):

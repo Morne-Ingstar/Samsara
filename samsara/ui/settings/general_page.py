@@ -1,4 +1,5 @@
 """General Settings destination (285; placeholder copy)."""
+from samsara.listening_display import LABEL, QUESTION
 
 TITLE = "General"
 SUBTITLE = "Make Samsara comfortable for everyday use."
@@ -35,6 +36,7 @@ BASE = [
     ]
 ]
 ADVANCED = [
+    [LABEL, QUESTION, "listening_display", "ui.listening_display"],
     [
         "Start at sign-in",
         "Launch Samsara when you sign in to Windows.",
@@ -48,12 +50,6 @@ ADVANCED = [
         "start_hidden"
     ],
     [
-        "Listening indicator",
-        "Show when Samsara is listening.",
-        "adv_indicator_enabled",
-        "listening_indicator_enabled"
-    ],
-    [
         "Indicator position",
         "Choose the indicator's starting position.",
         "adv_indicator_pos",
@@ -64,12 +60,6 @@ ADVANCED = [
         "Recover the indicator or dictation preview.",
         "floatingWindowActions",
         ""
-    ],
-    [
-        "Live surface",
-        "Try the experimental listening display; off by default.",
-        "adv_live_surface_enabled",
-        "ui.live_surface.enabled"
     ],
     [
         "Preview fades after",

@@ -398,7 +398,7 @@ from samsara.smart_corrections import (
 )
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import autostart
-from samsara import config_defaults
+from samsara import config_defaults, listening_display
 from samsara import injection_safety
 from samsara import diagnostics
 from samsara import flight_recorder
@@ -1954,17 +1954,11 @@ class DictationApp:
         # the entire Qt event loop.
         self.listening_indicator = None  # set by _init_indicator on Qt thread
         self.live_surface = None
+        listening_display.run_display(self)
 
         def _init_indicator():
-            if (self.config.get('ui', {}) or {}).get('live_surface', {}).get('enabled', False):
-                from samsara.live_surface.controller import (
-                    LiveSurfaceController, LiveSurfaceIndicatorAdapter,
-                )
-                self.live_surface = LiveSurfaceController(self)
-                self.live_surface.start()
-                self.listening_indicator = LiveSurfaceIndicatorAdapter(self.live_surface)
+            if listening_display.build_display(self, ListeningIndicator):
                 return
-            self.listening_indicator = ListeningIndicator()
             self.listening_indicator.set_mode(self._get_mode_display())
             position = self.config.get('listening_indicator_position', 'bottom-center')
             custom = self.config.get('listening_indicator_custom_position')
@@ -1979,7 +1973,7 @@ class DictationApp:
                 self._on_indicator_placement_committed)
             self.listening_indicator.set_idle_animation(self._idle_animation_enabled())
             self.listening_indicator.set_wake_armed(bool(self.wake_word_active))
-            if self.config.get('listening_indicator_enabled', False):
+            if listening_display.display_visible(self):
                 self.listening_indicator.show()
 
         from PySide6.QtCore import QTimer
@@ -2158,11 +2152,11 @@ class DictationApp:
         )
 
         # Start keyboard listener
-        from samsara import hotkeys
+        from samsara import hotkeys, hold_key_rules
         hotkeys.bind_host_module(sys.modules[__name__])
-        self.keyboard_listener = pynput_keyboard.Listener(
-            on_press=hotkeys.safe_listener_callback(self.on_key_press, "on_press"),
-            on_release=hotkeys.safe_listener_callback(self.on_key_release, "on_release"),
+        self.keyboard_listener = hold_key_rules.hold_listener(self, pynput_keyboard,
+            press=hotkeys.safe_listener_callback(self.on_key_press, "on_press"),
+            release=hotkeys.safe_listener_callback(self.on_key_release, "on_release"),
         )
         self.keyboard_listener.start()
         _boot("keyboard/mouse listener setup")
@@ -5123,8 +5117,27 @@ class DictationApp:
         return hotkeys.HotkeyCluster._on_command_button(self, button_name, pressed)
 
     def _check_command_mode_key(self, key, pressed: bool) -> None:
-        from samsara import hotkeys
-        return hotkeys.HotkeyCluster._check_command_mode_key(self, key, pressed)
+        from samsara import ai_preferences, hold_key_rules, hotkeys
+        hotkeys.HotkeyCluster._check_command_mode_key(self, key, pressed)
+        if ai_preferences.ava_master_enabled(self.config):
+            return
+        if getattr(self, '_command_mode_key_held', False):
+            return  # Keep the command button's existing priority on legacy collisions.
+        binding = self.config.get('ava_mode_key', 'right_alt')
+        held = getattr(self, '_ava_mode_key_held', False)
+        target = hotkeys._get_pynput_command_key(binding)
+        match = hold_key_rules.hold_event_matches(self, key, binding, pressed, held)
+        if target is None and not hold_key_rules.validate(binding).allowed:
+            return
+        if not (match if match is not None else target is not None and hotkeys._matches_pynput_key(key, target)):
+            return
+        self._ava_mode_key_held = pressed
+        if not pressed or held:
+            return
+        from samsara.result_messages import AVA_KEY_OFF
+        logger.info('[AVA MODE] %s', AVA_KEY_OFF)
+        self._show_outcome_chip(AVA_KEY_OFF, 'warning', self.AVA_READINESS_CHIP_TTL_MS)
+        self._speak_session_notice(AVA_KEY_OFF, category='confirmation')
     # ── Unified session mode state machine (COMMAND <-> DICTATE) ────────────
 
     def _probe_media_transport(self, text: str):
@@ -5621,8 +5634,7 @@ class DictationApp:
             # Queue 80: "scratch everything" asks out loud before discarding.
             speak_fn=self._speak_session_notice,
             fragment_clear_gap_s=__import__('samsara.speech_pace', fromlist=['clear_gap_s']).clear_gap_s(self.config),
-            live_surface_enabled=bool((self.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', False)),
+            live_surface_enabled=listening_display.run_display(self).full,
         )
         from samsara.config_schema import spoken_notices_for_level
         self._session_mode_manager.set_spoken_notices(
@@ -6202,7 +6214,7 @@ class DictationApp:
                 # enter_command_mode). The Reminders & Alarms window
                 # (status_overlay.py) is never touched here.
                 self._schedule_ui(self.listening_indicator.set_session_mode, None, None)
-                if not self.config.get('listening_indicator_enabled', False):
+                if not listening_display.display_visible(self):
                     self._schedule_ui(self.listening_indicator.hide)
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         was_recording = self.recording
@@ -7539,7 +7551,7 @@ class DictationApp:
                 from samsara.session_modes import outcome_chip
                 chip = outcome_chip("personal_alias_offer", offer); from samsara.live_surface.feedback import alias_handoff
                 if chip:
-                    self._show_outcome_chip(*chip, 8000)
+                    with alias_handoff(self, offer): self._show_outcome_chip(*chip, 8000)
         except Exception as exc:
             logger.warning("[ALIASES] Offer state failed: %s", exc)
         if outcome.kind != "empty":
@@ -8128,8 +8140,7 @@ class DictationApp:
         method alongside their existing _update_mode_overlay calls.
         """
         controller = getattr(self, 'live_surface', None)
-        if (controller is not None and (self.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', False)):
+        if controller is not None and listening_display.run_display(self).full:
             if mode is SessionMode.DICTATE:
                 # This creates the existing preview *session* as a headless
                 # source of GPU partials; streaming.py redirects its display
@@ -8169,8 +8180,7 @@ class DictationApp:
             except Exception as e:
                 logger.debug(f'[DICTATE-PREVIEW] Stop failed: {e}')
         controller = getattr(self, 'live_surface', None)
-        if (controller is not None and (self.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', False)):
+        if controller is not None and listening_display.run_display(self).full:
             controller.stop_capture()
 
     # ── Hands-free audio ducking (2026-07-24) ──────────────────────────────
@@ -11452,8 +11462,7 @@ class DictationApp:
         audio_ducking.restore()
 
     def _live_surface_hold_parking_enabled(self) -> bool:
-        return bool((self.config.get('ui', {}) or {}).get(
-            'live_surface', {}).get('enabled', False))
+        return listening_display.run_display(self).full
 
     def _park_hold_feedback(self, message: str, sound: str = 'error') -> None:
         """Best-effort feedback; parking must never depend on Qt/audio."""
@@ -13363,12 +13372,8 @@ class DictationApp:
         self._dispatch_command(self._last_command)
 
     def toggle_listening_indicator(self):
-        """Toggle the listening indicator overlay on/off and persist to config."""
-        enabled = not self.config.get('listening_indicator_enabled', False)
-        with self._config_lock:
-            self.config['listening_indicator_enabled'] = enabled
-            self.save_config()
-        self.apply_listening_indicator_settings()
+        """Toggle the selected display for this session without changing the choice."""
+        listening_display.toggle_display_visibility(self)
 
     def apply_listening_indicator_settings(self):
         """Apply the persisted indicator visibility and placement live.
@@ -13381,7 +13386,7 @@ class DictationApp:
         if indicator is None:
             return
 
-        enabled = bool(self.config.get('listening_indicator_enabled', False))
+        enabled = bool(listening_display.display_visible(self))
         position = self.config.get('listening_indicator_position', 'bottom-center')
         custom = self.config.get('listening_indicator_custom_position')
 

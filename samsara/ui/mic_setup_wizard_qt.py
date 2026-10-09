@@ -379,8 +379,10 @@ class _WizardWindow(QDialog):
             "few words to confirm it's picking up your voice."
         ))
         row = QHBoxLayout()
-        row.addWidget(_label("Microphone:"))
+        device_label = _label("Microphone:")
+        row.addWidget(device_label)
         self._device_combo = QComboBox()
+        device_label.setBuddy(self._device_combo)
         self._device_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
@@ -392,8 +394,10 @@ class _WizardWindow(QDialog):
         refresh_btn.clicked.connect(self._on_refresh_devices)
         row.addWidget(refresh_btn)
         lay.addLayout(row)
-        lay.addWidget(_label("Signal:"))
+        signal_label = _label("Signal:")
+        lay.addWidget(signal_label)
         self._device_level_bar = _LevelBar()
+        self._device_level_bar._bar.setAccessibleName(signal_label.text())
         lay.addWidget(self._device_level_bar)
         self._device_status = QLabel("Say something to test the mic...")
         self._device_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
@@ -412,6 +416,7 @@ class _WizardWindow(QDialog):
             "clearly without picking up too much background noise."
         ))
         self._level_bar = _LevelBar()
+        self._level_bar._bar.setAccessibleName(self._STEP_TITLES[self._STEP_LEVEL])
         lay.addWidget(self._level_bar)
         self._level_hint = QLabel("")
         self._level_hint.setStyleSheet(

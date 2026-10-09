@@ -42,6 +42,7 @@ try:
 except ImportError:
     pyperclip = None
 
+from samsara import listening_display
 from samsara.cleanup import clean_text
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -2014,8 +2015,7 @@ class StreamingSession:
         self.cancel_event = threading.Event()
         self._state = self.STATE_RECORDING
         self._state_lock = threading.Lock()
-        self._parking_enabled = bool((app.config.get('ui', {}) or {}).get(
-            'live_surface', {}).get('enabled', False))
+        self._parking_enabled = listening_display.run_display(app).full
         # Surface-enabled holds must stay retractable until their final
         # delivery decision.  Direct partial paste defeats Pause.
         self._direct_paste = (not self._parking_enabled and bool(
@@ -2042,8 +2042,8 @@ class StreamingSession:
         self._live_partials = None
         self._cpu_final_only = False
         controller = getattr(app, 'live_surface', None)
-        if controller is not None and (app.config.get('ui', {}) or {}).get(
-                'live_surface', {}).get('enabled', False):
+        if listening_display.run_display(app).full:
+            controller = listening_display.require_full_surface(app)
             from samsara.live_surface.model import Lane
             from samsara.live_surface.partials import CapturePartials, cpu_final_only
             capture_id = controller.begin_capture(Lane.HOLD)
@@ -2211,7 +2211,6 @@ class StreamingSession:
                     self._notify_finished()
                     return
 
-        # Update overlay to show final text.
         self._overlay.update_text(text.rstrip(),
                                   StreamingOverlayQt.STATE_DONE)
         logger.info(f"[OK] {text}")
@@ -2248,6 +2247,8 @@ class StreamingSession:
                 if delivered:
                     if isinstance(self._overlay, _LiveSurfaceStreamingOverlay):
                         self._overlay.delivery_finished(text.rstrip())
+                    if callable(show := getattr(self.app, '_show_outcome_chip', None)):
+                        show("typed", "success", 900)
                 else:
                     manager = self.app._ensure_session_mode_manager()
                     manager.stage_parked_hold(text, source="failed delivery")
@@ -2260,7 +2261,6 @@ class StreamingSession:
                                  daemon=True)
             else:
                 self._paste_with_retry(text)
-
         self._overlay.flash_done_and_fade(self._mark_done)
 
     def _paste_with_retry(self, text):
@@ -2552,9 +2552,9 @@ class DictatePreviewSession:
         saved_placement = command_mode.get("preview_position", PREVIEW_POSITION_DEFAULT)
         self._live_partials = None
         controller = getattr(app, "live_surface", None)
-        live_enabled = bool((getattr(app, "config", {}).get("ui", {}) or {}).get(
-            "live_surface", {}).get("enabled", False))
-        if controller is not None and live_enabled:
+        live_enabled = listening_display.run_display(app).full
+        if live_enabled:
+            controller = listening_display.require_full_surface(app)
             # Keep this session's existing GPU partial ticker and its
             # authoritative final callback, but do not build a second Qt
             # window.  The small adapter below forwards its presentation

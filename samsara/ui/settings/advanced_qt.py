@@ -343,19 +343,14 @@ class AdvancedPage:
         layout.addWidget(indicator_desc)
         layout.addSpacing(6)
 
-        ind_cb = _add_checkbox_row(
-            'adv_indicator_enabled', "Show listening indicator overlay",
-            bool(cfg.get('listening_indicator_enabled', False)),
-        )
-        layout.addSpacing(8)
-
-        live_surface_cfg = (cfg.get('ui', {}) or {}).get('live_surface', {}) or {}
-        live_surface_cb = _add_checkbox_row(
-            'adv_live_surface_enabled',
-            "Use the new live surface (experimental — incomplete; the old indicator and preview are the default)",
-            bool(live_surface_cfg.get('enabled', False)),
-        )
-        layout.addSpacing(8)
+        from samsara import listening_display
+        from samsara.ui.listening_display_page import settings_control
+        listening_display.run_display(self.app)
+        display_combo = settings_control(cfg)
+        self._widgets['listening_display'] = display_combo
+        layout.addLayout(self._setting_row(
+            listening_display.LABEL, listening_display.QUESTION, display_combo,
+        ))
 
         pos_options = [
             'top-left', 'top-center', 'top-right',
@@ -595,18 +590,14 @@ class AdvancedPage:
                     ].value(),
                 })
                 updates['ducking'] = ducking_out
-                updates['listening_indicator_enabled']  = (
-                    self._widgets['adv_indicator_enabled'].isChecked()
-                )
-                # General has already staged the theme; keep that update when
-                # adding the live-surface preference to the shared ui section.
                 ui_out = dict(acc.get('ui', self.app.config.get('ui', {})) or {})
-                live_surface_out = dict(ui_out.get('live_surface', {}) or {})
-                live_surface_out['enabled'] = self._widgets[
-                    'adv_live_surface_enabled'
-                ].isChecked()
-                ui_out['live_surface'] = live_surface_out
-                updates['ui'] = ui_out
+                combo = self._widgets['listening_display']
+                chosen = bool(combo.property('display_chosen'))
+                value = (combo.currentData() if chosen else
+                         listening_display.display_choice(self.app.config).value)
+                updates.update(listening_display.choice_updates(
+                    {**self.app.config, 'ui': ui_out}, value, chosen=chosen,
+                ))
                 selected_pos = self._widgets['adv_indicator_pos'].currentText()
                 updates['listening_indicator_position'] = selected_pos
                 if selected_pos != 'custom' and self.app.config.get(
