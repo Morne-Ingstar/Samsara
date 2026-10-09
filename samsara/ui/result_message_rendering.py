@@ -6,21 +6,19 @@ from samsara.result_messages import CHAIN_CONNECTOR, is_chain_result, is_ava_cha
 from samsara.ui import theme
 
 
-def result_html(label, *, ink=None, connector="dot"):
+def result_html(label, *, ink=None):
     if not is_chain_result(label):
         return escape(str(label))
-    glyph = "&amp;" if connector == "ampersand" else "·"
-    colour = theme.ACCENT if connector == "ampersand" else (ink or theme.TEXT_PRIMARY)
-    badge = f';background-color:{theme.BG0}' if connector == "ampersand" else ''
-    joiner = f' &nbsp;<span style="font-size:125%;font-weight:900;color:{colour}{badge}">{glyph}</span>&nbsp; '
+    colour = ink or theme.TEXT_PRIMARY
+    joiner = f' &nbsp;<span style="font-size:125%;font-weight:900;color:{colour}">·</span>&nbsp; '
     return joiner.join(escape(part) for part in str(label).split(CHAIN_CONNECTOR))
 
 
-def result_document(label, font, ink, connector="dot"):
+def result_document(label, font, ink):
     doc = QTextDocument()
     doc.setDocumentMargin(0)
     doc.setDefaultFont(font)
-    doc.setHtml(f'<span style="color:{ink}">{result_html(label, ink=ink, connector=connector)}</span>')
+    doc.setHtml(f'<span style="color:{ink}">{result_html(label, ink=ink)}</span>')
     doc.setTextWidth(-1)
     return doc
 

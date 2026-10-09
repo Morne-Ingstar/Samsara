@@ -32,8 +32,7 @@ def test_refused_chain_runs_nothing_and_explains_the_needed_yes(rig, monkeypatch
     monkeypatch.setattr(policy,'authorize',lambda *_a,**_kw:policy.NeedsConfirmation('confirmation_required'))
     result=executor.process_text('new tab and scroll down',force_commands=True)
     assert result.state.value=='rejected' and calls==[]
-    assert seen[0][0].startswith('Say "')
-    assert seen[0][0].endswith('on its own; it needs your yes.')
+    assert seen[0][0] == 'Say "new tab" on its own; it needs your yes.'
 
 
 @pytest.mark.parametrize('level', ['silent', 'brief', 'full'])
@@ -254,7 +253,7 @@ def test_connectors_escape_arguments_and_both_displays_use_ava_token(qapp, palet
         label = 'Completed (Ava): opened <Notepad> · Windows volume 30%'
         html = result_html(label)
         assert '&lt;Notepad&gt;' in html and '125%' in html and 'font-weight:900' in html
-        assert '&amp;' in result_html(label, connector='ampersand')
+        assert html.count('>·</span>') == 1 and '&amp;' not in html
         band.set_notice(Notice(NoticeKind.SUCCESS, label, None))
         band.restyle()
         assert band.fill == QColor(theme.AVA)
@@ -313,3 +312,22 @@ def test_rejected_prefix_cannot_reopen_its_ignored_words(rig, monkeypatch):
     result = executor.process_text('open notepad in purple monkey', force_commands=True)
     assert result.state.value == 'miss'
     assert not calls
+
+
+@pytest.mark.parametrize('label,expected', [
+    ('Done: opened Notepad · Windows volume 30%',
+     'Done: opened Notepad, Windows volume 30%'),
+    ('Completed (Ava): opened Notepad · Windows volume 30%',
+     'Completed (Ava): opened Notepad, Windows volume 30%'),
+    ('Done: opened Notepad · Windows volume 30% · paused Spotify',
+     'Done: opened Notepad, Windows volume 30%, paused Spotify'),
+    ('Ordinary message · keep literal punctuation',
+     'Ordinary message · keep literal punctuation'),
+])
+def test_engine_receives_pause_punctuation_for_chain_results(label, expected):
+    from tests.test_audio_coordinator import _make_coordinator
+    coordinator, app, engine, _ = _make_coordinator()
+    app.config.update(tts={'feedback_level': 'full', 'enabled': True})
+    app.command_mode_active = False
+    coordinator.speak(label, category='command')
+    assert engine.speak.call_args.args[0] == expected

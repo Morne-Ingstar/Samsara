@@ -18,3 +18,8 @@ def is_chain_result(label):
 
 def is_ava_chain_result(label):
     return str(label).startswith("Completed (Ava): ")
+
+
+def spoken_result(label):
+    """Use pause punctuation for the visible separator, never a connector word."""
+    return label.replace(CHAIN_CONNECTOR, ", ") if is_chain_result(label) else label

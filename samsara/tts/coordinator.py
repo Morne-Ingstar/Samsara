@@ -349,8 +349,9 @@ class AudioCoordinator:
             self._active_interruptible = interruptible
             self.transition_to(SPEAKING, context={'text': text})
 
+            from samsara.result_messages import spoken_result
             handle = self.engine.speak(
-                text,
+                spoken_result(text),
                 voice_id=effective_voice,
                 speed=effective_speed,
                 volume=effective_volume,
