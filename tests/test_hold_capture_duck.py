@@ -52,12 +52,17 @@ def app():
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in METHODS]
     ns = dict(StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
               reset_current_stage_timing=reset_current_stage_timing, time=time, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
-              audio_ducking=SimpleNamespace(SessionDucker=None),
+              audio_ducking=SimpleNamespace(SessionDucker=None, start_recording_media=Mock()),
               thread_registry=SimpleNamespace(timer=Timer),
               _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S=0.5,
               HOLD_RELEASE_TAIL_SPEECH_THRESHOLD=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
               _RecordingOwnership=collections.namedtuple(
                   'Ownership', 'is_command is_ava command_ghost ava_ghost'))
+    # Bind the current display dependency only when the extracted source uses it.
+    if any(isinstance(node, ast.Name) and node.id == 'listening_display'
+           for method in methods for node in ast.walk(method)):
+        from samsara import listening_display
+        ns['listening_display'] = listening_display
     exec(compile(ast.Module(body=methods, type_ignores=[]), 'dictation.py', 'exec'), ns)
     a = SimpleNamespace(
         config={'mode': 'hold', 'recording_tail_ms': 0},
@@ -87,6 +92,7 @@ def app():
         def __init__(self, duck_level, exclude_pids):
             self.level = duck_level
             self.sessions_failed = 0
+            self.sessions_ducked = getattr(a, 'sessions_to_duck', 1)
             self.last_error = None
             self._tracked_by_id = {'media': object()}
             self.stop_calls = 0
@@ -462,3 +468,170 @@ def test_ducked_opening_speech_is_not_used_as_release_tail_noise_floor(app, monk
     c.drain_after_release(silence_ms=100, max_tail_ms=200, speech_threshold=0.008)
     assert log.debug.call_args.args[1] == 'max'
     assert log.debug.call_args.args[-2:] == (0.008, 0.0)
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_404_fresh_no_media_keeps_actual_opening_samples(app, monkeypatch, streaming):
+    import samsara.audio_engine.dictation_consumer as module
+    app.sessions_to_duck = 0
+    monkeypatch.setattr(app.ns['time'], 'perf_counter', lambda: 10.0)
+    start(app)
+    ends = [9.7, 9.8, 9.9, 10.0, 10.1, 10.2]
+    c = consumer(app, [frame(index, end) for index, end in enumerate(ends)])
+    monkeypatch.setattr(module.thread_registry, 'spawn', lambda *args, **kwargs: None)
+    assert (c.activate_streaming if streaming else c.activate)()
+    stop = c._streaming_stop if streaming else c._drain_stop
+    monkeypatch.setattr(module.time, 'sleep', lambda _: stop.set())
+    (c._streaming_drain_loop if streaming else c._hold_drain_loop)(stop)
+    audio = (c.stop_streaming if streaming else c.drain)()
+    expected = np.concatenate([frame(i, ends[i]).pcm.astype(np.float32) / 32767.0
+                               for i in (2, 3, 4, 5)])
+    np.testing.assert_array_equal(audio, expected)
+    app.stop_recording()
+
+
+def test_404_noop_policy_anchors_to_request_not_slow_confirmation(app, monkeypatch):
+    app.sessions_to_duck = 0
+    now = [10.0]
+    monkeypatch.setattr(app.ns['time'], 'perf_counter', lambda: now[0])
+    original = app.ns['audio_ducking'].SessionDucker.start
+    def delayed(ducker):
+        original(ducker)
+        now[0] = 10.7
+    app.ns['audio_ducking'].SessionDucker.start = delayed
+    start(app)
+    onset = app._hold_capture_onset
+    assert onset.policy == 'eligible'
+    assert onset.boundary == 9.75
+    assert app._hold_capture_duck_confirmed_at == 10.7
+    assert onset.confirmed_at == 10.7
+    app.stop_recording()
+    assert app._hold_capture_onset is None
+    assert app._hold_capture_duck_confirmed_at is None
+
+
+@pytest.mark.parametrize('case', ['ducked', 'reused', 'pending'])
+def test_404_strict_cases_preserve_confirmed_sample_boundary(app, monkeypatch, case):
+    import samsara.audio_engine.dictation_consumer as module
+    app.sessions_to_duck = 1 if case == 'ducked' else 0
+    if case == 'reused':
+        owner = app._open_hands_free_capture_duck()
+    elif case == 'pending':
+        # An existing owner is still starting, even if it prematurely exposes
+        # a ducker with zero counters. Such uncertainty never qualifies.
+        app._hands_free_capture_duck_starting = True
+        app._hands_free_capture_duck_owners.add(1)
+        app._hands_free_capture_ducker = app.ns['audio_ducking'].SessionDucker(0.15, set())
+    monkeypatch.setattr(app.ns['time'], 'perf_counter', lambda: 10.0)
+    if case == 'pending':
+        # Finish the other owner's start during the existing confirmation wait.
+        def complete(_):
+            app._dictation_consumer.activate.assert_not_called()
+            app._hands_free_capture_duck_starting = False
+        monkeypatch.setattr(app.ns['time'], 'sleep', complete)
+    start(app)
+    assert app._hold_capture_onset.policy == 'strict'
+    assert app._hold_capture_onset.boundary == app._hold_capture_duck_confirmed_at == 10.0
+    for streaming in (False, True):
+        c = consumer(app, [frame(0, 9.9), frame(1, 10.05), frame(2, 10.2)])
+        monkeypatch.setattr(module.thread_registry, 'spawn', lambda *args, **kwargs: None)
+        assert (c.activate_streaming if streaming else c.activate)()
+        stop = c._streaming_stop if streaming else c._drain_stop
+        monkeypatch.setattr(module.time, 'sleep', lambda _: stop.set())
+        (c._streaming_drain_loop if streaming else c._hold_drain_loop)(stop)
+        np.testing.assert_array_equal((c.stop_streaming if streaming else c.drain)(),
+                                      frame(2, 10.2).pcm.astype(np.float32) / 32767.0)
+    app.stop_recording()
+
+
+@pytest.mark.parametrize('failure', ['raise', 'counter', 'error', 'lost_owner'])
+def test_404_failed_open_clears_policy_and_never_activates(app, failure):
+    app.sessions_to_duck = 0
+    start(app)
+    old_onset = app._hold_capture_onset
+    app.stop_recording()
+    flush(app)
+    # Also cover a stale object left by a previous caller: opening resets it.
+    app._hold_capture_onset = old_onset
+    app._dictation_consumer.activate.reset_mock()
+    original = app.ns['audio_ducking'].SessionDucker.start
+    def fail(ducker):
+        original(ducker)
+        if failure == 'raise':
+            raise RuntimeError('injected backend error')
+        if failure == 'counter':
+            ducker.sessions_failed = 1
+        if failure == 'error':
+            ducker.last_error = 'injected acknowledgement error'
+        if failure == 'lost_owner':
+            app._running = False
+    app.ns['audio_ducking'].SessionDucker.start = fail
+    with pytest.raises(RuntimeError, match='Hold capture duck'):
+        start(app)
+    assert app._hold_capture_onset is None
+    assert app._hold_capture_duck_confirmed_at is None
+    assert app._hold_capture_duck_token is None
+    app._dictation_consumer.activate.assert_not_called()
+
+
+def test_404_back_to_back_noop_holds_do_not_inherit_eligibility(app):
+    app.sessions_to_duck = 0
+    start(app)
+    assert app._hold_capture_onset.policy == 'eligible'
+    app.stop_recording()
+    assert app._hold_capture_onset is None
+    start(app)  # Still inside the restore debounce, so the ducker is reused.
+    assert len(app.duckers) == 1
+    assert app._hold_capture_onset.policy == 'strict'
+    assert app._hold_capture_onset.token == -2
+    app.stop_recording()
+    flush(app)
+    start(app)  # A genuinely fresh ducker qualifies again.
+    assert app._hold_capture_onset.policy == 'eligible'
+    assert app._hold_capture_onset.token == -3
+    app.stop_recording()
+
+
+@pytest.mark.parametrize('lane', ['command_mode_recording', 'ava_mode_recording', '_memo_recording'])
+def test_404_special_lane_start_never_opens_onset_policy(app, lane):
+    app.sessions_to_duck = 0
+    start(app)
+    app.stop_recording()
+    setattr(app, lane, True)
+    start(app)
+    assert app._hold_capture_onset is None
+    assert app._hold_capture_duck_confirmed_at is None
+    assert len(app.duckers) == 1
+    app._duck_audio.assert_called_once()
+    app.stop_recording()
+
+
+def test_404_disabled_open_clears_previous_onset(app):
+    app.sessions_to_duck = 0
+    start(app)
+    previous = app._hold_capture_onset
+    app.stop_recording()
+    app._hold_capture_onset = previous
+    app.config['capture_duck_hold_enabled'] = False
+    start(app)
+    assert app._hold_capture_onset is not previous
+    assert app._hold_capture_onset.policy == 'strict'
+    assert app._hold_capture_onset.boundary is None
+    assert app._hold_capture_duck_confirmed_at is None
+    app.stop_recording()
+
+
+def test_404_empty_hold_has_one_timing_record_and_cleanup_is_idempotent(app):
+    app.sessions_to_duck = 0
+    start(app)
+    app.stop_recording()
+    app._close_hold_capture_duck()
+    calls = [call for call in app.ns['flight_recorder'].record.call_args_list
+             if call.args == ('hold_capture.onset',)]
+    assert len(calls) == 1
+    assert calls[0].kwargs['policy'] == 'eligible'
+    assert calls[0].kwargs['first_kept_block_start'] is None
+    assert calls[0].kwargs['opening_blocks_dropped'] == 0
+    assert set(calls[0].kwargs) == {'owner_token', 'policy', 'boundary',
+                                   'first_kept_block_start', 'opening_blocks_dropped',
+                                   'rewind_suppressed'}

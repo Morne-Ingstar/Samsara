@@ -75,6 +75,7 @@ class DictationSessionConsumer:
         self._streaming_thread = None
         self._capture_not_before = None
         self._capture_not_after = None
+        self._capture_onset = None
         self._prebuffer_rewound = False
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
@@ -125,7 +126,7 @@ class DictationSessionConsumer:
         self._active         = True
         self._epoch_at_start = None
         self._drain_stop     = threading.Event()
-        self._capture_not_before = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
+        self._capture_not_before = self._select_capture_boundary()
         self._capture_not_after = None
         self._prebuffer_rewound = False
 
@@ -140,8 +141,12 @@ class DictationSessionConsumer:
 
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
+            if self._capture_onset is not None:
+                self._capture_onset.rewind_suppressed = 'tts_active'
             logger.debug("[PRE] Pre-buffer skipped — TTS actively speaking")
         elif time.monotonic() - getattr(self._app, '_tts_last_speaking', 0.0) < 0.5:
+            if self._capture_onset is not None:
+                self._capture_onset.rewind_suppressed = 'tts_recent'
             logger.debug("[PRE] Pre-buffer skipped — TTS ended too recently")
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
@@ -162,17 +167,35 @@ class DictationSessionConsumer:
         if (force or self._capture_not_before is not None) and self._capture_not_after is None:
             self._capture_not_after = time.perf_counter()
 
+    def _select_capture_boundary(self):
+        """Use only this ordinary hold's policy; preserve absent/legacy bounds."""
+        confirmed = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
+        onset = getattr(self._app, '_hold_capture_onset', None)
+        self._capture_onset = None
+        special_lane = any(getattr(self._app, name, False) for name in
+                           ('command_mode_recording', 'ava_mode_recording', '_memo_recording'))
+        if (onset is not None and not special_lane
+                and onset.token == getattr(self._app, '_hold_capture_duck_token', None)
+                and onset.confirmed_at == confirmed):
+            self._capture_onset = onset
+            return onset.boundary
+        return confirmed
+
     def _frame_inside_capture_duck(self, frame) -> bool:
-        """Drop pre-confirmation/straddling frames BEFORE either accumulator.
+        """Apply whole-block onset and end boundaries BEFORE either accumulator.
 
         ACE timestamps a block at its end. Rewinding remains unchanged, but
-        an entire block must start after the volume acknowledgements. A
+        an entire block must start at or after the selected onset boundary. A
         whole boundary block is discarded instead of admitting older samples.
         """
         before = self._capture_not_before
         after = self._capture_not_after
-        return ((before is None or frame.t_capture - FRAME_MS / 1000.0 >= before)
+        start = frame.t_capture - FRAME_MS / 1000.0
+        kept = ((before is None or start >= before)
                 and (after is None or frame.t_capture <= after))
+        if self._capture_onset is not None:
+            self._capture_onset.observe(start, kept, before)
+        return kept
 
     def _hold_drain_loop(self, stop_event) -> None:
         """Background thread: drain ring → _frames continuously during a hold.
@@ -506,15 +529,19 @@ class DictationSessionConsumer:
         """
         self._streaming_frames: list = []
         self._streaming_stop  = threading.Event()
-        self._capture_not_before = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
+        self._capture_not_before = self._select_capture_boundary()
         self._capture_not_after = None
 
         # Snap + rewind (same logic as activate())
         self._reader.snap_to_head()
         _coordinator = getattr(self._app, 'audio_coordinator', None)
         if _coordinator and _coordinator.is_speaking:
+            if self._capture_onset is not None:
+                self._capture_onset.rewind_suppressed = 'tts_active'
             logger.debug("[PRE] Streaming: pre-buffer skipped — TTS actively speaking")
         elif time.monotonic() - getattr(self._app, '_tts_last_speaking', 0.0) < 0.5:
+            if self._capture_onset is not None:
+                self._capture_onset.rewind_suppressed = 'tts_recent'
             logger.debug("[PRE] Streaming: pre-buffer skipped — TTS ended too recently")
         else:
             self._reader.rewind(PREBUFFER_FRAMES)

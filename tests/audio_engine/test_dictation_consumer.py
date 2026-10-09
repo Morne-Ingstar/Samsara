@@ -297,3 +297,173 @@ class TestReleaseTail:
 
         assert audio is not None
         assert elapsed < 0.5
+
+
+# 404: real ring and production accumulators, with deterministic scheduling.
+def _onset_activate(consumer, streaming, monkeypatch):
+    import samsara.audio_engine.dictation_consumer as module
+    monkeypatch.setattr(module.thread_registry, 'spawn', lambda *args, **kwargs: None)
+    assert (consumer.activate_streaming if streaming else consumer.activate)()
+
+
+def _onset_pump(consumer, streaming, monkeypatch):
+    import samsara.audio_engine.dictation_consumer as module
+    stop = consumer._streaming_stop if streaming else consumer._drain_stop
+    stop.clear()
+    monkeypatch.setattr(module.time, 'sleep', lambda _: stop.set())
+    (consumer._streaming_drain_loop if streaming else consumer._hold_drain_loop)(stop)
+
+
+def _onset_audio(consumer, streaming):
+    return (consumer.stop_streaming if streaming else consumer.drain)()
+
+
+def _onset_app(eligible=True, request=10.0, confirmation=10.02):
+    from samsara.hold_capture_onset import HoldOnset
+    from unittest.mock import Mock
+    app = _FakeApp()
+    app._hold_capture_duck_token = -1
+    app._hold_capture_duck_confirmed_at = confirmation
+    app.onset_record = Mock()
+    app._hold_capture_onset = HoldOnset(-1, request, confirmation, eligible, app.onset_record)
+    return app
+
+
+def _onset_write(bus, ends, first_value=100):
+    for index, end in enumerate(ends):
+        bus.write(_pcm(first_value + index), end, device_epoch=0)
+
+
+def _onset_expected(values):
+    return np.concatenate([_pcm(value).astype(np.float32) / 32767.0 for value in values])
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('phase', [0.0, 0.025, 0.05, 0.075, 0.099])
+@pytest.mark.parametrize('eligible', [False, True])
+def test_404_onset_phase_sweep_keeps_only_whole_blocks(monkeypatch, streaming, phase, eligible):
+    app = _onset_app(eligible=eligible)
+    boundary = app._hold_capture_onset.boundary
+    # Ends are exactly 100 ms apart. The boundary falls at each chosen phase.
+    ends = [boundary + phase + index / 10 for index in range(-3, 6)]
+    starts = [end - FRAME_MS / 1000.0 for end in ends]
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    _onset_write(bus, ends)
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_pump(consumer, streaming, monkeypatch)
+    expected_values = [100 + index for index, start in enumerate(starts) if start >= boundary]
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected(expected_values))
+    app._hold_capture_onset.finish()
+    record = app.onset_record.call_args.kwargs
+    assert record['first_kept_block_start'] == next(start for start in starts if start >= boundary)
+    assert record['opening_blocks_dropped'] == sum(start < boundary for start in starts)
+    assert record['policy'] == ('eligible' if eligible else 'strict')
+    assert record['boundary'] == boundary
+    app.onset_record.assert_called_once()
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_404_exact_equality_and_end_cutoff(monkeypatch, streaming):
+    # Binary-exact subtraction gives an exact equality at 0.0; adjacent
+    # representable ends prove neither boundary is accidentally widened.
+    app = _onset_app(request=0.25, confirmation=0.27)
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    ends = [np.nextafter(0.1, -np.inf), 0.1, 0.2, np.nextafter(0.2, np.inf)]
+    _onset_write(bus, ends)
+    _onset_activate(consumer, streaming, monkeypatch)
+    import samsara.audio_engine.dictation_consumer as module
+    monkeypatch.setattr(module.time, 'perf_counter', lambda: 0.2)
+    consumer.finish_capture()
+    _onset_pump(consumer, streaming, monkeypatch)
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected([101, 102]))
+    assert consumer._capture_not_after == 0.2
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_404_earcon_delay_recovers_audio_since_request(monkeypatch, streaming):
+    app = _onset_app()
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    # History at key-down, then blocks arriving during the unchanged earcon
+    # wait. The consumer activates only after both groups have been written.
+    _onset_write(bus, [9.7, 9.8, 9.9, 10.0])
+    _onset_write(bus, [10.1, 10.2], first_value=104)
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_pump(consumer, streaming, monkeypatch)
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected([102, 103, 104, 105]))
+    assert app._hold_capture_duck_confirmed_at == 10.02
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('guard', ['active', 'recent'])
+def test_404_tts_still_suppresses_rewind(monkeypatch, streaming, guard):
+    from types import SimpleNamespace
+    import samsara.audio_engine.dictation_consumer as module
+    app = _onset_app()
+    app.audio_coordinator = SimpleNamespace(is_speaking=guard == 'active')
+    app._tts_last_speaking = 19.9 if guard == 'recent' else 0.0
+    monkeypatch.setattr(module.time, 'monotonic', lambda: 20.0)
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    _onset_write(bus, [9.9, 10.0, 10.1])
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_write(bus, [10.2], first_value=103)
+    _onset_pump(consumer, streaming, monkeypatch)
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected([103]))
+    app._hold_capture_onset.finish()
+    assert app.onset_record.call_args.kwargs['rewind_suppressed'] == 'tts_' + guard
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_404_second_hold_resets_policy_and_snaps_stale_cursor(monkeypatch, streaming):
+    app = _onset_app()
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    _onset_write(bus, [9.7, 9.8, 9.9, 10.0, 10.1])
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_pump(consumer, streaming, monkeypatch)
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected([102, 103, 104]))
+    app._hold_capture_onset = None
+    app._hold_capture_duck_token = -2
+    app._hold_capture_duck_confirmed_at = 12.02
+    _onset_write(bus, [10.2 + i / 10 for i in range(25)], first_value=200)
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_pump(consumer, streaming, monkeypatch)
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected([220, 221, 222, 223, 224]))
+    assert consumer._capture_not_before == 12.02
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('lane', ['command_mode_recording', 'ava_mode_recording', '_memo_recording'])
+def test_404_special_lanes_ignore_stale_ordinary_onset(monkeypatch, streaming, lane):
+    app = _onset_app()
+    setattr(app, lane, True)
+    # Same absence of a confirmation boundary as ordinary HEAD special lanes.
+    app._hold_capture_duck_confirmed_at = None
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    _onset_write(bus, [9.0 + i / 10 for i in range(16)])
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_pump(consumer, streaming, monkeypatch)
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected(range(101, 116)))
+    app.onset_record.assert_not_called()
+    assert consumer._capture_not_before is None
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('mismatch', ['token', 'confirmation'])
+def test_404_stale_token_or_confirmation_cannot_relax_boundary(monkeypatch, streaming, mismatch):
+    app = _onset_app()
+    if mismatch == 'token':
+        app._hold_capture_duck_token = -2
+    else:
+        app._hold_capture_duck_confirmed_at = 10.25
+    bus = FrameBus()
+    consumer = DictationSessionConsumer(_FakeEngine(bus), app)
+    _onset_write(bus, [9.9, 10.0, 10.1, 10.2, 10.3, 10.4])
+    _onset_activate(consumer, streaming, monkeypatch)
+    _onset_pump(consumer, streaming, monkeypatch)
+    values = [103, 104, 105] if mismatch == 'token' else [105]
+    np.testing.assert_array_equal(_onset_audio(consumer, streaming), _onset_expected(values))

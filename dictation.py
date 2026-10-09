@@ -11535,7 +11535,9 @@ class DictationApp:
 
     def _open_hold_capture_duck(self):
         """Reuse capture ownership; wait for synchronous volume acknowledgements."""
+        from samsara import hold_capture_onset
         self._hold_capture_duck_confirmed_at = None
+        self._hold_capture_onset = hold_capture_onset.HoldOnset(None, None, None, False, flight_recorder.record)
         cfg = self.config.get('ducking', {}) or {}
         media_mode = cfg.get(
             'recording_mode',
@@ -11549,18 +11551,16 @@ class DictationApp:
                 or not cfg.get('hands_free_enabled', True)
                 or float(cfg.get('hands_free_level', 0.15)) >= 1.0):
             return
-        # Hands-free owners are positive. A fresh negative token prevents a
-        # delayed close from an earlier hold from releasing a later one.
         self._hold_capture_duck_seq += 1
         token = -self._hold_capture_duck_seq
         self._hold_capture_duck_token = token
+        self._hold_capture_onset.token = token
         started = time.perf_counter()
         confirmed = False
         try:
-            if self._open_hands_free_capture_duck(token) != token:
+            owner, fresh = hold_capture_onset.open_owned_duck(self, token, audio_ducking, logger)
+            if owner != token:
                 raise RuntimeError('Hold capture duck could not engage')
-            # The shared helper returns early if another owner is still
-            # starting. Do not mistake that token reservation for completion.
             deadline = time.perf_counter() + 2.0
             while True:
                 with self._hands_free_duck_lock:
@@ -11569,7 +11569,7 @@ class DictationApp:
                     owned = token in self._hands_free_capture_duck_owners
                 if not owned or not self._running:
                     raise RuntimeError('Hold capture duck lost ownership')
-                if ducker is not None:
+                if ducker is not None and not starting:
                     if ducker.sessions_failed or ducker.last_error:
                         raise RuntimeError('Hold capture duck volume update failed')
                     break
@@ -11577,19 +11577,19 @@ class DictationApp:
                     raise RuntimeError('Hold capture duck did not confirm')
                 time.sleep(0.005)
             self._hold_capture_duck_confirmed_at = time.perf_counter()
+            self._hold_capture_onset = hold_capture_onset.HoldOnset(
+                token, started, self._hold_capture_duck_confirmed_at,
+                fresh and getattr(ducker, 'sessions_ducked', None) == 0, flight_recorder.record)
             confirmed = True
         finally:
-            elapsed_ms = (time.perf_counter() - started) * 1000.0
-            flight_recorder.record('hold_capture_duck.engage', owner_token=token,
-                                   confirmed=confirmed, elapsed_ms=elapsed_ms)
-            logger.info('[DUCK] Hold capture confirmed=%s in %.2f ms', confirmed, elapsed_ms)
-            if not confirmed:
-                self._close_hold_capture_duck()
+            hold_capture_onset.finish_open(self, token, started, confirmed, time, flight_recorder, logger)
 
     def _close_hold_capture_duck(self, *, immediate=False):
         """Release only this hold; shutdown also flushes an unowned debounce."""
+        from samsara import hold_capture_onset
         token, self._hold_capture_duck_token = self._hold_capture_duck_token, None
         self._hold_capture_duck_confirmed_at = None
+        hold_capture_onset.close_onset(self)
         try:
             if token is not None:
                 try:
