@@ -210,6 +210,21 @@ ADVANCED = [
     ]
 ]
 
+GROUPS = {
+    'cmd_tab_enabled': 'Hands-free sessions',
+    'cleanup_mode': 'Text behavior',
+    'wake_word_phrase': 'Wake activation',
+    'model_combo': 'Speech model',
+    'adv_device': 'Hardware acceleration',
+    'trailing_space': 'Text behavior',
+    'wake_cmd_timeout': 'Timing and sensitivity',
+    'continuous_commit_trigger': 'Continuous dictation',
+    'adv_threshold_mode': 'Microphone calibration',
+    'cmd_stop_phrases': 'Session controls',
+    'wake_profiles': 'Wake profiles',
+}
+
+
 def build(owner):
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
     profiles = copy.deepcopy(owner.app.config.get("wake_profiles", []))
@@ -280,4 +295,6 @@ def build(owner):
         control["target_process"].textChanged.connect(update_search_text)
         control["send_word"].textChanged.connect(update_search_text)
     update_search_text()
+    from .calm_layout import group_page
+    group_page(page, GROUPS)
     return page

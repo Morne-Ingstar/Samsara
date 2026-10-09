@@ -69,7 +69,7 @@ def stylesheet(treatment: Treatment) -> str:
     """
 
 
-def _button_qss(primary: bool) -> str:
+def _button_qss(primary: bool, *, calm: bool = False) -> str:
     """One unmistakable button language for the Phase-1 comparison."""
     theme = _theme()
     if primary:
@@ -77,7 +77,7 @@ def _button_qss(primary: bool) -> str:
             QPushButton {{ background: {theme.ACCENT}; color: {theme.TEXT_ON_ACCENT};
                 border: 1px solid {theme.ACCENT}; border-radius: 8px;
                 min-height: {TAP_TARGET}px; padding: 0 {SPACE_SCALE[2]}px;
-                font-weight: {WEIGHT_SCALE['semibold']}; }}
+                font-weight: {WEIGHT_SCALE['regular' if calm else 'semibold']}; }}
             QPushButton:hover {{ background: {theme.ACCENT_HOVER}; border-color: {theme.ACCENT_HOVER}; }}
             QPushButton:pressed {{ background: {theme.ACCENT_PRESSED}; border-color: {theme.ACCENT_PRESSED}; }}
             QPushButton:disabled {{ background: {theme.ACCENT_DISABLED}; color: {theme.TEXT_DISABLED};
@@ -87,7 +87,7 @@ def _button_qss(primary: bool) -> str:
         QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};
             border: 1px solid {theme.BORDER}; border-radius: 8px;
             min-height: {TAP_TARGET}px; padding: 0 {SPACE_SCALE[2]}px;
-            font-weight: {WEIGHT_SCALE['medium']}; }}
+            font-weight: {WEIGHT_SCALE['regular' if calm else 'medium']}; }}
         QPushButton:hover {{ background: {theme.HOVER_WASH}; border-color: {theme.ACCENT}; }}
         QPushButton:pressed {{ background: {theme.PRESS_WASH}; border-color: {theme.ACCENT}; }}
         QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.BORDER_FAINT}; }}
@@ -117,9 +117,12 @@ def apply(widget: QWidget, candidate: str) -> None:
             or button.property("class") == "primary"
             or f"background:{theme.ACCENT}" in inline.replace(" ", "")
         )
-        button.setStyleSheet(_button_qss(is_primary))
+        button.setStyleSheet(_button_qss(is_primary, calm=hasattr(widget, '_destination_rows')))
     if treatment.header:
         _add_header_mark(widget)
+    if hasattr(widget, '_destination_rows'):
+        from samsara.ui.settings.calm_layout import apply_settings
+        apply_settings(widget)
 
 
 def _add_header_mark(widget: QWidget) -> None:

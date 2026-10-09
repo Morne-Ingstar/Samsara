@@ -272,10 +272,14 @@ class _HotkeyButton(QPushButton):
             f" color: {theme.TEXT_PRIMARY};"
             f" font-size: {theme.TYPE_BODY}px;"
             " font-family: 'Consolas', 'Courier New', monospace;"
+            f" font-weight: {theme.WEIGHT_SCALE['regular']};"
             " padding: 6px 14px;"
             "}"
             "QPushButton:hover {"
             f" background-color: {theme.BG1};"
+            "}"
+            "QPushButton:focus {"
+            f" border: 2px solid {theme.ACCENT};"
             "}"
         )
 

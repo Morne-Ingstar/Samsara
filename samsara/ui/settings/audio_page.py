@@ -133,5 +133,17 @@ ADVANCED = [
     ]
 ]
 
+GROUPS = {
+    'output_combo': 'Audio',
+    'sound_feedback': 'Audio Feedback',
+    'tts_feedback_level': 'Text-to-Speech',
+    'tts_engine': 'Text-to-Speech',
+    'adv_ducking_recording_mode': 'Playback Reduction While Dictating',
+}
+
+
 def build(owner):
-    return owner.make_page(TITLE, SUBTITLE, BASE, [row for row in ADVANCED if not row[3].startswith("echo_cancellation.")])
+    from .calm_layout import group_page
+    page = owner.make_page(TITLE, SUBTITLE, BASE, [row for row in ADVANCED if not row[3].startswith("echo_cancellation.")])
+    group_page(page, GROUPS)
+    return page

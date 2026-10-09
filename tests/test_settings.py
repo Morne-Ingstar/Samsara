@@ -497,6 +497,7 @@ class TestAvaCloudTabNoLicenseGate:
 
     def test_cloud_settings_visible_without_any_key(self, qapp, monkeypatch):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
+        from samsara.ui.settings.calm_controls import SegmentedChoice
         from samsara.ui import ava_consent_qt
         monkeypatch.setattr(ava_consent_qt, 'request_consent',
                             lambda _parent, staged, **k: ava_consent_qt.accepted_consent(
@@ -510,8 +511,11 @@ class TestAvaCloudTabNoLicenseGate:
                             'cloud_model', 'cloud_timeout', 'ava_personality',
                             'ava_memory_mode', 'ava_memory_max_turns'):
             widget = win._widgets[widget_key]
-            assert widget.isVisibleTo(win), f"{widget_key} should be visible with no license"
+            editor = widget.parentWidget() if isinstance(widget.parentWidget(), SegmentedChoice) else widget
+            assert editor.isVisibleTo(win), f"{widget_key} should be visible with no license"
             assert widget.isEnabled(), f"{widget_key} should be enabled with no license"
+            if isinstance(editor, SegmentedChoice):
+                assert all(button.isEnabled() for button in editor.buttons), widget_key
 
     def test_gating_widget_removed(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow

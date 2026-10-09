@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from samsara.ui import theme, qt_runtime
 from samsara.config_schema import SETTINGS_SCHEMA
 from .presentation import Page, SettingRow, Disclosure, CleanComboBox
+from .calm_controls import PercentSpinBox, short_choice, switch
 
 
 class PageAssembly:
@@ -47,6 +48,10 @@ class PageAssembly:
                 left = layout.itemAt(0)
                 if left and left.widget():
                     left.widget().hide()
+        if key in ('adv_ducking_level', 'adv_hands_free_ducking_level', 'adv_hands_free_idle_level'):
+            widget = PercentSpinBox.adapt(widget, self)
+            self._widgets[key] = widget
+            self._placed_controls.add(id(widget))
         widget.setParent(None)
         widget.setMinimumWidth(44)
         widget.setMaximumWidth(16777215)
@@ -60,14 +65,14 @@ class PageAssembly:
             widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
             widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         elif isinstance(widget, QCheckBox):
-            widget.setText("On" if widget.isChecked() else "Off")
-            widget.toggled.connect(lambda on, w=widget: w.setText("On" if on else "Off"))
+            widget.setText('')
+            switch(widget)
         elif isinstance(widget, QPushButton):
             widget.setMinimumWidth(max(44, widget.fontMetrics().horizontalAdvance(widget.text()) + 30))
         elif isinstance(widget, QLineEdit):
             widget.setMinimumWidth(160)
             widget.setMaximumWidth(320)
-        return widget
+        return short_choice(widget, key)
 
     def make_page(self, title, subtitle, base, advanced):
         page = Page(title, subtitle)
@@ -87,7 +92,8 @@ class PageAssembly:
                 # into disclosure copy or adding a help button.
                 explanations = [
                     text for _label, text, widget, _source_row in self._source_rows
-                    if any(widget == control or widget.isAncestorOf(control) for control in controls)
+                    if any(widget == getattr(control, '_canonical_control', control)
+                           or widget.isAncestorOf(getattr(control, '_canonical_control', control)) for control in controls)
                     and text and text != description
                 ]
                 row.full_help = " ".join((description, *explanations, help_data["why"] if help_data else ""))
