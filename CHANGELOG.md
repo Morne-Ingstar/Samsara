@@ -4,22 +4,83 @@ All notable changes to Samsara are documented here.
 
 ## [Unreleased]
 
-- **Clipboard delivery tolerates Office protection markers** — private
-  no-data formats no longer block a dictation paste; readable text, rich
-  content, files, and images remain fail-closed if they cannot be restored.
-- **Retained dictation can be retried** — repeating a draft after a failed
-  paste is treated as a retry rather than a prompt echo, and the failure chip
-  now says when another app is holding the clipboard.
-- **Settings simplified** — six focused pages with contextual Advanced sections, cleaner dropdowns and accessible inline help. Record managers and opt-in integrations open separately from Tools; existing configuration keys and defaults are preserved.
-- **Stage timing diagnostics are opt-in** — per-utterance capture, transcription, dispatch, action, and feedback timings are written locally and summarized by a report tool.
-- **Ava can interpret unmatched commands** — opt in on the Ava page to let a
-  closed-world Ava resolver select one available COMMAND-mode action after an
-  ordinary miss. The separate Ava command-session key and latch are retired.
-- **Short sign-off hallucinations are discarded** — isolated Whisper-style
-  sign-offs now need weak audio evidence before they are kept out of
-  dictation; normal sentences and cleanly spoken words still pass through.
-- **Microsoft Word command pack** — focused formatting, selection, and word-count commands use Word shortcuts or its already-running automation interface; they never launch Word or send an Office command to another app.
-- **Todoist tasks are opt-in** — the local task list remains the durable default. When you turn on Todoist and enter your own token, only task text you add by voice is sent to Todoist's servers.
+### New
+
+- **Several commands in one sentence** — Say “open notepad and volume thirty” to run up to four supported direct commands in order; a command that needs confirmation or is not allowed prevents the combination from starting. <!-- e578786 -->
+- **Tasks with a dedicated key** — Hold Ctrl+Alt+T, say the task, and release to add it to your local list. <!-- 5642c0b -->
+- **Undo pasted dictation** — Say “scratch that” or use the undo key to take back the last dictation paste in the same editor; this is excluded in recognized terminal apps. <!-- b6fba88 -->
+- **Spotify by name** — Say “pause Spotify”, “play Spotify”, or “Spotify volume up” and “Spotify volume down” to control Spotify even while another app is playing. <!-- 0eef376 -->
+- **Import Spotify playlists** — Bring named playlists into Samsara from your Spotify account data export. <!-- a2a9ee1 -->
+- **Microsoft Word commands** — Format text, change selections and ask for a word count in the focused Word window, without launching Word. <!-- 9f8d7a9 -->
+- **Todoist tasks are optional** — Turn on Todoist and supply your own token to send tasks you add by voice to Todoist; your local list remains the default, and this connection is off by default. <!-- fbe5c13 -->
+- **Ava memory controls** — Save facts explicitly, ask what Ava remembers, and forget or erase them; optional saved-session recall is off by default, and saved conversation records stay on this PC. <!-- 195d5d8, 03e3c28, b358d58, 954fc80 -->
+- **Ask Ava about commands** — Ask which commands you have for an app or task; Ava uses the available command list and can suggest a real command after a refusal. Ava’s AI commands are off by default. <!-- c4ecc32 -->
+- **Ask GPT or Claude by voice** — Use installed, signed-in command-line tools to ask questions and continue a conversation; “ask Claude” uses the Claude desktop app when it is available. <!-- 096906e -->
+- **Read Claude replies aloud** — Read back desktop replies, ask for the rest, repeat them or stop the reading; reply reading is enabled by default when Samsara sends to Claude, subject to your voice feedback level. <!-- 5180ffa -->
+- **Video memos** — Record a video memo with sound, then finish or cancel it by voice; this needs the optional camera components and the Utilities commands, which are off by default. <!-- 1f6a745 -->
+- **Images by voice** — Create, revise, open or cancel images using a configured local ComfyUI server; these AI commands are off by default. <!-- 0d99c44, 0e08afa -->
+- **Start at sign-in or in the tray** — Choose automatic start when you sign in to Windows, or start with the main window hidden; both choices are off by default. <!-- 2d47987 -->
+- **Optional processing-time diagnostics** — Turn on local timing records and diagnostic event logs in Help’s Advanced settings to investigate where a recording spends time; both are off by default. <!-- aebdfda, d5a0b73, 122a7c5, 63195c7, 9e13379 -->
+- **Ava understands plainly worded requests** - With Ava on, say what you want in your own words, up to three steps in one sentence; Ava chooses only from the commands you have.
+- **Ava knows the date and time** - Ask her what day it is; every answer is given with the current local date and time in view.
+- **"Ways to talk" in the tutorial** - Every way of talking to Samsara on one page, with details on demand.
+- **"Scratch all that"** - Clears the whole waiting draft at once, with no question.
+- **Settings asks before the network voice is used** - Choosing it shows what is sent and lets you say "Not now".
+- **Result messages in plain words** - A finished chain reads "Done: opened Notepad · Windows volume 30%", and messages stay on screen long enough to read.
+- **Put the listening display where you want it** - Place the Compact or Full display during setup or in the tutorial, and either display stays where you drop it and snaps to screen edges and corners.
+
+### Changed
+
+- **Choose how much Samsara speaks** — Silent, Brief and Full replace the speech switches; new installs use Brief and a local voice, and “talk less” or “talk more” changes the level by voice. <!-- 8f74fca, 0e873f7 -->
+- **Settings simplified** — Six focused pages, a sidebar search and contextual Advanced controls make settings easier to find; Tools stay in the same window, and help buttons provide an explanation and a documentation link. <!-- c2c5bf3, 96d1539, 0fddd24, 87a1ca1, ae0c2fd -->
+- **Ava can interpret missed commands** — Turn on optional interpretation in Ava settings to let Ava choose an available command after a miss; it is off by default, and the separate Ava command-session key is retired. <!-- 4d29f9f, d5a0b73, 821480c -->
+- **Guides and controls are more consistent** — Settings and guides use consistent text sizes, spacing, larger controls and step indicators. <!-- 6fe2585, b5c68aa -->
+- **Updated app mark** — The app uses the approved articulated snake mark, including as the tray changes listening state. <!-- 3740466, 215b017 -->
+- **A calmer Settings** - Rows grouped under plain headings, On/Off switches, everyday choices moved out of Advanced, and a search box in the sidebar.
+- **A command with no argument must be the whole sentence** - "close" in the middle of a sentence no longer closes a window.
+- **Voice Training has left the menus** - It was not ready; nothing else changes.
+- **The old echo-cancellation filter is retired** - A saved "on" no longer starts it.
+- **A compact loading screen and a smaller "What's new" card.**
+- **Personal project commands removed** - The author's own server controls and a joke printer command no longer appear in the shipped command list.
+
+### Fixed
+
+- **A silent hold pastes nothing** — Releasing the key without speech shows “No speech” instead of invented text, without locking the key for five seconds; weak-audio short sign-offs can also be discarded. <!-- 5866c5a, e3b7912, 5fe2fb3 -->
+- **Hold recordings keep the end of your speech** — With the live preview enabled, recording waits for speech to end after release and still finishes if that waiting step fails. <!-- 9babad3, d5e5e46 -->
+- **Failed pastes keep the draft** — A blocked paste keeps your words, does not press Enter, and allows you to speak the retained text again as a retry; the notice explains clipboard blockage. <!-- d5a0b73, 890e8d4 -->
+- **Office clipboard protection markers no longer block a paste** — Dictation can paste past Office’s empty protection markers while preserving readable clipboard contents; if those contents cannot be preserved, it refuses the paste. <!-- b1f4dbf -->
+- **Commands-only key works on a default install** — Commands are matched when you hold the commands-only key; misses show what was heard and may suggest a supported command. <!-- b0e4b69, c149d9a -->
+- **Cancelling a task or memo stays cancelled** — Escape no longer carries a cancelled recording into the next take. <!-- 5642c0b -->
+- **Control words must stand alone** — Finish, cancel, pause and resume words inside ordinary sentences no longer act as whole-recording controls; existing custom cancel words are preserved. <!-- 890e8d4, 5180ffa -->
+- **Hands-free music controls report what happened** — Pause and resume music while dictating hands-free; Spotify search says that it opened a search, and failed music controls no longer claim success. <!-- 197b7f1, 5180ffa, 6bf1965 -->
+- **False wake detections leave music alone** — An unconfirmed wake detection no longer lowers your music volume; profiles also respect the required wake detection before activating. <!-- b67db62, 940a7f6 -->
+- **Ava does not treat its own reply as your recording** — Command and hold recordings entirely within Ava’s spoken-reply window are discarded. <!-- c78125d -->
+- **Ava settings and status agree** — One selector chooses Off, this PC or cloud, with consent when required; Home and Voice help follow Ava’s actual readiness and Home links reach the correct settings pages. <!-- c0f3341, f9c570a, 24e1645, 60b9491, a0ac09e -->
+- **Local AI requests stay on this PC** — Local AI requests cannot follow redirects to another host, and cloud requests are limited to their provider’s allowed addresses. <!-- 02a8195 -->
+- **Speech settings apply consistently** — Choosing Silent cancels queued speech, changing voices applies together, and saving another page keeps Ava captions and mute preferences. <!-- f499de1, 8f74fca -->
+- **Settings keep your choices** — Saving Advanced keeps your selected theme; searches do not leave blank Advanced sections, and commands needing a spoken name accept a valid supplied value. Moving a window to another monitor requires its monitor number. <!-- 55940fc, 797798c, 1f7c394 -->
+- **Setup and guidance reflect your settings** — Wake and finish hints use your chosen words; setup explains downloads and recovers after a failed model installation, without automatically checking for updates. <!-- 1f55039, cf29c71, 957cb75, 17881f8, 46c4d1b -->
+- **The dictation preview remains readable** — Corrections and retained drafts stay visible, long incoming text scrolls, Clear works during a hold, and wake settings do not mislabel its activity; high contrast and reduced motion are respected. <!-- 91ee14c, 0ad7c6e, 6528d86, e3b7912 -->
+- **Requested windows come forward** — Opening a Samsara window brings it forward while background updates leave focus alone; tray Exit remains available after an optional menu error, and restarting resolves a retained draft before the handoff. <!-- 02d868b, e6fd2c7, 6d59d24 -->
+- **GPU availability is checked** — Samsara checks for an available GPU rather than relying on whether a GPU support package is installed. <!-- 890e8d4 -->
+- **Release notes reach packaged builds** — The packaging recipe now includes the release text needed for Home’s “What’s new” note. <!-- be15e29 -->
+- **Ava's status tells the truth** - Home, the setup guide and Settings agree on whether Ava is ready, and the OK for Ava on this PC can be given in Settings.
+- **A quick tap of the Ava or Command-only key leaves nothing on screen.**
+- **Samsara closes cleanly** - No crash record after Exit.
+- **"Sounds quieter" and "sounds louder" work, and a command that fails says so** instead of doing nothing.
+- **The command reference opens reliably from Home.**
+- **No console windows flash when the network voice speaks.**
+- **A voice command no longer pastes the waiting draft as a side effect.**
+- **Apply in Settings no longer overwrites a setting that changed elsewhere while the window was open.**
+- **"Send chrome to left screen", "tab next" and "tab close" work again.**
+- **The first word of a hold is whole** when nothing else is playing.
+- **Screen readers can name the controls** in Settings tools, the command reference, the editors and the pop-up messages.
+- **Settings fields** - values sit centred, and the search box keeps its magnifier clear of the text.
+- **A draft left after hands-free stays yours** - The display names the kept draft and how to send it, switching to command mode and back keeps it, and "bring back my draft" no longer doubles it.
+- **The tutorial takes only its own dictation** - Its typing step receives the words meant for it and lets you continue, words meant for another app stay with that app, and cancelling a dictation on the Compact display keeps it from being typed.
+- **Your words stay with the window you chose** - Samsara refuses a paste if the window you were dictating into has changed, and a quick "Thanks" spoken while holding the dictation key is kept.
+- **Setup and the tutorial fit smaller screens** - Pages scroll while the steps and navigation buttons remain visible at 150% scaling and on a 1366 × 768 laptop.
+- **Windows and text are easier to read** - Mic Setup, Wake profiles, Workflow, Updates and Profiles fit their content, the Full display's long draft has a readable scrollbar, Home's links and the Tasks line fit, and the quit question names what each button does.
 
 ## [0.30.0-beta.2] - 2026-09-19
 
