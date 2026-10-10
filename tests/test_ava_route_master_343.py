@@ -186,7 +186,7 @@ def test_legacy_cloud_consent_shows_confirmation_without_switch(qapp, monkeypatc
         assert win._ava_route_confirmation_pending
         assert win._widgets["providerRoute"].currentData() == "local"
         # The selected local route needs its own consent before any switch.
-        assert "consent pending" in win._widgets["ava_route_status"].text()
+        assert "Ava needs your OK to run on this PC." == win._widgets["ava_route_status"].text()
         assert win._rows_by_widget['ava_route_status'].isAncestorOf(
             win._widgets['ava_consent_button'])
         updates = win._collect_destination_updates({})

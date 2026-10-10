@@ -28,8 +28,8 @@ BASE = [
         "ava_mode_key"
     ],
     [
-        "Effective route",
-        "Where Ava will handle your requests after Apply.",
+        "Before Ava can answer",  # PLACEHOLDER COPY (480)
+        "What Ava needs before answering.",  # PLACEHOLDER COPY (480)
         "ava_route_status",
         ""
     ],

@@ -81,7 +81,11 @@ def test_saved_pending_button_accepts_without_route_toggle(make_window, monkeypa
     row = win._rows_by_widget['ava_route_status']
     button = win._widgets['ava_consent_button']
     assert not row.isHidden()
-    assert 'consent pending' in win._widgets['ava_route_status'].text()
+    assert win._widgets['ava_route_status'].text() == 'Ava needs your OK to run on this PC.'
+    assert button.text() == 'Give your OK'
+    assert button.accessibleName() == 'Give your OK'
+    assert row.heading.text() == 'Before Ava can answer'
+    assert row.detail.text() == 'What Ava needs before answering.'
     assert row.isAncestorOf(button)
     monkeypatch.setattr(consent, 'request_consent', lambda parent, staged, **kw: grant(staged))
     button.click()
@@ -89,6 +93,8 @@ def test_saved_pending_button_accepts_without_route_toggle(make_window, monkeypa
     updates = win._collect_destination_updates({})
     assert ai.runtime_state({**win.app.config, **updates}, 'ava').allowed
     assert row.isHidden()
+    assert button.text() == 'Read this again'
+    assert button.accessibleName() == 'Read this again'
     assert win._rows_by_widget['ava:Read this again'].isAncestorOf(button)
 
 
@@ -107,7 +113,7 @@ def test_legacy_cloud_grant_shows_local_pending_action(make_window, monkeypatch)
     cfg['ava']['consent'] = grant(cfg, 'cloud')
     cfg['cloud_llm']['enabled'] = True
     win = make_window(cfg)
-    assert 'consent pending' in win._widgets['ava_route_status'].text()
+    assert win._widgets['ava_route_status'].text() == 'Ava needs your OK to run on this PC.'
     assert win._rows_by_widget['ava_route_status'].isAncestorOf(win._widgets['ava_consent_button'])
     monkeypatch.setattr(consent, 'request_consent', lambda parent, staged, **kw: grant(staged))
     win._widgets['ava_consent_button'].click()
@@ -119,6 +125,7 @@ def test_covered_button_is_read_only(make_window, monkeypatch):
     cfg = _config()
     cfg['ava']['consent'] = grant(cfg)
     win = make_window(cfg)
+    assert win._widgets['ava_consent_button'].text() == 'Read this again'
     replay = Mock()
     monkeypatch.setattr(consent, 'show_consent_copy', replay)
     monkeypatch.setattr(consent, 'request_consent', lambda *a, **k: pytest.fail('covered destination'))
@@ -172,14 +179,15 @@ def test_useful_status_visible(make_window, monkeypatch, case):
         monkeypatch.setattr(ava_readiness, 'readiness_for', lambda app: ava_readiness.Readiness(ava_readiness.OFFLINE, provider='deepseek', failure_kind=ava_readiness.UNREACHABLE))
     win._refresh_conditions()
     assert not win._rows_by_widget['ava_route_status'].isHidden()
-    expected = {'pending': 'consent pending', 'needs-key': 'API key needed', 'unreachable': "can't reach DeepSeek"}[case]
+    expected = {'pending': 'Ava needs your OK to run in the cloud.', 'needs-key': 'API key needed', 'unreachable': "can't reach DeepSeek"}[case]
     assert expected in win._widgets['ava_route_status'].text()
+    assert win._widgets['ava_consent_button'].text() == ('Give your OK' if case == 'pending' else 'Read this again')
 
 
 def test_pending_wins_over_cached_ready(make_window, monkeypatch):
     monkeypatch.setattr(ava_readiness, 'readiness_for', lambda app: ava_readiness.Readiness(ava_readiness.READY, provider='ollama'))
     win = make_window()
-    assert 'consent pending' in win._widgets['ava_route_status'].text()
+    assert win._widgets['ava_route_status'].text() == 'Ava needs your OK to run on this PC.'
     assert 'ready' not in win._widgets['ava_route_status'].text()
 
 
