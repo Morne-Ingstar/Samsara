@@ -102,7 +102,12 @@ def test_only_four_step_bars_adopt_widget():
     for filename in CALL_SITES:
         source = (ROOT / "samsara/ui" / filename).read_text(encoding="utf-8")
         assert "from samsara.ui.widgets.step_indicator import StepIndicator" in source
-        assert "self._step_indicator = StepIndicator(" in source
+        if filename == "ava_guide_qt.py":
+            assert "class _AvaStepIndicator(StepIndicator):" in source
+            assert "self._step_indicator = _AvaStepIndicator(" in source
+            assert "super()._refresh()" in source
+        else:
+            assert "self._step_indicator = StepIndicator(" in source
         assert "self._step_indicator.set_progress(" in source
         assert "self._dots" not in source
     mic = (ROOT / "samsara/ui/mic_setup_wizard_qt.py").read_text(encoding="utf-8")

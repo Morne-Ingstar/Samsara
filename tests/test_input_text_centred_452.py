@@ -119,7 +119,12 @@ def input_geometry(widget):
             residual = max(abs(a-alpha*b) for a,b in zip(relative, delta))
             if .2 < alpha <= 1.05 and residual < 10:
                 ink.append((x, y))
-    assert ink, (type(widget).__name__, QFontInfo(widget.font()).family())
+    assert ink, (type(widget).__name__, QFontInfo(widget.font()).family(),
+                 dict(enabled=widget.isEnabled(), visible=widget.isVisible(),
+                      box=box, content=content, tight=tight, scan=scan,
+                      foreground=foreground.name(), background=background.name(),
+                      palette_text=widget.palette().color(widget.foregroundRole()).name(),
+                      stylesheet=widget.styleSheet()))
     glyph = QRect(min(x for x, y in ink), min(y for x, y in ink),
                   max(x for x, y in ink)-min(x for x, y in ink)+1,
                   max(y for x, y in ink)-min(y for x, y in ink)+1)
@@ -175,7 +180,7 @@ def test_input_ink_is_centred_and_inside_content(settings_inputs, qapp, kind):
         if kind == 'multiline': widget = window._widgets['cmd_stop_phrases']
         elif kind == 'shortcut': widget = next(w for w in candidates if type(w).__name__ == '_HotkeyButton')
         elif kind == 'integer': widget = next(w for w in candidates if type(w).__name__ == 'QSpinBox')
-        elif kind == 'text': widget = next(w for w in candidates if isinstance(w, QLineEdit) and w.text())
+        elif kind == 'text': widget = window._widgets['adv_intent_command_prefix']
         else: widget = next(w for w in candidates if isinstance(w, QComboBox) and w.currentText())
     row = next(r for r in window._destination_rows if r.value.isAncestorOf(widget))
     if kind == 'text':
@@ -185,7 +190,13 @@ def test_input_ink_is_centred_and_inside_content(settings_inputs, qapp, kind):
     for _ in range(12): qapp.processEvents()
     window._pages[row.page_name].ensureWidgetVisible(row)
     for _ in range(12): qapp.processEvents()
+    if kind == 'text':
+        # Ava's local-model row is intentionally hidden while Ava is Off.
+        # Measure a rendered ordinary field, with the same geometry assertions.
+        assert widget.isVisible() and widget.isEnabled()
     data = input_geometry(widget)
+    if kind == 'text':
+        print('ordinary QLineEdit geometry:', data)
     assert data['font'] == 'Segoe UI'
     # The brief specifies Qt tight font bounds at the actual paint position.
     # Widget/style/cursor coordinates are Qt pixels at every display scale.

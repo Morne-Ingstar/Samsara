@@ -1,16 +1,37 @@
 """Queue 183: Ava consent is explicit, versioned, and cloud-aware."""
 
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 import json
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QAccessible
-from PySide6.QtWidgets import QDialog, QLabel, QPushButton
+from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QWidget
 
 from samsara import config_schema
 from samsara import ai_preferences
 from samsara.ui import ava_consent_qt as consent
+
+
+@pytest.fixture(autouse=True)
+def _dispose_test_widgets(request):
+    """Destroy this test's windows while their Python wrappers are still valid."""
+    if "qapp" not in request.fixturenames:
+        yield
+        return
+    qapp = request.getfixturevalue("qapp")
+    before = set(qapp.topLevelWidgets())
+    yield
+    # Settings.close() only hides, and deleteLater() needs an explicit drain
+    # when pytest runs without Qt's main event loop.
+    from shiboken6 import isValid
+    created = [w for w in qapp.topLevelWidgets() if w not in before]
+    for widget in created:
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+    assert all(not isValid(widget) for widget in created)
 
 
 @pytest.mark.parametrize("read_only", [False, True])
@@ -328,25 +349,70 @@ def test_dialog_has_accessible_actions_and_safe_initial_focus(qapp):
     dialog.close()
 
 
-def test_guide_decline_does_not_enable_ai_pack(monkeypatch):
+def _pending_local_guide(app, owner):
+    from samsara.ui.ava_guide_qt import _WizardWindow
+
+    # The route is selected but cannot run until consent is accepted.
+    app.config["ava"]["provider_policy"] = "local"
+    app.config["ava_command_session"]["enabled"] = True
+    model = app.config["ollama"]["model"]
+    guide = SimpleNamespace(
+        _app=app, _selected_model_name=model, _ollama_running=True,
+        _installed_models=[model], _done_title=QLabel(owner), _done_summary=QLabel(owner),
+        _skip_btn=QPushButton(owner), _next_btn=QPushButton(owner),
+    )
+    guide._build_done_summary = MethodType(_WizardWindow._build_done_summary, guide)
+    guide._build_done_summary()
+    assert guide._consent_only_missing
+    assert guide._next_btn.text() == "Enable Ava"
+    assert not ai_preferences.runtime_state(app.config, "ava").allowed
+    return guide
+
+
+@pytest.fixture
+def pending_local_guide(qapp):
+    owner = QWidget()
+    guides = []
+
+    def build(app):
+        guide = _pending_local_guide(app, owner)
+        guides.append(guide)
+        return guide
+
+    yield build
+    # Break the bound-method/self cycle before destroying the owned C++ widgets.
+    for guide in guides:
+        del guide._build_done_summary
+    owner.close()
+    owner.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+    from shiboken6 import isValid
+    assert not isValid(owner)
+    assert all(not isValid(guide._next_btn) for guide in guides)
+
+
+def test_guide_decline_does_not_enable_ai_pack(qapp, monkeypatch, pending_local_guide):
     from samsara.ui.ava_guide_qt import _WizardWindow
 
     updates = []
     app = SimpleNamespace(
-        config={"command_packs": {"ai": False}},
+        config=_configured_local_app(),
         update_config=lambda update, save: updates.append((update, save)),
     )
-    button = SimpleNamespace(setText=lambda _text: None, setEnabled=lambda _enabled: None)
-    guide = SimpleNamespace(_app=app, _enable_pack_btn=button)
+    guide = pending_local_guide(app)
     monkeypatch.setattr(consent, "request_consent", lambda *_args, **_kwargs: None)
 
     _WizardWindow._enable_ai_pack(guide)
 
     assert updates == []
+    assert not ai_preferences.runtime_state(app.config, "ava").allowed
+    assert app.config["command_packs"]["ai"] is False
+    assert guide._next_btn.text() == "Enable Ava"
 
 
 def test_guide_accept_persists_and_activates_the_selected_local_route(
-    monkeypatch, tmp_path
+    qapp, monkeypatch, tmp_path, pending_local_guide
 ):
     from samsara.ui.ava_guide_qt import _WizardWindow
 
@@ -368,18 +434,7 @@ def test_guide_accept_persists_and_activates_the_selected_local_route(
     monkeypatch.setattr(consent, "AvaConsentDialog", _AcceptedDialog)
     _AcceptedDialog.shown = 0
 
-    class Button:
-        text = ""
-        enabled = True
-
-        def setText(self, value):
-            self.text = value
-
-        def setEnabled(self, value):
-            self.enabled = value
-
-    button = Button()
-    guide = SimpleNamespace(_app=app, _enable_pack_btn=button)
+    guide = pending_local_guide(app)
     _WizardWindow._enable_ai_pack(guide)
 
     assert _AcceptedDialog.shown == 1
@@ -391,7 +446,8 @@ def test_guide_accept_persists_and_activates_the_selected_local_route(
     assert json.loads(state_file.read_text(encoding="utf-8"))[
         "ava_command_session"]["enabled"] is True
     assert rebuilt == [True]
-    assert "restart" not in button.text.lower()
+    assert guide._next_btn.text() == "Finish"
+    assert guide._done_title.text() == "Ava is ready."
 
 
 def test_schema_registers_the_nested_consent_record():

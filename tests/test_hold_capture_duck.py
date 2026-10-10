@@ -25,7 +25,7 @@ METHODS = (
     '_close_hold_capture_duck', 'stop_recording', 'cancel_recording',
     '_cancel_recording_impl', '_open_hands_free_capture_duck',
     '_close_hands_free_capture_duck', '_restore_hands_free_capture_duck_now',
-    '_take_recording_ownership', '_stop_recording_impl',
+    '_take_recording_ownership', '_stop_recording_impl', '_finish_empty_hold_capture',
     '_live_surface_hold_parking_enabled',
     '_resolve_parked_draft_before_quit',
 )

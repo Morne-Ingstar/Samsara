@@ -1,12 +1,23 @@
 """Regressions for the source claims in audit 307's claims.csv."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QLabel
 
 from samsara.onboarding.guidance_facts import facts_from_config
 from samsara.ui import ava_guide_qt, tutorial_qt
+
+
+def _dispose_window(window, qapp):
+    window.close()
+    window.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+    from shiboken6 import isValid
+    assert not isValid(window)
 
 
 @pytest.mark.parametrize(
@@ -51,8 +62,10 @@ def ava_guide(qapp):
         "ava": {"provider_policy": "off"},
     })
     guide = ava_guide_qt._WizardWindow(app)
-    yield guide
-    guide.close()
+    try:
+        yield guide
+    finally:
+        _dispose_window(guide, qapp)
 
 
 def test_C0166_selected_model_requires_exact_installed_tag(ava_guide):
@@ -87,7 +100,7 @@ def test_C0226_C2509_tutorial_glyphs_follow_practice_on_done(qapp):
         assert dictation.text() != "✓"
         assert command.text() == "✓"
     finally:
-        window.close()
+        _dispose_window(window, qapp)
 
 
 def test_C0148_C0154_setup_copy_does_not_promise_automatic_service_or_forever(ava_guide):
@@ -138,7 +151,7 @@ def test_C0222_dictation_practice_does_not_promise_every_app(qapp):
         copy = " ".join(label.text() for label in window._dict_success.findChildren(QLabel))
         assert "in any app" not in copy
     finally:
-        window.close()
+        _dispose_window(window, qapp)
 
 
 def test_C0175_existing_model_choice_is_selected(qapp):
@@ -149,11 +162,22 @@ def test_C0175_existing_model_choice_is_selected(qapp):
         assert guide._selected_model_name == "llama3.2"
         assert guide._model_combo.currentData() == "llama3.2"
     finally:
-        guide.close()
+        _dispose_window(guide, qapp)
 
 
-def test_C0159_activation_button_names_ava(ava_guide):
-    assert ava_guide._enable_pack_btn.text() == "Enable Ava"
+def test_C0159_activation_button_names_ava(ava_guide, monkeypatch):
+    ava_guide._app.config = ava_guide_qt.ai_preferences.apply_ava_route_choice(
+        ava_guide._app.config, policy="local")
+    ava_guide._ollama_running = True
+    ava_guide._installed_models = [ava_guide._selected_model_name]
+    ava_guide._current_step = ava_guide._STEP_DONE
+    ava_guide._build_done_summary()
+    assert ava_guide._consent_only_missing
+    assert ava_guide._next_btn.text() == "Enable Ava"
+    activate = Mock()
+    monkeypatch.setattr(ava_guide, "_enable_ai_pack", activate)
+    ava_guide._next_btn.click()
+    activate.assert_called_once_with()
 
 
 def test_C0176_model_presence_without_consent_is_not_readiness(ava_guide, monkeypatch):
@@ -193,20 +217,36 @@ def test_C0175_selected_model_is_not_ready_before_becoming_configured(ava_guide,
 
 
 def test_C0177_C0178_consent_does_not_claim_readiness(ava_guide, monkeypatch):
-    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "selected_ava_policy", lambda _config: "local")
-    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "request_consent", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "apply_accepted_ava", lambda *_args, **_kwargs: None)
+    request = Mock(return_value={})
+    apply = Mock()
+    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "request_consent", request)
+    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "apply_accepted_ava", apply)
     ava_guide._ollama_running = False
     ava_guide._enable_ai_pack()
-    assert "Ava is on" not in ava_guide._enable_pack_btn.text()
+    request.assert_not_called()
+    apply.assert_not_called()
+    assert ava_guide._next_btn.text() == "Set up later"
     assert ava_guide._done_title.text() == "Ava is not ready."
 
-    def fail_consent(*_args, **_kwargs):
-        raise RuntimeError("unavailable")
-
-    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "request_consent", fail_consent)
+    # Exercise consent itself, rather than returning early on missing setup.
+    ava_guide._app.config = ava_guide_qt.ai_preferences.apply_ava_route_choice(
+        ava_guide._app.config, policy="local")
+    ava_guide._ollama_running = True
+    ava_guide._installed_models = [ava_guide._selected_model_name]
     ava_guide._enable_ai_pack()
-    assert "Settings > Ava" in ava_guide._enable_pack_btn.text()
+    request.assert_called_once()
+    apply.assert_called_once()
+    assert ava_guide._next_btn.text() == "Enable Ava"
+    assert ava_guide._done_title.text() == "Ava is not ready."
+
+    request.reset_mock()
+    apply.reset_mock()
+    request.side_effect = RuntimeError("unavailable")
+    ava_guide._enable_ai_pack()
+    request.assert_called_once()
+    apply.assert_not_called()
+    assert ava_guide._next_btn.text() == "Enable Ava"
+    assert ava_guide._done_title.text() == "Ava is not ready."
 
 
 def test_C0216_C0225_skipped_tutorial_has_neutral_completion_heading(qapp):
@@ -218,4 +258,4 @@ def test_C0216_C0225_skipped_tutorial_has_neutral_completion_heading(qapp):
         assert window._title_lbl.text() == "Tutorial complete"
         assert "You know" not in " ".join(label.text() for label in window.findChildren(QLabel))
     finally:
-        window.close()
+        _dispose_window(window, qapp)

@@ -5,6 +5,9 @@ import logging
 
 import pytest
 
+# Reuse 445's shutdown-and-join fixture for every test-owned coordinator.
+from tests.test_tts_feedback_level_372 import _shutdown_test_coordinators
+
 MESSAGE = "Ava is off. Turn her on in Settings > Ava."
 NOTE = "Ava is off - this key does nothing until you turn her on in Settings > Ava."
 
@@ -108,7 +111,11 @@ def test_legacy_pynput_key_gets_the_same_refusal(app):
     app._show_outcome_chip.assert_called_once()
 
 
-def test_settings_note_tracks_ava_route_and_keeps_capture(qapp):
+def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch):
+    from samsara.ui import ava_consent_qt
+    consent_request = Mock(side_effect=lambda _parent, config, **kwargs:
+                           ava_consent_qt.accepted_consent(config, **kwargs))
+    monkeypatch.setattr(ava_consent_qt, 'request_consent', consent_request)
     from tests.test_settings import _StubApp
     from samsara.ui.settings_qt import _SettingsWindow
     from samsara.ui import theme
@@ -124,6 +131,7 @@ def test_settings_note_tracks_ava_route_and_keeps_capture(qapp):
     assert capture.combo == 'right_alt'
     window._widgets['providerRoute'].setCurrentIndex(1)
     assert note.isHidden()
+    consent_request.assert_called_once()
     window._widgets['providerRoute'].setCurrentIndex(0)
     assert not note.isHidden()
     theme.set_theme('light')

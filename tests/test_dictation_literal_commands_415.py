@@ -44,7 +44,9 @@ def adapted_hold_app(tmp_path, monkeypatch, text, **kwargs):
     config.setdefault('command_mode', {})['command_matching_enabled'] = False
     config.setdefault('ava_command_session', {})['interpret_misses'] = False
     monkeypatch.setattr(hold, '_production', lambda: (namespace, config))
-    return hold_app(tmp_path, monkeypatch, text, **kwargs)
+    app, calls = hold_app(tmp_path, monkeypatch, text, **kwargs)
+    app._finish_empty_hold_capture = MethodType(module.DictationApp._finish_empty_hold_capture, app)
+    return app, calls
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -243,6 +245,9 @@ def test_settings_default_save_and_help(qapp, monkeypatch):
             row.help_panel.grab().save(str(Path(os.environ['GATE_RESULT']).parent / 'settings-415-help.png'))
     finally:
         window.close(); window.deleteLater()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
 
 
 def test_latched_dictate_state_is_not_the_command_lane(rig, monkeypatch):
