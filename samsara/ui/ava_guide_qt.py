@@ -65,11 +65,11 @@ def _ss() -> str:
     palette that happened to be live then (queue 129)."""
     return f"""
     QDialog, QWidget {{
-        background: {theme.BG0};
         color: {theme.TEXT_PRIMARY};
         font-family: 'Segoe UI', sans-serif;
         font-size: {theme.TYPE_BODY}px;
     }}
+    QDialog, QScrollArea, QStackedWidget, QWidget#avaPage {{ background: {theme.BG0}; }}
     QPushButton {{
         background: {theme.BG2};
         color: {theme.TEXT_PRIMARY};
@@ -116,6 +116,11 @@ def _ss() -> str:
         selection-color: {theme.BG0};
         border: 1px solid {theme.BORDER};
     }}
+    QLabel {{ background: transparent; border: none; }}
+    QScrollBar:vertical {{ background: {theme.BG0}; width: 12px; }}
+    QScrollBar::handle:vertical {{ background: {theme.BORDER}; min-height: 24px; border-radius: 4px; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
 """
 
 # ---------------------------------------------------------------------------
@@ -133,6 +138,9 @@ _OLLAMA_URL = "http://localhost:11434"
 _OLLAMA_DOWNLOAD = "https://ollama.com/download"
 _OLLAMA_RECHECK_INTERVAL_MS = 5_000
 _OLLAMA_RECHECK_LIMIT = 120  # ten minutes at one check every five seconds
+# PLACEHOLDER COPY (462)
+_AVA_CLOUD_GUIDE_NOTE = ('Ava is set to the cloud in Settings > Ava. '
+                        'This guide sets up Ava on this PC.')
 
 _ANSI_RE = re.compile(
     r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
@@ -208,6 +216,15 @@ class AvaGuideQt:
 # Wizard window
 # ---------------------------------------------------------------------------
 
+class _AvaStepIndicator(StepIndicator):
+    """Keep the painted step labels clear of Ava's divider at every refresh."""
+
+    def _refresh(self):
+        super()._refresh()
+        self.setFixedHeight(self.height() + round(theme.SPACE_1 * self.ui_scale))
+        self._size_items()
+
+
 class _WizardWindow(QDialog):
 
     _ollama_status_sig = Signal(bool, list)   # (is_running, model_names)
@@ -245,7 +262,7 @@ class _WizardWindow(QDialog):
         self._ollama_recheck_timer.timeout.connect(self._auto_recheck_ollama)
 
         self.setWindowTitle("Ava Setup Guide")
-        self.setFixedSize(580, 500)
+        self.setFixedWidth(580)
         self.setStyleSheet(_ss())
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -259,6 +276,7 @@ class _WizardWindow(QDialog):
         self._pull_line_sig.connect(self._on_pull_line)
         self._pull_done_sig.connect(self._on_pull_done)
         self._go_to(self._STEP_INTRO)
+        self._size_for_pages()
 
     # ----------------------------------------------------------------
     # UI construction
@@ -272,7 +290,8 @@ class _WizardWindow(QDialog):
         # Header
         hdr = QWidget()
         hdr.setFixedHeight(60)
-        hdr.setStyleSheet(f"background:{theme.BG0};border-bottom:1px solid {theme.BORDER_FAINT};")
+        hdr.setObjectName('avaHeader')
+        hdr.setStyleSheet(f"QWidget#avaHeader{{background:{theme.BG0};border-bottom:1px solid {theme.BORDER_FAINT};}}")
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(24, 0, 24, 0)
         self._title_lbl = QLabel()
@@ -285,9 +304,15 @@ class _WizardWindow(QDialog):
         hdr_lay.addWidget(self._step_lbl)
         root.addWidget(hdr)
 
-        self._step_indicator = StepIndicator(["Intro", "Ollama", "Model", "Done"])
+        self._step_strip = QWidget()
+        self._step_strip.setObjectName('avaStepContainer')
+        self._step_strip.setStyleSheet(f'QWidget#avaStepContainer{{border-bottom:1px solid {theme.BORDER_FAINT};}}')
+        step_layout = QVBoxLayout(self._step_strip)
+        step_layout.setContentsMargins(0, 0, 0, theme.SPACE_2)
+        self._step_indicator = _AvaStepIndicator(["Intro", "Ollama", "Model", "Done"])
         self._step_indicator.setObjectName("avaGuideStepStrip")
-        root.addWidget(self._step_indicator)
+        step_layout.addWidget(self._step_indicator)
+        root.addWidget(self._step_strip)
 
         # Page stack
         self._stack = QStackedWidget()
@@ -300,39 +325,82 @@ class _WizardWindow(QDialog):
         # Nav bar
         nav = QWidget()
         nav.setFixedHeight(64)
-        nav.setStyleSheet(f"background:{theme.BG1};border-top:1px solid {theme.BORDER};")
+        nav.setObjectName('avaNavigation')
+        nav.setStyleSheet(f"QWidget#avaNavigation{{background:{theme.BG1};border-top:1px solid {theme.BORDER};}}")
         nav_lay = QHBoxLayout(nav)
         nav_lay.setContentsMargins(24, 0, 24, 0)
         nav_lay.setSpacing(10)
 
         self._back_btn = QPushButton("Back")
-        self._back_btn.setFixedWidth(88)
         self._back_btn.clicked.connect(self._go_back)
         nav_lay.addWidget(self._back_btn)
 
-        nav_lay.addStretch()
-
         self._skip_btn = QPushButton("Skip")
         self._skip_btn.setObjectName("ghost")
-        self._skip_btn.setFixedWidth(72)
         self._skip_btn.clicked.connect(self._skip_step)
         nav_lay.addWidget(self._skip_btn)
 
+        nav_lay.addStretch()
+
         self._next_btn = QPushButton("Next  ->")
         self._next_btn.setStyleSheet(_primary_ss())
-        self._next_btn.setFixedWidth(110)
         self._next_btn.clicked.connect(self._go_next)
         nav_lay.addWidget(self._next_btn)
 
         root.addWidget(nav)
+
+    def _available_height(self):
+        return self.screen().availableGeometry().height() - 40
+
+    def _size_for_pages(self):
+        """Reserve the tallest page once; scrolling is only a short-screen fallback."""
+        self.ensurePolished()
+        for widget in self.findChildren(QWidget):
+            widget.ensurePolished()
+        for button, labels in ((self._back_btn, ('Back',)),
+                               (self._skip_btn, ('Skip', 'Set up later')),
+                               (self._next_btn, ('Next  ->', 'Finish', 'Set up later', 'Enable Ava'))):
+            original = button.text()
+            widths = []
+            for label in labels:
+                button.setText(label)
+                button.ensurePolished()
+                widths.append(button.sizeHint().width())
+            button.setText(original)
+            button.setFixedWidth(max(widths) + theme.SPACE_1)
+        dynamic = (self._install_instructions, self._pull_progress, self._installed_note,
+                   self._key_combo.reason_label())
+        hidden = [widget.isHidden() for widget in dynamic]
+        for widget in dynamic:
+            widget.show()
+        summary = self._done_summary.text()
+        self._done_summary.setText(
+            f'Ollama: not reachable\nModel: {self._selected_model_name} (not installed)\n{_AVA_CLOUD_GUIDE_NOTE}')
+        heights = []
+        for index in range(self._stack.count()):
+            page = self._stack.widget(index).widget()
+            page.ensurePolished()
+            page.resize(568, self._available_height())
+            layout = page.layout()
+            layout.activate()
+            layout.invalidate()
+            # Reserve the scrollbar width too, so an initial narrow viewport
+            # cannot keep a needless scrollbar alive through word wrapping.
+            heights.append(max(layout.minimumSize().height(), layout.totalHeightForWidth(568)))
+        for widget, was_hidden in zip(dynamic, hidden):
+            widget.setHidden(was_hidden)
+        self._done_summary.setText(summary)
+        strip_height = max(self._step_strip.sizeHint().height(), self._step_strip.minimumSizeHint().height())
+        chrome = self.layout().itemAt(0).widget().height() + strip_height + 64
+        self.setFixedHeight(min(max(heights) + chrome + theme.SPACE_2, self._available_height()))
 
     # ---- Page builders ----
 
     def _build_intro_page(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, 24, 32, 16)
-        lay.setSpacing(14)
+        lay.setContentsMargins(32, theme.SPACE_2, 32, theme.SPACE_1)
+        lay.setSpacing(theme.SPACE_1)
 
         lay.addWidget(_body(_ava_intro_text(self._app.config)))
         lay.addWidget(_body(
@@ -343,12 +411,13 @@ class _WizardWindow(QDialog):
 
         # Example table
         examples_frame = QWidget()
+        examples_frame.setObjectName('avaExamples')
         examples_frame.setStyleSheet(
-            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
+            f"QWidget#avaExamples{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
         )
         ex_lay = QVBoxLayout(examples_frame)
         ex_lay.setContentsMargins(16, 12, 16, 12)
-        ex_lay.setSpacing(6)
+        ex_lay.setSpacing(theme.SPACE_1 // 2)
 
         ex_hdr = QHBoxLayout()
         ex_hdr.addWidget(_small_bold("Instead of remembering...", theme.TEXT_SECONDARY), stretch=1)
@@ -388,7 +457,7 @@ class _WizardWindow(QDialog):
         ))
 
         lay.addStretch()
-        return page
+        return _scroll_page(page)
 
     def _build_ollama_page(self) -> QWidget:
         page = QWidget()
@@ -403,8 +472,9 @@ class _WizardWindow(QDialog):
 
         # Status card
         status_card = QWidget()
+        status_card.setObjectName('avaOllamaStatus')
         status_card.setStyleSheet(
-            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
+            f"QWidget#avaOllamaStatus{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
         )
         sc_lay = QHBoxLayout(status_card)
         sc_lay.setContentsMargins(16, 14, 16, 14)
@@ -415,6 +485,7 @@ class _WizardWindow(QDialog):
         sc_lay.addWidget(self._ollama_dot)
 
         self._ollama_status_lbl = QLabel("Checking...")
+        self._ollama_status_lbl.setWordWrap(True)
         self._ollama_status_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         sc_lay.addWidget(self._ollama_status_lbl, stretch=1)
 
@@ -467,7 +538,7 @@ class _WizardWindow(QDialog):
 
         lay.addWidget(self._install_instructions)
         lay.addStretch()
-        return page
+        return _scroll_page(page)
 
     def _build_model_page(self) -> QWidget:
         page = QWidget()
@@ -489,14 +560,15 @@ class _WizardWindow(QDialog):
         self._model_combo = QComboBox()
         model_label.setBuddy(self._model_combo)
         self._model_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
         )
         for name, size, desc in _MODELS:
             self._model_combo.addItem(f"{name}  ({size})", userData=name)
         selected_index = self._model_combo.findData(self._selected_model_name)
         self._model_combo.setCurrentIndex(selected_index)
         self._model_combo.currentIndexChanged.connect(self._on_model_selected)
-        model_row.addWidget(self._model_combo, stretch=1)
+        model_row.addWidget(self._model_combo)
+        model_row.addStretch()
         lay.addLayout(model_row)
 
         # Description label
@@ -545,13 +617,13 @@ class _WizardWindow(QDialog):
         lay.addWidget(self._installed_note)
 
         lay.addStretch()
-        return page
+        return _scroll_page(page)
 
     def _build_done_page(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, 24, 32, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(32, theme.SPACE_2, 32, theme.SPACE_1)
+        lay.setSpacing(theme.SPACE_1)
 
         # OWNER COPY: review the incomplete setup heading.
         title = QLabel("Ava is not ready.")
@@ -570,23 +642,25 @@ class _WizardWindow(QDialog):
 
         # ---- Activation key selector ----
         key_frame = QWidget()
+        key_frame.setObjectName('avaKeyGroup')
         key_frame.setStyleSheet(
-            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
+            f"QWidget#avaKeyGroup{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
         )
         kf_lay = QVBoxLayout(key_frame)
         kf_lay.setContentsMargins(16, 12, 16, 12)
         kf_lay.setSpacing(8)
 
-        kf_lay.addWidget(_small_bold("Activation key", theme.ACCENT))
-        kf_lay.addWidget(_body(
+        key_row = QHBoxLayout()
+        key_row.setSpacing(theme.SPACE_2)
+        key_text = QVBoxLayout()
+        key_text.setSpacing(theme.SPACE_1)
+        key_text.addWidget(_small_bold("Activation key", theme.TEXT_PRIMARY))
+        key_text.addWidget(_body(
             "Hold this key and speak — Ava listens while you hold it, "
             "then responds when you release."
         ))
 
-        key_row = QHBoxLayout()
-        key_row.setSpacing(10)
-        key_label = _label("Key:")
-        key_row.addWidget(key_label)
+        key_row.addLayout(key_text, stretch=1)
 
         from samsara.ui.settings.shared_qt import _HotkeyButton
         owner_ref = weakref.ref(self)
@@ -601,9 +675,9 @@ class _WizardWindow(QDialog):
                                        on_change=key_changed)
         self._key_combo.configure_hold('ava_mode_key', key_config)
         self._key_combo.setAccessibleName('Activation key')  # 418: the name shares its source with the visible label
-        key_label.setBuddy(self._key_combo)
-        key_row.addWidget(self._key_combo)
-        key_row.addStretch()
+        self._key_combo.setMinimumWidth(0)
+        self._key_combo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        key_row.addWidget(self._key_combo, alignment=Qt.AlignmentFlag.AlignVCenter)
         kf_lay.addLayout(key_row)
         kf_lay.addWidget(self._key_combo.reason_label())
 
@@ -611,8 +685,9 @@ class _WizardWindow(QDialog):
 
         # ---- How to use ----
         usage_frame = QWidget()
+        usage_frame.setObjectName('avaUsage')
         usage_frame.setStyleSheet(
-            f"background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};"
+            f"QWidget#avaUsage{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
         )
         uf_lay = QVBoxLayout(usage_frame)
         uf_lay.setContentsMargins(16, 12, 16, 12)
@@ -637,23 +712,8 @@ class _WizardWindow(QDialog):
 
         lay.addWidget(usage_frame)
 
-        # Enable pack button (shown if AI pack is disabled)
-        # OWNER COPY: consent activates Ava, not the retired pack switch.
-        self._enable_pack_btn = QPushButton("Enable Ava")
-        self._enable_pack_btn.setStyleSheet(_primary_ss())
-        self._enable_pack_btn.setFixedWidth(220)
-        self._enable_pack_btn.clicked.connect(self._enable_ai_pack)
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(self._enable_pack_btn)
-        btn_row.addStretch()
-        lay.addLayout(btn_row)
-
         lay.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(page)
-        return scroll
+        return _scroll_page(page)
 
     # ----------------------------------------------------------------
     # Step navigation
@@ -678,6 +738,7 @@ class _WizardWindow(QDialog):
             self._next_btn.setEnabled(True)
         else:
             self._skip_btn.show()
+            self._skip_btn.setText('Skip')
             self._next_btn.setText("Next  ->")
 
         if step == self._STEP_INTRO:
@@ -696,7 +757,10 @@ class _WizardWindow(QDialog):
 
     def _go_next(self):
         if self._current_step == self._STEP_DONE:
-            self._finish()
+            if self._consent_only_missing:
+                self._enable_ai_pack()
+            else:
+                self._finish()
             return
         if self._current_step < self._STEP_DONE:
             self._skipped_steps.discard(self._current_step)
@@ -707,7 +771,9 @@ class _WizardWindow(QDialog):
             self._go_to(self._current_step - 1)
 
     def _skip_step(self):
-        if self._current_step < self._STEP_DONE:
+        if self._current_step == self._STEP_DONE:
+            self.close()
+        elif self._current_step < self._STEP_DONE:
             self._skipped_steps.add(self._current_step)
             self._go_to(self._current_step + 1)
 
@@ -922,6 +988,27 @@ class _WizardWindow(QDialog):
             resolved_addresses=resolved_addresses,
         )
         ready = configured_and_installed and state.allowed
+        policy = (self._app.config.get('ava') or {}).get('provider_policy', 'off')
+        self._consent_only_missing = (policy == 'local' and configured_and_installed
+                                     and (self._app.config.get('ollama') or {}).get('enabled') is True
+                                     and not state.allowed and 'consent' in state.reason.lower())
+        # PLACEHOLDER COPY (462): exact missing prerequisite, never a generic setup label.
+        if policy == 'cloud':
+            missing = _AVA_CLOUD_GUIDE_NOTE
+        elif policy == 'off' or state.status == 'off-by-choice':
+            missing = 'Ava is set to Off in Settings > Ava.'
+        elif self._ollama_running is None:
+            missing = 'Ollama has not been checked yet.'
+        elif not self._ollama_running:
+            missing = 'Ollama is not reachable.'
+        elif not installed:
+            missing = 'The selected model is not installed.'
+        elif not configured_and_installed:
+            missing = 'The selected model is not configured in Settings > Ava.'
+        elif self._consent_only_missing:
+            missing = 'Ava needs your OK.'
+        else:
+            missing = state.reason
         self._done_title.setText("Ava is ready." if ready else "Ava is not ready.")
         self._done_title.setStyleSheet(
             f"color:{theme.SUCCESS if ready else theme.WARNING};"
@@ -931,11 +1018,13 @@ class _WizardWindow(QDialog):
             "Ollama: " + ("reachable" if self._ollama_running is True else
                           "not reachable" if self._ollama_running is False else "not checked yet"),
             f"Model: {selected} ({'installed' if installed else 'not installed'})",
-            f"Ava: {'enabled' if ready else 'needs setup'}",
+            'Ava: enabled' if ready else missing,
         ]
         self._done_summary.setText("\n".join(parts))
-        self._enable_pack_btn.setVisible(not ready)
-        self._next_btn.setText("Finish" if ready else "Set up later")
+        self._skip_btn.setText('Set up later')
+        self._skip_btn.setVisible(self._consent_only_missing)
+        self._next_btn.setText('Finish' if ready else
+                               'Enable Ava' if self._consent_only_missing else 'Set up later')
 
     def _on_ava_key_changed(self):
         try:
@@ -944,25 +1033,25 @@ class _WizardWindow(QDialog):
             logger.debug(f"_on_ava_key_changed: {e}")
 
     def _enable_ai_pack(self):
+        self._build_done_summary()
+        if not self._consent_only_missing:
+            return
         try:
-            policy = ava_consent_qt.selected_ava_policy(self._app.config)
+            policy = 'local'
             consent = ava_consent_qt.request_consent(
                 self, self._app.config, cloud_enabled=policy == "cloud"
             )
             if consent is None:
                 return
+            self._build_done_summary()
+            if not self._consent_only_missing:
+                return
             ava_consent_qt.apply_accepted_ava(
                 self._app, consent, policy=policy
             )
             self._build_done_summary()
-            # OWNER COPY: consent is saved, but readiness still depends on the live probe.
-            self._enable_pack_btn.setText("Ava preferences saved")
-            self._enable_pack_btn.setEnabled(False)
         except Exception:
             logger.exception("Could not activate Ava after consent")
-            self._enable_pack_btn.setText(
-                "Ava setup needs attention in Settings > Ava / Cloud."
-            )
 
     def _finish(self):
         # Save model choice from combo if not already saved by a pull
@@ -988,6 +1077,15 @@ class _WizardWindow(QDialog):
 # ---------------------------------------------------------------------------
 # Small reusable widgets
 # ---------------------------------------------------------------------------
+
+def _scroll_page(page: QWidget) -> QScrollArea:
+    page.setObjectName('avaPage')
+    scroll = QScrollArea()
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(page)
+    return scroll
+
 
 def _ava_intro_text(config: dict) -> str:
     """Describe authoritative Ava policy without guessing provider readiness."""

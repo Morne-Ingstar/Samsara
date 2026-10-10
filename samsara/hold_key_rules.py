@@ -81,7 +81,7 @@ ALONE = frozenset([f'f{n}' for n in range(1, 25)] +
                    'pause', 'scroll_lock', 'right_ctrl', 'right_alt',
                    'right_shift', 'menu', 'mouse4', 'mouse5'])
 KNOWN = ALONE | MODIFIERS | frozenset(VK_NAMES.values())
-WARNING = 'This key will also act in the program in front.'  # stand-in
+WARNING = 'This key will also act in the program in front.'  # owner approved
 REFUSALS = {
     'secure': 'Windows reserves Ctrl+Alt+Delete; Samsara cannot capture it.',
     'win': 'The Windows key is reserved for Windows shortcuts.',
@@ -91,7 +91,7 @@ REFUSALS = {
     'unknown': 'Samsara cannot capture this key on the desktop.',
     'shape': 'Choose one key, with optional Ctrl, Alt or Shift.',
     'mouse_combo': 'Use Mouse 4 or Mouse 5 on its own.',
-}  # owner copy stand-ins
+}  # owner approved copy
 HOLD_DEFAULTS = {
     'hotkey': ('Primary dictation', 'ctrl+shift'),
     'command_hotkey': ('Command only', 'ctrl+alt+c'),
