@@ -6,7 +6,7 @@ AVA_INTERPRET_HELP_LONG = (
     "You can ask in your own words, such as 'make the music quieter'. "
     "If Samsara does not recognise a command, Ava tries to find an available command "
     "that fits what you asked. She can only use commands Samsara already has, "
-    "and still asks for your yes when a command needs it. "
+    "and still asks for your confirmation when a command needs it. "
     "Turn this off if you want Samsara to accept only commands it recognises directly. "
     "It is on by default."
 )

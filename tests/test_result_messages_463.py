@@ -234,7 +234,14 @@ def test_help_is_in_the_existing_row_help_source():
     assert config_schema.SETTINGS_SCHEMA['ava_command_session.interpret_misses']['help']['why'] == AVA_INTERPRET_HELP_LONG
     short = (Path(__file__).resolve().parents[1]/'samsara/ui/settings/ava_page.py').read_text(encoding='utf-8')
     assert 'After a normal command miss, Ava may choose one available command.' in short
-    assert 'make the music quieter' in AVA_INTERPRET_HELP_LONG
+    assert AVA_INTERPRET_HELP_LONG == (
+        "You can ask in your own words, such as 'make the music quieter'. "
+        "If Samsara does not recognise a command, Ava tries to find an available command "
+        "that fits what you asked. She can only use commands Samsara already has, "
+        "and still asks for your confirmation when a command needs it. "
+        "Turn this off if you want Samsara to accept only commands it recognises directly. "
+        "It is on by default."
+    )
 
 
 @pytest.mark.parametrize('palette', ['dark', 'light'])
