@@ -13868,7 +13868,11 @@ class DictationApp:
         # termination even if a background thread or Qt modal is blocking.
         logger.info("[EXIT] Goodbye!")
         _samsara_boot.end_session(LOG_DIR)      # 48: a deliberate exit, not a crash
-        os._exit(0)
+        from samsara import process_exit
+        try:
+            audio_ducking.shutdown_host()
+        finally:
+            process_exit.hard_exit(0)
 
 if __name__ == "__main__":
     # Console is already hidden at top of file
