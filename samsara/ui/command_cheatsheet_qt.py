@@ -22,7 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Callable, List
 
-from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect
+from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect, QSignalBlocker
 from PySide6.QtGui import QColor, QCursor, QPalette, QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -340,30 +340,32 @@ class CommandCheatSheetQt:
         self._init_posted = False
         self._visible = False
         self._pending_pack_scope = None
+        self._pending_view = None
 
     # ----------------------------------------------------------------
     # Public API (callable from any thread)
     # ----------------------------------------------------------------
 
     def show(self):
+        self._request_show(None, None)
+
+    def show_filtered(self, text: str):
+        """Apply Home's category and query before the first list is built."""
+        self._request_show(None, ("All", text))
+
+    def _request_show(self, scope, view):
         self._visible = True
-        self._pending_pack_scope = None
+        self._pending_pack_scope = scope
+        self._pending_view = view
         if self._window is not None:
-            qt_runtime.post(lambda: self._show_with_pack_scope(None))
+            qt_runtime.post(lambda: self._show_with_pack_scope(scope, view))
         elif not self._init_posted:
             self._init_posted = True
             qt_runtime.post(self._init_window)
 
     def show_scoped(self, pack_ids):
         """Show only ``pack_ids``; safe to call from the session worker."""
-        self._visible = True
-        scope = frozenset(pack_ids)
-        self._pending_pack_scope = scope
-        if self._window is not None:
-            qt_runtime.post(lambda: self._show_with_pack_scope(scope))
-        elif not self._init_posted:
-            self._init_posted = True
-            qt_runtime.post(self._init_window)
+        self._request_show(frozenset(pack_ids), None)
 
     def hide(self):
         self._visible = False
@@ -394,14 +396,14 @@ class CommandCheatSheetQt:
     def _init_window(self):
         """Runs on the Qt thread."""
         self._window = _CheatSheetWindow(
-            self._execute_cb, self._commands_cb, self._palette_path
+            self._execute_cb, self._commands_cb, self._palette_path,
+            initial_scope=self._pending_pack_scope, initial_view=self._pending_view,
         )
-        self._window.set_pack_scope(self._pending_pack_scope)
         self._window.show()
 
-    def _show_with_pack_scope(self, pack_ids):
+    def _show_with_pack_scope(self, pack_ids, view=None):
         """Apply scope and raise the sheet on the Qt thread."""
-        self._window.set_pack_scope(pack_ids)
+        self._window.set_view(pack_ids, view)
         self._window.show()
         self._window.raise_()
 
@@ -732,13 +734,17 @@ class _CheatSheetWindow(QMainWindow):
         execute_cb: Callable,
         commands_cb: Callable,
         palette_path: Path,
+        *, initial_scope=None, initial_view=None,
     ):
         super().__init__()
         self._execute_cb  = execute_cb
         self._commands_cb = commands_cb
         self._palette_path = palette_path
         self._all: List[dict] = []
-        self._pack_scope = None
+        self._pack_scope = initial_scope
+        self._refill_running = False
+        self._refill_scheduled = False
+        self._pending_filter = None
         self._pinned: set = set()
         self._live_only = True
         self._active_category = "All"
@@ -748,6 +754,8 @@ class _CheatSheetWindow(QMainWindow):
         self._has_opened = False
 
         self._load_palette()
+        if initial_view is not None:
+            self._active_category = initial_view[0]
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -805,6 +813,8 @@ class _CheatSheetWindow(QMainWindow):
         _palette.setColor(QPalette.ColorRole.PlaceholderText,
                           theme.qcolor(theme.TEXT_SECONDARY))
         self._filter.setPalette(_palette)
+        if initial_view is not None:
+            self._filter.setText(initial_view[1])
         self._filter.textChanged.connect(self._apply_filter)
         search_layout.addWidget(self._filter)
         lay.addWidget(search_wrap)
@@ -878,11 +888,24 @@ class _CheatSheetWindow(QMainWindow):
 
         ``None`` is the normal, unscoped command-reference view.
         """
+        self.set_view(pack_ids)
+
+    def set_view(self, pack_ids, view=None):
+        """Change scope/category/search as one refill, on the Qt thread."""
         scope = None if pack_ids is None else frozenset(pack_ids)
-        if scope == self._pack_scope:
-            return
+        scope_changed = scope != self._pack_scope
         self._pack_scope = scope
-        self.refresh_commands()
+        if view is not None:
+            self._active_category, text = view
+            self._category_bar.set_active(self._active_category)
+            with QSignalBlocker(self._filter):
+                self._filter.setText(text)
+        if scope_changed:
+            self.refresh_commands()
+        elif view is not None:
+            self._apply_filter(self._filter.text())
+        if view is not None:
+            self._save_palette()
 
     def refresh_commands(self):
         try:
@@ -915,6 +938,26 @@ class _CheatSheetWindow(QMainWindow):
         self._apply_filter(self._filter.text())
 
     def _apply_filter(self, text: str = ""):
+        if self._refill_running:
+            self._pending_filter = text
+            return
+        self._pending_filter = None
+        self._refill_running = True
+        try:
+            self._refill_list(text)
+        finally:
+            self._refill_running = False
+            if self._pending_filter is not None and not self._refill_scheduled:
+                self._refill_scheduled = True
+                QTimer.singleShot(0, self, self._drain_filter)
+
+    def _drain_filter(self):
+        self._refill_scheduled = False
+        text, self._pending_filter = self._pending_filter, None
+        if text is not None:
+            self._apply_filter(text)
+
+    def _refill_list(self, text: str):
         raw = text.strip().lower()
         self._static_pane.setVisible(not raw and getattr(self, "_static_has_content", False))
         if raw:
@@ -939,27 +982,26 @@ class _CheatSheetWindow(QMainWindow):
         unpinned = (filtered if raw else
                     [c for c in filtered if c["phrase"] not in self._pinned])
 
-        self._list.blockSignals(True)
-        self._item_generation = getattr(self, "_item_generation", 0) + 1
-        item_generation = self._item_generation
-        self._list.clear()
-        for cmd in unpinned:
-            item = QListWidgetItem()
-            # Execution uses the canonical phrase; the id is kept for tests
-            # and tooling (every row resolves to a real catalog command).
-            item.setData(Qt.ItemDataRole.UserRole, cmd["phrase"])
-            item.setData(Qt.ItemDataRole.UserRole + 1, cmd["canonical_id"])
-            item.setData(Qt.ItemDataRole.UserRole + 2, item_generation)
-            item.setText(row_text(cmd))
-            tooltip = cmd.get("description", "")
-            if cmd.get("pack") not in (None, "", "core"):
-                tooltip += f"\nPack: {cmd['pack']}" + (" (off)" if cmd.get("pack_disabled") else "")
-            if cmd.get("scope_note"):
-                tooltip += f"\nWorks {cmd['scope_note']}" + ("" if cmd.get("live", True) else " -- not live here")
-            item.setToolTip(tooltip.strip())
-            item.setForeground(theme.qcolor(_row_text_colour(cmd)))
-            self._list.addItem(item)
-        self._list.blockSignals(False)
+        with QSignalBlocker(self._list):
+            self._item_generation = getattr(self, "_item_generation", 0) + 1
+            item_generation = self._item_generation
+            self._list.clear()
+            for cmd in unpinned:
+                item = QListWidgetItem()
+                # Execution uses the canonical phrase; the id is kept for tests
+                # and tooling (every row resolves to a real catalog command).
+                item.setData(Qt.ItemDataRole.UserRole, cmd["phrase"])
+                item.setData(Qt.ItemDataRole.UserRole + 1, cmd["canonical_id"])
+                item.setData(Qt.ItemDataRole.UserRole + 2, item_generation)
+                item.setText(row_text(cmd))
+                tooltip = cmd.get("description", "")
+                if cmd.get("pack") not in (None, "", "core"):
+                    tooltip += f"\nPack: {cmd['pack']}" + (" (off)" if cmd.get("pack_disabled") else "")
+                if cmd.get("scope_note"):
+                    tooltip += f"\nWorks {cmd['scope_note']}" + ("" if cmd.get("live", True) else " -- not live here")
+                item.setToolTip(tooltip.strip())
+                item.setForeground(theme.qcolor(_row_text_colour(cmd)))
+                self._list.addItem(item)
 
     def _set_live_only(self, live_only: bool):
         self._live_only = live_only
@@ -1095,19 +1137,22 @@ class _CheatSheetWindow(QMainWindow):
         if not phrase:
             return
         generation = item.data(Qt.ItemDataRole.UserRole + 2)
+        command_id = item.data(Qt.ItemDataRole.UserRole + 1)
         # Flash
         orig = item.foreground()
         item.setForeground(theme.qcolor(theme.ACCENT))
         item.setBackground(theme.qcolor(_selected_bg()))
+        del item
         def _restore():
-            try:
-                if (self._item_generation == generation
-                        and self._list.row(item) >= 0
-                        and item.data(Qt.ItemDataRole.UserRole + 2) == generation):
-                    item.setForeground(orig)
-                    item.setBackground(QColor(Qt.GlobalColor.transparent))
-            except RuntimeError:
-                pass
+            if self._item_generation != generation:
+                return
+            for index in range(self._list.count()):
+                current = self._list.item(index)
+                if (current.data(Qt.ItemDataRole.UserRole + 1) == command_id
+                        and current.data(Qt.ItemDataRole.UserRole + 2) == generation):
+                    current.setForeground(orig)
+                    current.setBackground(QColor(Qt.GlobalColor.transparent))
+                    break
         QTimer.singleShot(300, self, _restore)
         self._execute(phrase)
 
@@ -1157,6 +1202,7 @@ class _CheatSheetWindow(QMainWindow):
         if item is None:
             return
         phrase = item.data(Qt.ItemDataRole.UserRole)
+        del item
         if not phrase:
             return
         menu = QMenu(self)

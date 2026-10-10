@@ -1104,33 +1104,17 @@ def _subscribe_ava_readiness(widget: QWidget) -> None:
 
 
 def open_cheatsheet_filtered(app, needle: str) -> bool:
-    """Show the command reference with its text filter set to `needle` and
-    the category on All (the sheet's own filter path). The sheet's window
-    is read when the posted callback RUNS, not when this is called: on the
-    first open the wrapper has no window yet (its init is itself a post),
-    which is why the filter never applied on a first press (40)."""
+    """Show the reference with All and the query applied before its refill."""
     sheet = getattr(app, 'cheat_sheet', None)
     if sheet is None:
         logger.error("[HOME] Command reference: the app has no cheat_sheet")
         return False
     try:
-        sheet.show()
+        sheet.show_filtered(needle)
     except Exception as exc:
         logger.warning(f"[HOME] Command reference show failed: {exc}")
         return False
 
-    def _apply():
-        window = getattr(sheet, '_window', None)
-        if window is None:
-            logger.error("[HOME] Command reference: window not built after its init post")
-            return
-        try:
-            window._set_category("All")
-            window._filter.setText(needle)
-        except Exception as exc:
-            logger.warning(f"[HOME] Command reference filter failed: {exc}")
-
-    _post_after(_apply)
     return True
 
 
