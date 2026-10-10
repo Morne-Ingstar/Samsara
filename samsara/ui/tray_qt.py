@@ -587,8 +587,8 @@ def _paint_vector(painter: QPainter, rect: QRectF, capture: str, eye: str,
                   brand: bool = False) -> None:
     """Live vector render: ring rotated, eye upright (caller holds the lock)."""
     small = False if brand else _uses_small(min(rect.width(), rect.height()), small_max)
-    # 455: only the three smallest recording bodies grow; the eye stays intact.
-    body_scale = 1.5 if capture == "recording" and min(rect.width(), rect.height()) <= 24 else 1.0
+    # 455: small Compact/tray bodies grow; Full keeps the regular snake.
+    body_scale = 1.5 if not brand and capture == "recording" and min(rect.width(), rect.height()) <= 24 else 1.0
     ring = _renderer(capture, eye, small, "ring", brand, body_scale=body_scale)
     eye_renderer = _renderer(capture, eye, small, "eye", brand) if mark_eye_id(eye, brand) else None
     if ring is None:

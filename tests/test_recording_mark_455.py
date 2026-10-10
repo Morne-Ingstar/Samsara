@@ -98,7 +98,7 @@ def test_small_recording_uses_regular_head_and_tail_in_red_at_both_scales(qapp, 
     assert ring[-1].attrib == base[-1].attrib  # the approved jaw is unchanged
     weight = tray_qt.RING_BRAND_WIDTH if brand else tray_qt.RING_LINE_WIDTH
     assert [node.get('d') for node in ring if node.get('data-role') == 'segment'] == [
-        tray_qt.ring_segment_path_data(i, weight, 1.5) for i in range(3)]
+        tray_qt.ring_segment_path_data(i, weight, 1.0 if brand else 1.5) for i in range(3)]
     assert any(image.pixelColor(x, y).alpha() > 0 for x in range(pixels) for y in range(pixels))
 
 
