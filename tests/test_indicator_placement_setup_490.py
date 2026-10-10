@@ -214,13 +214,9 @@ def test_actual_settings_seam_moves_selected_display(qapp, display):
     assert placement.current_position(app.config) == 'top-right'
 
 
-def test_primary_monitor_before_qt_resolves_windows_device_id(qapp, monkeypatch):
-    from PySide6.QtGui import QGuiApplication
-    import re
-    expected = placement.primary_monitor()
-    monkeypatch.setattr(QGuiApplication, 'instance', lambda: None)
-    actual = placement.primary_monitor()
-    assert re.fullmatch(r'\\\\\.\\DISPLAY\d+', actual)
-    # The offscreen platform's synthetic screen-0 is not a Windows monitor.
-    if expected != 'screen-0':
-        assert actual == expected
+def test_seed_before_qt_does_not_resolve_windows_device_id(monkeypatch):
+    def unavailable():
+        raise RuntimeError("No interactive monitor")
+    monkeypatch.setattr(placement, "primary_monitor", unavailable)
+    config = placement.seed_fresh({}, fresh=True)
+    assert placement.current_position(config, "full") == "bottom-left"

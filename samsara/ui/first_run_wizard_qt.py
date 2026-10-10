@@ -492,7 +492,8 @@ class _WizardWindow(QMainWindow):
         self.result = None
         self._step = 0
         self._config, self._existing_config = initial_config(_DEFAULTS, config_path)
-        seed_fresh(self._config, fresh=not Path(config_path).exists())
+        from samsara.ui.tutorial_display_qt import placement_monitor
+        seed_fresh(self._config, fresh=not Path(config_path).exists(), monitor=placement_monitor(self._config))
         self._mics: list[dict] = []
         self._mic_result.connect(self._on_mic_result)
         self._mic_announcer = LiveSurfaceAnnouncer(self)

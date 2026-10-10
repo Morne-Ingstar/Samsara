@@ -227,6 +227,13 @@ class LiveSurfaceController:
         if not screens:
             return
         raw, records = self._placement_config()
+        if "seed" in raw:
+            seed = raw.pop("seed")
+            if not records:
+                primary = next((screen for screen in screens if screen.primary), screens[0])
+                records[primary.id] = seed
+                raw.update(preferred_monitor=primary.id, monitors=records)
+            self._save_placement(raw)
         resolved = placement_for_screens(records, screens,
             preferred_monitor=raw.get("preferred_monitor"))
         mark = self.widget.mark_rect

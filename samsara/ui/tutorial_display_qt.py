@@ -1,4 +1,5 @@
 """Listening placement page shared by setup and the tutorial (490)."""
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from samsara import listening_display
@@ -9,6 +10,22 @@ from samsara.ui.widgets.indicator_place import IndicatorPlacePicker
 
 # PLACEHOLDER COPY (490)
 TITLE = 'Where it sits'
+
+
+def placement_monitor(config, app=None):
+    """Use the controller's screen identity and keep its connected selection."""
+    controller = getattr(app, 'live_surface', None)
+    if callable(getattr(controller, '_screens', None)):
+        screens = controller._screens()
+        preferred = (((config.get('ui') or {}).get('live_surface') or {}).get('placement') or {}).get('preferred_monitor')
+        selected = next((screen for screen in screens if screen.id == preferred), None)
+        if selected is not None:
+            return selected.id
+    screens = QGuiApplication.screens()
+    primary = QGuiApplication.primaryScreen()
+    if primary is None:
+        return None
+    return primary.name() or f'screen-{screens.index(primary)}'
 
 
 class DisplayPlacementPage(QWidget):
@@ -58,10 +75,11 @@ class DisplayPlacementPage(QWidget):
             button.update()
 
     def _choose(self, value):
+        monitor = placement_monitor(self.config, self.app)
         if self.app is not None:
-            choose_for_app(self.app, value)
+            choose_for_app(self.app, value, monitor)
         else:
-            self.config.update(placement_updates(self.config, value))
+            self.config.update(placement_updates(self.config, value, monitor))
 
 
 def tutorial_page(owner):

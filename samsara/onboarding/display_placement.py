@@ -29,18 +29,23 @@ def placement_updates(config, value, monitor=None):
     vertical, horizontal = value.split('-')
     edge = Edge.TOP if vertical == 'top' else Edge.BOTTOM
     fraction = {'left': 0.0, 'center': 0.5, 'right': 1.0}[horizontal]
-    monitor = monitor or primary_monitor()
     ui = deepcopy(config.get('ui') or {})
     surface = ui.setdefault('live_surface', {})
     placement = surface.setdefault('placement', {})
-    placement.setdefault('monitors', {})[monitor] = placement_record(Placement(edge, fraction))
-    placement['preferred_monitor'] = monitor
+    record = placement_record(Placement(edge, fraction))
+    if monitor:
+        placement.setdefault('monitors', {})[monitor] = record
+        placement['preferred_monitor'] = monitor
+        placement.pop('seed', None)
+    else:
+        placement['seed'] = record
     return {'listening_indicator_position': value, 'ui': ui}
 
 
 def seed_fresh(config, *, fresh, monitor=None):
     """Called only at proven absent-file boundaries; legacy fallbacks stay intact."""
-    if fresh:
+    placement = ((config.get('ui') or {}).get('live_surface') or {}).get('placement') or {}
+    if fresh and not (placement.get('monitors') or placement.get('seed')):
         config.update(placement_updates(config, 'bottom-left', monitor))
     return config
 
@@ -51,7 +56,7 @@ def current_position(config, display=None):
         return config.get('listening_indicator_position', 'bottom-center')
     placement = ((config.get('ui') or {}).get('live_surface') or {}).get('placement') or {}
     records = placement.get('monitors') or {}
-    record = records.get(placement.get('preferred_monitor') or primary_monitor())
+    record = records.get(placement.get('preferred_monitor')) or placement.get('seed')
     if not record:
         return 'bottom-center'
     if record.get('edge') not in ('top', 'bottom'):
@@ -60,9 +65,9 @@ def current_position(config, display=None):
     return f"{record['edge']}-{column}" if column else 'custom'
 
 
-def choose_for_app(app, value):
+def choose_for_app(app, value, monitor=None):
     """Persist with the app's shared writer, then use the Settings live apply call."""
-    app.update_config_and_save(placement_updates(app.config, value))
+    app.update_config_and_save(placement_updates(app.config, value, monitor))
     app.apply_listening_indicator_settings()
 
 

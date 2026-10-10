@@ -3139,7 +3139,7 @@ class DictationApp:
             # True first run: no config file existed at all -- the ONLY
             # case where writing defaults to disk is correct.
             self.config = default_config
-            display_placement.seed_fresh(self.config, fresh=True)
+            display_placement.seed_fresh(self.config, fresh=True, monitor=None)
             wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
             # save_config() requires _config_lock to be held; load_config is
             # always called under _config_lock so calling save_config() directly

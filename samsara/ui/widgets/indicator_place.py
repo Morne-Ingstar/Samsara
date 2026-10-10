@@ -113,9 +113,9 @@ class IndicatorPlacePicker(QWidget):
 
     def set_value(self, value):
         # A custom saved position is not silently relabelled as a preset.
-        if value not in (*POSITIONS, "custom"):
-            raise ValueError(value)
+        value = value if value in (*POSITIONS, "custom") else None
         self._value = value
+        self.setFocusProxy(None)
         for position, button in self.targets.items():
             button.setAutoExclusive(False)
             button.setChecked(position == value)
