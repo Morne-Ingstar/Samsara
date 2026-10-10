@@ -3,7 +3,6 @@
 Control your FlashForge AD5X via voice over TCP (port 8899).
 
 Commands:
-  "Jarvis, print me a gun"        - start the demo print file
   "Jarvis, start print benchy"    - start a named file
   "Jarvis, printer status"        - temperatures, state, progress
   "Jarvis, pause print"           - pause current print
@@ -104,42 +103,6 @@ def _parse_temps(resp):
 
 
 # --- Voice commands ---
-
-@command("print me a gun", aliases=[
-    "print a gun", "3d print a gun",
-    "three d print a gun", "print me a weapon"
-], pack="3d-printing")
-def handle_print_gun(app, remainder):
-    """Opens the toy gun model and wakes the printer up."""
-    model_file = app.config.get('flashforge_model_file',
-                                os.path.expanduser(r'~\Downloads\funnygun.3mf'))
-    orca = app.config.get('orca_path', ORCA_PATH)
-
-    if os.path.exists(model_file):
-        print(f"[3DP] Opening model in Orca: {os.path.basename(model_file)}")
-        try:
-            subprocess.Popen([orca, model_file])
-        except FileNotFoundError:
-            os.startfile(model_file)
-
-        # Wake the printer up — home axes so it moves visibly
-        def _wake_printer():
-            import time
-            time.sleep(1)  # let Orca open first
-            _send(app, "M601 S1")  # request control
-            _send(app, "G28")      # home all axes — head moves, steppers whir
-            print("[3DP] Printer homing...")
-        thread_registry.spawn("flashforge_printer._wake_printer", _wake_printer, daemon=True)
-
-        if hasattr(app, 'play_sound'):
-            try:
-                app.play_sound("start")
-            except Exception as e:
-                logger.debug(f"handle_print_gun: {e}")
-    else:
-        print(f"[3DP] Model file not found: {model_file}")
-    return True
-
 
 @command("start print", aliases=[
     "start printing", "begin print", "begin printing", "print file"

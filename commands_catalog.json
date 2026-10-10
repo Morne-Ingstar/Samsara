@@ -128,236 +128,6 @@
     },
     {
       "aliases": [
-        "restart ariadne"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.restart_ariadne",
-      "description": "Stops Ariadne and starts it again.",
-      "kind": "plugin",
-      "object": "ariadne",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:315",
-      "undoable": false,
-      "verb": "restart",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "restart sigil",
-        "restart sigil server"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.restart_sigil_server",
-      "description": "Stops the Sigil server and starts it again.",
-      "kind": "plugin",
-      "object": "sigil_server",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:333",
-      "undoable": false,
-      "verb": "restart",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "restart strata"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.restart_strata",
-      "description": "Stops Strata and starts it again.",
-      "kind": "plugin",
-      "object": "strata",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:297",
-      "undoable": false,
-      "verb": "restart",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "show quick reference"
-      ],
-      "args": [],
-      "canonical_id": "app_lifecycle.show_quick_reference",
-      "description": "show quick reference",
-      "kind": "plugin",
-      "object": "quick_reference",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:339",
-      "undoable": false,
-      "verb": "show",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "launch ariadne",
-        "start ariadne"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.start_ariadne",
-      "description": "Starts Ariadne running in the background.",
-      "kind": "plugin",
-      "object": "ariadne",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:303",
-      "undoable": false,
-      "verb": "start",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "launch sigil server",
-        "start sigil",
-        "start sigil server"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.start_sigil_server",
-      "description": "Starts the Sigil server running in the background.",
-      "kind": "plugin",
-      "object": "sigil_server",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:321",
-      "undoable": false,
-      "verb": "start",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "launch strata",
-        "start strata"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.start_strata",
-      "description": "Starts Strata running in the background.",
-      "kind": "plugin",
-      "object": "strata",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:285",
-      "undoable": false,
-      "verb": "start",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "stop ariadne"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.stop_ariadne",
-      "description": "Stops Ariadne.",
-      "kind": "plugin",
-      "object": "ariadne",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:309",
-      "undoable": false,
-      "verb": "stop",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "stop sigil",
-        "stop sigil server"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.stop_sigil_server",
-      "description": "Stops the Sigil server.",
-      "kind": "plugin",
-      "object": "sigil_server",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:327",
-      "undoable": false,
-      "verb": "stop",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "stop strata"
-      ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
-      "canonical_id": "app_lifecycle.stop_strata",
-      "description": "Stops Strata.",
-      "kind": "plugin",
-      "object": "strata",
-      "pack": "utilities",
-      "plugin": "app_lifecycle",
-      "risk": "write",
-      "source": "plugins/commands/app_lifecycle.py:291",
-      "undoable": false,
-      "verb": "stop",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
         "close"
       ],
       "args": [
@@ -6614,7 +6384,7 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "destructive",
-      "source": "plugins/commands/flashforge_printer.py:226",
+      "source": "plugins/commands/flashforge_printer.py:189",
       "undoable": false,
       "verb": "cancel",
       "whole_utterance": false
@@ -6635,7 +6405,7 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "read",
-      "source": "plugins/commands/flashforge_printer.py:250",
+      "source": "plugins/commands/flashforge_printer.py:213",
       "undoable": true,
       "verb": "list",
       "whole_utterance": false
@@ -6655,30 +6425,9 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "ui",
-      "source": "plugins/commands/flashforge_printer.py:206",
+      "source": "plugins/commands/flashforge_printer.py:169",
       "undoable": true,
       "verb": "pause",
-      "whole_utterance": false
-    },
-    {
-      "aliases": [
-        "3d print a gun",
-        "print a gun",
-        "print me a gun",
-        "print me a weapon",
-        "three d print a gun"
-      ],
-      "args": [],
-      "canonical_id": "flashforge_printer.print_me_a_gun",
-      "description": "Opens the toy gun model and wakes the printer up.",
-      "kind": "plugin",
-      "object": "me_a_gun",
-      "pack": "3d-printing",
-      "plugin": "flashforge_printer",
-      "risk": "ui",
-      "source": "plugins/commands/flashforge_printer.py:108",
-      "undoable": true,
-      "verb": "print",
       "whole_utterance": false
     },
     {
@@ -6697,7 +6446,7 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "ui",
-      "source": "plugins/commands/flashforge_printer.py:236",
+      "source": "plugins/commands/flashforge_printer.py:199",
       "undoable": true,
       "verb": "printer",
       "whole_utterance": false
@@ -6720,7 +6469,7 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "ui",
-      "source": "plugins/commands/flashforge_printer.py:171",
+      "source": "plugins/commands/flashforge_printer.py:134",
       "undoable": true,
       "verb": "printer",
       "whole_utterance": false
@@ -6740,7 +6489,7 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "ui",
-      "source": "plugins/commands/flashforge_printer.py:216",
+      "source": "plugins/commands/flashforge_printer.py:179",
       "undoable": true,
       "verb": "resume",
       "whole_utterance": false
@@ -6767,7 +6516,7 @@
       "pack": "3d-printing",
       "plugin": "flashforge_printer",
       "risk": "destructive",
-      "source": "plugins/commands/flashforge_printer.py:144",
+      "source": "plugins/commands/flashforge_printer.py:107",
       "undoable": false,
       "verb": "start",
       "whole_utterance": false

@@ -3,7 +3,7 @@
 Custom commands for specific demo scenarios. These are real
 working commands, not fakes — the video shows actual functionality.
 
-Note: "print me a gun" moved to flashforge_printer.py plugin.
+Note: Printer controls live in the flashforge_printer.py plugin.
 """
 
 import webbrowser

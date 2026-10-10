@@ -185,16 +185,16 @@ class TestProcessTextStates:
         assert "device gone" in dispatch.detail["error"]
 
     def test_declining_handler_gives_the_utterance_back(self, commands_file, tmp_path, allow_policy):
-        @_plugin_commands.command("start strata test")
+        @_plugin_commands.command("start sample test")
         def _decline(app, remainder):
             return False if remainder else True
 
         executor = self._executor(commands_file, tmp_path)
-        dispatch = executor.process_text("start strata test please", _app(), force_commands=True)
+        dispatch = executor.process_text("start sample test please", _app(), force_commands=True)
 
         assert dispatch.state is DispatchState.MISS
-        assert tuple(dispatch) == ("start strata test please", False)
-        assert dispatch.detail == {"declined_by": "start strata test"}
+        assert tuple(dispatch) == ("start sample test please", False)
+        assert dispatch.detail == {"declined_by": "start sample test"}
 
     def test_failing_builtin_is_failed_not_dictation(self, commands_file, tmp_path, allow_policy):
         executor = self._executor(commands_file, tmp_path)

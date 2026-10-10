@@ -104,3 +104,6 @@ transcript_session.md
 
 reports/
 AVA_MEMORY_PLAN.md
+
+# Owner machine-only commands; never ship.
+plugins/commands/local_*.py

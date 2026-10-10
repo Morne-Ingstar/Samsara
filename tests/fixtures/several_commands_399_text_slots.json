@@ -21,63 +21,6 @@
     "state": "completed",
     "text": "enable alarm alpha and volume down"
   },
-  "app_lifecycle.restart_ariadne": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "restart ariadne alpha and volume down",
-    "_407": "The argument-less command 'restart samsara' used to consume this sentence with extra words."
-  },
-  "app_lifecycle.restart_sigil_server": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "restart sigil server alpha and volume down",
-    "_407": "The argument-less command 'restart samsara' used to consume this sentence with extra words."
-  },
-  "app_lifecycle.restart_strata": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "restart strata alpha and volume down",
-    "_407": "The argument-less command 'restart samsara' used to consume this sentence with extra words."
-  },
-  "app_lifecycle.start_ariadne": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "start ariadne alpha and volume down"
-  },
-  "app_lifecycle.start_sigil_server": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "start sigil server alpha and volume down"
-  },
-  "app_lifecycle.start_strata": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "start strata alpha and volume down"
-  },
-  "app_lifecycle.stop_ariadne": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "stop ariadne alpha and volume down"
-  },
-  "app_lifecycle.stop_sigil_server": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "stop sigil server alpha and volume down"
-  },
-  "app_lifecycle.stop_strata": {
-    "calls": [],
-    "detail": {},
-    "state": "miss",
-    "text": "stop strata alpha and volume down"
-  },
   "ask_agent.ask_gpt": {
     "calls": [
       [
