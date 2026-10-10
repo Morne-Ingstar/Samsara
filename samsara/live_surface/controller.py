@@ -10,7 +10,7 @@ from samsara.live_surface.model import (CaptureState, EventKind, Lane, LiveSurfa
 from samsara.live_surface.caret import CaretLocator
 from samsara.live_surface.placement import (Edge, Placement, Rect, Screen,
                                              place_inline_form, free_placement_for_mark,
-                                             placement_for_screens, placement_record)
+                                             placement_for_screens, placement_record, placement_for_drop)
 from samsara.ui import qt_runtime
 from samsara.live_surface.feedback import Feedback, FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS, BAND_HEIGHT_DIP, feedback_for, remember_feedback
 
@@ -232,44 +232,69 @@ class LiveSurfaceController:
         mark = self.widget.mark_rect
         dimensions = dict(width=self.widget.width(), height=self.widget.height(),
                           mark_offset=(mark.x(), mark.y()))
-        from samsara.live_surface.model import VisibleForm, REVIEW_SIZE_DIP
-        anchor_key = (resolved.screen.id, resolved.placement)
-        cached = self._placement_anchor is not None and self._placement_anchor[0] == anchor_key
-        active = getattr(self.widget, "view", self.model.view()).form is not VisibleForm.MARK
-        placement_dimensions = dict(dimensions)
-        if active and not cached:
-            # Reserve the supported draft/review envelope once when entering
-            # the active form; ordinary receipts cannot move its header mark.
-            placement_dimensions.update(width=max(500, dimensions["width"]),
-                                        height=max(REVIEW_SIZE_DIP[1]+BAND_HEIGHT_DIP+20, dimensions["height"]))
-        placed = place_inline_form(resolved.placement, resolved.screen, **placement_dimensions)
-        if cached:
-            anchor = free_placement_for_mark(self._placement_anchor[1], resolved.screen.work_area)
-            placed = place_inline_form(anchor, resolved.screen, **dimensions)
-        # A deliberate free drop wins over automatic caret avoidance.
-        if (not cached and self._caret_locator is not None
-                and resolved.placement.edge is not Edge.FREE):
-            caret = self._caret_locator.request()
-            if caret is not None:
-                self._last_caret = caret
-            if self._last_caret is not None:
-                from samsara.live_surface.placement import _overlaps, _expand, CARET_PADDING_DIP
-                protected = _expand(self._last_caret.rect, CARET_PADDING_DIP)
-                if _overlaps(placed.bounds, protected):
-                    for edge in (resolved.placement.edge, Edge.TOP, Edge.BOTTOM, Edge.LEFT, Edge.RIGHT):
-                        for t in (.15, .85, 0., 1.):
-                            candidate = place_inline_form(Placement(edge, t), resolved.screen, **placement_dimensions)
-                            if not _overlaps(candidate.bounds, protected):
-                                placed = candidate
-                                break
-                        else:
-                            continue
-                        break
-        if active and not cached:
-            self._placement_anchor = (anchor_key, (placed.mark.x + 22, placed.mark.y + 22))
-            anchor = free_placement_for_mark(self._placement_anchor[1], resolved.screen.work_area)
-            placed = place_inline_form(anchor, resolved.screen, **dimensions)
+        # No saved record: retain HEAD caret avoidance and its stable anchor.
+        # A user dock or FREE drop always wins over automatic relocation.
+        if not records:
+            from samsara.live_surface.model import VisibleForm, REVIEW_SIZE_DIP
+            anchor_key = (resolved.screen.id, resolved.placement)
+            cached = self._placement_anchor is not None and self._placement_anchor[0] == anchor_key
+            active = getattr(self.widget, "view", self.model.view()).form is not VisibleForm.MARK
+            placement_dimensions = dict(dimensions)
+            if active and not cached:
+                # Reserve the supported draft/review envelope once when entering
+                # the active form; ordinary receipts cannot move its header mark.
+                placement_dimensions.update(width=max(500, dimensions["width"]),
+                                            height=max(REVIEW_SIZE_DIP[1]+BAND_HEIGHT_DIP+20, dimensions["height"]))
+            placed = place_inline_form(resolved.placement, resolved.screen, **placement_dimensions)
+            if cached:
+                anchor = free_placement_for_mark(self._placement_anchor[1], resolved.screen.work_area)
+                placed = place_inline_form(anchor, resolved.screen, **dimensions)
+            # A deliberate free drop wins over automatic caret avoidance.
+            if (not cached and self._caret_locator is not None
+                    and resolved.placement.edge is not Edge.FREE):
+                caret = self._caret_locator.request()
+                if caret is not None:
+                    self._last_caret = caret
+                if self._last_caret is not None:
+                    from samsara.live_surface.placement import _overlaps, _expand, CARET_PADDING_DIP
+                    protected = _expand(self._last_caret.rect, CARET_PADDING_DIP)
+                    if _overlaps(placed.bounds, protected):
+                        for edge in (resolved.placement.edge, Edge.TOP, Edge.BOTTOM, Edge.LEFT, Edge.RIGHT):
+                            for t in (.15, .85, 0., 1.):
+                                candidate = place_inline_form(Placement(edge, t), resolved.screen, **placement_dimensions)
+                                if not _overlaps(candidate.bounds, protected):
+                                    placed = candidate
+                                    break
+                            else:
+                                continue
+                            break
+            if active and not cached:
+                self._placement_anchor = (anchor_key, (placed.mark.x + 22, placed.mark.y + 22))
+                anchor = free_placement_for_mark(self._placement_anchor[1], resolved.screen.work_area)
+                placed = place_inline_form(anchor, resolved.screen, **dimensions)
+            self.widget.apply_placement(placed)
+            return
+        # Only the current visible size participates in placement. Reusing a
+        # FREE mark anchor for a dock would lose its edge on the next resize.
+        placed = place_inline_form(resolved.placement, resolved.screen, **dimensions)
         self.widget.apply_placement(placed)
+
+    def preview_move(self, bounds: Rect):
+        """Read-only drag preview using exactly the release snap calculation."""
+        if self.widget is None:
+            return None
+        mark = self.widget.mark_rect
+        center = (bounds.x + mark.x() + 22, bounds.y + mark.y() + 22)
+        screens = self._screens()
+        if not screens:
+            return None
+        screen = next((s for s in screens if s.work_area.x <= center[0] <= s.work_area.right
+                       and s.work_area.y <= center[1] <= s.work_area.bottom),
+                      min(screens, key=lambda s: (s.work_area.center[0] - center[0]) ** 2
+                          + (s.work_area.center[1] - center[1]) ** 2))
+        placement = placement_for_drop(bounds, center, screen)
+        return place_inline_form(placement, screen, width=bounds.width, height=bounds.height,
+                                 mark_offset=(mark.x(), mark.y()))
 
     def _move_requested(self, detail: object) -> None:
         if not isinstance(detail, dict):
@@ -284,7 +309,15 @@ class LiveSurfaceController:
         except (TypeError, ValueError):
             return
         old, records = self._placement_config()
-        placement = free_placement_for_mark((float(cx), float(cy)), screen.work_area)
+        center = (float(cx), float(cy))
+        bounds = detail.get("bounds")
+        if not isinstance(bounds, Rect):
+            mark = self.widget.mark_rect if self.widget is not None else None
+            ox, oy = (mark.x(), mark.y()) if mark is not None else (0, 0)
+            bounds = Rect(center[0] - 22 - ox, center[1] - 22 - oy,
+                          self.widget.width() if self.widget is not None else 44,
+                          self.widget.height() if self.widget is not None else 44)
+        placement = placement_for_drop(bounds, center, screen)
         records[screen.id] = placement_record(placement)
         self._save_placement({"preferred_monitor": screen.id, "monitors": records})
         self._placement_anchor = None

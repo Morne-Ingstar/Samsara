@@ -771,13 +771,23 @@ class LiveSurfaceWidget(QWidget):
                 self._animation.stop()
             self._dragging = True; self._drag_restore = self.geometry()
             self._drag_offset = event.globalPosition().toPoint() - self.pos()
+            self._drag_drop_bounds = None
             event.accept(); return
         if self._view.form in (VisibleForm.MARK,VisibleForm.DRAFT_BADGE) and self.mask().contains(event.position().toPoint()): self.show_requested.emit(); event.accept(); return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._dragging and self._drag_offset is not None:
-            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            from samsara.live_surface.placement import Rect
+            origin = event.globalPosition().toPoint() - self._drag_offset
+            bounds = Rect(origin.x(), origin.y(), self.width(), self.height())
+            self._drag_drop_bounds = bounds
+            preview = getattr(self._controller, "preview_move", None)
+            placed = preview(bounds) if callable(preview) else None
+            if placed is None:
+                self.move(origin)
+            else:
+                self.move(round(placed.bounds.x), round(placed.bounds.y))
             event.accept(); return
         super().mouseMoveEvent(event)
 
@@ -785,8 +795,11 @@ class LiveSurfaceWidget(QWidget):
         if self._dragging and event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
             origin = self.mapToGlobal(self._mark.pos())
-            self.move_requested.emit({"center": (origin.x() + MARK_SIZE / 2,
-                                                  origin.y() + MARK_SIZE / 2)})
+            bounds = getattr(self, "_drag_drop_bounds", None)
+            center = ((bounds.x + self._mark.x() + MARK_SIZE / 2,
+                       bounds.y + self._mark.y() + MARK_SIZE / 2) if bounds is not None else
+                      (origin.x() + MARK_SIZE / 2, origin.y() + MARK_SIZE / 2))
+            self.move_requested.emit({"center": center, "bounds": bounds})
             self.refresh(animate=False)
             place = getattr(self._controller, "_place_widget", None)
             if callable(place): place()

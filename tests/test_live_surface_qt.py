@@ -274,3 +274,35 @@ def test_drag_freezes_form_and_escape_restores_geometry(qapp, monkeypatch):
     assert not w.is_dragging and w.geometry() == initial
     assert 'ui' not in c.app.config
     c.close(); qapp.processEvents()
+
+
+def test_drag_preview_sticks_then_releases_without_saving_until_mouse_up(qapp):
+    from types import SimpleNamespace
+    from PySide6.QtCore import QPointF, QEvent
+    from PySide6.QtGui import QMouseEvent
+    from samsara.live_surface.controller import LiveSurfaceController
+    from samsara.live_surface.placement import Rect, Screen
+    c = LiveSurfaceController(SimpleNamespace(config={}))
+    c._screens = lambda: [Screen('synthetic', Rect(0, 0, 1920, 1040), True)]
+    c.start(); w = c.widget
+    try:
+        local = QPointF(w.mark_rect.center())
+        start = QPointF(w.mapToGlobal(local.toPoint()))
+        w.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, local, start,
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+        def move_to(x, y):
+            target = QPointF(x + local.x(), y + local.y())
+            w.mouseMoveEvent(QMouseEvent(QEvent.Type.MouseMove, local, target,
+                Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+            return target
+        move_to(10, 980)
+        assert w.x() == 8 and w.y() + w.height() == 1032
+        assert 'ui' not in c.app.config
+        target = move_to(700, 400)
+        assert w.x() == 700 and w.y() == 400
+        w.mouseReleaseEvent(QMouseEvent(QEvent.Type.MouseButtonRelease, local, target,
+            Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier))
+        assert w.x() == 700 and w.y() == 400
+        assert c.app.config['ui']['live_surface']['placement']['monitors']['synthetic']['edge'] == 'free'
+    finally:
+        c.close(); qapp.processEvents()

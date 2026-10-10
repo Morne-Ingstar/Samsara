@@ -50,3 +50,15 @@ def test_malformed_records_and_identity_fallback_are_deterministic():
     assert malformed == Placement(Edge.BOTTOM, t=.5, free_cx=0.0, free_cy=1.0)
     assert monitor_identity("DISPLAY1") == "DISPLAY1"
     assert monitor_identity("DISPLAY1", "ACME", "Wide", "42") == "DISPLAY1|ACME|Wide|42"
+
+
+def test_visible_edge_snap_zone_is_independent_of_header_mark_center():
+    from samsara.live_surface.placement import placement_for_drop, INSET_DIP, place_inline_form
+    screen = Screen("wide", Rect(0, 0, 1920, 1040))
+    bounds = Rect(1500, 700, 360, 132)
+    assert placement_for_drop(bounds, (1530, 730), screen).edge is Edge.FREE
+    bounds = Rect(1524, 700, 360, 132)
+    placement = placement_for_drop(bounds, (1554, 730), screen)
+    assert placement.edge is Edge.RIGHT  # mark is 366 DIP from right; display is 36.
+    placed = place_inline_form(placement, screen, width=500, height=360, mark_offset=(8, 8))
+    assert placed.bounds.right == screen.work_area.right - INSET_DIP

@@ -7,7 +7,7 @@ from math import isfinite
 from typing import Iterable, Mapping, Optional
 
 MARK_SIZE_DIP = 44.0
-SNAP_DISTANCE_DIP = 24.0
+SNAP_DISTANCE_DIP = 36.0
 INSET_DIP = 8.0
 ATTACHMENT_DIP = 4.0
 CARD_WIDTH_DIP = 500.0
@@ -195,17 +195,54 @@ def place_inline_form(placement: Placement, screen: Screen, *, width: float,
     anchor = edge_mark_rect(placement, area)
     ox, oy = mark_offset
     x, y = anchor.x - ox, anchor.y - oy
+    if placement.edge in (Edge.TOP, Edge.BOTTOM):
+        x = _along(area.x, area.width, width, INSET_DIP, placement.t)
     if placement.edge is Edge.TOP:
         y = area.y + INSET_DIP
     elif placement.edge is Edge.BOTTOM:
         y = area.bottom - height - INSET_DIP
     elif placement.edge is Edge.LEFT:
         x = area.x + INSET_DIP
+        if placement.t == 0:
+            y = area.y + INSET_DIP
+        elif placement.t == 1:
+            y = area.bottom - height - INSET_DIP
     elif placement.edge is Edge.RIGHT:
         x = area.right - width - INSET_DIP
-    bounds = _clamp(Rect(x, y, width, height), area)
+        if placement.t == 0:
+            y = area.y + INSET_DIP
+        elif placement.t == 1:
+            y = area.bottom - height - INSET_DIP
+    # Clamp the visible form, never a hypothetical review-sized envelope.
+    usable = Rect(area.x + INSET_DIP, area.y + INSET_DIP,
+                  max(0, area.width - 2 * INSET_DIP), max(0, area.height - 2 * INSET_DIP))
+    bounds = _clamp(Rect(x, y, width, height), usable)
     mark = Rect(bounds.x + ox, bounds.y + oy, MARK_SIZE_DIP, MARK_SIZE_DIP)
     return PlacedForm(screen.id, placement.edge, mark, bounds)
+
+
+def placement_for_drop(bounds: Rect, mark_center: tuple[float, float], screen: Screen,
+                       *, snap_distance: float = SNAP_DISTANCE_DIP) -> Placement:
+    """Dock from the visible display's edge in DIPs, including corner zones.
+
+    Beyond a work-area edge still counts as inside its zone: an off-screen
+    drag must recover into the work area rather than persist an invisible form.
+    """
+    area = screen.work_area
+    gaps = {Edge.TOP: bounds.y - area.y, Edge.BOTTOM: area.bottom - bounds.bottom,
+            Edge.LEFT: bounds.x - area.x, Edge.RIGHT: area.right - bounds.right}
+    vertical = min((Edge.TOP, Edge.BOTTOM), key=lambda e: gaps[e])
+    horizontal = min((Edge.LEFT, Edge.RIGHT), key=lambda e: gaps[e])
+    v, h = gaps[vertical] <= snap_distance, gaps[horizontal] <= snap_distance
+    if not v and not h:
+        return free_placement_for_mark(mark_center, area)
+    if v:
+        t = (0.0 if horizontal is Edge.LEFT else 1.0) if h else _unit(
+            (bounds.x - area.x - INSET_DIP) / max(1, area.width - bounds.width - 2 * INSET_DIP))
+        return Placement(vertical, t)
+    mark = Rect(mark_center[0] - MARK_SIZE_DIP / 2, mark_center[1] - MARK_SIZE_DIP / 2,
+                MARK_SIZE_DIP, MARK_SIZE_DIP)
+    return Placement(horizontal, normalized_t_for_mark(mark, horizontal, area))
 
 
 def free_placement_for_mark(center: tuple[float, float], area: Rect) -> Placement:
