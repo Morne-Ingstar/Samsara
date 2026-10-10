@@ -917,14 +917,8 @@
     },
     "run claude code": {
       "type": "launch",
-      "target": "C:\\Users\\Morne\\AppData\\Roaming\\npm\\claude.cmd",
+      "target": "%APPDATA%\\npm\\claude.cmd",
       "description": "Launches Claude Code in terminal.",
-      "pack": "ai"
-    },
-    "open arc": {
-      "type": "launch",
-      "target": "F:\\envs\\sami\\python.exe",
-      "description": "Opens ARC adversarial review pipeline.",
       "pack": "ai"
     },
     "open chatgpt": {
@@ -953,7 +947,7 @@
     },
     "open obsidian": {
       "type": "launch",
-      "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Obsidian\\Obsidian.exe",
+      "target": "%LOCALAPPDATA%\\Programs\\Obsidian\\Obsidian.exe",
       "description": "Opens the Obsidian notes app.",
       "pack": "ai"
     },
@@ -1191,7 +1185,7 @@
     },
     "open warp": {
       "type": "launch",
-      "target": "C:\\Users\\Morne\\AppData\\Local\\Programs\\Warp\\Warp.exe",
+      "target": "%LOCALAPPDATA%\\Programs\\Warp\\Warp.exe",
       "description": "Opens Warp terminal.",
       "pack": "utilities"
     },
@@ -1203,13 +1197,13 @@
     },
     "open discord": {
       "type": "launch",
-      "target": "C:\\Users\\Morne\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk",
+      "target": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk",
       "description": "Opens the Discord desktop app.",
       "pack": "utilities"
     },
     "open spotify": {
       "type": "launch",
-      "target": "C:\\Users\\Morne\\AppData\\Roaming\\Spotify\\Spotify.exe",
+      "target": "%APPDATA%\\Spotify\\Spotify.exe",
       "description": "Opens the Spotify desktop app.",
       "pack": "media"
     },
@@ -1601,18 +1595,6 @@
       "description": "Opens Midjourney in browser.",
       "pack": "ai"
     },
-    "open arcana": {
-      "type": "launch",
-      "target": "https://morneis.com",
-      "description": "Opens The Arcana / morneis.com.",
-      "pack": "ai"
-    },
-    "go to arcana": {
-      "type": "launch",
-      "target": "https://morneis.com",
-      "description": "Opens The Arcana / morneis.com.",
-      "pack": "ai"
-    },
     "open samsara page": {
       "type": "launch",
       "target": "https://morneis.com/samsara",
@@ -1637,22 +1619,10 @@
       "description": "Opens github.com in your default browser.",
       "pack": "ai"
     },
-    "my github": {
-      "type": "launch",
-      "target": "https://github.com/Morne-Ingstar",
-      "description": "Opens your GitHub profile.",
-      "pack": "ai"
-    },
     "samsara repo": {
       "type": "launch",
       "target": "https://github.com/Morne-Ingstar/Samsara",
       "description": "Opens Samsara GitHub repo.",
-      "pack": "ai"
-    },
-    "arc repo": {
-      "type": "launch",
-      "target": "https://github.com/Morne-Ingstar/ARC",
-      "description": "Opens ARC GitHub repo.",
       "pack": "ai"
     },
     "open hugging face": {

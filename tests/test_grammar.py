@@ -122,7 +122,7 @@ def test_every_argument_bearing_canonical_form_has_generated_positive_and_negati
                  and not non_voice_aliases.intersection(record["aliases"])]
     # 253 and subsequent additions replaced the old 72-record catalogue.
     # The companion registry test pins every ID, alias, slot and scope.
-    assert len(with_args) == 82
+    assert len(with_args) == 78
     positives = [_positive(record) for record in with_args]
     negatives = [_negative(record) for record in with_args]
     assert len(positives) == len(with_args)

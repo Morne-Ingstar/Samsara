@@ -12,9 +12,9 @@ Commands:
   "Jarvis, list print files"      - show files on printer
 
 Setup in samsara_config.json:
-  "flashforge_ip": "***REMOVED***",
-  "flashforge_serial": "***REMOVED***",
-  "flashforge_check_code": "***REMOVED***",
+  "flashforge_ip": "192.168.1.50",
+  "flashforge_serial": "EXAMPLE_SERIAL",
+  "flashforge_check_code": "EXAMPLE_CODE",
   "flashforge_print_file": "toy_gun.gcode"
 
 Protocol: FlashForge TCP M-code on port 8899.
@@ -147,7 +147,7 @@ def handle_status(app, remainder):
     if temps:
         ext = temps.get('extruder', '?')
         bed = temps.get('bed', '?')
-        print(f"[3DP] Extruder: {ext}°C | Bed: {bed}°C")
+        print(f"[3DP] Extruder: {ext}Â°C | Bed: {bed}Â°C")
 
     if progress:
         for line in progress.split('\n'):

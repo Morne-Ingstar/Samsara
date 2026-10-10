@@ -3,7 +3,7 @@
 import json
 from types import SimpleNamespace
 
-from plugins.commands import ask_ollama, dispatch_voice
+from plugins.commands import ask_ollama
 from samsara.ava_memory import AvaMemory, log_conversation
 
 
@@ -60,17 +60,6 @@ def test_take_session_clears_normal_turns_without_actions():
     assert memory.get_messages() == []
 
 
-def test_near_miss_and_dispatch_log_have_separate_lanes(tmp_path, monkeypatch):
-    monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path))
-    said = []
-    app = SimpleNamespace(config={}, audio_coordinator=SimpleNamespace(
-        speak=lambda text, **kw: said.append(text) or SimpleNamespace(utterance_id="ok")),
-        _show_outcome_chip=lambda *_: None)
-    assert dispatch_voice.route_ava_utterance(app, "send 353b to unknown")
-    rows = _records(tmp_path)
-    assert rows[-1]["lane"] == "near-miss"
-    assert rows[-1]["user"] == "send 353b to unknown"
-    assert rows[-1]["ava_spoken"] == "To Luna, Sol, Astra or Claude Code?"
 
 
 def test_conversation_file_rotates_without_truncating_records(tmp_path, monkeypatch):

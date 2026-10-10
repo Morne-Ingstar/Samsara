@@ -112,17 +112,6 @@
     "state": "completed",
     "text": "save alias alpha and volume down"
   },
-  "dispatch_voice.send_prompt": {
-    "calls": [
-      [
-        "send prompt",
-        "alpha and volume down"
-      ]
-    ],
-    "detail": {},
-    "state": "completed",
-    "text": "send prompt alpha and volume down"
-  },
   "flashforge_printer.start_print": {
     "calls": [],
     "detail": {},
@@ -301,39 +290,6 @@
     "detail": {},
     "state": "completed",
     "text": "play playlist alpha and volume down"
-  },
-  "queue_voice.accept_prompt": {
-    "calls": [
-      [
-        "accept prompt",
-        "alpha and volume down"
-      ]
-    ],
-    "detail": {},
-    "state": "completed",
-    "text": "accept prompt alpha and volume down"
-  },
-  "queue_voice.read_report": {
-    "calls": [
-      [
-        "read report",
-        "alpha and volume down"
-      ]
-    ],
-    "detail": {},
-    "state": "completed",
-    "text": "read report alpha and volume down"
-  },
-  "queue_voice.what_did": {
-    "calls": [
-      [
-        "what did",
-        "alpha and volume down"
-      ]
-    ],
-    "detail": {},
-    "state": "completed",
-    "text": "what did alpha and volume down"
   },
   "quick_ask.ask": {
     "calls": [],

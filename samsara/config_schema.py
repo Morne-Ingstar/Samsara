@@ -98,17 +98,17 @@ SETTINGS_SCHEMA = {
         "settings_ui": False, "ui_less_reason": "Local image rendering deadline in seconds.",
     },
     "queue_voice.queue_root": {
-        "type": "str", "default": r"C:\Users\Morne\Documents\Claude\queue",
+        "type": "str", "default": "",
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Owner-maintained prompt queue location; advanced config-only path.",
     },
     "queue_voice.reports_root": {
-        "type": "str", "default": r"C:\Users\Morne\Documents\Claude\reports",
+        "type": "str", "default": "",
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Owner-maintained prompt reports location; advanced config-only path.",
     },
     "queue_voice.python": {
-        "type": "str", "default": r"F:\envs\sami\python.exe",
+        "type": "str", "default": "",
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Interpreter for the existing queue note script; advanced config-only path.",
     },

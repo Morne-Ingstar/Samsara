@@ -240,6 +240,12 @@ class LaunchHandler(CommandHandler):
         target = cmd['target']
         try:
             if sys.platform == 'win32':
+                from .launch_targets import resolve_target
+                target = resolve_target(target)
+                if target is None:
+                    logger.error("Failed to launch %s: not installed", cmd['target'])
+                    return False
+            if sys.platform == 'win32':
                 subprocess.Popen(f'start "" "{target}"', shell=True)
             elif sys.platform == 'darwin':
                 subprocess.Popen(['open', target])

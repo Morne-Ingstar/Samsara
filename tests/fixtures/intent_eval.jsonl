@@ -958,46 +958,6 @@
 {"id": "builtin.apostrophe", "kind": "sentence", "polarity": "negative", "reject": "builtin.apostrophe", "text": "in the story the old captain decides to apostrophe as the storm arrives"}
 {"id": "builtin.apostrophe", "kind": "other_command", "polarity": "negative", "reject": "builtin.apostrophe", "text": "8"}
 {"id": "builtin.apostrophe", "kind": "nonsense", "polarity": "negative", "reject": "builtin.apostrophe", "text": "lantern octopus apostrophe noodle marmalade"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "alias", "polarity": "positive", "text": "arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "determiner", "polarity": "positive", "text": "arc the repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "please arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "punct", "polarity": "positive", "text": "Arc, repo?"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "reorder", "polarity": "positive", "text": "repo arc"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "go ahead and arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "punct", "polarity": "positive", "text": "Arc repo."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "so arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "uh arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "i need you to arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "um arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "arc repo now"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "arc repo please"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "arc repo for me"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "could you just arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "okay arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "arc repo for me please"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "hey arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "would you please arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "arc repo right now"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you please arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "arc repo thanks"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "could you arc repo"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo please"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "Can you arc repo please."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo for me"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "Can you arc repo for me."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo now"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "Can you arc repo now."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo thanks"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "Can you arc repo thanks."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo right now"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "Can you arc repo right now."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "can you arc repo for me please"}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "Can you arc repo for me please."}
-{"accept": ["builtin.arc_repo"], "id": "builtin.arc_repo", "kind": "filler", "polarity": "positive", "text": "could you arc repo please"}
-{"id": "builtin.arc_repo", "kind": "sentence", "polarity": "negative", "reject": "builtin.arc_repo", "text": "yesterday i told my sister we should arc repo before dinner"}
-{"id": "builtin.arc_repo", "kind": "other_command", "polarity": "negative", "reject": "builtin.arc_repo", "text": "open arc"}
-{"id": "builtin.arc_repo", "kind": "nonsense", "polarity": "negative", "reject": "builtin.arc_repo", "text": "lantern sideways repo quartz octopus"}
 {"accept": ["builtin.back_field"], "id": "builtin.back_field", "kind": "alias", "polarity": "positive", "text": "back field"}
 {"accept": ["builtin.back_field"], "id": "builtin.back_field", "kind": "determiner", "polarity": "positive", "text": "back the field"}
 {"accept": ["builtin.back_field"], "id": "builtin.back_field", "kind": "filler", "polarity": "positive", "text": "back field right now"}
@@ -3238,46 +3198,6 @@
 {"id": "builtin.go_to_address_bar", "kind": "sentence", "polarity": "negative", "reject": "builtin.go_to_address_bar", "text": "last night he wrote in the notes that you can go to address bar whenever it feels right"}
 {"id": "builtin.go_to_address_bar", "kind": "other_command", "polarity": "negative", "reject": "builtin.go_to_address_bar", "text": "go to check the oven"}
 {"id": "builtin.go_to_address_bar", "kind": "nonsense", "polarity": "negative", "reject": "builtin.go_to_address_bar", "text": "lantern marmalade address sideways zeppelin"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "alias", "polarity": "positive", "text": "go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "could you go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "mishear", "polarity": "positive", "text": "go two arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "punct", "polarity": "positive", "text": "Go to arcana."}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "synonym", "polarity": "positive", "text": "head to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go to arcana for me"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "punct", "polarity": "positive", "text": "Go, to arcana?"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "synonym", "polarity": "positive", "text": "navigate to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "okay go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "hey go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go to arcana please"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "um go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "would you please go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "could you just go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "uh go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go to arcana now"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "i need you to go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go ahead and go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go to arcana thanks"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go to arcana for me please"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "so go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "go to arcana right now"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you please go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "please go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana please"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "Can you go to arcana please."}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana for me"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "Can you go to arcana for me."}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana now"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "Can you go to arcana now."}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana thanks"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "Can you go to arcana thanks."}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana right now"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "Can you go to arcana right now."}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "can you go to arcana for me please"}
-{"accept": ["builtin.go_to_arcana"], "id": "builtin.go_to_arcana", "kind": "filler", "polarity": "positive", "text": "Can you go to arcana for me please."}
-{"id": "builtin.go_to_arcana", "kind": "sentence", "polarity": "negative", "reject": "builtin.go_to_arcana", "text": "yesterday i told my sister we should go to arcana before dinner"}
-{"id": "builtin.go_to_arcana", "kind": "other_command", "polarity": "negative", "reject": "builtin.go_to_arcana", "text": "go to check the oven"}
-{"id": "builtin.go_to_arcana", "kind": "nonsense", "polarity": "negative", "reject": "builtin.go_to_arcana", "text": "lantern wobble arcana pickle purple"}
 {"accept": ["builtin.go_to_document_end"], "id": "builtin.go_to_document_end", "kind": "alias", "polarity": "positive", "text": "go to document end"}
 {"accept": ["builtin.go_to_document_end"], "id": "builtin.go_to_document_end", "kind": "filler", "polarity": "positive", "text": "would you please go to document end"}
 {"accept": ["builtin.go_to_document_end"], "id": "builtin.go_to_document_end", "kind": "mishear", "polarity": "positive", "text": "go two document end"}
@@ -4678,46 +4598,6 @@
 {"id": "builtin.mute_tab", "kind": "sentence", "polarity": "negative", "reject": "builtin.mute_tab", "text": "yesterday afternoon we argued for an hour about who would mute tab first"}
 {"id": "builtin.mute_tab", "kind": "other_command", "polarity": "negative", "reject": "builtin.mute_tab", "text": "tab 7"}
 {"id": "builtin.mute_tab", "kind": "nonsense", "polarity": "negative", "reject": "builtin.mute_tab", "text": "sideways pickle mute saxophone purple"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "alias", "polarity": "positive", "text": "my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "determiner", "polarity": "positive", "text": "my the github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "please my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "punct", "polarity": "positive", "text": "My, github?"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "reorder", "polarity": "positive", "text": "github my"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "my github right now"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "punct", "polarity": "positive", "text": "My github."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "could you just my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "hey my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "go ahead and my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "my github please"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "uh my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "okay my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "my github for me"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you please my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "i need you to my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "so my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "my github thanks"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "my github now"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "could you my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "would you please my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "um my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "my github for me please"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github please"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "Can you my github please."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github for me"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "Can you my github for me."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github now"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "Can you my github now."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github thanks"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "Can you my github thanks."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github right now"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "Can you my github right now."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "can you my github for me please"}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "Can you my github for me please."}
-{"accept": ["builtin.my_github"], "id": "builtin.my_github", "kind": "filler", "polarity": "positive", "text": "could you my github please"}
-{"id": "builtin.my_github", "kind": "sentence", "polarity": "negative", "reject": "builtin.my_github", "text": "our manager keeps asking whether anyone remembered to my github last week"}
-{"id": "builtin.my_github", "kind": "other_command", "polarity": "negative", "reject": "builtin.my_github", "text": "find my"}
-{"id": "builtin.my_github", "kind": "nonsense", "polarity": "negative", "reject": "builtin.my_github", "text": "lantern thunderous github quartz marmalade"}
 {"accept": ["builtin.navigate_back"], "id": "builtin.navigate_back", "kind": "alias", "polarity": "positive", "text": "navigate back"}
 {"accept": ["builtin.navigate_back"], "id": "builtin.navigate_back", "kind": "determiner", "polarity": "positive", "text": "navigate the back"}
 {"accept": ["builtin.navigate_back"], "id": "builtin.navigate_back", "kind": "filler", "polarity": "positive", "text": "hey navigate back"}
@@ -5478,86 +5358,6 @@
 {"id": "builtin.open_anthropic", "kind": "sentence", "polarity": "negative", "reject": "builtin.open_anthropic", "text": "our manager keeps asking whether anyone remembered to open anthropic last week"}
 {"id": "builtin.open_anthropic", "kind": "other_command", "polarity": "negative", "reject": "builtin.open_anthropic", "text": "open"}
 {"id": "builtin.open_anthropic", "kind": "nonsense", "polarity": "negative", "reject": "builtin.open_anthropic", "text": "velvet zeppelin anthropic cobalt noodle"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "alias", "polarity": "positive", "text": "open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "determiner", "polarity": "positive", "text": "open the arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "so open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "punct", "polarity": "positive", "text": "Open, arc?"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "reorder", "polarity": "positive", "text": "arc open"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "synonym", "polarity": "positive", "text": "pull up arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "synonym_unknown", "polarity": "positive", "text": "pop open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "can you open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "punct", "polarity": "positive", "text": "Open arc."}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "synonym", "polarity": "positive", "text": "launch arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "would you please open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "synonym", "polarity": "positive", "text": "start arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "can you please open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "synonym", "polarity": "positive", "text": "bring up arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "i need you to open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "open arc please"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "open arc thanks"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "open arc right now"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "open arc now"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "uh open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "okay open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "um open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "could you just open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "please open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "open arc for me please"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "hey open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "go ahead and open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "open arc for me"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "could you open arc"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "can you open arc please"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "Can you open arc please."}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "can you open arc for me"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "Can you open arc for me."}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "can you open arc now"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "Can you open arc now."}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "can you open arc thanks"}
-{"accept": ["builtin.open_arc"], "id": "builtin.open_arc", "kind": "filler", "polarity": "positive", "text": "Can you open arc thanks."}
-{"id": "builtin.open_arc", "kind": "sentence", "polarity": "negative", "reject": "builtin.open_arc", "text": "our manager keeps asking whether anyone remembered to open arc last week"}
-{"id": "builtin.open_arc", "kind": "other_command", "polarity": "negative", "reject": "builtin.open_arc", "text": "open"}
-{"id": "builtin.open_arc", "kind": "nonsense", "polarity": "negative", "reject": "builtin.open_arc", "text": "octopus purple open lantern banana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "alias", "polarity": "positive", "text": "open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "determiner", "polarity": "positive", "text": "open the arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "open arcana now"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "punct", "polarity": "positive", "text": "Open arcana."}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "reorder", "polarity": "positive", "text": "arcana open"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "synonym", "polarity": "positive", "text": "launch arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "synonym_unknown", "polarity": "positive", "text": "pop open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "okay open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "punct", "polarity": "positive", "text": "Open, arcana?"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "synonym", "polarity": "positive", "text": "pull up arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "um open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "synonym", "polarity": "positive", "text": "start arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "open arcana please"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "synonym", "polarity": "positive", "text": "bring up arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "hey open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "uh open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "open arcana for me please"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "please open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "go ahead and open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "can you open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "could you open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "so open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "can you please open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "open arcana right now"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "open arcana thanks"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "could you just open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "i need you to open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "would you please open arcana"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "open arcana for me"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "can you open arcana please"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "Can you open arcana please."}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "can you open arcana for me"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "Can you open arcana for me."}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "can you open arcana now"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "Can you open arcana now."}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "can you open arcana thanks"}
-{"accept": ["builtin.open_arcana"], "id": "builtin.open_arcana", "kind": "filler", "polarity": "positive", "text": "Can you open arcana thanks."}
-{"id": "builtin.open_arcana", "kind": "sentence", "polarity": "negative", "reject": "builtin.open_arcana", "text": "yesterday i told my sister we should open arcana before dinner"}
-{"id": "builtin.open_arcana", "kind": "other_command", "polarity": "negative", "reject": "builtin.open_arcana", "text": "open"}
-{"id": "builtin.open_arcana", "kind": "nonsense", "polarity": "negative", "reject": "builtin.open_arcana", "text": "banana thunderous arcana zeppelin sideways"}
 {"accept": ["builtin.open_bookmarks"], "id": "builtin.open_bookmarks", "kind": "alias", "polarity": "positive", "text": "open bookmarks"}
 {"accept": ["builtin.open_bookmarks"], "id": "builtin.open_bookmarks", "kind": "determiner", "polarity": "positive", "text": "open the bookmarks"}
 {"accept": ["builtin.open_bookmarks"], "id": "builtin.open_bookmarks", "kind": "filler", "polarity": "positive", "text": "please open bookmarks"}

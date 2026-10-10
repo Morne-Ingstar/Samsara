@@ -356,15 +356,6 @@
   },
   {
     "aliases": [
-      "arc repo"
-    ],
-    "args": [],
-    "canonical_id": "builtin.arc_repo",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
       "back field"
     ],
     "args": [],
@@ -923,15 +914,6 @@
   },
   {
     "aliases": [
-      "go to arcana"
-    ],
-    "args": [],
-    "canonical_id": "builtin.go_to_arcana",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
       "go to document end"
     ],
     "args": [],
@@ -1286,15 +1268,6 @@
   },
   {
     "aliases": [
-      "my github"
-    ],
-    "args": [],
-    "canonical_id": "builtin.my_github",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
       "navigate back"
     ],
     "args": [],
@@ -1483,24 +1456,6 @@
     ],
     "args": [],
     "canonical_id": "builtin.open_anthropic",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "open arc"
-    ],
-    "args": [],
-    "canonical_id": "builtin.open_arc",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "open arcana"
-    ],
-    "args": [],
-    "canonical_id": "builtin.open_arcana",
     "risk": "ui",
     "scope": null
   },
@@ -3486,30 +3441,6 @@
   },
   {
     "aliases": [
-      "send prompt"
-    ],
-    "args": [
-      {
-        "name": "text",
-        "required": false,
-        "type": "text"
-      }
-    ],
-    "canonical_id": "dispatch_voice.send_prompt",
-    "risk": "write",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "what needs me"
-    ],
-    "args": [],
-    "canonical_id": "dispatch_voice.what_needs_me",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
       "greet me",
       "hello",
       "say hello"
@@ -4411,112 +4342,6 @@
     ],
     "args": [],
     "canonical_id": "music.spotify_volume_up",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "accept prompt"
-    ],
-    "args": [
-      {
-        "name": "text",
-        "required": false,
-        "type": "text"
-      }
-    ],
-    "canonical_id": "queue_voice.accept_prompt",
-    "risk": "write",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "queue note"
-    ],
-    "args": [],
-    "canonical_id": "queue_voice.queue_note",
-    "risk": "write",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "continue reading",
-      "more",
-      "next three",
-      "read more",
-      "read next"
-    ],
-    "args": [],
-    "canonical_id": "queue_voice.read_more",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "read report"
-    ],
-    "args": [
-      {
-        "name": "text",
-        "required": false,
-        "type": "text"
-      }
-    ],
-    "canonical_id": "queue_voice.read_report",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "stop queue"
-    ],
-    "args": [],
-    "canonical_id": "queue_voice.stop_queue",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "what can i run"
-    ],
-    "args": [],
-    "canonical_id": "queue_voice.what_can_i_run",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "what did"
-    ],
-    "args": [
-      {
-        "name": "text",
-        "required": false,
-        "type": "text"
-      }
-    ],
-    "canonical_id": "queue_voice.what_did",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "what finished",
-      "what is done",
-      "whats done"
-    ],
-    "args": [],
-    "canonical_id": "queue_voice.what_finished",
-    "risk": "ui",
-    "scope": null
-  },
-  {
-    "aliases": [
-      "what is running",
-      "whats running"
-    ],
-    "args": [],
-    "canonical_id": "queue_voice.whats_running",
     "risk": "ui",
     "scope": null
   },
