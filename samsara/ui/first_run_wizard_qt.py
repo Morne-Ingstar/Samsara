@@ -499,15 +499,8 @@ class _WizardWindow(QMainWindow):
         self._mic_announcer = LiveSurfaceAnnouncer(self)
 
         self.setWindowTitle("Samsara Setup")
-        _scr = QApplication.primaryScreen()
-        if _scr:
-            _av = _scr.availableGeometry()
-            _w = max(720, min(1100, int(_av.width()  * 0.46)))
-            _h = max(680, min(980,  int(_av.height() * 0.72)))
-        else:
-            _w, _h = 860, 760
-        self.setMinimumSize(720, 680)
-        self.resize(_w, _h)
+        self.setMinimumSize(720, 480)
+        self.resize(860, 760)
         self.setStyleSheet(theme.build_stylesheet())
 
         central = QWidget()
@@ -531,6 +524,7 @@ class _WizardWindow(QMainWindow):
 
         root.addWidget(header)
         self._step_indicator = StepIndicator([name for name, _ in _STEPS])
+        self._step_indicator.setViewportMargins(28, 0, 28, 0)
         root.addWidget(self._step_indicator)
         root.addSpacing(STEP_LABEL_GAP)
         sep_top = QFrame()
@@ -636,6 +630,39 @@ class _WizardWindow(QMainWindow):
         lay.setContentsMargins(28, 16, 28, 16)
         lay.setSpacing(12)
         return w, lay
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not getattr(self, '_screen_fit_connected', False):
+            handle.screenChanged.connect(self._fit_available_screen)
+            self._screen_fit_connected = True
+        self._fit_available_screen()
+
+    def _fit_available_screen(self, *_):
+        screen = self.screen()
+        if screen is None:
+            return
+        if screen is not getattr(self, '_fit_screen', None):
+            previous = getattr(self, '_fit_screen', None)
+            if previous is not None and hasattr(previous, 'availableGeometryChanged'):
+                previous.availableGeometryChanged.disconnect(self._fit_available_screen)
+            if hasattr(screen, 'availableGeometryChanged'):
+                screen.availableGeometryChanged.connect(self._fit_available_screen)
+            self._fit_screen = screen
+        area = screen.availableGeometry()
+        handle = self.windowHandle()
+        margins = handle.frameMargins() if handle is not None else None
+        left, top, right, bottom = ((margins.left(), margins.top(), margins.right(), margins.bottom())
+                                    if margins is not None else (0, 0, 0, 0))
+        width = max(1, area.width() - left - right)
+        height = max(1, area.height() - top - bottom)
+        self.setMinimumSize(min(720, width), min(480, height))
+        self.setMaximumSize(width, height)
+        self.resize(min(self.width(), width), min(self.height(), height))
+        frame = self.frameGeometry()
+        self.move(max(area.left(), min(frame.left(), area.right() - frame.width() + 1)),
+                  max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1)))
 
     def _build_welcome(self) -> QWidget:
         w, lay = self._padded()

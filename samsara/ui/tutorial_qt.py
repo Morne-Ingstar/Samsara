@@ -343,12 +343,8 @@ class TutorialWindow(QMainWindow):
         # when the available screen height permits; otherwise its scroll area
         # keeps the text and guide actions at their natural sizes.
         self._default_window_height = 722
-        screen = QApplication.primaryScreen()
-        available_height = screen.availableGeometry().height() if screen else 920
-        self.setFixedWidth(620)
-        self.setMinimumHeight(min(620, max(560, available_height - 24)))
-        self.setMaximumHeight(max(self.minimumHeight(), available_height - 24))
-        self.resize(620, min(self._default_window_height, self.maximumHeight()))
+        self.setMinimumSize(620, 480)
+        self.resize(620, self._default_window_height)
         self.setStyleSheet(theme.build_stylesheet())
         # Stay on top so the user can still use the tutorial while interacting
         # with other windows; WindowStaysOnTopHint avoids stealing focus.
@@ -403,7 +399,7 @@ class TutorialWindow(QMainWindow):
         # Build pages
         self._dictation_box: QTextEdit | None = None
         self._scroll_area:   QScrollArea | None = None
-        self._pages = [self._build_page(key) for key, _ in self._steps]
+        self._pages = [self._scroll_page(self._build_page(key)) for key, _ in self._steps]
         self._current_page: QWidget | None = None
 
         root.addWidget(self._separator())
@@ -487,6 +483,52 @@ class TutorialWindow(QMainWindow):
         line.setStyleSheet(f"background:{theme.BORDER_FAINT};border:none;")
         layout.addWidget(line)
         return container
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not getattr(self, '_screen_fit_connected', False):
+            handle.screenChanged.connect(self._fit_available_screen)
+            self._screen_fit_connected = True
+        self._fit_available_screen()
+
+    def _fit_available_screen(self, *_):
+        screen = self.screen()
+        if screen is None:
+            return
+        if screen is not getattr(self, '_fit_screen', None):
+            previous = getattr(self, '_fit_screen', None)
+            if previous is not None and hasattr(previous, 'availableGeometryChanged'):
+                previous.availableGeometryChanged.disconnect(self._fit_available_screen)
+            if hasattr(screen, 'availableGeometryChanged'):
+                screen.availableGeometryChanged.connect(self._fit_available_screen)
+            self._fit_screen = screen
+        area = screen.availableGeometry()
+        handle = self.windowHandle()
+        margins = handle.frameMargins() if handle is not None else None
+        left, top, right, bottom = ((margins.left(), margins.top(), margins.right(), margins.bottom())
+                                    if margins is not None else (0, 0, 0, 0))
+        width = max(1, area.width() - left - right)
+        height = max(1, area.height() - top - bottom)
+        self.setMinimumSize(min(620, width), min(480, height))
+        self.setMaximumSize(width, height)
+        self.resize(min(self.width(), width), min(self.height(), height))
+        frame = self.frameGeometry()
+        self.move(max(area.left(), min(frame.left(), area.right() - frame.width() + 1)),
+                  max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1)))
+
+    def _scroll_page(self, page):
+        if isinstance(page, QScrollArea):
+            return page
+        scroll = QScrollArea(self._stack)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        if page.layout() is not None:
+            page.layout().setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        scroll.setWidget(page)
+        scroll.hide()
+        return scroll
 
     @staticmethod
     def _button_min_width(btn: QPushButton, texts: list[str], h_padding: int = 48) -> int:
@@ -1006,9 +1048,10 @@ class TutorialWindow(QMainWindow):
         if key == "dictation" and self._dictation_box:
             QTimer.singleShot(100, self, lambda: self._dictation_box.setFocus())
         if isinstance(page, QScrollArea):
-            if key == 'ways':
+            if key != 'done':
                 self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
-            QTimer.singleShot(0, self, self._fit_done_page_height)
+            if key in ('ways', 'try', 'done'):
+                QTimer.singleShot(0, self, self._fit_done_page_height)
         else:
             self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
 

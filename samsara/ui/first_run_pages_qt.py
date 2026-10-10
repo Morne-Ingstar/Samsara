@@ -203,7 +203,8 @@ class Decisions(QObject):
         metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * strip.ui_scale), weight=QFont.Weight.DemiBold))
         width = max(strip.viewport().width() // strip.count(),
                     max(metrics.horizontalAdvance(text) for text in strip.steps) + 12)
-        height = round((theme.TYPE_TITLE + theme.TYPE_BODY + theme.TYPE_MIN) * strip.ui_scale)
+        height = (round(theme.TYPE_TITLE * 1.6 * strip.ui_scale)
+                  + metrics.height() + 2 * theme.SPACE_1)
         extra = strip.horizontalScrollBar().sizeHint().height() if width * strip.count() > strip.viewport().width() else 0
         strip.setFixedHeight(height + extra)
         for index in range(strip.count()):

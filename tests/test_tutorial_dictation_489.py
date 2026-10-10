@@ -95,7 +95,7 @@ def test_dictation_text_inset_matches_instruction(window, qapp):
     from PySide6.QtWidgets import QLabel
     window.show()
     qapp.processEvents()
-    page = window._pages[1]
+    page = window._pages[1].widget()
     card = page.layout().itemAt(0).widget()
     label = card.findChild(QLabel)
     box = window._dictation_box
