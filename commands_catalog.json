@@ -6481,7 +6481,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:62",
+      "source": "plugins/commands/feedback_level.py:75",
       "undoable": true,
       "verb": "feedback",
       "whole_utterance": false
@@ -6498,7 +6498,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:69",
+      "source": "plugins/commands/feedback_level.py:82",
       "undoable": true,
       "verb": "feedback",
       "whole_utterance": false
@@ -6515,7 +6515,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:55",
+      "source": "plugins/commands/feedback_level.py:68",
       "undoable": true,
       "verb": "feedback",
       "whole_utterance": false
@@ -6535,7 +6535,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:94",
+      "source": "plugins/commands/feedback_level.py:106",
       "undoable": true,
       "verb": "sounds",
       "whole_utterance": false
@@ -6555,7 +6555,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:87",
+      "source": "plugins/commands/feedback_level.py:99",
       "undoable": true,
       "verb": "sounds",
       "whole_utterance": false
@@ -6574,7 +6574,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:41",
+      "source": "plugins/commands/feedback_level.py:54",
       "undoable": true,
       "verb": "talk",
       "whole_utterance": false
@@ -6593,7 +6593,7 @@
       "pack": "core",
       "plugin": "feedback_level",
       "risk": "ui",
-      "source": "plugins/commands/feedback_level.py:48",
+      "source": "plugins/commands/feedback_level.py:61",
       "undoable": true,
       "verb": "talk",
       "whole_utterance": false

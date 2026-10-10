@@ -410,13 +410,13 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `feedback_level.feedback_brief` | `feedback brief` | - | ui | yes |  | Uses short Samsara sounds for outcomes and speaks questions and read-backs. | `plugins/commands/feedback_level.py:62` |
-| `feedback_level.feedback_full` | `feedback full` | - | ui | yes |  | Makes Samsara speak every reply. | `plugins/commands/feedback_level.py:69` |
-| `feedback_level.feedback_silent` | `feedback silent` | - | ui | yes |  | Shows Samsara replies on screen without speaking them. | `plugins/commands/feedback_level.py:55` |
-| `feedback_level.sounds_louder` | `beeps louder`, `louder sounds`, `raise the sounds`, `sounds louder` | - | ui | yes |  | Raises Samsara sounds and beeps by ten percentage points. | `plugins/commands/feedback_level.py:94` |
-| `feedback_level.sounds_quieter` | `beeps quieter`, `lower the sounds`, `quieter sounds`, `sounds quieter` | - | ui | yes |  | Lowers Samsara sounds and beeps by ten percentage points. | `plugins/commands/feedback_level.py:87` |
-| `feedback_level.talk_less` | `less feedback`, `less talking`, `talk less` | - | ui | yes |  | Makes Samsara speak less: Full, then Brief, then Silent. | `plugins/commands/feedback_level.py:41` |
-| `feedback_level.talk_more` | `more feedback`, `more talking`, `talk more` | - | ui | yes |  | Makes Samsara speak more: Silent, then Brief, then Full. | `plugins/commands/feedback_level.py:48` |
+| `feedback_level.feedback_brief` | `feedback brief` | - | ui | yes |  | Uses short Samsara sounds for outcomes and speaks questions and read-backs. | `plugins/commands/feedback_level.py:75` |
+| `feedback_level.feedback_full` | `feedback full` | - | ui | yes |  | Makes Samsara speak every reply. | `plugins/commands/feedback_level.py:82` |
+| `feedback_level.feedback_silent` | `feedback silent` | - | ui | yes |  | Shows Samsara replies on screen without speaking them. | `plugins/commands/feedback_level.py:68` |
+| `feedback_level.sounds_louder` | `beeps louder`, `louder sounds`, `raise the sounds`, `sounds louder` | - | ui | yes |  | Raises Samsara sounds and beeps by ten percentage points. | `plugins/commands/feedback_level.py:106` |
+| `feedback_level.sounds_quieter` | `beeps quieter`, `lower the sounds`, `quieter sounds`, `sounds quieter` | - | ui | yes |  | Lowers Samsara sounds and beeps by ten percentage points. | `plugins/commands/feedback_level.py:99` |
+| `feedback_level.talk_less` | `less feedback`, `less talking`, `talk less` | - | ui | yes |  | Makes Samsara speak less: Full, then Brief, then Silent. | `plugins/commands/feedback_level.py:54` |
+| `feedback_level.talk_more` | `more feedback`, `more talking`, `talk more` | - | ui | yes |  | Makes Samsara speak more: Silent, then Brief, then Full. | `plugins/commands/feedback_level.py:61` |
 
 ## flashforge_printer (8)
 
