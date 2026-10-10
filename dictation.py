@@ -11835,6 +11835,13 @@ class DictationApp:
         self._ava_mode_ghost_tap = False
         return ownership
 
+    def _finish_empty_hold_capture(self, chip_seq):
+        """Retire a capture without leaving hold progress or parking latched."""
+        self._hold_park_requested = False
+        self._hold_park_finalizing = False
+        if chip_seq:
+            self._resolve_hold_chip(chip_seq)
+
     def _stop_recording_impl(self, stage_timing=None):
         """Stop recording and transcribe"""
         if not self.recording:
@@ -11897,7 +11904,8 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_listening, False)
             # "..." until the transcription outcome replaces it; the watchdog
             # wrapped around the transcribe thread below clears it otherwise.
-            _hold_chip_seq = self._show_hold_pending_chip()
+            if not (ownership.command_ghost or ownership.ava_ghost):
+                _hold_chip_seq = self._show_hold_pending_chip()
 
         if not (adaptive_release_tail or streaming_release_tail):
             # Legacy fixed tail remains for command and streaming paths.
@@ -11927,13 +11935,7 @@ class DictationApp:
                 logger.debug("[ACE] No audio captured or epoch abort")
                 flight_recorder.record('hold_recording.stop_reason', reason='empty_buffer_or_epoch_abort')
                 self.play_sound("error")
-                if hasattr(self, 'listening_indicator'):
-                    self._schedule_ui(self.listening_indicator.flash_error)
-                    from samsara.session_modes import CHIP_CROSS
-                    # Was a bare beep; the reason is now on screen.
-                    self._show_outcome_chip(f"{CHIP_CROSS} no audio", "error")
-                if live_hold_finalizing:
-                    self._hold_park_finalizing = False
+                self._finish_empty_hold_capture(_hold_chip_seq)
                 return
         else:
             # Streaming path (CapsLock): ACE-04B consumer accumulator — no stream to close.
@@ -11980,6 +11982,7 @@ class DictationApp:
                     sess.finalize()
                 except Exception as e:
                     logger.exception(f"[STREAM] finalize failed: {e}")
+                    self._finish_empty_hold_capture(_hold_chip_seq)
                 return
 
         if stage_timing is not None:
@@ -11993,9 +11996,7 @@ class DictationApp:
                 stage_timing.mark('capture_finalised', self_hear=True, outcome='gated')
             flight_recorder.record('hold_recording.stop_reason', reason='self_hear', self_hear=True)
             logger.info('[SELF-HEAR] hold utterance ignored during Ava speech')
-            self._show_outcome_chip('ignored - Ava was speaking', 'warning')
-            if live_hold_finalizing:
-                self._hold_park_finalizing = False
+            self._finish_empty_hold_capture(_hold_chip_seq)
             return
         logger.info("[...] Transcribing...")
 
@@ -12004,9 +12005,11 @@ class DictationApp:
         # contaminate the next ordinary recording.
         if ownership.is_command and ownership.command_ghost:
             logger.info("[CMD] Ghost tap — discarding recording")
+            self._finish_empty_hold_capture(_hold_chip_seq)
             return
         if ownership.is_ava and ownership.ava_ghost:
             logger.info("[AVA] Ghost tap — discarding recording")
+            self._finish_empty_hold_capture(_hold_chip_seq)
             return
 
         # Transcribe in background to not block hotkey listener
@@ -12650,10 +12653,6 @@ class DictationApp:
                 except Exception as _snd_err:
                     logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
             finally:
-                if park_hold_requested:
-                    self._hold_park_requested = False
-                if live_hold_finalizing:
-                    self._hold_park_finalizing = False
                 if stage_timing is not None:
                     reset_current_stage_timing(_timing_token)
                     stage_timing.complete(outcome=stage_timing.outcome or "discarded")
@@ -12662,8 +12661,7 @@ class DictationApp:
             try:
                 transcribe()
             finally:
-                if _hold_chip_seq:
-                    self._resolve_hold_chip(_hold_chip_seq)
+                self._finish_empty_hold_capture(_hold_chip_seq)
 
         thread = thread_registry.spawn(
             "dictation.transcribe", _transcribe_with_chip_watchdog, daemon=True,
