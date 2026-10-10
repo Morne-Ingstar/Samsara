@@ -52,11 +52,11 @@ def row_text(window, key):
     return '\n'.join(label.text() for label in frame.findChildren(QLabel))
 
 
-def test_five_steps_and_passive_navigation(build, qapp):
+def test_seven_steps_and_passive_navigation(build, qapp):
     window = build()
-    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'display', 'done']
+    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'display', 'try', 'done']
     interface = QAccessible.queryAccessibleInterface(window._step_indicator)
-    assert interface.childCount() == 6
+    assert interface.childCount() == len(window._steps)
     assert window._next_btn.isEnabled() and window._back_btn.isEnabled()
     assert not getattr(window._app, '_tutorial_hooks', {})
     assert window._hint_timer is None
@@ -69,11 +69,15 @@ def test_five_steps_and_passive_navigation(build, qapp):
     window._go_next()
     assert window._steps[window._step][0] == 'display'
     window._go_next()
+    assert window._steps[window._step][0] == 'try'
+    window._go_next()
     assert window._steps[window._step][0] == 'done'
+    window._go_back()
+    assert window._steps[window._step][0] == 'try'
     window._go_back()
     assert window._steps[window._step][0] == 'display'
     window._go_back()
-    assert window._next_btn.isEnabled() and window._step_lbl.text() == 'Step 4 of 6'
+    assert window._next_btn.isEnabled() and window._step_lbl.text() == f'Step 4 of {len(window._steps)}'
 
 
 def test_defaults_match_shared_controls(build):
@@ -191,7 +195,8 @@ def test_commit_word_matches_accepted_config(build, monkeypatch, word):
     assert session_modes.DEFAULT_DICTATE_COMMIT_PHRASE not in row_text(window, 'hands_free')
     # Done deliberately preserves recovery-only copy, with no redundant paste word.
     window._go_next()  # Ways -> Display
-    window._go_next()  # Display -> Done
+    window._go_next()  # Display -> Try
+    window._go_next()  # Try -> Done
     assert 'scratch that' in '\n'.join(l.text() for l in window._current_page.findChildren(QLabel))
 
 

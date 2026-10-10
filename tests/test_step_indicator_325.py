@@ -101,12 +101,18 @@ def test_no_literal_pixel_sizes_outside_theme_tokens():
 def test_only_four_step_bars_adopt_widget():
     for filename in CALL_SITES:
         source = (ROOT / "samsara/ui" / filename).read_text(encoding="utf-8")
-        assert "from samsara.ui.widgets.step_indicator import StepIndicator" in source
+        if filename == "first_run_wizard_qt.py":
+            from samsara.ui.widgets.step_strip import StepStrip
+            assert issubclass(StepStrip, StepIndicator)
+            assert "from samsara.ui.widgets.step_strip import StepStrip as SetupStepIndicator" in source
+            assert "self._step_indicator = SetupStepIndicator(" in source
+        else:
+            assert "from samsara.ui.widgets.step_indicator import StepIndicator" in source
         if filename == "ava_guide_qt.py":
             assert "class _AvaStepIndicator(StepIndicator):" in source
             assert "self._step_indicator = _AvaStepIndicator(" in source
             assert "super()._refresh()" in source
-        else:
+        elif filename != "first_run_wizard_qt.py":
             assert "self._step_indicator = StepIndicator(" in source
         assert "self._step_indicator.set_progress(" in source
         assert "self._dots" not in source

@@ -27,10 +27,10 @@ from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from samsara import session_modes
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
-from samsara.ui.first_run_pages_qt import Decisions, initial_config
+from samsara.ui.first_run_pages_qt import Decisions, initial_config, setup_page
 from samsara.onboarding.first_run_recommend import COPY
-from samsara.ui.widgets.step_indicator import StepIndicator
-from samsara.ui.listening_display_page import setup_page, STEP_LABEL_GAP
+from samsara.ui.widgets.step_strip import StepStrip as SetupStepIndicator
+from samsara.ui.listening_display_page import STEP_LABEL_GAP
 from samsara.ui.tutorial_display_qt import setup_placement_page, TITLE as PLACEMENT_TITLE
 from samsara.onboarding.display_placement import seed_fresh
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
@@ -260,7 +260,6 @@ _STEPS = [
     ("Welcome",    "Welcome to Samsara"),
     ("Microphone", "Select Your Microphone"),
     ("Components", "Optional Components"),
-    # PLACEHOLDER COPY (373)
     ("Recognition", COPY["recognition.title"]),
     ("Talking", COPY["talking.title"]),
     ("Music", COPY["music.title"]),
@@ -523,7 +522,7 @@ class _WizardWindow(QMainWindow):
         hl.addStretch()
 
         root.addWidget(header)
-        self._step_indicator = StepIndicator([name for name, _ in _STEPS])
+        self._step_indicator = SetupStepIndicator([name for name, _ in _STEPS])
         self._step_indicator.setViewportMargins(28, 0, 28, 0)
         root.addWidget(self._step_indicator)
         root.addSpacing(STEP_LABEL_GAP)
@@ -678,7 +677,6 @@ class _WizardWindow(QMainWindow):
         sf_layout.setSpacing(10)
 
         for icon, text in [
-            # PLACEHOLDER COPY (373)
             ("1.", "Select your microphone"),
             ("2.", "Add optional components, now or later"),
             ("3.", COPY["welcome.recognition"]),
@@ -687,12 +685,12 @@ class _WizardWindow(QMainWindow):
         ]:
             row = QHBoxLayout()
             icon_lbl = QLabel(icon)
-            icon_lbl.setMinimumWidth(28)
-            icon_lbl.setStyleSheet(f"font-size:{theme.TYPE_TITLE}px;")
-            row.addWidget(icon_lbl)
+            row.setSpacing(theme.SPACE_2)
+            icon_lbl.setStyleSheet(f"font-size:{theme.TYPE_BODY}px;")
+            row.addWidget(icon_lbl, alignment=Qt.AlignmentFlag.AlignTop)
             text_lbl = QLabel(text)
             text_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
-            row.addWidget(text_lbl)
+            row.addWidget(text_lbl, 1, alignment=Qt.AlignmentFlag.AlignTop)
             row.addStretch()
             sf_layout.addLayout(row)
 

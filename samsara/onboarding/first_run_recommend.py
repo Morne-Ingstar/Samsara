@@ -26,7 +26,6 @@ def recommend_language(system_locale_name, allowed):
     return SETTINGS_SCHEMA['language']['default']
 
 
-# PLACEHOLDER COPY (373): every new displayed string is owner-editable.
 MODEL_REASONS = {
     'low_cores': 'Picked Tiny because this computer has fewer than four CPU cores.',
     'low_ram': 'Picked Tiny because this computer has less than 8 GB of memory.',
@@ -47,8 +46,9 @@ COPY = {
     'talking.title': 'Talking',
     'talking.question': 'How do you want to record?',
     'talking.current': 'Current recording mode',
-    'talking.hold': 'Hold to talk',
-    'talking.toggle': 'Tap to talk',
+    # STAND-IN COPY (373): shared option/summary labels; one grouped write ask.
+    'talking.hold': 'Hold',
+    'talking.toggle': 'Tap',
     'talking.record_key': 'Record key',
     'talking.hands_free': 'Hands-free button',
     'talking.session_off': 'Hands-free is off; turn it on in Settings > Dictation.',
@@ -62,8 +62,8 @@ COPY = {
     'voice.title': 'Voice',
     'voice.question': 'How much should Samsara speak?',
     'voice.engine': 'Which voice?',
-    'voice.local': 'Local voice',
-    'voice.network': 'Network voice',
+    'voice.local': 'Local',
+    'voice.network': 'Network',
     'voice.natural': 'The network voice sounds more natural.',
     'complete.startup': 'Start Samsara when I sign in to Windows',
     'welcome.recognition': 'Choose recognition and language',

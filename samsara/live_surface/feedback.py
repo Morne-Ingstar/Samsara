@@ -63,6 +63,8 @@ class Feedback:
 def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> Feedback:
     """Explicit dispatch vocabulary; legacy pending is a question, never guessed."""
     detail = detail or {}
+    if source == "tutorial_sample":
+        return Feedback(FeedbackKind(kind), owner="tutorial_sample")
     if source == "hold_pending":
         return Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, "hold")
     if source in ("dictate_staged", "dictation_staged_chunk", "draft_parked"):
@@ -148,7 +150,7 @@ def remember_feedback(app, label, feedback):
     """Keep exact result/refusal words searchable in existing History > All."""
     store = getattr(app, "history_db", None)
     kind = getattr(feedback, "feedback", feedback.kind)
-    if not label or store is None or feedback.purpose is not FeedbackPurpose.RESULT or routine_receipt(label, kind):
+    if feedback.owner == "tutorial_sample" or not label or store is None or feedback.purpose is not FeedbackPurpose.RESULT or routine_receipt(label, kind):
         return
     try:
         store.add(raw_text="", display_text=str(label), mode="feedback",

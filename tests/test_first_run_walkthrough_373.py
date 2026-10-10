@@ -324,19 +324,136 @@ def test_keyboard_arrows_and_enter_advance(make_window, qapp):
     assert wizard._STEPS[window._step][0] == 'Music'
 
 
-def test_progress_labels_fit_at_minimum_width_and_150_percent(make_window, qapp):
-    from PySide6.QtGui import QFont, QFontMetrics
+@pytest.mark.parametrize('existing', [{}, {'mode': 'continuous', 'model_size': 'medium'}])
+@pytest.mark.parametrize('name,attribute', [
+    ('Recognition', '_model_group'), ('Talking', 'mode'), ('Talking', 'wake'),
+    ('Music', 'music_group'), ('Voice', 'level'), ('Voice', 'engine'),
+    ('Listening display', 'group'),
+])
+def test_tab_enters_every_choice_and_arrows_reach_all_options(make_window, qapp, monkeypatch, existing, name, attribute):
+    from PySide6.QtGui import QAccessible
+    window = make_window(existing)
+    monkeypatch.setattr(network_voice_notice, 'request_acceptance', lambda _: True)
+    visit(window, name)
+    owner = (window if attribute == '_model_group' else window._listening_display_page
+             if name == 'Listening display' else window._decisions)
+    group = getattr(owner, attribute)
+    buttons = group.buttons()
+    window._back_btn.setFocus()
+    for _ in range(80):
+        QTest.keyClick(qapp.focusWidget() or window, Qt.Key.Key_Tab)
+        if qapp.focusWidget() in buttons:
+            break
+    assert qapp.focusWidget() in buttons, (name, attribute, existing)
+    if attribute == 'mode' and existing:
+        assert group.checkedButton() is None
+        window._collect_step()
+        assert window._config['mode'] == 'continuous'
+    reached = set()
+    for _ in range(len(buttons) + 1):
+        button = qapp.focusWidget()
+        QTest.keyClick(button, Qt.Key.Key_Space)
+        assert button.isChecked()
+        interface = QAccessible.queryAccessibleInterface(button)
+        assert interface.text(QAccessible.Text.Name) == button.accessibleName()
+        assert interface.role() == QAccessible.Role.RadioButton
+        assert interface.state().checked
+        reached.add(button)
+        QTest.keyClick(button, Qt.Key.Key_Right)
+    assert reached == set(buttons)
+
+
+def test_summary_and_segments_share_owner_editable_labels(make_window):
+    window = make_window()
+    d = window._decisions
+    for group, keys, name, prefix in [
+        (d.mode, ['talking.hold', 'talking.toggle'], 'Talking', 'Recording: '),
+        (d.engine, ['voice.local', 'voice.network'], 'Voice', 'Voice: '),
+    ]:
+        for button, key in zip(group.buttons(), keys):
+            assert button.text() == pages.COPY[key]
+            visit(window, name)
+            window._config['tts']['network_voice_accepted'] = True
+            button.click()
+            window._collect_step()
+            d.summary()
+            assert any(item.text().startswith(prefix + button.text()) for item in window._summary_labels)
+
+
+@pytest.mark.parametrize('scale', [1.0, 1.5])
+def test_circle_strip_gaps_and_narrow_label_fallback(make_window, qapp, scale):
+    from PySide6.QtGui import QFontMetrics
     from samsara.ui import theme
     from tools.wizard_screenshots import scale_walkthrough_text
     window = make_window()
-    window.resize(720, 680)
-    scale_walkthrough_text(window, 1.5)
-    for _ in range(4):
+    scale_walkthrough_text(window, scale)
+    window.resize(720, max(680, window.height()))
+    for _ in range(8):
         qapp.processEvents()
     strip = window._step_indicator
-    metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * 1.5), weight=QFont.Weight.DemiBold))
-    for index, text in enumerate(strip.steps):
-        assert strip.visualItemRect(strip.item(index)).width() >= metrics.horizontalAdvance(text)
+    assert strip.variant == 'A'
+    assert strip.count() == 10
+    assert strip.horizontalScrollBar().maximum() == 0
+    assert strip.verticalScrollBar().maximum() == 0
+    metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * scale)))
+    expected_fit = all(metrics.horizontalAdvance(text) + theme.SPACE_1 * scale
+                       <= strip.viewport().width() // strip.count() for text in strip.steps)
+    assert strip.all_labels == expected_fit
+    for current in range(strip.count()):
+        strip.set_progress(current)
+        qapp.processEvents()
+        assert strip.state(current) == 'current'
+        if current:
+            assert strip.state(current - 1) == 'done'
+        for index in range(strip.count()):
+            circle, label = strip.geometry_for(index)
+            assert strip.viewport().rect().contains(circle.toAlignedRect())
+            assert label.top() - circle.bottom() >= theme.SPACE_2 * scale
+            assert strip.height() - label.bottom() >= theme.SPACE_2 * scale - 1
+            assert strip.item(index).toolTip() == strip.steps[index]
+            assert strip.steps[index] in strip.item(index).data(Qt.ItemDataRole.AccessibleTextRole)
+        _, label = strip.geometry_for(current)
+        assert strip.viewport().rect().contains(label.toAlignedRect())
+        metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * scale)))
+        assert label.width() >= metrics.horizontalAdvance(strip.steps[current])
+    # Exercise the wide strip independently of the display's work-area cap (502).
+    strip.setFixedWidth(1800)
+    qapp.processEvents()
+    assert strip.all_labels
+    # Exercise fallback at an actually narrow width, independent of font metrics.
+    strip.setFixedWidth(360)
+    qapp.processEvents()
+    assert not strip.all_labels
+    for current in range(strip.count()):
+        strip.set_progress(current)
+        qapp.processEvents()
+        _, label = strip.geometry_for(current)
+        assert strip.viewport().rect().contains(label.toAlignedRect())
+        assert label.width() >= metrics.horizontalAdvance(strip.steps[current])
+
+
+def test_compact_controls_keep_native_roles_and_key_capture(make_window, qapp):
+    from PySide6.QtGui import QAccessible
+    from samsara.ui.settings.calm_controls import SegmentedChoice
+    window = make_window()
+    for name, groups in [('Talking', [window._decisions.mode, window._decisions.wake]),
+                         ('Music', [window._decisions.music_group]),
+                         ('Voice', [window._decisions.level, window._decisions.engine])]:
+        visit(window, name)
+        qapp.processEvents()
+        for group in groups:
+            assert isinstance(group._segments, SegmentedChoice)
+            assert group._segments.width() < window.width() / 2
+            for button in group.buttons():
+                assert button.height() == 44
+                assert button.accessibleName() == button.text()
+                assert QAccessible.queryAccessibleInterface(button).role() == QAccessible.Role.RadioButton
+    visit(window, 'Talking')
+    qapp.processEvents()
+    for button in window._hotkey_btns.values():
+        assert isinstance(button, wizard._HotkeyBtn)
+        assert button.width() <= button.sizeHint().width() + 2
+        assert button.width() < window.width() / 2
 
 
 def test_shared_mode_details_and_all_choice_help(make_window):
@@ -346,12 +463,83 @@ def test_shared_mode_details_and_all_choice_help(make_window):
     assert d.mode_detail('hold') == MODE_DETAILS['hold']
     assert d.mode_detail('tap') == MODE_DETAILS['tap']
     assert d.mode_detail('wake_word') == MODE_DETAILS['wake_word']
-    assert len(d.details) == 13  # 2 talking + hands-free + 2 wake + 3 music + 3 level + 2 engine
+    assert len(d.details) == 6  # mode, hands-free, wake, music, level, engine: one per row
     for button, expanded in d.details:
         button.click()
         assert not expanded.isHidden() and expanded.text()
         button.click()
         assert expanded.isHidden()
+
+
+def test_segment_rows_show_only_selected_approved_description(make_window, qapp):
+    window = make_window()
+    d = window._decisions
+    for name, group, values in [('Music', d.music_group, ['duck', 'pause', 'off']),
+                                ('Voice', d.level, ['silent', 'brief', 'full']),
+                                ('Voice', d.engine, ['winrt', 'edge'])]:
+        visit(window, name)
+        if group is d.engine:
+            choose(d.level, 'brief')
+            window._config['tts']['network_voice_accepted'] = True
+        for value in values:
+            choose(group, value)
+            qapp.processEvents()
+            expected = (pages.FEEDBACK_LEVEL_CHOICES[value][1] if group is d.level
+                        else pages.CHOICE_DETAILS[value] if group is d.music_group
+                        else pages.COPY['voice.natural'] if value == 'edge'
+                        else pages.CHOICE_DETAILS[value])
+            assert group._description.text() == expected
+            assert not group._description.isHidden()
+            assert group._segments.combo.currentData() == value
+            assert sum(b.isChecked() for b in group.buttons()) == 1
+
+
+def test_wake_phrase_is_compact_and_only_visible_when_on(make_window, qapp):
+    window = make_window()
+    visit(window, 'Talking')
+    d = window._decisions
+    for enabled in (False, True, False, True):
+        choose(d.wake, enabled)
+        qapp.processEvents()
+        assert d.phrase.parentWidget().isHidden() is not enabled
+        if enabled:
+            assert d.phrase.width() < window.width() / 2
+            assert d.phrase.width() >= max(d.phrase.fontMetrics().horizontalAdvance(d.phrase.itemText(i))
+                                          for i in range(d.phrase.count()))
+
+
+def test_segment_keyboard_announces_state_and_consent_rejection(make_window, qapp, monkeypatch):
+    from PySide6.QtGui import QAccessible
+    window = make_window()
+    visit(window, 'Voice')
+    d = window._decisions
+    request = Mock(return_value=False)
+    monkeypatch.setattr(network_voice_notice, 'request_acceptance', request)
+    local, network = d.engine.buttons()
+    local.setFocus()
+    QTest.keyClick(local, Qt.Key.Key_Right)
+    request.assert_called_once_with(window)
+    assert local.isChecked() and qapp.focusWidget() is local
+    assert QAccessible.queryAccessibleInterface(local).state().checked
+    assert not QAccessible.queryAccessibleInterface(network).state().checked
+    monkeypatch.setattr(network_voice_notice, 'request_acceptance', Mock(return_value=True))
+    QTest.keyClick(local, Qt.Key.Key_Right)
+    assert network.isChecked() and qapp.focusWidget() is network
+    assert QAccessible.queryAccessibleInterface(network).state().checked
+
+
+def test_new_question_rows_have_group_spacing(make_window, qapp):
+    from samsara.ui import theme
+    window = make_window()
+    for name, groups in [('Talking', [window._decisions.mode, window._decisions.wake]),
+                         ('Music', [window._decisions.music_group]),
+                         ('Voice', [window._decisions.level, window._decisions.engine])]:
+        visit(window, name)
+        qapp.processEvents()
+        for group in groups:
+            # FINISH IT 6: separators supply group breathing room; no second top inset.
+            assert group._row.layout().contentsMargins().top() == 0
+            assert group._row.layout().spacing() < theme.SPACE_4
 
 
 def test_music_labels_match_settings_and_schema():
@@ -363,12 +551,22 @@ def test_music_labels_match_settings_and_schema():
 
 
 @pytest.mark.parametrize('name', [name for name, _ in wizard._STEPS])
-def test_labels_fit_at_150_percent(make_window, qapp, name):
+def test_labels_fit_at_150_percent(make_window, qapp, monkeypatch, name):
+    from types import SimpleNamespace
+    from PySide6.QtCore import QRect
     from tools.wizard_screenshots import scale_walkthrough_text
     window = make_window()
+    original_size = window.size()
     scale_walkthrough_text(window, 1.5)
+    assert window.size() == original_size  # Increasing the window must not mask clipping.
+    # A 1366px laptop at 150% has only 911 logical pixels across its work area.
+    area = QRect(0, 0, 911, 485)
+    monkeypatch.setattr(window, 'screen', lambda: SimpleNamespace(availableGeometry=lambda: area))
+    window._fit_available_screen()
     visit(window, name)
-    qapp.processEvents()
+    for _ in range(5):
+        qapp.processEvents()
+    assert area.contains(window.frameGeometry())
     # Wrapped text must fit its allocated line box; unwrapped labels must fit width.
     for item in window._current_page.findChildren(QLabel):
         if not item.isVisibleTo(window._current_page) or not item.text():
@@ -381,3 +579,98 @@ def test_labels_fit_at_150_percent(make_window, qapp, name):
             assert bounds.height() <= rectangle.height() + 2, (name, item.text(), bounds.height(), rectangle.height())
         else:
             assert metrics.horizontalAdvance(item.text()) <= rectangle.width() + 2, (name, item.text())
+
+
+@pytest.mark.parametrize('name,count', [('Talking', 3), ('Music', 0), ('Voice', 1), ('Listening display', 1)])
+def test_hairlines_only_between_question_rows(make_window, qapp, name, count):
+    from PySide6.QtWidgets import QFrame, QWidget
+    from samsara.ui import theme
+    window = make_window()
+    visit(window, name)
+    qapp.processEvents()
+    separators = [w for w in window._current_page.findChildren(QWidget)
+                  if w.property('walkthrough_row_separator')]
+    assert len(separators) == count
+    for separator in separators:
+        line = separator.findChild(QFrame, 'walkthroughRowHairline')
+        assert line.height() == 1
+        assert theme.BORDER_FAINT in line.styleSheet()
+        margins = separator.layout().contentsMargins()
+        assert margins.top() == margins.bottom() == theme.SPACE_1 // 2
+        assert margins.left() == margins.right() == 0
+        assert separator.parentWidget().layout().indexOf(separator) > 0 or separator.parentWidget() is window._decisions.engine_area
+        assert separator.parentWidget().layout().indexOf(separator) < separator.parentWidget().layout().count() - 1
+        assert not line.focusPolicy()
+
+
+def test_revealed_parts_stay_above_next_hairline(make_window, qapp):
+    from PySide6.QtWidgets import QWidget
+    window = make_window()
+    d = window._decisions
+    visit(window, 'Talking')
+    choose(d.wake, True)
+    qapp.processEvents()
+    assert d.wake._row.isAncestorOf(d.phrase)
+    assert d.phrase.parentWidget().layout().contentsMargins().top() + d.wake._row.layout().spacing() == window._current_page.widget().layout().spacing()
+    assert not any(w.property('walkthrough_row_separator') for w in d.wake._row.findChildren(QWidget))
+    separators = [w for w in window._current_page.findChildren(QWidget) if w.property('walkthrough_row_separator')]
+    hands_free_note = next(w for w in window._current_page.findChildren(QLabel) if w.text() == pages.COPY['talking.session_off'])
+    parent = window._current_page.widget()
+    from PySide6.QtCore import QPoint
+    assert hands_free_note.mapTo(parent, QPoint()).y() + hands_free_note.height() < separators[-1].mapTo(parent, QPoint()).y()
+    visit(window, 'Voice')
+    choose(d.level, 'silent')
+    qapp.processEvents()
+    assert not any(w.isVisibleTo(window) for w in window._current_page.findChildren(QWidget)
+                   if w.property('walkthrough_row_separator'))
+
+
+@pytest.mark.parametrize('name', ['Talking', 'Music', 'Voice', 'Listening display'])
+@pytest.mark.parametrize('wake_on', [False, True])
+def test_question_rows_have_equal_hairline_gaps(make_window, qapp, name, wake_on):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QFrame, QWidget
+    from samsara.ui import theme
+    window = make_window()
+    choose(window._decisions.wake, wake_on)
+    visit(window, name)
+    qapp.processEvents()
+    body = window._current_page.widget()
+
+    def rows(layout):
+        result = []
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if widget is None or not widget.isVisibleTo(window):
+                continue
+            if (not widget.property('walkthrough_row_separator') and widget.layout()
+                    and any(child.property('walkthrough_row_separator') for child in widget.findChildren(QWidget))):
+                result.extend(rows(widget.layout()))
+            else:
+                result.append(widget)
+        return result
+
+    items = rows(body.layout())
+    gaps = []
+    for index, item in enumerate(items):
+        if not item.property('walkthrough_row_separator'):
+            continue
+        line = item.findChild(QFrame)
+        before, after = items[index - 1], items[index + 1]
+        gaps.extend([line.mapTo(body, QPoint()).y() - before.mapTo(body, QPoint()).y() - before.height(),
+                     after.mapTo(body, QPoint()).y() - line.mapTo(body, QPoint()).y() - line.height()])
+    assert not gaps or max(gaps) - min(gaps) <= 1, (name, gaps)
+    if name in ('Talking', 'Music', 'Voice'):
+        groups = {'Talking': [window._decisions.mode, window._decisions.wake],
+                  'Music': [window._decisions.music_group],
+                  'Voice': [window._decisions.level, window._decisions.engine]}[name]
+        for group in groups:
+            description = group._description
+            assert description.parentWidget().layout().contentsMargins().top() == 0
+            if description.isVisibleTo(window):
+                title = next(item for item in group._row.findChildren(QLabel)
+                             if item.text() == group._segments.accessibleName())
+                gap = description.mapTo(body, QPoint()).y() - title.mapTo(body, QPoint()).y() - title.height()
+                assert gap == theme.SPACE_1
+    if not wake_on:
+        assert not window._decisions.phrase.parentWidget().isVisibleTo(window)

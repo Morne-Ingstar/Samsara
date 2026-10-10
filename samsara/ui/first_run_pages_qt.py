@@ -6,11 +6,10 @@ import os
 import weakref
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QLocale, QObject, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtCore import QEvent, QLocale, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractButton, QButtonGroup, QCheckBox, QComboBox, QFrame,
-    QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea, QRadioButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from samsara import autostart, config_defaults, session_modes
@@ -22,8 +21,40 @@ from samsara.onboarding.first_run_recommend import (
 )
 from samsara.onboarding.mode_details import detail_from_config
 from samsara.ui import network_voice_notice, theme
+from samsara.ui.settings.calm_controls import SegmentedChoice
+from samsara.ui.listening_display_page import ListeningDisplayPage
 
 logger = get_logger(__name__)
+
+
+class SetupSegmentedChoice(SegmentedChoice):
+    def refresh(self, *args):
+        super().refresh(*args)
+        if self.group.checkedButton() is None:
+            first = next((button for button in self.buttons if button.isEnabled()), None)
+            if first is not None:
+                first.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                self.setFocusProxy(first)
+
+
+class SetupListeningDisplayPage(ListeningDisplayPage):
+    def prepare_question_rows(self, separator):
+        """Decorate setup rows without coupling navigation to layout positions."""
+        layout = self.widget().layout()
+        cards = [button.parentWidget() for button in self.group.buttons()]
+        for card, button in zip(cards, self.group.buttons()):
+            row = card.layout()
+            for index in range(row.count()):
+                text = row.itemAt(index).layout()
+                if text is not None and text.indexOf(button) >= 0:
+                    text.setSpacing(theme.SPACE_1)
+        for card in cards[1:]:
+            separator(layout, layout.indexOf(card))
+
+
+def setup_page(owner):
+    owner._listening_display_page = SetupListeningDisplayPage(owner._config, owner._stack)
+    return owner._listening_display_page
 
 
 def initial_config(defaults, config_path):
@@ -66,7 +97,6 @@ def put(config, key, value):
 def music_choices():
     """Settings labels, checked against its row in the focused regression gate."""
     labels = {'duck': 'Duck', 'pause': 'Pause', 'off': 'Leave alone'}
-    # PLACEHOLDER COPY (373): descriptions explain Settings' existing choices.
     return [(value, labels[value], CHOICE_DETAILS[value])
             for value in config_defaults.SETTINGS_SCHEMA['ducking.recording_mode']['options']]
 
@@ -188,6 +218,17 @@ class Decisions(QObject):
         if event.type() == QEvent.Type.KeyPress and watched in self.owner._model_group.buttons():
             if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Space):
                 self.model_picked = True
+        if event.type() == QEvent.Type.KeyPress:
+            arrows = (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right)
+            if event.key() in arrows:
+                for group in (self.owner._model_group, self.owner._listening_display_page.group):
+                    buttons = group.buttons()
+                    if watched in buttons:
+                        direction = -1 if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Left) else 1
+                        candidate = buttons[(buttons.index(watched) + direction) % len(buttons)]
+                        candidate.click()
+                        candidate.setFocus()
+                        return True
         if event.type() == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if getattr(watched, '_capturing', False) or watched.property('walkthrough_detail'):
                 return False
@@ -199,17 +240,7 @@ class Decisions(QObject):
     def fit_progress(self):
         if self.closed:
             return
-        strip = self.owner._step_indicator
-        metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * strip.ui_scale), weight=QFont.Weight.DemiBold))
-        width = max(strip.viewport().width() // strip.count(),
-                    max(metrics.horizontalAdvance(text) for text in strip.steps) + 12)
-        height = (round(theme.TYPE_TITLE * 1.6 * strip.ui_scale)
-                  + metrics.height() + 2 * theme.SPACE_1)
-        extra = strip.horizontalScrollBar().sizeHint().height() if width * strip.count() > strip.viewport().width() else 0
-        strip.setFixedHeight(height + extra)
-        for index in range(strip.count()):
-            strip.item(index).setSizeHint(QSize(width, height))
-        strip.scrollToItem(strip.item(self.owner._step))
+        self.owner._step_indicator._size_items()
 
     def shutdown(self):
         if self.closed:
@@ -221,21 +252,30 @@ class Decisions(QObject):
             signal.disconnect()
         for button, _ in self.details:
             button.clicked.disconnect()
-        # Remove the per-instance resize hook before Qt destroys its children.
-        self.owner._step_indicator.__dict__.pop('_size_items', None)
         for control in self.owner.findChildren(QObject):
             control.blockSignals(True)
             control.removeEventFilter(self)
 
-    def choices(self, layout, rows, selected, details=None):
-        from samsara.ui.first_run_wizard_qt import _WizardChoiceIndicator
+    def recognition_choices(self, layout, rows, selected, details=None):
         group = QButtonGroup(self)
         for index, (value, title, description) in enumerate(rows):
-            card = QFrame()
-            theme.style_card(card)
-            row = QHBoxLayout(card)
-            row.setContentsMargins(14, 12, 14, 12)
-            rb = _WizardChoiceIndicator()
+            row = QHBoxLayout()
+            row.setSpacing(theme.SPACE_3)
+            column = QVBoxLayout()
+            column.setSpacing(theme.SPACE_1)
+            heading = QHBoxLayout()
+            heading.setSpacing(theme.SPACE_1)
+            heading.addWidget(label(title))
+            if details:
+                self.detail(heading, column, title, lambda value=value: details(value))
+            heading.addStretch()
+            column.insertLayout(0, heading)
+            if description:
+                column.insertWidget(1, label(description))
+            row.addLayout(column, 1)
+            rb = QRadioButton()
+            rb.setStyleSheet('QRadioButton{background:transparent;padding:0;spacing:0;}'
+                            'QRadioButton::indicator{width:16px;height:16px;border-radius:10px;}')
             rb.setAccessibleName(title)
             rb.setProperty('_value', value)
             rb.setAccessibleDescription(description)
@@ -243,27 +283,87 @@ class Decisions(QObject):
             rb.installEventFilter(self)
             group.addButton(rb, index)
             rb.setChecked(value == selected)
-            row.addWidget(rb)
-            column = QVBoxLayout()
-            column.setSpacing(4)
-            column.addWidget(label(title))
-            if description:
-                column.addWidget(label(description))
-            row.addLayout(column, 1)
-            if details:
-                self.detail(row, column, title, lambda value=value: details(value))
-            layout.addWidget(card)
+            row.addWidget(rb, 0, Qt.AlignmentFlag.AlignTop)
+            layout.addLayout(row)
+        return group
+
+    @staticmethod
+    def row_separator(layout, index=None):
+        # Same hairline token and width as Settings presentation.style().
+        space = QWidget()
+        space.setProperty('walkthrough_row_separator', True)
+        column = QVBoxLayout(space)
+        column.setContentsMargins(0, theme.SPACE_1 // 2, 0, theme.SPACE_1 // 2)
+        column.setSpacing(0)
+        line = QFrame(space)
+        line.setObjectName('walkthroughRowHairline')
+        line.setFixedHeight(1)
+        line.setStyleSheet(f'background:{theme.BORDER_FAINT};border:none;')
+        column.addWidget(line)
+        layout.insertWidget(layout.count() if index is None else index, space)
+        return space
+
+    def choices(self, layout, title, rows, selected, details):
+        section = QWidget()
+        column = QVBoxLayout(section)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(theme.SPACE_1)
+        row, heading = QHBoxLayout(), QHBoxLayout()
+        heading.setSpacing(theme.SPACE_1)
+        question = label(title)
+        question.ensurePolished()
+        question.setMinimumWidth(min(question.fontMetrics().horizontalAdvance(title) + 2, theme.TYPE_BODY * 20))
+        text_area = QWidget()
+        text_column = QVBoxLayout(text_area)
+        text_column.setContentsMargins(0, 0, 0, 0)
+        text_column.setSpacing(theme.SPACE_1)
+        text_column.addWidget(question)
+        heading.addWidget(text_area)
+        self.detail(heading, column, title, lambda: '\n\n'.join(
+            dict.fromkeys(details(value) for value, _, _ in rows)))
+        heading.addStretch()
+        row.addLayout(heading, 1)
+        combo = QComboBox()
+        for value, text, _ in rows:
+            combo.addItem(text, value)
+        combo.setCurrentIndex(combo.findData(selected))
+        segments = SetupSegmentedChoice(combo)
+        segments.setAccessibleName(title)
+        segments.setStyleSheet(f'QFrame#settingsSegments{{background:{theme.BG1};'
+                              f'border:1px solid {theme.BORDER};border-radius:{theme.CONTROL_RADIUS}px;}}')
+        group = segments.group
+        description = label('')
+        description.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
+        def refresh(*_):
+            chosen = combo.currentIndex()
+            text = rows[chosen][2] if chosen >= 0 else ''
+            description.setText(text)
+            description.setVisible(bool(text))
+            for index, button in enumerate(segments.buttons):
+                button.setAccessibleDescription(rows[index][2])
+        for index, button in enumerate(segments.buttons):
+            button.setProperty('_value', rows[index][0])
+            button.installEventFilter(self)
+        group.buttonToggled.connect(lambda button, checked: combo.setCurrentIndex(group.id(button)) if checked else None)
+        combo.currentIndexChanged.connect(refresh)
+        group._row, group._description, group._segments = section, description, segments
+        row.addWidget(segments, 0, Qt.AlignmentFlag.AlignVCenter)
+        column.insertLayout(0, row)
+        text_column.addWidget(description)
+        layout.addWidget(section)
+        refresh()
         return group
 
     def detail(self, row, column, title, text):
-        # Same inline expansion and 44px question-mark target as tutorial 378.
+        # Small visual help beside its label, retaining a 44px keyboard/tap target.
         button = _DetailsButton('?')
         button.setAccessibleName(button.text())
         button.setAccessibleDescription(title)
         button.setCheckable(True)
         button.setProperty('walkthrough_detail', True)
-        theme.make_secondary(button)
-        button.setStyleSheet(button.styleSheet() + 'QPushButton{min-height:42px;min-width:42px;max-height:42px;max-width:42px;padding:0;}')
+        button.setObjectName('helpButton')
+        button.setStyleSheet(f'QPushButton{{background:transparent;border:none;padding:0;color:{theme.TEXT_SECONDARY};}}'
+                            f'QPushButton:focus{{border:1px solid {theme.ACCENT};border-radius:22px;}}')
         button.setFixedSize(44, 44)
         expanded = label('')
         expanded.hide()
@@ -302,7 +402,6 @@ class Decisions(QObject):
         self.reason = label('')
         layout.addWidget(self.reason)
         layout.addWidget(label(COPY['recognition.change']))
-        # PLACEHOLDER COPY (373)
         rows = [('tiny', 'Tiny', 'Uses the least memory.'),
                 ('base', 'Base', 'Balances accuracy and memory.'),
                 ('small', 'Small', 'Uses more memory for better accuracy.')]
@@ -310,7 +409,7 @@ class Decisions(QObject):
         if current not in [value for value, _, _ in rows]:
             current_label = label(f'{COPY["recognition.current"]}: {current}')
             layout.addWidget(current_label)
-        self.owner._model_group = self.choices(layout, rows, self.owner._config['model_size'])
+        self.owner._model_group = self.recognition_choices(layout, rows, self.owner._config['model_size'])
         if current not in [value for value, _, _ in rows]:
             self.owner._model_group.buttonClicked.connect(lambda _: current_label.hide())
         self.owner._model_group.buttonClicked.connect(lambda _: setattr(self, 'model_picked', True))
@@ -339,7 +438,25 @@ class Decisions(QObject):
             return None
         from samsara.ui.first_run_wizard_qt import _HotkeyBtn
         from samsara.hold_key_rules import HOLD_DEFAULTS, capture_overrides, config_value
-        layout.addWidget(label(title))
+        section = QWidget()
+        column = QVBoxLayout(section)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(theme.SPACE_1)
+        row, heading = QHBoxLayout(), QHBoxLayout()
+        text_area = QWidget()
+        text_column = QVBoxLayout(text_area)
+        text_column.setContentsMargins(0, 0, 0, 0)
+        text_column.setSpacing(theme.SPACE_1)
+        text_column.addWidget(label(title))
+        heading.addWidget(text_area)
+        if action == 'command_mode.button':
+            self.detail(heading, column, title, lambda: self.mode_detail('hands_free'))
+        heading.addStretch()
+        row.addLayout(heading, 1)
+        if action == 'command_mode.button' and not config_defaults.cfg_get(self.owner._config, 'command_mode.enabled'):
+            note = label(COPY['talking.session_off'])
+            note.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
+            text_column.addWidget(note)
         button = _HotkeyBtn(config_value(self.owner._config, action, HOLD_DEFAULTS[action][1]))
         owner_ref = self._owner_ref
         button.configure_hold(action, lambda: owner_ref()._config,
@@ -347,41 +464,57 @@ class Decisions(QObject):
         button.setAccessibleName(title)
         button.installEventFilter(self)
         self.owner._hotkey_btns[action] = button
-        layout.addWidget(button)
-        layout.addWidget(button.reason_label())
+        button.setMinimumWidth(0)
+        button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        row.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+        column.insertLayout(0, row)
+        column.addWidget(button.reason_label())
+        layout.addWidget(section)
         return button
 
     def talking(self):
         w, layout = page(self.owner)
-        layout.addWidget(label(COPY['talking.question']))
         current_mode = self.owner._config['mode']
         if current_mode not in ('hold', 'toggle'):
             current_mode_label = label(f'{COPY["talking.current"]}: {current_mode}')
             layout.addWidget(current_mode_label)
-        self.mode = self.choices(layout, [('hold', COPY['talking.hold'], ''),
-            ('toggle', COPY['talking.toggle'], '')], self.owner._config['mode'],
+        self.mode = self.choices(layout, COPY['talking.question'],
+            [('hold', COPY['talking.hold'], self.mode_detail('hold').split('. ')[0] + '.'),
+             ('toggle', COPY['talking.toggle'], self.mode_detail('tap').split('. ')[0] + '.')], self.owner._config['mode'],
             lambda value: self.mode_detail('hold' if value == 'hold' else 'tap'))
         if current_mode not in ('hold', 'toggle'):
             self.mode.buttonClicked.connect(lambda _: current_mode_label.hide())
+        self.row_separator(layout)
         self._hold_key(layout, 'hotkey', COPY['talking.record_key'])
+        self.row_separator(layout)
         self.hands_free = self._hold_key(layout, 'command_mode.button', COPY['talking.hands_free'])
-        from samsara.hold_key_rules import HOLD_DEFAULTS
-        for action in ('ava_mode_key', 'command_hotkey', 'memo_hotkey', 'task_hotkey'):
-            self._hold_key(layout, action, HOLD_DEFAULTS[action][0] + ' key')
-        help_row, help_column = QHBoxLayout(), QVBoxLayout()
-        if not config_defaults.cfg_get(self.owner._config, 'command_mode.enabled'):
-            help_column.addWidget(label(COPY['talking.session_off']))
-        help_row.addLayout(help_column, 1)
-        self.detail(help_row, help_column, COPY['talking.hands_free'], lambda: self.mode_detail('hands_free'))
-        layout.addLayout(help_row)
-        layout.addWidget(label(COPY['talking.wake']))
-        self.wake = self.choices(layout, [(True, COPY['talking.on'], ''), (False, COPY['talking.off'], '')],
-            self.owner._config['wake_word_enabled'], lambda _: self.mode_detail('wake_word'))
-        self.phrase = self.combo(layout, COPY['talking.phrase'], [
-            (phrase, phrase) for phrase in self.wake_phrases()],
-            config_defaults.cfg_get(self.owner._config, 'wake_word_config.phrase'))
-        self.wake.buttonToggled.connect(lambda *_: self.phrase.setEnabled(bool(self.selected(self.wake))))
-        self.phrase.setEnabled(bool(self.selected(self.wake)))
+        self.row_separator(layout)
+        self.wake = self.choices(layout, COPY['talking.wake'],
+            [(True, COPY['talking.on'], self.mode_detail('wake_word').split('. ')[0] + '.'),
+             (False, COPY['talking.off'], '')], self.owner._config['wake_word_enabled'],
+            lambda _: self.mode_detail('wake_word'))
+        phrase_row = QWidget()
+        phrase_layout = QHBoxLayout(phrase_row)
+        phrase_layout.setContentsMargins(0, layout.spacing() - self.wake._row.layout().spacing(), 0, 0)
+        phrase_layout.addWidget(label(COPY['talking.phrase']))
+        phrase_layout.addStretch()
+        self.phrase = QComboBox(phrase_row)
+        self.phrase.setAccessibleName(COPY['talking.phrase'])
+        for phrase in self.wake_phrases():
+            self.phrase.addItem(phrase, phrase)
+        saved = config_defaults.cfg_get(self.owner._config, 'wake_word_config.phrase')
+        if self.phrase.findText(saved) < 0:
+            self.phrase.addItem(saved, saved)
+        self.phrase.setCurrentText(saved)
+        self.phrase.ensurePolished()
+        phrase_width = max(self.phrase.fontMetrics().horizontalAdvance(self.phrase.itemText(i))
+                           for i in range(self.phrase.count()))
+        self.phrase.setFixedWidth(phrase_width + theme.SPACE_4 + theme.HIT_TARGET_MIN)
+        self.phrase.installEventFilter(self)
+        phrase_layout.addWidget(self.phrase)
+        self.wake._row.layout().addWidget(phrase_row)
+        self.wake.buttonToggled.connect(lambda *_: phrase_row.setVisible(bool(self.selected(self.wake))))
+        phrase_row.setVisible(bool(self.selected(self.wake)))
         layout.addWidget(label(COPY['talking.tutorial']))
         layout.addStretch()
         return w
@@ -393,23 +526,23 @@ class Decisions(QObject):
 
     def music(self):
         w, layout = page(self.owner)
-        layout.addWidget(label(COPY['music.question']))
-        self.music_group = self.choices(layout, music_choices(),
+        self.music_group = self.choices(layout, COPY['music.question'], music_choices(),
             config_defaults.cfg_get(self.owner._config, 'ducking.recording_mode'), CHOICE_DETAILS.get)
         layout.addStretch()
         return w
 
     def voice(self):
         w, layout = page(self.owner)
-        layout.addWidget(label(COPY['voice.question']))
-        self.level = self.choices(layout, [(value, *copy) for value, copy in FEEDBACK_LEVEL_CHOICES.items()],
+        self.level = self.choices(layout, COPY['voice.question'],
+            [(value, *copy) for value, copy in FEEDBACK_LEVEL_CHOICES.items()],
             config_defaults.cfg_get(self.owner._config, 'tts.feedback_level'), CHOICE_DETAILS.get)
         self.engine_area = QWidget()
         engines = QVBoxLayout(self.engine_area)
         engines.setContentsMargins(0, 0, 0, 0)
-        engines.addWidget(label(COPY['voice.engine']))
-        self.engine = self.choices(engines, [('winrt', COPY['voice.local'], ''),
-            ('edge', COPY['voice.network'], COPY['voice.natural'])],
+        engines.setSpacing(layout.spacing())
+        self.row_separator(engines)
+        self.engine = self.choices(engines, COPY['voice.engine'],
+            [('winrt', COPY['voice.local'], CHOICE_DETAILS['winrt']), ('edge', COPY['voice.network'], COPY['voice.natural'])],
             config_defaults.cfg_get(self.owner._config, 'tts.engine'), CHOICE_DETAILS.get)
         self.engine.buttonClicked.connect(self.choose_engine)
         self.level.buttonToggled.connect(lambda *_: self.engine_area.setVisible(self.selected(self.level) != 'silent'))
@@ -459,7 +592,6 @@ class Decisions(QObject):
 
     def complete(self):
         w, layout = page(self.owner)
-        # PLACEHOLDER COPY (373)
         layout.addWidget(label('Check your choices, then start Samsara.'))
         card = QFrame()
         theme.style_card(card)
@@ -480,7 +612,6 @@ class Decisions(QObject):
     def summary(self):
         from samsara.ui.quick_reference_qt import _pretty_button, _pretty_key_combo
         cfg = self.owner._config
-        # PLACEHOLDER COPY (373): summary labels; values come from the answers.
         lines = [f'Microphone: {self.owner._mic_combo.currentText()}',
             f'Recognition: {str(cfg["model_size"]).title()}', f'Language: {dict((code, name) for name, code in LANGUAGES).get(cfg["language"], cfg["language"])}',
             f'Recording: {COPY.get("talking." + cfg["mode"], cfg["mode"])} · {_pretty_key_combo(cfg["hotkey"])}',
@@ -504,6 +635,7 @@ class Decisions(QObject):
         self.owner._config['launch_at_login'] = requested
 
     def prepare_navigation(self):
+        self.owner._listening_display_page.prepare_question_rows(self.row_separator)
         self.owner._mic_result.connect(self.restore_saved_mic)
         for control in (self.owner._next_btn, self.owner._back_btn, self.owner._mic_combo):
             control.setAccessibleName(control.text() if isinstance(control, QAbstractButton) else 'Microphone')
@@ -524,16 +656,7 @@ class Decisions(QObject):
                 ('Listening display', 'progress.display')]:
             strip.steps[strip.steps.index(name)] = COPY[copy_key]
         strip._refresh()
-        # QListView also resizes its viewport when a scrollbar appears. Keep
-        # its existing Python hook, with measured widths for this instance.
-        helper_ref = weakref.ref(self)
-        def resize_items():
-            helper = helper_ref()
-            if helper is not None and not helper.closed:
-                helper.fit_progress()
-        strip._size_items = resize_items
         self.fit_progress()
-        strip.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         strip.installEventFilter(self)
 
     def restore_saved_mic(self, message, _color):

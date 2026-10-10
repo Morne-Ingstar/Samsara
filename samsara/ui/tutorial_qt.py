@@ -15,7 +15,9 @@ Steps:
   1  Dictation   — speak → text lands in box → green check
   2  Command     — say any command → green check
   3  Ways        — passive overview of the user's current capture controls
-  4  Done        — checklist recap, all items ticked; points to Ava and
+  4  Display     — try the listening display and choose its position
+  5  Try         — live voice, pace and feedback trials; each card saves on Keep
+  6  Done        — checklist recap, all items ticked; points to Ava and
                    the click-by-number overlay as things to try once set up
 
 Every "try saying ..." example and every command named in the text is read
@@ -30,6 +32,7 @@ Interaction detection hooks (registered on app, removed on window close):
 """
 from __future__ import annotations
 
+from samsara.ui.tutorial_try_qt import _TryPage
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -399,7 +402,19 @@ class TutorialWindow(QMainWindow):
         # Build pages
         self._dictation_box: QTextEdit | None = None
         self._scroll_area:   QScrollArea | None = None
-        self._pages = [self._scroll_page(self._build_page(key)) for key, _ in self._steps]
+        self._pages = []
+        for key, title in list(self._steps):
+            try:
+                self._pages.append(self._scroll_page(self._build_page(key)))
+            except Exception:
+                if key != 'try':
+                    raise
+                logger.exception('Tutorial Try page unavailable; skipping that step')
+                self._try_page = None
+                step_index = self._steps.index((key, title))
+                self._steps.remove((key, title))
+                self._step_indicator.steps.remove(key.capitalize())
+                self._step_indicator.takeItem(step_index)
         self._current_page: QWidget | None = None
 
         root.addWidget(self._separator())
@@ -549,7 +564,7 @@ class TutorialWindow(QMainWindow):
         if content is None or layout is None:
             return
         layout.activate()
-        if self._steps[self._step][0] == 'ways':
+        if self._steps[self._step][0] in ('ways', 'try'):
             natural_height = max(content.minimumSizeHint().height(), layout.minimumSize().height())
             chrome = self.height() - page.viewport().height()
             self.resize(self.width(), min(self.maximumHeight(),
@@ -575,6 +590,7 @@ class TutorialWindow(QMainWindow):
             # PLACEHOLDER COPY (378)
             ("ways",      "Ways to talk to Samsara"),
             ("display",   PLACEMENT_TITLE),  # PLACEHOLDER COPY (490)
+            ("try",       "Try your settings"),  # PLACEHOLDER COPY (389)
             ("done",      "Tutorial complete"),
         ]
 
@@ -631,6 +647,7 @@ class TutorialWindow(QMainWindow):
             "command":   self._build_command,
             "ways":      self._build_ways,
             "display":   lambda: tutorial_page(self),
+            "try":       lambda: _TryPage(self),
             "done":      self._build_done,
         }
         return builders[key]()
@@ -896,6 +913,11 @@ class TutorialWindow(QMainWindow):
             self._done_checks[step_idx] = (icon_lbl, text_lbl)
 
         lay.addWidget(card)
+        self._try_summary = QLabel('')
+        self._try_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self._try_summary.setWordWrap(True)
+        self._try_summary.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
+        lay.addWidget(self._try_summary)
 
         records = getattr(self, '_catalog', None)
         if records is None:
@@ -1056,6 +1078,7 @@ class TutorialWindow(QMainWindow):
             self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
 
     def _refresh_done_checks(self):
+        self._try_summary.setText('\n'.join(getattr(getattr(self, '_try_page', None), 'kept', {}).values()))
         for step_idx, (icon, label) in self._done_checks.items():
             completed = step_idx in self._completed
             icon.setText("✓" if completed else "—")
