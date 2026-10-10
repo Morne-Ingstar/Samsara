@@ -378,5 +378,5 @@ class TestWizardHosting:
         names = [s[0] for s in wz._STEPS]
         assert names.index("Components") == names.index("Microphone") + 1
         assert names.count("Components") == 1
-        assert len(wz._STEPS) == 9  # 373: decision pages plus retained listening display.
+        assert len(wz._STEPS) == 10  # 490: placement follows listening display choice.
         assert names.count("Listening display") == 1

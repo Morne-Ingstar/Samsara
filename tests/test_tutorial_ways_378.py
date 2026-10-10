@@ -54,9 +54,9 @@ def row_text(window, key):
 
 def test_five_steps_and_passive_navigation(build, qapp):
     window = build()
-    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'done']
+    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'display', 'done']
     interface = QAccessible.queryAccessibleInterface(window._step_indicator)
-    assert interface.childCount() == 5
+    assert interface.childCount() == 6
     assert window._next_btn.isEnabled() and window._back_btn.isEnabled()
     assert not getattr(window._app, '_tutorial_hooks', {})
     assert window._hint_timer is None
@@ -67,9 +67,13 @@ def test_five_steps_and_passive_navigation(build, qapp):
     assert window._steps[window._step][0] == 'ways'
     assert window._next_btn.isEnabled() and not window._app._tutorial_hooks
     window._go_next()
+    assert window._steps[window._step][0] == 'display'
+    window._go_next()
     assert window._steps[window._step][0] == 'done'
     window._go_back()
-    assert window._next_btn.isEnabled() and window._step_lbl.text() == 'Step 4 of 5'
+    assert window._steps[window._step][0] == 'display'
+    window._go_back()
+    assert window._next_btn.isEnabled() and window._step_lbl.text() == 'Step 4 of 6'
 
 
 def test_defaults_match_shared_controls(build):
@@ -186,7 +190,8 @@ def test_commit_word_matches_accepted_config(build, monkeypatch, word):
     assert f'"{expected}"' in tutorial_qt._hands_free_text(config)
     assert session_modes.DEFAULT_DICTATE_COMMIT_PHRASE not in row_text(window, 'hands_free')
     # Done deliberately preserves recovery-only copy, with no redundant paste word.
-    window._go_next()
+    window._go_next()  # Ways -> Display
+    window._go_next()  # Display -> Done
     assert 'scratch that' in '\n'.join(l.text() for l in window._current_page.findChildren(QLabel))
 
 

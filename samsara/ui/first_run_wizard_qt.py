@@ -31,6 +31,8 @@ from samsara.ui.first_run_pages_qt import Decisions, initial_config
 from samsara.onboarding.first_run_recommend import COPY
 from samsara.ui.widgets.step_indicator import StepIndicator
 from samsara.ui.listening_display_page import setup_page, STEP_LABEL_GAP
+from samsara.ui.tutorial_display_qt import setup_placement_page, TITLE as PLACEMENT_TITLE
+from samsara.onboarding.display_placement import seed_fresh
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 from samsara.audio_devices import force_rescan, list_microphones, pick_index_by_name
 
@@ -264,6 +266,7 @@ _STEPS = [
     ("Music", COPY["music.title"]),
     ("Voice", COPY["voice.title"]),
     (listening_display.LABEL, listening_display.QUESTION),
+    ("Position", PLACEMENT_TITLE),  # PLACEHOLDER COPY (490)
     ("Complete",   "Setup Complete!"),
 ]
 
@@ -489,6 +492,7 @@ class _WizardWindow(QMainWindow):
         self.result = None
         self._step = 0
         self._config, self._existing_config = initial_config(_DEFAULTS, config_path)
+        seed_fresh(self._config, fresh=not Path(config_path).exists())
         self._mics: list[dict] = []
         self._mic_result.connect(self._on_mic_result)
         self._mic_announcer = LiveSurfaceAnnouncer(self)
@@ -580,6 +584,7 @@ class _WizardWindow(QMainWindow):
             self._decisions.music(),
             self._decisions.voice(),
             setup_page(self),
+            setup_placement_page(self),
             self._build_complete(),
         ]
         self._current_page: QWidget | None = None

@@ -399,6 +399,7 @@ from samsara.smart_corrections import (
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import autostart
 from samsara import config_defaults, listening_display
+from samsara.onboarding import display_placement
 from samsara import injection_safety
 from samsara import diagnostics
 from samsara import flight_recorder
@@ -3138,6 +3139,7 @@ class DictationApp:
             # True first run: no config file existed at all -- the ONLY
             # case where writing defaults to disk is correct.
             self.config = default_config
+            display_placement.seed_fresh(self.config, fresh=True)
             wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
             # save_config() requires _config_lock to be held; load_config is
             # always called under _config_lock so calling save_config() directly
@@ -13377,6 +13379,7 @@ class DictationApp:
         by tray actions and may therefore be called from another thread.  Keep
         the widget work behind the application's normal UI scheduler.
         """
+        display_placement.apply_full(self)
         indicator = getattr(self, 'listening_indicator', None)
         if indicator is None:
             return

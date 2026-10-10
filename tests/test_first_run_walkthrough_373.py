@@ -76,7 +76,7 @@ def finish(window):
 def test_steps_preserve_listening_display_and_remove_use_case():
     assert [name for name, _ in wizard._STEPS] == [
         'Welcome', 'Microphone', 'Components', 'Recognition', 'Talking',
-        'Music', 'Voice', 'Listening display', 'Complete']
+        'Music', 'Voice', 'Listening display', 'Position', 'Complete']
     assert not hasattr(wizard, '_USE_CASE_CONFIGS')
 
 

@@ -41,6 +41,7 @@ from samsara import command_catalog
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.onboarding.guidance_facts import facts_from_config
+from samsara.ui.tutorial_display_qt import tutorial_page, TITLE as PLACEMENT_TITLE
 from samsara.onboarding.mode_details import detail_from_config
 from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
@@ -531,6 +532,7 @@ class TutorialWindow(QMainWindow):
             ("command",   "Say a Command"),
             # PLACEHOLDER COPY (378)
             ("ways",      "Ways to talk to Samsara"),
+            ("display",   PLACEMENT_TITLE),  # PLACEHOLDER COPY (490)
             ("done",      "Tutorial complete"),
         ]
 
@@ -586,6 +588,7 @@ class TutorialWindow(QMainWindow):
             "dictation": self._build_dictation,
             "command":   self._build_command,
             "ways":      self._build_ways,
+            "display":   lambda: tutorial_page(self),
             "done":      self._build_done,
         }
         return builders[key]()
