@@ -5423,6 +5423,7 @@ class DictationApp:
                 formatted,
                 before_paste=commit_focus_guard,
                 return_delivery_confirmation=True,
+                **({'tutorial_dictation': True} if getattr(self, '_tutorial_hooks', {}).get('dictation') else {}),
             )
             if not paste_ok:
                 return False
@@ -7465,6 +7466,8 @@ class DictationApp:
         extending the session. Only the user speaking again does that. See
         _touch_session_activity's own docstring and
         docs/HANDS_FREE_GATES_FINDINGS.md "Session policy"."""
+        if outcome.kind in ('command_executed', 'hands_free_command_executed'):
+            self._notify_tutorial('command', text)
         if outcome.kind == "ava_rejected_not_substantive":
             # Coughs/"uh"/stray syllables that survive the hallucination
             # gates but aren't worth an agent API call + spoken reply. No
@@ -7880,23 +7883,10 @@ class DictationApp:
                                     " by voice -- no mouse needed.",
                                     delay_s=2.0,
                                 )
-                    # Tutorial command hook — one-shot, fires for ANY command
-                    _tut_cmd = self._tutorial_hooks.pop('command', None)
-                    if _tut_cmd:
-                        try:
-                            _tut_cmd(result or "")
-                        except Exception as e:
-                            logger.debug(f"Tutorial command hook failed: {e}")
+                    self._notify_tutorial('command', result or '')
                     # Command was executed
                     return
 
-                # Tutorial dictation hook — one-shot, removed after first fire
-                _tut_dict = self._tutorial_hooks.pop('dictation', None)
-                if _tut_dict:
-                    try:
-                        _tut_dict(text)
-                    except Exception as e:
-                        logger.debug(f"Tutorial dictation hook failed: {e}")
 
                 # Not a command, proceed with dictation
                 # Apply text processing (auto-capitalize, number formatting)
@@ -7913,8 +7903,8 @@ class DictationApp:
 
                 logger.info(f"[TEXT] {text}")
 
-                if self.config['auto_paste']:
-                    self._paste_preserving_clipboard(text, feedback=False)
+                if self.config['auto_paste'] or getattr(self, '_tutorial_hooks', {}).get('dictation'):
+                    self._paste_preserving_clipboard(text, feedback=False, **({'tutorial_dictation': True} if getattr(self, '_tutorial_hooks', {}).get('dictation') else {}))
 
                 # Log to persistent history
                 self._log_history(
@@ -7942,6 +7932,17 @@ class DictationApp:
                 winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
             except Exception as _snd_err:
                 logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
+
+    def _notify_tutorial(self, kind, text):
+        callback = getattr(self, '_tutorial_hooks', {}).pop(kind, None) if str(text or '').strip() else None
+        if callback is None:
+            return False
+        try:
+            callback(text)
+            return True
+        except Exception as exc:
+            logger.debug("Tutorial hook failed: %s", exc)
+            return False
 
     def toggle_wake_word_mode(self):
         """Toggle wake word listening mode"""
@@ -10706,10 +10707,10 @@ class DictationApp:
     def _flight_foreground_process_name() -> str | None:
         return _paste.flight_foreground_process_name()
 
-    def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False, *, feedback=True):
-        # The implementation remains the injection_safety.window_integrity()
-        # guarded paste_with_preservation(...) path and records successful
-        # delivery through self._record_undoable_paste(...) in samsara.paste.
+    def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False, *, feedback=True, tutorial_dictation=False):
+        if tutorial_dictation and self._notify_tutorial('dictation', text):
+            _paste.show_delivery_result(self, True, True)
+            return (True, True) if return_delivery_confirmation else True
         return _paste.paste_preserving_clipboard(
             self,
             text,
@@ -10722,6 +10723,8 @@ class DictationApp:
         )
 
     def _deliver_text_to_focused_editor(self, text):
+        if getattr(self, '_tutorial_hooks', {}).get('dictation'):
+            return self._paste_preserving_clipboard(text, tutorial_dictation=True)
         return _paste.deliver_text_to_focused_editor(self, text)
 
     def _record_undoable_paste(self, text, target_hwnd=_UNDO_TARGET_UNSET):
@@ -10891,14 +10894,19 @@ class DictationApp:
         delivered = False
         _wake_delivery_failed = (self.app_state == 'wake_session'
                                  and getattr(self, '_wake_session_delivery_failed', False))
-        if self.config['auto_paste'] and not _wake_delivery_failed:
+        tutorial_waiting = bool(getattr(self, '_tutorial_hooks', {}).get('dictation'))
+        if tutorial_waiting or (self.config['auto_paste'] and not _wake_delivery_failed):
             logger.info(
                 f"[WS-DIAG] _output_dictation: wake_profile_active="
                 f"{getattr(self,'_wake_profile_active',None)} "
                 f"first_chunk={getattr(self,'_wake_session_first_chunk',None)} "
                 f"app_state={self.app_state!r}"
             )
-            if getattr(self, '_wake_profile_active', False):
+            if tutorial_waiting:
+                delivered = self._paste_preserving_clipboard(text, tutorial_dictation=True)
+                if delivered and getattr(self, '_wake_profile_active', False):
+                    self._wake_session_first_chunk = False
+            elif getattr(self, '_wake_profile_active', False):
                 _target_process = getattr(self, '_wake_session_target_process', '')
                 _target_hwnd = getattr(self, '_wake_session_target_hwnd', None)
                 if ((not _target_process or self._foreground_process_name() == _target_process)
@@ -10914,8 +10922,8 @@ class DictationApp:
                             if _target_hwnd else None)
             else:
                 delivered = self._paste_preserving_clipboard(text)
-        timing_outcome = ("error" if not delivered and self.config['auto_paste'] else
-                          "typed" if self.config['auto_paste'] else "buffered")
+        timing_outcome = ("typed" if delivered else
+                          "error" if self.config['auto_paste'] or tutorial_waiting else "buffered")
         if stage_timing is not None:
             stage_timing.mark("action_done", outcome=timing_outcome)
         for timing in pending_timings:
@@ -12232,12 +12240,7 @@ class DictationApp:
                                 self.add_to_history(text, is_command=True)
                                 self._log_history(raw_text=text, duration_ms=int(audio_duration * 1000), mode='command', status='failed', entry_type='command', matched_command=str(result))
                                 return
-                            _tut_cmd = self._tutorial_hooks.pop('command', None)
-                            if _tut_cmd:
-                                try:
-                                    _tut_cmd(result or "")
-                                except Exception as e:
-                                    logger.debug(f"Tutorial command hook failed: {e}")
+                            self._notify_tutorial('command', result or '')
                             _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
                             if (result and not _is_repeat_blacklisted(result, _store_cmd)
                                     and self.command_executor.find_command(result) == result):
@@ -12298,12 +12301,6 @@ class DictationApp:
                         return
 
                     # Regular dictation mode - proceed with text output
-                    _tut_dict = self._tutorial_hooks.pop('dictation', None)
-                    if _tut_dict:
-                        try:
-                            _tut_dict(text)
-                        except Exception as e:
-                            logger.debug(f"Tutorial dictation hook failed: {e}")
                     # Apply text processing (auto-capitalize, number formatting)
                     _diag_corr_start = time.perf_counter()
                     raw = text
@@ -12416,6 +12413,7 @@ class DictationApp:
                     # turns this final into a local segment.  This check is
                     # immediately before the former auto-delivery branch so
                     # a paused hold has no path that can paste first.
+                    tutorial_waiting = bool(getattr(self, '_tutorial_hooks', {}).get('dictation'))
                     target_changed = False
                     if self._live_surface_hold_parking_enabled():
                         original_hwnd = getattr(self, '_hold_capture_target_hwnd', None)
@@ -12432,7 +12430,7 @@ class DictationApp:
                         and not _verbatim_active
                         and text.strip().lower().endswith('pause draft')
                     )
-                    if park_hold_requested or target_changed or voice_pause_ambiguous:
+                    if not tutorial_waiting and (park_hold_requested or target_changed or voice_pause_ambiguous):
                         manager = self._ensure_session_mode_manager()
                         if target_changed or voice_pause_ambiguous:
                             manager.pause_draft(source=(
@@ -12453,7 +12451,7 @@ class DictationApp:
                     # Queue 50: this success sound used to play before the
                     # paste below, even into an elevated window that drops
                     # every keystroke. Check first; never claim success there.
-                    _verdict = injection_safety.window_integrity() if self.config['auto_paste'] else None
+                    _verdict = injection_safety.window_integrity() if self.config['auto_paste'] and not tutorial_waiting else None
                     if _verdict is not None and _verdict.blocked:
                         self._announce_window_locked(_verdict, "hold dictation")
                         self.add_to_history(text.strip(), is_command=False)
@@ -12523,8 +12521,8 @@ class DictationApp:
                     except Exception as _bench_exc:
                         logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
 
-                    if self.config['auto_paste']:
-                        delivered = self._paste_preserving_clipboard(text)
+                    if self.config['auto_paste'] or tutorial_waiting:
+                        delivered = self._paste_preserving_clipboard(text, **({'tutorial_dictation': True} if tutorial_waiting else {}))
                         if (delivered is False
                                 and self._live_surface_hold_parking_enabled()):
                             # The injector explicitly reported failure.  Keep
@@ -12540,8 +12538,8 @@ class DictationApp:
                             self._park_hold_feedback('Delivery failed; draft kept')
                     if stage_timing is not None:
                         stage_timing.mark("action_done", outcome=(
-                            "error" if self.config['auto_paste'] and delivered is False
-                            else "typed" if self.config['auto_paste'] else "buffered"))
+                            "error" if (self.config['auto_paste'] or tutorial_waiting) and delivered is False
+                            else "typed" if self.config['auto_paste'] or tutorial_waiting else "buffered"))
 
                     if hasattr(self, 'hints'):
                         self.hints.maybe_show(

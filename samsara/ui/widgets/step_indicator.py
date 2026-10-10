@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QLineF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QStyledItemDelegate
 
 from samsara.ui import theme
@@ -203,7 +203,9 @@ class StepIndicator(QListWidget):
             raise IndexError(index)
 
     def _refresh(self) -> None:
-        height = round(max(theme.HIT_TARGET_MIN, theme.TYPE_TITLE + theme.TYPE_BODY + theme.TYPE_MIN) * self.ui_scale)
+        label_height = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * self.ui_scale))).height()
+        height = max(round(theme.HIT_TARGET_MIN * self.ui_scale),
+                     round(theme.TYPE_TITLE * self.ui_scale * 1.6) + label_height + theme.SPACE_1)
         self.setMinimumHeight(height)
         self.setFixedHeight(height)
         self.setStyleSheet(f"QListWidget{{background:{theme.BG0};border:none;}}")

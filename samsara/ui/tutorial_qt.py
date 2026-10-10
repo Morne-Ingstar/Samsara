@@ -30,6 +30,7 @@ Interaction detection hooks (registered on app, removed on window close):
 """
 from __future__ import annotations
 
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QLayout, QMainWindow,
@@ -363,7 +364,7 @@ class TutorialWindow(QMainWindow):
         # ---- Header bar: step counter + dots --------------------------------
         header = QWidget()
         header.setStyleSheet(f"background:{theme.BG0};")
-        header.setFixedHeight(32)
+        header.setFixedHeight(theme.SPACE_3)
         hl = QHBoxLayout(header)
         hl.setContentsMargins(28, 0, 28, 0)
 
@@ -377,10 +378,7 @@ class TutorialWindow(QMainWindow):
         root.addWidget(self._step_indicator)
         root.addSpacing(12)
 
-        sep_top = QFrame()
-        sep_top.setFrameShape(QFrame.Shape.HLine)
-        sep_top.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
-        root.addWidget(sep_top)
+        root.addWidget(self._separator())
 
         # ---- Page title -----------------------------------------------------
         title_bar = QWidget()
@@ -407,22 +405,19 @@ class TutorialWindow(QMainWindow):
         self._pages = [self._build_page(key) for key, _ in self._steps]
         self._current_page: QWidget | None = None
 
-        sep_bot = QFrame()
-        sep_bot.setFrameShape(QFrame.Shape.HLine)
-        sep_bot.setStyleSheet(f"background:{theme.BORDER_FAINT};max-height:1px;")
-        root.addWidget(sep_bot)
+        root.addWidget(self._separator())
 
         # ---- Nav bar --------------------------------------------------------
         nav = QWidget()
-        nav.setFixedHeight(64)
+        nav.setMinimumHeight(theme.HIT_TARGET_MIN + 2 * theme.SPACE_1)
         theme.style_footer(nav)
+        nav.setStyleSheet(nav.styleSheet() + 'border-top:none;')
         nl = QHBoxLayout(nav)
-        nl.setContentsMargins(28, 12, 28, 12)
+        nl.setContentsMargins(28, theme.SPACE_1, 28, theme.SPACE_1)
+        nl.setSpacing(theme.SPACE_3)
 
         self._skip_all_btn = QPushButton("Skip tutorial")
-        self._skip_all_btn.setProperty("class", "danger")
-        self._skip_all_btn.style().unpolish(self._skip_all_btn)
-        self._skip_all_btn.style().polish(self._skip_all_btn)
+        theme.make_secondary(self._skip_all_btn)
         self._skip_all_btn.clicked.connect(self._skip_tutorial)
         nl.addWidget(self._skip_all_btn)
 
@@ -457,13 +452,17 @@ class TutorialWindow(QMainWindow):
         nl.addWidget(self._next_btn)
         # Minimum, not fixed -- the label changes per step ("Let's go" /
         # "Next" / "Start using Samsara") and must never clip the widest one.
-        self._next_btn.setMinimumWidth(
-            self._button_min_width(self._next_btn, ["Let's go", "Next", "Start using Samsara"])
-        )
+        self._next_btn.setMinimumWidth(self._button_min_width(self._next_btn, ["Next"]))
 
         root.addWidget(nav)
 
         theme.apply_design_scale(self)
+        theme.make_secondary(self._skip_all_btn)
+        theme.make_secondary(self._skip_step_btn)
+        for button in (self._skip_all_btn, self._skip_step_btn, self._back_btn, self._next_btn):
+            button.setStyleSheet(button.styleSheet() +
+                                f'QPushButton{{min-height:0px;padding:0 {theme.SPACE_2}px;}}')
+            button.setFixedHeight(theme.HIT_TARGET_MIN)
         # The shared design pass reapplies button minimums; these compact
         # detail controls retain an exact 44px target including their border.
         for button, _detail in self._way_details.values():
@@ -476,6 +475,17 @@ class TutorialWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Sizing helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _separator():
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(28, 0, 28, 0)
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet(f"background:{theme.BORDER_FAINT};border:none;")
+        layout.addWidget(line)
+        return container
 
     @staticmethod
     def _button_min_width(btn: QPushButton, texts: list[str], h_padding: int = 48) -> int:
@@ -704,16 +714,25 @@ class TutorialWindow(QMainWindow):
 
         cfg = self._app.config if hasattr(self._app, 'config') else {}
         hotkey = cfg.get('hotkey', 'ctrl+shift')
-        lay.addWidget(self._instruction_box(
+        instruction = self._instruction_box(
             _dictation_instruction(hotkey, cfg.get('mode', 'hold'),
                                    cfg.get('continuous_commit_trigger', 'silence'))
-        ))
+        )
+        theme.style_card(instruction)
+        instruction.setStyleSheet(
+            f'QFrame[class="card"]{{border-radius:{theme.CONTROL_RADIUS}px;}}')
+        lay.addWidget(instruction)
 
         self._dictation_box = QTextEdit()
         self._dictation_box.setPlaceholderText("Your words will appear here…")
+        self._dictation_box.document().setDocumentMargin(0)
         self._dictation_box.setReadOnly(False)
         self._dictation_box.setFixedHeight(80)
         self._dictation_box.setAccessibleName("Dictation result box")
+        self._dictation_box.setStyleSheet(
+            f"QTextEdit{{background:{theme.BG1};border:1px solid {theme.BORDER};"
+            f"border-radius:{theme.CONTROL_RADIUS}px;padding:{theme.SPACE_2}px;}}")
+        self._dictation_box.textChanged.connect(self._dictation_text_changed)
         lay.addWidget(self._dictation_box)
 
         # Success banner (hidden until success)
@@ -726,7 +745,7 @@ class TutorialWindow(QMainWindow):
 
         # Hint label (shown after _HINT_DELAY_MS with no success)
         self._dict_hint = QLabel(
-            f"💡 Hotkey not working? Make sure Samsara is running and {hotkey.upper()} "
+            f"Hotkey not working? Make sure Samsara is running and {hotkey.upper()} "
             f"is your configured record key."
         )
         self._dict_hint.setWordWrap(True)
@@ -749,27 +768,34 @@ class TutorialWindow(QMainWindow):
         box = self._instruction_box(_command_instruction(
             self._examples, cmd_hotkey, wake, bool(cfg.get('wake_word_enabled', False)),
             bool((cfg.get('wake_word_config') or {}).get('opens_session', False))))
+        theme.style_card(box)
+        box.setStyleSheet(f'QFrame[class="card"]{{border-radius:{theme.CONTROL_RADIUS}px;}}')
         self._link_help(box.findChild(QLabel))
         lay.addWidget(box)
 
         # Scrollable demonstration area
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidgetResizable(True)
-        self._scroll_area.setFixedHeight(120)
-        self._scroll_area.setStyleSheet(
-            f"QScrollArea{{background:{theme.BG1};border:1px solid {theme.BORDER};"
-            f"border-radius:6px;}}"
-        )
+        self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_area.setStyleSheet("QScrollArea{border:none;background:transparent;}")
+        demo = QFrame()
+        theme.style_card(demo)
+        demo.setStyleSheet(f'QFrame[class="card"]{{border-radius:{theme.CONTROL_RADIUS}px;}}')
+        demo.setFixedHeight(120)
+        demo_layout = QVBoxLayout(demo)
+        demo_layout.setContentsMargins(theme.SPACE_2, theme.SPACE_3, theme.SPACE_2, theme.SPACE_3)
+        demo_layout.addWidget(self._scroll_area)
         inner = QWidget()
+        inner.setStyleSheet(f"background:{theme.BG1};")
         inner_lay = QVBoxLayout(inner)
-        inner_lay.setContentsMargins(12, 10, 12, 10)
+        inner_lay.setContentsMargins(0, 0, 0, 0)
         inner_lay.setSpacing(4)
         for i in range(1, 15):
             lbl = QLabel(f"Line {i} — more of this area continues below")
             lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             inner_lay.addWidget(lbl)
         self._scroll_area.setWidget(inner)
-        lay.addWidget(self._scroll_area)
+        lay.addWidget(demo)
 
         self._cmd_success = self._success_banner(_commands_banner_text(_command_count(self._app)))
         self._cmd_success.setVisible(False)
@@ -787,12 +813,6 @@ class TutorialWindow(QMainWindow):
 
     def _build_done(self) -> QWidget:
         content, lay = self._padded()
-
-        # OWNER COPY: review the neutral completion heading.
-        done_lbl = QLabel("Tutorial complete.")
-        done_lbl.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
-        lay.addWidget(done_lbl)
-        lay.addSpacing(4)
 
         checklist_items = [
             (1, "✓  Dictated text — talk, it types"),
@@ -974,6 +994,7 @@ class TutorialWindow(QMainWindow):
             self._next_btn.setEnabled(already_done or not is_interactive)
 
         # Register hook for interactive steps
+        self._next_btn.setMinimumWidth(self._button_min_width(self._next_btn, [self._next_btn.text()]))
         if is_interactive and self._step not in self._completed:
             self._install_hook(key)
             self._start_hint_timer(key)
@@ -1082,12 +1103,6 @@ class TutorialWindow(QMainWindow):
         hint_widget = hints.get(key)
         if hint_widget:
             hint_widget.setVisible(True)
-        # Make skip-step button more visible
-        self._skip_step_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{theme.ACCENT};"
-            f"border:1px solid {theme.ACCENT};border-radius:6px;"
-            f"font-size:{theme.FONT_SIZE_CAPTION}px;padding:4px 10px;}}"
-        )
 
     # ------------------------------------------------------------------
     # Interaction hooks
@@ -1128,10 +1143,15 @@ class TutorialWindow(QMainWindow):
         elif event == "command_done":
             self._complete_command(payload)
 
+    def _dictation_text_changed(self):
+        if self._steps[self._step][0] == 'dictation' and self._dictation_box.toPlainText().strip():
+            self._complete_dictation('')
+
     def _complete_dictation(self, text: str):
         if 1 in self._completed:
             return
         self._completed.add(1)
+        self._remove_hook('dictation')
         self._skipped_steps.discard(1)
         self._cancel_hint_timer()
         if self._dictation_box and text:

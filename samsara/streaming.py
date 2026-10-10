@@ -2167,7 +2167,8 @@ class StreamingSession:
             self._overlay.flash_done_and_fade(self._mark_done)
             return
 
-        if self._parking_enabled:
+        tutorial_waiting = bool(getattr(self.app, '_tutorial_hooks', {}).get('dictation'))
+        if self._parking_enabled and not tutorial_waiting:
             original = self._target_hwnd
             current = None
             if sys.platform == "win32":
@@ -2233,10 +2234,10 @@ class StreamingSession:
         except Exception as e:
             logger.debug(f"[STREAM] _notify_main_window failed: {e}")
 
-        if self.app.config.get('auto_paste', True):
-            if self._parking_enabled:
+        if self.app.config.get('auto_paste', True) or tutorial_waiting:
+            if self._parking_enabled or tutorial_waiting:
                 try:
-                    delivered = self.app._paste_preserving_clipboard(text) is not False
+                    delivered = self.app._paste_preserving_clipboard(text, **({'tutorial_dictation': True} if tutorial_waiting else {})) is not False
                 except Exception:
                     logger.exception("[STREAM] Final insertion failed; retaining draft")
                     delivered = False
@@ -2329,6 +2330,7 @@ class StreamingSession:
         target app's per-paste undo entry (Notepad / RichEdit / IDEs)
         is what makes this safe -- pre-existing content stays intact
         because we only undo our own paste."""
+        if getattr(self.app, '_tutorial_hooks', {}).get('dictation'): return
         text = text.replace('\n', ' ').replace('\r', ' ')
         with self._paste_lock:
             if self.cancel_event.is_set():

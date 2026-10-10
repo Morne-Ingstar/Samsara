@@ -305,8 +305,11 @@ def test_shared_strip_has_twelve_pixel_gap_on_every_page(build, qapp):
         window._step = index
         window._show_step()
         qapp.processEvents()
-        rules = [frame for frame in window.centralWidget().findChildren(QFrame)
-                 if frame.frameShape() == QFrame.Shape.HLine]
-        rule_top = min(frame.mapTo(window, QPoint()).y() for frame in rules)
+        root = window.centralWidget().layout()
+        strip_index = next(i for i in range(root.count())
+                           if root.itemAt(i).widget() is indicator)
+        separator = root.itemAt(strip_index + 2).widget()
+        rule = separator.findChild(QFrame)
+        rule_top = rule.mapTo(window, QPoint()).y()
         strip_bottom = indicator.mapTo(window, QPoint()).y() + indicator.height()
-        assert rule_top - strip_bottom >= 12
+        assert rule_top - strip_bottom == 12
