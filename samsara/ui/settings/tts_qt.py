@@ -7,11 +7,12 @@ Shared names are imported back from samsara.ui.settings_qt; see
 samsara/ui/settings/__init__.py for why that import is cycle-safe.
 """
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent, QSignalBlocker
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import theme
+from samsara.ui import network_voice_notice
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
@@ -37,6 +39,35 @@ class _FeedbackLevelCombo(QComboBox):
     def showEvent(self, event):
         super().showEvent(event)
         self.refresh_help()
+
+
+class _VoiceDetailsLink(QLabel):
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.linkActivated.emit('notice')
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+
+class _VoiceNoticeArea(QWidget):
+    """Move legacy-user consent above Audio rows after page assembly."""
+
+    def eventFilter(self, owner, event):
+        if event.type() == QEvent.Type.Show and hasattr(owner, '_pages'):
+            if self.legacy_panel.parentWidget() is self:
+                owner._pages['Audio'].base.insertWidget(0, self.legacy_panel)
+                owner._pages['Audio'].base.insertSpacing(1, theme.SPACE_4)
+        if event.type() == QEvent.Type.Hide:
+            cfg = owner.app.config.get('tts', {}) or {}
+            owner._network_voice_accepted = bool(cfg.get('network_voice_accepted', False))
+            with QSignalBlocker(owner._widgets['tts_engine']):
+                owner._widgets['tts_engine'].setCurrentText(cfg.get('engine', 'winrt'))
+            adapter = owner._widgets['tts_engine'].parentWidget()
+            if getattr(adapter, '_canonical_control', None) is owner._widgets['tts_engine']:
+                adapter.refresh()
+            owner._refresh_voice_notice()
+        return False
 
 
 class TTSPage:
@@ -104,6 +135,8 @@ class TTSPage:
         engine_combo.addItems(['winrt', 'edge'])
         engine_combo.setCurrentText(cfg.get('engine', 'winrt'))
         self._widgets['tts_engine'] = engine_combo
+        self._network_voice_accepted = bool(cfg.get('network_voice_accepted', False))
+        self._build_network_voice_notice(engine_combo, cfg)
         layout.addLayout(self._setting_row(
             "Engine",
             "winrt: built-in Windows voices.  edge: higher-quality online voices (internet required).",
@@ -260,6 +293,8 @@ class TTSPage:
                 tts_cfg = dict(self.app.config.get('tts', {}) or {})
                 apply_feedback_level({'tts': tts_cfg}, self._widgets['tts_feedback_level'].currentData())
                 tts_cfg['engine']  = self._widgets['tts_engine'].currentText()
+                if self._network_voice_accepted:
+                    tts_cfg['network_voice_accepted'] = True
                 voice_label = self._widgets['tts_voice_combo'].currentText()
                 voice_id    = self._widgets.get('tts_voice_label_to_id', {}).get(voice_label)
                 if voice_id:
@@ -279,6 +314,11 @@ class TTSPage:
         return scroll
 
     def _test_tts(self) -> None:
+        # The sample uses the live engine until Apply, even if the combo is local.
+        live_network = (self.app.config.get('tts', {}) or {}).get('engine') == 'edge'
+        if (live_network or self._widgets['tts_engine'].currentText() == 'edge'):
+            if not self._ensure_network_voice_accepted():
+                return
         coordinator = getattr(self.app, 'audio_coordinator', None)
         status = self._widgets.get('tts_test_status')
         if coordinator is None or coordinator.engine is None:
@@ -301,3 +341,109 @@ class TTSPage:
         except Exception as exc:
             if status:
                 status.setText(f"Error: {exc}")
+
+    def _voice_notice_dialog(self, read_only=False):
+        dialog = network_voice_notice.NetworkVoiceNotice(self)
+        buttons = dialog.findChildren(QPushButton)
+        for button in buttons:
+            button.setAutoDefault(False)
+            button.setDefault(False)
+        safe = buttons[0]
+        safe.setDefault(True)
+        safe.setFocus()
+        QWidget.setTabOrder(safe, buttons[1])
+        if read_only:
+            buttons[1].hide()
+        return dialog
+
+    def _ensure_network_voice_accepted(self):
+        if self._network_voice_accepted:
+            return True
+        dialog = self._voice_notice_dialog()
+        accepted = dialog.exec() == dialog.DialogCode.Accepted
+        dialog.deleteLater()
+        if accepted:
+            self._network_voice_accepted = True
+            self._refresh_voice_notice()
+        return accepted
+
+    def _show_voice_notice(self):
+        dialog = self._voice_notice_dialog(read_only=True)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _build_network_voice_notice(self, combo, cfg):
+        area = _VoiceNoticeArea()
+        column = QVBoxLayout(area)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(theme.SPACE_2)
+        quiet = QWidget()
+        quiet_layout = QVBoxLayout(quiet)
+        quiet_layout.setContentsMargins(0, 0, 0, 0)
+        fact = QLabel(network_voice_notice.notice_facts()[0])
+        fact.setWordWrap(True)
+        fact.setProperty('role', 'description')
+        quiet_layout.addWidget(fact)
+        # PLACEHOLDER COPY (377); native link survives the shared button treatment.
+        link = _VoiceDetailsLink(f'<a href="notice" style="color:{theme.ACCENT}; text-decoration:none;">What is sent</a>')
+        link.setAccessibleName('What is sent')
+        link.setOpenExternalLinks(False)
+        link.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse
+                                     | Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+        link.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        link.setMinimumHeight(theme.HIT_TARGET_MIN)
+        link.setStyleSheet('QLabel { background:transparent; border:1px solid transparent; text-decoration:none; }'
+                          f'QLabel:focus {{ border:1px solid {theme.ACCENT}; }}')
+        link.linkActivated.connect(lambda _url: self._show_voice_notice())
+        quiet_layout.addWidget(link, alignment=Qt.AlignmentFlag.AlignLeft)
+        column.addWidget(quiet)
+        panel = QFrame()
+        theme.style_card(panel)
+        panel.setStyleSheet(f'QFrame[class="card"] {{ background:{theme.BG1}; '
+                           f'border:1px solid {theme.BORDER}; border-radius:8px; }}')
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4)
+        panel_layout.setSpacing(theme.SPACE_2)
+        heading = QLabel(network_voice_notice.NOTICE_HEADING)
+        heading.setStyleSheet(f'font-size:{theme.TYPE_HEADING}px;font-weight:600;')
+        panel_layout.addWidget(heading)
+        for text in network_voice_notice.notice_facts():
+            label = QLabel(text)
+            label.setWordWrap(True)
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            panel_layout.addWidget(label)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        for title, local in (('Use the local voice', True), ('Keep the network voice', False)):
+            button = QPushButton(title)  # PLACEHOLDER COPY (377)
+            button.setMinimumHeight(theme.HIT_TARGET_MIN)
+            theme.make_secondary(button)
+            button.setAutoDefault(False)
+            button.clicked.connect(lambda checked=False, local=local: self._resolve_existing_voice(local))
+            actions.addWidget(button)
+        panel_layout.addLayout(actions)
+        column.addWidget(panel)
+        area.legacy_panel = panel
+        self._widgets['tts_engine_warn'] = area
+        self._widgets['network_voice_quiet'] = quiet
+        self._widgets['network_voice_existing'] = panel
+        self.installEventFilter(area)
+        self._refresh_voice_notice()
+        combo.currentTextChanged.connect(self._network_voice_changed)
+
+    def _resolve_existing_voice(self, local):
+        if local:
+            self._widgets['tts_engine'].setCurrentText('winrt')
+        else:
+            self._network_voice_accepted = True
+        self._refresh_voice_notice()
+
+    def _network_voice_changed(self, engine):
+        if engine == 'edge' and not self._ensure_network_voice_accepted():
+            self._widgets['tts_engine'].setCurrentText('winrt')
+        self._refresh_voice_notice()
+
+    def _refresh_voice_notice(self):
+        network = self._widgets['tts_engine'].currentText() == 'edge'
+        self._widgets['network_voice_quiet'].setVisible(network and self._network_voice_accepted)
+        self._widgets['network_voice_existing'].setVisible(network and not self._network_voice_accepted)
