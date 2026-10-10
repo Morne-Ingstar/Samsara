@@ -13,7 +13,7 @@ from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import ava_persona
 from samsara import ava_readiness
-from samsara import cloud_llm
+from samsara import cloud_llm, ava_local_context
 from samsara import teach_patterns
 from samsara.ava_memory import AvaMemory, PersonalMemory, log_conversation
 from samsara.paths import samsara_home_dir
@@ -189,8 +189,8 @@ SCHEDULE 30 scroll down
 {USER_PROFILE}
 
 {USER_ALIASES}
-
 IMPORTANT RULES:
+- Answer date, day and time questions using the local clock facts in natural spoken form, without reading the UTC offset unless asked.
 - You can dispatch queue prompts to Luna, Sol, Astra or Claude Code by voice
   ("send N to X"). Samsara performs the dispatch, not you. Assistant-side
   [action] lines in history are the record of what happened. Never claim you
@@ -1687,7 +1687,6 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
 
     # ── Conversation memory ──
     ensure_ava_memory(app).add_user(prompt)
-
     # ── Cloud LLM path (bring-your-own-key, no license required) ──
     cloud_provider = None
     cloud_failure = None
@@ -1699,6 +1698,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
                 "cloud_token_limit", 40000
             )
         )
+        system += "\n\n" + ava_local_context.local_clock_line()
         messages = app._ava_memory.get_messages(system, token_limit=cloud_token_limit)
         if allow_search and cloud_llm.web_search_available(app):
             reply = _ask_with_web_search(app, system, messages, cloud_provider, _ms)
@@ -1732,7 +1732,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         app._ava_memory.pop_last_if_user()
         ava_readiness.tracker.record_turn("ollama", ava_readiness.UNREACHABLE)
         return AvaReply(None, "ollama", _ms(), failure_kind=ava_readiness.UNREACHABLE)
-
+    system += "\n\n" + ava_local_context.local_clock_line()
     messages = app._ava_memory.get_messages(system, token_limit=3000)
     payload = {
         "model": model,

@@ -33,7 +33,7 @@ is not a promise that every file is encrypted or automatically deleted.
 | **Optional component check** | When you select “Check what's available” in first-run setup, Samsara contacts GitHub for the component manifest. GitHub receives ordinary connection metadata, including your IP address, request time and user agent. |
 | **Optional component downloads** | When you select Get, Samsara downloads the component you chose from the host named in its manifest. That host receives ordinary connection metadata. |
 | **Speech model downloads** | When a speech model is first needed, Samsara downloads its files from the model host. That host receives ordinary connection metadata. |
-| **Cloud Ava** | Sends the prompt and relevant conversation context to the provider you configure, using your API key. |
+| **Cloud Ava** | Sends the prompt and relevant conversation context to the provider you configure, using your API key. Each turn also sends your PC's local date, time and time zone to that provider. |
 | **Ollama on another computer** | Sends requests to the Ollama endpoint you configure. The other computer or service receives the request. Ollama on your own computer stays local. |
 | **Optional Ava web search** | Sends the question and request context to the configured supported cloud search service when enabled. |
 | **Smart Corrections cloud backend or fallback** | Sends text for correction when the cloud path is configured and enabled. Cloud fallback is off by default. |
