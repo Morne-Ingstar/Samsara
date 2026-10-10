@@ -1434,7 +1434,6 @@ class SamsaraTrayQt(QObject):
             add(tools_sub, "Mic Setup Guide",
                 lambda: self._open_guide("mic_setup_wizard", "Mic Setup Guide"))
             add(tools_sub, "Ava Guide", lambda: self._open_guide("ava_guide", "Ava Guide"))
-            add(tools_sub, "Voice Training", lambda: app.open_voice_training())
             add(tools_sub, "Benchmark Review", lambda: app.open_benchmark_review())
             add(tools_sub, "Correct Last Dictation", lambda: app.open_correction_capture())
             add(tools_sub, "Stress Test Wizard", lambda: app.open_stress_test_wizard())
@@ -1474,7 +1473,6 @@ class SamsaraTrayQt(QObject):
             add(dev_sub, "Preview First-Run (fresh profile)", lambda: app.preview_first_run())
             logs_sub = QMenu("View Logs")
             add(logs_sub, "Main Log", lambda: app.open_main_log())
-            add(logs_sub, "Voice Training Log", lambda: app.open_voice_training_log())
             dev_sub.addMenu(logs_sub)
             menu.addMenu(dev_sub)
 

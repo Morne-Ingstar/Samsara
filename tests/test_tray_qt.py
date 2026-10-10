@@ -287,7 +287,7 @@ class TestQuickReferenceNoLongerBuriedInTools:
 class TestToolsSubmenuContents:
     EXPECTED = {
         "Interactive Tutorial", "Mic Setup Guide", "Ava Guide",
-        "Voice Training", "Benchmark Review", "Correct Last Dictation",
+        "Benchmark Review", "Correct Last Dictation",
         "Stress Test Wizard", "Recalibrate Mic", "Cleanup",
     }
 
@@ -295,6 +295,7 @@ class TestToolsSubmenuContents:
         t, app = tray
         tools = _submenu(t._menu, "Tools")
         texts = {a.text() for a in tools.actions()}
+        assert "Voice Training" not in texts  # 473: obsolete window is no longer reachable.
         missing = self.EXPECTED - texts
         assert not missing, f"missing from Tools: {missing}"
 
@@ -331,13 +332,13 @@ class TestDeveloperSubmenuContents:
         missing = self.EXPECTED - texts
         assert not missing, f"missing from Developer: {missing}"
 
-    def test_view_logs_submenu_has_both_logs(self, tray):
+    def test_view_logs_submenu_has_only_main_log(self, tray):
         t, app = tray
         dev = _submenu(t._menu, "Developer")
         view_logs = _submenu(dev, "View Logs")
         assert view_logs is not None
         texts = {a.text() for a in view_logs.actions()}
-        assert texts == {"Main Log", "Voice Training Log"}
+        assert texts == {"Main Log"}
 
 
 class TestAllPreviousActionsStillReachable:
@@ -349,11 +350,11 @@ class TestAllPreviousActionsStillReachable:
         "Show Samsara", "Settings", "History", "Quick Reference",
         "Command Reference", "Show Listening Indicator",
         "Interactive Tutorial", "Mic Setup Guide", "Ava Guide",
-        "Voice Training", "Wake Word Debug", "Dictation Diagnostics",
+        "Wake Word Debug", "Dictation Diagnostics",
         "Benchmark Review", "Correct Last Dictation", "View Live Log",
         "Stress Test Wizard", "Recalibrate Mic",
         "Calibrate Echo Cancellation", "Open Config Folder",
-        "Main Log", "Voice Training Log", "Exit",
+        "Main Log", "Exit",
     }
 
     def _collect_all_texts(self, menu, acc):
@@ -411,11 +412,11 @@ _HANDLERS = (
     "set_streaming_mode", "set_gesture_enabled", "snooze_listening", "resume_listening",
     "open_settings", "open_history", "open_quick_reference", "toggle_cheat_sheet",
     "toggle_listening_indicator", "enter_indicator_move_mode", "show_tutorial",
-    "open_mic_setup_guide", "open_ava_guide", "open_voice_training", "open_benchmark_review",
+    "open_mic_setup_guide", "open_ava_guide", "open_benchmark_review",
     "open_correction_capture", "open_stress_test_wizard", "recalibrate_mic", "set_cleanup_mode",
     "open_dictation_diagnostics", "open_wake_word_debug", "open_log_viewer",
     "calibrate_echo_cancellation", "open_config_folder", "preview_first_run",
-    "open_main_log", "open_voice_training_log", "quit_app",
+    "open_main_log", "quit_app",
 )
 
 

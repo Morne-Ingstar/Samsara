@@ -156,7 +156,7 @@ class _ProfileManagerWindow(QMainWindow):
         active = self._pm.get_active_profile_names()
 
         # ---- Voice Training Profiles ----------------------------------------
-        layout.addWidget(self._section_title("Voice Training Profiles"))
+        layout.addWidget(self._section_title("Dictionary Profiles"))
         layout.addWidget(self._desc(
             "Manage vocabulary, corrections, and prompt profiles"
         ))

@@ -341,19 +341,6 @@ class GeneralPage:
             width=210,
         )
 
-        vt_btn = QPushButton("Voice Training...")
-        # No own width: goes through _add_row(width=210) below, see setup_btn.
-        vt_btn.clicked.connect(
-            lambda: getattr(self.app, 'open_voice_training', lambda: None)()
-        )
-        _add_row(
-            audio_layout,
-            "Voice training",
-            "Improve recognition of custom names, places, and phrasing.",
-            vt_btn,
-            width=210,
-        )
-
         # ---- Card: Speech model -------------------------------------------
         model_card, model_layout = self._section_card(
             "Speech model",

@@ -860,7 +860,7 @@ class ModesPage:
             ('memo_hotkey', cfg.get('memo_hotkey', 'ctrl+alt+m'),
              "Voice memo", "Divert the next recording to your memo note instead of typing it."),
             ('correction_hotkey', cfg.get('correction_hotkey', 'ctrl+alt+r'),
-             "Correction report", "Report the last transcription as wrong (voice training)."),
+             "Correction report", "Report the last transcription as wrong."),
             ('capture_correction_hotkey',
              (cfg.get('hotkeys', {}) or {}).get('capture_correction', 'ctrl+alt+x'),
              "Correction capture", "Open the fix-my-last-dictation window pre-filled with the last text."),

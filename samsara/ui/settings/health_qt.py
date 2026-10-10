@@ -326,7 +326,7 @@ class HealthPage:
 
             vt = getattr(self.app, 'voice_training_window', None)
             if vt is None:
-                self._med_dict_label.setText("Voice training not available.")
+                self._med_dict_label.setText("Dictionary not available.")
                 return
 
             added = 0

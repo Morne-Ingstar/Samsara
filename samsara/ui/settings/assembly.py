@@ -135,13 +135,11 @@ class PageAssembly:
             ('Reset preview position', 'reset_preview_position'),
             ('Reset indicator position', 'reset_indicator_position'),
         ])
-        self._widgets['voiceTrainingAction'] = self._source_button('Voice Training...', 'general')
         self._widgets['profilesAction'] = self._source_button('Manage Profiles…', 'general')
         self._widgets['setupGuides'] = self._choice_button('Choose guide', [
             ('Interactive tutorial', 'replayTutorialButton'),
             ('Microphone setup', 'openMicSetupGuideButton'),
             ('Ava setup', 'openAvaSetupGuideButton'),
-            ('Voice training', 'voiceTrainingAction'),
             ('Manage profiles', 'profilesAction'),
         ])
         self._widgets['supportChoices'] = self._choice_button('Get help', [

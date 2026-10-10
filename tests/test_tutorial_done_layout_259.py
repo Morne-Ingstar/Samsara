@@ -34,7 +34,6 @@ def test_done_page_keeps_body_text_and_open_targets_unclipped(qapp):
             # Queue 315 already replaced the readiness promise with observed Settings state.
             "Dictated text", "Ran a command", "Say ", "Ava availability",
             "Hands-free", "Fine-tune your microphone", "Install Ollama",
-            "Teach Samsara your specific words",
         )
         body_labels = [
             label for label in content.findChildren(QLabel)
@@ -47,7 +46,7 @@ def test_done_page_keeps_body_text_and_open_targets_unclipped(qapp):
             button for button in content.findChildren(QPushButton)
             if button.text() == "Open →"
         ]
-        assert len(open_buttons) == 3
+        assert len(open_buttons) == 2  # 473: only microphone and Ava guides remain.
         assert all(button.minimumHeight() >= theme.HIT_TARGET_MIN for button in open_buttons)
         assert all(button.height() >= theme.HIT_TARGET_MIN for button in open_buttons)
 

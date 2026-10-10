@@ -57,9 +57,6 @@ def build(owner):
         heading = QLabel(name)
         heading.setProperty('role', 'title')
         tools[name].widget().layout().insertWidget(0, heading)
-    vocabulary = QPushButton('Medication vocabulary / voice training…')
-    vocabulary.clicked.connect(owner._widgets['voiceTrainingAction'].click)
-    tools['Health'].findChild(Disclosure).rows.addWidget(vocabulary)
     components = owner.make_page('Components', 'Install and manage optional capabilities.', [
         ['Gesture lane', 'Use the optional camera gesture capability.', 'adv_gesture_enabled', 'gesture.enabled'],
     ], [])

@@ -326,7 +326,7 @@ class CorrectionCaptureWindow(QMainWindow):
         rather than calling the window method itself."""
         vt = getattr(self.app, 'voice_training_window', None)
         if vt is None:
-            self._set_status("Could not save -- voice training is unavailable.")
+            self._set_status("Could not save -- dictionary is unavailable.")
             return
         try:
             vt.corrections_dict[wrong] = right

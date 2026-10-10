@@ -13125,13 +13125,6 @@ class DictationApp:
         except Exception as e:
             logger.exception(f"[SETTINGS] Error opening settings: {e}")
     
-    def open_voice_training(self):
-        """Open voice training window"""
-        try:
-            self.voice_training_window.show()
-        except Exception as e:
-            logger.exception(f"Error opening voice training: {e}")
-
     def open_mic_setup_guide(self):
         """Open the guided mic setup wizard."""
         if self.mic_setup_wizard is not None:
@@ -13609,15 +13602,6 @@ class DictationApp:
         else:
             logger.info("[LOG] No log file found.")
 
-    def open_voice_training_log(self):
-        """Open the voice training log file"""
-        log_file = LOG_DIR / 'voice_training.log'
-        if log_file.exists():
-            open_file_or_folder(log_file)
-        else:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(None, "Log File", "No voice training log file found yet.")
-    
     def _resolve_parked_draft_before_quit(self) -> bool:
         """Require an intentional delivery or discard before process exit.
 

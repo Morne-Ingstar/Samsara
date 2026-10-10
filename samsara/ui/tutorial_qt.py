@@ -879,9 +879,6 @@ class TutorialWindow(QMainWindow):
             ("Ava Setup Guide",
              "Install Ollama and set up your on-device AI assistant.",
              "open_ava_guide"),
-            ("Voice Training",
-             "Teach Samsara your specific words and corrections.",
-             "open_voice_training"),
         ]
 
         for title, desc, method in _GUIDES:
