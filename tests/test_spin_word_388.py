@@ -230,7 +230,7 @@ def test_release_action_opens_changelog_and_dismiss_stays_separate(page, monkeyp
         assert action.isVisibleTo(p)
         assert action.text() == action.accessibleName() == home_qt.CHANGELOG_LINK
         assert action.accessibleDescription() == home_qt.CHANGELOG_URL
-        assert action.height() >= 44 and "underline" not in action.styleSheet()
+        assert action.height() == home_qt._px(30) and "underline" not in action.styleSheet()
         assert p.tab_chain.index(action) < p.tab_chain.index(p._hint_hide_btn)
         action.click()
         assert opened == [home_qt.CHANGELOG_URL]
@@ -268,10 +268,10 @@ def test_release_version_is_distinct_and_diagnostic_style_returns(page, monkeypa
         assert p._hint_text.font().italic()
         assert not p._hint_sub.font().italic()
         assert theme.TEXT_SECONDARY in p._hint_sub.styleSheet()
-        assert p._hint_card.layout().spacing() == home_qt._px(10)
+        assert p._hint_card.layout().spacing() == 0
         qapp.processEvents()
         gap = p._hint_sub.y()-p._hint_text.y()-p._hint_text.height()
-        assert gap == home_qt._px(10)
+        assert gap == 0
         hint = home_signals.Hint("diag.misses", home_signals.TIER_DIAGNOSTIC, "Missed things.", "View commands", "cheatsheet", "", evidence="3/8 were misses")
         monkeypatch.setattr(home_signals, "diagnostic_hints", lambda app: [hint])
         p._refresh_hint()
@@ -281,6 +281,67 @@ def test_release_version_is_distinct_and_diagnostic_style_returns(page, monkeypa
         assert p._hint_card.layout().spacing() == home_qt._px(6)
     finally:
         p.hide()
+
+
+@pytest.mark.parametrize("scale", [1, 1.5])
+def test_release_band_is_at_most_one_fifth_with_version_below_heading(qapp, monkeypatch, scale):
+    monkeypatch.setattr(home_signals, "diagnostic_hints", lambda _: [])
+    monkeypatch.setattr(home_qt, "whats_new_note", lambda *a, **k: ("9.9.9", "A beta for testers."))
+    original_font = QFont(qapp.font())
+    font = QFont(original_font)
+    font.setPointSizeF(home_qt.BASE_POINT_SIZE * scale)
+    qapp.setFont(font)
+    app = _app(available_mics=[{"id": 7, "name": "Analogue 1 + 2 (Focusrite USB Audio)"}])
+    win = _hub(qapp, monkeypatch, width=900, height=650, app=app)
+    try:
+        # Measure the requested default size, even if larger text asks for more width.
+        win.setFixedSize(900, 650)
+        win._refresh_status()
+        if scale != 1:
+            import re
+            for widget in win.statusBar().findChildren(QWidget):
+                widget.setStyleSheet(re.sub(r"font-size: (\d+)px", lambda m: f"font-size: {round(int(m[1])*scale)}px", widget.styleSheet()))
+        for _ in range(60):
+            qapp.processEvents()
+        p = win._panel_cache["Home"]
+        assert win.width() == 900 and win.height() == 650
+        assert p._hint_card.height() * 5 <= p._scroll.viewport().height()
+        heading, version, sentence = p._hint_heading, p._hint_text, p._hint_sub
+        assert version.x() == heading.x() == sentence.x()
+        assert version.y() >= heading.y() + heading.height()
+        assert sentence.y() >= version.y() + version.height()
+        assert heading.y() - 1 == p._hint_card.height() - 1 - sentence.y() - sentence.height()
+        assert version.alignment() & Qt.AlignmentFlag.AlignLeft
+        assert version.font().italic() and version.font().pixelSize() == home_qt._px(theme.TYPE_SECTION_LABEL)
+        action, dismiss = p._hint_action_btn, p._hint_hide_btn
+        for btn, label in ((action, home_qt.CHANGELOG_LINK), (dismiss, home_qt.DISMISS)):
+            assert btn.text() == btn.accessibleName() == label
+            assert btn.height() == home_qt._px(30)
+            assert btn.font().pixelSize() == home_qt._px(theme.TYPE_MIN)
+            assert not btn.property("primary")
+            assert "text-decoration: underline" not in btn.styleSheet()
+            point = btn.mapTo(p._hint_card, QPoint())
+            assert point.x() >= sentence.x() + sentence.width()
+            assert abs((point.y() + btn.height()/2) - p._hint_card.height()/2) <= 1
+            assert point.y() - 1 >= home_qt._px(theme.SPACE_2)
+            assert p._hint_card.height() - 1 - point.y() - btn.height() >= home_qt._px(theme.SPACE_2)
+        assert action.mapTo(p._hint_card, QPoint()).x() < dismiss.mapTo(p._hint_card, QPoint()).x()
+        assert p._cards_cols == 3
+        assert home_qt.overflowing_widgets(p) == []
+        if scale == 1:
+            assert p._scroll.verticalScrollBar().maximum() == 0
+        monkeypatch.setattr(home_signals, "diagnostic_hints", lambda _: [home_signals.Hint(
+            "diag.misses", home_signals.TIER_DIAGNOSTIC, "Missed things.", "View commands", "cheatsheet", "")])
+        p._refresh_hint()
+        assert action.property("primary")
+        assert action.styleSheet() == action.property("diagnosticStyle")
+        assert dismiss.styleSheet() == dismiss.property("diagnosticStyle")
+        assert action.minimumHeight() == dismiss.minimumHeight() == home_qt.MIN_TARGET
+        assert action.maximumHeight() == dismiss.maximumHeight() == 16777215
+        assert p._hint_card.layout().getItemPosition(p._hint_card.layout().indexOf(action.parentWidget())) == (4, 0, 1, 2)
+    finally:
+        win.hide()
+        qapp.setFont(original_font)
 
 
 @pytest.mark.parametrize("size", [14, 21])
@@ -357,3 +418,18 @@ def test_status_reflows_without_losing_text_and_returns_to_one_line(qapp, monkey
         assert all(QFontMetrics(w.font()).horizontalAdvance(w.text()) <= w.width() for w in values)
     finally:
         win.hide()
+
+
+def test_release_buttons_leave_clear_space_below_the_card_border(page, monkeypatch, qapp):
+    monkeypatch.setattr(home_signals, "diagnostic_hints", lambda _: [])
+    monkeypatch.setattr(home_qt, "whats_new_note", lambda *a, **k: ("9.9.9", "A beta for testers."))
+    p = page()
+    try:
+        qapp.processEvents()
+        for button in (p._hint_action_btn, p._hint_hide_btn):
+            top = button.mapTo(p._hint_card, QPoint()).y()
+            clear_below = p._hint_card.height() - 1 - top - button.height()
+            assert clear_below >= home_qt._px(theme.SPACE_2)
+            assert abs((top - 1) - clear_below) <= 1
+    finally:
+        p.hide()

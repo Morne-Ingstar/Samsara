@@ -390,6 +390,12 @@ def render_388_extras(win, page, out, save, pump, scale, width):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--388-finish7":
+        helper = Path(r"C:\Users\Morne\Documents\Claude\reports\388\artifacts\claude\finish7\render.py")
+        return subprocess.run([sys.executable, str(helper), *sys.argv[2:]], check=False).returncode
+    if len(sys.argv) > 1 and sys.argv[1] == "--388-finish6":
+        helper = Path(r"C:\Users\Morne\Documents\Claude\reports\388\artifacts\claude\finish6\render.py")
+        return subprocess.run([sys.executable, str(helper), *sys.argv[2:]], check=False).returncode
     if len(sys.argv) > 1 and sys.argv[1] == "--388-finish":
         helper = Path(r"C:\Users\Morne\Documents\Claude\reports\388\artifacts\claude\render_finish.py")
         return subprocess.run([sys.executable, str(helper), *sys.argv[2:]], check=False).returncode

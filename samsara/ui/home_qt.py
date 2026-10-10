@@ -1800,10 +1800,8 @@ class HomePage(QWidget):
         return card
 
     def _build_hint(self) -> QWidget:
-        """The conditional slot (89). ONE thing, never a carousel and never
-        on a timer (82); hidden entirely -- no padding, no placeholder --
-        whenever it has nothing real to say. See _refresh_hint for what
-        counts as real."""
+        """One conditional suggestion or release note, never on a timer.
+        Hidden entirely when _refresh_hint finds nothing real to say."""
         card = _card()
         card.setObjectName("homeCard")
         card.setAccessibleName(SUGGESTION)
@@ -1816,17 +1814,11 @@ class HomePage(QWidget):
         self._hint_text.setAccessibleName("Suggestion text")
         self._hint_text.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         lay.addWidget(self._hint_text, 1, 0, 1, 2)
-        # The VISIBLE second line: what to do (111). For the what's-new note
-        # it is the note's own sentence.
         self._hint_sub = _label("", role="note", color=theme.TEXT_SECONDARY, wrap=True)
         self._hint_sub.setAccessibleName("Suggestion action")
         self._hint_sub.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._hint_sub.setVisible(False)
         lay.addWidget(self._hint_sub, 2, 0, 1, 2)
-        # The DISCLOSED line: counts, outcome kinds and the threshold. Hidden
-        # until the Details button is pressed, and hidden again whenever the
-        # slot changes, so "collapsed by default" holds for every suggestion
-        # and not merely for the first one of the session.
         self._hint_evidence = _label("", role="note", color=theme.TEXT_SECONDARY, wrap=True)
         self._hint_evidence.setAccessibleName("Suggestion evidence")
         self._hint_evidence.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -1839,9 +1831,6 @@ class HomePage(QWidget):
         self._hint_action_btn = _button("", primary=True)
         self._hint_action_btn.clicked.connect(self._on_hint_action)
         row.addWidget(self._hint_action_btn)
-        # A real button, not a chevron glyph: it is in the tab chain, carries
-        # its own visible label as its accessible name, and keeps the same
-        # 44 px target every other control on Home has.
         self._hint_details_btn = _button(DETAILS)
         self._hint_details_btn.setCheckable(True)
         self._hint_details_btn.toggled.connect(self._on_toggle_details)
@@ -1852,6 +1841,8 @@ class HomePage(QWidget):
         self._hint_hide_btn = _button(HIDE_SUGGESTION)
         self._hint_hide_btn.clicked.connect(self._on_hide_hint)
         row.addWidget(self._hint_hide_btn)
+        for btn in (self._hint_action_btn, self._hint_hide_btn):
+            btn.setProperty("diagnosticStyle", btn.styleSheet())
         lay.addWidget(actions, 4, 0, 1, 2)
         self._hint_card = card
         card.setVisible(False)
@@ -2255,25 +2246,30 @@ class HomePage(QWidget):
     def _show_slot(self, heading: str, text: str, subtext: str, action_label: str,
                    *, more: bool, hide_label: str = HIDE_SUGGESTION,
                    details: str = ""):
-        """Paint the slot.
-
-        `subtext` is the VISIBLE second line -- the action for a diagnostic,
-        the release sentence for a what's-new note. `details` is the working
-        behind the Details disclosure and is never shown until asked for
-        (111). Every call re-collapses the disclosure: a user who opened the
-        details of one suggestion has not asked to see the next one's.
-        """
+        """Show a release band or a diagnostic; collapse Details on every change."""
         self._hint_heading.setText(heading.upper())
         self._hint_card.setAccessibleName(heading)
         release = self._whats_new is not None
-        self._hint_text.setStyleSheet(_label_css("card title", theme.TEXT_PRIMARY, 400) + (" font-style: italic;" if release else ""))
-        layout = self._hint_card.layout()
-        layout.setSpacing(_px(10 if release else 6))
-        for widget in (self._hint_heading, self._hint_text):
+        self._hint_text.setStyleSheet(_label_css("section label" if release else "card title", theme.TEXT_SECONDARY if release else theme.TEXT_PRIMARY, 400) + (" font-style: italic;" if release else ""))
+        self._hint_text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout, actions = self._hint_card.layout(), self._hint_action_btn.parentWidget()
+        layout.setContentsMargins(GRID, _px(4 if release else 6), GRID, _px(4 if release else 6))
+        layout.setSpacing(0 if release else _px(6))
+        for widget in (self._hint_heading, self._hint_text, self._hint_sub, self._hint_evidence, actions):
             layout.removeWidget(widget)
         layout.addWidget(self._hint_heading, 0, 0, 1, 1 if release else 2)
-        layout.addWidget(self._hint_text, 0 if release else 1, 1 if release else 0, 1, 1 if release else 2)
-        layout.setRowMinimumHeight(1, 0)
+        layout.addWidget(self._hint_text, 1, 0, 1, 1 if release else 2)
+        layout.addWidget(self._hint_sub, 2, 0, 1, 1 if release else 2)
+        layout.addWidget(self._hint_evidence, 3, 0, 1, 2)
+        layout.addWidget(actions, 0 if release else 4, 1 if release else 0, 3 if release else 1, 1 if release else 2, Qt.AlignmentFlag.AlignVCenter)
+        layout.setColumnStretch(0, 1)
+        for btn in (self._hint_action_btn, self._hint_hide_btn):
+            btn.setProperty("primary", btn is self._hint_action_btn and not release)
+            btn.setMinimumHeight(_px(30) if release else MIN_TARGET)
+            btn.setMaximumHeight(_px(30) if release else 16777215)
+            btn.setStyleSheet(btn.property("diagnosticStyle"))
+            if release:
+                btn.setStyleSheet(self._hint_hide_btn.property("diagnosticStyle").replace(f"padding: {_px(8)}px {_px(14)}px", f"padding: 2px {_px(8)}px").replace(f"font-size: {_px(TYPE['button'])}px", f"font-size: {_px(theme.TYPE_MIN)}px"))
         self._hint_text.setText(text)
         self._hint_sub.setText(subtext)
         self._hint_sub.setVisible(bool(subtext))
@@ -2287,6 +2283,10 @@ class HomePage(QWidget):
         self._hint_next_btn.setVisible(more)
         self._hint_hide_btn.setText(hide_label)
         self._hint_hide_btn.setAccessibleName(hide_label)
+        actions.setMinimumWidth(sum(b.sizeHint().width() for b in (self._hint_action_btn, self._hint_hide_btn)) + _px(8) if release else 0)
+        actions.setMaximumWidth(actions.minimumWidth() if release else 16777215)
+        actions.setMinimumHeight(_px(30) if release else 0)
+        actions.setMaximumHeight(_px(30) if release else 16777215)
         self._hint_card.setVisible(True)
 
     def _on_toggle_details(self, checked: bool):
