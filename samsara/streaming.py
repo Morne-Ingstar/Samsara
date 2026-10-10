@@ -42,7 +42,7 @@ try:
 except ImportError:
     pyperclip = None
 
-from samsara import listening_display, tutorial_capture
+from samsara import kept_session_draft, listening_display, tutorial_capture
 from samsara.cleanup import clean_text
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -1914,7 +1914,7 @@ class _LiveSurfaceStreamingOverlay:
     """Legacy overlay-shaped adapter; it creates no second top-level window."""
 
     def __init__(self, partials) -> None:
-        self._partials = partials
+        self._partials = kept_session_draft.begin_hold(partials)
         self.idle_hints = []
 
     def show(self):
@@ -1938,7 +1938,7 @@ class _LiveSurfaceStreamingOverlay:
             self._partials.final(text)
 
     def close(self):
-        self._partials.stop()
+        kept_session_draft.finish_hold(self._partials)
 
     def delivery_finished(self, text):
         self._partials.final(text, delivered=True)
@@ -1954,7 +1954,7 @@ class _LiveSurfaceStreamingOverlay:
             notice=NoticeKind.RESULT, message="No speech"))
 
     def flash_done_and_fade(self, on_complete):
-        self._partials.stop()
+        kept_session_draft.finish_hold(self._partials)
         if on_complete:
             on_complete()
 
@@ -2016,6 +2016,7 @@ class StreamingSession:
         self._state = self.STATE_RECORDING
         self._state_lock = threading.Lock()
         self._tutorial_owner = getattr(app, '_tutorial_capture_token', None)
+        self._live_session_capture = bool(getattr(app, 'command_mode_active', False))
         self._parking_enabled = listening_display.run_display(app).full
         # Surface-enabled holds must stay retractable until their final
         # delivery decision.  Direct partial paste defeats Pause.
@@ -2188,16 +2189,14 @@ class StreamingSession:
             voice_pause = (not literal and text.strip().lower().endswith("pause draft"))
             requested = bool(getattr(self.app, "_hold_park_requested", False))
             manager = getattr(self.app, "_session_mode_manager", None)
-            pending = bool(getattr(getattr(manager, "draft_document", None), "text", ""))
+            pending = kept_session_draft.session_appends_to_draft(self, manager)
             if requested or pending or focus_changed or voice_pause:
                 try:
                     manager = self.app._ensure_session_mode_manager()
-                    if focus_changed or voice_pause:
-                        manager.pause_draft(source=(
-                            "focus changed" if focus_changed else "voice review"))
-                    manager.stage_parked_hold(text, source=(
-                        "pause" if requested else "focus changed" if focus_changed else
-                        "voice review" if voice_pause else "append"))
+                    kept_session_draft.park_streaming_hold(
+                        self, manager, text, raw_text, duration_s, source=(
+                            "pause" if requested else "focus changed" if focus_changed else
+                            "voice review" if voice_pause else "append"))
                     # Settle the capture first, then project the entire parked
                     # document. A one-hold preview must not overwrite it.
                     self._overlay.update_text(text.rstrip(), StreamingOverlayQt.STATE_DONE)
@@ -2239,7 +2238,7 @@ class StreamingSession:
                         schedule_hold_clear(self.app)
                 else:
                     manager = self.app._ensure_session_mode_manager()
-                    manager.stage_parked_hold(text, source="failed delivery")
+                    kept_session_draft.park_hold(self.app, manager, text, source="failed delivery")
                     controller = getattr(self.app, "live_surface", None)
                     if controller is not None:
                         controller.sync_draft(manager)
@@ -2312,7 +2311,7 @@ class StreamingSession:
             self._finished_notified = True
         callback = getattr(self.app, '_on_streaming_session_finished', None)
         if callback is not None:
-            callback(self)
+            kept_session_draft.capture_finished(self, callback)
 
     # ---- Direct-paste helpers (off the Tk main thread) ------------------
 

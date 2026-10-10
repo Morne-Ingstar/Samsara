@@ -6196,32 +6196,19 @@ class DictationApp:
                 controller = getattr(self, 'live_surface', None)
                 if controller is not None and parked:
                     controller.sync_draft(self._session_mode_manager)
-            if is_toggle_session:
-                # Release this session's hold on the WakeConsumer pipeline
-                # (see enter_command_mode's _ensure_wake_consumer). If
-                # wake_word_enabled is separately holding it open, the
-                # pipeline correctly keeps running for wake detection --
-                # reason-counted, not a boolean, so this can't stop it out
-                # from under wake mode.
-                self._release_wake_consumer('toggle_session')
         finally:
-            # reset() above bypasses on_mode_change (see enter_command_mode's
-            # own explicit call), so a session ending while still in DICTATE
-            # would otherwise leak a running preview overlay/thread.
-            # Unconditional AND in `finally` (2026-07-19 dogfooding fix): every
-            # session-exit path -- toggle-off key, inactivity timeout, global
-            # abort phrase, WakeConsumer poll-loop crash -- funnels through
-            # this one method, and each of THOSE callers either swallows an
-            # exception from here (wake_consumer.py's crash handler: bare
-            # `except: pass`) or, on inactivity timeout, force-clears
-            # command_mode_active in its own except-fallback WITHOUT its own
-            # release call (_on_command_mode_inactivity). Previously, if
-            # reset() or _release_wake_consumer() above raised, the overlay
-            # release below was skipped entirely and none of those callers
-            # made it up for it -- the DICTATE-lane overlay would keep running
-            # after the session had already ended. A no-op when nothing was
-            # ever started (config off, or session ended from COMMAND/AVA).
-            self._release_streaming_preview()
+            # Parking failures must release both microphone and preview owners.
+            try:
+                if is_toggle_session:
+                    # Release only this session's reason-counted microphone hold.
+                    # Wake detection may separately own the same pipeline.
+                    self._release_wake_consumer('toggle_session')
+            finally:
+                # reset() bypasses on_mode_change; every exit must therefore
+                # release its preview, even when parking or microphone cleanup
+                # raises. Inactivity and wake callers cannot repair this owner.
+                # This is harmless when no preview was ever started.
+                self._release_streaming_preview()
         if hasattr(self, 'listening_indicator'):
             if is_toggle_session:
                 # Clear the session badge and restore whatever visibility
@@ -11647,7 +11634,7 @@ class DictationApp:
         play_earcon: play the "start" sound and brief wait (skip for command mode
           which manages its own debounced earcon).
         """
-        from samsara import tutorial_capture
+        from samsara import kept_session_draft, tutorial_capture
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
@@ -11672,7 +11659,7 @@ class DictationApp:
             self._hold_capture_target_hwnd = _get_foreground_hwnd()
             self._hold_capture_target_process = _get_foreground_exe_lower()
             manager = self._ensure_session_mode_manager()
-            self._hold_park_requested = bool(manager.draft_document.text)
+            self._hold_park_requested = kept_session_draft.hold_appends_to_draft(self, manager)
 
         # Ordinary holds share the confirmed capture duck and exclude older
         # ring frames. Other recording lanes retain their legacy duck policy.

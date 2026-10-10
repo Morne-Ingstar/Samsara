@@ -2271,6 +2271,7 @@ class SessionModeManager:
             self.invalidate_interact("hold entry")
             self._parked_hold = True
             self._draft.mark_manual_commit()
+            self._draft.kept_session = source == "session exit"
         return DispatchOutcome(kind="draft_parked", detail={"source": source,
                                                                "pending_chars": self._draft.chars})
 

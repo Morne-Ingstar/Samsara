@@ -51,6 +51,7 @@ class DraftDocument:
         self._segments: list[DraftSegment] = []
         self._transactions: list[_Transaction] = []
         self.manual_commit = False
+        self.kept_session = False
         self.edited = False
         self._recoverable: Optional[dict] = None
 
@@ -142,6 +143,7 @@ class DraftDocument:
         self._segments.clear()
         self._transactions.clear()
         self.manual_commit = False
+        self.kept_session = False
         self.edited = False
         self.revision += 1
         return chars
