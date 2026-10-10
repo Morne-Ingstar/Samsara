@@ -3,11 +3,10 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QMargins, Qt
-from PySide6.QtGui import QFont, QFontMetricsF, QPainterPath
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QFontMetricsF
 from PySide6.QtWidgets import QApplication
-from samsara.ui.splash_qt import (_DETAIL_DELAY_MS, _REASSURANCE_DELAY_MS,
-                                  _SIGNATURE_TEXT, _SplashWidget)
+from samsara.ui.splash_qt import (_DETAIL_DELAY_MS, _REASSURANCE_DELAY_MS, _SplashWidget)
 from samsara.ui import theme
 
 
@@ -30,25 +29,20 @@ def _ink_rect(font, box, text, alignment):
 def _text_rects(widget):
     layout = widget._layout()
     return [
-        _ink_rect(theme.qfont(28 if widget._compact() else theme.TYPE_HERO, "Segoe UI Variable Display", QFont.Weight.DemiBold), layout["word"], "Samsara", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-        _ink_rect(theme.qfont(theme.TYPE_BODY, italic=True), layout["tag"], "De-articulating Splines.", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-        _ink_rect(theme.qfont(theme.TYPE_HEADING, weight=QFont.Weight.DemiBold), layout["status"], "Starting Samsara", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-        _ink_rect(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.DemiBold), layout["strip"], "Hotkey ✓", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-        _ink_rect(theme.qfont(theme.TYPE_BODY), layout["support"], "Still starting — preparing voice services.", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-        _ink_rect(theme.qfont(theme.TYPE_MIN), layout["credit"], _SIGNATURE_TEXT, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom),
+        _ink_rect(theme.qfont(theme.TYPE_TITLE if widget._compact() else theme.TYPE_DISPLAY, "Segoe UI Variable Display", QFont.Weight.DemiBold), layout["word"], "Samsara", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
+        _ink_rect(theme.qfont(theme.TYPE_BODY), layout["tag"], "De-articulating Splines.", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
+        _ink_rect(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.DemiBold), layout["status"], "Starting Samsara", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
     ]
 
 
-@pytest.mark.parametrize("size", [(646, 366), (442, 250)])
-def test_measured_text_stays_clear_of_ring_and_inside_panel(app, size):
+@pytest.mark.parametrize("size", [(440, 270), (340, 220)])
+def test_measured_text_stays_clear_of_mark_and_inside_window(app, size):
     widget = _SplashWidget(clock_ms=lambda: 0)
     widget.setFixedSize(*size)
-    panel = QPainterPath()
-    panel.addRoundedRect(widget.rect().marginsRemoved(QMargins(7, 7, 7, 7)), 38, 38)
-    ring = widget._layout()["ring"].adjusted(-5, -5, 5, 5)
+    mark = widget._layout()["mark"]
     rects = _text_rects(widget)
-    assert all(panel.contains(rect) for rect in rects)
-    assert all(not rect.intersects(ring) for rect in rects)
+    assert all(widget.rect().contains(rect.toRect()) for rect in rects)
+    assert all(not rect.intersects(mark) for rect in rects)
     assert all(not first.intersects(second) for index, first in enumerate(rects) for second in rects[index + 1:])
     widget.close()
 

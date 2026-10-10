@@ -15,9 +15,7 @@ from PySide6.QtCore import QElapsedTimer, QRectF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QFont,
-    QLinearGradient,
     QPainter,
-    QPen,
 )
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
@@ -29,9 +27,9 @@ log = logging.getLogger(__name__)
 
 _MIN_DISPLAY_S = 3.0
 _COMPLETION_HOLD_MS = 450
-_LOGICAL_W = 760.0
-_LOGICAL_H = 430.0
-_DISPLAY_SCALE = 0.85
+_LOGICAL_W = 440.0
+_LOGICAL_H = 270.0
+_DISPLAY_SCALE = 1.0
 _SIGNATURE_TEXT = "A Morne Ingstar Production"
 _DETAIL_DELAY_MS = 8_000
 _REASSURANCE_DELAY_MS = 15_000
@@ -81,15 +79,13 @@ class _SplashWidget(QWidget):
 
         screen = QApplication.primaryScreen()
         available = screen.availableGeometry() if screen else QRectF(0, 0, 800, 600).toRect()
-        # Keep the scene in its original logical coordinate system, but make
-        # the default window 15% smaller.  QPainter's transform below scales
-        # the whole scene uniformly, so the artwork keeps its proportions.
+        # Only the mark and copy occupy the transparent splash surface.
         target_width = _LOGICAL_W * _DISPLAY_SCALE
         target_height = _LOGICAL_H * _DISPLAY_SCALE
         fit = min(1.0, available.width() * 0.92 / target_width,
                   available.height() * 0.88 / target_height)
-        width = max(442, round(target_width * fit))
-        height = max(250, round(target_height * fit))
+        width = max(280, round(target_width * fit))
+        height = max(210, round(target_height * fit))
         self.setFixedSize(width, height)
         self.move(
             available.center().x() - width // 2,
@@ -226,18 +222,18 @@ class _SplashWidget(QWidget):
         return int(self._clock_ms())
 
     def _compact(self) -> bool:
-        return self.width() <= 442 or self.height() <= 250
+        return self.width() < 400 or self.height() < 250
 
     def _layout(self) -> dict[str, QRectF]:
-        if self._compact():
-            return {"word": QRectF(24, 8, self.width()-48, 34), "tag": QRectF(24, 44, self.width()-48, 22),
-                    "ring": QRectF(self.width()/2-32, 75, 64, 64), "mark": QRectF(self.width()/2-22, 85, 44, 44),
-                    "status": QRectF(24, 148, self.width()-48, 24), "strip": QRectF(24, 176, self.width()-48, 22),
-                    "support": QRectF(24, 200, self.width()-48, 22), "credit": QRectF(54, 220, self.width()-108, 18)}
-        return {"word": QRectF(24, 14, self.width()-48, 46), "tag": QRectF(24, 64, self.width()-48, 24),
-                "ring": QRectF(self.width()/2-64, 104, 128, 128), "mark": QRectF(self.width()/2-45, 123, 90, 90),
-                "status": QRectF(24, 248, self.width()-48, 26), "strip": QRectF(24, 280, self.width()-48, 24),
-                "support": QRectF(24, 308, self.width()-48, 24), "credit": QRectF(54, 336, self.width()-108, 18)}
+        centre = self.width() / 2
+        scale = self.height() / _LOGICAL_H
+        return {
+            "mark": QRectF(centre - 48 * scale, 6 * scale, 96 * scale, 96 * scale),
+            "word": QRectF(20, 108 * scale, self.width() - 40, 48 * scale),
+            "tag": QRectF(20, 161 * scale, self.width() - 40, 28 * scale),
+            "status": QRectF(20, 205 * scale, self.width() - 40, 28 * scale),
+            "support": QRectF(20, 238 * scale, self.width() - 40, 28 * scale),
+        }
 
     def _support_text(self) -> str:
         if self._error or any(state in {"offline", "unavailable", "error"}
@@ -263,30 +259,15 @@ class _SplashWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-        self._paint_panel(painter)
-
         motion_s = 0.0 if self._reduced_motion else self._now_ms() / 1000.0
         layout = self._layout()
         self._paint_vortex(painter, motion_s, layout["mark"])
-        self._paint_progress(painter, motion_s, layout["ring"])
         self._paint_text(painter)
         painter.end()
 
-    @staticmethod
-    def _paint_panel(painter: QPainter):
-        panel = QRectF(7.0, 7.0, painter.device().width() - 14.0, painter.device().height() - 14.0)
-        gradient = QLinearGradient(0.0, 0.0, panel.width(), panel.height())
-        # The existing cool surface ladder (theme BG2 -> BG1 -> BG0).
-        gradient.setColorAt(0.0, _color(theme.BG2, 252))
-        gradient.setColorAt(0.56, _color(theme.BG1, 252))
-        gradient.setColorAt(1.0, _color(theme.BG0, 252))
-        painter.setPen(QPen(_color(theme.ACCENT, 30), 1.0))
-        painter.setBrush(gradient)
-        painter.drawRoundedRect(panel, 38.0, 38.0)
-
-    #: The brand mark: cyan wheel, lid closed (tray_qt.APP_MARK). The splash
-    #: never uses RECORDING -- nothing is being captured.
-    _MARK = ("listening", "asleep")
+    #: The articulated brand mark has an empty centre until hands-free is
+    #: armed. The splash never claims to be recording audio.
+    _MARK = ("listening", "off")
     _MARK_SIZE = 150.0
     _MARK_SPIN_DEG_PER_S = 42.0
 
@@ -295,75 +276,33 @@ class _SplashWidget(QWidget):
         (tray_qt.paint_mark); the wheel spins while startup works."""
         rect = rect or self._layout()["mark"]
         capture, eye = self._MARK
-        paint_mark(painter, rect, capture, eye, rotation=0.0)
-
-    def _paint_progress(self, painter: QPainter, seconds: float, ring: QRectF | None = None):
-        ring = ring or self._layout()["ring"]
-        painter.save()
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        stroke = 3.0 if self._compact() else 5.0
-        painter.setPen(QPen(_color(theme.ICON_IDLE, 110), stroke, Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap))
-        painter.drawArc(ring, 0, 360 * 16)
-
-        if self._error:
-            span = 360.0
-            start = 90.0
-            active = theme.ERROR
-        elif self._progress is None:
-            span = 74.0
-            start = 90.0 - (seconds * 42.0 % 360.0)
-            active = theme.ACCENT
-        else:
-            span = 360.0 * self._progress
-            start = 90.0
-            active = theme.SUCCESS if self._complete else theme.ACCENT
-
-        painter.setPen(QPen(_color(active, 35), stroke + 6.0, Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap))
-        painter.drawArc(ring, round(start * 16), round(-span * 16))
-        painter.setPen(QPen(_color(active), stroke, Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap))
-        painter.drawArc(ring, round(start * 16), round(-span * 16))
-        painter.restore()
+        paint_mark(painter, rect, capture, eye,
+                   rotation=seconds * self._MARK_SPIN_DEG_PER_S, brand=True)
 
     def _paint_text(self, painter: QPainter):
         painter.save()
         layout = self._layout()
         painter.setPen(_color(theme.ACCENT))
-        painter.setFont(theme.qfont(28 if self._compact() else theme.TYPE_HERO, "Segoe UI Variable Display", QFont.Weight.DemiBold))
+        painter.setFont(theme.qfont(theme.TYPE_TITLE if self._compact() else theme.TYPE_DISPLAY,
+                                     "Segoe UI Variable Display", QFont.Weight.DemiBold))
         painter.drawText(layout["word"],
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "Samsara")
 
-        painter.setPen(_color(theme.ICON_IDLE))
-        painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.Normal, italic=True))
+        painter.setPen(_color(theme.TEXT_PRIMARY))
+        painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.Normal))
         painter.drawText(layout["tag"],
                          Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "De-articulating Splines.")
 
-        strip = layout["strip"]
-        cell_width = (strip.width() - 16.0) / 3.0
-        for index, (line, state) in enumerate(self._ready_ladder[:3]):
-            label, line_color = self._segment(
-                line, state if state == "ready" else "unavailable" if self._error else state,
-                detailed=self._error or state in {"offline", "unavailable", "error"},
-            )
-            painter.setPen(_color(line_color))
-            painter.setFont(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.DemiBold))
-            painter.drawText(QRectF(strip.x() + index * (cell_width + 8.0), strip.y(), cell_width, strip.height()),
+        # The normal boot needs no dashboard or synthetic percentage. Only
+        # prolonged startup or errors reveal the actual status/detail.
+        if self._error or (not self._complete and self._now_ms() >= _DETAIL_DELAY_MS):
+            painter.setPen(_color(theme.ERROR if self._error else theme.TEXT_PRIMARY))
+            painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.DemiBold))
+            painter.drawText(layout["status"],
                              Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                             label)
-
-        status_color = theme.ERROR if self._error else theme.TEXT_PRIMARY
-        painter.setPen(_color(status_color))
-        painter.setFont(theme.qfont(theme.TYPE_HEADING, weight=QFont.Weight.DemiBold))
-        status = self._status
-        if self._progress is not None and not self._complete and not self._error:
-            status = f"{status}  [{round(self._progress * 100)}%]"
-        painter.drawText(layout["status"],
-                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                         status)
+                             self._status)
 
         support = self._support_text()
         if support:
@@ -371,13 +310,6 @@ class _SplashWidget(QWidget):
             painter.setFont(theme.qfont(theme.TYPE_BODY))
             painter.drawText(layout["support"], Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, support)
 
-        # A deliberately quiet maker's mark, tucked inside the panel corner.
-        signature_font = theme.qfont(theme.TYPE_MIN)
-        painter.setFont(signature_font)
-        painter.setPen(_color(theme.ICON_IDLE))
-        painter.drawText(layout["credit"],
-                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
-                         _SIGNATURE_TEXT)
         painter.restore()
 
 class SplashScreenQt:

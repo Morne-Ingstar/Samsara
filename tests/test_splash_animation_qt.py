@@ -96,7 +96,8 @@ def test_error_keeps_reported_ready_capability_honest(app):
     widget._set_error("Startup failed", "Microphone unavailable")
     painter = RecordingPainter()
     widget._paint_text(painter)
-    assert painter.text[2:5] == ["Hotkey ✓ Ready", "Wake × Unavailable", "Ava × Unavailable"]
+    assert painter.text == ["Samsara", "De-articulating Splines.",
+                            "Startup failed", "Microphone unavailable"]
     widget.close()
 
 
@@ -121,28 +122,29 @@ def test_scene_renders_without_assets_or_opengl(app):
     image.fill(0)
     widget.render(image)
     assert not image.isNull()
-    assert image.pixelColor(image.width() // 2, image.height() // 2).alpha() > 0
+    assert any(image.pixelColor(x, 50).alpha() > 0 for x in range(170, 270))
+    assert image.pixelColor(40, 120).alpha() == 0  # no card behind the mark
     widget.close()
 
 
 def test_centre_is_the_brand_mark_drawn_by_the_shared_routine(app, monkeypatch):
-    """09b-2: the splash wheel is the brand mark (cyan, lid closed), spinning;
-    red is never decorative, so nothing on the splash uses RECORDING."""
+    """The splash and the static brand share the articulated, rotating mark."""
     import samsara.ui.splash_qt as splash_module
     from samsara.ui import theme
 
     calls = []
     monkeypatch.setattr(splash_module, "paint_mark",
-                        lambda painter, rect, capture, eye, rotation=0.0, opacity=1.0:
-                        calls.append((capture, eye, rotation)))
+                        lambda painter, rect, capture, eye, rotation=0.0, opacity=1.0, brand=False:
+                        calls.append((capture, eye, rotation, brand)))
     widget = _SplashWidget()
     canvas = QImage(10, 10, QImage.Format.Format_ARGB32)   # must outlive the painter
     painter = QPainter(canvas)
     widget._paint_vortex(painter, 0.0)
     widget._paint_vortex(painter, 1.0)
     painter.end()
-    assert [c[:2] for c in calls] == [("listening", "asleep")] * 2
-    assert calls[1][2] == calls[0][2] == 0.0                # ring alone moves
+    assert [c[:2] for c in calls] == [("listening", "off")] * 2
+    assert calls[1][2] != calls[0][2]  # the mark itself turns
+    assert all(c[3] for c in calls)
     source = Path(splash_module.__file__).read_text(encoding="utf-8")
     assert "theme.RECORDING" not in source and "theme.BRAND_RED" not in source
     widget.close()
@@ -182,5 +184,28 @@ def test_makers_mark_uses_exact_signature_text(app):
     painter = RecordingPainter()
     widget._paint_text(painter)
     assert _SIGNATURE_TEXT == "A Morne Ingstar Production"
-    assert painter.text[-1] == _SIGNATURE_TEXT
+    assert _SIGNATURE_TEXT not in painter.text  # keep the startup surface quiet
+    widget.close()
+
+
+def test_startup_copy_is_only_brand_until_a_real_delay_or_error(app):
+    class RecordingPainter:
+        def __init__(self):
+            self.text = []
+        def save(self): pass
+        def restore(self): pass
+        def setPen(self, pen): pass
+        def setFont(self, font): pass
+        def drawText(self, rect, alignment, text): self.text.append(text)
+
+    widget = _SplashWidget(clock_ms=lambda: 0)
+    widget._set_progress(0.65)
+    painter = RecordingPainter()
+    widget._paint_text(painter)
+    assert painter.text == ["Samsara", "De-articulating Splines."]
+    widget._set_error("Startup failed", "Microphone unavailable")
+    painter.text.clear()
+    widget._paint_text(painter)
+    assert "Startup failed" in painter.text
+    assert "Microphone unavailable" in painter.text
     widget.close()
