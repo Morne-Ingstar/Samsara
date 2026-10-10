@@ -464,7 +464,7 @@ class AdvancedPage:
         )
         layout.addSpacing(6)
 
-        sc_status_label = QLabel("Active backend: --")
+        sc_status_label = QLabel("Smart Corrections: checking")  # PLACEHOLDER COPY (472)
         sc_status_label.setWordWrap(True)
         sc_status_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px; margin-left: 4px;")
         self._widgets['sc_status_label'] = sc_status_label

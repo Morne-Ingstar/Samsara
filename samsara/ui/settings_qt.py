@@ -112,7 +112,7 @@ class _SettingsWindow(
         for key, row_key in [('cloud_test_status', 'cloud_api_key'), ('cloud_info_label', 'cloud_provider')]:
             row = self._rows_by_widget[row_key]
             row.grid.addWidget(self._widgets[key], row.grid.rowCount(), 0, 1, 3)
-        self._pages['Ava'].advanced.rows.insertWidget(0, self._widgets['sc_status_label'])
+        self._pages['Ava'].smart_corrections.layout().insertWidget(1, self._widgets['sc_status_label'])
         support_status = self._source_store.findChild(QLabel, "feedbackStatusLabel")
         self._pages['Help'].column.insertWidget(2, support_status)
         central = QWidget()

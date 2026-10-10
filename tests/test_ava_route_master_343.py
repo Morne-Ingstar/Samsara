@@ -93,9 +93,9 @@ def test_provider_change_decline_keeps_original_cloud_grant(window, monkeypatch)
     assert updates["ava"]["consent"]["provider"]["identity"] == "deepseek"
 
 
-def test_off_and_local_never_open_cloud_consent(window, monkeypatch):
+def test_off_never_asks_local_requests_its_own_consent(window, monkeypatch):
     monkeypatch.setattr(ava_consent_qt, "request_consent",
-                        lambda *a, **k: pytest.fail("Off/Local must not ask"))
+                        lambda *a, **k: pytest.fail("Off must not ask"))
     route = window._widgets["providerRoute"]
     route.setCurrentIndex(0)
     assert not window._widgets["cloud_enabled"].isChecked()
@@ -103,11 +103,15 @@ def test_off_and_local_never_open_cloud_consent(window, monkeypatch):
     off = window._collect_destination_updates({})
     assert off["ava"]["provider_policy"] == "off"
     assert off["cloud_llm"]["enabled"] is False
+    calls = []
+    monkeypatch.setattr(ava_consent_qt, "request_consent",
+                        lambda parent, staged, **kw: calls.append(kw) or ava_consent_qt.accepted_consent(staged))
     route.setCurrentIndex(1)
+    assert calls == [{"cloud_enabled": False}]
     local = window._collect_destination_updates({})
     assert local["ava"]["provider_policy"] == "local"
     assert local["cloud_llm"]["enabled"] is False
-    assert not ai.runtime_state({**window.app.config, **local}, "ava").allowed
+    assert ai.runtime_state({**window.app.config, **local}, "ava").allowed
 
 
 def test_loaded_legacy_cloud_flag_cannot_claim_cloud(qapp, monkeypatch):
@@ -181,7 +185,10 @@ def test_legacy_cloud_consent_shows_confirmation_without_switch(qapp, monkeypatc
         assert ai.cloud_route_confirmation_needed(cfg)
         assert win._ava_route_confirmation_pending
         assert win._widgets["providerRoute"].currentData() == "local"
-        assert "confirm to switch" in win._widgets["ava_route_status"].text()
+        # The selected local route needs its own consent before any switch.
+        assert "consent pending" in win._widgets["ava_route_status"].text()
+        assert win._rows_by_widget['ava_route_status'].isAncestorOf(
+            win._widgets['ava_consent_button'])
         updates = win._collect_destination_updates({})
         assert updates["ava"]["provider_policy"] == "local"
         assert updates["cloud_llm"]["enabled"] is False

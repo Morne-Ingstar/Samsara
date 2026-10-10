@@ -206,7 +206,10 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
 
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
-    assert [len(window._pages[name].base_rows) for name in settings_qt._TAB_NAMES] == [5, 6, 7, 5, 10, 5]
+    # 479: everyday choices move into the four owned pages' basic sections.
+    for name, count in {'General': 7, 'Dictation': 9, 'Audio': 11, 'Shortcuts': 11}.items():
+        assert len(window._pages[name].base_rows) == count
+    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [8, 5]
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}
 
 
@@ -241,10 +244,11 @@ def test_provider_controls_follow_actual_consent_result(window, monkeypatch):
     assert window._rows_by_widget['cloud_api_key'].isHidden()
 
 
-def test_search_reveals_advanced_setting(window):
+def test_search_reaches_startup_without_revealing_advanced(window):
     window._search_edit.setText('launch_at_login')
     window._apply_search_filter()
-    assert window._pages['General'].advanced.toggle.isChecked()
+    # 479: startup is now basic, so search must keep Advanced closed.
+    assert not window._pages['General'].advanced.toggle.isChecked()
     assert not window._rows_by_widget['launch_at_login'].isHidden()
 
 

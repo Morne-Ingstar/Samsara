@@ -124,6 +124,7 @@ class AvaCloudPage:
                 else:
                     cloud_cfg.pop("model", None)
             effective["cloud_llm"] = cloud_cfg
+            effective["ollama"] = {**(effective.get("ollama", {}) or {}), "enabled": policy == "local"}
 
             session = dict(effective.get("ava_command_session", {}) or {})
             session["backend"] = "cloud" if cloud_cfg.get("enabled") else "ollama"
@@ -184,7 +185,8 @@ class AvaCloudPage:
         consent_btn = QPushButton("Read this again")
         consent_btn.setAccessibleName("Read what turning Ava on means again")
         theme.make_secondary(consent_btn)
-        consent_btn.clicked.connect(lambda: ava_consent_qt.show_consent_copy(self))
+        self._widgets['ava_consent_button'] = consent_btn
+        consent_btn.clicked.connect(self._read_ava_consent)
         layout.addWidget(consent_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addSpacing(8)
 
@@ -721,9 +723,8 @@ class AvaCloudPage:
 
     def _configure_ava_route_master(self, route):
         route.addItem("Off", "off")
-        route.addItem("On this PC (Ollama)", "local")
-        display = self._widgets['cloud_provider'].currentText().replace(" (default)", "")
-        route.addItem(f"In the cloud ({display})", "cloud")
+        route.addItem("On this PC", "local")  # PLACEHOLDER COPY (472)
+        route.addItem("In the cloud", "cloud")  # PLACEHOLDER COPY (472)
         policy = (self.app.config.get("ava", {}) or {}).get("provider_policy", "off")
         route.setCurrentIndex({"off": 0, "local": 1, "cloud": 2}.get(policy, 0))
         route.setAccessibleName("Ava runs")
@@ -751,30 +752,83 @@ class AvaCloudPage:
         self._sync_web_search_availability()
         self._refresh_conditions()
 
+    def _set_ava_route_status(self, text, visible, *, pending=False):
+        self._widgets['ava_route_status'].setText(text)
+        rows = getattr(self, '_rows_by_widget', {})
+        row = rows.get('ava_route_status')
+        replay = rows.get('ava:Read this again')
+        if row is None or replay is None:
+            return
+        button = self._widgets['ava_consent_button']
+        if pending:
+            row.grid.addWidget(button, 1, 2, Qt.AlignmentFlag.AlignLeft)
+        else:
+            replay.values.insertWidget(0, button)
+        button.show()
+        replay.setProperty('conditionVisible', not pending)
+        replay.setVisible(not pending)
+        row.setProperty('conditionVisible', visible)
+        row.setVisible(visible)
+
     def _refresh_ava_route_status(self):
-        status = self._widgets.get('ava_route_status')
-        if status is None:
+        if 'ava_route_status' not in self._widgets:
             return
-        if self._ava_route_confirmation_pending:
-            # OWNER COPY
-            status.setText("Cloud chosen, consent recorded - confirm to switch. Ava still runs on this PC.")
+        effective = self._ava_staged_config()
+        policy = effective['ava']['provider_policy']
+        pending = policy != 'off' and ava_consent_qt.consent_required(
+            effective, cloud_enabled=policy == 'cloud')
+        if self._ava_route_confirmation_pending and not pending:
+            self._set_ava_route_status(
+                "Cloud chosen, consent recorded - confirm to switch. Ava still runs on this PC.", True)
             return
-        status.setText(ai_preferences.ava_route_status(self._ava_staged_config()))
+        state = ai_preferences.runtime_state(effective, 'ava')
+        text = ai_preferences.ava_route_status(effective)
+        visible = pending or (policy != 'off' and not state.allowed)
+        if not visible and policy != 'off':
+            # A cached failure is evidence only for the same allowed saved
+            # destination/model/credential, not a pending or unsaved route.
+            saved = ai_preferences.runtime_state(self.app.config, 'ava')
+            inputs = lambda cfg: (ai_preferences.provider_for(cfg, policy).record(),
+                                 (cfg.get('ava_command_session', {}) or {}).get('model'),
+                                 (cfg.get('cloud_llm', {}) or {}).get('api_key'))
+            if saved.allowed and saved.provider.record() == state.provider.record() and inputs(effective) == inputs(self.app.config):
+                readiness = ava_readiness.readiness_for(self.app)
+                if readiness.offline and readiness.provider == ava_readiness.configured_provider(self.app):
+                    text, visible = readiness.sentence(), True
+        if visible and not pending and not state.allowed and 'API key' not in text:
+            text = state.reason
+        self._set_ava_route_status(text, visible, pending=pending)
+
+    def _read_ava_consent(self):
+        effective = self._ava_staged_config()
+        policy = effective['ava']['provider_policy']
+        if policy == 'off' or not ava_consent_qt.consent_required(effective, cloud_enabled=policy == 'cloud'):
+            ava_consent_qt.show_consent_copy(self)
+            return
+        record = ava_consent_qt.request_consent(self, effective, cloud_enabled=policy == 'cloud')
+        if record is not None:
+            self._ava_consent_staged = record
+            self._ava_route_touched = True
+            self._ava_route_confirmation_pending = False
+        self._refresh_ava_route_status()
 
     def _on_ava_route_choice(self, _index):
         policy = self._widgets['providerRoute'].currentData()
         previous = self._ava_last_route
         if policy == previous:
             return
-        if policy == 'cloud':
+        if policy in ('local', 'cloud'):
             effective = self._ava_staged_config()
-            if ava_consent_qt.consent_required(effective, cloud_enabled=True):
-                consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=True)
+            if ava_consent_qt.consent_required(effective, cloud_enabled=policy == 'cloud'):
+                consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=policy == 'cloud')
                 if consent is None:
                     self._restore_ava_route(previous)
                     # OWNER COPY
-                    self._widgets['ava_route_status'].setText(
-                        "Cloud was not selected because consent was not accepted. Ava's previous route is unchanged.")
+                    self._refresh_ava_route_status()
+                    if policy == 'cloud':
+                        self._set_ava_route_status(
+                            "Cloud was not selected because consent was not accepted. Ava's previous route is unchanged.", True,
+                            pending=previous != 'off' and ava_consent_qt.consent_required(self._ava_staged_config(), cloud_enabled=previous == 'cloud'))
                     return
                 self._ava_consent_staged = consent
         self._ava_route_touched = True
@@ -824,13 +878,11 @@ class AvaCloudPage:
                     blocked = provider.blockSignals(True)
                     provider.setCurrentText(previous)
                     provider.blockSignals(blocked)
-                    self._widgets['ava_route_status'].setText(
-                        "Provider was not changed because consent was not accepted.")  # OWNER COPY
+                    self._set_ava_route_status(
+                        "Provider was not changed because consent was not accepted.", True)  # OWNER COPY
                     return
                 self._ava_consent_staged = consent
         self._ava_previous_provider_display = display_name
-        if route is not None:
-            route.setItemText(2, f"In the cloud ({display_name.replace(' (default)', '')})")
         info_label = self._widgets.get('cloud_info_label')
         if info_label:
             info_label.setText(self._provider_info(display_name))
@@ -906,10 +958,11 @@ class AvaCloudPage:
             try:
                 from samsara import cloud_llm
                 ok, info = cloud_llm.check_available(fake)
-                msg = f"Connected to {provider}." if ok else f"Failed: {info}"
+                from samsara.ava_readiness import display_name
+                msg = f"Connected to {display_name(provider)}." if ok else info  # PLACEHOLDER COPY (472)
                 color = theme.ACCENT if ok else theme.ERROR
-            except Exception as exc:
-                msg = f"Error: {exc}"
+            except Exception:
+                msg = "The connection could not be checked."  # PLACEHOLDER COPY (472)
                 color = theme.ERROR
             self._test_result.emit(msg, color)
 

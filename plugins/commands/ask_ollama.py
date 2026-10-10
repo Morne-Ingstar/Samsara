@@ -3465,9 +3465,8 @@ def start_services(app):
     """Explicit app-lifecycle hook, called once by
     plugin_commands.start_plugin_services(). The health monitor used to start
     at import time, so every extra copy of this module started another one."""
-    if not _ai_state(app).allowed:
-        return
-    _start_health_monitor(app)
+    if _ai_state(app).allowed:
+        _start_health_monitor(app)
     # Queue 57: readiness of the CONFIGURED provider (cloud or Ollama),
     # probed in the background so nothing on the utterance path waits.
     try:

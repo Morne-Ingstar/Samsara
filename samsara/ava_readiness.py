@@ -436,13 +436,16 @@ class ReadinessMonitor:
         self._stop = threading.Event()
 
     def run_once(self) -> Readiness:
+        with self._tracker._lock:
+            generation = self._tracker._warm_generation
         was_warming = self._tracker.snapshot().warming
         provider, failure_kind = self._probe_fn()
         # A warm-up completion is fresher evidence than this independent
         # health probe. Do not flash an offline badge while it is in flight.
         if was_warming or self._tracker.snapshot().warming:
             return self._tracker.snapshot()
-        return self._tracker.record_probe(provider, failure_kind)
+        return self._tracker._set(provider, failure_kind, "probe",
+                                  expected_warm_generation=generation)[0]
 
     def wake(self) -> None:
         self._wake.set()
@@ -453,6 +456,7 @@ class ReadinessMonitor:
 
     def run(self) -> None:
         while not self._stop.is_set():
+            self._wake.clear()
             try:
                 current = self.run_once()
             except Exception as exc:
@@ -460,7 +464,6 @@ class ReadinessMonitor:
                 current = self._tracker.snapshot()
             interval = self._ready_poll_s if current.ready else self._offline_poll_s
             self._wake.wait(interval)
-            self._wake.clear()
 
 
 # Process-wide instance: one provider configuration per app process.
@@ -495,15 +498,43 @@ def readiness_for(app) -> Readiness:
     return snap
 
 
-def start_monitor(app, spawn) -> ReadinessMonitor:
+def start_monitor(app, spawn, *, recheck=False) -> ReadinessMonitor:
     """Start the process-wide monitor once. ``spawn(name, fn)`` is the app's
     thread registry (samsara.runtime.thread_registry.spawn)."""
     global _monitor
     with _monitor_lock:
+        if recheck:
+            tracker._set(configured_provider(app), None, "settings", state=UNKNOWN,
+                         invalidate_warm=True)
         if _monitor is None:
             _monitor = ReadinessMonitor(tracker, lambda: probe_configured_provider(app))
             spawn("ava-readiness", _monitor.run)
+        elif recheck:
+            _monitor.wake()
         return _monitor
+
+
+def settings_signature(app) -> tuple:
+    """Compare readiness inputs only; never log or persist this tuple."""
+    config = getattr(app, "config", {}) or {}
+    return tuple((config.get(section, {}) or {}).get(key) for section, key in (
+        ("ava", "provider_policy"), ("ava", "consent"),
+        ("ava_command_session", "enabled"), ("ava_command_session", "model"),
+        ("cloud_llm", "provider"), ("cloud_llm", "api_key"),
+        ("ollama", "host"), ("ollama", "model")))
+
+
+def recheck_after_settings(app, previous: tuple) -> None:
+    """Apply wakes one check, even when the app started with Ava off."""
+    from samsara import ai_preferences
+    if previous == settings_signature(app):
+        return
+    if not ai_preferences.runtime_state(app.config, "ava").allowed:
+        tracker.reset()
+        return
+    from samsara.runtime import thread_registry
+    start_monitor(app, lambda name, fn: thread_registry.spawn(name, fn, daemon=True),
+                  recheck=True)
 
 
 def schedule_warm_on_boot(app, spawn) -> bool:

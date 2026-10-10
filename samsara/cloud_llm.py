@@ -515,21 +515,34 @@ def _send_openai_json(base_url, api_key, model, system_prompt,
 
 
 def check_available(app):
-    """Quick health check. Returns (True, provider_name) or (False, error_string)."""
+    """Authenticated check: (True, provider_name) or (False, safe reason)."""
+    from samsara import ava_readiness as readiness
+    # PLACEHOLDER COPY (472); only classified reasons, never raw provider errors.
+    reasons = {readiness.BAD_KEY: "The key was rejected.",
+               readiness.OUT_OF_CREDIT: "The account is out of balance.",
+               readiness.RATE_LIMITED: "Rate limited. Try again in a minute.",
+               readiness.TIMEOUT: "Did not answer in time.",
+               readiness.UNREACHABLE: "Could not be reached.",
+               readiness.PROVIDER_ERROR: "The provider returned an error."}
     if not is_enabled(app):
         return False, "Cloud LLM not enabled"
     cfg = _get_config(app)
     api_key = cfg.get("api_key", "")
     try:
-        provider, base_url, model = _get_provider_config(app)
+        provider, base_url, _model = _get_provider_config(app)
         if provider == "anthropic":
-            r = ai_transport.get_cloud(base_url.rstrip('/'), timeout=3)
+            headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
         else:
-            r = ai_transport.get_cloud(f"{base_url}/models", timeout=3,
-                             headers={"Authorization": f"Bearer {api_key}"})
-        return True, provider
+            headers = {"Authorization": f"Bearer {api_key}"}
+        r = ai_transport.get_cloud(f"{base_url}/models", timeout=3, headers=headers)
+        kind = readiness.classify_http_status(int(r.status_code))
+        return (False, reasons[kind]) if kind else (True, provider)
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)
-        return False, str(exc)
-    except Exception as e:
-        return False, str(e)
+        return False, reasons[readiness.UNREACHABLE]
+    except requests.exceptions.Timeout:
+        return False, reasons[readiness.TIMEOUT]
+    except requests.exceptions.ConnectionError:
+        return False, reasons[readiness.UNREACHABLE]
+    except Exception:
+        return False, reasons[readiness.PROVIDER_ERROR]

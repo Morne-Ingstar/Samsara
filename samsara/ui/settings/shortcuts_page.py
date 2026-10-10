@@ -10,16 +10,16 @@ BASE = [
         "hotkey,mode"
     ],
     [
+        "Command-only key",
+        "Capture one command without dictation output.",
+        "command_hotkey",
+        "command_hotkey"
+    ],
+    [
         "Session button",
         "Choose the hands-free button and its behaviour.",
         "cmd_tab_button,cmd_mode",
         "command_mode.button,command_mode.mode"
-    ],
-    [
-        "Ava held key",
-        "Hold a key while speaking to Ava.",
-        "ava_mode_key",
-        "ava_mode_key"
     ],
     [
         "Cancel",
@@ -71,12 +71,6 @@ BASE = [
     ]
 ]
 ADVANCED = [
-    [
-        "Command-only key",
-        "Capture one command without dictation output.",
-        "command_hotkey",
-        "command_hotkey"
-    ],
     [
         "Wake toggle",
         "Start or stop wake listening.",

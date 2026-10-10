@@ -4,6 +4,7 @@ from samsara.listening_display import LABEL, QUESTION
 TITLE = "General"
 SUBTITLE = "Make Samsara comfortable for everyday use."
 BASE = [
+    [LABEL, QUESTION, "listening_display", "ui.listening_display"],
     [
         "Interface size",
         "Size text and controls for comfortable use.",
@@ -33,16 +34,15 @@ BASE = [
         "Show guidance as you learn.",
         "hints_enabled,action:Reset hints",
         "hints_enabled"
-    ]
-]
-ADVANCED = [
-    [LABEL, QUESTION, "listening_display", "ui.listening_display"],
+    ],
     [
         "Start at sign-in",
         "Launch Samsara when you sign in to Windows.",
         "launch_at_login",
         "launch_at_login"
-    ],
+    ]
+]
+ADVANCED = [
     [
         "Start hidden",
         "Start in the tray with the main window hidden.",

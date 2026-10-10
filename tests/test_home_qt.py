@@ -439,7 +439,7 @@ class TestAvaInTheHeader:
         (home_signals.READY, home_signals.AVA_AWAKE),
         (home_signals.OFF, home_signals.AVA_ASLEEP),
         (home_signals.UNAVAILABLE, home_signals.AVA_DIM),
-        (home_signals.UNKNOWN, home_signals.AVA_DIM),
+        (home_signals.UNKNOWN, home_signals.AVA_CHECKING),
     ])
     def test_every_state_shows_a_WORD_not_just_a_dimmed_avatar(self, qapp, monkeypatch,
                                                                status, expected):
@@ -469,11 +469,11 @@ class TestAvaInTheHeader:
         tracker = ava_readiness.ReadinessTracker()
         monkeypatch.setattr(ava_readiness, "tracker", tracker)
         monkeypatch.setattr(qt_runtime, "post", lambda callback: callback())
-        current = {"value": (home_signals.AVA_DIM, "Ava has not been checked yet.")}
+        current = {"value": (home_signals.AVA_CHECKING, "Ava has not been checked yet.")}
         monkeypatch.setattr(home_qt.home_signals, "ava_presence",
                             lambda _app: current["value"])
         control = self._control(qapp)
-        assert control.visible_text.endswith("unavailable")
+        assert control.visible_text.endswith("checking")
         current["value"] = (home_signals.AVA_AWAKE, "Ava is ready to answer.")
         tracker.record_probe("ollama", None)
         assert control.visible_text.endswith("ready")
@@ -487,8 +487,8 @@ class TestAvaInTheHeader:
                             lambda *args, **kwargs: calls.append((args, kwargs)))
         control = self._control(qapp)
         control.refresh()
-        assert control.state == home_signals.AVA_DIM
-        assert control.visible_text.endswith("unavailable")
+        assert control.state == home_signals.AVA_CHECKING
+        assert control.visible_text.endswith("checking")
         assert control.accessibleDescription() == (
             "Samsara could not refresh Ava's status. Try again shortly.")
         assert len(calls) == 1

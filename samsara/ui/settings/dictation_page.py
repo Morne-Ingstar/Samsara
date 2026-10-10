@@ -21,6 +21,12 @@ BASE = [
         "wake_word_enabled"
     ],
     [
+        "Wake phrase",
+        "Choose the trained activation phrase.",
+        "wake_word_phrase",
+        "wake_word_config.phrase"
+    ],
+    [
         "Speech pace",
         "Allow time for pauses in your speech.",
         "speech_pace",
@@ -49,21 +55,15 @@ BASE = [
         "Use the command lane for commands that need an app, number or other argument.",
         "cmd_dictation_literal_only",
         "command_mode.dictation_literal_commands_only"
-    ]
-]
-ADVANCED = [
-    [
-        "Wake phrase",
-        "Choose the trained activation phrase.",
-        "wake_word_phrase",
-        "wake_word_config.phrase"
     ],
     [
         "Recognition model",
         "Choose the speech recognition model.",
         "model_combo",
         "model_size"
-    ],
+    ]
+]
+ADVANCED = [
     [
         "Compute device",
         "Choose the hardware used for recognition.",
@@ -213,7 +213,6 @@ ADVANCED = [
 GROUPS = {
     'cmd_tab_enabled': 'Hands-free sessions',
     'cleanup_mode': 'Text behavior',
-    'wake_word_phrase': 'Wake activation',
     'model_combo': 'Speech model',
     'adv_device': 'Hardware acceleration',
     'trailing_space': 'Text behavior',

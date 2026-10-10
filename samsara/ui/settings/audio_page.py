@@ -28,25 +28,17 @@ BASE = [
         "sound_theme"
     ],
     [
+        "While recording",
+        "Choose how other apps' audio is handled.",
+        "adv_ducking_recording_mode",
+        "ducking.recording_mode"
+    ],
+    [
         "Voice feedback",
         "Choose how much Samsara says aloud.",
         "tts_feedback_level",
         "tts.feedback_level,tts.enabled"
     ],
-    [
-        "Ava captions",
-        "Show Ava's responses as text.",
-        "ava_captions",
-        "accessibility.ava_captions"
-    ],
-    [
-        "Mute Ava's voice",
-        "Silence Ava while keeping other speech available.",
-        "ava_mute_audio",
-        "accessibility.ava_mute_audio"
-    ]
-]
-ADVANCED = [
     [
         "Speech engine",
         "Choose local Windows speech or a network voice.",
@@ -65,6 +57,20 @@ ADVANCED = [
         "tts_speed",
         "tts.speed"
     ],
+    [
+        "Ava captions",
+        "Show Ava's responses as text.",
+        "ava_captions",
+        "accessibility.ava_captions"
+    ],
+    [
+        "Mute Ava's voice",
+        "Silence Ava while keeping other speech available.",
+        "ava_mute_audio",
+        "accessibility.ava_mute_audio"
+    ]
+]
+ADVANCED = [
     [
         "Speech volume",
         "Adjust speech independently of feedback sounds.",
@@ -88,12 +94,6 @@ ADVANCED = [
         "Limit the length of spoken acknowledgements.",
         "cmd_tts_char_limit",
         "command_mode.tts_char_limit"
-    ],
-    [
-        "While recording",
-        "Choose how other apps' audio is handled.",
-        "adv_ducking_recording_mode",
-        "ducking.recording_mode"
     ],
     [
         "Ducked volume",
@@ -137,8 +137,9 @@ GROUPS = {
     'output_combo': 'Audio',
     'sound_feedback': 'Audio Feedback',
     'tts_feedback_level': 'Text-to-Speech',
-    'tts_engine': 'Text-to-Speech',
-    'adv_ducking_recording_mode': 'Playback Reduction While Dictating',
+    'tts_engine': 'Voice',
+    'tts_volume_slider': 'Voice',
+    'adv_ducking_level': 'Playback Reduction While Dictating',
 }
 
 

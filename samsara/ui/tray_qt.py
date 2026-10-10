@@ -1258,9 +1258,7 @@ class SamsaraTrayQt(QObject):
         menu.setDefaultAction(show_action)
         settings_action = self._add(menu, "Settings", lambda: app.open_settings())
         support_action = self._add(menu, "Something wrong?", self._open_support_tab)
-        restart_action = None
-        if self._code_change_detected:
-            restart_action = self._add(menu, "Restart Samsara", self._restart_samsara)
+        restart_action = self._add(menu, "Restart Samsara", self._restart_samsara)
         exit_action = self._add(menu, "Exit", lambda: app.quit_app())
         return show_action, settings_action, support_action, restart_action, exit_action
 

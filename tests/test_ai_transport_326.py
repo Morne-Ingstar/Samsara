@@ -244,7 +244,7 @@ def test_cloud_sinks_refuse_redirects_and_notify(app, adapter, method):
         assert result.error_kind == "unreachable"
     else:
         adapter.send = Mock(return_value=_redirect_response())
-        assert cloud_llm.check_available(app)[0] is False
+        assert cloud_llm.check_available(app) == (False, "Could not be reached.")
     app._show_outcome_chip.assert_called_once_with(
         "cloud AI service tried to redirect - refused", "error")
     app.spoken.assert_called_once()

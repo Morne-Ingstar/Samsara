@@ -4,22 +4,19 @@ from contextlib import nullcontext
 
 class SettingsServices:
     def _refresh_sc_status(self) -> None:
-        """Refresh the Smart Corrections "Active backend" status line --
+        """Refresh the Smart Corrections status line --
         called on tab build and every time the Advanced tab is shown, since
         Ollama reachability can change between settings-window visits."""
         label = self._widgets.get('sc_status_label')
         if label is None:
             return
         try:
-            backend = smart_corrections.describe_backend_status(self.app)
-            _state, cloud = _cloud_ai_state(
-                self.app, reachable=self._cloud_reachable
-            )
-            status = f"{backend} · {cloud}"
+            enabled = self.app.config.get('smart_corrections', {}).get('enabled')
+            status = smart_corrections.describe_backend_status(self.app) if enabled else "off"
         except Exception as e:
             logger.debug(f"[SETTINGS] Smart Corrections status refresh failed: {e}")
             status = "unknown"
-        label.setText(f"Active backend: {status}")
+        label.setText(f"Smart Corrections: {status}")  # PLACEHOLDER COPY (472)
 
     def _refresh_sc_cloud_hint(self) -> None:
         """Keep the Cloud-backend warning aligned with the status line."""
@@ -404,6 +401,8 @@ class SettingsServices:
         of clobbering it.
         """
         from samsara import listening_display
+        from samsara import ava_readiness
+        previous_ava = ava_readiness.settings_signature(self.app)
         listening_display.run_display(self.app)
         updates: dict = {}
         for save_fn in self._save_fns:
@@ -465,6 +464,7 @@ class SettingsServices:
                     (self.app.config.get('diagnostics', {}) or {}).get('stage_timing', False)
                 )
 
+        ava_readiness.recheck_after_settings(self.app, previous_ava)
         if "tts" in updates:
             from samsara.config_schema import spoken_notices_for_level
             setter = getattr(getattr(self.app, "_session_mode_manager", None), "set_spoken_notices", None)

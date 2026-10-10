@@ -178,7 +178,7 @@ def test_every_settings_location_names_a_declared_page_and_row(monkeypatch):
     (ava_readiness.READY, (home_signals.AVA_AWAKE, "Ava is ready to answer.")),
     (ava_readiness.WARMING, (home_signals.AVA_WARMING, "Ava is warming up.")),
     (ava_readiness.OFFLINE, (home_signals.AVA_DIM,
-                             "Ava is offline. Ollama is not running on this computer.")),
+                             "Ava is unavailable: unreachable.")),
 ])
 def test_ava_presence_follows_effective_state_then_provider_readiness(
         monkeypatch, readiness, expected):
@@ -198,7 +198,7 @@ def test_ava_presence_uses_effective_state_reason_when_setup_blocks_it():
     effective = ai_preferences.runtime_state(config, "ava")
     assert effective.status == "setup-pending"
     assert home_signals.ava_presence(_app(config=config)) == (
-        home_signals.AVA_DIM, effective.reason)
+        home_signals.AVA_CHECKING, effective.reason)
 
 
 def test_ava_presence_does_not_call_a_setup_blocked_ava_working():
@@ -206,7 +206,7 @@ def test_ava_presence_does_not_call_a_setup_blocked_ava_working():
     effective = ai_preferences.runtime_state(config, "ava")
     app = _app(config=config)
     app.ava_thinking_since = time.monotonic()
-    assert home_signals.ava_presence(app) == (home_signals.AVA_DIM, effective.reason)
+    assert home_signals.ava_presence(app) == (home_signals.AVA_CHECKING, effective.reason)
 
 
 def test_ava_presence_calls_an_off_choice_off_with_its_effective_state_reason():

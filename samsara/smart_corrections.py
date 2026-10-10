@@ -217,16 +217,16 @@ def describe_backend_status(app) -> str:
     if backend == "cloud":
         return "Cloud"
     if skip_reason == "ollama_down_fallback_disabled":
-        return "None — local AI down, cloud fallback off"
+        return "unavailable — local AI down, cloud fallback off"  # PLACEHOLDER COPY (472)
     if skip_reason == "ollama_down_no_cloud_configured":
-        return "None — local AI down, cloud fallback enabled but no cloud provider configured"
+        return "unavailable — local AI down, cloud provider not configured"  # PLACEHOLDER COPY (472)
     if skip_reason == "ollama_down_explicit_backend":
-        return "None — local AI down"
+        return "unavailable — local AI down"  # PLACEHOLDER COPY (472)
     if skip_reason == "cloud_not_configured_explicit_backend":
-        return "None — cloud AI not configured"
+        return "unavailable — cloud AI not configured"  # PLACEHOLDER COPY (472)
     if skip_reason == "ai_not_authorized":
-        return "None — optional AI is off or needs setup"
-    return "None — no backend configured"
+        return "off or needs setup"  # PLACEHOLDER COPY (472)
+    return "no backend configured"  # PLACEHOLDER COPY (472)
 
 
 # ---------------------------------------------------------------------------

@@ -248,12 +248,17 @@ def test_continuing_groups_have_one_heading_at_the_first_member(settings, qapp):
     speech = [group for group in audio.findChildren(GroupHeading) if group.text() == 'Text-to-Speech']
     assert len(speech) == 1
     assert speech[0].rows[0] is settings._rows_by_widget['tts_feedback_level']
-    assert settings._rows_by_widget['tts_engine'] in speech[0].rows
+    voice = [group for group in audio.findChildren(GroupHeading) if group.text() == 'Voice']
+    assert len(voice) == 1
+    assert voice[0].rows[0] is settings._rows_by_widget['tts_engine']
     settings._search_edit.setText('Speech engine')
     settings._apply_search_filter()
     settle(qapp)
-    assert not speech[0].isHidden()
-    assert audio.advanced.toggle.isChecked()
+    assert not voice[0].isHidden()
+    # 479 makes Speech engine an everyday choice; search need not reveal Advanced.
+    audio.advanced.toggle.setChecked(False)
+    settings._apply_search_filter()
+    assert not audio.advanced.toggle.isChecked()
     settings._search_edit.clear()
     settings._apply_search_filter()
     settle(qapp)

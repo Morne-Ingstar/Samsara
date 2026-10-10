@@ -101,11 +101,12 @@ class TestTopLevelDailyUseActions:
         texts = _top_level_texts(t._menu)
         assert texts[-1] == "Exit"
 
-    def test_exit_preceded_by_separator(self, tray):
+    def test_restart_and_exit_preceded_by_separator(self, tray):
         t, app = tray
         actions = t._menu.actions()
         assert actions[-1].text() == "Exit"
-        assert actions[-2].isSeparator()
+        assert actions[-2].text() == "Restart Samsara"
+        assert actions[-3].isSeparator()
 
     def test_tools_and_developer_submenus_present_top_level(self, tray):
         t, app = tray
@@ -437,6 +438,9 @@ def _stub_tray(monkeypatch, app, *, raising=False):
     monkeypatch.setattr(tray_qt, "open_support_tab", Mock(side_effect=boom if raising else None))
     monkeypatch.setattr(SamsaraTrayQt, "_open_update_dialog",
                         Mock(side_effect=boom if raising else None))
+    # 479: Restart is now always a menu row; this fixture stubs every action.
+    monkeypatch.setattr(SamsaraTrayQt, "_restart_samsara",
+                        Mock(side_effect=boom if raising else None))
     if raising:
         for name in _HANDLERS:
             getattr(app, name).side_effect = boom
@@ -629,7 +633,7 @@ class TestUpdateEntryIsBehindAFlag:
 class TestMenuGrouping61:
     TOP = ["Show Samsara", "Snooze", "Wake Word  (samsara)", "[MIC]  Test Microphone",
            "Mode:  Hold", "Quick Reference", "Settings", "Something wrong?",
-           "Workspace", "Tools", "Developer", "Exit"]
+           "Workspace", "Tools", "Developer", "Restart Samsara", "Exit"]
 
     def test_top_level_is_the_daily_set(self, qapp, monkeypatch):
         app = _make_app()

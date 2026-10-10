@@ -1503,6 +1503,7 @@ class _AvaMark(QWidget):
 #: avatar alone, so a WORD is always visible; the sentence is the control's
 #: accessible description and its tooltip.
 AVA_SHORT_STATE = {
+    home_signals.AVA_CHECKING: "checking",  # PLACEHOLDER COPY (472)
     home_signals.AVA_AWAKE: "ready",
     home_signals.AVA_THINKING: "working",
     home_signals.AVA_DIM: "unavailable",
@@ -1510,7 +1511,6 @@ AVA_SHORT_STATE = {
     home_signals.AVA_WARMING: "warming",
 }
 AVA_HEADER_MARK_PX = 18
-
 
 class AvaHeaderControl(QPushButton):
     """Ava, in the hub header beside the listening indicator (89).
@@ -1584,7 +1584,7 @@ class AvaHeaderControl(QPushButton):
             if not self._presence_failure_logged:
                 logger.warning("[HOME] Ava presence refresh failed", exc_info=exc)
                 self._presence_failure_logged = True
-            state = home_signals.AVA_DIM
+            state = home_signals.AVA_CHECKING
             sentence = "Samsara could not refresh Ava's status. Try again shortly."
         self._state = state
         self._mark.set_state(state)

@@ -62,10 +62,12 @@ RESTART_HANDS_FREE_LABEL = "Restart hands-free"
 #: answer -- never that a microphone is open or that anything is being sent.
 AVA_AWAKE = "awake"
 AVA_DIM = "dim"
+AVA_CHECKING = "checking"  # PLACEHOLDER COPY (472)
 AVA_THINKING = "thinking"
 AVA_ASLEEP = "asleep"
 AVA_WARMING = "warming"
 AVA_STATE_TEXT = {
+    AVA_CHECKING: "Ava has not been checked yet.",  # PLACEHOLDER COPY (472)
     AVA_AWAKE: "Ava is ready to answer.",
     AVA_DIM: "Ava cannot answer right now.",
     AVA_THINKING: "Ava is working on your question.",
@@ -331,7 +333,7 @@ def ava_state(app) -> CapabilityState:
     if state == getattr(ava_readiness, "WARMING", "warming"):
         return CapabilityState(AVA, WARMING, readiness.sentence())
     if state == getattr(ava_readiness, "OFFLINE", "offline"):
-        return CapabilityState(AVA, UNAVAILABLE, readiness.sentence())
+        return CapabilityState(AVA, UNAVAILABLE, f"Ava is unavailable: {readiness.short_reason()}.")  # PLACEHOLDER COPY (472)
     return CapabilityState(
         AVA, UNKNOWN,
         "Samsara has not checked whether Ava can answer yet.")
@@ -386,8 +388,8 @@ def ava_presence(app, now: Optional[float] = None) -> tuple:
         return AVA_AWAKE, AVA_STATE_TEXT[AVA_AWAKE]
     if state.status == WARMING:
         return AVA_WARMING, state.detail or AVA_STATE_TEXT[AVA_WARMING]
-    # UNAVAILABLE or UNKNOWN: dim, and the reason is always spelled out --
-    # a dimmed avatar on its own cannot say why Ava is unavailable.
+    if state.status == UNKNOWN:
+        return AVA_CHECKING, state.detail or AVA_STATE_TEXT[AVA_CHECKING]
     return AVA_DIM, state.detail or AVA_STATE_TEXT[AVA_DIM]
 
 

@@ -10,6 +10,24 @@ BASE = [
         "ava.provider_policy,ava_mode_enabled,ava_command_session.enabled,command_packs.ai,cloud_llm.enabled,ava_command_session.backend,ava.consent"
     ],
     [
+        "Cloud provider",
+        "Choose the provider receiving cloud requests.",
+        "cloud_provider",
+        "cloud_llm.provider"
+    ],
+    [
+        "Local model",
+        "Choose the installed model used locally.",
+        "ava_cmd_model",
+        "ava_command_session.model"
+    ],
+    [
+        "Ava held key",
+        "Hold a key while speaking to Ava.",
+        "ava_mode_key",
+        "ava_mode_key"
+    ],
+    [
         "Effective route",
         "Where Ava will handle your requests after Apply.",
         "ava_route_status",
@@ -42,12 +60,6 @@ ADVANCED = [
         ""
     ],
     [
-        "Cloud provider",
-        "Choose the provider receiving cloud requests.",
-        "cloud_provider",
-        "cloud_llm.provider"
-    ],
-    [
         "Cloud credential",
         "Enter your provider credential and test the connection.",
         "cloud_api_key,ava:Show,ava:Test Connection",
@@ -70,12 +82,6 @@ ADVANCED = [
         "Limit how long a cloud request can take.",
         "cloud_timeout",
         "cloud_llm.timeout_seconds"
-    ],
-    [
-        "Local model",
-        "Choose the installed model used locally.",
-        "ava_cmd_model",
-        "ava_command_session.model"
     ],
     [
         "Keep model warm",
@@ -159,5 +165,31 @@ ADVANCED = [
 
 def build(owner):
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+    # A plain group, with no nested outline or second disclosure.
+    group = page.smart_corrections = QWidget()
+    rows = QVBoxLayout(group)
+    rows.setContentsMargins(0, 0, 0, 0)
+    rows.setSpacing(0)
+    heading = QLabel("Smart Corrections")  # PLACEHOLDER COPY (472)
+    heading.setProperty("role", "settingsGroup")
+    rows.addWidget(heading)
+    for key, row in owner._rows_by_widget.items():
+        if key.startswith("sc_") and row.widget_keys[0] == key:
+            page.advanced.rows.removeWidget(row)
+            rows.addWidget(row)
+    page.advanced.rows.addWidget(group)
     owner._widgets["ava_route_status"].setMinimumWidth(260)
+    # Keep shared condition/search refreshes intact; refine Ava's model row.
+    refresh = owner._refresh_conditions
+    def refresh_conditions():
+        refresh()
+        row = owner._rows_by_widget["ava_cmd_model"]
+        visible = owner._widgets["providerRoute"].currentData() == "local"
+        row.setProperty("conditionVisible", visible)
+        row.setVisible(visible)
+        owner._refresh_ava_route_status()
+    owner._widgets['ava_cmd_model'].textChanged.connect(lambda _text: owner._refresh_ava_route_status())
+    owner._refresh_conditions = refresh_conditions
+    refresh_conditions()
     return page
