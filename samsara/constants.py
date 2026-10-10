@@ -64,6 +64,8 @@ CALIBRATION_FLOOR = 0.00044         # minimum threshold (guards electrical noise
 CALIBRATION_CEILING = 0.15         # maximum threshold (sanity cap)
 
 # Clipboard
-CLIPBOARD_PASTE_DELAY = 0.05        # seconds after copy, before paste
+CLIPBOARD_PASTE_DELAY = 0.05        # stable clipboard window for ordinary text
+CLIPBOARD_READY_TIMEOUT = 1.0      # bounded readiness polling, seconds
+CLIPBOARD_READY_POLL = 0.005       # seconds between readiness samples
 CLIPBOARD_RESTORE_DELAY = 0.139     # seconds after paste, before restore (tray earcon path)
 CLIPBOARD_POST_PASTE_SETTLE = 0.4   # seconds after ctrl+v, before restore (PasteHandler)

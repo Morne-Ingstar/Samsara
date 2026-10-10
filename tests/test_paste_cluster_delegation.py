@@ -35,6 +35,7 @@ def test_paste_cluster_methods_are_thin_delegates(monkeypatch):
         "text",
         before_paste=guard,
         return_delivery_confirmation=True,
+        feedback=True,  # 474: the wrapper forwards the feedback policy explicitly
         paste_with_preservation_fn=dictation.paste_with_preservation,
         type_text_unicode_fn=dictation.type_text_unicode,
         get_foreground_hwnd_fn=dictation._get_foreground_hwnd,

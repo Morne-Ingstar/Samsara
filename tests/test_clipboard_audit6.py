@@ -84,6 +84,12 @@ class FakeClipboard:
         self.is_open = False
         return 1
 
+    def GetOpenClipboardWindow(self):
+        return 123 if self.is_open else 0
+
+    def IsClipboardFormatAvailable(self, fmt):
+        return fmt in self.formats
+
     def EmptyClipboard(self):
         assert self.is_open, "EmptyClipboard without OpenClipboard"
         self.formats = {}
@@ -193,7 +199,8 @@ def fake(monkeypatch):
     user32 = types.SimpleNamespace(**{name: getattr(clip, name) for name in (
         "OpenClipboard", "CloseClipboard", "EmptyClipboard", "EnumClipboardFormats", "GetClipboardData",
         "SetClipboardData", "GetClipboardSequenceNumber", "GetClipboardOwner", "IsHungAppWindow",
-        "SendMessageTimeoutW", "CountClipboardFormats", "GetClipboardFormatNameW")})
+        "SendMessageTimeoutW", "CountClipboardFormats", "GetClipboardFormatNameW",
+        "GetOpenClipboardWindow", "IsClipboardFormatAvailable")})
     kernel32 = types.SimpleNamespace(**{name: getattr(clip, name) for name in (
         "GlobalAlloc", "GlobalSize", "GlobalLock", "GlobalUnlock", "GlobalFree")})
     monkeypatch.setattr(cb, "_user32", user32)
@@ -206,8 +213,10 @@ def fake(monkeypatch):
     monkeypatch.setattr(cb, "_OPEN_CLIPBOARD_MAX_RETRIES", 1)
     monkeypatch.setattr(cb, "pyperclip", types.SimpleNamespace(copy=clip.user_copies_text, paste=clip.text))
     monkeypatch.setattr(cb, "HAS_PYPERCLIP", True)
-    import time as real_time
-    monkeypatch.setattr(cb, "time", types.SimpleNamespace(sleep=lambda _s: None, monotonic=real_time.monotonic))
+    clock = [0.0]
+    monkeypatch.setattr(cb, "time", types.SimpleNamespace(
+        sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        monotonic=lambda: clock[0], perf_counter=lambda: clock[0]))
     return clip
 
 
@@ -226,6 +235,18 @@ def target(monkeypatch, fake):
     module = types.SimpleNamespace(hotkey=hotkey)
     monkeypatch.setitem(__import__("sys").modules, "pyautogui", module)
     return types.SimpleNamespace(pasted=pasted, after_paste=after_paste)
+
+
+def test_empty_clipboard_restored_after_transport_text(fake, target):
+    assert paste_with_preservation('synthetic sentence', paste_delay=0, restore_delay=0)
+    assert target.pasted == ['synthetic sentence']
+    assert fake.formats == {}
+
+
+def test_user_copy_wins_over_empty_original(fake, target):
+    target.after_paste.append(lambda: fake.user_copies_text('synthetic new copy'))
+    assert paste_with_preservation('synthetic sentence', paste_delay=0, restore_delay=0)
+    assert fake.text() == 'synthetic new copy'
 
 
 # ---------------------------------------------------------------------------

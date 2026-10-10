@@ -315,11 +315,10 @@ class TestHungOwnerGuard:
         assert saved == {}
         assert enum_calls == [], "must not attempt enumeration when the owner is hung"
 
-    def test_empty_save_lets_paste_proceed_without_restore(self, monkeypatch):
-        """The dictation paste itself must still go through on an empty
-        (hung-owner) save -- and with nothing saved, restore_clipboard()
-        must never be invoked."""
+    def test_empty_save_restores_original_empty_clipboard(self, monkeypatch):
+        """474: an empty original is preserved too; a hung owner is incomplete."""
         monkeypatch.setattr(clipboard_module, "save_clipboard", lambda: ClipboardSnapshot())
+        monkeypatch.setattr(clipboard_module, "wait_for_clipboard_ready", lambda *_args: 'ready')
         restore_calls = []
         monkeypatch.setattr(
             clipboard_module, "restore_clipboard",
@@ -331,13 +330,14 @@ class TestHungOwnerGuard:
         result = clipboard_module.paste_with_preservation("dictated text", paste_delay=0, restore_delay=0)
 
         assert result is True
-        assert restore_calls == [], "an empty save must not trigger a restore call"
+        assert len(restore_calls) == 1, "an empty original must replace our transport text"
 
     def test_focus_guard_blocks_ctrl_v_after_clipboard_preparation(self, monkeypatch):
         """A target change during formatting/copy must fail before Ctrl+V."""
         monkeypatch.setattr(
             clipboard_module, "save_clipboard", lambda: ClipboardSnapshot()
         )
+        monkeypatch.setattr(clipboard_module, "wait_for_clipboard_ready", lambda *_args: 'ready')
         monkeypatch.setattr(clipboard_module.pyperclip, "copy", lambda _text: None)
         hotkeys = []
         monkeypatch.setattr(

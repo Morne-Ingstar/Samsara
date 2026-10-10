@@ -257,28 +257,14 @@ class TextHandler(CommandHandler):
 
     def execute(self, cmd, ctx):
         try:
-            import pyperclip
-            import pyautogui
-            from samsara.clipboard import (
-                clipboard_lock, save_clipboard, restore_clipboard,
-            )
+            from samsara.clipboard import paste_with_preservation
         except Exception:
             logger.error("Clipboard/pyautogui not available")
             return False
 
         text_to_insert = cmd.get('text', '')
         if text_to_insert:
-            with clipboard_lock:
-                saved = save_clipboard()
-                try:
-                    pyperclip.copy(text_to_insert)
-                    time.sleep(0.02)
-                    pyautogui.hotkey('ctrl', 'v')
-                    time.sleep(CLIPBOARD_POST_PASTE_SETTLE)
-                except Exception as e:
-                    logger.error(f"Paste failed: {e}")
-                finally:
-                    restore_clipboard(saved)
+            return paste_with_preservation(text_to_insert, restore_delay=CLIPBOARD_POST_PASTE_SETTLE)
         return True
 
 

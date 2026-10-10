@@ -7914,7 +7914,7 @@ class DictationApp:
                 logger.info(f"[TEXT] {text}")
 
                 if self.config['auto_paste']:
-                    self._paste_preserving_clipboard(text)
+                    self._paste_preserving_clipboard(text, feedback=False)
 
                 # Log to persistent history
                 self._log_history(
@@ -10706,16 +10706,16 @@ class DictationApp:
     def _flight_foreground_process_name() -> str | None:
         return _paste.flight_foreground_process_name()
 
-    def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False):
+    def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False, *, feedback=True):
         # The implementation remains the injection_safety.window_integrity()
         # guarded paste_with_preservation(...) path and records successful
-        # delivery through self._record_undoable_paste(...); the implementation
-        # now lives in samsara.paste.
+        # delivery through self._record_undoable_paste(...) in samsara.paste.
         return _paste.paste_preserving_clipboard(
             self,
             text,
             before_paste=before_paste,
             return_delivery_confirmation=return_delivery_confirmation,
+            feedback=feedback,
             paste_with_preservation_fn=paste_with_preservation,
             type_text_unicode_fn=type_text_unicode,
             get_foreground_hwnd_fn=_get_foreground_hwnd,
@@ -10937,10 +10937,7 @@ class DictationApp:
                 self._show_outcome_chip(label, 'error')
             return False
 
-        logger.info(f"[OK] {text}")
-        self.play_sound("success")
-        if hasattr(self, 'listening_indicator'):
-            self._schedule_ui(self.listening_indicator.flash_success)
+        logger.info("[DELIVERY] Wake dictation sent; receipt reported by paste seam")
         self.add_to_history(text.strip(), is_command=False)
         self._log_history(
             raw_text=raw,
@@ -12450,7 +12447,7 @@ class DictationApp:
                         self._park_hold_feedback('Draft parked', 'success')
                         return
 
-                    logger.info(f"[OK] {text}")
+                    logger.info("[TRANSCRIBED] Held dictation ready for delivery")
                     if stage_timing is not None:
                         stage_timing.mark("dispatch_start", words=len(text.split()))
                     # Queue 50: this success sound used to play before the
@@ -12469,17 +12466,11 @@ class DictationApp:
                             entry_type="dictation",
                         )
                         return
-                    if _verdict is None or _verdict.confirmed_ok:
-                        self.play_sound("success")
-                        if hasattr(self, 'listening_indicator'):
-                            self._schedule_ui(self.listening_indicator.flash_success)
-                            self._show_outcome_chip("typed", "success", 900)
-                    else:
-                        logger.warning("[INJECT] hold dictation: cannot confirm the foreground window "
-                                       "accepts typing (%s) -- sending without a success sound",
-                                       _verdict.describe())
-                        self._show_outcome_chip("sent, unconfirmed", "warning")
-
+                    # History retains the final before sending it. The paste
+                    # seam reports target acknowledgement separately from the
+                    # integrity check, which only establishes permission.
+                    # Ctrl+V and typed API acceptance cannot prove receipt.
+                    # Both displays receive the same unconfirmed wording there.
                     # Add to history
                     self.add_to_history(text.strip(), is_command=False)
                     self._log_history(

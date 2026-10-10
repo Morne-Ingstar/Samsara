@@ -2213,11 +2213,7 @@ class StreamingSession:
 
         self._overlay.update_text(text.rstrip(),
                                   StreamingOverlayQt.STATE_DONE)
-        logger.info(f"[OK] {text}")
-        try:
-            self.app.play_sound("success")
-        except Exception as e:
-            logger.debug(f"[STREAM] play_sound('success') failed: {e}")
+        logger.info("[TRANSCRIBED] Held dictation ready for delivery")
         try:
             self.app.add_to_history(text.strip(), is_command=False)
         except Exception as e:
@@ -2247,8 +2243,10 @@ class StreamingSession:
                 if delivered:
                     if isinstance(self._overlay, _LiveSurfaceStreamingOverlay):
                         self._overlay.delivery_finished(text.rstrip())
-                    if callable(show := getattr(self.app, '_show_outcome_chip', None)):
-                        show("typed", "success", 900)
+                    # Retire only this hold's progress; preserve the receipt warning.
+                    if getattr(self.app, 'listening_indicator', None) is not None:
+                        from samsara.live_surface.feedback import schedule_hold_clear
+                        schedule_hold_clear(self.app)
                 else:
                     manager = self.app._ensure_session_mode_manager()
                     manager.stage_parked_hold(text, source="failed delivery")
@@ -2344,7 +2342,7 @@ class StreamingSession:
                 if self._last_pasted:
                     pyautogui.hotkey('ctrl', 'z')
                     time.sleep(UNDO_SETTLE_S)
-                self.app._paste_preserving_clipboard(text)
+                self.app._paste_preserving_clipboard(text, feedback='silent')
                 self._last_pasted = True
                 if PASTE_SETTLE_S:
                     time.sleep(PASTE_SETTLE_S)

@@ -11,6 +11,7 @@ import time
 
 from samsara import flight_recorder, injection_safety
 from samsara.clipboard import (
+    DeliveryOutcome,
     paste_with_preservation,
     type_text_unicode,
 )
@@ -23,6 +24,7 @@ logger = logging.getLogger("Samsara")
 
 _UNDO_TARGET_UNSET = object()
 _WAKE_PRIMER_DELAY = 0.12
+UNVERIFIED_DELIVERY = "Sent, but not confirmed. Your words are in History."
 
 
 def foreground_process_name() -> str:
@@ -68,12 +70,21 @@ def flight_foreground_process_name() -> str | None:
         return None
 
 
+class DeliveryResult(tuple):
+    """Two legacy booleans plus the three-way delivery outcome."""
+    def __new__(cls, sent, confirmed, outcome):
+        result = super().__new__(cls, (sent, confirmed))
+        result.outcome = outcome
+        return result
+
+
 def paste_preserving_clipboard(
     app,
     text,
     before_paste=None,
     return_delivery_confirmation=False,
     *,
+    feedback=True,
     paste_with_preservation_fn=paste_with_preservation,
     type_text_unicode_fn=type_text_unicode,
     get_foreground_hwnd_fn=_get_foreground_hwnd,
@@ -83,11 +94,13 @@ def paste_preserving_clipboard(
     # refuses a window Windows will not let us type into. Callers with
     # their own announcement (session outcome, hold path) check earlier;
     # this guard makes every other lane fail honestly instead of "pasting".
-    def _result(sent, confirmed):
-        return (sent, confirmed) if return_delivery_confirmation else sent
+    def _result(sent, confirmed, outcome=DeliveryOutcome.UNVERIFIED):
+        if not return_delivery_confirmation:
+            show_delivery_result(app, sent, outcome, feedback=feedback)
+        return DeliveryResult(sent, confirmed, outcome) if return_delivery_confirmation else sent
 
     _verdict = injection_safety.window_integrity()
-    if _verdict.blocked:
+    if _verdict is not None and _verdict.blocked:
         logger.warning("[INJECT] delivery refused: foreground window is elevated (%s)", _verdict.describe())
         return _result(False, False)
     delay = app.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
@@ -126,7 +139,7 @@ def paste_preserving_clipboard(
                 target_process=app._flight_foreground_process_name(),
                 chars=len(text), result='ok',
             )
-            return _result(True, True)
+            return _result(True, True, DeliveryOutcome.SENT)
         logger.warning(
             "[TYPE] Typed injection failed; falling back to clipboard paste"
         )
@@ -155,44 +168,52 @@ def paste_preserving_clipboard(
     def _typed_fallback_without_clipboard():
         if not app._foreground_wants_typed_injection() or not _capture_target_before_paste():
             return False
-        typed_fallback_used["value"] = type_text_unicode_fn(text)
+        typed_fallback_used["value"] = type_text_unicode_fn(text, key_interval=0.05)
         return typed_fallback_used["value"]
 
     # Keep one clipboard implementation. The centralized path captures
     # the clipboard sequence number immediately after Samsara's copy, so
     # an unrelated copy made during the paste window is never overwritten
     # by restoring our stale snapshot.
+    receipt = {"outcome": DeliveryOutcome.SENT}
     paste_ok = paste_with_preservation_fn(
         text,
         paste_delay=CLIPBOARD_PASTE_DELAY,
         restore_delay=delay,
         before_paste=_capture_target_before_paste,
         incomplete_snapshot_fallback=_typed_fallback_without_clipboard,
+        delivery_observer=lambda outcome: receipt.update(outcome=outcome),
     )
-    delivery_confirmed = bool(typed_fallback_used["value"])
+    outcome = receipt["outcome"]
+    # Accept existing boolean observers while the native seam uses three states.
+    if isinstance(outcome, bool):
+        outcome = DeliveryOutcome.CONFIRMED if outcome else DeliveryOutcome.UNVERIFIED
+    if typed_fallback_used["value"] or (_verdict is not None and not getattr(_verdict, 'confirmed_ok', False)):
+        outcome = DeliveryOutcome.UNVERIFIED
+    delivery_confirmed = outcome == DeliveryOutcome.CONFIRMED
     if paste_ok and delivery_confirmed:
         app._record_undoable_paste(
             text, target_hwnd=paste_target['hwnd'],
         )
         app.adaptive_learner.record_transcription(text)
         logger.info(
-            "[TYPE] Unicode fallback sent chars=%d hwnd=%r" if typed_fallback_used["value"]
-            else "[PASTE] Ctrl+V sent chars=%d hwnd=%r",
+            "[PASTE] Message delivery confirmed chars=%d hwnd=%r",
             len(text), get_foreground_hwnd_fn(),
         )
     elif paste_ok:
+        if outcome == DeliveryOutcome.UNVERIFIED:
+            logger.warning('[PASTE] Sent without target acknowledgement; text recoverable in History')
         _arm_undo_after_paste(app, text, paste_target['hwnd'], get_foreground_hwnd_fn)
     else:
         logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
     flight_recorder.record(
         'inject', path='clipboard',
-        why=('typed_failed' if _typed_failed
-             else 'over_paste_min_chars' if len(text) >= threshold
+        why=('typed_failed' if _typed_failed else 'over_paste_min_chars' if len(text) >= threshold
              else 'typed_injection_not_enabled_for_target'),
         target_process=app._flight_foreground_process_name(),
-        chars=len(text), result='ok' if paste_ok else 'failed',
+        chars=len(text), result=('sent_unverified' if outcome == DeliveryOutcome.UNVERIFIED else 'ok') if paste_ok else 'failed',
     )
-    return _result(paste_ok, delivery_confirmed)
+    return _result(paste_ok, delivery_confirmed, outcome)
 
 
 _UNDO_TERMINAL_PROCESSES = frozenset({
@@ -213,6 +234,29 @@ def _arm_undo_after_paste(app, text, target_hwnd, get_foreground_hwnd_fn):
         app._record_undoable_paste(text, target_hwnd=target_hwnd)
         return
     logger.info('[PASTE] undo not armed: %s', reason)
+
+
+def show_delivery_result(app, sent, outcome, *, feedback=True):
+    """Shared Full/Compact outcome, based on receipt rather than API acceptance."""
+    # False suppresses success only; streaming partials suppress all feedback.
+    if feedback == 'silent':
+        return sent
+    if isinstance(outcome, bool):
+        outcome = DeliveryOutcome.CONFIRMED if outcome else DeliveryOutcome.UNVERIFIED
+    if sent and outcome in (DeliveryOutcome.CONFIRMED, DeliveryOutcome.SENT):
+        if not feedback:
+            return sent
+        if callable(sound := getattr(app, 'play_sound', None)):
+            sound('success')
+        indicator = getattr(app, 'listening_indicator', None)
+        if indicator is not None and callable(flash := getattr(indicator, 'flash_success', None)):
+            app._schedule_ui(flash)
+        if callable(show := getattr(app, '_show_outcome_chip', None)):
+            show('typed', 'success', 900)
+    elif sent:
+        if callable(show := getattr(app, '_show_outcome_chip', None)):
+            show(UNVERIFIED_DELIVERY, 'warning')
+    return sent
 
 
 def deliver_text_to_focused_editor(app, text):

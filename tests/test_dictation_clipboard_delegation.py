@@ -18,6 +18,16 @@ def _no_real_sendinput(monkeypatch):
 
 
 
+@pytest.fixture(autouse=True)
+def _foreground_integrity_is_ordinary(monkeypatch):
+    # 474: delivery asks Windows about the REAL foreground window. These tests must not depend on
+    # which window the developer has in front (an elevated one refuses delivery).
+    from types import SimpleNamespace as _NS
+    from samsara import injection_safety
+    monkeypatch.setattr(injection_safety, "window_integrity",
+                        lambda *a, **k: _NS(blocked=False, confirmed_ok=True, describe=lambda: "pinned by the test"))
+
+
 def _app():
     app = SimpleNamespace(
         config={"clipboard_delay": 0.23},
@@ -55,6 +65,7 @@ def test_shortcut_only_delivery_is_not_recorded_as_undoable(monkeypatch):
         restore_delay=0.23,
         before_paste=ANY,
         incomplete_snapshot_fallback=ANY,
+        delivery_observer=ANY,  # 474: the seam reports confirmed / sent / unverified
     )
     # owner decision 2026-10-08: undo is armed after a same-window paste (392)
     app._record_undoable_paste.assert_called_once_with('dictated text', target_hwnd=4242)

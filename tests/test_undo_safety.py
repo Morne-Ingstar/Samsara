@@ -17,11 +17,23 @@ def _undo_app(*, text="dictated text", target_hwnd=101):
     return app
 
 
+@pytest.fixture(autouse=True)
+def _foreground_integrity_is_ordinary(monkeypatch):
+    # 474: delivery asks Windows about the REAL foreground window. These tests must not depend on
+    # which window the developer has in front (an elevated one refuses delivery).
+    from types import SimpleNamespace as _NS
+    from samsara import injection_safety
+    monkeypatch.setattr(injection_safety, "window_integrity",
+                        lambda *a, **k: _NS(blocked=False, confirmed_ok=True, describe=lambda: "pinned by the test"))
+
+
 def _paste_app():
     app = dictation.DictationApp.__new__(dictation.DictationApp)
     app.config = {"clipboard_delay": 0.23}
     app.adaptive_learner = Mock()
     app._record_undoable_paste = Mock()
+    app.play_sound = Mock()          # 474: the delivery seam owns the success feedback
+    app._show_outcome_chip = Mock()
     return app
 
 
@@ -153,7 +165,7 @@ def test_paste_captures_window_immediately_before_unconfirmed_shortcut(monkeypat
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", target)
 
     def central_paste(text, *, paste_delay, restore_delay, before_paste,
-                      incomplete_snapshot_fallback=None):
+                      incomplete_snapshot_fallback=None, delivery_observer=None):
         assert text == "delivered text"
         assert before_paste() is True
         return True
@@ -175,7 +187,7 @@ def test_rejected_pre_paste_guard_does_not_capture_or_record_window(monkeypatch)
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", foreground)
 
     def central_paste(text, *, paste_delay, restore_delay, before_paste,
-                      incomplete_snapshot_fallback=None):
+                      incomplete_snapshot_fallback=None, delivery_observer=None):
         return bool(before_paste())
 
     monkeypatch.setattr(dictation, "paste_with_preservation", central_paste)

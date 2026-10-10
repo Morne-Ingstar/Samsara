@@ -45,12 +45,16 @@ window is never overwritten.
 """
 
 import ctypes
+from enum import Enum
 import sys
 import threading
 import time
 from typing import Callable, Dict, Optional
 
-from samsara.constants import CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY
+from samsara.constants import (
+    CLIPBOARD_PASTE_DELAY, CLIPBOARD_RESTORE_DELAY,
+    CLIPBOARD_READY_TIMEOUT, CLIPBOARD_READY_POLL,
+)
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
@@ -197,6 +201,15 @@ def _setup_win32_api():
     LPVOID = ctypes.c_void_p
     BOOL = ctypes.c_int
 
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = HWND
+    user32.GetWindowThreadProcessId.argtypes = [HWND, ctypes.POINTER(ctypes.c_ulong)]
+    user32.GetWindowThreadProcessId.restype = ctypes.c_ulong
+    user32.GetGUIThreadInfo.argtypes = [ctypes.c_ulong, LPVOID]
+    user32.GetGUIThreadInfo.restype = BOOL
+    user32.GetClassNameW.argtypes = [HWND, ctypes.c_wchar_p, ctypes.c_int]
+    user32.GetClassNameW.restype = ctypes.c_int
+
     # OpenClipboard
     user32.OpenClipboard.argtypes = [HWND]
     user32.OpenClipboard.restype = BOOL
@@ -204,6 +217,11 @@ def _setup_win32_api():
     # CloseClipboard
     user32.CloseClipboard.argtypes = []
     user32.CloseClipboard.restype = BOOL
+
+    user32.GetOpenClipboardWindow.argtypes = []
+    user32.GetOpenClipboardWindow.restype = HWND
+    user32.IsClipboardFormatAvailable.argtypes = [UINT]
+    user32.IsClipboardFormatAvailable.restype = BOOL
 
     # EmptyClipboard
     user32.EmptyClipboard.argtypes = []
@@ -580,7 +598,19 @@ def restore_clipboard(saved: Dict[int, bytes]) -> bool:
 
 def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
     if not saved:
-        return True  # Nothing to restore is success
+        # A genuinely empty original is user clipboard state too. Only clear
+        # the transport text when this snapshot belongs to a completed copy.
+        if (sys.platform == 'win32' and isinstance(saved, ClipboardSnapshot)
+                and saved.complete and hasattr(saved, 'pasted_text')):
+            if not _open_clipboard_with_retry():
+                return False
+            try:
+                if saved.seq is not None and get_clipboard_sequence_number() != saved.seq:
+                    return True  # a later user copy wins
+                return bool(_user32.EmptyClipboard())
+            finally:
+                _user32.CloseClipboard()
+        return True
 
     if sys.platform != 'win32':
         # Fallback for non-Windows
@@ -783,12 +813,162 @@ def copy_text(text: str) -> bool:
         return False
 
 
+# Only controls proven to need a direct paste command belong here.
+_MESSAGE_PASTE_CLASSES = {'Scintilla': (2179, 2006, 2008, 2143, 2145)}
+# SCI_PASTE, SCI_GETLENGTH, SCI_GETCURRENTPOS, SCI_GETSELECTIONSTART/END
+
+
+class DeliveryOutcome(str, Enum):
+    CONFIRMED = 'confirmed'
+    SENT = 'sent'
+    UNVERIFIED = 'unverified'
+
+
+_MESSAGE_TIMEOUT_MS = 200
+_PASTE_MESSAGE_TIMEOUT_MS = 1000
+
+
+class _DispatchedUnverified(str):
+    """Unverified receipt that forbids a second paste after uncertain dispatch."""
+    suppress_keystroke = True
+    value = DeliveryOutcome.UNVERIFIED.value
+
+
+_DISPATCHED_UNVERIFIED = _DispatchedUnverified(DeliveryOutcome.UNVERIFIED.value)
+
+
+class _GUIThreadInfo(ctypes.Structure):
+    from ctypes import wintypes as _w
+    _fields_ = [('cbSize', _w.DWORD), ('flags', _w.DWORD),
+                ('hwndActive', _w.HWND), ('hwndFocus', _w.HWND),
+                ('hwndCapture', _w.HWND), ('hwndMenuOwner', _w.HWND),
+                ('hwndMoveSize', _w.HWND), ('hwndCaret', _w.HWND),
+                ('rcCaret', _w.RECT)]
+
+
+def message_paste_to_focused_control() -> DeliveryOutcome:
+    """Acknowledge Scintilla edits without retrying an uncertain dispatched paste.
+
+    Reads use 200ms; paste uses 1000ms. Only pre-dispatch failures or a
+    fully read, unchanged editor allow the ordinary keystroke fallback.
+    """
+    outcome = DeliveryOutcome.SENT
+    dispatched = False
+    if sys.platform != 'win32' or _user32 is None:
+        return outcome
+    try:
+        foreground = _user32.GetForegroundWindow()
+        thread = _user32.GetWindowThreadProcessId(foreground, None)
+        info = _GUIThreadInfo(cbSize=ctypes.sizeof(_GUIThreadInfo))
+        if not foreground or not thread or not _user32.GetGUIThreadInfo(thread, ctypes.byref(info)):
+            return outcome
+        focus = info.hwndFocus
+        label = ctypes.create_unicode_buffer(256)
+        if not focus or not _user32.GetClassNameW(focus, label, len(label)):
+            return outcome
+        messages = _MESSAGE_PASTE_CLASSES.get(label.value)
+        if messages is None:
+            return outcome
+        outcome = DeliveryOutcome.UNVERIFIED
+        from samsara.injection_safety import window_integrity
+        if not window_integrity(focus).confirmed_ok:
+            return outcome
+
+        def send(message):
+            nonlocal dispatched
+            # Fail closed if focus moved between discovery and any message.
+            current = _GUIThreadInfo(cbSize=ctypes.sizeof(_GUIThreadInfo))
+            if (_user32.GetForegroundWindow() != foreground
+                    or not _user32.GetGUIThreadInfo(thread, ctypes.byref(current))
+                    or current.hwndFocus != focus):
+                raise RuntimeError('paste target changed')
+            result = ctypes.c_size_t()
+            if message == messages[0]:
+                dispatched = True
+            if not _user32.SendMessageTimeoutW(focus, message, 0, 0, 0x23,
+                                               _PASTE_MESSAGE_TIMEOUT_MS if message == messages[0] else _MESSAGE_TIMEOUT_MS,
+                                               ctypes.byref(result)):
+                raise RuntimeError('paste message timed out or was refused')
+            return result.value
+
+        paste_message = messages[0]
+        before = tuple(send(m) for m in messages[1:])
+        send(paste_message)
+        after = tuple(send(m) for m in messages[1:])
+        confirmed = (after[0] != before[0] or after[1] != before[1]
+                     or (before[2] != before[3] and after[2] == after[3]))
+        if confirmed:
+            logger.info('[PASTE] Scintilla message paste acknowledged by document/caret/selection change')
+            return DeliveryOutcome.CONFIRMED
+        logger.warning('[PASTE] Scintilla unchanged; trying Ctrl+V unverified')
+        return DeliveryOutcome.UNVERIFIED
+    except Exception as exc:
+        if dispatched:
+            logger.warning('[PASTE] Dispatched message unverified; no duplicate keystroke: %s', exc)
+            return _DISPATCHED_UNVERIFIED
+        logger.warning('[PASTE] Message paste unavailable; trying Ctrl+V unconfirmed: %s', exc)
+        return outcome
+
+
+def wait_for_clipboard_ready(expected_seq, settle) -> str:
+    """Return ready/changed/timeout; never send input or read clipboard payloads.
+
+    Require an unchanged sequence, Unicode text, a successful open/close,
+    and no remaining opener throughout the settle window. This is transport
+    readiness, not acknowledgement from the target editor.
+    """
+    if sys.platform != 'win32' or _user32 is None:
+        time.sleep(max(0, settle))
+        return 'ready'
+    # Python 3.11's Windows monotonic clock has ~15.6ms ticks. The high
+    # resolution monotonic performance counter keeps a 50ms settle at 50ms.
+    started = time.perf_counter()
+    deadline = started + CLIPBOARD_READY_TIMEOUT
+    stable_since = started
+    while True:
+        now = time.perf_counter()
+        healthy = False
+        try:
+            if expected_seq is not None and get_clipboard_sequence_number() != expected_seq:
+                return 'changed'
+            if _user32.OpenClipboard(None):
+                try:
+                    healthy = expected_seq is not None and bool(_user32.IsClipboardFormatAvailable(CF_UNICODETEXT))
+                    if expected_seq is not None and get_clipboard_sequence_number() != expected_seq:
+                        return 'changed'
+                finally:
+                    healthy = bool(_user32.CloseClipboard()) and healthy
+                healthy = healthy and not _user32.GetOpenClipboardWindow()
+        except Exception:
+            healthy = False
+        now = time.perf_counter()
+        if not healthy:
+            stable_since = None
+        elif stable_since is None:
+            stable_since = now
+        if healthy and now <= deadline and now - stable_since >= max(0, settle) - 1e-9:
+            return 'ready'
+        if now >= deadline:
+            logger.warning('[CLIP] readiness timed out after %.3fs; trying existing typed fallback', now - started)
+            return 'timeout'
+        # Healthy ordinary text needs just the two bounding samples: the
+        # monotonic sequence counter detects intervening clipboard writes.
+        # Repeated short Windows sleeps add scheduler overhead to the 50ms
+        # common case. Contention still polls at 5ms.
+        if healthy and settle <= CLIPBOARD_PASTE_DELAY:
+            pause = max(0, settle - (now - stable_since))
+        else:
+            pause = CLIPBOARD_READY_POLL
+        time.sleep(min(pause, deadline - now))
+
+
 def paste_with_preservation(
     text: str,
     paste_delay: float = CLIPBOARD_PASTE_DELAY,
     restore_delay: float = CLIPBOARD_RESTORE_DELAY,
     before_paste: Optional[Callable[[], bool]] = None,
     incomplete_snapshot_fallback: Optional[Callable[[], bool]] = None,
+    delivery_observer: Optional[Callable[[DeliveryOutcome], None]] = None,
 ) -> bool:
     """
     Paste text via clipboard while preserving original clipboard content.
@@ -797,15 +977,15 @@ def paste_with_preservation(
 
     Args:
         text: Text to paste
-        paste_delay: Delay after copying before pasting (seconds)
+        paste_delay: Minimum stable clipboard window before pasting (seconds)
         restore_delay: Delay after pasting before restoring clipboard (seconds)
         before_paste: Optional fail-closed focus guard, evaluated immediately
             before Ctrl+V after clipboard preparation and paste delay.
         incomplete_snapshot_fallback: Optional typed-input delivery callable
-            used only when the current clipboard cannot be restored exactly.
+            used when snapshot preservation or clipboard readiness fails.
 
     Returns:
-        True if paste was successful
+        True if input was sent (does not confirm receipt by the target).
     """
     if not HAS_PYPERCLIP:
         _log_error("pyperclip not available")
@@ -846,12 +1026,19 @@ def paste_with_preservation(
             # runs, something else changed the clipboard during the paste
             # window and blindly restoring would clobber that, not just
             # put back the original content restore is meant to protect.
+            copied_seq = get_clipboard_sequence_number()
             if isinstance(saved, ClipboardSnapshot):
-                saved.seq = get_clipboard_sequence_number()
+                saved.seq = copied_seq
                 saved.pasted_text = text
 
-            # Small delay to ensure clipboard is ready
-            time.sleep(paste_delay)
+            readiness = wait_for_clipboard_ready(copied_seq, paste_delay)
+            if readiness != 'ready':
+                if readiness == 'changed':
+                    logger.warning('[CLIP] Paste cancelled: clipboard changed during preparation')
+                    return False
+                if incomplete_snapshot_fallback is not None:
+                    return bool(incomplete_snapshot_fallback())
+                return False
 
             if before_paste is not None and not before_paste():
                 logger.warning(
@@ -859,12 +1046,15 @@ def paste_with_preservation(
                 )
                 return False
 
-            # Simulate Ctrl+V
-            pyautogui.hotkey('ctrl', 'v')
+            outcome = message_paste_to_focused_control()
+            if outcome != DeliveryOutcome.CONFIRMED and not getattr(outcome, 'suppress_keystroke', False):
+                pyautogui.hotkey('ctrl', 'v')
+            if delivery_observer is not None:
+                delivery_observer(outcome)
 
             # Wait for the target application to read the clipboard
             # This is necessary because some apps read clipboard asynchronously
-            time.sleep(restore_delay)
+            time.sleep(max(restore_delay, CLIPBOARD_RESTORE_DELAY))
 
             return True
 
@@ -874,8 +1064,9 @@ def paste_with_preservation(
 
         finally:
             # Always restore clipboard, even if paste failed
-            if saved:
-                restore_clipboard(saved)
+            if saved or (isinstance(saved, ClipboardSnapshot) and hasattr(saved, 'pasted_text')):
+                if not restore_clipboard(saved):
+                    logger.error('[CLIP] Original clipboard restore failed; exact preservation not confirmed')
 
 
 
@@ -916,7 +1107,7 @@ def build_unicode_key_events(text: str) -> list:
     return events
 
 
-def type_text_unicode(text: str, chunk: int = 64) -> bool:
+def type_text_unicode(text: str, chunk: int = 64, *, key_interval: float = 0) -> bool:
     """Type `text` into the focused window via SendInput KEYEVENTF_UNICODE.
 
     Returns True when every event batch was accepted. Never raises.
@@ -976,6 +1167,8 @@ def type_text_unicode(text: str, chunk: int = 64) -> bool:
         # transition (live artifact 2026-08-02: single-N decode typed as NN).
         time.sleep(0.03)
         user32 = ctypes.windll.user32
+        if key_interval:
+            chunk = 2  # one down/up pair; debounce tools see repeated VK_PACKET
         i = 0
         while i < len(arr_all):
             batch = arr_all[i:i + chunk]
@@ -988,7 +1181,7 @@ def type_text_unicode(text: str, chunk: int = 64) -> bool:
                 )
                 return False
             i += chunk
-            time.sleep(0.001)
+            time.sleep(max(0.001, key_interval))
         return True
     except Exception as e:
         _log_error("type_text_unicode failed", e)
