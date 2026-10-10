@@ -6171,16 +6171,26 @@ class DictationApp:
         except Exception as exc:
             logger.debug(f"[POLICY] stop_all on session exit failed: {exc}")
         is_toggle_session = self.config.get('command_mode', {}).get('mode', 'hold') == 'toggle'
+        parked = 0
         try:
             # Session end discards all state. A future toggle entry chooses
             # the combined hands-free lane; reset's COMMAND default remains
             # for legacy direct callers and the optional command-only lane.
             if self._session_mode_manager is not None:
+                manager = self._session_mode_manager
+                if (getattr(manager, '_live_surface_enabled', False)
+                        and manager.dictate_pending_buffer):
+                    manager.pause_draft(source='session exit')
+                    manager.discard_retained_draft()
                 retain = getattr(self._session_mode_manager, 'retain_draft', None)
-                parked = retain() if callable(retain) else 0
+                parked = (len(manager.dictate_pending_buffer) if getattr(manager, 'has_parked_hold', False)
+                          else retain() if callable(retain) else 0)
                 if parked:
                     logger.info('[DICTATE-PREVIEW] parked %d-char draft at session exit', parked)
                 self._session_mode_manager.reset()
+                controller = getattr(self, 'live_surface', None)
+                if controller is not None and parked:
+                    controller.sync_draft(self._session_mode_manager)
             if is_toggle_session:
                 # Release this session's hold on the WakeConsumer pipeline
                 # (see enter_command_mode's _ensure_wake_consumer). If
@@ -6218,6 +6228,11 @@ class DictationApp:
                 if not listening_display.display_visible(self):
                     self._schedule_ui(self.listening_indicator.hide)
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
+        if (parked and not getattr(self._session_mode_manager, '_live_surface_enabled', False)):
+            # Compact has no draft editor; name its actual available route.
+            self._show_outcome_chip(
+                "Kept draft: restart hands-free to send or clear.",  # PLACEHOLDER COPY (492)
+                'accent', None, source='draft_parked')
         was_recording = self.recording
         if was_recording:
             self.stop_recording()  # stop_recording() already plays "stop" as acknowledgment

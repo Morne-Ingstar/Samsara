@@ -192,27 +192,56 @@ def test_question_resolved_before_queued_handoff_does_not_reappear(surface):
 
 @pytest.mark.parametrize('edge', list(Edge))
 def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, edge):
+    """492, 2026-10-10: owner's huge-gap question reverses band reservation.
+
+    Bottom keeps its bottom edge and transcript distance; other docks keep
+    the header/mark with room below. Clear stays in its header slot throughout.
+    """
     c, i, clock = surface
     c.app.config['ui']['live_surface']['placement'] = {'preferred_monitor': 'test',
         'monitors': {'test': placement_record(Placement(edge))}}
     c.begin_capture(Lane.HOLD)
     c.post(SurfaceEvent(EventKind.DOCUMENT_UPDATED, text='Synthetic settled draft.', document_id='d', revision=1))
     c.drain(); qapp.processEvents(); w = c.widget
-    before = (QRect(w.geometry()), QRect(w._clear.geometry()), QRect(w._transcript.geometry()), w.mapToGlobal(w.mark_rect.topLeft()))
+    before = QRect(w.geometry())
+    clear = QRect(w._clear.geometry())
+    mark = w.mapToGlobal(w.mark_rect.topLeft())
+    transcript = QRect(w._transcript.geometry())
+    distance = before.bottom() - w.mapToGlobal(transcript.topLeft()).y()
     for kind in ['success', 'warning', 'error', 'accent']:
         i.show_outcome('Synthetic receipt', kind, 1800); c.drain(); qapp.processEvents()
-        assert (w.geometry(), w._clear.geometry(), w._transcript.geometry(), w.mapToGlobal(w.mark_rect.topLeft())) == before
-        clock[0] += 2; c.refresh_expired(); qapp.processEvents()
-        assert (w.geometry(), w._clear.geometry(), w._transcript.geometry(), w.mapToGlobal(w.mark_rect.topLeft())) == before
+        band_height = w._band.required_height(w.card_content_rect.width())
+        assert band_height > 0 and w.height() == before.height() + band_height
+        assert w.x() == before.x() and w.width() == before.width()
+        assert w._clear.geometry() == clear
+        assert w._transcript.size() == transcript.size()
+        if edge is Edge.BOTTOM:
+            assert w.geometry().bottom() == before.bottom()
+            assert w.geometry().bottom() - w.mapToGlobal(w._transcript.pos()).y() == distance
+        else:
+            assert w.y() == before.y()
+            assert w.mapToGlobal(w.mark_rect.topLeft()) == mark
+            assert w._transcript.y() == transcript.y() + band_height
+        clock[0] = c.view().notice.expires_at; c.refresh_expired(); qapp.processEvents()
+        assert w._band.required_height(w.card_content_rect.width()) == 0
+        assert w.geometry() == before
+        assert w._clear.geometry() == clear and w._transcript.geometry() == transcript
+        assert w.mapToGlobal(w.mark_rect.topLeft()) == mark
 
 
 def test_empty_status_reserves_band_and_long_question_wraps_completely(surface, qapp):
+    """492, 2026-10-10: huge-gap feedback removes the formerly reserved band.
+
+    Empty status is header-only; long questions still wrap without clipping.
+    """
     c, i, _ = surface
     i.set_session_mode('COMMAND'); c.drain(); qapp.processEvents()
-    assert (c.widget.width(), c.widget.height()) == (360, 132)
+    assert (c.widget.width(), c.widget.height()) == (360, 76)
+    assert c.widget._band.required_height(c.widget.card_content_rect.width()) == 0
     message = ('This is a synthetic long question with a complete answer instruction. ' * 3) + 'yes or no'
     i.show_feedback(message, 'pending', None, Feedback(FeedbackKind.QUESTION, FeedbackPurpose.QUESTION, 'long')); c.drain(); qapp.processEvents()
     band = c.widget._band
+    assert c.widget.height() == 76 + band.required_height(c.widget.card_content_rect.width())
     assert band.label.text() == message and band.label.wordWrap()
     assert band.label.height() >= band.label.heightForWidth(band.label.width())
     assert c.widget.height() > 132 and band.rect().contains(band.label.geometry())

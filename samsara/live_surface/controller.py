@@ -86,7 +86,7 @@ class LiveSurfaceController:
                 if event.kind is EventKind.NOTICE and view.feedback_revision != revision:
                     remember_feedback(self.app, view.feedback_event.message, view.feedback_event)
         if self.widget is not None:
-            self.widget.refresh(self.model.view(), animate=False)
+            self.widget.refresh(self.model.view(), animate=True)
             self._place_widget()
             self.widget.show()
         return accepted
@@ -100,7 +100,7 @@ class LiveSurfaceController:
         if self.widget is not None and not self.widget.is_dragging:
             view = self.model.view()
             if view != self.widget.view:
-                self.widget.refresh(view, animate=False)
+                self.widget.refresh(view, animate=True)
                 self._place_widget()
 
     def _refresh_capture_activity(self) -> None:
@@ -230,7 +230,10 @@ class LiveSurfaceController:
         resolved = placement_for_screens(records, screens,
             preferred_monitor=raw.get("preferred_monitor"))
         mark = self.widget.mark_rect
-        dimensions = dict(width=self.widget.width(), height=self.widget.height(),
+        animation = getattr(self.widget, '_animation', None)
+        target = animation.endValue() if animation is not None and animation.state() == animation.State.Running else None
+        dimensions = dict(width=target.width() if target is not None else self.widget.width(),
+                          height=target.height() if target is not None else self.widget.height(),
                           mark_offset=(mark.x(), mark.y()))
         # No saved record: retain HEAD caret avoidance and its stable anchor.
         # A user dock or FREE drop always wins over automatic relocation.

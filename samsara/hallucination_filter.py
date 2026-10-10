@@ -20,6 +20,7 @@ SIGNOFF_PHRASES = (
     "thank you for watching",
     "thanks for watching",
     "thank you",
+    "thanks",
     "like and subscribe",
     "subscribe",
     "see you next time",
@@ -196,3 +197,14 @@ def is_signoff_hallucination(text, segments) -> tuple[bool, str]:
         return True, "tail>speech"
 
     return False, "audio_not_corroborated"
+
+
+def signoff_failure_reason(text, segments, duration_s=None, config=None) -> str | None:
+    """Adapt the shared verdict to decoder guards that return a reason or None."""
+    from samsara.config_defaults import cfg_get
+
+    dropped, reason = is_signoff_hallucination(
+        text, SignoffContext(segments, audio_duration_s=duration_s,
+                             enabled=cfg_get(config or {}, "dictation.signoff_filter")),
+    )
+    return "signoff:" + reason if dropped else None

@@ -42,7 +42,7 @@ def test_every_form_has_contained_content_and_compact_content_fit_geometry(qapp,
     assert (widget.width(), widget.height()) == ((152, 44) if form is VisibleForm.MARK else
         # Finish2: badge explains delivery; status reserves lane + activity + Clear.
         (500, 112) if form is VisibleForm.DRAFT_BADGE else
-        (360, 132) if form is VisibleForm.STATUS else
+        (360, 76) if form is VisibleForm.STATUS else
         (LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0], widget.height()))
     if form not in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE, VisibleForm.STATUS):
         assert 96 <= widget.height() <= REVIEW_SIZE[1] + 76
@@ -137,7 +137,7 @@ def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
                                      capture=CaptureState.RECORDING))
     widget.show()
     qapp.processEvents()
-    assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8 + 56 + 22
+    assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8
     assert widget._transcript.height() >= 24
     assert widget._clear.isVisible() and widget._clear.height() >= MARK_SIZE
     assert not widget._pause.isVisible() and not widget._correct.isVisible()

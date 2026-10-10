@@ -160,6 +160,8 @@ class _FeedbackBand(QWidget):
         self.label.setAccessibleDescription(description)
 
     def required_height(self, width):
+        if not self.notice or not self.notice.message:
+            return 0
         return max(BAND_HEIGHT_DIP, self.label.heightForWidth(max(1, width-52)) + 16)
 
     def restyle(self):
@@ -341,9 +343,13 @@ class LiveSurfaceWidget(QWidget):
         """Apply controller-owned, already-clamped geometry without focus."""
         if self._dragging:
             return
-        if self._animation is not None:
-            self._animation.stop()
+        if self._animation is not None and self._animation.state() == QPropertyAnimation.State.Running:
+            bounds = placed.bounds
+            self._animation.setEndValue(QRect(round(bounds.x), round(bounds.y),
+                                              round(bounds.width), round(bounds.height)))
+            return
         bounds = placed.bounds
+        self._placement_edge = placed.edge
         self.setGeometry(round(bounds.x), round(bounds.y), round(bounds.width), round(bounds.height))
         self._layout_children(); self._update_mask()
 
@@ -539,8 +545,11 @@ class LiveSurfaceWidget(QWidget):
         target = self._form_rect(self._display_form())
         if self._dragging:
             return
+        from samsara.live_surface.placement import Edge
+        if getattr(self, '_placement_edge', None) is Edge.BOTTOM:
+            target.moveBottom(self.geometry().bottom())
         if animate and self.isVisible() and not self._reduced_motion and self.geometry().size() != target.size(): self._animate_geometry(target)
-        else: self.resize(target.size()); self._layout_children(); self._update_mask()
+        else: self.setGeometry(target); self._layout_children(); self._update_mask()
         self._restyle(); self._announce_transition(previous, view); self.update()
         if self._follow_latest: self._scroll_to_latest()
 
@@ -580,9 +589,10 @@ class LiveSurfaceWidget(QWidget):
         if form is VisibleForm.MARK: return QRect(self.x(), self.y(), COMPACT_WIDTH, MARK_SIZE)
         if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), LIVE_SIZE[0], 112)
         width = STATUS_SIZE[0] if form is VisibleForm.STATUS else LIVE_SIZE[0]
+        parked = self._view.document is DocumentState.PARKED_DRAFT
         self._band_height = self._band.required_height(width-2*CARD_INSET)
         if self._view.secondary_notice:
-            self._band_height += REGION_GAP + self._secondary_band.required_height(width-2*CARD_INSET)
+            self._band_height += self._secondary_band.required_height(width-2*CARD_INSET)
         if form is VisibleForm.STATUS:
             return QRect(self.x(), self.y(), STATUS_SIZE[0], 76+self._band_height)
         width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
@@ -592,12 +602,18 @@ class LiveSurfaceWidget(QWidget):
             rows = 1 if self._editor_mode else ceil(min(4, max(0, len(source)-page*4))/2)
             height = 2*CARD_INSET + 2*(MARK_SIZE+REGION_GAP) + rows*(MARK_SIZE+REGION_GAP) + MARK_SIZE
         else:
-            # A live panel grows for content, but does not retain a blank
-            # review-sized slab for a one-line draft.
-            chars_per_line = 50
-            lines = max(1, ceil((len(self._view.text) + len(self._view.provisional_text)) / chars_per_line))
-            height = 64 + min(10, lines) * 24 + (24 if self._view.provisional_text else 0) + 20
-            height = max(132, min(REVIEW_SIZE[1], height))
+            # 492: use the rendered document, including explicit newlines and
+            # actual font wrapping; no minimum envelope or empty notice band.
+            doc = self._transcript.document().clone()
+            doc.setDefaultFont(theme.qfont(theme.TYPE_BODY))
+            doc.setTextWidth(width - 2*CARD_INSET - 2*self._transcript.frameWidth())
+            text_height = min(240, ceil(doc.size().height()) + 4)
+            doc.deleteLater()
+            self._transcript_height = text_height
+            hint_height = 28 if self._parked_idle(self._view) else 0
+            return QRect(self.x(), self.y(), width,
+                         2*CARD_INSET + HEADER_HEIGHT + hint_height + REGION_GAP
+                         + self._band_height + text_height)
         return QRect(self.x(), self.y(), width, height + self._band_height + 20)
 
     def _animate_geometry(self, target: QRect) -> None:
@@ -646,11 +662,12 @@ class LiveSurfaceWidget(QWidget):
         self._state.setGeometry(state_x, content.y()+24, content.width()-MARK_SIZE-12-clear_width-REGION_GAP, 24)
         self._lane.show(); self._state.show()
         band_y = content.y()+HEADER_HEIGHT+12
+        parked = self._view.document is DocumentState.PARKED_DRAFT
         primary_height = self._band.required_height(content.width())
         self._band.setGeometry(content.x(), band_y, content.width(), primary_height)
-        self._band.show()
+        self._band.setVisible(primary_height > 0)
         if self._view.secondary_notice:
-            self._secondary_band.setGeometry(content.x(), band_y+primary_height+REGION_GAP,
+            self._secondary_band.setGeometry(content.x(), band_y+primary_height,
                 content.width(), self._secondary_band.required_height(content.width()))
             self._secondary_band.show()
         if form is VisibleForm.STATUS:
@@ -678,7 +695,21 @@ class LiveSurfaceWidget(QWidget):
         state_x = content.x()+MARK_SIZE+12
         self._lane.setGeometry(state_x, content.y(), max(1, right-state_x), 24)
         self._state.setGeometry(state_x, content.y()+24, max(1, right-state_x), 24)
-        y = content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+22
+        y = content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height
+        if form in (VisibleForm.LIVE, VisibleForm.REVIEW):
+            hint_height = 28 if self._parked_idle(self._view) else 0
+            if hint_height:
+                self._state.setGeometry(content.x(), content.y()+HEADER_HEIGHT,
+                                        content.width(), hint_height)
+            band_y = content.y()+HEADER_HEIGHT+hint_height+REGION_GAP
+            self._band.move(content.x(), band_y)
+            if self._view.secondary_notice:
+                self._secondary_band.move(content.x(), band_y+primary_height)
+            y = band_y+self._band_height
+        from samsara.live_surface.placement import Edge
+        if getattr(self, '_placement_edge', None) is Edge.BOTTOM:
+            # Keep settled text at its dock distance throughout the animation.
+            y = content.bottom()+1-getattr(self, '_transcript_height', content.bottom()-y+1)
         available = content.bottom() - y + 1
         # Both settled and incoming words need the same scrollable viewport.
         # A capped QLabel otherwise clips long speech below a retained draft.
@@ -756,7 +787,7 @@ class LiveSurfaceWidget(QWidget):
         try:
             painter.setPen(QPen(theme.qcolor(theme.BORDER),1)); painter.setBrush(theme.qcolor(theme.BG1)); painter.drawRoundedRect(QRectF(self.card_rect).adjusted(.5,.5,-.5,-.5),CARD_RADIUS,CARD_RADIUS)
             if self._display_form() in (VisibleForm.LIVE, VisibleForm.REVIEW):
-                y = CARD_INSET+HEADER_HEIGHT+REGION_GAP+self._band_height+16
+                y = self._transcript.y()-4
                 painter.setPen(QPen(theme.qcolor(theme.BORDER_FAINT), 1))
                 painter.drawLine(CARD_INSET, y, self.width()-CARD_INSET, y)
             if self._view.capture is CaptureState.UNAVAILABLE:
@@ -883,7 +914,14 @@ class LiveSurfaceWidget(QWidget):
         self._restore_passive()
         self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
+    @staticmethod
+    def _parked_idle(view: SurfaceView) -> bool:
+        return (view.document is DocumentState.PARKED_DRAFT and bool(view.text)
+                and view.capture is CaptureState.OFF)
+
     def _lane_text(self, view: SurfaceView) -> str:
+        if self._parked_idle(view):
+            return "Kept draft"  # PLACEHOLDER COPY (492)
         labels = {"hold": "Hold", "toggle": "Toggle", "hands_free_dictate": "Hands-free",
                   "continuous": "Continuous", "command": "Command", "ava": "Ava"}
         return labels.get(view.lane.value, "") if view.lane is not None else ("Hold" if view.form is not VisibleForm.MARK else "")
@@ -891,6 +929,8 @@ class LiveSurfaceWidget(QWidget):
     def _state_text(self, view: SurfaceView) -> str:
         if view.capture is CaptureState.UNAVAILABLE: return "microphone unavailable"
         if view.snoozed: return "Snoozed"
+        if self._parked_idle(view) and view.form is not VisibleForm.DRAFT_BADGE:
+            return "Insert text to send; Clear to discard."  # PLACEHOLDER COPY (492)
         if view.capture is CaptureState.RECORDING: return "recording"
         if view.capture is CaptureState.TRANSCRIBING: return "transcribing"
         if view.form is VisibleForm.DRAFT_BADGE:

@@ -1737,7 +1737,7 @@ class StreamingWorker(threading.Thread):
                                        elapsed_ms=elapsed_ms)
                 return
 
-            if self._decoder_guard(seg_list, text, params):
+            if self._decoder_guard(seg_list, text, params, duration_s=duration_s):
                 self._session.on_final(None, duration_s=duration_s,
                                        elapsed_ms=elapsed_ms)
                 return
@@ -1868,14 +1868,13 @@ class StreamingWorker(threading.Thread):
         params['temperature'] = 0.0 if params.get('temperature') == 0.0 else (0.0, 0.2)
         return params
 
-    def _decoder_guard(self, segments, text, params, *, partial=False):
+    def _decoder_guard(self, segments, text, params, *, partial=False, duration_s=None):
         """Use decoder verdict first, then the batch path's exact backstop."""
         from samsara.hallucination_filter import (
             DECODER_LOGPROB_THRESHOLD, DECODER_NO_SPEECH_THRESHOLD,
-            DECODER_SPEECH_FLOOR, decoder_failure_reason,
+            DECODER_SPEECH_FLOOR, decoder_failure_reason, signoff_failure_reason,
         )
         from samsara.transcript_gates import _is_hallucinated_segments
-
         tail = getattr(self._session, '_release_tail_signals', None) or {}
         temperature = params.get('temperature', (0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
         top = max(temperature) if isinstance(temperature, (list, tuple)) else temperature
@@ -1886,6 +1885,7 @@ class StreamingWorker(threading.Thread):
             speech_level=tail.get('speech_level'),
             speech_floor=tail.get('speech_floor', DECODER_SPEECH_FLOOR),
         )
+        reason = reason or signoff_failure_reason(text, segments, duration_s, self._session.app.config)
         if not reason and not partial and _is_hallucinated_segments(segments, text):
             reason = 'batch_hallucination_backstop'
         if reason and not partial:
