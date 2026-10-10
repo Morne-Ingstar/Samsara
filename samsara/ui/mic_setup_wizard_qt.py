@@ -24,7 +24,7 @@ import sounddevice as sd
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
-    QProgressBar, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout,
     QWidget,
 )
 
@@ -277,12 +277,12 @@ class _WizardWindow(QDialog):
         self._wake_cal_cancel = None
 
         self.setWindowTitle("Microphone Setup")
-        self.setFixedSize(560, 480)
+        self.resize(640, 680)
+        self.setMinimumSize(560, 480)
         self.setStyleSheet(theme.build_stylesheet())
         self.setWindowFlags(
             Qt.WindowType.Dialog |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.MSWindowsFixedSizeDialogHint
+            Qt.WindowType.WindowCloseButtonHint
         )
 
         self._build_ui()
@@ -329,7 +329,11 @@ class _WizardWindow(QDialog):
         self._stack.addWidget(self._build_level_page())
         self._stack.addWidget(self._build_wake_page())
         self._stack.addWidget(self._build_done_page())
-        root.addWidget(self._stack, stretch=1)
+        pages = QScrollArea()
+        pages.setWidgetResizable(True)
+        pages.setFrameShape(QFrame.Shape.NoFrame)
+        pages.setWidget(self._stack)
+        root.addWidget(pages, stretch=1)
 
         # ---- Nav bar ----
         nav = QWidget()
@@ -390,7 +394,7 @@ class _WizardWindow(QDialog):
         self._device_combo.currentIndexChanged.connect(self._on_device_changed)
         row.addWidget(self._device_combo, stretch=1)
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.setFixedWidth(80)
+        theme.make_secondary(refresh_btn)
         refresh_btn.clicked.connect(self._on_refresh_devices)
         row.addWidget(refresh_btn)
         lay.addLayout(row)
@@ -425,6 +429,7 @@ class _WizardWindow(QDialog):
         self._level_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self._level_hint)
         pace_check = QPushButton("Check speech pace (optional)")
+        theme.make_secondary(pace_check)
         pace_check.clicked.connect(self._recommend_speech_pace)
         lay.addWidget(pace_check, alignment=Qt.AlignmentFlag.AlignCenter)
         self._pace_recommendation = QLabel("Read one sentence at your normal pace, then choose whether to use the recommendation.")
@@ -523,9 +528,8 @@ class _WizardWindow(QDialog):
         lay.addWidget(self._done_summary)
         lay.addStretch()
         adv_btn = QPushButton("Open Wake Word Debug (advanced)")
-        theme.make_ghost(adv_btn)
+        theme.make_secondary(adv_btn)
         adv_btn.clicked.connect(self._open_debug)
-        adv_btn.setFixedWidth(280)
         adv_row = QHBoxLayout()
         adv_row.addStretch()
         adv_row.addWidget(adv_btn)
@@ -1398,7 +1402,7 @@ class _AttemptSlot(QWidget):
     def __init__(self, number: int, parent=None):
         super().__init__(parent)
         self._number = number
-        self.setFixedSize(self._SIZE, self._SIZE + 22)
+        self.setMinimumWidth(self._SIZE)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)

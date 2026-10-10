@@ -49,6 +49,8 @@ class _ReviewWindow(QWidget):
         self.setWindowTitle("Workflow Capture — Review")
         self.setMinimumSize(700, 560)
         self.resize(780, 640)
+        self.setStyleSheet(theme.build_stylesheet())
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self._signals = _Signals(self)
         self._signals.load_events.connect(self._load_events)
@@ -92,6 +94,7 @@ class _ReviewWindow(QWidget):
             "Nothing is sent until you click Analyze."
         )
         hint.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
+        hint.setWordWrap(True)
         root.addWidget(hint)
 
         # --- scrollable checkbox list ---
@@ -111,10 +114,10 @@ class _ReviewWindow(QWidget):
         # --- select-all / deselect-all ---
         sel_row = QHBoxLayout()
         btn_all = QPushButton("Select all")
-        btn_all.setFixedWidth(90)
+        theme.make_secondary(btn_all)
         btn_all.clicked.connect(lambda: self._set_all(True))
         btn_none = QPushButton("Deselect all")
-        btn_none.setFixedWidth(90)
+        theme.make_secondary(btn_none)
         btn_none.clicked.connect(lambda: self._set_all(False))
         sel_row.addWidget(btn_all)
         sel_row.addWidget(btn_none)
@@ -134,14 +137,11 @@ class _ReviewWindow(QWidget):
         self._provider = QComboBox()
         provider_label.setBuddy(self._provider)
         self._provider.addItems(["Local (Ollama)", "Cloud LLM"])
-        self._provider.setFixedWidth(160)
+        self._provider.setMinimumWidth(180)
         ctrl_row.addWidget(self._provider)
         ctrl_row.addSpacing(16)
         self._analyze_btn = QPushButton("Analyze selected events")
-        self._analyze_btn.setStyleSheet(
-            f"QPushButton {{ background: {theme.ACCENT}; color: {theme.TEXT_ON_ACCENT}; padding: 4px 14px; border-radius: 4px; }}"
-            f"QPushButton:disabled {{ background: {theme.ACCENT_DISABLED}; }}"
-        )
+        theme.make_primary(self._analyze_btn)
         self._analyze_btn.clicked.connect(self._on_analyze)
         ctrl_row.addWidget(self._analyze_btn)
         ctrl_row.addStretch()
@@ -159,14 +159,13 @@ class _ReviewWindow(QWidget):
         self._result.setReadOnly(True)
         self._result.setMinimumHeight(160)
         self._result.setPlaceholderText("(Click 'Analyze selected events' to generate proposals.)")
-        self._result.setStyleSheet(f"font-family: monospace; font-size: {theme.TYPE_MIN}px;")
         root.addWidget(self._result)
 
         # --- close ---
         close_row = QHBoxLayout()
         close_row.addStretch()
         close_btn = QPushButton("Close")
-        close_btn.setFixedWidth(80)
+        theme.make_secondary(close_btn)
         close_btn.clicked.connect(self.hide)
         close_row.addWidget(close_btn)
         root.addLayout(close_row)

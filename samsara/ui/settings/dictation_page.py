@@ -2,7 +2,8 @@
 
 import copy
 from samsara.config_schema import SETTINGS_SCHEMA
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QLineEdit, QWidget, QSizePolicy
 from .presentation import SettingRow
 
 TITLE = "Dictation"
@@ -220,8 +221,50 @@ GROUPS = {
     'continuous_commit_trigger': 'Continuous dictation',
     'adv_threshold_mode': 'Microphone calibration',
     'cmd_stop_phrases': 'Session controls',
-    'wake_profiles': 'Wake profiles',
 }
+
+
+class _WakeProfilesEditor(QWidget):
+    """Keep the wide table, stacking each profile at narrow page widths."""
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("wakeProfilesEditor")
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.columns = QGridLayout(self)
+        self.columns.setContentsMargins(0, 0, 0, 0)
+        self.columns.setSpacing(6)
+        self.entries = []
+        self._narrow = None
+
+    def reflow(self):
+        narrow = self.width() < 650
+        if narrow == self._narrow:
+            return
+        self._narrow = narrow
+        while self.columns.count():
+            self.columns.takeAt(0)
+        for column in range(5):
+            self.columns.setColumnStretch(column, 0)
+        for index, (headers, fields) in enumerate(self.entries):
+            for column, (header, field) in enumerate(zip(headers, fields)):
+                header.setVisible(narrow or index == 0)
+                if narrow:
+                    line = index * 4
+                    positions = ((line, 0, 1), (line, 1, 1),
+                                 (line + 2, 0, 2), (line + 2, 2, 1), (line, 2, 1))
+                    row, col, span = positions[column]
+                    self.columns.addWidget(header, row, col, 1, span)
+                    self.columns.addWidget(field, row + 1, col, 1, span, Qt.AlignmentFlag.AlignVCenter)
+                else:
+                    if index == 0:
+                        self.columns.addWidget(header, 0, column)
+                    self.columns.addWidget(field, index + 1, column, Qt.AlignmentFlag.AlignVCenter)
+        for column, stretch in enumerate((1, 2, 1) if narrow else (1, 2, 2, 1, 0)):
+            self.columns.setColumnStretch(column, stretch)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.reflow()
 
 
 def build(owner):
@@ -230,48 +273,38 @@ def build(owner):
     if "wake_profiles" not in owner.app.config:
         profiles = copy.deepcopy(SETTINGS_SCHEMA["wake_profiles"]["default"])
 
-    editor = QWidget()
-    columns = QVBoxLayout(editor)
-    columns.setContentsMargins(0, 0, 0, 0)
-    columns.setSpacing(6)
-    editor.setMinimumHeight(44 * (len(profiles) + 1))
-    header = QHBoxLayout()
-    header.addWidget(QLabel("Profile"), 1)
-    header.addWidget(QLabel("Phrase"), 2)
-    header.addWidget(QLabel("Target app (.exe)"), 2)
-    header.addWidget(QLabel("Send word"), 1)
-    header.addWidget(QLabel("On / Off"), 0)
-    columns.addLayout(header)
+    editor = _WakeProfilesEditor()
     controls = []
     for profile in profiles:
         profile = profile if isinstance(profile, dict) else {}
-        line = QHBoxLayout()
-        line.addWidget(QLabel(str(profile.get("id", "Profile"))), 1)
+        name = QLabel(str(profile.get("id", "Profile")))
         phrase = QLineEdit(str(profile.get("phrase", "")))
-        phrase.setMinimumHeight(44)
         phrase.setAccessibleName(f"{profile.get('id', 'Profile')} wake phrase")
-        line.addWidget(phrase, 2)
         target = QLineEdit(str(profile.get("target_process", "")))
-        target.setMinimumHeight(44)
         target.setAccessibleName(f"{profile.get('id', 'Profile')} target app executable")
-        line.addWidget(target, 2)
         send_word = QLineEdit(str(profile.get("send_word", "")))
-        send_word.setMinimumHeight(44)
         send_word.setAccessibleName(f"{profile.get('id', 'Profile')} send word")
-        line.addWidget(send_word, 1)
         enabled = QCheckBox("On" if profile.get("enabled", True) else "Off")
         enabled.setMinimumHeight(44)
         enabled.setAccessibleName(f"{profile.get('id', 'Profile')} wake profile")
         enabled.setChecked(profile.get("enabled", True))
         enabled.toggled.connect(lambda checked, button=enabled: button.setText("On" if checked else "Off"))
-        line.addWidget(enabled)
-        columns.addLayout(line)
+        for field in (phrase, target, send_word):
+            field.setFixedHeight(44)
+            field.setMinimumWidth(100)
+            field.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        headers = [QLabel(text, editor) for text in
+                   ("Profile", "Phrase", "Target app (.exe)", "Send word", "On / Off")]
+        editor.entries.append((headers, (name, phrase, target, send_word, enabled)))
         controls.append({"id": profile.get("id"), "phrase": phrase, "target_process": target,
                          "send_word": send_word, "enabled": enabled})
 
+    editor.reflow()
     description = "Edit the wake phrase, target app, and send word for each profile. Turn a profile off when you do not want Samsara to respond to it."
-    row = SettingRow("Wake profiles", "Choose the phrases that open your target apps.", [editor],
+    row = SettingRow("Wake profiles", "Choose the phrases that open your target apps.", [],
                      SETTINGS_SCHEMA["wake_profiles"].get("help"))
+    # Keep the editor below the semantic heading/help, outside the value column.
+    row.grid.addWidget(editor, 2, 0, 1, 3)
     row.config_keys = ("wake_profiles",)
     row.widget_keys = ("wake_profiles",)
     row.page_name = TITLE

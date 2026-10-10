@@ -140,8 +140,8 @@ class _ProfileManagerWindow(QMainWindow):
         self._cb = on_profiles_changed
 
         self.setWindowTitle("Profile Manager")
-        self.resize(600, 680)
-        self.setMinimumSize(480, 480)
+        self.resize(760, 680)
+        self.setMinimumSize(600, 480)
         self.setStyleSheet(_stylesheet())
 
         scroll = QScrollArea()
@@ -230,6 +230,7 @@ class _ProfileManagerWindow(QMainWindow):
 
     def _desc(self, text: str) -> QLabel:
         lbl = QLabel(text)
+        lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         return lbl
 

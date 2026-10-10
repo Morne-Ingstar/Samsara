@@ -67,17 +67,7 @@ class _UpdateDialog(QDialog):
         self.setWindowTitle("Samsara Updates")
         self.setMinimumWidth(520)
         self.setModal(False)
-        self.setStyleSheet(
-            f"QDialog {{ background: {theme.BG0}; color: {theme.TEXT_PRIMARY}; }}"
-            f"QLabel {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; }}"
-            "QPushButton { min-height: 38px; padding: 0 18px; "
-            f"background: {theme.BG1}; border: 1px solid {theme.BORDER}; border-radius: 7px; }}"
-            f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
-            f"QPushButton:disabled {{ color: {theme.TEXT_SECONDARY}; }}"
-            f"QProgressBar {{ background: {theme.BG1}; border: 1px solid {theme.BORDER}; "
-            "border-radius: 5px; text-align: center; }"
-            f"QProgressBar::chunk {{ background: {theme.ACCENT}; border-radius: 4px; }}"
-        )
+        self.setStyleSheet(theme.build_stylesheet())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 22)
@@ -112,9 +102,11 @@ class _UpdateDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.addStretch()
         close_button = QPushButton("Close")
+        theme.make_secondary(close_button)
         close_button.setObjectName("closeUpdateDialogButton")
         close_button.clicked.connect(self.close)
         self._primary = QPushButton("Check Now")
+        theme.make_primary(self._primary)
         self._primary.setObjectName("updatePrimaryButton")
         self._primary.setAccessibleName("Check for Samsara updates")
         self._primary.clicked.connect(self._primary_clicked)
