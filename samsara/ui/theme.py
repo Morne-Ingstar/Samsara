@@ -861,8 +861,14 @@ class _SettingsInputLayout(QObject):
             original = widget.styleSheet().split('/* Settings input geometry */')[0]
             field_height = TYPE_BODY + SPACE_2
             margin = max(0, (HIT_TARGET_MIN - field_height) // 2)
+            left_padding = SPACE_1
+            if isinstance(widget, QLineEdit) and widget.property('settingsInputTextInset') is not None:
+                # Decorated fields reserve a leading column. The compact rule
+                # replaces their QSS padding, so retain the requested text inset
+                # after the 1px border and Qt's own 2px text margin.
+                left_padding = max(SPACE_1, int(widget.property('settingsInputTextInset')) - widget.textMargins().left() - 3)
             qss = (f'\n/* Settings input geometry */\n{selector} {{ margin: {margin}px 0;'
-                   f' padding: {top}px {SPACE_1}px {bottom}px {SPACE_1}px; min-height: {field_height - 2 - top - bottom}px;'
+                   f' padding: {top}px {SPACE_1}px {bottom}px {left_padding}px; min-height: {field_height - 2 - top - bottom}px;'
                    f' border-width: 1px; }}'
                    f'{selector}:focus {{ border: 1px solid {ACCENT}; }}')
             if isinstance(widget, QAbstractSpinBox):

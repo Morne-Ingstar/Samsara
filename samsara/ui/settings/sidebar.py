@@ -10,11 +10,11 @@ restyle, never baked in at import, so a dark <-> light flip reaches the panel.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QFont, QFontDatabase, QPainter, QPen
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
+from PySide6.QtGui import QFont, QFontDatabase, QPainter, QPen, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QFrame, QLabel, QLineEdit, QListWidget, QStyle,
-    QStyledItemDelegate, QVBoxLayout, QWidget,
+    QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget,
 )
 
 from samsara.ui import theme
@@ -169,6 +169,23 @@ class SearchGlyph(QWidget):
         self.setAccessibleName("")
         # The field's height is fixed at the hit target, so one placement holds.
         self.setGeometry(ICON_INSET, 0, ICON_BOX, theme.HIT_TARGET_MIN)
+        self._placing_clear = False
+        self._clear_button = next(iter(edit.findChildren(QToolButton)), None)
+        if self._clear_button is not None:
+            self._clear_button.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        # Settings raises every button to a 44-DIP hit target. Qt's internal
+        # clear-button placement assumes its smaller native size instead.
+        if watched is self._clear_button and not self._placing_clear and event.type() in (
+            QEvent.Type.Move, QEvent.Type.Resize, QEvent.Type.Show,
+        ):
+            self._placing_clear = True
+            edit = self.parentWidget()
+            size = theme.HIT_TARGET_MIN
+            watched.setGeometry(edit.width() - size - FOCUS_RING, 0, size, edit.height())
+            self._placing_clear = False
+        return super().eventFilter(watched, event)
 
     def paintEvent(self, _event):
         font = _icon_font()
@@ -184,11 +201,10 @@ class SearchGlyph(QWidget):
 
 def search_qss() -> str:
     height = theme.HIT_TARGET_MIN
-    text_left = LABEL_X - FOCUS_RING - _LINE_EDIT_MARGIN
     return (
         f"QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
-        f" border: {FOCUS_RING}px solid transparent; border-radius: {height // 2}px;"
-        f" padding: 0 {ICON_INSET}px 0 {text_left}px;"
+        f" border: {FOCUS_RING}px solid {theme.BORDER}; border-radius: 6px;"
+        f" padding: 0 {ICON_INSET}px;"
         f" min-height: {height - 2 * FOCUS_RING}px; max-height: {height - 2 * FOCUS_RING}px;"
         f" font-size: {theme.TYPE_BODY}px; font-weight: {theme.FONT_WEIGHT_MIN};"
         f" placeholder-text-color: {placeholder_colour_token()}; }}"
@@ -237,6 +253,13 @@ def build_panel(heading: str, search: QLineEdit | None, pages: QListWidget) -> Q
     if search is not None:
         search.setStyleSheet(search_qss())
         search.setFixedHeight(theme.HIT_TARGET_MIN)
+        # Reserve the decorative icon's column independently of QSS padding.
+        search.setTextMargins(ICON_BOX + theme.SPACE_2 - FOCUS_RING - _LINE_EDIT_MARGIN, 0, 0, 0)
+        search.setProperty("settingsInputTextInset", ICON_INSET + ICON_BOX + theme.SPACE_2)
+        search.setClearButtonEnabled(True)
+        escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), search)
+        escape.setContext(Qt.ShortcutContext.WidgetShortcut)
+        escape.activated.connect(search.clear)
         SearchGlyph(search)
         layout.addWidget(search)
         layout.addSpacing(theme.SPACE_2)
