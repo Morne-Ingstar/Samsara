@@ -390,7 +390,7 @@ class TestLiveIndicatorSettings:
         stub.apply_listening_indicator_settings()
 
         stub.listening_indicator.set_custom_position.assert_called_once_with(
-            "DISPLAY2", 0.2, 0.8
+            "DISPLAY2", 0.2, 0.8, edge=None, t=0.5
         )
         stub.listening_indicator.hide.assert_called_once_with()
         stub.listening_indicator.show.assert_not_called()

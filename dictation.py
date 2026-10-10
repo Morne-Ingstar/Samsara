@@ -1966,7 +1966,8 @@ class DictationApp:
                 self.listening_indicator.set_custom_position(
                     custom.get('screen'),
                     custom.get('cx') if custom.get('cx') is not None else 0.5,
-                    custom.get('cy') if custom.get('cy') is not None else 0.5)
+                    custom.get('cy') if custom.get('cy') is not None else 0.5,
+                    edge=custom.get('edge'), t=custom.get('t', 0.5))
             else:
                 self.listening_indicator.set_position(position)
             self.listening_indicator.placement_committed.connect(
@@ -13390,6 +13391,7 @@ class DictationApp:
                     custom.get('screen'),
                     custom.get('cx') if custom.get('cx') is not None else 0.5,
                     custom.get('cy') if custom.get('cy') is not None else 0.5,
+                    edge=custom.get('edge'), t=custom.get('t', 0.5),
                 )
             else:
                 indicator.set_position(position)
@@ -13423,6 +13425,9 @@ class DictationApp:
                     'cy': payload.get('cy'),
                 },
             }
+            if payload.get('edge') in ('top', 'bottom', 'left', 'right'):
+                updates['listening_indicator_custom_position'].update(
+                    edge=payload['edge'], t=payload.get('t', 0.5))
         else:
             updates = {
                 'listening_indicator_position': payload.get('position', 'bottom-center'),

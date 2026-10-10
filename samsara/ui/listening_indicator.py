@@ -73,6 +73,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from samsara.ui import theme
+from samsara.ui.indicator_docking import IndicatorDocking
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
@@ -157,7 +158,7 @@ _DOT_SPACE    = 26        # left reserve for the state glyph (the Samsara mark)
 _GLYPH_PX     = 20
 _GLYPH_X      = 10
 _CORNER_R     = 18.0
-_EDGE_MARGIN  = 24
+_EDGE_MARGIN  = 8
 
 # ---------------------------------------------------------------------------
 # Animation
@@ -251,7 +252,7 @@ STATE_ARMED = "armed"
 CAPTURE_STATES = frozenset({"capture", "command-capture"})
 
 
-class ListeningIndicator(QWidget):
+class ListeningIndicator(IndicatorDocking, QWidget):
     """Always-on-top, click-through pill overlay — PySide6 implementation."""
 
     # Emitted once a placement change is committed (drag release, or a
@@ -486,7 +487,7 @@ class ListeningIndicator(QWidget):
         if self.isVisible():
             self._reposition()
 
-    def set_custom_position(self, screen_name, cx, cy):
+    def set_custom_position(self, screen_name, cx, cy, *, edge=None, t=0.5):
         """Restore a persisted custom placement (e.g. on app startup).
 
         screen_name is a QScreen.name() identity; cx/cy are the pill's
@@ -528,6 +529,12 @@ class ListeningIndicator(QWidget):
             'cx': min(max(cx, 0.0), 1.0),
             'cy': min(max(cy, 0.0), 1.0),
         }
+        # Older custom records retain their pill-centre meaning. Only a new,
+        # explicit dock carries these optional fields (host persistence seam).
+        from samsara.live_surface.placement import normalize_placement
+        dock = normalize_placement({'edge': edge, 't': t})
+        if edge in ('top', 'bottom', 'left', 'right'):
+            self._custom_position.update(edge=dock.edge.value, t=dock.t)
         if self.isVisible():
             self._reposition()
 
@@ -593,28 +600,6 @@ class ListeningIndicator(QWidget):
         self._unlocked = False
         self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, True)
 
-    def _commit_drag_position(self):
-        """Clamp the just-dragged position to its monitor, store it, and emit."""
-        screen = QApplication.screenAt(self.mapToGlobal(self.rect().center()))
-        if screen is None:
-            screen = QApplication.primaryScreen()
-        if screen is None:
-            self.exit_move_mode(cancel=True)
-            return
-        geom = screen.availableGeometry()
-        w, h = self.width(), self.height()
-        x, y = _reachable_rect(self.x(), self.y(), w, h, geom)
-        self.move(x, y)
-        cx = ((x + w / 2.0) - geom.x()) / max(geom.width(), 1)
-        cy = ((y + h / 2.0) - geom.y()) / max(geom.height(), 1)
-        cx = min(max(cx, 0.0), 1.0)
-        cy = min(max(cy, 0.0), 1.0)
-        self._custom_position = {'screen': screen.name(), 'cx': cx, 'cy': cy}
-        self._corner = None
-        payload = {'type': 'custom', 'screen': screen.name(), 'cx': cx, 'cy': cy}
-        self.exit_move_mode()
-        self.placement_committed.emit(payload)
-
     def _choose_preset_from_menu(self, position):
         self._custom_position = None
         self._corner = position if position in VALID_POSITIONS else 'bottom-center'
@@ -655,7 +640,11 @@ class ListeningIndicator(QWidget):
         if not self._unlocked or not self._dragging:
             super().mouseMoveEvent(event)
             return
-        self.move(event.globalPosition().toPoint() - self._drag_offset)
+        position = event.globalPosition().toPoint() - self._drag_offset
+        screen = QApplication.screenAt(event.globalPosition().toPoint()) or QApplication.primaryScreen()
+        if screen is not None:
+            _, placed = self._snap_drag(position.x(), position.y(), screen)
+            self.move(round(placed.bounds.x), round(placed.bounds.y))
         event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -1228,97 +1217,9 @@ class ListeningIndicator(QWidget):
             chip_rect = QRectF(chip_x, _PILL_H + _CHIP_GAP, chip_w, _CHIP_H)
         return total_w, total_h, pill_rect, chip_rect
 
-    def _chip_h_align(self) -> str:
-        """'left' / 'right' / 'center' -- which edge the pill hugs."""
-        if self._custom_position is not None:
-            cx = self._custom_position.get('cx', 0.5)
-            if cx < 1 / 3:
-                return "left"
-            if cx > 2 / 3:
-                return "right"
-            return "center"
-        corner = str(self._corner or "")
-        if corner.endswith("left"):
-            return "left"
-        if corner.endswith("right"):
-            return "right"
-        return "center"
-
-    def _chip_goes_above(self) -> bool:
-        """True when the pill is in the lower half of its screen."""
-        if self._custom_position is not None:
-            return self._custom_position.get('cy', 1.0) >= 0.5
-        return not str(self._corner or "").startswith("top")
-
     def _resize_to_label(self):
         total_w, total_h, _, _ = self._layout()
         self.resize(int(total_w), int(total_h))
-
-    def _pill_anchor(self, pill_w: int):
-        """Where the PILL's top-left goes, exactly as before the chip existed.
-        Returns (x, y, geom) or None when there is no screen."""
-        pill_h = _PILL_H
-        if self._custom_position is not None:
-            screen = self._resolve_custom_screen()
-            if screen is not None:
-                geom = screen.availableGeometry()
-                cx = geom.x() + self._custom_position['cx'] * geom.width()
-                cy = geom.y() + self._custom_position['cy'] * geom.height()
-                x = int(round(cx - pill_w / 2))
-                y = int(round(cy - pill_h / 2))
-                x, y = _reachable_rect(x, y, pill_w, pill_h, geom)
-                return x, y, geom
-
-        screen = QApplication.primaryScreen()
-        if screen is None:
-            return None
-        geom = screen.availableGeometry()
-        wa_x, wa_y = geom.x(), geom.y()
-        wa_w, wa_h = geom.width(), geom.height()
-        m = _EDGE_MARGIN
-        cx = wa_x + (wa_w - pill_w) // 2
-
-        corner = self._corner
-        if corner == "top-left":
-            x, y = wa_x + m, wa_y + m
-        elif corner == "top-center":
-            x, y = cx, wa_y + m
-        elif corner == "top-right":
-            x, y = wa_x + wa_w - pill_w - m, wa_y + m
-        elif corner == "bottom-left":
-            x, y = wa_x + m, wa_y + wa_h - pill_h - m
-        elif corner == "bottom-right":
-            x, y = wa_x + wa_w - pill_w - m, wa_y + wa_h - pill_h - m
-        else:  # bottom-center default
-            x, y = cx, wa_y + wa_h - pill_h - m
-        return x, y, geom
-
-    def _apply_static_position(self):
-        """Position per self._custom_position (if set) or the preset
-        self._corner. Called only when not unlocked.
-
-        The pill's on-screen position is computed exactly as it always was;
-        the widget is then offset so the pill stays put and any chip grows
-        away from the anchored edge. In chip-only mode the chip takes the
-        pill's place, so it follows the same placement and move-mode logic.
-        """
-        _, _, label, show_dot = self._resolve_colors()
-        pill_w = self._pill_width(label, show_dot)
-        anchor = self._pill_anchor(pill_w)
-        if anchor is None:
-            return
-        pill_x, pill_y, geom = anchor
-        total_w, total_h, pill_rect, chip_rect = self._layout()
-
-        if pill_rect is None:  # chip-only: centre the chip on the pill's spot
-            x = int(round(pill_x + (pill_w - total_w) / 2.0))
-            y = int(round(pill_y + (_PILL_H - total_h) / 2.0))
-        else:
-            x = int(round(pill_x - pill_rect.x()))
-            y = int(round(pill_y - pill_rect.y()))
-        clamp = _reachable_rect if self._custom_position is not None else _clamp_rect
-        x, y = clamp(x, y, int(total_w), int(total_h), geom)
-        self.move(x, y)
 
     def paintEvent(self, event):
         bg_hex, fg_hex, label, show_dot = self._resolve_colors()

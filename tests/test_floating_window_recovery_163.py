@@ -12,8 +12,8 @@ from samsara.ui.settings.modes_qt import ModesPage
 from samsara.ui.tray_qt import SamsaraTrayQt
 
 
-OWNER_PREVIEW = "custom|ASUS VG289Q1A|0.892578|0.116429"
-OWNER_INDICATOR = {"screen": "ASUS VG289Q1A", "cx": 0.0768, "cy": 0.9853}
+OWNER_PREVIEW = "custom|MISSING-SYNTHETIC-MONITOR-163|0.892578|0.116429"
+OWNER_INDICATOR = {"screen": "MISSING-SYNTHETIC-MONITOR-163", "cx": 0.0768, "cy": 0.9853}
 _MARGIN = 24
 
 
@@ -57,7 +57,7 @@ def _assert_default_geometry(qapp, preview, indicator):
     assert preview._w.y() == screen.bottom() - preview._w.height() + 1 - (
         streaming.TASKBAR_RESERVE + streaming.OVERLAY_GAP_ABOVE_TASKBAR
     )
-    assert indicator.geometry().bottom() == screen.bottom() - _MARGIN
+    assert indicator.geometry().bottom() == screen.bottom() - 8
 
 
 @pytest.mark.parametrize("entry", ["settings", "tray", "voice"])
@@ -108,12 +108,12 @@ def test_dragged_windows_stay_inside_the_reachable_inset(qapp, x, y):
         indicator.move(x, y)
         indicator._commit_drag_position()
         qapp.processEvents()
-        for window in (preview._w, indicator):
+        for window, margin in ((preview._w, _MARGIN), (indicator, 8)):
             rect = window.geometry()
-            assert rect.left() >= geom.left() + _MARGIN
-            assert rect.right() <= geom.right() - _MARGIN
-            assert rect.top() >= geom.top() + _MARGIN
-            assert rect.bottom() <= geom.bottom() - _MARGIN
+            assert rect.left() >= geom.left() + margin
+            assert rect.right() <= geom.right() - margin
+            assert rect.top() >= geom.top() + margin
+            assert rect.bottom() <= geom.bottom() - margin
     finally:
         indicator.hide()
         indicator.deleteLater()
