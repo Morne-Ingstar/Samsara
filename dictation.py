@@ -7374,7 +7374,6 @@ class DictationApp:
                 return outcome
 
             class AvaFeedbackHost:
-                """Forward app effects; collect labels and translate runner feedback."""
                 def __init__(host, app):
                     object.__setattr__(host, '_host', app)
                     object.__setattr__(host, 'labels', [])
@@ -12222,11 +12221,20 @@ class DictationApp:
 
                         if stage_timing is not None:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
-                        result, was_command = self.command_executor.process_text(text, self, force_commands=True)
+                        dispatch = self.command_executor.process_text(text, self, force_commands=True)
+                        result, was_command = dispatch
                         if stage_timing is not None:
                             stage_timing.mark("action_done", outcome="command" if was_command else "miss")
-
                         if was_command:
+                            if getattr(getattr(dispatch, 'state', None), 'value', None) == 'failed':
+                                from samsara.session_modes import DispatchOutcome
+                                outcome = DispatchOutcome(kind='command_failed', detail={'phrase': result, 'state': 'failed', 'heard': text})
+                                self._log_command_dispatch(text, result, 'failed')
+                                logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, outcome.detail)
+                                self._handle_session_dispatch_outcome(outcome, text)
+                                self.add_to_history(text, is_command=True)
+                                self._log_history(raw_text=text, duration_ms=int(audio_duration * 1000), mode='command', status='failed', entry_type='command', matched_command=str(result))
+                                return
                             _tut_cmd = self._tutorial_hooks.pop('command', None)
                             if _tut_cmd:
                                 try:
@@ -12240,7 +12248,6 @@ class DictationApp:
                                 self._last_command_name = result
                             if result:
                                 increment_command_count(result)
-                            # Command was executed - add to history as command
                             self.add_to_history(text, is_command=True)
                             self._log_history(
                                 raw_text=text,
@@ -12250,7 +12257,6 @@ class DictationApp:
                                 entry_type="command",
                                 matched_command=str(result) if result else None,
                             )
-                            # Toggle mode: reset miss count, refresh inactivity, re-arm
                             if self.command_mode_active:
                                 self._command_mode_miss_count = 0
                                 cm_cfg = self.config.get('command_mode', {})
@@ -12261,10 +12267,6 @@ class DictationApp:
                                         "dictation._rearm_command_recording",
                                         self._rearm_command_recording, daemon=True)
                             return
-
-                        # No command matched in command mode. The hold capture
-                        # route does not use SessionModeManager, so feed its
-                        # final miss through the same optional resolver.
                         from samsara.session_modes import DispatchOutcome
                         resolved_outcome = self._resolve_command_miss(
                             DispatchOutcome(kind="command_miss", detail={"heard": text}), text)
@@ -12278,8 +12280,6 @@ class DictationApp:
                                 matched_command=str(resolved_outcome.detail.get("phrase") or ""),
                             )
                             return
-
-                        # Ordinary MISS: do not output text.
                         self._show_dispatch_outcome_chip(resolved_outcome)
                         logger.info(f"[CMD] No command matched: '{text}'")
                         if self.command_mode_active:
@@ -12295,7 +12295,6 @@ class DictationApp:
                                     "dictation._rearm_command_recording",
                                     self._rearm_command_recording, daemon=True)
                         return
-
                     # --- Ava mode (Right Alt) ---
                     if is_ava_mode:
                         self._route_to_ava(text)

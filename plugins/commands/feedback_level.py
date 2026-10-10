@@ -1,4 +1,6 @@
 """Voice controls for Samsara speech feedback and its earcon volume."""
+from contextlib import nullcontext
+
 from samsara.config_schema import (
     FEEDBACK_LEVEL_CHOICES, FEEDBACK_LEVEL_FRESH_DEFAULT, FEEDBACK_LEVELS,
     apply_feedback_level,
@@ -20,14 +22,25 @@ def _current(app):
     return level if level in FEEDBACK_LEVELS else FEEDBACK_LEVEL_FRESH_DEFAULT
 
 
+def _update(app, changes):
+    updater = getattr(app, "update_config", None)
+    if callable(updater):
+        updater(changes, save=True)
+    else:  # Compatibility for fake apps without the production updater.
+        with getattr(app, "_config_lock", None) or nullcontext():
+            app.config.update(changes)
+            app.save_config()
+
+
 def _set(app, level):
     already = _current(app) == level
     setter = getattr(app, "set_feedback_level", None)
     if callable(setter):
         setter(level)
     else:  # Compatibility for fake apps without the production setter.
-        apply_feedback_level(app.config, level)
-        app.save_config()
+        changes = {"tts": dict(app.config.get("tts") or {})}
+        apply_feedback_level(changes, level)
+        _update(app, changes)
     label = FEEDBACK_LEVEL_CHOICES[level][0]
     _reply(app, f"Feedback: {label}" + (" (already)" if already else ""))
     return True
@@ -76,8 +89,7 @@ def handle_feedback_full(app, remainder=""):
 def _sound_step(app, delta):
     current = min(1.0, max(0.0, float(app.config.get("sound_volume", .5))))
     volume = round(min(1.0, max(0.0, current + delta)), 10)
-    app.config["sound_volume"] = volume
-    app.save_config()
+    _update(app, {"sound_volume": volume})
     app.play_sound("action_complete")
     text = f"Samsara sounds {int(volume * 100)}%"
     _reply(app, text + (" (already)" if volume == current else ""))

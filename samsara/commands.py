@@ -582,6 +582,17 @@ class CommandExecutor:
                 state = adapt_handler_return(handler_result)
             except Exception as e:
                 logger.exception("[ERROR] Plugin '%s' failed", canonical)
+                # Spoken dispatch owns its outcome; direct invocations need the same route.
+                feedback = getattr(effective_app, '_handle_session_dispatch_outcome', None)
+                if not source_text and callable(feedback):
+                    from samsara.session_modes import DispatchOutcome
+                    outcome = DispatchOutcome(kind='command_failed', detail={
+                        'phrase': canonical, 'state': 'failed', 'heard': canonical})
+                    logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, outcome.detail)
+                    try:
+                        feedback(outcome, canonical)
+                    except Exception:
+                        logger.exception('[EXEC] Failure feedback unavailable for %r', canonical)
                 return DispatchResult(DispatchState.FAILED, canonical, canonical, {'error': str(e)})
             if state is DispatchState.MISS:
                 # The handler declined (documented `return False`): not this
