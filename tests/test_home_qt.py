@@ -1892,3 +1892,18 @@ class TestHomeBottom384:
         separator = main_window_qt._status_separator()
         assert separator.width() == 1 and separator.height() == 16
         win.hide()
+
+def test_home_links_keep_complete_ink_at_900_by_650(qapp, monkeypatch):
+    from PySide6.QtWidgets import QStyle, QStyleOptionButton
+    window = _hub(qapp, monkeypatch, width=900, height=650)
+    p = window._panel_cache["Home"]
+    for _ in range(5):
+        qapp.processEvents()
+    for label, button in p._links.items():
+        option = QStyleOptionButton()
+        button.initStyleOption(option)
+        metrics = QFontMetrics(option.fontMetrics)
+        # The native style reserves interior room even for a flat button.
+        content = button.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, option, button)
+        assert content.width() >= metrics.horizontalAdvance(label), (label, content.width(), metrics.horizontalAdvance(label))
+    window.hide()

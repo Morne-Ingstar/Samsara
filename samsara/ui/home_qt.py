@@ -1984,18 +1984,20 @@ class HomePage(QWidget):
         links_row.setAccessibleName("Links")
         lrl = QHBoxLayout(links_row)
         lrl.setContentsMargins(0, 0, 0, 0)
-        lrl.setSpacing(0)
+        lrl.setSpacing(8)
         lrl.addStretch(1)
         from PySide6.QtGui import QFontMetrics
 
         class InkLink(QPushButton):
             def sizeHint(self):
-                # Native QPushButton adds unused right bearings; this row's
-                # transparent target is sized to its actual capitalized ink.
-                bounds = QFontMetrics(self.font()).tightBoundingRect(self.text())
-                return QSize(max(MIN_TARGET, bounds.right() + 3), MIN_TARGET)
+                # Include the style's content insets and full advance, not
+                # just the ink bounds: the style clips inside those insets.
+                return QSize(max(MIN_TARGET, super().sizeHint().width(),
+                                 QFontMetrics(self.font()).horizontalAdvance(self.text()) + 4), MIN_TARGET)
 
-        previous = None
+            def minimumSizeHint(self):
+                return self.sizeHint()
+
         for index, (text, url) in enumerate((*IDENTITY_LINKS, (KOFI_LINK, KOFI_URL))):
             prototype = _link(text, url)
             btn = InkLink(text)
@@ -2013,28 +2015,16 @@ class HomePage(QWidget):
             btn.clicked.connect(lambda _=False, u=url: open_url(u))
             prototype.deleteLater()
             btn.ensurePolished()
-            bounds = QFontMetrics(btn.font()).tightBoundingRect(text)
-            btn.setFixedWidth(btn.sizeHint().width())
-            # Put any extra target width BEFORE the ink, preserving its right
-            # edge and the adjacent 8px gaps even on the short Ko-fi label.
-            padding = btn.width() - bounds.right() - 3
-            btn.setProperty("inkPadding", padding)
-            btn.setStyleSheet(btn.styleSheet() + f" QPushButton {{ padding-left: {padding}px; }}")
+            # Let Qt remeasure after parenting/theme font inheritance. A width
+            # fixed here used the pre-parent font and clipped the final ink.
             if index:
                 dot = _label("\u00b7", role="note", color=theme.TEXT_DISABLED)
                 dot.setObjectName("homeLinkSeparator")
                 dot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
                 dot.ensurePolished()
-                dot_bounds = QFontMetrics(dot.font()).tightBoundingRect(dot.text())
-                dot.setFixedWidth(dot.sizeHint().width())
-                prev_bounds = QFontMetrics(previous.font()).tightBoundingRect(previous.text())
-                trailing = previous.width() - (1 + previous.property("inkPadding") + prev_bounds.right() + 1)
-                lrl.addSpacing(8 - trailing - dot_bounds.left())
                 lrl.addWidget(dot)
-                lrl.addSpacing(8 - (dot.width() - dot_bounds.right() - 1) - (1 + padding + bounds.left()))
             lrl.addWidget(btn)
             self._links[text] = btn
-            previous = btn
         cbl.addWidget(links_row)
         self._links_row = links_row
         self._support_row = links_row
@@ -2050,7 +2040,9 @@ class HomePage(QWidget):
         has room for the pair, shrunk in step when it does not, never below
         the width the live figure needs. The label wraps rather than clips,
         so the height follows the width (89)."""
-        links = self._links_row.sizeHint().width()
+        from PySide6.QtGui import QFontMetrics
+        links = max(self._links_row.sizeHint().width(),
+                    QFontMetrics(self._creed.font()).horizontalAdvance(self._creed.text()) + 4)
         w = max(self._stat_floor, min(self._stat_w, (width - links - 2 * GRID) // 2))
         h = max(self._stat_h, *(card.layout().totalHeightForWidth(w)
                                 for card in (self._words_card, self._infinity_card)))

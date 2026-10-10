@@ -13623,22 +13623,15 @@ class DictationApp:
         if manager is None or not getattr(manager, 'has_parked_hold', False):
             return True
         try:
-            from PySide6.QtWidgets import QMessageBox
-            choice = QMessageBox.question(
-                None,
-                'Pending draft',
-                'A draft is waiting. Send it before quitting, discard it, or cancel quitting?',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
+            from samsara.ui.quit_draft_dialog_qt import ask_quit_draft
+            choice = ask_quit_draft()
         except Exception as exc:
             logger.warning('[EXIT] Pending draft decision could not be shown: %s', exc)
             return False
-        if choice == QMessageBox.StandardButton.Yes:
+        if choice == 'send':
             outcome = manager.commit_pending_dictation()
             return outcome.kind == 'dictate_committed'
-        if choice == QMessageBox.StandardButton.No:
+        if choice == 'discard':
             manager.confirm_clear_draft('quit discard')
             return True
         return False

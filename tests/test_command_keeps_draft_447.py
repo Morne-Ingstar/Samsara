@@ -270,10 +270,10 @@ def test_intentional_delivery_still_pastes(rig, live, trigger, monkeypatch):
         outcome = SimpleNamespace(kind='dictate_committed')
     elif trigger == 'quit-send':
         # Call the adapter's exact decision method; no quit or bootstrap.
-        from PySide6.QtWidgets import QMessageBox
+        from samsara.ui import quit_draft_dialog_qt
         r.manager.pause_draft()
         r.app._live_surface_hold_parking_enabled = lambda: True
-        monkeypatch.setattr(QMessageBox, 'question', lambda *a, **kw: QMessageBox.StandardButton.Yes)
+        monkeypatch.setattr(quit_draft_dialog_qt, 'ask_quit_draft', lambda: 'send')
         assert sys.modules['dictation'].DictationApp._resolve_parked_draft_before_quit(r.app)
         if not live:
             # The parked-HOLD quit decision only exists on the Full path.

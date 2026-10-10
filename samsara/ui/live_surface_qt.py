@@ -260,6 +260,7 @@ class LiveSurfaceWidget(QWidget):
         self._correction_hint = QLabel(self); self._correction_hint.setWordWrap(True)
         self._correction_hint.setAccessibleName("Correction choices")
         self._transcript = QTextBrowser(self)
+        self._transcript.document().setDocumentMargin(12)
         self._transcript.setOpenLinks(False); self._transcript.setOpenExternalLinks(False)
         self._transcript.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._transcript.setAccessibleName("Draft transcript")
@@ -606,8 +607,14 @@ class LiveSurfaceWidget(QWidget):
             # actual font wrapping; no minimum envelope or empty notice band.
             doc = self._transcript.document().clone()
             doc.setDefaultFont(theme.qfont(theme.TYPE_BODY))
-            doc.setTextWidth(width - 2*CARD_INSET - 2*self._transcript.frameWidth())
-            text_height = min(240, ceil(doc.size().height()) + 4)
+            # Reserve the themed bar even before Qt decides it is needed.
+            doc.setTextWidth(width - 2*CARD_INSET - 10 - 2*self._transcript.frameWidth())
+            document_height = ceil(doc.size().height())
+            layout = doc.begin().layout()
+            line_height = max(1, ceil(layout.lineAt(0).height())) if layout.lineCount() else 1
+            margin = ceil(2 * doc.documentMargin())
+            cap = margin + ((240 - margin) // line_height) * line_height
+            text_height = min(cap, document_height + 4)
             doc.deleteLater()
             self._transcript_height = text_height
             hint_height = 28 if self._parked_idle(self._view) else 0
@@ -764,6 +771,12 @@ class LiveSurfaceWidget(QWidget):
         self.setMask(region)
 
     def _restyle(self) -> None:
+        self._transcript.verticalScrollBar().setStyleSheet(f"""
+            QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
+            QScrollBar::handle:vertical {{ background: {theme.BORDER}; border-radius: 4px; min-height: 24px; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+        """)
         self.setStyleSheet(f"LiveSurfaceWidget {{ background: transparent; }} QLabel,QTextBrowser {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; background: transparent; border: 0; }} QTextBrowser a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }} QPushButton,QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: {CARD_RADIUS}px; font-size: {theme.TYPE_BODY}px; }} QPushButton {{ font-family: {theme.FONT_FAMILY}; padding: 0 {theme.SPACE_2}px; }} QPushButton#quietClear {{ background: transparent; border: 0; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; }}")
         active = not self._view.snoozed and self._view.capture in (CaptureState.RECORDING, CaptureState.TRANSCRIBING)
         state_color = theme.ERROR if self._view.capture is CaptureState.UNAVAILABLE else theme.TEXT_PRIMARY if active else theme.TEXT_SECONDARY
@@ -888,7 +901,10 @@ class LiveSurfaceWidget(QWidget):
             self._unread_segments = 0
         QTimer.singleShot(0, self, self._layout_children)
     def _scroll_to_latest(self)->None:
-        self._transcript.verticalScrollBar().setValue(self._transcript.verticalScrollBar().maximum())
+        bar = self._transcript.verticalScrollBar()
+        # Following must reach the true end, even if the viewport's top edge
+        # falls within a line. Moving back from maximum also disables following.
+        bar.setValue(bar.maximum())
     def _restore_transcript_scroll(self)->None:
         bar = self._transcript.verticalScrollBar()
         if self._follow_latest:

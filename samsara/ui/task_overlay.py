@@ -271,11 +271,13 @@ class _TaskWindow(QMainWindow):
         if not active and not completed:
             item = QListWidgetItem()
             item.setFlags(Qt.NoItemFlags)
-            lbl = QLabel('No tasks yet. Say "add to list" to add one.')
+            lbl = QLabel('No tasks yet. Say "add to list" to add one.', self._list)
             lbl.setStyleSheet(
                 f"color: {theme.TEXT_SECONDARY}; padding: 12px 10px;"
                 f" background: transparent; font-style: italic;"
             )
+            lbl.ensurePolished()
+            lbl.setMinimumHeight(lbl.fontMetrics().height() + 24)
             item.setSizeHint(lbl.sizeHint())
             self._list.addItem(item)
             self._list.setItemWidget(item, lbl)
