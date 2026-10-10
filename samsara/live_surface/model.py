@@ -7,6 +7,7 @@ from time import monotonic
 from typing import Callable, Optional
 
 from samsara.live_surface.feedback import FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS
+from samsara.message_durations import message_duration_ms, message_protected, routine_receipt, routine_progress
 
 # Geometry/timing are design constants, never per-user tuning knobs.
 MARK_TARGET_DIP = 44
@@ -213,7 +214,7 @@ class LiveSurfaceModel:
             if self.document is DocumentState.DELIVERED:
                 self.text = ""
                 self.document = DocumentState.EMPTY
-            if self._notice.expires_at is not None:
+            if self._notice.expires_at is not None and not self._message_protected(now):
                 self._notice = Notice(NoticeKind.NONE, "", None)
             self._active_capture = event.capture_id
             self.lane = event.lane or Lane.HOLD
@@ -234,7 +235,7 @@ class LiveSurfaceModel:
             if event.capture is not None:
                 self.capture = event.capture
             self._clear_receipt()
-            if self._notice.kind is NoticeKind.RESULT:
+            if self._notice.kind is NoticeKind.RESULT and not self._message_protected(now):
                 self._notice = Notice(NoticeKind.NONE, "", None)
             self.provisional_text = ""
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
@@ -267,7 +268,7 @@ class LiveSurfaceModel:
         elif kind is EventKind.DELIVERY_FINISHED:
             self._set_document(event, DocumentState.DELIVERED)
             self._delivered_at = now
-            if self._notice.expires_at is not None:
+            if self._notice.expires_at is not None and not self._message_protected(now):
                 self._notice = Notice(NoticeKind.NONE, "", None)
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.DELIVERY_UNVERIFIED:
@@ -279,7 +280,7 @@ class LiveSurfaceModel:
             if self._question is not None and (not event.owner or event.owner == self._question.owner):
                 if event.notice in (NoticeKind.NONE, self._question.kind):
                     self._question = None
-            if (not event.owner or event.owner == self._notice.owner) and event.notice in (NoticeKind.NONE, self._notice.kind):
+            if (not event.owner or event.owner == self._notice.owner) and event.notice in (NoticeKind.NONE, self._notice.kind) and not self._message_protected(now):
                 self._notice = Notice(NoticeKind.NONE, "", None)
             if event.notice in (NoticeKind.NONE, NoticeKind.RESULT) and not event.owner:
                 self._clear_receipt()
@@ -333,8 +334,12 @@ class LiveSurfaceModel:
             FeedbackKind.ERROR if event.notice is NoticeKind.ERROR else
             FeedbackKind.WARNING if event.notice is NoticeKind.WARNING else
             FeedbackKind.SUCCESS if event.notice is NoticeKind.SUCCESS else FeedbackKind.INFORMATION)
+        if self._message_protected(now) and (routine_progress(purpose, event.owner) or routine_receipt(event.message, feedback)):
+            return  # Capture/lane state remains visible beside the result band.
         ttl = None if event.persistent or purpose is not FeedbackPurpose.RESULT else (
             event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice))
+        duration = message_duration_ms(event.message, feedback, None if ttl is None else ttl * 1000, purpose=purpose)
+        ttl = None if duration is None else duration / 1000
         candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
                            event.lane or self.lane, feedback, purpose, event.owner)
         self._feedback_revision += 1
@@ -349,6 +354,10 @@ class LiveSurfaceModel:
         elif (self._notice.expires_at is not None or self._notice.purpose is FeedbackPurpose.RUNNING
               or self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind)):
             self._notice = candidate
+
+    def _message_protected(self, now: float) -> bool:
+        return message_protected(self._notice.message, self._notice.feedback,
+                                 self._notice.expires_at, now, purpose=self._notice.purpose)
 
     def _clear_receipt(self) -> None:
         """An expired delivery is history, never the next idle/lane status."""

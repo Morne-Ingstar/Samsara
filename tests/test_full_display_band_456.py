@@ -17,6 +17,7 @@ from samsara.live_surface.model import CaptureState, EventKind, Lane, LiveSurfac
 from samsara.live_surface.placement import Edge, Placement, Rect, Screen, placement_record
 from samsara.ui import theme
 from samsara.ui.live_surface_qt import LiveSurfaceWidget
+from samsara.message_durations import message_duration_ms
 
 
 @pytest.fixture
@@ -67,11 +68,11 @@ def test_roles_effective_font_ink_and_accessible_names(surface, qapp, palette, k
 def test_producer_severity_and_exact_lifetime(surface, kind, expected, ttl):
     c, i, clock = surface
     i.show_outcome('Synthetic result', kind, ttl); c.drain()
-    if ttl:
-        assert c.view().notice.kind is expected
-        assert c.view().notice.expires_at == ttl/1000
-        clock[0] = ttl/1000 - .001; assert c.view().notice.message
-    clock[0] = ttl/1000; assert not c.view().notice.message
+    expires = message_duration_ms('Synthetic result', kind, ttl) / 1000
+    assert c.view().notice.kind is expected
+    assert c.view().notice.expires_at == expires
+    clock[0] = expires - .001; assert c.view().notice.message
+    clock[0] = expires; assert not c.view().notice.message
 
 
 def test_default_and_explicit_no_timer(surface):
@@ -276,7 +277,7 @@ def test_exact_dictation_handoff_forwards_source_detail_duration_and_hold_purpos
     c.app._show_hold_pending_chip(); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.RUNNING
     c.app._show_outcome_chip('Synthetic result', 'warning', 7000); c.drain()
-    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 7
+    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 4
     c.app._show_dispatch_outcome_chip(SimpleNamespace(kind='command_awaiting_confirmation', detail={'phrase': 'synthetic action'})); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.QUESTION
     c.app._show_outcome_chip('Ordinary result', 'success', 1800); c.drain()

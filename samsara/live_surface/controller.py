@@ -12,7 +12,7 @@ from samsara.live_surface.placement import (Edge, Placement, Rect, Screen,
                                              place_inline_form, free_placement_for_mark,
                                              placement_for_screens, placement_record)
 from samsara.ui import qt_runtime
-from samsara.live_surface.feedback import Feedback, FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS, BAND_HEIGHT_DIP, feedback_for
+from samsara.live_surface.feedback import Feedback, FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS, BAND_HEIGHT_DIP, feedback_for, remember_feedback
 
 
 class LiveSurfaceController:
@@ -79,8 +79,12 @@ class LiveSurfaceController:
             if event.kind in (EventKind.CAPTURE_STARTED, EventKind.DOCUMENT_UPDATED):
                 # These are the allowed placement reevaluation boundaries.
                 self._last_caret = None
+            revision = self.model.view().feedback_revision
             if self.model.consume(event):
                 accepted += 1
+                view = self.model.view()
+                if event.kind is EventKind.NOTICE and view.feedback_revision != revision:
+                    remember_feedback(self.app, view.feedback_event.message, view.feedback_event)
         if self.widget is not None:
             self.widget.refresh(self.model.view(), animate=False)
             self._place_widget()
@@ -467,6 +471,7 @@ class LiveSurfaceController:
 
 class LiveSurfaceIndicatorAdapter:
     """Old indicator call surface backed by the new controller, not a QWidget."""
+    _records_feedback = True
 
     def __init__(self, controller: LiveSurfaceController) -> None:
         self.controller = controller
@@ -593,7 +598,7 @@ class LiveSurfaceIndicatorAdapter:
 
     def hide(self) -> None:
         # Legacy preview/session teardown must not remove the active mode badge.
-        if self._session_lane is None and self.controller.widget is not None:
+        if self._session_lane is None and self.controller.widget is not None and self.controller.view().notice.kind is NoticeKind.NONE:
             self.controller.widget.hide()
 
     def destroy(self) -> None:

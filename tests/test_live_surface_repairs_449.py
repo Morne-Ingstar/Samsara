@@ -97,6 +97,8 @@ def test_pending_does_not_replace_a_persistent_fault(surface):
                                               ('error', 3000, 3.0), ('accent', 500, 0.5)])
 def test_ordinary_outcome_still_expires_at_its_existing_limit(surface, kind, ttl_ms, expires):
     c, indicator, clock = surface
+    from samsara.message_durations import message_duration_ms
+    expires = message_duration_ms('Ordinary result', kind, ttl_ms) / 1000
     indicator.show_outcome('Ordinary result', kind, ttl_ms); c.drain()
     clock[0] = expires - 0.01
     assert c.view().notice.message == 'Ordinary result'

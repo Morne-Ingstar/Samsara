@@ -364,7 +364,7 @@ class TestChipRendering:
         _pump(qapp, 20)
         assert indicator.height() > base_h
 
-        _pump(qapp, 600)
+        _pump(qapp, 4200)
         assert indicator._active_chip() is None
         assert indicator.height() == base_h
 
@@ -423,7 +423,7 @@ class TestHiddenByConfig:
         _pump(qapp, 20)
         assert indicator.isVisible()
 
-        _pump(qapp, 600)
+        _pump(qapp, 4200)
         assert not indicator.isVisible()
         assert indicator._chip_only is False
 

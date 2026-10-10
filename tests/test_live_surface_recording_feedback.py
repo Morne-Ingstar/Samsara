@@ -30,7 +30,7 @@ def test_silent_hold_is_a_receipt_not_a_persistent_document(monkeypatch):
     controller.drain()
     assert controller.view().text == ''
     assert controller.view().notice.kind is NoticeKind.RESULT
-    clock.now = 2.0
+    clock.now = controller.view().notice.expires_at + .01
     assert controller.view().notice.kind is NoticeKind.NONE
     assert controller.view().capture is CaptureState.OFF
     controller.begin_capture(Lane.HOLD)

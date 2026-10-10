@@ -223,7 +223,7 @@ def test_command_results_and_ava_pending_are_not_silently_ignored(surface):
     indicator.show_outcome("Synthetic command result", "success", 3000)
     c.drain()
     assert c.view().notice.message == "Synthetic command result"
-    clock[0] += 3.1
+    clock[0] = c.view().notice.expires_at + .1
     c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.NONE
     indicator.set_thinking(True)
@@ -232,6 +232,8 @@ def test_command_results_and_ava_pending_are_not_silently_ignored(surface):
     indicator.flash_error()
     indicator.clear_outcome()
     c.drain()
+    assert c.view().notice.kind is NoticeKind.ERROR
+    clock[0] = c.view().notice.expires_at + .1; c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.NONE
 
 
@@ -240,14 +242,14 @@ def test_optional_ai_off_expires_without_further_input(surface):
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
     assert c.widget._band.label.text() == "Optional AI is off"
-    clock[0] += 1.9
+    clock[0] += 4.1
     QTest.qWait(150)
     assert c.widget.view.notice.kind is NoticeKind.NONE
     assert c.widget.view.form is VisibleForm.MARK
 
 
 def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(surface):
-    c, indicator, _ = surface
+    c, indicator, clock = surface
     capture = c.begin_capture(Lane.HOLD)
     partials = CapturePartials(c, Lane.HOLD, capture)
     partials.partial("Synthetic words remain visible.")
@@ -259,6 +261,8 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     partials.stop()
     c.begin_capture(Lane.HOLD)
     c.drain()
+    assert c.view().notice.kind is NoticeKind.ERROR
+    clock[0] += 4.1; c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.NONE
 
 

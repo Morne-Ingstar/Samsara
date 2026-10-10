@@ -1,6 +1,6 @@
-"""Structured Full feedback, using Compact's existing vocabulary and lifetimes.
+"""Structured feedback and History retention for both listening displays.
 
-The producer bridge deliberately leaves Compact's three-argument call intact.
+The producer bridge keeps legacy three-argument indicators as a fallback.
 No message text is parsed to decide severity, purpose or interaction ownership.
 """
 from __future__ import annotations
@@ -10,7 +10,9 @@ from contextlib import contextmanager
 from enum import Enum
 import sys
 import threading
+import logging
 from typing import Callable
+from samsara.message_durations import routine_receipt
 
 
 DEFAULT_TTL_MS = 1800
@@ -129,14 +131,30 @@ def producer_feedback(app, kind: str, source: str = "", detail: dict | None = No
 
 def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
     indicator = getattr(app, "listening_indicator", None)
+    context = getattr(_HANDOFF_CONTEXT, "value", None)
+    if context is not None and context[0] is app:
+        _, source, detail = context
+    feedback = producer_feedback(app, kind, source, detail)
+    if not getattr(indicator, "_records_feedback", False):
+        remember_feedback(app, label, feedback)
     if callable(getattr(type(indicator), "show_feedback", None)):
-        context = getattr(_HANDOFF_CONTEXT, "value", None)
-        if context is not None and context[0] is app:
-            _, source, detail = context
         app._schedule_ui(indicator.show_feedback, label, kind, ttl_ms,
-                         producer_feedback(app, kind, source, detail))
+                         feedback)
     else:
         app._schedule_ui(indicator.show_outcome, label, kind, ttl_ms)
+
+
+def remember_feedback(app, label, feedback):
+    """Keep exact result/refusal words searchable in existing History > All."""
+    store = getattr(app, "history_db", None)
+    kind = getattr(feedback, "feedback", feedback.kind)
+    if not label or store is None or feedback.purpose is not FeedbackPurpose.RESULT or routine_receipt(label, kind):
+        return
+    try:
+        store.add(raw_text="", display_text=str(label), mode="feedback",
+                  status=kind.value, entry_type="feedback")
+    except Exception:
+        logging.getLogger(__name__).debug("Feedback history unavailable", exc_info=True)
 
 
 @contextmanager
