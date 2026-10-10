@@ -157,10 +157,15 @@ class DraftDocument:
 
     def recover(self, *, prepend: bool = False) -> Optional[dict]:
         slot = self._recoverable
-        if slot is None or not self.recoverable_text.strip():
+        recovered_text = self.recoverable_text
+        if slot is None or not recovered_text.strip():
             self._recoverable = None
             return None
         self._recoverable = None
+        if prepend and recovered_text in self.text:
+            # Cancel may have kept this same document alive. Consume only
+            # the recovery slot, preserving its segments and local undo.
+            return {"chars": len(recovered_text), "source": slot["source"], "prepended": False}
         incoming = list(slot["segments"])
         if prepend and incoming and self._segments:
             tail, head = incoming[-1].text, self._segments[0].text

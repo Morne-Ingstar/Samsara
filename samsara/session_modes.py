@@ -2211,17 +2211,17 @@ class SessionModeManager:
         restored = self._draft.recover(prepend=bool(existing))
         if restored is None:
             return None
-        if existing:
+        if restored["prepended"]:
             # Chronological: what was lost came first. Nothing is overwritten.
             self._dictate_pending_audio = list(draft["audio"]) + list(self._dictate_pending_audio)
-        else:
+        elif not existing:
             self._dictate_pending_audio = list(draft["audio"])
             self._last_dictate_ended_terminal = draft["last_ended_terminal"]
             for item in draft["stack_items"]:
                 self._stack.push(item)
         log.info("[SESSION] recovered %d-char draft (%s)", restored["chars"], draft["source"])
         return {"chars": restored["chars"], "source": draft["source"],
-                "prepended": bool(existing)}
+                "prepended": restored["prepended"]}
 
     def _restore_retained_draft(self) -> None:
         draft, self._retained_draft = self._retained_draft, None
@@ -3351,10 +3351,12 @@ class SessionModeManager:
             else:
                 self._dictate_target_process = self._foreground_exe_resolver()
                 self._dictate_target_hwnd = self._foreground_hwnd_resolver()
-            self._last_dictate_ended_terminal = None
             self._stage_buffer = ""
-            self._dictate_pending_buffer = ""
-            self._dictate_pending_audio = []
+            # Kept drafts need explicit send/clear, just as on session reset.
+            if not (self._parked_hold and self._draft.text):
+                self._last_dictate_ended_terminal = None
+                self._dictate_pending_buffer = ""
+                self._dictate_pending_audio = []
         self.mode = new_mode
         self._last_mode_change_error = None
         if self._on_mode_change:
