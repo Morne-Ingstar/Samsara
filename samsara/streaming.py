@@ -42,7 +42,7 @@ try:
 except ImportError:
     pyperclip = None
 
-from samsara import listening_display
+from samsara import listening_display, tutorial_capture
 from samsara.cleanup import clean_text
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -2015,6 +2015,7 @@ class StreamingSession:
         self.cancel_event = threading.Event()
         self._state = self.STATE_RECORDING
         self._state_lock = threading.Lock()
+        self._tutorial_owner = getattr(app, '_tutorial_capture_token', None)
         self._parking_enabled = listening_display.run_display(app).full
         # Surface-enabled holds must stay retractable until their final
         # delivery decision.  Direct partial paste defeats Pause.
@@ -2134,12 +2135,14 @@ class StreamingSession:
             logger.exception(f"[STREAM] Auto-stop after timeout failed: {e}")
 
     def _deliver_final(self, text, raw_text, duration_s, elapsed_ms):
+        from samsara import tutorial_capture
         with self._state_lock:
-            # A live-surface Clear may cancel after on_final queued this callback.
-            # Do not revive that cancelled session at the UI delivery boundary.
-            if self._parking_enabled and self.cancel_event.is_set():
-                return
-            self._state = self.STATE_PASTING
+            live = tutorial_capture.final_current(self)
+            if live:
+                self._state = self.STATE_PASTING
+        if not live:
+            tutorial_capture.retire_final(self, text, raw_text, duration_s)
+            return
         if not text or not text.strip():
             logger.info("[STREAM] No speech detected")
             if duration_s > MIN_PARTIAL_AUDIO_S:
@@ -2167,7 +2170,7 @@ class StreamingSession:
             self._overlay.flash_done_and_fade(self._mark_done)
             return
 
-        tutorial_waiting = bool(getattr(self.app, '_tutorial_hooks', {}).get('dictation'))
+        tutorial_waiting = getattr(self, '_tutorial_owner', None)
         if self._parking_enabled and not tutorial_waiting:
             original = self._target_hwnd
             current = None
@@ -2215,29 +2218,15 @@ class StreamingSession:
         self._overlay.update_text(text.rstrip(),
                                   StreamingOverlayQt.STATE_DONE)
         logger.info("[TRANSCRIBED] Held dictation ready for delivery")
-        try:
-            self.app.add_to_history(text.strip(), is_command=False)
-        except Exception as e:
-            logger.exception(f"[STREAM] add_to_history failed: {e}")
-        try:
-            self.app._log_history(
-                raw_text=raw_text if raw_text is not None else text,
-                display_text=text.strip(),
-                duration_ms=int(duration_s * 1000),
-                mode="streaming",
-                status="success",
-            )
-        except Exception as e:
-            logger.debug(f"[STREAM] _log_history (success) failed: {e}")
-        try:
-            self.app._notify_main_window(text.strip())
-        except Exception as e:
-            logger.debug(f"[STREAM] _notify_main_window failed: {e}")
+        if not tutorial_capture.record_final(self, text, raw_text, duration_s):
+            tutorial_capture.retire_final(self, text, raw_text, duration_s)
+            return
 
         if self.app.config.get('auto_paste', True) or tutorial_waiting:
             if self._parking_enabled or tutorial_waiting:
                 try:
-                    delivered = self.app._paste_preserving_clipboard(text, **({'tutorial_dictation': True} if tutorial_waiting else {})) is not False
+                    delivered = self.app._paste_preserving_clipboard(
+                        text, **tutorial_capture.kwargs(tutorial_waiting)) is not False
                 except Exception:
                     logger.exception("[STREAM] Final insertion failed; retaining draft")
                     delivered = False
@@ -2263,6 +2252,10 @@ class StreamingSession:
         self._overlay.flash_done_and_fade(self._mark_done)
 
     def _paste_with_retry(self, text):
+        from samsara import tutorial_capture
+        if not tutorial_capture.final_current(self, allow_done=True):
+            self.cancel()
+            return
         try:
             self.app._paste_preserving_clipboard(text)
             return
@@ -2274,11 +2267,14 @@ class StreamingSession:
                           lambda: self._paste_retry_then_clipboard(text))
 
     def _paste_retry_then_clipboard(self, text):
+        from samsara import tutorial_capture
+        if not tutorial_capture.final_current(self, allow_done=True):
+            return
         try:
-            self.app._paste_preserving_clipboard(text)
+            self.app._paste_preserving_clipboard(text, before_paste=lambda: tutorial_capture.final_current(self, allow_done=True))
         except Exception as e:
             logger.exception(f"[STREAM] Paste retry failed: {e}")
-            if pyperclip is not None:
+            if pyperclip is not None and tutorial_capture.final_current(self, allow_done=True):
                 try:
                     pyperclip.copy(text)
                     logger.info("[STREAM] Text copied to clipboard -- paste manually")
@@ -2330,7 +2326,8 @@ class StreamingSession:
         target app's per-paste undo entry (Notepad / RichEdit / IDEs)
         is what makes this safe -- pre-existing content stays intact
         because we only undo our own paste."""
-        if getattr(self.app, '_tutorial_hooks', {}).get('dictation'): return
+        if getattr(self, '_tutorial_owner', None) is not None:
+            return
         text = text.replace('\n', ' ').replace('\r', ' ')
         with self._paste_lock:
             if self.cancel_event.is_set():
@@ -2356,19 +2353,19 @@ class StreamingSession:
         """Replace the last partial with the cleaned final text.
 
         Daemon thread, runs after the user released the hotkey. We
-        still release any lingering Ctrl/Shift via SendInput as a
-        belt-and-braces guard against a brief release-mid-flight race;
-        the safety net is harmless when nothing is held. We never
-        re-press the modifiers afterwards -- a synthetic down without a
-        matching up corrupts OS state."""
+        release lingering modifiers and check cancellation before undo/paste.
+        History was saved before dispatch; a failed paste remains recoverable."""
+        from samsara import tutorial_capture
         sanitized = text.replace('\n', ' ').replace('\r', ' ')
         with self._paste_lock:
+            if not tutorial_capture.final_current(self, allow_done=True):
+                return
             _release_held_modifiers()
             try:
                 if self._last_pasted:
                     pyautogui.hotkey('ctrl', 'z')
                     time.sleep(UNDO_SETTLE_S)
-                self.app._paste_preserving_clipboard(sanitized)
+                self.app._paste_preserving_clipboard(sanitized, before_paste=lambda: tutorial_capture.final_current(self, allow_done=True))
                 self._last_pasted = False
                 if PASTE_SETTLE_S:
                     time.sleep(PASTE_SETTLE_S)
@@ -2378,7 +2375,7 @@ class StreamingSession:
                 logger.exception(f"[STREAM] direct final paste failed: {e}")
                 # Fallback: leave the cleaned text on the clipboard so
                 # the user can paste it manually.
-                if pyperclip is not None:
+                if pyperclip is not None and tutorial_capture.final_current(self, allow_done=True):
                     try:
                         pyperclip.copy(sanitized)
                         logger.info("[STREAM] Text copied to clipboard "

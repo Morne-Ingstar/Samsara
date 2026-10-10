@@ -544,7 +544,10 @@ def test_partial_silent_and_final_feedback_at_real_call_sites(monkeypatch):
         exec(compile(ast.Module(body=[method], type_ignores=[]), 'streaming-method', 'exec'), namespace)
         namespace[name](session, 'synthetic')
     assert app._paste_preserving_clipboard.call_args_list[0].kwargs == {'feedback': 'silent'}
-    assert app._paste_preserving_clipboard.call_args_list[1].kwargs == {}
+    guard = app._paste_preserving_clipboard.call_args_list[1].kwargs['before_paste']
+    assert guard() is True
+    session.cancel_event.set()
+    assert guard() is False
 
 
 def test_continuous_chunk_disables_success_and_wrapper_forwards_feedback():

@@ -1,6 +1,5 @@
 """Focused regressions from the clean-laptop install report (prompt 223)."""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -34,12 +33,22 @@ def test_practice_dictation_callback_enables_next_for_each_mode(qapp, mode):
     window.close()
 
 
-def test_hold_toggle_dispatcher_notifies_tutorial_before_returning():
-    source = Path("dictation.py").read_text(encoding="utf-8")
-    # Continuous already had both notifications. The hotkey final path must
-    # now contain one command and one normal-dictation notification as well.
-    assert source.count("_tutorial_hooks.pop('command', None)") >= 2
-    assert source.count("_tutorial_hooks.pop('dictation', None)") >= 2
+@pytest.mark.parametrize('action', ['close', 'skip_tutorial', 'finish', 'skip_step', 'back'])
+@pytest.mark.parametrize('step', [1, 2])
+def test_tutorial_releases_hooks_when_step_or_window_ends(qapp, action, step):
+    app = _tutorial_app('hold')
+    window = TutorialWindow(app)
+    window._step = step
+    window._show_step()
+    key = 'dictation' if step == 1 else 'command'
+    callback = app._tutorial_hooks[key]
+    getattr(window, {'close': 'close', 'skip_tutorial': '_skip_tutorial',
+        'finish': '_finish', 'skip_step': '_skip_step', 'back': '_go_back'}[action])()
+    assert app._tutorial_hooks.get(key) is not callback
+    window.close()
+    assert app._tutorial_hooks == {}
+    window.deleteLater()
+    qapp.processEvents()
 
 
 def test_fresh_install_command_strip_has_a_visible_real_command(qapp, monkeypatch):

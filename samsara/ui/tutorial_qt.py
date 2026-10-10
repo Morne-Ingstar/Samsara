@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
-from samsara import command_catalog
+from samsara import command_catalog, tutorial_capture
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.onboarding.guidance_facts import facts_from_config
@@ -1040,7 +1040,7 @@ class TutorialWindow(QMainWindow):
 
         # Register hook for interactive steps
         self._next_btn.setMinimumWidth(self._button_min_width(self._next_btn, [self._next_btn.text()]))
-        if is_interactive and self._step not in self._completed:
+        if is_interactive and (key == "dictation" or self._step not in self._completed):
             self._install_hook(key)
             self._start_hint_timer(key)
 
@@ -1161,8 +1161,8 @@ class TutorialWindow(QMainWindow):
 
         if key == "dictation":
             def _cb(text: str):
-                self._step_signal.emit("dictation_done", text or "")
-            self._app._tutorial_hooks['dictation'] = _cb
+                self._step_signal.emit(registration.event, text or "")
+            registration = tutorial_capture.register(self._app, int(self.winId()), _cb)
 
         elif key == "command":
             def _cb(cmd_name: str):
@@ -1170,10 +1170,13 @@ class TutorialWindow(QMainWindow):
             self._app._tutorial_hooks['command'] = _cb
 
     def _remove_hook(self, key: str):
+        if key == "dictation":
+            tutorial_capture.release(self._app)
         if hasattr(self._app, '_tutorial_hooks'):
             self._app._tutorial_hooks.pop(key, None)
 
     def _remove_all_hooks(self):
+        tutorial_capture.release(self._app)
         if hasattr(self._app, '_tutorial_hooks'):
             for key in ('dictation', 'command'):
                 self._app._tutorial_hooks.pop(key, None)
@@ -1184,7 +1187,7 @@ class TutorialWindow(QMainWindow):
 
     def _on_step_signal(self, event: str, payload: str):
         """Handle success signals delivered from worker threads via Signal."""
-        if event == "dictation_done":
+        if tutorial_capture.accept_event(self._app, event):
             self._complete_dictation(payload)
         elif event == "command_done":
             self._complete_command(payload)
@@ -1194,14 +1197,15 @@ class TutorialWindow(QMainWindow):
             self._complete_dictation('')
 
     def _complete_dictation(self, text: str):
+        if self._dictation_box and text:
+            cursor = self._dictation_box.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            cursor.insertText((' ' if self._dictation_box.toPlainText() else '') + text)
         if 1 in self._completed:
             return
         self._completed.add(1)
-        self._remove_hook('dictation')
         self._skipped_steps.discard(1)
         self._cancel_hint_timer()
-        if self._dictation_box and text:
-            self._dictation_box.setPlainText(text)
         if hasattr(self, '_dict_success'):
             self._dict_success.setVisible(True)
         if hasattr(self, '_dict_hint'):

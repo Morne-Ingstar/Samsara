@@ -398,7 +398,7 @@ from samsara.smart_corrections import (
 )
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import autostart
-from samsara import config_defaults, listening_display
+from samsara import config_defaults, listening_display, tutorial_capture
 from samsara.onboarding import display_placement
 from samsara import injection_safety
 from samsara import diagnostics
@@ -5267,6 +5267,7 @@ class DictationApp:
         MODE STATE -- current mode, the unit-of-work stack -- but the
         wiring itself is stable for the app's lifetime).
         """
+        from samsara import tutorial_capture
         if self._session_mode_manager is not None:
             return self._session_mode_manager
 
@@ -5426,7 +5427,7 @@ class DictationApp:
                 formatted,
                 before_paste=commit_focus_guard,
                 return_delivery_confirmation=True,
-                **({'tutorial_dictation': True} if getattr(self, '_tutorial_hooks', {}).get('dictation') else {}),
+                **tutorial_capture.kwargs(tutorial_capture.current()),
             )
             if not paste_ok:
                 return False
@@ -5640,6 +5641,7 @@ class DictationApp:
             fragment_clear_gap_s=__import__('samsara.speech_pace', fromlist=['clear_gap_s']).clear_gap_s(self.config),
             live_surface_enabled=listening_display.run_display(self).full,
         )
+        tutorial_capture.install(self._session_mode_manager)
         from samsara.config_schema import spoken_notices_for_level
         self._session_mode_manager.set_spoken_notices(
             spoken_notices_for_level((self.config.get("tts", {}) or {}).get("feedback_level")))
@@ -7826,6 +7828,7 @@ class DictationApp:
         self.capture_rate for backward compatibility. Pass SAMPLE_RATE
         (16000) when buffer comes from the ACE ring (already at model rate).
         """
+        from samsara import tutorial_capture
         if src_rate is None:
             src_rate = self.capture_rate
         try:
@@ -7921,8 +7924,8 @@ class DictationApp:
 
                 logger.info(f"[TEXT] {text}")
 
-                if self.config['auto_paste'] or getattr(self, '_tutorial_hooks', {}).get('dictation'):
-                    self._paste_preserving_clipboard(text, feedback=False, **({'tutorial_dictation': True} if getattr(self, '_tutorial_hooks', {}).get('dictation') else {}))
+                if self.config['auto_paste'] or getattr(buffer, 'tutorial_owner', None):
+                    self._paste_preserving_clipboard(text, feedback=False, **tutorial_capture.kwargs(getattr(buffer, 'tutorial_owner', None)))
 
                 # Log to persistent history
                 self._log_history(
@@ -7952,15 +7955,8 @@ class DictationApp:
                 logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
 
     def _notify_tutorial(self, kind, text):
-        callback = getattr(self, '_tutorial_hooks', {}).pop(kind, None) if str(text or '').strip() else None
-        if callback is None:
-            return False
-        try:
-            callback(text)
-            return True
-        except Exception as exc:
-            logger.debug("Tutorial hook failed: %s", exc)
-            return False
+        from samsara import tutorial_capture
+        return tutorial_capture.notify(self, kind, text)
 
     def toggle_wake_word_mode(self):
         """Toggle wake word listening mode"""
@@ -9545,6 +9541,7 @@ class DictationApp:
         The capture duck protects recording, not Whisper decoding. Release
         its owner before enqueueing so a queued decode cannot keep media low.
         """
+        from samsara import tutorial_capture
         src_rate = self.capture_rate if src_rate is None else src_rate
         _session_mode = getattr(getattr(self, "_session_mode_manager", None), "mode", None)
         stage_timing = StageTiming.create(
@@ -9592,7 +9589,7 @@ class DictationApp:
             flight_recorder.record('session.dispatch', op='started', kind='wake_buffer')
             timing_token = set_current_stage_timing(stage_timing)
             try:
-                self._decode_wake_word_buffer(
+                tutorial_capture.run(buffer, self._decode_wake_word_buffer,
                     buffer, src_rate, oww_confirmed=oww_confirmed,
                     stage_timing=stage_timing,
                 )
@@ -9799,6 +9796,7 @@ class DictationApp:
 
             # In dictation state (quick_dictation, long_dictation, or wake_session)?
             if self.app_state in ('quick_dictation', 'long_dictation', 'wake_session'):
+                from samsara import tutorial_capture
                 from samsara.session_modes import match_whole_utterance
                 # Check abort words
                 abort_words = ww_config.get(
@@ -9939,7 +9937,7 @@ class DictationApp:
                                                "buffered_text": ' '.join(self.wake_dictation_buffer),
                                                "final_output": final_text.strip()})
                         if final_text.strip():
-                            if self._output_dictation(final_text) is False:
+                            if tutorial_capture.output_buffer(self, final_text) is False:
                                 self._emit_wake_trace({"stage": "utterance_end", "result": "delivery_failed"})
                                 return
                         self._reset_wake_dictation()
@@ -9975,7 +9973,7 @@ class DictationApp:
                             pause_idx = text_lower.find(pw.lower())
                             cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip().rstrip(string.punctuation + ' ')
                             if cleaned:
-                                self.wake_dictation_buffer.append(cleaned)
+                                tutorial_capture.append_wake(self, cleaned)
                                 logger.info(f"[DICTATE] Buffered (pre-pause): {cleaned}")
                             self._dictation_paused = True
                             # self.silence_start is otherwise owned by
@@ -10005,7 +10003,7 @@ class DictationApp:
                     self._wake_pending_stage_timings = (
                         getattr(self, "_wake_pending_stage_timings", []) + [stage_timing])
                     stage_timing.handoff()
-                self.wake_dictation_buffer.append(text)
+                tutorial_capture.append_wake(self, text)
                 logger.info(f"[DICTATE] Buffered: {text}")
                 self._emit_wake_trace({"stage": "dictation_buffered", "text": text,
                                        "buffer_size": len(self.wake_dictation_buffer)})
@@ -10245,6 +10243,7 @@ class DictationApp:
             mode_config: ignored (kept for call-site compat), config read from self.config
             initial_content: optional first text chunk to buffer
         """
+        from samsara import tutorial_capture
         old_state = self.app_state
         self.app_state = mode_name
         logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r}) via _start_dictation_mode")
@@ -10316,7 +10315,7 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_listening, True)
 
         if initial_content:
-            self.wake_dictation_buffer.append(initial_content)
+            tutorial_capture.append_wake(self, initial_content)
             logger.info(f"[DICTATE] Initial content: {initial_content}")
             if not self._dictation_require_end:
                 self._restart_dictation_timer()
@@ -10343,6 +10342,7 @@ class DictationApp:
 
     def _reset_wake_dictation(self):
         """Return to asleep state, clearing all dictation state."""
+        from samsara import tutorial_capture
         for timing in getattr(self, "_wake_pending_stage_timings", []):
             timing.complete(outcome="discarded")
         self._wake_pending_stage_timings = []
@@ -10367,6 +10367,7 @@ class DictationApp:
             logger.info(f"[WS-DIAG] app_state set to {self.app_state!r} (was {old_state!r})")
             self.wake_dictation_mode = None
             self.wake_dictation_buffer = []
+            self._tutorial_wake_delivered = False
             self.wake_dictation_start_time = None
             self.wake_word_triggered = False
             self._dictation_silence_timeout = None
@@ -10433,16 +10434,11 @@ class DictationApp:
 
     def _finalize_dictation_timeout(self):
         """Called when the dictation finalization timer expires."""
+        from samsara import tutorial_capture
         logger.info(f"[WS-DIAG] _finalize_dictation_timeout called: app_state={self.app_state!r}")
         try:
             with self._dictation_finalize_lock:
-                if self.wake_dictation_mode and self.wake_dictation_buffer and not self._dictation_require_end:
-                    if self.app_state == 'wake_session' and getattr(self, '_wake_session_delivery_failed', False):
-                        return
-                    final_text = ' '.join(self.wake_dictation_buffer)
-                    logger.info(f"[DONE] Dictation complete: {final_text}")
-                    if self._output_dictation(final_text):
-                        self._reset_wake_dictation()
+                tutorial_capture.finalize_wake(self)
         except Exception as e:
             logger.exception(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
             import traceback
@@ -10500,6 +10496,7 @@ class DictationApp:
 
         Idempotent and lock-guarded. Safe to call from any thread.
         """
+        from samsara import tutorial_capture
         try:
             with self._dictation_finalize_lock:
                 if self.app_state != 'long_dictation':
@@ -10527,7 +10524,7 @@ class DictationApp:
                 self._reset_wake_dictation()
             # Released the lock — now do the user-visible output
             if pending_text:
-                self._output_dictation(pending_text)
+                tutorial_capture.output_buffer(self, pending_text)
         except Exception as e:
             logger.exception(f"[ERROR] _maybe_finalize_dictation crashed: {e}")
             import traceback
@@ -10541,6 +10538,7 @@ class DictationApp:
         Resets state regardless of pending count. Logs loudly because if
         this fires it indicates a real bug somewhere.
         """
+        from samsara import tutorial_capture
         try:
             with self._dictation_finalize_lock:
                 if self.app_state != 'long_dictation':
@@ -10556,7 +10554,7 @@ class DictationApp:
                     pending_text = None
                 self._reset_wake_dictation()
             if pending_text:
-                self._output_dictation(pending_text)
+                tutorial_capture.output_buffer(self, pending_text)
         except Exception as e:
             logger.exception(f"[ERROR] _absolute_failsafe_reset crashed: {e}")
             import traceback
@@ -10726,9 +10724,10 @@ class DictationApp:
         return _paste.flight_foreground_process_name()
 
     def _paste_preserving_clipboard(self, text, before_paste=None, return_delivery_confirmation=False, *, feedback=True, tutorial_dictation=False):
-        if tutorial_dictation and self._notify_tutorial('dictation', text):
-            _paste.show_delivery_result(self, True, True)
-            return (True, True) if return_delivery_confirmation else True
+        from samsara import tutorial_capture
+        owner = tutorial_capture.resolve(tutorial_dictation)
+        if owner is not None:
+            return tutorial_capture.handoff(self, owner, text, return_delivery_confirmation)
         return _paste.paste_preserving_clipboard(
             self,
             text,
@@ -10741,8 +10740,9 @@ class DictationApp:
         )
 
     def _deliver_text_to_focused_editor(self, text):
-        if getattr(self, '_tutorial_hooks', {}).get('dictation'):
-            return self._paste_preserving_clipboard(text, tutorial_dictation=True)
+        from samsara import tutorial_capture
+        if tutorial_capture.current() is not None:
+            return self._paste_preserving_clipboard(text, tutorial_dictation=tutorial_capture.current())
         return _paste.deliver_text_to_focused_editor(self, text)
 
     def _record_undoable_paste(self, text, target_hwnd=_UNDO_TARGET_UNSET):
@@ -10822,6 +10822,7 @@ class DictationApp:
 
     def _output_dictation(self, text):
         """Output dictated text"""
+        from samsara import tutorial_capture
         stage_timing = current_stage_timing() if getattr(self, "_stage_timing_enabled", False) else None
         pending_timings = getattr(self, "_wake_pending_stage_timings", [])
         self._wake_pending_stage_timings = []
@@ -10912,7 +10913,7 @@ class DictationApp:
         delivered = False
         _wake_delivery_failed = (self.app_state == 'wake_session'
                                  and getattr(self, '_wake_session_delivery_failed', False))
-        tutorial_waiting = bool(getattr(self, '_tutorial_hooks', {}).get('dictation'))
+        tutorial_waiting = tutorial_capture.current()
         if tutorial_waiting or (self.config['auto_paste'] and not _wake_delivery_failed):
             logger.info(
                 f"[WS-DIAG] _output_dictation: wake_profile_active="
@@ -10921,7 +10922,7 @@ class DictationApp:
                 f"app_state={self.app_state!r}"
             )
             if tutorial_waiting:
-                delivered = self._paste_preserving_clipboard(text, tutorial_dictation=True)
+                delivered = self._paste_preserving_clipboard(text, tutorial_dictation=tutorial_waiting)
                 if delivered and getattr(self, '_wake_profile_active', False):
                     self._wake_session_first_chunk = False
             elif getattr(self, '_wake_profile_active', False):
@@ -11015,6 +11016,7 @@ class DictationApp:
     
     def reset_wake_word(self):
         """Reset wake word trigger after timeout"""
+        from samsara import tutorial_capture
         try:
             with self._dictation_finalize_lock:
                 if self.wake_word_triggered:
@@ -11030,7 +11032,7 @@ class DictationApp:
                         # Output buffered content on timeout
                         final_text = ' '.join(self.wake_dictation_buffer)
                         logger.debug(f"[TIMEOUT] Dictation timeout - outputting: {final_text}")
-                        self._output_dictation(final_text)
+                        tutorial_capture.output_buffer(self, final_text)
                     else:
                         logger.debug(f"[TIMEOUT] Long dictation timeout - say end word or wake word again")
                         self.play_sound("error")
@@ -11645,6 +11647,7 @@ class DictationApp:
         play_earcon: play the "start" sound and brief wait (skip for command mode
           which manages its own debounced earcon).
         """
+        from samsara import tutorial_capture
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
@@ -11663,10 +11666,9 @@ class DictationApp:
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
+        self._tutorial_capture_token = tutorial_capture.begin(self)
         if self._live_surface_hold_parking_enabled():
-            # Save the destination before feedback/UI or capture can change
-            # focus. Each accepted start owns a fresh target and pause latch.
-            # Explicit insertion of a parked draft still uses current focus.
+            # Freeze tutorial ownership and the ordinary destination before feedback.
             self._hold_capture_target_hwnd = _get_foreground_hwnd()
             self._hold_capture_target_process = _get_foreground_exe_lower()
             manager = self._ensure_session_mode_manager()
@@ -11866,6 +11868,7 @@ class DictationApp:
 
     def _stop_recording_impl(self, stage_timing=None):
         """Stop recording and transcribe"""
+        from samsara import tutorial_capture
         if not self.recording:
             return
 
@@ -11881,6 +11884,7 @@ class DictationApp:
             streaming=bool(getattr(self, '_streaming_session', None) is not None),
         )
 
+        tutorial_owner = getattr(self, '_tutorial_capture_token', None)
         ownership = self._take_recording_ownership()
         capture_end_ns = time.perf_counter_ns()
         park_hold_requested = bool(
@@ -12427,11 +12431,10 @@ class DictationApp:
                         )
                         return
 
-                    # A pause latch, an older parked document, or focus drift
-                    # turns this final into a local segment.  This check is
-                    # immediately before the former auto-delivery branch so
-                    # a paused hold has no path that can paste first.
-                    tutorial_waiting = bool(getattr(self, '_tutorial_hooks', {}).get('dictation'))
+                    # Keep revoked captures in History; ordinary holds retain their target guard.
+                    tutorial_waiting = tutorial_owner
+                    if tutorial_capture.revoked_hold(self, tutorial_owner, text, raw, audio_duration):
+                        return
                     target_changed = False
                     if self._live_surface_hold_parking_enabled():
                         original_hwnd = getattr(self, '_hold_capture_target_hwnd', None)
@@ -12482,12 +12485,8 @@ class DictationApp:
                             entry_type="dictation",
                         )
                         return
-                    # History retains the final before sending it. The paste
-                    # seam reports target acknowledgement separately from the
-                    # integrity check, which only establishes permission.
-                    # Ctrl+V and typed API acceptance cannot prove receipt.
-                    # Both displays receive the same unconfirmed wording there.
-                    # Add to history
+                    # History keeps the final before sending; the paste seam reports receipt.
+                    # Permission alone cannot prove that Ctrl+V or typed input was received.
                     self.add_to_history(text.strip(), is_command=False)
                     self._log_history(
                         raw_text=raw,
@@ -12540,7 +12539,7 @@ class DictationApp:
                         logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
 
                     if self.config['auto_paste'] or tutorial_waiting:
-                        delivered = self._paste_preserving_clipboard(text, **({'tutorial_dictation': True} if tutorial_waiting else {}))
+                        delivered = self._paste_preserving_clipboard(text, **tutorial_capture.kwargs(tutorial_waiting))
                         if (delivered is False
                                 and self._live_surface_hold_parking_enabled()):
                             # The injector explicitly reported failure.  Keep

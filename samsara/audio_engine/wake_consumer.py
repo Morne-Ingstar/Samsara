@@ -54,7 +54,7 @@ from samsara.session_modes import SessionMode
 from samsara.subjects import OnsetContext
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
-from samsara import flight_recorder
+from samsara import flight_recorder, tutorial_capture
 
 logger = get_logger(__name__)
 
@@ -828,7 +828,8 @@ class WakeConsumer:
                         kwargs['speech_start_ns'] = queued.speech_start_ns
                 if queued.onset_context is not None:
                     kwargs['onset_context'] = queued.onset_context
-                self._app._handle_command_mode_utterance(buffer_copy, SAMPLE_RATE, **kwargs)
+                tutorial_capture.run(buffer_copy, self._app._handle_command_mode_utterance,
+                                     buffer_copy, SAMPLE_RATE, **kwargs)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
                 flight_recorder.record('session.dispatch', op='completed', kind='toggle_command', exc=True)
@@ -1340,6 +1341,7 @@ class WakeConsumer:
             app.silence_start = None
 
             if speech_onset:
+                self._utterance_frames = tutorial_capture.start_frames(app, self._utterance_frames)
                 self._speech_start_ns = capture_ns
                 self._onset_context = (self._capture_onset_context(capture_ns)
                                        if self._is_toggle_cmd(app) else None)
@@ -1347,10 +1349,7 @@ class WakeConsumer:
                     'wake.session_open', app_state=app.app_state,
                     wake_word_triggered=bool(app.wake_word_triggered),
                 )
-                # Deliberately latched toggle / AI-command capture opens a
-                # capture duck at speech onset. Passive wake candidates open
-                # no capture dip, so listening remains at the idle level.
-                # A confirmed wake session ducks through _start_wake_session.
+                # Toggle/Ava capture ducks at onset; passive wake waits for confirmation.
                 if self._is_toggle_cmd(app):
                     self._hands_free_capture_duck_token = self._open_hands_free_duck_safe(app)
                 # Ring prebuffer rewind: replaces the legacy _prebuffer deque drain.
@@ -1503,7 +1502,7 @@ class WakeConsumer:
                     # Enough silence — flush if sufficient speech
                     speech_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
                     if speech_s >= min_speech:
-                        buffer_copy = list(self._utterance_frames)
+                        buffer_copy = tutorial_capture.copy_frames(self._utterance_frames)
                     else:
                         buffer_copy = None
                     self._utterance_frames   = []
@@ -1661,8 +1660,8 @@ class WakeConsumer:
         # gate. Profiles only relax the no-hit path; they must not erase a hit.
         oww_confirmed = bool(_passive and (primary_hit or profile_hits))
         if _has_profiles:
-            buffer_copy = AdmittedWakeBuffer(buffer_copy, primary_hit=primary_hit,
-                                             profile_hits=profile_hits)
+            buffer_copy = tutorial_capture.carry(buffer_copy, AdmittedWakeBuffer(
+                buffer_copy, primary_hit=primary_hit, profile_hits=profile_hits))
         # Passive candidates open no capture dip; confirmed wake sessions duck
         # through _start_wake_session. Existing capture owners pass through.
         owner_token = (

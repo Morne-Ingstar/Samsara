@@ -10,6 +10,7 @@ import pytest
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QFontMetrics
 from samsara.ui import theme, tutorial_qt
+from samsara import tutorial_capture
 from samsara.ui.widgets.step_indicator import StepIndicator
 from PySide6.QtWidgets import QWidget
 
@@ -25,7 +26,7 @@ def method(file, name):
 
 
 def compile_method(node, **names):
-    namespace = dict(logger=logging.getLogger(__name__), **names)
+    namespace = dict(logger=logging.getLogger(__name__), tutorial_capture=tutorial_capture, **names)
     exec(compile(ast.Module(body=[node], type_ignores=[]), node._tutorial_source, 'exec'), namespace)
     return namespace[node.name]
 
@@ -47,6 +48,11 @@ def window(qapp, monkeypatch, request):
     win = tutorial_qt.TutorialWindow(app)
     win._step = 1
     win._show_step()
+    win.show()
+    monkeypatch.setattr(tutorial_capture, 'window_ready',
+                        lambda hwnd: hwnd == int(win.winId()) and win.isVisible() and not win.isMinimized())
+    from contextvars import ContextVar
+    monkeypatch.setattr(tutorial_capture, '_current', ContextVar('test_owner', default=None))
     yield win
     win.close()
     win.deleteLater()
@@ -59,7 +65,7 @@ def test_typed_or_pasted_text_lights_next(window):
     assert not window._next_btn.isEnabled()
     window._dictation_box.setPlainText('hello world')
     assert window._next_btn.isEnabled()
-    assert 'dictation' not in window._app._tutorial_hooks
+    assert 'dictation' in window._app._tutorial_hooks  # later wake chunks still belong here
 
 
 @pytest.mark.parametrize('scale', [1.0, 1.5])
@@ -119,6 +125,12 @@ def bind_delivery(app, window):
     callback = Mock(wraps=window._app._tutorial_hooks['dictation'])
     window._app._tutorial_hooks['dictation'] = callback
     app._tutorial_hooks = window._app._tutorial_hooks
+    app._tutorial_capture_registration = window._app._tutorial_capture_registration
+    app._tutorial_capture_registration.callback = callback
+    app._tutorial_capture_token = tutorial_capture.begin(app)
+    # Each positive fixture represents an already-started tutorial capture.
+    # Onset/foreground behavior is exercised separately by 497.
+    tutorial_capture._current.set(app._tutorial_capture_token)
     app._notify_tutorial = MethodType(compile_method(method('dictation.py', '_notify_tutorial')), app)
     real_paste = Mock(side_effect=AssertionError('real paste must not be called'))
     primer = Mock(side_effect=AssertionError('wake primer must not be called'))
@@ -168,6 +180,7 @@ def test_streaming_final_completes_ordinary_ending(window, hold, monkeypatch, pa
     callback, real_paste, _ = bind_delivery(h.app, window)
     h.session._parking_enabled = parking
     h.session._direct_paste = direct
+    h.session._tutorial_owner = h.app._tutorial_capture_token
     h.session._target_hwnd = None  # would park without the tutorial exemption
     h.session._paste_with_retry = lambda text: h.app._paste_preserving_clipboard(text)
     h.partials.partial('Synthetic preview.')
@@ -182,7 +195,8 @@ def test_streaming_final_completes_ordinary_ending(window, hold, monkeypatch, pa
 
 def test_streaming_partial_never_types_into_waiting_tutorial(window):
     partial = compile_method(method('samsara/streaming.py', '_direct_paste_partial'))
-    partial(SimpleNamespace(app=window._app), 'partial words')
+    partial(SimpleNamespace(app=window._app,
+        _tutorial_owner=tutorial_capture.begin(window._app)), 'partial words')
     assert window._dictation_box.toPlainText() == ''
     assert not window._next_btn.isEnabled()
 
@@ -258,7 +272,8 @@ def test_continuous_final_completes_ordinary_ending(window, hold):
     transcribe = compile_method(method('dictation.py', 'transcribe_continuous_buffer'),
         np=np, time=time, resample_audio=lambda audio, *a: audio,
         clean_text=lambda text, **kw: text)
-    transcribe(app, [np.ones(16000, dtype=np.float32)])
+    transcribe(app, tutorial_capture.CaptureFrames(
+        [np.ones(16000, dtype=np.float32)], app._tutorial_capture_token))
     assert_delivered(h, app, window, callback, real_paste, 'hello world')
 
 
@@ -389,8 +404,22 @@ def test_snippet_or_ava_edit_paste_cannot_consume_waiting_dictation(window):
 def test_hands_free_delivery_confirmation_shape(window):
     app = window._app
     callback, real_paste, _ = bind_delivery(app, window)
-    assert app._paste_preserving_clipboard('hello world', tutorial_dictation=True,
+    assert app._paste_preserving_clipboard('hello world', tutorial_dictation=app._tutorial_capture_token,
         return_delivery_confirmation=True, before_paste=Mock(return_value=False)) == (True, True)
     callback.assert_called_once()
     real_paste.assert_not_called()
     assert window._dictation_box.toPlainText() == 'hello world'
+
+
+def test_non_tutorial_target_keeps_guard_and_waiting_hook(window):
+    app = window._app
+    callback, real_paste, _ = bind_delivery(app, window)
+    tutorial_capture._current.set(None)  # capture started in another application
+    real_paste.side_effect = None
+    real_paste.return_value = (False, False)
+    guard = Mock(return_value=False)
+    assert app._paste_preserving_clipboard('hello world', tutorial_dictation=True,
+        return_delivery_confirmation=True, before_paste=guard) == (False, False)
+    callback.assert_not_called()
+    assert real_paste.call_args.kwargs['before_paste'] is guard
+    assert app._tutorial_hooks['dictation'] is callback

@@ -33,6 +33,7 @@ import numpy as np
 
 from .frame import FRAME_MS, SAMPLE_RATE
 from .ring import EMPTY
+from samsara import tutorial_capture
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
 
@@ -114,7 +115,7 @@ class ContinuousConsumer:
                 self._thread = None
             self._close_capture_duck()
             with self._frames_lock:
-                remaining = list(self._speech_frames)
+                remaining = tutorial_capture.copy_frames(self._speech_frames)
                 self._speech_frames = []
                 self._is_speaking = False
                 self._silence_start = None
@@ -241,6 +242,8 @@ class ContinuousConsumer:
 
         if rms > speech_threshold:
             with self._frames_lock:
+                if not self._speech_frames:
+                    self._speech_frames = tutorial_capture.start_frames(app)
                 self._is_speaking   = True
                 self._silence_start = None
                 self._speech_frames.append(audio_chunk)
@@ -295,7 +298,7 @@ class ContinuousConsumer:
         with self._frames_lock:
             speech_duration = len(self._speech_frames) * (FRAME_MS / 1000.0)
             if speech_duration >= min_speech:
-                buffer_copy = list(self._speech_frames)
+                buffer_copy = tutorial_capture.copy_frames(self._speech_frames)
             else:
                 buffer_copy = None
             self._speech_frames = []
