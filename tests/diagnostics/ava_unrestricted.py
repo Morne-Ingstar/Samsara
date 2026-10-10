@@ -61,14 +61,14 @@ def _provider_bits(cloud):
     providers = cloud.get("providers", {})
     defaults = {
         "deepseek": {"base_url": "https://api.deepseek.com/v1",
-                     "model": "deepseek-chat"},
+                     "model": "deepseek-flash"},
         "openai":   {"base_url": "https://api.openai.com/v1",
                      "model": "gpt-4o-mini"},
         "anthropic":{"base_url": "https://api.anthropic.com/v1",
-                     "model": "claude-sonnet-4-20250514"},
+                     "model": "claude-sonnet-5-5"},
     }
     pcfg = providers.get(provider, defaults.get(provider, {}))
-    model = cloud.get("model") or pcfg.get("model", "deepseek-chat")
+    model = cloud.get("model") or pcfg.get("model", "deepseek-flash")
     base_url = pcfg.get("base_url", "https://api.deepseek.com/v1")
     return provider, base_url, model
 

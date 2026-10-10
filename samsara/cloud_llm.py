@@ -6,6 +6,7 @@ User provides their own API key. Data leaves the machine when enabled.
 Samsara does not store conversation content beyond the local session.
 """
 
+import logging
 import requests
 from samsara import ai_transport
 from urllib.parse import urlparse
@@ -15,7 +16,7 @@ BUILTIN_PROVIDERS = {
     "deepseek": {
         "base_url": "https://api.deepseek.com/v1",
         "host": "api.deepseek.com",
-        "model": "deepseek-chat",
+        "model": "deepseek-flash",
     },
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -25,7 +26,7 @@ BUILTIN_PROVIDERS = {
     "anthropic": {
         "base_url": "https://api.anthropic.com/v1",
         "host": "api.anthropic.com",
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-5-5",
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
@@ -34,6 +35,25 @@ BUILTIN_PROVIDERS = {
     },
 }
 SUPPORTED_PROVIDERS = frozenset(BUILTIN_PROVIDERS)
+RETIRED_DEFAULTS = {
+    "deepseek": {"deepseek-chat": BUILTIN_PROVIDERS["deepseek"]["model"]},
+    "anthropic": {"claude-sonnet-4-20250514": BUILTIN_PROVIDERS["anthropic"]["model"]},
+}
+_reported_retired_defaults = set()
+
+
+def resolve_default_model(provider, model, *, log_replacement=False):
+    replacement = RETIRED_DEFAULTS.get(provider, {}).get(model)
+    if replacement is None:
+        return model
+    marker = (provider, model)
+    if log_replacement and marker not in _reported_retired_defaults:
+        _reported_retired_defaults.add(marker)
+        logging.getLogger("Samsara.cloud_llm").info(
+            "Cloud provider %s: retired default %s replaced by %s for requests",
+            provider, model, replacement,
+        )
+    return replacement
 
 
 def is_enabled(app):
@@ -61,7 +81,10 @@ def _get_provider_config(app):
         raise ValueError(f"Unsafe endpoint configured for provider {provider!r}")
 
     legacy_model = cfg.get("anthropic_model") if provider == "anthropic" else None
-    model = cfg.get("model") or legacy_model or provider_cfg["model"]
+    model = resolve_default_model(
+        provider, cfg.get("model") or legacy_model or provider_cfg["model"],
+        log_replacement=True,
+    )
     return provider, base_url, model
 
 

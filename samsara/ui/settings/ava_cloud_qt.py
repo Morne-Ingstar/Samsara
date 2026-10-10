@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.runtime import thread_registry
-from samsara import ai_preferences, ava_readiness, config_defaults
+from samsara import ai_preferences, ava_readiness, cloud_llm, config_defaults
 from samsara.ava_memory import PersonalMemory
 from samsara.paths import samsara_home_dir
 from samsara.log import get_logger
@@ -46,16 +46,13 @@ _DISPLAY_TO_CODE   = {p[0]: p[1] for p in _PROVIDERS}
 _CODE_TO_DISPLAY   = {p[1]: p[0] for p in _PROVIDERS}
 
 _DEFAULT_MODELS = {
-    "deepseek":  "deepseek-chat",
-    "openai":    "gpt-4o-mini",
-    "anthropic": "claude-sonnet-4-20250514",
-    "openrouter": "openrouter/auto",
+    provider: cfg["model"] for provider, cfg in cloud_llm.BUILTIN_PROVIDERS.items()
 }
 
 _PROVIDER_INFO = {
-    "deepseek":  "deepseek-chat — Best value. Cheapest per token, strong reasoning. Recommended for most users.",
+    "deepseek":  "deepseek-flash — Best value. Cheapest per token, strong reasoning. Recommended for most users.",
     "openai":    "gpt-4o-mini — Fast and widely supported. Good for general tasks and tool use.",
-    "anthropic": "claude-sonnet-4 — Best reasoning and instruction following. Higher cost per token.",
+    "anthropic": "claude-sonnet-5-5 — Best reasoning and instruction following. Higher cost per token.",
     "openrouter": "One key, many models. Auto-picks per request, or enter a model slug below.",
 }
 
@@ -379,7 +376,10 @@ class AvaCloudPage:
         layout.addSpacing(8)
 
         # Model override
-        current_model = cfg.get('model', '')
+        current_model = cloud_llm.resolve_default_model(
+            current_provider, cfg.get('model') or (
+                cfg.get('anthropic_model', '') if current_provider == 'anthropic' else '')
+        )
         model_entry = QLineEdit()
         model_entry.setText(current_model)
         model_entry.setPlaceholderText(
