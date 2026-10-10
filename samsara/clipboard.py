@@ -822,6 +822,7 @@ class DeliveryOutcome(str, Enum):
     CONFIRMED = 'confirmed'
     SENT = 'sent'
     UNVERIFIED = 'unverified'
+    NOT_SENT = 'not_sent'
 
 
 _MESSAGE_TIMEOUT_MS = 200
@@ -844,6 +845,32 @@ class _GUIThreadInfo(ctypes.Structure):
                 ('hwndCapture', _w.HWND), ('hwndMenuOwner', _w.HWND),
                 ('hwndMoveSize', _w.HWND), ('hwndCaret', _w.HWND),
                 ('rcCaret', _w.RECT)]
+
+
+class _PasteTargetChanged(RuntimeError):
+    """A refused target must never become an ordinary paste fallback."""
+
+
+def _paste_target():
+    """Capture foreground plus available control identity; no payload reads."""
+    if sys.platform != 'win32' or _user32 is None:
+        return None
+    try:
+        foreground = _user32.GetForegroundWindow()
+        thread = _user32.GetWindowThreadProcessId(foreground, None)
+        info = _GUIThreadInfo(cbSize=ctypes.sizeof(_GUIThreadInfo))
+        focus = info.hwndFocus if thread and _user32.GetGUIThreadInfo(thread, ctypes.byref(info)) else None
+        return foreground, thread, focus
+    except Exception:
+        return None
+
+
+def _paste_target_matches(target):
+    if target is None:
+        return True  # No native discovery available; preserve ordinary fallback.
+    current = _paste_target()
+    return current is not None and current[:2] == target[:2] and (
+        target[2] is None or current[2] == target[2])
 
 
 def message_paste_to_focused_control() -> DeliveryOutcome:
@@ -881,7 +908,7 @@ def message_paste_to_focused_control() -> DeliveryOutcome:
             if (_user32.GetForegroundWindow() != foreground
                     or not _user32.GetGUIThreadInfo(thread, ctypes.byref(current))
                     or current.hwndFocus != focus):
-                raise RuntimeError('paste target changed')
+                raise _PasteTargetChanged('paste target changed')
             result = ctypes.c_size_t()
             if message == messages[0]:
                 dispatched = True
@@ -906,6 +933,9 @@ def message_paste_to_focused_control() -> DeliveryOutcome:
         if dispatched:
             logger.warning('[PASTE] Dispatched message unverified; no duplicate keystroke: %s', exc)
             return _DISPATCHED_UNVERIFIED
+        if isinstance(exc, _PasteTargetChanged):
+            logger.warning('[PASTE] Target changed; paste not sent')
+            return DeliveryOutcome.NOT_SENT
         logger.warning('[PASTE] Message paste unavailable; trying Ctrl+V unconfirmed: %s', exc)
         return outcome
 
@@ -1046,8 +1076,14 @@ def paste_with_preservation(
                 )
                 return False
 
+            target = _paste_target()
             outcome = message_paste_to_focused_control()
+            if outcome == DeliveryOutcome.NOT_SENT:
+                return False
             if outcome != DeliveryOutcome.CONFIRMED and not getattr(outcome, 'suppress_keystroke', False):
+                if not _paste_target_matches(target):
+                    logger.warning('[PASTE] Target changed before keystroke; paste not sent')
+                    return False
                 pyautogui.hotkey('ctrl', 'v')
             if delivery_observer is not None:
                 delivery_observer(outcome)

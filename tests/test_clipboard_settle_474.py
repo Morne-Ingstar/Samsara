@@ -417,7 +417,7 @@ def test_selection_replacement_never_double_pastes(transport, monkeypatch, befor
     transport.hotkey.assert_not_called()
 
 
-@pytest.mark.parametrize('outcome', list(cb.DeliveryOutcome))
+@pytest.mark.parametrize('outcome', [cb.DeliveryOutcome.CONFIRMED, cb.DeliveryOutcome.SENT, cb.DeliveryOutcome.UNVERIFIED])
 def test_three_way_feedback_and_legacy_tuple(monkeypatch, outcome):
     monkeypatch.setattr(paste.injection_safety, 'window_integrity', lambda: SimpleNamespace(blocked=False, confirmed_ok=True))
     monkeypatch.setattr(paste.flight_recorder, 'record', Mock())

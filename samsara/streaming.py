@@ -1885,7 +1885,7 @@ class StreamingWorker(threading.Thread):
             speech_level=tail.get('speech_level'),
             speech_floor=tail.get('speech_floor', DECODER_SPEECH_FLOOR),
         )
-        reason = reason or signoff_failure_reason(text, segments, duration_s, self._session.app.config)
+        reason = reason or signoff_failure_reason(text, segments, duration_s, self._session.app.config, user_held_key=True)
         if not reason and not partial and _is_hallucinated_segments(segments, text):
             reason = 'batch_hallucination_backstop'
         if reason and not partial:

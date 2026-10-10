@@ -47,6 +47,7 @@ class SignoffContext:
     segments: Sequence[object]
     audio_duration_s: float | None = None
     enabled: bool = True
+    user_held_key: bool = False
 
 
 def _value(segment: object, name: str):
@@ -123,10 +124,10 @@ def decoder_failure_reason(
     return None
 
 
-def _split_context(segments: object) -> tuple[Sequence[object], float | None, bool]:
+def _split_context(segments: object) -> tuple[Sequence[object], float | None, bool, bool]:
     if isinstance(segments, SignoffContext):
-        return segments.segments, segments.audio_duration_s, segments.enabled
-    return segments or (), None, True
+        return segments.segments, segments.audio_duration_s, segments.enabled, segments.user_held_key
+    return segments or (), None, True, False
 
 
 def _is_phrase_sequence(tokens: list[str]) -> bool:
@@ -179,7 +180,7 @@ def is_signoff_hallucination(text, segments) -> tuple[bool, str]:
     if not _is_phrase_sequence(tokens):
         return False, "not_signoff"
 
-    seg_list, audio_duration_s, enabled = _split_context(segments)
+    seg_list, audio_duration_s, enabled, user_held_key = _split_context(segments)
     if not enabled:
         return False, "disabled"
     no_speech = [_value(segment, "no_speech_prob") for segment in seg_list]
@@ -190,7 +191,7 @@ def is_signoff_hallucination(text, segments) -> tuple[bool, str]:
     if any(value is not None and float(value) <= -1.0 for value in logprobs):
         return True, "avg_logprob<=-1.0"
 
-    if audio_duration_s is not None and audio_duration_s < 1.5:
+    if not user_held_key and audio_duration_s is not None and audio_duration_s < 1.5:
         return True, "audio<1.5s"
 
     if _tail_is_longer_than_speech(seg_list, audio_duration_s):
@@ -199,12 +200,12 @@ def is_signoff_hallucination(text, segments) -> tuple[bool, str]:
     return False, "audio_not_corroborated"
 
 
-def signoff_failure_reason(text, segments, duration_s=None, config=None) -> str | None:
+def signoff_failure_reason(text, segments, duration_s=None, config=None, *, user_held_key=False) -> str | None:
     """Adapt the shared verdict to decoder guards that return a reason or None."""
     from samsara.config_defaults import cfg_get
 
     dropped, reason = is_signoff_hallucination(
-        text, SignoffContext(segments, audio_duration_s=duration_s,
+        text, SignoffContext(segments, audio_duration_s=duration_s, user_held_key=user_held_key,
                              enabled=cfg_get(config or {}, "dictation.signoff_filter")),
     )
     return "signoff:" + reason if dropped else None

@@ -7067,7 +7067,7 @@ class DictationApp:
             _dropped, _reason = is_signoff_hallucination(
                 text,
                 SignoffContext(
-                    seg_list, audio_duration_s=audio_duration,
+                    seg_list, audio_duration_s=audio_duration, user_held_key=False,
                     enabled=config_defaults.cfg_get(self.config, 'dictation.signoff_filter'),
                 ),
             )
@@ -12192,7 +12192,7 @@ class DictationApp:
                     _dropped, _reason = is_signoff_hallucination(
                         text,
                         SignoffContext(
-                            _diag_all_segs, audio_duration_s=audio_duration,
+                            _diag_all_segs, audio_duration_s=audio_duration, user_held_key=True,
                             enabled=config_defaults.cfg_get(self.config, 'dictation.signoff_filter'),
                         ),
                     )
