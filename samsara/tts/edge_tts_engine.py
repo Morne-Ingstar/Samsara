@@ -28,6 +28,7 @@ from samsara.runtime import thread_registry
 from .audio_utils import resample_pcm
 from .engine_base import SpeechHandle, TTSEngine, VoiceInfo
 from .exceptions import EngineUnavailableError, RenderError
+from .mp3_decode import mp3_to_pcm
 
 logger = logging.getLogger(__name__)
 
@@ -178,20 +179,8 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
 
 
 def _mp3_to_pcm(mp3_bytes: bytes, target_sr: int = 44100) -> bytes:
-    """Convert MP3 bytes to 16-bit mono PCM at target_sr using pydub."""
-    try:
-        from pydub import AudioSegment
-        seg = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
-        seg = seg.set_frame_rate(target_sr).set_channels(1).set_sample_width(2)
-        return seg.raw_data
-    except ImportError:
-        raise RenderError(
-            "pydub is required to decode edge-tts audio. "
-            "Install with: pip install pydub\n"
-            "pydub also requires ffmpeg on PATH for MP3 decoding."
-        )
-    except Exception as exc:
-        raise RenderError(f"MP3 decode failed: {exc}") from exc
+    """Convert network MP3 to 16-bit mono PCM without a child when PyAV is present."""
+    return mp3_to_pcm(mp3_bytes, target_sr)
 
 
 class EdgeTTSEngine(TTSEngine):
