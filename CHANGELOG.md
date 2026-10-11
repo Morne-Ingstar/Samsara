@@ -35,7 +35,7 @@ All notable changes to Samsara are documented here.
 
 - **Choose how much Samsara speaks** — Silent, Brief and Full replace the speech switches; new installs use Brief and a local voice, and “talk less” or “talk more” changes the level by voice. <!-- 8f74fca, 0e873f7 -->
 - **Settings simplified** — Six focused pages, a sidebar search and contextual Advanced controls make settings easier to find; Tools stay in the same window, and help buttons provide an explanation and a documentation link. <!-- c2c5bf3, 96d1539, 0fddd24, 87a1ca1, ae0c2fd -->
-- **Ava can interpret missed commands** — Turn on optional interpretation in Ava settings to let Ava choose an available command after a miss; it is off by default, and the separate Ava command-session key is retired. <!-- 4d29f9f, d5a0b73, 821480c -->
+- **Ava can interpret missed commands** — With Ava on, she can choose one of your commands after a miss; turn this off in Ava settings. The separate Ava command-session key is retired.
 - **Guides and controls are more consistent** — Settings and guides use consistent text sizes, spacing, larger controls and step indicators. <!-- 6fe2585, b5c68aa -->
 - **Updated app mark** — The app uses the approved articulated snake mark, including as the tray changes listening state. <!-- 3740466, 215b017 -->
 - **A calmer Settings** - Rows grouped under plain headings, On/Off switches, everyday choices moved out of Advanced, and a search box in the sidebar.
@@ -43,7 +43,6 @@ All notable changes to Samsara are documented here.
 - **Voice Training has left the menus** - It was not ready; nothing else changes.
 - **The old echo-cancellation filter is retired** - A saved "on" no longer starts it.
 - **A compact loading screen and a smaller "What's new" card.**
-- **Personal project commands removed** - The author's own server controls and a joke printer command no longer appear in the shipped command list.
 - **App commands find your apps** - "Open Spotify", "open Discord", "open Obsidian", "open Warp" and "run Claude Code" look for the app on your PC instead of a fixed folder, and say so when it is not installed.
 - **Setup's questions sit in clear rows** - Each question has its own line, and every choice can be reached from the keyboard.
 
