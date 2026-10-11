@@ -6222,8 +6222,9 @@ class DictationApp:
             self._schedule_ui(self.listening_indicator.set_command_mode, False)
         if (parked and not getattr(self._session_mode_manager, '_live_surface_enabled', False)):
             # Compact has no draft editor; name its actual available route.
+            from samsara.kept_session_draft import COMPACT_KEPT_DRAFT_HINT
             self._show_outcome_chip(
-                "Kept draft: restart hands-free to send or clear.",  # PLACEHOLDER COPY (492)
+                COMPACT_KEPT_DRAFT_HINT,
                 'accent', None, source='draft_parked')
         was_recording = self.recording
         if was_recording:
@@ -13603,11 +13604,14 @@ class DictationApp:
         Parked text is in-memory by contract.  A cancelled prompt leaves the
         application running; a failed Commit likewise preserves the draft so
         the user can correct the target rather than losing words on quit.
+        A Compact retained snapshot is also process-lifetime draft state.
+        Its quit choice restores it only for the existing trusted send path.
+        Send targets the foreground at commit time, with no live session needed.
+        Keeping Samsara open leaves the snapshot and its reminder untouched.
         """
-        if not self._live_surface_hold_parking_enabled():
-            return True
+        from samsara.kept_session_draft import quit_draft_waiting, resolve_quit_choice
         manager = getattr(self, '_session_mode_manager', None)
-        if manager is None or not getattr(manager, 'has_parked_hold', False):
+        if not quit_draft_waiting(self, manager):
             return True
         try:
             from samsara.ui.quit_draft_dialog_qt import ask_quit_draft
@@ -13615,13 +13619,7 @@ class DictationApp:
         except Exception as exc:
             logger.warning('[EXIT] Pending draft decision could not be shown: %s', exc)
             return False
-        if choice == 'send':
-            outcome = manager.commit_pending_dictation()
-            return outcome.kind == 'dictate_committed'
-        if choice == 'discard':
-            manager.confirm_clear_draft('quit discard')
-            return True
-        return False
+        return resolve_quit_choice(manager, choice)
 
     def quit_app(self, *, _restart_draft_resolved=False):
         """Exit the application"""

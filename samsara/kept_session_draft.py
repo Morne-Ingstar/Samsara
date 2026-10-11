@@ -2,10 +2,52 @@
 from __future__ import annotations
 
 
+# Stand-in copy; the owner can replace both sentences through 510/ASK.json.
+COMPACT_KEPT_DRAFT_HINT = "Kept draft: restart hands-free to send or clear."
+PAUSED_HOLD_HISTORY_HINT = "Saved to History. The kept draft is unchanged."
+
+
+def quit_draft_waiting(app, manager) -> bool:
+    """Compact's retained snapshot needs the same exit decision as Full."""
+    return manager is not None and (
+        bool(getattr(manager, 'retained_draft', '').strip())
+        or (app._live_surface_hold_parking_enabled()
+            and getattr(manager, 'has_parked_hold', False)))
+
+
+def resolve_quit_choice(manager, choice) -> bool:
+    """Use Full's explicit commit path without starting a hands-free session."""
+    retained = bool(getattr(manager, 'retained_draft', '').strip())
+    if choice == 'discard':
+        if retained:
+            manager.discard_retained_draft()
+        else:
+            manager.confirm_clear_draft('quit discard')
+        return True
+    if choice != 'send':
+        return False
+    if not retained:
+        return manager.commit_pending_dictation().kind == 'dictate_committed'
+    # Restore the retained text/audio/undo metadata, then allow the trusted
+    # local commit in the idle lane, just as a parked Full draft does.
+    manager._restore_retained_draft()
+    try:
+        # pause_draft is Full-only. Arm the same parked-document latch here
+        # for this explicit local send, without changing the selected display.
+        manager._parked_hold = True
+        return manager.commit_pending_dictation().kind == 'dictate_committed'
+    finally:
+        if manager.dictate_pending_buffer:
+            # A refused/failed send keeps Compact's snapshot and reminder.
+            manager.retain_draft()
+            manager.clear_pending_draft()
+
+
 def kept_outside_session(app, manager, *, live_capture=False) -> bool:
     document = getattr(manager, 'draft_document', None)
-    return (getattr(document, 'kept_session', False) is True
-            and bool(getattr(document, 'text', ''))
+    return (((getattr(document, 'kept_session', False) is True
+              and bool(getattr(document, 'text', '')))
+             or bool(getattr(manager, 'retained_draft', '').strip()))
             and not (live_capture or getattr(app, 'command_mode_active', False)))
 
 
@@ -69,7 +111,7 @@ def capture_finished(session, callback) -> None:
                     and not (getattr(indicator, '_chip_deadline', None) is None
                              and getattr(indicator, '_chip_kind', '') in ('error', 'warning', 'pending'))):
                 indicator.show_outcome(
-                    "Kept draft: restart hands-free to send or clear.",
+                    COMPACT_KEPT_DRAFT_HINT,
                     'accent', None)
         QTimer.singleShot(int(delay * 1000) + 1, restore)
 
@@ -94,8 +136,12 @@ def park_streaming_hold(session, manager, text, raw_text, duration_s, *, source)
     if tutorial_capture.record_final(session, text, raw_text, duration_s):
         show = getattr(session.app, '_show_outcome_chip', None)
         if callable(show):
-            show('Send refused; target focus changed' if source == 'focus changed'
-                 else 'Delivery failed; draft kept', 'error')
+            if source == 'focus changed':
+                show('Send refused; target focus changed', 'error')
+            elif source == 'failed delivery':
+                show('Delivery failed; draft kept', 'error')
+            else:
+                show(PAUSED_HOLD_HISTORY_HINT, 'accent')
 
 
 def session_appends_to_draft(session, manager) -> bool:
