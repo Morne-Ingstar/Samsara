@@ -13,12 +13,13 @@ def style():
     QWidget {{ color: {theme.TEXT_PRIMARY}; font-family: 'Segoe UI';
                font-size: {theme.TYPE_BODY}px; background: {theme.BG0}; }}
     QFrame#sidebar, QFrame#footer {{ background: {theme.BG1}; }}
+    QFrame#footer {{ border-top: 1px solid {theme.BORDER_FAINT}; }}
+    QFrame#footer QWidget {{ background: transparent; }}
     QLabel {{ background: transparent; }}
     QSlider {{ background: transparent; }}
     QLabel[role='description'] {{ color: {theme.TEXT_SECONDARY}; }}
     QLabel[role='title'] {{ font-size: {theme.TYPE_BODY + 12}px; font-weight: 600; }}
     QLabel[role='label'] {{ font-weight: 600; }}
-    QFrame[role='row'] {{ border-bottom: 1px solid {theme.BORDER_FAINT}; }}
     QPushButton, QComboBox, QLineEdit, QSpinBox {{ background: {theme.BG2};
         border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 0 12px; }}
     QComboBox {{ border-color: {theme.BORDER_FAINT}; border-radius: 8px;
@@ -155,6 +156,7 @@ class Disclosure(QWidget):
             self.filter_query = query
         visible_rows = any(
             item.widget() is not None and item.widget() is not self.no_match
+            and not item.widget().property('settingsRowDivider')
             and item.widget().isVisible()
             for index in range(self.rows.count())
             if (item := self.rows.itemAt(index)) is not None

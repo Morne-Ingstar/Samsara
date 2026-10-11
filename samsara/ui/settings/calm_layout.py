@@ -1,9 +1,11 @@
 """Settings-only plain row treatment, applied after the shared guide scale."""
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
-from PySide6.QtWidgets import QCheckBox, QLabel, QHBoxLayout, QWidget, QSlider, QLineEdit, QSizePolicy
+from PySide6.QtGui import QPainter, QLinearGradient
+from PySide6.QtWidgets import QCheckBox, QLabel, QHBoxLayout, QVBoxLayout, QFrame, QWidget, QSlider, QLineEdit, QSizePolicy, QScrollArea
 from shiboken6 import isValid
 from samsara.ui import theme
 from .calm_controls import switch, SegmentedChoice
+from .presentation import SettingRow
 
 
 def stylesheet():
@@ -67,8 +69,9 @@ class RowLayout(QObject):
             title_layout = QHBoxLayout(title_line)
             title_layout.setContentsMargins(0, 0, 0, 0)
             title_layout.setSpacing(theme.SPACE_1)
-            title_layout.addWidget(row.heading, 1)
-            title_layout.addWidget(row.help, 0, Qt.AlignmentFlag.AlignTop)
+            title_layout.addWidget(row.heading)
+            title_layout.addWidget(row.help, 0, Qt.AlignmentFlag.AlignVCenter)
+            title_layout.addStretch()
             row.text.layout().insertWidget(0, title_line)
         row.grid.setColumnStretch(1, 0)
         row.grid.setColumnStretch(2, 0)
@@ -112,13 +115,16 @@ class RowLayout(QObject):
             margins = row.grid.contentsMargins()
             row.value.setMaximumWidth(max(theme.HIT_TARGET_MIN, row.width() - margins.left() - margins.right()))
             narrow = row.width() - margins.left() - required - theme.SPACE_3 < 5 * theme.SPACE_7
-            if narrow != self.placed:
+            long_detail = row.detail.heightForWidth(max(1, row.detail.width())) > 2 * row.detail.fontMetrics().lineSpacing()
+            placement = (narrow, long_detail)
+            if placement != self.placed:
                 row.grid.removeWidget(row.value)
                 if narrow:
                     row.grid.addWidget(row.value, 1, 0, 1, 3, Qt.AlignmentFlag.AlignRight)
                 else:
-                    row.grid.addWidget(row.value, 0, 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.placed = narrow
+                    row.grid.addWidget(row.value, 0, 2, Qt.AlignmentFlag.AlignRight | (
+                        Qt.AlignmentFlag.AlignTop if long_detail else Qt.AlignmentFlag.AlignVCenter))
+                self.placed = placement
             row._narrow = narrow
             # Qt's nested wrapped labels must retain the height their ink needs.
             for label in (row.heading, row.detail):
@@ -192,3 +198,208 @@ def apply_settings(window):
             # Own the entire slider sheet: no opaque native background survives.
             slider.setStyleSheet(stylesheet())
         row.update()
+    for row in window.findChildren(SettingRow):
+        if hasattr(row, '_calm_layout'):
+            row._calm_layout.reflow()
+    if not hasattr(window, '_component_rows'):
+        window._component_rows = ComponentRows(window._components_page)
+    window._component_rows.refresh()
+    for page in dict.fromkeys((*window._pages.values(), *window._tool_pages.values())):
+        for scroll in (page, *page.findChildren(QScrollArea)):
+            if not hasattr(scroll, '_settings_edges'):
+                scroll._settings_edges = ScrollEdges(scroll)
+            scroll._settings_edges.refresh()
+        for layout in page.widget().findChildren(QVBoxLayout):
+            if not hasattr(layout, '_settings_dividers'):
+                layout._settings_dividers = RowDividers(layout)
+            layout._settings_dividers.refresh()
+
+
+def row_separator(layout, index):
+    """373's 1-DIP BORDER_FAINT line with equal SPACE_1/2 air on both sides.
+
+    Lifted from first_run_pages_qt.py:291-303; setup remains independent.
+    """
+    space = QWidget()
+    space.setProperty('settingsRowDivider', True)
+    space.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    space.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    column = QVBoxLayout(space)
+    column.setContentsMargins(0, theme.SPACE_1 // 2, 0, theme.SPACE_1 // 2)
+    column.setSpacing(0)
+    line = QFrame(space)
+    line.setObjectName('settingsRowHairline')
+    line.setFixedHeight(1)
+    column.addWidget(line)
+    layout.insertWidget(index, space)
+    return space, line
+
+
+class RowDividers(QObject):
+    """One separator per visible adjacency, within the existing row groups."""
+    def __init__(self, layout):
+        super().__init__(layout)
+        self.layout = layout
+        self.groups = []
+        self.dividers = []
+        self.busy = False
+        layout.parentWidget().installEventFilter(self)
+        self.refresh()
+
+    def collect(self):
+        groups = []
+        current = []
+        for index in range(self.layout.count()):
+            widget = self.layout.itemAt(index).widget()
+            if widget and widget.property('settingsRowDivider'):
+                continue
+            if widget and widget.isHidden() and widget.property('role') not in ('row', 'settingsGroup') and not widget.property('settingsToolRow'):
+                continue
+            if widget and (widget.property('role') == 'row' or widget.property('settingsToolRow')):
+                current.append(widget)
+            elif current:
+                groups.append(current)
+                current = []
+        if current:
+            groups.append(current)
+        return groups
+
+    def eventFilter(self, widget, event):
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.LayoutRequest):
+            QTimer.singleShot(0, self, self.refresh)
+        return False
+
+    def refresh(self):
+        if self.busy:
+            return
+        self.busy = True
+        try:
+            groups = self.collect()
+            if groups != self.groups:
+                for _, _, divider, _ in self.dividers:
+                    if isValid(divider):
+                        self.layout.removeWidget(divider)
+                        divider.hide()
+                        divider.deleteLater()
+                self.groups, self.dividers = groups, []
+                for group in groups:
+                    for row in group:
+                        row.installEventFilter(self)
+                    for row in group[:-1]:
+                        divider, line = row_separator(self.layout, self.layout.indexOf(row) + 1)
+                        self.dividers.append((group, row, divider, line))
+                if groups:
+                    self.layout.setSpacing(0)
+            for group, row, divider, line in self.dividers:
+                visible = [member for member in group if not member.isHidden()]
+                divider.setVisible(row in visible and row is not visible[-1])
+                qss = f'background:{theme.BORDER_FAINT};border:none;'
+                if line.styleSheet() != qss:
+                    line.setStyleSheet(qss)
+        finally:
+            self.busy = False
+
+
+class ComponentRows(QObject):
+    """Treat asynchronously rebuilt component cards only inside Settings."""
+    def __init__(self, components):
+        super().__init__(components.widget)
+        self.components = components
+        components._rows_host.installEventFilter(self)
+        components._rows_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        components.widget.layout().setContentsMargins(0, 0, 0, 0)
+        components.widget.layout().setAlignment(components._check_btn, Qt.AlignmentFlag.AlignRight)
+
+    def eventFilter(self, widget, event):
+        if event.type() == QEvent.Type.LayoutRequest:
+            self.refresh()
+        return False
+
+    def refresh(self):
+        components = self.components
+        for controls in components._rows.values():
+            if controls.get('_settings_card') is not None:
+                continue
+            card = controls['get'].parentWidget()
+            controls['_settings_card'] = card
+            card.setProperty('settingsToolRow', True)
+            card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            card.setStyleSheet('background:transparent;border:none;')
+            column = card.layout()
+            column.setContentsMargins(0, theme.SPACE_2, 0, theme.SPACE_2)
+            title = column.takeAt(0).widget()
+            detail = column.takeAt(0).widget()
+            actions = column.takeAt(0).layout()
+            note = controls['note']
+            actions.removeWidget(note)
+            buttons = [controls['get'], controls['cancel']]
+            cancel_visible = not controls['cancel'].isHidden()
+            for button in buttons:
+                actions.removeWidget(button)
+                button.setMinimumWidth(button.fontMetrics().horizontalAdvance(button.text()) + theme.SPACE_5)
+            row = SettingRow(title.text(), detail.text(), buttons)
+            row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            row.grid.addWidget(note, 2, 0, 1, 3)
+            row._calm_layout = RowLayout(row)
+            # SettingRow exposes controls; restore the source's fetch state.
+            controls['cancel'].setVisible(cancel_visible)
+            column.insertWidget(0, row)
+            title.hide()
+            detail.hide()
+            title.deleteLater()
+            detail.deleteLater()
+            actions.deleteLater()
+        layout = components._rows_layout
+        if not hasattr(layout, '_settings_dividers'):
+            layout._settings_dividers = RowDividers(layout)
+        layout._settings_dividers.refresh()
+
+
+class ScrollFade(QWidget):
+    """A mouse-transparent viewport overlay; rows keep their native rendering."""
+    def __init__(self, viewport, top):
+        super().__init__(viewport)
+        self.top = top
+        self.setObjectName('settingsTopFade' if top else 'settingsBottomFade')
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setStyleSheet('background:transparent;border:none;')
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        gradient = QLinearGradient(0, 0, 0, self.height())
+        opaque = theme.qcolor(theme.BG0)
+        clear = theme.qcolor(theme.BG0)
+        clear.setAlpha(0)
+        gradient.setColorAt(0, opaque if self.top else clear)
+        gradient.setColorAt(1, clear if self.top else opaque)
+        painter.fillRect(self.rect(), gradient)
+
+
+class ScrollEdges(QObject):
+    def __init__(self, scroll):
+        super().__init__(scroll)
+        self.scroll = scroll
+        self.top = ScrollFade(scroll.viewport(), True)
+        self.bottom = ScrollFade(scroll.viewport(), False)
+        scroll.viewport().installEventFilter(self)
+        bar = scroll.verticalScrollBar()
+        bar.valueChanged.connect(self.refresh)
+        bar.rangeChanged.connect(self.refresh)
+
+    def eventFilter(self, widget, event):
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            self.refresh()
+        return False
+
+    def refresh(self, *_):
+        viewport = self.scroll.viewport()
+        height = min(theme.SPACE_3, viewport.height() // 2)
+        bar = self.scroll.verticalScrollBar()
+        for overlay, top in ((self.top, True), (self.bottom, False)):
+            overlay.setGeometry(0, 0 if top else viewport.height() - height, viewport.width(), height)
+            overlay.setVisible(bar.maximum() > bar.minimum() and (
+                bar.value() > bar.minimum() if top else bar.value() < bar.maximum()))
+            overlay.raise_()
+            overlay.update()

@@ -1,6 +1,17 @@
 """Record managers and integrations opened independently of Settings."""
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget, QHBoxLayout
-from .presentation import Page, Disclosure
+from PySide6.QtCore import Qt
+from .presentation import Page, Disclosure, SettingRow
+from .calm_controls import switch
+from .calm_layout import RowLayout
+from samsara.ui import theme
+
+
+def _tool_row(title, description, controls):
+    row = SettingRow(title, description, controls)
+    row.detail.setVisible(bool(description))
+    row._calm_layout = RowLayout(row)
+    return row
 
 TOOLS = ('Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations')
 
@@ -17,6 +28,23 @@ def build(owner):
     integration.advanced.hide()
     token_group = todoist.findChild(QWidget, 'todoistCredentials')
     enabled = owner._widgets['todoist_enabled']
+    layout = todoist.layout()
+    layout.setContentsMargins(0, 0, 0, 0)
+    note = next(label for label in todoist.findChildren(QLabel) if label.text().startswith('When on, tasks'))
+    title = enabled.text()
+    enabled.setText('')
+    enabled_row = _tool_row(title, note.text(), [switch(enabled)])
+    layout.insertWidget(layout.indexOf(note), enabled_row)
+    note.hide()
+    token_group.setProperty('settingsToolRow', True)
+    credentials = token_group.layout()
+    credentials.setContentsMargins(0, 0, 0, 0)
+    token_layout = credentials.takeAt(0).layout()
+    controls = [token_layout.takeAt(0).widget() for _ in range(token_layout.count())]
+    token_row = _tool_row(owner._widgets['todoist_token'].placeholderText(), '', controls)
+    credentials.insertWidget(0, token_row)
+    test = next(button for button in token_group.findChildren(QPushButton) if button.text() == 'Test connection')
+    credentials.setAlignment(test, Qt.AlignmentFlag.AlignRight)
     token_group.setVisible(enabled.isChecked())
     enabled.toggled.connect(token_group.setVisible)
     tools['Integrations'] = integration

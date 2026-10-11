@@ -76,13 +76,19 @@ class HealthPage:
             empty.setWordWrap(True)
             layout.addWidget(empty)
         for entry in entries:
+            row = QWidget()
+            row.setProperty('settingsToolRow', True)
+            column = QVBoxLayout(row)
+            column.setContentsMargins(0, theme.SPACE_2, 0, theme.SPACE_2)
+            column.setSpacing(theme.SPACE_1)
             label = QLabel(entry['phrase'])
             label.setWordWrap(True)
-            layout.addWidget(label)
+            column.addWidget(label)
             description = QLabel(entry['description'])
             description.setWordWrap(True)
             description.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-            layout.addWidget(description)
+            column.addWidget(description)
+            layout.addWidget(row)
 
         layout.addSpacing(20)
 
@@ -124,7 +130,7 @@ class HealthPage:
         # (rather than Fixed) horizontal sizePolicy lets a QVBoxLayout
         # stretch this button to the row's full width instead of just its
         # own content width.
-        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addSpacing(20)
 
         # ---- Section: Summary ----
@@ -144,6 +150,7 @@ class HealthPage:
         layout.addSpacing(4)
 
         export_row = QHBoxLayout()
+        export_row.addStretch()
         export_btn = QPushButton("Export to CSV")
         export_btn.setMinimumWidth(140)
         export_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
@@ -155,7 +162,6 @@ class HealthPage:
         open_folder_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         open_folder_btn.clicked.connect(self._open_health_folder)
         export_row.addWidget(open_folder_btn)
-        export_row.addStretch()
         layout.addLayout(export_row)
 
         self._health_export_label = QLabel("")
@@ -177,12 +183,12 @@ class HealthPage:
         layout.addSpacing(6)
 
         dict_row = QHBoxLayout()
+        dict_row.addStretch()
         load_dict_btn = QPushButton("Load Medication Dictionary")
         load_dict_btn.setMinimumWidth(235)  # sizeHint is 224; a few px of margin
         load_dict_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         load_dict_btn.clicked.connect(self._load_medication_dictionary)
         dict_row.addWidget(load_dict_btn)
-        dict_row.addStretch()
         layout.addLayout(dict_row)
 
         self._med_dict_label = QLabel("")

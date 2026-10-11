@@ -142,7 +142,9 @@ class _SettingsWindow(
         root.addLayout(body, 1)
         self._sidebar.currentRowChanged.connect(self._on_sidebar_row_changed)
         self._sidebar.setCurrentRow(0)
-        footer = QHBoxLayout()
+        footer_strip = QFrame()
+        footer_strip.setObjectName('footer')
+        footer = QHBoxLayout(footer_strip)
         tools = QPushButton("Tools")
         menu = QMenu(tools)
         for name in tools_page.TOOLS:
@@ -158,7 +160,7 @@ class _SettingsWindow(
         apply.setObjectName("apply")
         apply.clicked.connect(self._apply_and_close)
         footer.addWidget(apply)
-        page_column.addLayout(footer)
+        page_column.addWidget(footer_strip)
         # Air around Tools / Cancel / Apply so they no longer touch the window edges (360).
         footer.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_2)
         footer.setSpacing(theme.SPACE_1)

@@ -59,7 +59,6 @@ class MusicPage:
         import_button.setObjectName("musicLibrarySpotifyImport")
         import_button.setMinimumHeight(48)
         import_button.setMinimumWidth(320)
-        layout.addWidget(import_button)
 
         # OWNER COPY
         export_help = QLabel(
@@ -70,9 +69,21 @@ class MusicPage:
         export_help.setObjectName("musicLibrarySpotifyHelp")
         export_help.setWordWrap(True)
         export_help.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(export_help)
+        from .presentation import SettingRow
+        from .calm_layout import RowLayout
+        import_row = SettingRow(import_button.text(), export_help.text(), [import_button])
+        import_row.heading.hide()
+        import_row.text.layout().removeWidget(import_row.detail)
+        import_row.detail.deleteLater()
+        import_row.detail = export_help
+        import_row.text.layout().addWidget(export_help)
+        import_row._calm_layout = RowLayout(import_row)
+        layout.addWidget(import_row)
 
-        add_row = QHBoxLayout()
+        editor_row = QWidget()
+        editor_row.setProperty('settingsToolRow', True)
+        add_row = QHBoxLayout(editor_row)
+        add_row.setContentsMargins(0, theme.SPACE_2, 0, theme.SPACE_2)
         add_row.setSpacing(10)
         name = QLineEdit()
         name.setAccessibleName("Music item name")
@@ -91,7 +102,7 @@ class MusicPage:
         add_row.addWidget(name, 1)
         add_row.addWidget(link, 2)
         add_row.addWidget(add_button)
-        layout.addLayout(add_row)
+        layout.addWidget(editor_row)
 
         error = QLabel("")
         error.setObjectName("musicLibraryError")

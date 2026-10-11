@@ -48,18 +48,6 @@ def _pill_in_panel(win, row: int):
     return top_left.x(), top_left.x() + pill.width() - 1, pill
 
 
-def _layout_holding(layout, widget):
-    for i in range(layout.count()):
-        item = layout.itemAt(i)
-        if item.widget() is widget:
-            return layout
-        if item.layout() is not None:
-            found = _layout_holding(item.layout(), widget)
-            if found is not None:
-                return found
-    return None
-
-
 def test_rows_and_search_are_at_least_the_hit_target(window):
     pages = window._sidebar
     for row in range(pages.count()):
@@ -140,7 +128,9 @@ def test_items_names_and_navigation_unchanged(window):
 
 def test_footer_has_air(window):
     apply = window.findChild(QPushButton, "apply")
-    footer = _layout_holding(window.centralWidget().layout(), apply)
+    strip = window.findChild(QWidget, "footer")
+    assert strip is not None and strip.isAncestorOf(apply)
+    footer = strip.layout()
     assert isinstance(footer, QHBoxLayout)
     margins = footer.contentsMargins()
     assert min(margins.left(), margins.right(), margins.bottom()) >= theme.SPACE_2

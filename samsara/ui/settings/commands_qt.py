@@ -132,9 +132,10 @@ class CommandsPage:
             count_str     = f"  ({count})" if count else ""
 
             row_w = QWidget()
+            row_w.setProperty('settingsToolRow', True)
             row_w.setStyleSheet("background: transparent;")
             row_h = QHBoxLayout(row_w)
-            row_h.setContentsMargins(0, 0, 0, 0)
+            row_h.setContentsMargins(0, theme.SPACE_2, 0, theme.SPACE_2)
             row_h.setSpacing(8)
 
             cb = QCheckBox()
@@ -147,7 +148,6 @@ class CommandsPage:
             cb.setMinimumHeight(theme.HIT_TARGET_MIN)
             cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
             pack_checkboxes[pack_id] = cb
-            row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignTop)
             if always_on:
                 cb.hide()  # The adjacent manifest label is a capability badge, not a preference.
 
@@ -180,6 +180,7 @@ class CommandsPage:
             )
             text_col.addWidget(desc_lbl)
             row_h.addLayout(text_col, stretch=1)
+            row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignVCenter)
 
             pack_vlayout.addWidget(row_w)
 
@@ -280,12 +281,6 @@ class CommandsPage:
         layout.addWidget(profile_entry)
         self._widgets['_command_profiles_button'] = profile_button
         self._widgets['_command_profiles_entry'] = profile_entry
-
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"background-color: {theme.wash(0.06)}; max-height: 1px;")
-        layout.addWidget(sep2)
-        layout.addSpacing(4)
 
         # ---- Section: Voice Commands ---------------------------------------
         cmd_header = QHBoxLayout()

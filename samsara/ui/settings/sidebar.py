@@ -170,11 +170,17 @@ class SearchGlyph(QWidget):
         # The field's height is fixed at the hit target, so one placement holds.
         self.setGeometry(ICON_INSET, 0, ICON_BOX, theme.HIT_TARGET_MIN)
         self._placing_clear = False
+        edit.installEventFilter(self)
         self._clear_button = next(iter(edit.findChildren(QToolButton)), None)
         if self._clear_button is not None:
             self._clear_button.installEventFilter(self)
 
     def eventFilter(self, watched, event):
+        if watched is self.parentWidget() and event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+            keyboard = event.type() == QEvent.Type.FocusIn and event.reason() in (
+                Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
+            watched.setProperty('settingsKeyboardFocus', keyboard)
+            watched.setStyleSheet(search_qss())
         # Settings raises every button to a 44-DIP hit target. Qt's internal
         # clear-button placement assumes its smaller native size instead.
         if watched is self._clear_button and not self._placing_clear and event.type() in (
@@ -202,13 +208,15 @@ class SearchGlyph(QWidget):
 def search_qss() -> str:
     height = theme.HIT_TARGET_MIN
     return (
-        f"QLineEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
-        f" border: {FOCUS_RING}px solid {theme.BORDER}; border-radius: 6px;"
-        f" padding: 0 {ICON_INSET}px;"
-        f" min-height: {height - 2 * FOCUS_RING}px; max-height: {height - 2 * FOCUS_RING}px;"
+        f"QLineEdit#settingsSearchField {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
+        f" border: 1px solid {theme.BORDER}; border-radius: {theme.CONTROL_RADIUS}px;"
+        f" padding: 0 {ICON_INSET + FOCUS_RING - 1}px; margin: 0;"
+        f" min-height: {height - 2}px; max-height: {height - 2}px;"
         f" font-size: {theme.TYPE_BODY}px; font-weight: {theme.FONT_WEIGHT_MIN};"
         f" placeholder-text-color: {placeholder_colour_token()}; }}"
-        f" QLineEdit:focus {{ border: {FOCUS_RING}px solid {theme.ACCENT}; }}"
+        f" QLineEdit#settingsSearchField[settingsKeyboardFocus='true']:focus {{ border: {FOCUS_RING}px solid {theme.ACCENT};"
+        f" padding: 0 {ICON_INSET}px; min-height: {height - 2 * FOCUS_RING}px;"
+        f" max-height: {height - 2 * FOCUS_RING}px; }}"
     )
 
 
@@ -251,6 +259,7 @@ def build_panel(heading: str, search: QLineEdit | None, pages: QListWidget) -> Q
     layout.addSpacing(theme.SPACE_1)
 
     if search is not None:
+        search.setObjectName('settingsSearchField')
         search.setStyleSheet(search_qss())
         search.setFixedHeight(theme.HIT_TARGET_MIN)
         # Reserve the decorative icon's column independently of QSS padding.
