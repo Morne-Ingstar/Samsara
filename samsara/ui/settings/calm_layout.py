@@ -47,7 +47,7 @@ class RowLayout(QObject):
         self.busy = False
         self.placed = None
         indent = theme.SPACE_3 if row.title in (
-            'Hands-free capture volume', 'Hands-free idle volume', 'Start hidden', 'Indicator position') else 0
+            'Hands-free capture volume', 'Hands-free idle volume') else 0
         row.grid.setContentsMargins(indent, theme.SPACE_2, 0, theme.SPACE_2)
         row.grid.setHorizontalSpacing(theme.SPACE_3)
         row.grid.setVerticalSpacing(theme.SPACE_2)

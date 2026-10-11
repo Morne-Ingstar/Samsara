@@ -590,7 +590,7 @@ class TutorialWindow(QMainWindow):
             # PLACEHOLDER COPY (378)
             ("ways",      "Ways to talk to Samsara"),
             ("display",   PLACEMENT_TITLE),  # PLACEHOLDER COPY (490)
-            ("try",       "Try your settings"),  # PLACEHOLDER COPY (389)
+            ("try",       "Try your settings"),
             ("done",      "Tutorial complete"),
         ]
 

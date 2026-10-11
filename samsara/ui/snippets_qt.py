@@ -48,7 +48,6 @@ SEARCH_PLACEHOLDER = "Search a name or the text..."
 NAME_LABEL = "Name (say \"insert\" + this)"
 NAME_PLACEHOLDER = "sign off"
 TEXT_LABEL = "Text to type"
-# Stand-in wording pending owner review.
 TEXT_PLACEHOLDER = "Kind regards,\nYour Name"
 NEW = "New (Ctrl+N)"
 SAVE = "Save (Enter)"

@@ -18,7 +18,7 @@ BASE = [
     ],
     ["Hands-free sends",
      "As I speak types each sentence when you pause. When I say send holds your words in the display until you say your paste word or choose Insert text.",
-     "hands_free_send_mode", "hands_free.send_mode"],  # Stand-in wording (518).
+     "hands_free_send_mode", "hands_free.send_mode"],
     [
         "Wake activation",
         "Start a session by saying your wake phrase.",

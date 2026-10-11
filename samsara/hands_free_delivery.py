@@ -142,7 +142,7 @@ def finish_sentence_display(app, outcome):
             if not waiting and not outcome.detail.get('copied_to_clipboard'):
                 controller.post(SurfaceEvent(EventKind.DELIVERY_FINISHED, text=text))
             label = ('Copied' if outcome.detail.get('copied_to_clipboard') else
-                     'Sent, unconfirmed' if outcome.detail.get('delivery_unverified') else 'Typed')  # Stand-ins.
+                     'Sent, unconfirmed' if outcome.detail.get('delivery_unverified') else 'Typed')
             kind = NoticeKind.WARNING if outcome.detail.get('delivery_unverified') else NoticeKind.RESULT
             controller.post(SurfaceEvent(EventKind.NOTICE, notice=kind, message=label + '\n' + text, ttl_s=.9))
     elif text:

@@ -277,6 +277,23 @@ jobs:
           echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
           echo "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
 
+      - name: Stage gesture-control component
+        id: gesture
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $appVersion = python -c "from tools.check_release_version import _string_assignment; from pathlib import Path; print(_string_assignment(Path('samsara/__init__.py'), '__version__'))"
+          if ($LASTEXITCODE -ne 0) { throw "Could not read embedded version" }
+          $source = "dist\Samsara-GestureControl-v$appVersion.zip"
+          $zipName = "Samsara-GestureControl-$version.zip"
+          if (-not (Test-Path -LiteralPath $source)) { throw "Gesture component missing: $source" }
+          Copy-Item -LiteralPath $source -Destination $zipName
+          $checksumName = "$zipName.sha256"
+          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksumName -Value "$checksum  $zipName" -Encoding ascii
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+
       - name: Generate release manifest
         id: manifest
         shell: pwsh
@@ -306,6 +323,15 @@ jobs:
           path: |
             ${{ steps.models.outputs.zip_name }}
             ${{ steps.models.outputs.checksum_name }}
+          retention-days: 30
+
+      - name: Upload gesture-control artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: ${{ steps.gesture.outputs.zip_name }}
+          path: |
+            ${{ steps.gesture.outputs.zip_name }}
+            ${{ steps.gesture.outputs.checksum_name }}
           retention-days: 30
 
       - name: Upload release manifest artifact
@@ -353,5 +379,7 @@ jobs:
             ${{ steps.package.outputs.checksum_name }}
             ${{ steps.models.outputs.zip_name }}
             ${{ steps.models.outputs.checksum_name }}
+            ${{ steps.gesture.outputs.zip_name }}
+            ${{ steps.gesture.outputs.checksum_name }}
             ${{ steps.manifest.outputs.manifest_name }}
             dist/SamsaraSetup-*.exe

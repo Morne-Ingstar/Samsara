@@ -27,7 +27,6 @@ class _TryButton(QPushButton):
 
 class _TryPage(QScrollArea):
     """Unsaved choices and bounded previews; owns no microphone stream."""
-    # PLACEHOLDER COPY (389): all new page labels, sentences and summaries.
     def __init__(self, window):
         super().__init__()
         self.app, self.window, window._try_page = window._app, window, self
@@ -163,7 +162,7 @@ class _TryPage(QScrollArea):
         level = cfg.get('feedback_level', 'brief')
         self.states['level'].setText('In use: ' + str(level).capitalize())
         if self.level.currentData() == 'full' and level != 'full':
-            self.states['level'].setText(self.states['level'].text() + '\nKeep this to hear it spoken.')  # PLACEHOLDER COPY (389)
+            self.states['level'].setText(self.states['level'].text() + '\nKeep this to hear it spoken.')
         self.states['voice'].setText(f'In use: {"Network" if cfg.get("engine") == "edge" else "Local"}, {cfg.get("speed", 1):g}\u00d7, {round(cfg.get("volume", .8)*100)}%')
         self.states['pace'].setText('In use: ' + profile(self.app.config).capitalize())
         self.cards['voice'].setVisible(level != 'silent')
@@ -184,7 +183,7 @@ class _TryPage(QScrollArea):
         if engine is None:
             self.states['voice'].setText('Speech is unavailable.')
         elif not same_provider:
-            self.states['voice'].setText(self.states['voice'].text() + '\nKeep this to hear the other voice.')  # PLACEHOLDER COPY (389)
+            self.states['voice'].setText(self.states['voice'].text() + '\nKeep this to hear the other voice.')
         for key in ('level', 'voice'):
             own_speech = (self.preview is getattr(self.app, 'audio_coordinator', None) and self.preview_handle is not None
                           and getattr(self.preview, '_last_spoken_handle', None) is self.preview_handle)
@@ -258,7 +257,7 @@ class _TryPage(QScrollArea):
                 if getattr(getattr(self.app, 'audio_coordinator', None), 'engine', None) is None:
                     self.result.setText('Speech is unavailable.')
                     return
-                text = 'This is how Samsara sounds at this speed and volume.'  # PLACEHOLDER COPY (389)
+                text = 'This is how Samsara sounds at this speed and volume.'
             cfg = dict(self.app.config.get('tts', {}) or {})
             if key == 'level' and cfg.get('feedback_level', 'brief') != 'full':
                 self.refresh()
