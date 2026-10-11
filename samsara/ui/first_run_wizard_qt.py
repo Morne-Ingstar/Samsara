@@ -658,7 +658,7 @@ class _WizardWindow(QMainWindow):
         height = max(1, area.height() - top - bottom)
         self.setMinimumSize(min(720, width), min(480, height))
         self.setMaximumSize(width, height)
-        self.resize(min(self.width(), width), min(self.height(), height))
+        self.resize(min(860, width), self._decisions.fit_content(min(860, width), height))
         frame = self.frameGeometry()
         self.move(max(area.left(), min(frame.left(), area.right() - frame.width() + 1)),
                   max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1)))
@@ -773,12 +773,12 @@ class _WizardWindow(QMainWindow):
         page.show()
         self._current_page = page
 
-        # Update header
         name, title = _STEPS[self._step]
         self._step_lbl.setText(f"Step {self._step + 1} of {len(_STEPS)}")
         self._title_lbl.setText(title)
 
         self._step_indicator.set_progress(self._step)
+        QTimer.singleShot(0, self, self._fit_available_screen)
 
         # Button states
         self._back_btn.setEnabled(self._step > 0)

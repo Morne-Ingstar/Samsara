@@ -7227,8 +7227,8 @@ class DictationApp:
                 # correctly mirror it by popping the just-finalized line --
                 # see DictatePreviewSession.on_utterance_final's docstring.
                 try:
-                    self._dictate_preview.on_utterance_final(
-                        text,
+                    from samsara.kept_session_draft import on_session_final
+                    on_session_final(self._dictate_preview, text,
                         scratch_success=(outcome.kind == 'scratch_success'),
                         dictate_committed=(outcome.kind == 'dictate_committed'),
                         # Queue 88: "bring back my draft" rewrote the staged
@@ -7242,7 +7242,8 @@ class DictationApp:
             if _was_dictate_lane:
                 controller = getattr(self, 'live_surface', None)
                 if controller is not None:
-                    controller.sync_draft(manager)
+                    from samsara.kept_session_draft import sync_session_draft
+                    sync_session_draft(controller, manager)
             if _was_dictate_lane:
                 # Shadow intent gate (36): observer only, strictly AFTER
                 # dispatch_utterance has staged/injected the text and the
@@ -11505,7 +11506,8 @@ class DictationApp:
             self._park_hold_feedback('Finishing the parked hold')
             return False
         manager = self._ensure_session_mode_manager()
-        manager.pause_draft(source=source)
+        from samsara.kept_session_draft import pause_hold
+        pause_hold(self, manager, source=source)
         self._hold_park_requested = True
         self._hold_park_finalizing = True
         self._consume_parked_hold_keyup = bool(consume_keyup)
@@ -11659,8 +11661,7 @@ class DictationApp:
             # Freeze tutorial ownership and the ordinary destination before feedback.
             self._hold_capture_target_hwnd = _get_foreground_hwnd()
             self._hold_capture_target_process = _get_foreground_exe_lower()
-            manager = self._ensure_session_mode_manager()
-            self._hold_park_requested = kept_session_draft.hold_appends_to_draft(self, manager)
+            self._hold_park_requested = False
 
         # Ordinary holds share the confirmed capture duck and exclude older
         # ring frames. Other recording lanes retain their legacy duck policy.
@@ -11672,18 +11673,18 @@ class DictationApp:
         else:
             self._duck_audio()
 
-        # Suppress wake word processing during hotkey recording -- FIX 1
-        # (2026-07-10 hotkey word-loss investigation): WakeConsumer now goes
-        # fully deaf on the very next poll frame (see wake_consumer.py's
-        # _process_frame), but any utterance it was ALREADY mid-accumulating
-        # right up to this instant would otherwise sit frozen and stale
-        # until this flag clears -- discard it now rather than risk it
-        # being flushed later. No-ops harmlessly if toggle-command-mode/
-        # AI-command-mode owns the in-progress utterance instead.
+        # Suspend wake admission before opening the ordinary hold accumulator.
+        # WakeConsumer skips held frames while its ring reader keeps advancing.
+        # In DICTATE, hand the older chunk to the existing session queue first;
+        # it still belongs to the session draft, even if its decode finishes
+        # while the hold is in progress. The hold gets a separate audio bound
+        # so its pre-roll cannot repeat that chunk. Command/Ava/wake-only audio
+        # keeps the existing discard behavior. The helper also resets VAD so
+        # hands-free can resume with the next utterance after key release.
         self._hotkey_recording = True
         if self._wake_consumer is not None:
             try:
-                self._wake_consumer.discard_stale_wake_utterance()
+                kept_session_draft.suspend_hands_free_for_hold(self)
             except Exception as e:
                 logger.debug(f"[HOTKEY] discard_stale_wake_utterance failed: {e}")
 
@@ -11856,7 +11857,7 @@ class DictationApp:
 
     def _stop_recording_impl(self, stage_timing=None):
         """Stop recording and transcribe"""
-        from samsara import tutorial_capture
+        from samsara import kept_session_draft, tutorial_capture
         if not self.recording:
             return
 
@@ -12441,17 +12442,17 @@ class DictationApp:
                     )
                     if not tutorial_waiting and (park_hold_requested or target_changed or voice_pause_ambiguous):
                         manager = self._ensure_session_mode_manager()
-                        if target_changed or voice_pause_ambiguous:
-                            manager.pause_draft(source=(
-                                'focus changed' if target_changed else 'voice review'))
-                        manager.stage_parked_hold(
-                            text, source=(
+                        # An explicit pause/refusal owns only this hold's words.
+                        # The shared helper preserves a waiting session document,
+                        # including its segments, undo and recovery metadata.
+                        # Such a hold is saved to History with its existing receipt.
+                        # With no session draft, ordinary hold parking remains
+                        # available. Keep the whole ambiguous terminal phrase;
+                        # neither branch guesses which words the user meant to send.
+                        kept_session_draft.park_batch_hold(
+                            self, manager, text, raw, audio_duration, source=(
                                 'pause' if park_hold_requested else
                                 'focus changed' if target_changed else 'voice review'))
-                        controller = getattr(self, 'live_surface', None)
-                        if controller is not None:
-                            controller.sync_draft(manager)
-                        self._park_hold_feedback('Draft parked', 'success')
                         return
 
                     logger.info("[TRANSCRIBED] Held dictation ready for delivery")
@@ -12535,8 +12536,7 @@ class DictationApp:
                             # relying on a blind retry or a clipboard-only
                             # fallback that can be overwritten.
                             manager = self._ensure_session_mode_manager()
-                            manager.pause_draft(source='failed delivery')
-                            manager.stage_parked_hold(text, source='failed delivery')
+                            kept_session_draft.park_hold(self, manager, text, source='failed delivery')
                             controller = getattr(self, 'live_surface', None)
                             if controller is not None:
                                 controller.sync_draft(manager)

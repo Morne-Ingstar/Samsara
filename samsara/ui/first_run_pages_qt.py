@@ -211,6 +211,8 @@ class Decisions(QObject):
         self.refresh_recognition()
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.LayoutRequest and watched.property('setupFitContent'):
+            QTimer.singleShot(0, self, self.refit_page)
         if self.closed:
             return False
         if watched is self.owner._step_indicator and event.type() == QEvent.Type.Resize:
@@ -685,7 +687,60 @@ class Decisions(QObject):
             scroll.setWidget(widget)
             self.owner._pages[index] = scroll
         for widget in self.owner._pages:
+            widget.widget()._setup_margins = widget.widget().layout().contentsMargins()
+            widget.widget().setProperty("setupFitContent", True)
+            widget.widget().installEventFilter(self)
+            widget.setStyleSheet(theme._scrollbar_qss())
+            from samsara.ui.settings.calm_layout import ScrollEdges
+            widget._setup_edges = ScrollEdges(widget)
             widget.hide()
+
+    def refit_page(self):
+        page = self.owner._current_page
+        if self.closed or page is None or not page.isVisible():
+            return
+        layout = page.widget().layout()
+        signature = (page, self.owner.width(), layout.minimumSize().height(),
+                     layout.totalHeightForWidth(self.owner.width()))
+        if signature != getattr(self, '_fit_signature', None):
+            self._fit_signature = signature
+            self.owner._fit_available_screen()
+
+    def fit_content(self, width, height):
+        """Use available height before scrolling; retain 502's frame placement."""
+        owner = self.owner
+        page = owner._current_page
+        if page is None:
+            return min(760, height)
+        root = owner.centralWidget().layout()
+        header, title, nav = (root.itemAt(i).widget() for i in (0, 4, 7))
+        root.itemAt(2).spacerItem().changeSize(0, 12, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        header.setFixedHeight(64)
+        title.setMinimumHeight(60)
+        title.layout().setContentsMargins(28, 14, 28, 8)
+        nav.setFixedHeight(theme.HIT_TARGET_MIN + 24)
+        nav.layout().setContentsMargins(28, 12, 28, 12)
+        content = page.widget()
+        content.ensurePolished()
+        layout = content.layout()
+        layout.setContentsMargins(content._setup_margins)
+        layout.activate()
+        needed = max(layout.minimumSize().height(), layout.totalHeightForWidth(width))
+        chrome = lambda: sum(root.itemAt(i).sizeHint().height() for i in range(root.count()) if i != 5)
+        if needed + chrome() > height:
+            # Minimums: strip gap 2, header 36, title 8/4, footer/page bottom 4.
+            root.itemAt(2).spacerItem().changeSize(0, 2, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+            header.setFixedHeight(max(36, owner._step_lbl.sizeHint().height() + 8))
+            title.setMinimumHeight(0)
+            title.layout().setContentsMargins(28, 8, 28, 4)
+            nav.setFixedHeight(theme.HIT_TARGET_MIN + 8)
+            nav.layout().setContentsMargins(28, 4, 28, 4)
+            margins = content._setup_margins
+            layout.setContentsMargins(margins.left(), margins.top(), margins.right(), min(4, margins.bottom()))
+            layout.activate()
+            needed = max(layout.minimumSize().height(), layout.totalHeightForWidth(width))
+        root.invalidate()
+        return min(height, max(min(760, height), needed + chrome()))
 
     def prepare_step(self, name):
         self.owner._next_btn.setAccessibleName(self.owner._next_btn.text())

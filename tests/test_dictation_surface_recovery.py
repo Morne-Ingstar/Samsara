@@ -64,7 +64,8 @@ def test_explicitly_parked_text_is_preserved_when_a_new_hold_starts(capture_app)
     manager.pause_draft()
     manager.stage_parked_hold("Synthetic draft.")
     app._start_recording_impl(streaming=False, play_earcon=False)
-    assert app._hold_park_requested
+    # 516: a previous parked draft is not consent to park this new hold.
+    assert app._hold_park_requested is False
     assert manager.draft_document.text == "Synthetic draft."
 
 

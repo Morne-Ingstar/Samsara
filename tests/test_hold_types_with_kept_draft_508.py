@@ -98,12 +98,13 @@ def test_kept_draft_ordinary_hold_delivers_once_without_appending(kept, full):
 
 
 def test_live_session_hold_still_appends(kept):
+    # 516 reverses the old append rule; retain this gate id for baseline comparison.
     r = kept(live=True)
     before = r.manager.draft_document.text
     r.session._deliver_final(HOLD, None, 1.0, 0)
-    r.app._paste_preserving_clipboard.assert_not_called()
-    r.appended.assert_called_once()
-    assert r.manager.draft_document.text == before + ' ' + HOLD
+    r.app._paste_preserving_clipboard.assert_called_once_with(HOLD)
+    r.appended.assert_not_called()
+    assert r.manager.draft_document.text == before
 
 
 @pytest.mark.parametrize('full', [True, False], ids=['Full', 'Compact'])
@@ -135,6 +136,7 @@ def test_insert_after_ordinary_hold_sends_only_original_draft(kept, full):
 
 @pytest.mark.parametrize('live', [False, True], ids=['kept', 'live'])
 def test_capture_onset_only_arms_live_session_draft(capture_app, monkeypatch, live):
+    # 516: only an explicit pause of this capture may arm the latch.
     app, manager, _ = capture_app
     monkeypatch.setitem(app._live_surface_hold_parking_enabled.__func__.__globals__,
                         'listening_display', listening_display)
@@ -148,7 +150,7 @@ def test_capture_onset_only_arms_live_session_draft(capture_app, monkeypatch, li
         app.command_mode_active = True
     before = snapshot(manager)
     assert app._start_recording_impl(streaming=False, play_earcon=False)
-    assert app._hold_park_requested is live
+    assert app._hold_park_requested is False
     assert snapshot(manager) == before
 
 
@@ -290,13 +292,14 @@ def test_refused_or_reviewed_hold_cannot_modify_kept_draft(kept, monkeypatch, re
 
 
 def test_hold_captured_in_live_session_still_appends_if_session_ends_before_final(kept, monkeypatch):
+    # 516: capture-start ownership no longer means consent to append.
     r = kept(live=True)
     r.session._live_session_capture = True
-    r.app._hold_park_requested = True
+    r.app._hold_park_requested = False
     exit_session(r.app, monkeypatch)
     before = r.manager.draft_document.text
     r.session._deliver_final(HOLD, None, 1.0, 0)
-    r.app._paste_preserving_clipboard.assert_not_called()
-    r.appended.assert_called_once()
-    assert r.manager.draft_document.text == before + ' ' + HOLD
+    r.app._paste_preserving_clipboard.assert_called_once_with(HOLD)
+    r.appended.assert_not_called()
+    assert r.manager.draft_document.text == before
 

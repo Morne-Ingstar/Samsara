@@ -20,7 +20,7 @@ from samsara.ui import theme
 
 
 def _stylesheet():
-    return f"""
+    return theme._scrollbar_qss() + f"""
 QMainWindow, QWidget {{
     background-color: {theme.BG0};
     color: {theme.TEXT_PRIMARY};
@@ -28,7 +28,7 @@ QMainWindow, QWidget {{
     font-size: {theme.TYPE_BODY}px;
 }}
 QScrollArea {{ border: none; background: transparent; }}
-QLabel {{ color: {theme.TEXT_PRIMARY}; }}
+QLabel {{ color: {theme.TEXT_PRIMARY}; background: transparent; border: none; }}
 QComboBox {{
     background-color: {theme.BG1};
     border: 1px solid {theme.wash(0.14)};
@@ -163,7 +163,7 @@ class _ProfileManagerWindow(QMainWindow):
         self._dict_active_lbl = QLabel(
             f"Active: {active.get('dictionary') or '(unsaved)'}"
         )
-        self._dict_active_lbl.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px;")
+        self._dict_active_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
 
         dict_profiles = self._pm.list_dictionary_profiles()
         self._dict_combo = self._make_combo(dict_profiles)
@@ -183,7 +183,7 @@ class _ProfileManagerWindow(QMainWindow):
         self._cmd_active_lbl = QLabel(
             f"Active: {active.get('commands') or '(unsaved)'}"
         )
-        self._cmd_active_lbl.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_MIN}px;")
+        self._cmd_active_lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
 
         cmd_profiles = self._pm.list_command_profiles()
         self._cmd_combo = self._make_combo(cmd_profiles)
@@ -205,6 +205,7 @@ class _ProfileManagerWindow(QMainWindow):
         )
         tips.setWordWrap(True)
         tips.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; line-height: 1.5;")
+        tips.setContentsMargins(20, 0, 20, 0)
         layout.addWidget(tips)
 
         layout.addStretch()
@@ -225,11 +226,13 @@ class _ProfileManagerWindow(QMainWindow):
 
     def _section_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
+        lbl.setContentsMargins(20, 0, 20, 0)
         lbl.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: bold;")
         return lbl
 
     def _desc(self, text: str) -> QLabel:
         lbl = QLabel(text)
+        lbl.setContentsMargins(20, 0, 20, 0)
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;")
         return lbl
@@ -246,13 +249,14 @@ class _ProfileManagerWindow(QMainWindow):
     def _make_profile_section(
         self, active_lbl: QLabel, combo: QComboBox, ptype: str
     ) -> QFrame:
-        frame = QFrame()
+        frame = QFrame(self)
+        frame.setObjectName("profileCard")
         frame.setStyleSheet(
-            f"QFrame{{background:{theme.BG1};border-radius:8px;"
+            f"QFrame#profileCard{{background:{theme.BG1};border-radius:8px;"
             f"border:1px solid {theme.wash(0.06)};}}"
         )
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
 
         layout.addWidget(active_lbl)
@@ -269,7 +273,7 @@ class _ProfileManagerWindow(QMainWindow):
 
         # Button row 1: Load Replace | Load Merge | Save Current
         row1 = QHBoxLayout()
-        row1.setSpacing(6)
+        row1.setSpacing(8)
 
         load_rep = QPushButton("Load (Replace)")
         load_rep.clicked.connect(lambda: self._load(ptype, merge=False))
@@ -288,7 +292,7 @@ class _ProfileManagerWindow(QMainWindow):
 
         # Button row 2: Import | Export | Delete
         row2 = QHBoxLayout()
-        row2.setSpacing(6)
+        row2.setSpacing(8)
 
         imp_btn = _sec("Import…")
         imp_btn.clicked.connect(lambda: self._import(ptype))
@@ -303,6 +307,16 @@ class _ProfileManagerWindow(QMainWindow):
         row2.addWidget(del_btn)
 
         row2.addStretch()
+        for first, second in zip((load_rep, load_merge, save_btn), (imp_btn, exp_btn, del_btn)):
+            second.setParent(frame)
+            first.ensurePolished()
+            second.ensurePolished()
+            first.setFont(theme.qfont(theme.TYPE_BODY))
+            second.setFont(theme.qfont(theme.TYPE_BODY))
+            width = max(max(button.sizeHint().width(), button.fontMetrics().horizontalAdvance(button.text()) + 32) for button in (first, second))
+            height = max(theme.HIT_TARGET_MIN, first.sizeHint().height(), second.sizeHint().height())
+            first.setFixedSize(width, height)
+            second.setFixedSize(width, height)
         layout.addLayout(row2)
 
         return frame

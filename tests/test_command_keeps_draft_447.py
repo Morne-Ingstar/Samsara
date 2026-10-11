@@ -370,11 +370,9 @@ def test_focus_timer_and_session_end_do_not_deliver(rig, live):
 @pytest.mark.parametrize('live', [True, False], ids=['Full', 'Compact'])
 def test_hold_release_still_delivers_its_own_text(rig, live, monkeypatch):
     r = rig(live)
-    # Full HOLD release only auto-delivers when there is no parked/pending
-    # document. A held hands-free draft makes it append instead.
-    r.manager.clear_pending_draft()
+    # A hold delivers its own words while the hands-free draft stays waiting.
     app = SimpleNamespace(config={'auto_paste': True, 'ui': {'live_surface': {'enabled': live}}},
-        _session_mode_manager=r.manager, _ensure_session_mode_manager=lambda: r.manager,
+        command_mode_active=True, _session_mode_manager=r.manager, _ensure_session_mode_manager=lambda: r.manager,
         _paste_preserving_clipboard=Mock(return_value=True), _hold_park_requested=False,
         _verbatim_rule=lambda: None, live_surface=None, _dictation_consumer=None,
         _on_streaming_session_finished=Mock(), _log_history=Mock(), add_to_history=Mock(),
@@ -393,6 +391,7 @@ def test_hold_release_still_delivers_its_own_text(rig, live, monkeypatch):
     monkeypatch.setattr(streaming, '_user32', SimpleNamespace(GetForegroundWindow=lambda: 123))
     before = r.manager.dictate_pending_buffer
     session._deliver_final('Synthetic released hold.', None, 1.0, 0)
+    assert before.strip()
     app._paste_preserving_clipboard.assert_called_once_with('Synthetic released hold.')
     assert r.manager.dictate_pending_buffer == before
     assert not r.pastes

@@ -47,10 +47,12 @@ class DisplayPlacementPage(QWidget):
         if setup and self.demo.reduced_motion:
             self.demo.desktop.drawing_scale = .6
             self.demo.desktop.setFixedHeight(96)
-        layout.addWidget(self.demo)
         self.reason = QLabel(CAPTIONS[0], self)
         self.reason.setWordWrap(True)
         layout.addWidget(self.reason)
+        self.demo.caption.hide()
+        self.demo.beat_changed.connect(lambda beat: self.demo.caption.setVisible(beat != 0))
+        layout.addWidget(self.demo)
         self.picker = IndicatorPlacePicker(current_position(config, display), self, display=display)
         self.picker.layout().setContentsMargins(0, 0, 0, 0)
         self.picker.layout().setSpacing(2 if setup else 6)

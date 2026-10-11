@@ -1,4 +1,4 @@
-"""Keep session-exit drafts separate from an ordinary hold's capture."""
+"""Keep hands-free drafts separate from an ordinary hold's capture."""
 from __future__ import annotations
 
 
@@ -50,10 +50,52 @@ def kept_outside_session(app, manager, *, live_capture=False) -> bool:
             and not (live_capture or getattr(app, 'command_mode_active', False)))
 
 
-def hold_appends_to_draft(app, manager, *, live_capture=False) -> bool:
+def session_draft_waiting(app, manager, *, live_capture=False) -> bool:
     document = getattr(manager, 'draft_document', None)
-    return bool(getattr(document, 'text', '')) and not kept_outside_session(
-        app, manager, live_capture=live_capture)
+    return kept_outside_session(app, manager) or (
+        (live_capture or getattr(app, 'command_mode_active', False))
+        and bool(getattr(document, 'text', '')
+                 or getattr(manager, 'retained_draft', '').strip()))
+
+
+def suspend_hands_free_for_hold(app) -> None:
+    """Dispatch the older chunk once before the hold owns subsequent audio."""
+    from samsara.session_modes import SessionMode
+    wake = app._wake_consumer
+    manager = getattr(app, '_session_mode_manager', None)
+    ordinary = not any(getattr(app, name, False) for name in
+                       ('command_mode_recording', 'ava_mode_recording', '_memo_recording'))
+    if (ordinary and getattr(app, 'command_mode_active', False)
+            and getattr(manager, 'mode', None) is SessionMode.DICTATE
+            and app.config.get('hands_free', {}).get('suspend_on_hold', True)):
+        wake.flush_utterance()
+        # The ordinary no-media pre-roll must not recapture the flushed chunk.
+        onset = getattr(app, '_hold_capture_onset', None)
+        if onset is not None:
+            import time
+            onset.policy = 'strict'
+            onset.boundary = max(onset.boundary or 0.0, time.perf_counter())
+    wake.discard_stale_wake_utterance()
+
+
+def sync_session_draft(controller, manager) -> None:
+    """An older hands-free final cannot paint its draft over a current hold."""
+    from samsara.live_surface.model import Lane
+    if getattr(controller, '_active_lane', None) is not Lane.HOLD:
+        controller.sync_draft(manager)
+
+
+def on_session_final(preview, text, **kwargs) -> None:
+    """A late older final updates the draft, retaining Compact's hold pause."""
+    preview.on_utterance_final(text, **kwargs)
+    if not preview._closed and preview._suspended_for_hold():
+        preview._overlay.set_paused(list(preview._finalized))
+
+
+def pause_hold(app, manager, *, source) -> None:
+    """The control parks this capture, without altering a session document."""
+    if not session_draft_waiting(app, manager):
+        manager.pause_draft(source=source)
 
 
 def begin_hold(partials):
@@ -62,7 +104,7 @@ def begin_hold(partials):
     controller = partials.controller
     app = getattr(controller, 'app', None)
     manager = getattr(app, '_session_mode_manager', None)
-    if partials.lane is Lane.HOLD and kept_outside_session(app, manager):
+    if partials.lane is Lane.HOLD and session_draft_waiting(app, manager):
         # No document id: this hides the projection without retiring the draft.
         controller.post(SurfaceEvent(EventKind.DOCUMENT_CLEARED))
     return partials
@@ -75,7 +117,7 @@ def finish_hold(partials) -> None:
     partials.stop()
     app = getattr(controller, 'app', None)
     manager = getattr(app, '_session_mode_manager', None)
-    if owns_display and kept_outside_session(app, manager):
+    if owns_display and session_draft_waiting(app, manager):
         controller.sync_draft(manager)
 
 
@@ -118,13 +160,32 @@ def capture_finished(session, callback) -> None:
 
 
 def park_hold(app, manager, text, *, source, live_capture=False) -> bool:
-    """A refused/reviewed hold must not become part of a kept session draft."""
-    if kept_outside_session(app, manager, live_capture=live_capture):
+    """A refused/reviewed hold must not become part of a session draft."""
+    if session_draft_waiting(app, manager, live_capture=live_capture):
         return False
     if source in ('focus changed', 'voice review'):
         manager.pause_draft(source=source)
     manager.stage_parked_hold(text, source=source)
     return True
+
+
+def park_batch_hold(app, manager, text, raw_text, duration_s, *, source) -> None:
+    """The CPU final follows the same draft separation and receipt as streaming."""
+    if park_hold(app, manager, text, source=source):
+        controller = getattr(app, 'live_surface', None)
+        if controller is not None:
+            controller.sync_draft(manager)
+        app._park_hold_feedback('Draft parked', 'success')
+        return
+    app.add_to_history(text.strip(), is_command=False)
+    app._log_history(raw_text=raw_text, display_text=text.strip(),
+                     duration_ms=int(duration_s * 1000), mode='hold',
+                     status='failed' if source == 'focus changed' else 'success',
+                     entry_type='dictation')
+    app._park_hold_feedback(
+        'Send refused; target focus changed' if source == 'focus changed'
+        else PAUSED_HOLD_HISTORY_HINT,
+        'error' if source == 'focus changed' else 'accent')
 
 
 def park_streaming_hold(session, manager, text, raw_text, duration_s, *, source):
@@ -144,6 +205,6 @@ def park_streaming_hold(session, manager, text, raw_text, duration_s, *, source)
 
 
 def session_appends_to_draft(session, manager) -> bool:
-    return hold_appends_to_draft(session.app, manager,
-        live_capture=getattr(session, '_live_session_capture', False))
+    """A waiting document never supplies consent to park a new hold."""
+    return False
 

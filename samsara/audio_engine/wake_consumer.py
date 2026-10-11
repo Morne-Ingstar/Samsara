@@ -1070,6 +1070,8 @@ class WakeConsumer:
         if self._hotkey_suppressed_last:
             self._log_frame(logging.DEBUG, 'frame_625', "[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
             self._hotkey_suppressed_last = False
+            # 516: the next onset's ring pre-roll cannot replay held audio.
+            self._hold_not_before = time.perf_counter()
             # hands_free.suspend_on_hold: resume from HERE (the current ring
             # position -- nothing above rewinds the reader; suppression
             # only ever skipped this method's OWN accumulation, never the
@@ -1374,10 +1376,9 @@ class WakeConsumer:
                             self._utterance_frames.append(raw_chunk)
                             self._buffer_rms_history.append(rms)
                 if self._is_toggle_dictate(app):
-                    # Never rewind farther than the silence boundary that
-                    # separated two staged chunks. Otherwise a short manual-
-                    # commit gap can re-include the previous chunk's tail and
-                    # create duplicated words.
+                    if getattr(self, '_hold_not_before', None) is not None:
+                        retain_not_before = max(retain_not_before or 0.0, self._hold_not_before)
+                    # Clamp pre-roll to the staged-chunk silence and post-hold boundary.
                     prebuffer_frames = min(
                         PREBUFFER_FRAMES,
                         max(2, int(silence_threshold * 1000 / FRAME_MS)),
@@ -1400,7 +1401,7 @@ class WakeConsumer:
                     self._buffer_rms_history.append(
                         float(np.sqrt(np.mean(pb_pcm ** 2)))
                     )
-                if retain_not_before is not None:
+                if retain_not_before is not None and admission is not None:
                     self._record_post_wake_capture(
                         admission, retained_discarded_ms=clamped_samples * 1000 / SAMPLE_RATE)
                 if prebuffer_frames and self._utterance_frames:
