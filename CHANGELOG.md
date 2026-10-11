@@ -28,6 +28,8 @@ All notable changes to Samsara are documented here.
 - **Settings asks before the network voice is used** - Choosing it shows what is sent and lets you say "Not now".
 - **Result messages in plain words** - A finished chain reads "Done: opened Notepad · Windows volume 30%", and messages stay on screen long enough to read.
 - **Put the listening display where you want it** - Place the Compact or Full display during setup or in the tutorial, and either display stays where you drop it and snaps to screen edges and corners.
+- **A new first-run walkthrough** - Ten short pages, from the microphone check to a recognition model picked for your hardware.
+- **Try your voice settings in the tutorial** - Hear the voice, its speed and its volume, and see each feedback level before you keep them; nothing changes until you press "Keep this".
 
 ### Changed
 
@@ -42,6 +44,8 @@ All notable changes to Samsara are documented here.
 - **The old echo-cancellation filter is retired** - A saved "on" no longer starts it.
 - **A compact loading screen and a smaller "What's new" card.**
 - **Personal project commands removed** - The author's own server controls and a joke printer command no longer appear in the shipped command list.
+- **App commands find your apps** - "Open Spotify", "open Discord", "open Obsidian", "open Warp" and "run Claude Code" look for the app on your PC instead of a fixed folder, and say so when it is not installed.
+- **Setup's questions sit in clear rows** - Each question has its own line, and every choice can be reached from the keyboard.
 
 ### Fixed
 
@@ -81,6 +85,7 @@ All notable changes to Samsara are documented here.
 - **Your words stay with the window you chose** - Samsara refuses a paste if the window you were dictating into has changed, and a quick "Thanks" spoken while holding the dictation key is kept.
 - **Setup and the tutorial fit smaller screens** - Pages scroll while the steps and navigation buttons remain visible at 150% scaling and on a 1366 × 768 laptop.
 - **Windows and text are easier to read** - Mic Setup, Wake profiles, Workflow, Updates and Profiles fit their content, the Full display's long draft has a readable scrollbar, Home's links and the Tasks line fit, and the quit question names what each button does.
+- **Holding the key still types while a draft is kept** - A draft left after hands-free no longer swallows your next ordinary dictation.
 
 ## [0.30.0-beta.2] - 2026-09-19
 
