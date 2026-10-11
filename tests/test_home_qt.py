@@ -1863,7 +1863,8 @@ class TestHomeBottom384:
             assert f"letter-spacing: {theme.LETTER_SPACING_SECTION}" in rest
             assert btn.font().capitalization() == QFont.Capitalization.AllUppercase
             for state in ("hover", "focus"):
-                assert f"QPushButton:{state} {{ color: {theme.ACCENT};" in btn.styleSheet()
+                selector = 'QPushButton[keyboardFocus="true"]' if state == "focus" else "QPushButton"
+                assert f"{selector}:{state} {{ color: {theme.ACCENT};" in btn.styleSheet()
             assert f"border: 1px solid {theme.ACCENT}" in btn.styleSheet()
         dots = home._links_row.findChildren(QLabel, "homeLinkSeparator")
         assert len(dots) == 2

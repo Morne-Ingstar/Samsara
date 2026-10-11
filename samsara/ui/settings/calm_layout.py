@@ -52,6 +52,7 @@ class RowLayout(QObject):
         row.grid.setHorizontalSpacing(theme.SPACE_3)
         row.grid.setVerticalSpacing(theme.SPACE_2)
         row.text.layout().setSpacing(theme.SPACE_1)
+        row.grid.setAlignment(row.text, Qt.AlignmentFlag.AlignVCenter)
         # Remove the old trailing stretch so the cluster ends at the page inset.
         for index in reversed(range(row.values.count())):
             item = row.values.itemAt(index)
@@ -70,7 +71,8 @@ class RowLayout(QObject):
             title_layout.setContentsMargins(0, 0, 0, 0)
             title_layout.setSpacing(theme.SPACE_1)
             title_layout.addWidget(row.heading)
-            title_layout.addWidget(row.help, 0, Qt.AlignmentFlag.AlignVCenter)
+            row.help.setParent(row)
+            title_layout.addSpacing(theme.HIT_TARGET_MIN + theme.SPACE_1)
             title_layout.addStretch()
             row.text.layout().insertWidget(0, title_line)
         row.grid.setColumnStretch(1, 0)
@@ -115,21 +117,26 @@ class RowLayout(QObject):
             margins = row.grid.contentsMargins()
             row.value.setMaximumWidth(max(theme.HIT_TARGET_MIN, row.width() - margins.left() - margins.right()))
             narrow = row.width() - margins.left() - required - theme.SPACE_3 < 5 * theme.SPACE_7
-            long_detail = row.detail.heightForWidth(max(1, row.detail.width())) > 2 * row.detail.fontMetrics().lineSpacing()
-            placement = (narrow, long_detail)
-            if placement != self.placed:
+            if narrow != self.placed:
                 row.grid.removeWidget(row.value)
                 if narrow:
                     row.grid.addWidget(row.value, 1, 0, 1, 3, Qt.AlignmentFlag.AlignRight)
                 else:
-                    row.grid.addWidget(row.value, 0, 2, Qt.AlignmentFlag.AlignRight | (
-                        Qt.AlignmentFlag.AlignTop if long_detail else Qt.AlignmentFlag.AlignVCenter))
-                self.placed = placement
+                    row.grid.addWidget(row.value, 0, 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self.placed = narrow
             row._narrow = narrow
             # Qt's nested wrapped labels must retain the height their ink needs.
             for label in (row.heading, row.detail):
                 if label.width() > 0:
                     label.setMinimumHeight(max(label.fontMetrics().height(), label.heightForWidth(label.width())))
+            if row.help:
+                row.grid.activate()
+                row.text.layout().activate()
+                row.heading.parentWidget().layout().activate()
+                anchor = row.heading.mapTo(row, row.heading.rect().topRight())
+                top = anchor.y() + (row.heading.height() - row.help.height()) // 2
+                row.help.move(anchor.x() + 1 + theme.SPACE_1,
+                              max(0, min(row.height() - row.help.height(), top)))
         finally:
             self.busy = False
 
@@ -206,6 +213,14 @@ def apply_settings(window):
     window._component_rows.refresh()
     for page in dict.fromkeys((*window._pages.values(), *window._tool_pages.values())):
         for scroll in (page, *page.findChildren(QScrollArea)):
+            scroll.verticalScrollBar().setStyleSheet(f"""
+                QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
+                QScrollBar::handle:vertical {{ background: {theme.BORDER}; border-radius: 4px; min-height: 24px; }}
+                QScrollBar::handle:vertical:hover {{ background: {theme.ICON_IDLE}; }}
+                QScrollBar::handle:vertical:pressed {{ background: {theme.ACCENT}; }}
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+            """)
             if not hasattr(scroll, '_settings_edges'):
                 scroll._settings_edges = ScrollEdges(scroll)
             scroll._settings_edges.refresh()

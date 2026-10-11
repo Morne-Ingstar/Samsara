@@ -842,7 +842,7 @@ class _SettingsInputLayout(QObject):
         self.busy = True
         try:
             if isinstance(widget, QPlainTextEdit):
-                original = widget.styleSheet().split('/* Settings input geometry */')[0]
+                original = widget.styleSheet().split('/* Settings input geometry */')[0].rstrip()
                 top = getattr(widget, '_settings_document_top', 0)
                 qss = f'\n/* Settings input geometry */\nQPlainTextEdit {{ padding: {top}px {SPACE_1}px 0 {SPACE_1}px; }}'
                 if widget.styleSheet() != original + qss:
@@ -858,7 +858,7 @@ class _SettingsInputLayout(QObject):
                 fm = widget.fontMetrics(); tight = fm.tightBoundingRect(text)
                 bias = 2 * fm.ascent() + 2 * tight.top() + tight.height() - fm.height()
                 top, bottom = max(0, -bias), max(0, bias)
-            original = widget.styleSheet().split('/* Settings input geometry */')[0]
+            original = widget.styleSheet().split('/* Settings input geometry */')[0].rstrip()
             field_height = TYPE_BODY + SPACE_2
             margin = max(0, (HIT_TARGET_MIN - field_height) // 2)
             left_padding = SPACE_1
@@ -870,7 +870,7 @@ class _SettingsInputLayout(QObject):
             qss = (f'\n/* Settings input geometry */\n{selector} {{ margin: {margin}px 0;'
                    f' padding: {top}px {SPACE_1}px {bottom}px {left_padding}px; min-height: {field_height - 2 - top - bottom}px;'
                    f' border-width: 1px; }}'
-                   f'{selector}:focus {{ border: 1px solid {ACCENT}; }}')
+                   f'{selector}[keyboardFocus="true"]:focus {{ border: 1px solid {ACCENT}; }}')
             if isinstance(widget, QAbstractSpinBox):
                 qss += f'QAbstractSpinBox {{ background: {BG2}; border: 1px solid {BORDER}; border-radius: 6px; }}'
                 qss += 'QAbstractSpinBox QLineEdit { margin: 0; padding: 0; border: none; background: transparent; }'
@@ -988,6 +988,8 @@ def apply_design_scale(widget: QWidget) -> None:
     button rules above legacy per-window QSS without creating an import cycle.
     """
     from samsara.ui import design_scale  # noqa: PLC0415
+    from samsara.ui.focus_ring import install
+    install()
     design_scale.apply(widget, "B")
     if hasattr(widget, "_destination_rows"):
         _style_settings_inputs(widget)
@@ -1154,6 +1156,8 @@ def install_app_scrollbars(app=None) -> None:
         app = QApplication.instance()
     if app is None:
         return
+    from samsara.ui.focus_ring import install
+    install(app)
     _ensure_system_theme_monitor(app)
     current = app.styleSheet() or ""
     if _SCROLLBAR_MARKER not in current:
@@ -1171,6 +1175,8 @@ def build_stylesheet() -> str:
     directly per-widget, which is what actually guarantees correct
     rendering), combo box with a visible drop-down arrow, line/text edit
     with an accent focus ring, and radio-button indicators."""
+    from samsara.ui.focus_ring import install
+    install()
     return f"""
 QMainWindow, QDialog, QWidget {{
     background-color: {BG0};

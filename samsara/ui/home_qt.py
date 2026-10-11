@@ -1658,6 +1658,9 @@ class HomePage(QWidget):
     # ---- Build ----------------------------------------------------------
 
     def _build(self):
+        # Preserve real focus; the shared policy controls only its painted ring.
+        from samsara.ui.focus_ring import install
+        install()
         self.setStyleSheet(
             f"QFrame#homeCard {{ background-color: {theme.BG1};"
             f" border: 1px solid {theme.BORDER}; border-radius: 8px; }}"
@@ -2326,10 +2329,6 @@ class HomePage(QWidget):
 
     def show_guides(self, visible: bool = True):
         self._guides_row.setVisible(visible)
-        if visible:
-            first = next(iter(self._guide_btns.values()), None)
-            if first is not None:
-                first.setFocus()
 
     def _on_guide(self, label: str):
         open_guide(self._app, label)

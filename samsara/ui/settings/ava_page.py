@@ -193,10 +193,6 @@ def build(owner):
         return updates
     owner._source_saves["ava"][0] = save_log
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
-    # A long description must not move the switch below the title's line.
-    log_row = owner._rows_by_widget["ava_conversation_log_enabled"]
-    log_row.text.layout().removeWidget(log_row.detail)
-    log_row.grid.addWidget(log_row.detail, 2, 0, 1, 3)
     from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
     # A plain group, with no nested outline or second disclosure.
     group = page.smart_corrections = QWidget()

@@ -198,8 +198,9 @@ def test_grid_control_heights_dropdown_clearance_and_corner_grip(reference, qapp
 
 
 def test_shared_search_and_scroll_treatments(reference, qapp):
+    from samsara.ui.focus_ring import keyboard_stylesheet  # 515: the focus ring shows for keyboard focus only
     win, _, commands = reference
-    assert win._filter.styleSheet() == search_qss()
+    assert keyboard_stylesheet(win._filter.styleSheet()) == keyboard_stylesheet(search_qss())
     assert win._filter.findChild(SearchGlyph)
     assert theme.SCROLLBAR_QSS in win._list.styleSheet()
     for index in range(30):

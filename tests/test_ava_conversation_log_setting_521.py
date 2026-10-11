@@ -146,18 +146,30 @@ def test_advanced_row_search_and_save_preserve_ava_siblings(qapp, monkeypatch, m
         assert type(switch._calm_switch) is type(window._widgets["sc_enabled"]._calm_switch)
         assert switch.size() == window._widgets["sc_enabled"].size()
         assert row.disclosure is window._pages["Ava"].advanced
-        for query in ("", "Keep a conversation log"):
+        def geometry(key):
+            shared_row = window._rows_by_widget[key]
+            control = window._widgets[key]
+            title_bottom = shared_row.heading.mapTo(shared_row, QPoint()).y() + shared_row.heading.height()
+            gap = shared_row.detail.mapTo(shared_row, QPoint()).y() - title_bottom
+            offset = control.mapTo(shared_row, QPoint()).y() + control.height() / 2 - shared_row.height() / 2
+            return gap, offset, shared_row.detail.width()
+        for query in ("", "Editing", "Keep a conversation log"):
             window._search_edit.setText(query)
             window._apply_search_filter()
             for _ in range(20):
                 qapp.processEvents()
+            if query != "Keep a conversation log":
+                editing = window._rows_by_widget["ava_edit_enabled"]
+                assert not editing.isHidden()
+                expected_gap, expected_offset, expected_width = geometry("ava_edit_enabled")
+                if query:
+                    continue
             assert not row.isHidden()
-            title_y = row.heading.mapTo(row, QPoint()).y() + row.heading.height() / 2
-            switch_y = switch.mapTo(row, QPoint()).y() + switch.height() / 2
-            assert abs(title_y - switch_y) <= 1
-            assert row.detail.mapTo(row, QPoint()).y() >= max(
-                row.heading.mapTo(row, QPoint()).y() + row.heading.height(),
-                switch.mapTo(row, QPoint()).y() + switch.height())
+            gap, offset, detail_width = geometry("ava_conversation_log_enabled")
+            assert gap == expected_gap == theme.SPACE_1
+            assert offset == pytest.approx(expected_offset, abs=1)  # Qt rounds centred geometry to whole DIPs.
+            assert abs(offset) <= 1
+            assert detail_width == expected_width
         assert "_build_ava_cloud_tab" in window._source_saves["ava"][0].__qualname__
         assert window._pages["Ava"].isAncestorOf(switch)
         for checked in (True, False):
