@@ -22,7 +22,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
-
+from samsara.log import describe_text, safe_exception
 from samsara.runtime import thread_registry
 
 from .engine_base import SpeechHandle, TTSEngine
@@ -344,7 +344,7 @@ class AudioCoordinator:
                     try:
                         on_done()
                     except Exception:
-                        logger.exception("AudioCoordinator: on_done callback raised")
+                        safe_exception(logger, "AudioCoordinator: on_done callback raised")
 
             self._active_interruptible = interruptible
             self.transition_to(SPEAKING, context={'text': text})
@@ -390,8 +390,8 @@ class AudioCoordinator:
             from samsara.ui import ava_captions_qt        # noqa: PLC0415
             ava_captions_qt.show_caption(self.app, text, hold=hold)
         except Exception:
-            logger.warning("AudioCoordinator: could not show the Ava caption",
-                           exc_info=True)
+            safe_exception(logger, "AudioCoordinator: could not show the Ava caption",
+                           level=logging.WARNING)
 
     def _with_caption_release(self, on_done):
         """`on_done` that also ends the caption's hold, so the linger is
@@ -401,7 +401,7 @@ class AudioCoordinator:
                 from samsara.ui import ava_captions_qt    # noqa: PLC0415
                 ava_captions_qt.release_caption(self.app)
             except Exception:
-                logger.debug("AudioCoordinator: caption release failed", exc_info=True)
+                safe_exception(logger, "AudioCoordinator: caption release failed", level=logging.DEBUG)
             if on_done:
                 on_done()
         return _release_then_done
@@ -484,7 +484,7 @@ class AudioCoordinator:
         # Side effects happen AFTER the transition commits and outside the lock.
         self._on_transition(old_state, new_state, context)
         self._notify_listeners(old_state, new_state, context)
-        logger.debug("AudioCoordinator: %s → %s  context=%s", old_state, new_state, context)
+        logger.debug("AudioCoordinator: %s → %s  context=%s", old_state, new_state, describe_text(context))
         return True
 
     def get_state(self) -> str:
@@ -756,4 +756,4 @@ class AudioCoordinator:
             try:
                 cb(old, new, context)
             except Exception:
-                logger.exception("AudioCoordinator: state listener raised")
+                safe_exception(logger, "AudioCoordinator: state listener raised")

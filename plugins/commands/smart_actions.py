@@ -20,7 +20,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-
+from samsara.log import describe_text, safe_exception
 from samsara.plugin_commands import command
 
 
@@ -139,7 +139,7 @@ def ensure_brain_dump_file(path):
                 f.write(FILE_HEADER)
         return True
     except OSError as e:
-        logger.exception(f"[SMART ACTIONS] Cannot prepare brain dump file at {path}: {e}")
+        safe_exception(logger, f"[SMART ACTIONS] Cannot prepare brain dump file at {path}: {describe_text(e)}")
         return False
 
 
@@ -160,7 +160,7 @@ def append_entry(path, content, now=None):
             f.flush()
         return True
     except OSError as e:
-        logger.exception(f"[SMART ACTIONS] Failed to append to {path}: {e}")
+        safe_exception(logger, f"[SMART ACTIONS] Failed to append to {path}: {describe_text(e)}")
         return False
 
 
@@ -274,7 +274,7 @@ def open_brain_dump_file(path):
             subprocess.Popen(['xdg-open', str(resolved)])
         return True
     except Exception:
-        logger.exception(f"[SMART ACTIONS] Could not open brain dump file at {path}")
+        safe_exception(logger, f"[SMART ACTIONS] Could not open brain dump file at {path}")
         return False
 
 
@@ -347,7 +347,7 @@ def _do_agent_route(app, text, verb):
             try:
                 coordinator.speak(reply, category="agent_response")
             except Exception as e:
-                logger.error("[SMART ACTIONS] TTS speak failed: %s", e)
+                logger.error("[SMART ACTIONS] TTS speak failed: %s", describe_text(e))
         _play_earcon(app, EARCON_AGENT_RESPONSE, smart_cfg)
         print(f"[SMART ACTIONS] Agent reply: {reply}")
 

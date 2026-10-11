@@ -24,7 +24,7 @@ from samsara.ui import qt_runtime, theme
 from samsara import clipboard
 from samsara.correction_capture import extract_corrections
 
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 
 logger = get_logger(__name__)
 
@@ -332,7 +332,7 @@ class CorrectionCaptureWindow(QMainWindow):
             vt.corrections_dict[wrong] = right
             vt._rebuild_corrections_pattern()
             vt.save_training_data()
-            logger.info(f'[LEARN] "{wrong}" -> "{right}" (correction capture)')
+            logger.info(f'[LEARN] "{describe_text(wrong)}" -> "{describe_text(right)}" (correction capture)')
             self._set_status(f'Added "{wrong}" -> "{right}" to your dictionary.')
         except Exception as exc:
             logger.debug(f"[CORRECT-CAP] Always-fix save failed: {exc}")

@@ -3,6 +3,7 @@
 Never imports the desktop dictation bootstrap. The production registry,
 executor, resolver boundary, outcome mapper and hold watchdog run unchanged.
 """
+from samsara.log import describe_text, safe_exception
 import ast
 import collections
 import copy
@@ -61,6 +62,7 @@ def _production():
         isinstance(t, ast.Name) and t.id in constants_wanted for t in n.targets)]
     helpers = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_is_repeat_blacklisted']
     namespace = dict(globals(), **vars(constants), _languages=languages,
+                     describe_text=describe_text, safe_exception=safe_exception,
                      logger=logging.getLogger('391.production'),
                      flight_recorder=SimpleNamespace(record=MagicMock()),
                      thread_registry=SimpleNamespace(spawn=lambda name, fn, **kw: fn()),

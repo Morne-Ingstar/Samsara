@@ -76,16 +76,6 @@ _ENABLE_VOICE_CONTROL_DESC = (
     "Enables the voice-control button below. The command-only shortcut always "
     "works, even with this off."
 )
-# dictation.py _install_capslock_hook: keyboard.hook_key('caps lock'), installed
-# only while streaming_mode is on; the checkbox below calls set_streaming_mode().
-# streaming_hotkey is read by nothing.
-_STREAMING_KEY_LABEL = "CapsLock (fixed)"
-_STREAMING_KEY_DESC = (
-    "The streaming key is fixed in code and only works while Streaming preview is on."
-)
-_STREAMING_PREVIEW_DESC = (
-    "Show live partials in the overlay while you hold CapsLock."  # STAND-IN COPY (523)
-)
 _PASTE_STAGED_DESC = "Toggle hands-free only; same as saying '{commit}'."
 _CMD_DEBOUNCE_DESC = "Taps shorter than this are ignored (audio discarded)."
 _CMD_TIMEOUT_DESC = "Exit after this much inactivity (max 30 min) (toggle mode only)."
@@ -894,21 +884,6 @@ class ModesPage:
             )
         )
 
-        # Streaming (08d): the key is not a setting -- the hook hardcodes CapsLock.
-        streaming_key_display = QLineEdit(_STREAMING_KEY_LABEL)
-        streaming_key_display.setReadOnly(True)
-        streaming_key_display.setObjectName("streamingKeyDisplay")
-        self._widgets['streaming_key_display'] = streaming_key_display
-        dictation_layout.addLayout(
-            self._setting_row("Streaming key", _STREAMING_KEY_DESC, streaming_key_display, control_width=260)
-        )
-        streaming_cb = QCheckBox()
-        streaming_cb.setChecked(bool(cfg.get('streaming_mode', False)))
-        self._widgets['streaming_mode'] = streaming_cb
-        dictation_layout.addLayout(
-            self._setting_row("Streaming preview", _STREAMING_PREVIEW_DESC, streaming_cb, control_width=220)
-        )
-
         # ---- Card 5: Ava shortcut ---------------------------------------
         ava_card, ava_layout = self._section_card(
             "Ava Assistant",
@@ -1118,16 +1093,6 @@ class ModesPage:
             ava_combo = self._widgets.get('ava_mode_key')
             if isinstance(ava_combo, _HotkeyButton):
                 updates['ava_mode_key'] = ava_combo.combo
-            # Streaming preview uses the streaming setter
-            # (set_streaming_mode installs/uninstalls the CapsLock hook and
-            # saves the flag itself), never through the bulk config write.
-            streaming_cb = self._widgets.get('streaming_mode')
-            if streaming_cb is not None:
-                wanted = bool(streaming_cb.isChecked())
-                setter = getattr(self.app, 'set_streaming_mode', None)
-                if wanted != bool(self.app.config.get('streaming_mode', False)) and callable(setter):
-                    setter(wanted)
-
             if 'mode' in self._widgets:
                 mode = self._widgets['mode']
                 updates['mode'] = (

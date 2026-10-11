@@ -30,7 +30,7 @@ from .execution_policy import Invocation, Route
 from .phonetic_wash import apply_phonetic_wash
 from .dictation_commands import literal_only, command_payload, accepts_dictation, command_lane
 
-from samsara.log import get_logger
+from samsara.log import describe_text, safe_exception, get_logger
 
 logger = get_logger(__name__)
 
@@ -581,14 +581,14 @@ class CommandExecutor:
                 handler_result = entry.handler(effective_app, remainder)
                 state = adapt_handler_return(handler_result)
             except Exception as e:
-                logger.exception("[ERROR] Plugin '%s' failed", canonical)
+                safe_exception(logger, "[ERROR] Plugin '%s' failed", canonical)
                 # Spoken dispatch owns its outcome; direct invocations need the same route.
                 feedback = getattr(effective_app, '_handle_session_dispatch_outcome', None)
                 if not source_text and callable(feedback):
                     from samsara.session_modes import DispatchOutcome
                     outcome = DispatchOutcome(kind='command_failed', detail={
                         'phrase': canonical, 'state': 'failed', 'heard': canonical})
-                    logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, outcome.detail)
+                    logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, describe_text(outcome.detail))
                     try:
                         feedback(outcome, canonical)
                     except Exception:

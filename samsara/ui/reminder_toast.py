@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
-from samsara.log import get_logger
+from samsara.log import describe_text, safe_exception, get_logger
 from samsara.ui import qt_runtime, theme
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 
@@ -252,7 +252,7 @@ class _ToastWindow(QWidget):
         try:
             callback()
         except Exception as e:
-            logger.exception(f"Reminder toast action failed for {row.title!r}: {e}")
+            safe_exception(logger, f"Reminder toast action failed for {describe_text(row.title)!r}: {describe_text(e)}")
     def _reposition(self) -> None:
         screen = QApplication.primaryScreen()
         if screen is None:
@@ -397,7 +397,7 @@ class ReminderToast:
             except Exception as e:
                 # Don't let one bad row abort the rest of the flush queue,
                 # and don't confirm-as-shown the row that actually failed.
-                logger.exception(f"_check_gate: add_row failed for {title!r}: {e}")
+                safe_exception(logger, f"_check_gate: add_row failed for {describe_text(title)!r}: {describe_text(e)}")
                 continue
             if on_shown is not None:
                 on_shown()

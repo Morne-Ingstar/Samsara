@@ -21,7 +21,7 @@ import logging
 import threading
 import uuid
 from typing import Callable, List, Optional
-
+from samsara.log import describe_text
 from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
 
@@ -271,7 +271,7 @@ class EdgeTTSEngine(TTSEngine):
 
                 if not self._authorized():
                     return
-                logger.debug("[EdgeTTS] synthesizing: %r (voice=%s)", text[:50], voice)
+                logger.debug("[EdgeTTS] synthesizing: %r (voice=%s)", describe_text(text), voice)
                 mp3_bytes = _synthesize_mp3(
                     voice, text, rate_str, vol_str, authorize=self._authorized,
                 )

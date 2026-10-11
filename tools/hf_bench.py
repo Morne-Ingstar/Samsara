@@ -187,6 +187,7 @@ def load_production_adapter():
     """Bind only offline decode helpers; never execute the app/log bootstrap."""
     import numpy as np
     from samsara import audio_tools, transcript_gates
+    from samsara.log import describe_text, safe_exception
     diagnostics = _source_helpers("samsara/diagnostics.py", {"segment_signals"})
     languages = _source_helpers("samsara/languages.py", {"resolve_transcribe_language"})
     constants_module = _source_helpers(
@@ -228,6 +229,7 @@ def load_production_adapter():
                if isinstance(node, ast.FunctionDef) and node.name in method_names]
     module = ModuleType("hf_bench_production")
     module.__dict__.update(np=np, re=re, string=string, logging=logging,
+                           describe_text=describe_text, safe_exception=safe_exception,
                            diagnostics=diagnostics, _languages=languages,
                            MODEL_SAMPLE_RATE=constants_module.MODEL_SAMPLE_RATE,
                            CONTIGUOUS_VAD_PROB_THRESHOLD=constants_module.CONTIGUOUS_VAD_PROB_THRESHOLD,

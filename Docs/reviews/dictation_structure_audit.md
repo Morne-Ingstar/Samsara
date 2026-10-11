@@ -98,7 +98,7 @@ Nested classes: `_NullStream` has 4 methods (13-21); `_SafeRotatingFileHandler` 
 | 4402-4650 | 249 | mic calibration, device enumeration, output-device switching |
 | 4650-4950 | 301 | transcription-param construction, hotkey decode, `process_transcription` |
 | 4951-5455 | 505 | foreground-app resolution, mic switching, model load |
-| 5456-5878 | 423 | `on_key_press` / `on_key_release` / CapsLock streaming / mouse listener |
+| 5456-5878 | 423 | `on_key_press` / `on_key_release` / mouse listener |
 | 5879-6420 | 542 | command-mode + Ava-mode key state machine, session-mode manager |
 | 6420-7130 | 711 | enter/exit command mode, Ava mode, Ava command session, Ava routing |
 | 7131-7452 | 322 | command-mode utterance handling, streaming preview |

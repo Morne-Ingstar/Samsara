@@ -1,5 +1,6 @@
 """Mocked desktop methods and real dispatch threads; no app startup/audio/models."""
 
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 from pathlib import Path
@@ -64,6 +65,7 @@ def rig(monkeypatch):
                         lambda name, **fields: events.append((name, fields)))
     clock = SimpleNamespace(now=100.0)
     namespace = dict(
+        describe_text=describe_text, safe_exception=safe_exception,
         np=np, logger=logging.getLogger('wake_dispatch_test'),
         time=SimpleNamespace(monotonic=lambda: clock.now, perf_counter=lambda: clock.now,
                              time=time.time),

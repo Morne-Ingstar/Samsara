@@ -1,4 +1,5 @@
 """Legacy wake control words must obey the shared phrase boundary."""
+from samsara.log import describe_text, safe_exception
 import ast
 import copy
 import logging
@@ -27,7 +28,8 @@ def app():
                   and any(isinstance(value, ast.Tuple) for value in node.test.comparators))
     route = ast.parse("def route(self, text):\n text_lower = text.lower()\n ww_config = self.config.get('wake_word_config', {})\n stage_timing = None\n").body[0]
     route.body.append(copy.deepcopy(branch))
-    namespace = {"logger": logging.getLogger(__name__), "config_defaults": config_defaults,
+    namespace = {"describe_text": describe_text, "safe_exception": safe_exception,
+                 "logger": logging.getLogger(__name__), "config_defaults": config_defaults,
                  "StageTiming": StageTiming,
                  "_WAKE_SESSION_SEND_WORDS": ["over"]}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[route], type_ignores=[])),

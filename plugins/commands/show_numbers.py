@@ -59,7 +59,7 @@ import re
 import sys
 import threading
 import time
-
+from samsara.log import describe_text
 from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtWidgets import QApplication
 
@@ -142,7 +142,7 @@ def _speak(app, text: str) -> None:
     elif hasattr(app, "tts_engine") and app.tts_engine:
         app.tts_engine.speak(text)
     else:
-        logger.info("[SHOW_NUMBERS] (no TTS) %s", text)
+        logger.info("[SHOW_NUMBERS] (no TTS) %s", describe_text(text))
 
 
 # ---------------------------------------------------------------------------
@@ -1508,7 +1508,7 @@ def _click_text(app, query: str, modifier: str, keys: frozenset):
     matches = [m for m in found if screen_ocr.point_reaches_window(fg_hwnd, *m.center)]
     logger.info(
         "[CLICK-TEXT] query=%r exe=%s class=%s capture=%s words=%d timings_ms=%s matches=%d exact=%d covered=%d",
-        query, fg.get("exe"), fg.get("cls"), snap.capture_rect, snap.word_count, snap.timings_ms,
+        describe_text(query), fg.get("exe"), fg.get("cls"), snap.capture_rect, snap.word_count, snap.timings_ms,
         len(matches), sum(m.exact for m in matches), len(found) - len(matches))
 
     if not matches:
@@ -1527,7 +1527,7 @@ def _click_text(app, query: str, modifier: str, keys: frozenset):
             _report_chip(app, f"{CHIP_CROSS} window changed; nothing clicked", "error")
             return DispatchState.FAILED
         logger.info("[CLICK-TEXT] clicked %r at physical %s modifier=%s keys=%s",
-                    m.text, m.center, modifier, sorted(keys))
+                    describe_text(m.text), m.center, modifier, sorted(keys))
         return True
 
     elements = [{"control": target(m), "prect": m.rect, "name": m.text, "type": OCR_ELEMENT_TYPE}
@@ -1542,7 +1542,7 @@ def _click_text(app, query: str, modifier: str, keys: frozenset):
         spoken = f"Not sure. {len(matches)} options, say click and a number."
         chip = f"not sure: {len(matches)} options, say click and a number"
     logger.info("[CLICK-TEXT] %s candidates for %r (exact=%s scores=%s) -- labelled, not clicked",
-                len(matches), query, exact, [m.score for m in matches])
+                len(matches), describe_text(query), exact, [m.score for m in matches])
     # The plan maps each physical rectangle through its own monitor (queue 56).
     _draw_overlay(app, elements, caption=chip, fg_info=dict(fg, hwnd=fg_hwnd, rect=snap.window_rect))
     _speak(app, spoken[:50])
@@ -2167,12 +2167,12 @@ def handle_click(app, remainder):
     if text and number is None:
         from samsara.screen_ocr import token_view as tokens  # noqa: PLC0415
         if " ".join(tokens(text)) in _KEY_NAMES:
-            logger.info("[CLICK-TEXT] %r names a key, not on-screen text -- not reading the screen", text)
+            logger.info("[CLICK-TEXT] %r names a key, not on-screen text -- not reading the screen", describe_text(text))
             return True
         return _click_text(app, text, modifier, keys_frozen)
 
     if number is None:
-        logger.info(f"[OVERLAY] Couldn't parse number from: {remainder!r}")
+        logger.info(f"[OVERLAY] Couldn't parse number from: {describe_text(remainder)!r}")
         return True
 
     return _click_number(app, number, modifier, keys_frozen)

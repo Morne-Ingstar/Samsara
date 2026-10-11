@@ -25,7 +25,7 @@ from samsara import ai_transport
 from samsara import cloud_llm
 from samsara import languages
 from samsara.languages import LANGUAGES, script_class
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
@@ -538,7 +538,7 @@ def _call_ollama(text: str, app, system_prompt: str, timeout_s: float, model: st
         _probe_cache.pop(host, None)
         return None, True
     except Exception as exc:
-        logger.debug(f"[SMART] Ollama call failed: {exc}")
+        logger.debug(f"[SMART] Ollama call failed: {describe_text(exc)}")
         _probe_cache.pop(host, None)
         return None, False
 
@@ -556,7 +556,7 @@ def _call_cloud(text: str, app, system_prompt: str, timeout_s: float):
             return None, error_kind == "timeout"
         return result, False
     except Exception as exc:
-        logger.debug(f"[SMART] Cloud LLM call failed: {exc}")
+        logger.debug(f"[SMART] Cloud LLM call failed: {describe_text(exc)}")
         return None, False
 
 
@@ -661,11 +661,11 @@ def smart_correct(text: str, app) -> str:
         tag = _backend_tag(backend, model, elapsed_ms)
 
         if corrected != text:
-            logger.info(f'[SMART]{tag} "{_truncate(text)}" -> "{_truncate(corrected)}"')
+            logger.info(f'[SMART]{tag} "{describe_text(text)}" -> "{describe_text(corrected)}"')
         else:
             logger.info(f"[SMART]{tag} no change")
 
         return corrected
     except Exception as exc:
-        logger.debug(f"[SMART] smart_correct failed: {exc}")
+        logger.debug(f"[SMART] smart_correct failed: {describe_text(exc)}")
         return text

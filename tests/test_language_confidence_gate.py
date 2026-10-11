@@ -129,7 +129,8 @@ def test_outside_low_confidence_rejected_with_one_event_and_earcon(app, caplog):
         "decode.language_rejected", language="nn", language_probability=0.45,
         reason="low_confidence", expected_languages=["en"])
     assert len(caplog.records) == 1
-    assert repr(text[:40]) in caplog.records[0].message
+    assert repr(app.production.describe_text(text)) in caplog.records[0].message
+    assert text not in caplog.records[0].message
     assert not app._language_confidence_gate.accepted
 
 

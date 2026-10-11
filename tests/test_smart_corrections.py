@@ -231,7 +231,7 @@ class TestBackendAttributionLogging:
         assert any(
             m.startswith('[SMART][ollama qwen3:8b')
             and 'ms]' in m
-            and m.endswith('"there going too the store" -> "Their going to the store."')
+            and m.endswith('"25 chars, 5 words" -> "25 chars, 5 words"')
             for m in msgs
         )
 

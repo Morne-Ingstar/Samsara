@@ -1,4 +1,5 @@
 """Tutorial delivery contract; source extraction never bootstraps dictation."""
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import threading
@@ -26,7 +27,8 @@ def method(file, name):
 
 
 def compile_method(node, **names):
-    namespace = dict(logger=logging.getLogger(__name__), tutorial_capture=tutorial_capture, **names)
+    namespace = dict(describe_text=describe_text, safe_exception=safe_exception,
+                     logger=logging.getLogger(__name__), tutorial_capture=tutorial_capture, **names)
     exec(compile(ast.Module(body=[node], type_ignores=[]), node._tutorial_source, 'exec'), namespace)
     return namespace[node.name]
 

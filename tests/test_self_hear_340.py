@@ -1,5 +1,6 @@
 """Queue 340: only Ava-owned capture is refused; a real interruption survives."""
 from __future__ import annotations
+from samsara.log import describe_text, safe_exception
 
 import ast
 import collections
@@ -116,6 +117,7 @@ def test_real_command_handler_drops_before_whisper_without_importing_app():
     timing = Mock()
     flight = SimpleNamespace(record=Mock())
     namespace = {
+        "describe_text": describe_text, "safe_exception": safe_exception,
         "SessionMode": SessionMode,
         "StageTiming": SimpleNamespace(create=lambda *a, **kw: timing),
         "set_current_stage_timing": lambda _timing: object(),

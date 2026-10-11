@@ -103,15 +103,17 @@ def test_worker_thread_exception_is_logged(restore_hooks, caplog):
     def worker():
         raise ValueError("calibration exploded")
 
-    t = threading.Thread(target=worker, name="wizard-wake-calibration")
+    t = threading.Thread(target=worker, name="wizard-wake-calibration-%s")
     # dictation.py's Thread.run wrapper is not installed here: this is the
     # path threading.excepthook alone has to cover.
     with caplog.at_level(logging.CRITICAL):
         t.start()
         t.join(5)
     records = [r for r in caplog.records if r.name == "test.crashdiag.thread"]
-    assert records and "wizard-wake-calibration" in records[0].getMessage()
-    assert "calibration exploded" in records[0].getMessage()
+    assert records and "wizard-wake-calibration-%s" in records[0].getMessage()
+    assert "ValueError" in records[0].getMessage()
+    assert "calibration exploded" not in records[0].getMessage()
+    assert records[0].exc_info and "worker" in logging.Formatter().formatException(records[0].exc_info)
 
 
 def test_unraisable_exception_is_logged(restore_hooks, caplog):
@@ -126,7 +128,7 @@ def test_unraisable_exception_is_logged(restore_hooks, caplog):
         obj = _Leaky()
         del obj
         gc.collect()
-    assert any("raised in a callback nobody can catch" in r.getMessage()
+    assert any("RuntimeError" in r.getMessage()
                for r in caplog.records if r.name == "test.crashdiag.unraisable")
 
 

@@ -875,7 +875,7 @@ from samsara.paths import (
     samsara_config_path,
     samsara_home_dir,
 )
-from samsara.log import SAMSARA_LOG_HANDLER_TAG as _SAMSARA_LOG_HANDLER_TAG
+from samsara.log import describe_text, safe_exception, SAMSARA_LOG_HANDLER_TAG as _SAMSARA_LOG_HANDLER_TAG
 
 LOG_DIR = samsara_home_dir() / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -1075,9 +1075,9 @@ def print(*args, **kwargs):
 
 def _uncaught_exception_handler(exc_type, exc_value, exc_tb):
     import traceback as _tb
-    logging.critical(
-        "Uncaught exception:\n" +
-        "".join(_tb.format_exception(exc_type, exc_value, exc_tb))
+    safe_exception(logging.getLogger("Samsara"),
+        "Uncaught exception: %s", describe_text(exc_value),
+        level=logging.CRITICAL, exc_info=(exc_type, exc_value, exc_tb)
     )
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
@@ -1094,9 +1094,9 @@ def _patched_thread_init(self, *args, **kwargs):
             _original_run()
         except Exception:
             import traceback as _tb
-            logging.critical(
-                f"Uncaught exception in thread {self.name}:\n" +
-                _tb.format_exc()
+            safe_exception(logging.getLogger("Samsara"),
+                "Uncaught exception in thread %s: %s",
+                self.name, describe_text(sys.exception()), level=logging.CRITICAL
             )
     self.run = _wrapped_run
 
@@ -1902,7 +1902,7 @@ class DictationApp:
             self.history_db = HistoryManager()
             self.history_db.prune(max_entries=10000)
         except Exception as e:
-            logger.exception(f"[HISTORY] Could not open persistent history: {e}")
+            safe_exception(logger, f"[HISTORY] Could not open persistent history: {describe_text(e)}")
             self.history_db = None
         # Thin task-shaped façade (append/query/delete/clear) over the same
         # HistoryManager instance above -- see samsara/history_store.py.
@@ -3685,7 +3685,7 @@ class DictationApp:
                     tmp_path.unlink()
             except OSError as _cleanup_err:
                 logger.debug(f"Temp config file cleanup failed after save error: {_cleanup_err}")
-            logger.exception(f"[ERROR] save_config failed: {e}")
+            safe_exception(logger, f"[ERROR] save_config failed: {describe_text(e)}")
             raise
 
     def persist_config(self) -> None:
@@ -3798,8 +3798,8 @@ class DictationApp:
         with self._config_lock:
             last_snap = self._config_last_disk_snapshot or {}
             merged = _three_way_merge(last_snap, self.config, new_disk_config)
-
-            # Compute diff for logging and side-effects
+            from samsara.config_schema import retire_streaming_mode
+            retire_streaming_mode(merged)
             all_keys = set(self.config) | set(merged)
             for k in all_keys:
                 old_v = self.config.get(k, _MISSING)
@@ -4243,7 +4243,7 @@ class DictationApp:
                     # Convert lists back to tuples
                     return [tuple(item) for item in data]
         except Exception as e:
-            logger.exception(f"Failed to load history: {e}")
+            safe_exception(logger, f"Failed to load history: {describe_text(e)}")
         return []
 
     def save_history(self):
@@ -4252,7 +4252,7 @@ class DictationApp:
             with open(self.history_path, 'w', encoding='utf-8') as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.exception(f"Failed to save history: {e}")
+            safe_exception(logger, f"Failed to save history: {describe_text(e)}")
 
     def get_transcription_params(self, include_vocabulary: bool = True):
         """Get transcription parameters based on performance mode setting.
@@ -4496,7 +4496,7 @@ class DictationApp:
         if reason is None:
             return text
         logger.info('[LANGUAGE] Rejected language=%s probability=%s text=%r',
-                    language, probability, text[:40])
+                    language, probability, describe_text(text))
         flight_recorder.record('decode.language_rejected', language=language,
                                language_probability=probability, reason=reason,
                                expected_languages=sorted(expected))
@@ -4645,7 +4645,7 @@ class DictationApp:
                 matched_command=matched_command,
             )
         except Exception as e:
-            logger.exception(f"[HISTORY] log failed: {e}")
+            safe_exception(logger, f"[HISTORY] log failed: {describe_text(e)}")
 
     def _notify_main_window(self, text):
         """Direct callback into the hub window (no event bus).
@@ -5256,7 +5256,7 @@ class DictationApp:
 
     def _handle_deferred_session_outcome(self, outcome) -> None:
         """A command held by a cancel window finally ran (or was refused)."""
-        logger.info(f'[SESSION] deferred outcome={outcome.kind} detail={outcome.detail}')
+        logger.info(f'[SESSION] deferred outcome={outcome.kind} detail={describe_text(outcome.detail)}')
         self._handle_session_dispatch_outcome(outcome, str(outcome.detail.get('dispatch_text') or ''))
 
     def _ensure_session_mode_manager(self) -> "SessionModeManager":
@@ -5293,7 +5293,7 @@ class DictationApp:
                     "[SESSION] commit word %r is a common filler; a pause after it "
                     "in ordinary speech will paste the draft", _installed)
         except Exception as exc:  # never block the session on a config read
-            logger.warning("[SESSION] commit word not applied: %s", exc)
+            logger.warning("[SESSION] commit word not applied: %s", describe_text(exc))
 
         _suggestion_cache = {"matcher": None, "resolver": None}
 
@@ -5368,9 +5368,9 @@ class DictationApp:
 
             disabled_pack = detail.get('pack') if detail.get('reason') == 'pack_disabled' else None
             if disabled_pack:
-                logger.info(f'[CMD] "{text}" is a command in the disabled pack {disabled_pack!r}')
+                logger.info(f'[CMD] "{describe_text(text)}" is a command in the disabled pack {disabled_pack!r}')
             else:
-                logger.info(f'[CMD] No command matched: "{text}"')
+                logger.info(f'[CMD] No command matched: "{describe_text(text)}"')
             # The outcome owner accounts for a miss only after optional Ava
             # resolution finishes. Counting here could end a toggle COMMAND
             # session while its one permitted fallback is still in flight.
@@ -5412,7 +5412,7 @@ class DictationApp:
                         formatted = formatted + " "
                     formatted = self._apply_formatting_tokens(formatted)
             except Exception as e:
-                logger.exception(f'[SESSION] DICTATE commit formatting failed: {e}')
+                safe_exception(logger, f'[SESSION] DICTATE commit formatting failed: {describe_text(e)}')
                 return False
 
             formatted = getattr(self._session_mode_manager, '_sentence_prefix', '') + formatted
@@ -5520,7 +5520,7 @@ class DictationApp:
             # Shared by a failed prefix-switch payload (mode reverted), a failed
             # DICTATE commit (draft retained) and failing mode-change side
             # effects (mode kept) -- session_modes logs which one it was.
-            logger.error(f'[SESSION] Session action failed: {exc}')
+            logger.error(f'[SESSION] Session action failed: {describe_text(exc)}')
             self.play_sound('error')
 
         def _session_stop(reason: str) -> dict:
@@ -5674,10 +5674,10 @@ class DictationApp:
                 if str(getattr(handle, "utterance_id", "")).startswith("noop-"):
                     _finish_timing_feedback()
             else:
-                logger.warning(f'[SESSION] no audio coordinator; not spoken: {text!r}')
+                logger.warning(f'[SESSION] no audio coordinator; not spoken: {describe_text(text)!r}')
         except Exception as exc:
             _finish_timing_feedback()
-            logger.warning(f'[SESSION] session notice not spoken ({exc}): {text!r}')
+            logger.warning(f'[SESSION] session notice not spoken ({describe_text(exc)}): {describe_text(text)!r}')
 
     def clear_dictation_draft(self):
         """builtin.scratch_everything outside the hands-free dictation lane
@@ -5726,7 +5726,7 @@ class DictationApp:
                 if op is not None and getattr(inv, 'command_id', None) == phrase:
                     awaiting = True
             logger.info(
-                f'[CMD-DISPATCH] mode={mode} utterance={utterance!r} resolved={phrase!r} '
+                f'[CMD-DISPATCH] mode={mode} utterance={describe_text(utterance)!r} resolved={phrase!r} '
                 f'canonical={canonical} state={state} awaiting_confirmation={awaiting}'
             )
         except Exception as exc:
@@ -5804,11 +5804,11 @@ class DictationApp:
         kept_segments = _drop_trailing_garbage_segments(segments)
         text = _trim_trailing_garbage_run(text)
         if not text:
-            logger.info(f'[GUARD] Suppressed commit re-decode: {text!r}')
+            logger.info(f'[GUARD] Suppressed commit re-decode: {describe_text(text)!r}')
             return None
 
         if _is_hallucinated_segments(kept_segments, text):
-            logger.info(f'[GUARD] Suppressed commit re-decode hallucination: {text!r}')
+            logger.info(f'[GUARD] Suppressed commit re-decode hallucination: {describe_text(text)!r}')
             return None
 
         if not self._filter_dictation_language(text, info):
@@ -5917,7 +5917,7 @@ class DictationApp:
             from samsara import ava_edit  # noqa: PLC0415
             return ava_edit.handle_utterance(self, text)
         except Exception as exc:
-            logger.debug(f'[AVA-EDIT] edit path unavailable: {exc}')
+            logger.debug(f'[AVA-EDIT] edit path unavailable: {describe_text(exc)}')
             return False
 
     def _cancel_ava_turn(self, reason: str):
@@ -6550,7 +6550,7 @@ class DictationApp:
             text = self.voice_training_window.apply_corrections(text)
             if not text:
                 return
-            logger.info(f'[AVA-CMD-UTT] "{text}"')
+            logger.info(f'[AVA-CMD-UTT] "{describe_text(text)}"')
             if self._ava_cmd_generation != entry_generation:
                 logger.debug(
                     f'[AVA-CMD-UTT] Stale generation after transcription '
@@ -6585,7 +6585,7 @@ class DictationApp:
             from samsara.ava_command_session import enqueue_utterance  # noqa: PLC0415
             enqueue_utterance(self, entry_generation, text)
         except Exception as exc:
-            logger.exception(f'[AVA-CMD-UTT] Error: {exc}')
+            safe_exception(logger, f'[AVA-CMD-UTT] Error: {describe_text(exc)}')
             import traceback  # noqa: PLC0415
             traceback.print_exc()
         finally:
@@ -6676,9 +6676,9 @@ class DictationApp:
                         category="error",
                     )
                 else:
-                    logger.debug(f"[AVA] Ollama plugin not found. User said: {text}")
+                    logger.debug(f"[AVA] Ollama plugin not found. User said: {describe_text(text)}")
             except Exception as e:
-                logger.exception(f"[AVA] Error: {e}")
+                safe_exception(logger, f"[AVA] Error: {describe_text(e)}")
                 if hasattr(self, 'audio_coordinator') and self.audio_coordinator:
                     self.audio_coordinator.speak(
                         "Sorry, I had an error processing that.",
@@ -6829,7 +6829,7 @@ class DictationApp:
                 try:
                     self._session_mode_manager.reset()
                 except Exception as e:
-                    logger.debug(f"[CMD MODE] Session mode manager reset failed during forced end: {e}")
+                    logger.debug(f"[CMD MODE] Session mode manager reset failed during forced end: {describe_text(e)}")
 
     def _rearm_command_recording(self):
         """Re-start recording for the next command in hold mode.
@@ -7025,7 +7025,7 @@ class DictationApp:
             try:
                 _diag_sig = diagnostics.segment_signals(seg_list)
             except Exception as _diag_exc:
-                logger.debug(f"[DIAG] hands-free signal extraction failed: {_diag_exc}")
+                logger.debug(f"[DIAG] hands-free signal extraction failed: {describe_text(_diag_exc)}")
                 _diag_sig = {}
             try:
                 diagnostics.record(diagnostics.DiagRecord(
@@ -7049,7 +7049,7 @@ class DictationApp:
                     outcome="empty" if not text else "ok",
                 ), app=self)
             except Exception as _diag_exc:
-                logger.debug(f"[DIAG] hands-free record failed: {_diag_exc}")
+                logger.debug(f"[DIAG] hands-free record failed: {describe_text(_diag_exc)}")
             text = self.voice_training_window.apply_corrections(text)
 
             _dropped, _reason = is_signoff_hallucination(
@@ -7060,7 +7060,7 @@ class DictationApp:
                 ),
             )
             if _dropped:
-                logger.info('[HALLUCINATION] dropped: %s (%s)', text, _reason)
+                logger.info('[HALLUCINATION] dropped: %s (%s)', describe_text(text), _reason)
                 self._log_cmd_utt_dropped('signoff_hallucination', _capture_mode, audio_duration)
                 try:
                     from samsara.session_modes import CHIP_CROSS
@@ -7112,14 +7112,14 @@ class DictationApp:
             _trimmed = _trim_trailing_garbage_run(text)
             if _trimmed != text:
                 if not _trimmed:
-                    logger.info(f'[GUARD] Suppressed hallucination: {text!r}')
+                    logger.info(f'[GUARD] Suppressed hallucination: {describe_text(text)!r}')
                     self._log_cmd_utt_dropped('hallucination_trailing_garbage', _capture_mode, audio_duration)
                     return
-                logger.info(f'[GUARD] Trimmed trailing garbage: {text!r} -> {_trimmed!r}')
+                logger.info(f'[GUARD] Trimmed trailing garbage: {describe_text(text)!r} -> {describe_text(_trimmed)!r}')
                 text = _trimmed
 
             if _is_hallucinated_segments(_kept_segs, text):
-                logger.info(f'[GUARD] Suppressed hallucination: {text!r}')
+                logger.info(f'[GUARD] Suppressed hallucination: {describe_text(text)!r}')
                 self._log_cmd_utt_dropped('hallucination_segments', _capture_mode, audio_duration)
                 return
 
@@ -7129,15 +7129,15 @@ class DictationApp:
             # buffer's sole writer, so allowing it through would feed the bad
             # decode back as the next initial_prompt.
             if _was_dictate_lane and _is_quality_exhausted(_kept_segs, transcribe_params):
-                logger.info(f'[GUARD] Refused low-confidence dictate decode: {text!r}')
+                logger.info(f'[GUARD] Refused low-confidence dictate decode: {describe_text(text)!r}')
                 self._log_cmd_utt_dropped('quality_exhausted', _capture_mode, audio_duration)
                 try:
                     self._show_outcome_chip('low-confidence decode - not staged', 'warning')
                 except Exception as exc:
-                    logger.debug(f'[CMD-UTT] low-confidence chip failed: {exc}')
+                    logger.debug(f'[CMD-UTT] low-confidence chip failed: {describe_text(exc)}')
                 return
 
-            logger.debug(f'[CMD-UTT] "{text}"')
+            logger.debug(f'[CMD-UTT] "{describe_text(text)}"')
 
             if self._command_mode_ghost_tap:
                 self._command_mode_ghost_tap = False
@@ -7161,8 +7161,8 @@ class DictationApp:
             retry_context = getattr(self, "_dictate_commit_retry_context", None)
             is_retained_commit_retry = retry_context == context_tail and retry_context is not None
             if self._is_dictate_context_echo(text, context_tail) and not is_retained_commit_retry:
-                logger.info(f'[GUARD] Refused context echo: {text!r} '
-                            f'(tail ends {context_tail[-60:]!r})')
+                logger.info(f'[GUARD] Refused context echo: {describe_text(text)!r} '
+                            f'(tail ends {describe_text(context_tail)!r})')
                 self._log_cmd_utt_dropped('context_echo', _capture_mode, audio_duration)
                 # Never a silent drop. The user has to know their words did
                 # not land, or they carry on talking into a draft that
@@ -7197,7 +7197,7 @@ class DictationApp:
             outcome = self._resolve_command_miss(outcome, text)
             _timing_outcome = outcome_label(outcome.kind)
             _dispatched = True
-            logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={outcome.detail}')
+            logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={describe_text(outcome.detail)}')
             # A failed commit keeps the draft deliberately.  Its tail is then
             # the next decoder prompt, but repeating that exact sentence is a
             # user's retry, not a hallucinated prompt echo.  Clear the one-shot
@@ -7236,7 +7236,7 @@ class DictationApp:
                                          bool(self._session_mode_manager.dictate_pending_buffer)),
                     )
                 except Exception as e:
-                    logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
+                    logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {describe_text(e)}')
             if _was_dictate_lane:
                 controller = getattr(self, 'live_surface', None)
                 if controller is not None:
@@ -7258,7 +7258,7 @@ class DictationApp:
             # this utterance's thread silently. Mode/command_mode_active
             # are untouched, so the next utterance dispatches normally.
             _timing_outcome = "error"
-            logger.exception(f'[CMD-UTT] Error: {exc}')
+            safe_exception(logger, f'[CMD-UTT] Error: {describe_text(exc)}')
             if not _dispatched:
                 self._log_cmd_utt_dropped(f'error:{type(exc).__name__}', _capture_mode, audio_duration)
             try:
@@ -7304,7 +7304,7 @@ class DictationApp:
                     or is_dictate_commit(text)
                     or is_recover_draft(text)
                     or match_switch_word(text) is not None):
-                logger.debug(f'[CMD-UTT] context echo exempt (control phrase): {text!r}')
+                logger.debug(f'[CMD-UTT] context echo exempt (control phrase): {describe_text(text)!r}')
                 return False
         except Exception as exc:
             logger.debug(f'[CMD-UTT] control-phrase exemption unavailable: {exc}')
@@ -7347,7 +7347,7 @@ class DictationApp:
         except Exception as exc:
             self._intent_shadow_errors = getattr(self, '_intent_shadow_errors', 0) + 1
             if self._intent_shadow_errors == 1:
-                logger.warning(f"[INTENT-SHADOW] observe failed ({type(exc).__name__}: {exc}); "
+                logger.warning(f"[INTENT-SHADOW] observe failed ({type(exc).__name__}: {describe_text(exc)}); "
                                f"further failures this session are counted, not logged")
 
     def _resolve_command_miss(self, outcome: "DispatchOutcome", text: str) -> "DispatchOutcome":
@@ -7484,7 +7484,7 @@ class DictationApp:
             # scratch_refuse (the established "this didn't go through"
             # sound; same choice already made for the AVA dispatch
             # queue-full-drop case in _ava_session_agent_dispatch_fn).
-            logger.info(f'[AVA] Rejected non-substantive utterance: "{text}"')
+            logger.info(f'[AVA] Rejected non-substantive utterance: "{describe_text(text)}"')
             self.play_sound('scratch_refuse')
         elif outcome.kind == "dictate_commit_refused":
             logger.info('[SESSION] DICTATE commit word rejected by anti-hallucination gate; '
@@ -7509,10 +7509,10 @@ class DictationApp:
             # through" sound; genuine failures the error earcon.
             state = outcome.detail.get('state')
             if state in ('rejected', 'cancelled'):
-                logger.info('[SESSION] Command %s: %r', state, outcome.detail)
+                logger.info('[SESSION] Command %s: %r', state, describe_text(outcome.detail))
                 self.play_sound('scratch_refuse')
             else:
-                logger.error('[SESSION] Command failed to execute: %r', outcome.detail)
+                logger.error('[SESSION] Command failed to execute: %r', describe_text(outcome.detail))
                 self.play_sound('error')
         elif outcome.kind == "dictate_blocked_elevated":
             # Queue 50: the "audible lie" -- Windows would silently drop
@@ -7911,7 +7911,7 @@ class DictationApp:
                 if self.config['add_trailing_space']:
                     text = text + " "
 
-                logger.info(f"[TEXT] {text}")
+                logger.info(f"[TEXT] {describe_text(text)}")
 
                 if self.config['auto_paste'] or getattr(buffer, 'tutorial_owner', None):
                     self._paste_preserving_clipboard(text, feedback=False, **tutorial_capture.kwargs(getattr(buffer, 'tutorial_owner', None)))
@@ -7928,7 +7928,7 @@ class DictationApp:
                 self._notify_main_window(text.strip())
 
         except Exception as e:
-            logger.exception(f"[ERROR] Transcription failed: {e}")
+            safe_exception(logger, f"[ERROR] Transcription failed: {describe_text(e)}")
             self._log_history(
                 raw_text="",
                 display_text=f"[FAILED] {e}",
@@ -8806,13 +8806,13 @@ class DictationApp:
             return
 
         hwnd, title = result
-        logger.info(f"[WAKE-PROFILE] Found window: '{title}' (hwnd={hwnd})")
+        logger.info(f"[WAKE-PROFILE] Found window: '{describe_text(title)}' (hwnd={hwnd})")
 
         try:
             from plugins.commands import window_switcher as _ws
             focused = _ws._force_focus(hwnd)
             if focused:
-                logger.info("[WAKE-PROFILE] Focused %r", title)
+                logger.info("[WAKE-PROFILE] Focused %r", describe_text(title))
                 self.play_sound("target_focused")
             else:
                 import ctypes as _ct
@@ -8822,10 +8822,10 @@ class DictationApp:
                 _ct.windll.user32.GetWindowTextW(_fg, _fgb, _fgl + 1)
                 logger.warning(
                     "[WAKE-PROFILE] FOCUS FAILED for %r (foreground still %r) — proceeding to dictate anyway",
-                    title, _fgb.value or "<unknown>",
+                    describe_text(title), describe_text(_fgb.value),
                 )
         except Exception as exc:
-            logger.exception(f"[WAKE-PROFILE] Focus failed: {exc}")
+            safe_exception(logger, f"[WAKE-PROFILE] Focus failed: {describe_text(exc)}")
             self.play_sound("error")
             return
 
@@ -8839,7 +8839,7 @@ class DictationApp:
                 remainder = re.sub(r'^[^\w]+', '', remainder).strip()
                 if remainder:
                     initial_content = remainder
-                    logger.info(f"[WAKE-PROFILE] Pre-buffering trailing speech: '{initial_content}'")
+                    logger.info(f"[WAKE-PROFILE] Pre-buffering trailing speech: '{describe_text(initial_content)}'")
 
         # Resolve per-profile mode.  Explicit key in config wins; otherwise
         # default by process/id name: hermes-targeted sessions stage only (never
@@ -9730,7 +9730,7 @@ class DictationApp:
                     )
                 self._wake_diag_acc = _acc
             except Exception as _diag_exc:
-                logger.debug(f"[DIAG] wake signal accumulation failed: {_diag_exc}")
+                logger.debug(f"[DIAG] wake signal accumulation failed: {describe_text(_diag_exc)}")
 
             # Performance logging for wake word mode
             rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
@@ -9761,7 +9761,7 @@ class DictationApp:
                     )
                 return
             
-            logger.info(f"[HEAR] \"{text}\"")
+            logger.info(f"[HEAR] \"{describe_text(text)}\"")
             
             # Get wake word config
             ww_config = self.config.get('wake_word_config', {})
@@ -9880,7 +9880,7 @@ class DictationApp:
                                     _composer = _adapter.find_composer(_target_hwnd)
                                     _composer_text = _adapter.read_composer(_composer) if _composer else ''
                                 except Exception:
-                                    logger.exception('[WAKE-SESSION] Claude composer verification failed')
+                                    safe_exception(logger, '[WAKE-SESSION] Claude composer verification failed')
                                     _composer_text = ''
                                 _sent_text = getattr(self, '_wake_session_delivered_text', '')
                                 if not ' '.join(_composer_text.split()).endswith(' '.join(_sent_text.split())):
@@ -9950,7 +9950,7 @@ class DictationApp:
                                                        "buffer_size": len(self.wake_dictation_buffer)})
                                 self._emit_wake_trace({"stage": "utterance_end", "result": "resumed"})
                                 return
-                        logger.info(f"[PAUSED] Ignoring: '{text}'")
+                        logger.info(f"[PAUSED] Ignoring: '{describe_text(text)}'")
                         self._emit_wake_trace({"stage": "utterance_end",
                                                "result": "paused_ignored", "text": text})
                         return
@@ -9963,7 +9963,7 @@ class DictationApp:
                             cleaned = (text[:pause_idx] + text[pause_idx + len(pw):]).strip().rstrip(string.punctuation + ' ')
                             if cleaned:
                                 tutorial_capture.append_wake(self, cleaned)
-                                logger.info(f"[DICTATE] Buffered (pre-pause): {cleaned}")
+                                logger.info(f"[DICTATE] Buffered (pre-pause): {describe_text(cleaned)}")
                             self._dictation_paused = True
                             # self.silence_start is otherwise owned by
                             # WakeConsumer's poll thread (see wake_consumer.py
@@ -9993,7 +9993,7 @@ class DictationApp:
                         getattr(self, "_wake_pending_stage_timings", []) + [stage_timing])
                     stage_timing.handoff()
                 tutorial_capture.append_wake(self, text)
-                logger.info(f"[DICTATE] Buffered: {text}")
+                logger.info(f"[DICTATE] Buffered: {describe_text(text)}")
                 self._emit_wake_trace({"stage": "dictation_buffered", "text": text,
                                        "buffer_size": len(self.wake_dictation_buffer)})
 
@@ -10008,11 +10008,11 @@ class DictationApp:
             corrected_lower = apply_wake_corrections(text_lower)
             correction_applied = was_corrected(text_lower, corrected_lower)
             if correction_applied:
-                logger.info(f"[CORRECT] '{text_lower}' -> '{corrected_lower}'")
+                logger.info(f"[CORRECT] '{describe_text(text_lower)}' -> '{describe_text(corrected_lower)}'")
 
             logger.info(
                 "[WAKE-CHECK] transcript=%r profiles=%r",
-                corrected_lower,
+                describe_text(corrected_lower),
                 [t.get('phrase') for t in self.config.get('wake_profiles', []) if t.get('enabled', True)],
             )
 
@@ -10086,11 +10086,11 @@ class DictationApp:
                 has_meaningful_command = len(cleaned_cmd) >= 2
 
                 if has_meaningful_command:
-                    logger.info(f"[TEXT] Command: {command_text}")
+                    logger.info(f"[TEXT] Command: {describe_text(command_text)}")
                     self._process_wake_command(command_text)
                 else:
                     if command_text:
-                        logger.info(f"[SKIP] Ignoring noise after wake word: '{command_text}'")
+                        logger.info(f"[SKIP] Ignoring noise after wake word: '{describe_text(command_text)}'")
                     logger.info("[LISTEN] Listening for command...")
                     self._start_wake_timeout()
 
@@ -10098,13 +10098,13 @@ class DictationApp:
                                        "result": "wake_word_detected" if not has_meaningful_command else "command_processed"})
 
             elif match_type == "substring":
-                logger.debug(f"[SKIP] Substring-only wake match @ idx {match_index} -- not firing: '{text}'")
+                logger.debug(f"[SKIP] Substring-only wake match @ idx {match_index} -- not firing: '{describe_text(text)}'")
                 self._emit_wake_trace({"stage": "utterance_end", "result": "substring_rejected"})
 
             elif self.wake_word_triggered:
                 if self._try_cancel_pending_wake_command(text):
                     return
-                logger.info(f"[TEXT] Command: {text}")
+                logger.info(f"[TEXT] Command: {describe_text(text)}")
                 self._emit_wake_trace({"stage": "command_extract",
                                        "from_index": -1, "command": text, "remainder": ""})
                 self._process_wake_command(text)
@@ -10114,7 +10114,7 @@ class DictationApp:
                 self._emit_wake_trace({"stage": "utterance_end", "result": "no_wake_word"})
                 
         except Exception as e:
-            logger.exception(f"[ERROR] Transcription failed: {e}")
+            safe_exception(logger, f"[ERROR] Transcription failed: {describe_text(e)}")
             if stage_timing is not None:
                 stage_timing.mark("feedback_done", outcome="error")
             self._log_history(
@@ -10162,7 +10162,7 @@ class DictationApp:
         self.wake_word_triggered = False
         trailing = normalize_command_text(trailing_text or "")
         if trailing:
-            logger.info(f"[WAKE] Opening hands-free session; not dispatching trailing text {trailing!r}")
+            logger.info(f"[WAKE] Opening hands-free session; not dispatching trailing text {describe_text(trailing)!r}")
         else:
             logger.info("[WAKE] Opening hands-free session")
         if self.command_mode_active:
@@ -10178,8 +10178,8 @@ class DictationApp:
             logger.debug(f"[STATE] {old_state} -> command_window")
 
         intent = parse_wake_command(text)
-        logger.info(f"[PARSE] raw='{text}' -> type={intent['type']}, "
-              f"name={intent['name']}, content='{intent['content']}'")
+        logger.info(f"[PARSE] raw='{describe_text(text)}' -> type={intent['type']}, "
+              f"name={intent['name']}, content='{describe_text(intent['content'])}'")
 
         if intent["type"] == "dictation":
             # "type hello" → quick_dictation, "dictate" → long_dictation
@@ -10218,7 +10218,7 @@ class DictationApp:
             return
 
         # type == "unknown" -- noise/garbage, back to asleep
-        logger.info(f"[SKIP] Ignoring noise: '{text}'")
+        logger.info(f"[SKIP] Ignoring noise: '{describe_text(text)}'")
         self.app_state = 'asleep'
         logger.debug("[STATE] command_window -> asleep (noise)")
         self._indicator_reset()
@@ -10305,7 +10305,7 @@ class DictationApp:
 
         if initial_content:
             tutorial_capture.append_wake(self, initial_content)
-            logger.info(f"[DICTATE] Initial content: {initial_content}")
+            logger.info(f"[DICTATE] Initial content: {describe_text(initial_content)}")
             if not self._dictation_require_end:
                 self._restart_dictation_timer()
 
@@ -10429,7 +10429,7 @@ class DictationApp:
             with self._dictation_finalize_lock:
                 tutorial_capture.finalize_wake(self)
         except Exception as e:
-            logger.exception(f"[ERROR] _finalize_dictation_timeout crashed: {e}")
+            safe_exception(logger, f"[ERROR] _finalize_dictation_timeout crashed: {describe_text(e)}")
             import traceback
             traceback.print_exc()
 
@@ -10454,7 +10454,7 @@ class DictationApp:
                 logger.info("[HARDCAP] Time limit reached — flushing audio and requesting finalize")
                 self._dictation_finalize_requested = True
         except Exception as e:
-            logger.exception(f"[ERROR] _finalize_dictation_hardcap crashed: {e}")
+            safe_exception(logger, f"[ERROR] _finalize_dictation_hardcap crashed: {describe_text(e)}")
             import traceback
             traceback.print_exc()
             return
@@ -10502,7 +10502,7 @@ class DictationApp:
                 # Pipeline is fully drained. Safe to finalize.
                 if self.wake_dictation_mode and self.wake_dictation_buffer:
                     final_text = ' '.join(self.wake_dictation_buffer)
-                    logger.info(f"[DONE] Long dictation finalized: {final_text}")
+                    logger.info(f"[DONE] Long dictation finalized: {describe_text(final_text)}")
                     # _output_dictation must be called outside the lock to
                     # avoid blocking the pipeline on clipboard/UI work.
                     pending_text = final_text
@@ -10515,7 +10515,7 @@ class DictationApp:
             if pending_text:
                 tutorial_capture.output_buffer(self, pending_text)
         except Exception as e:
-            logger.exception(f"[ERROR] _maybe_finalize_dictation crashed: {e}")
+            safe_exception(logger, f"[ERROR] _maybe_finalize_dictation crashed: {describe_text(e)}")
             import traceback
             traceback.print_exc()
 
@@ -10697,9 +10697,9 @@ class DictationApp:
             from samsara import verbatim
             result = verbatim.apply(text)
         except Exception as exc:
-            logger.exception(f"[VERBATIM] transform failed, falling back to normal: {exc}")
+            safe_exception(logger, f"[VERBATIM] transform failed, falling back to normal: {describe_text(exc)}")
             return None
-        logger.info("[VERBATIM] rule=%s applied: %r -> %r", rule, text, result)
+        logger.info("[VERBATIM] rule=%s applied: %r -> %r", rule, describe_text(text), describe_text(result))
         return result
 
     def _foreground_process_name(self) -> str:
@@ -10780,7 +10780,7 @@ class DictationApp:
         corrected = corrected.strip()
 
         threshold_reached = self.adaptive_learner.record_correction(original, corrected)
-        logger.info(f"[LEARN] Correction recorded: '{original}' -> '{corrected}'")
+        logger.info(f"[LEARN] Correction recorded: '{describe_text(original)}' -> '{describe_text(corrected)}'")
 
         if threshold_reached:
             reply = QMessageBox.question(
@@ -10796,7 +10796,7 @@ class DictationApp:
                     vt.corrections_dict[original] = corrected
                     vt.save_training_data()
                 self.adaptive_learner.mark_promoted(original, corrected)
-                logger.info(f"[LEARN] Promoted to dictionary: '{original}' -> '{corrected}'")
+                logger.info(f"[LEARN] Promoted to dictionary: '{describe_text(original)}' -> '{describe_text(corrected)}'")
                 self.play_sound("success")
 
     def _apply_formatting_tokens(self, text: str) -> str:
@@ -11020,7 +11020,7 @@ class DictationApp:
                     if not require_end:
                         # Output buffered content on timeout
                         final_text = ' '.join(self.wake_dictation_buffer)
-                        logger.debug(f"[TIMEOUT] Dictation timeout - outputting: {final_text}")
+                        logger.debug(f"[TIMEOUT] Dictation timeout - outputting: {describe_text(final_text)}")
                         tutorial_capture.output_buffer(self, final_text)
                     else:
                         logger.debug(f"[TIMEOUT] Long dictation timeout - say end word or wake word again")
@@ -11985,7 +11985,7 @@ class DictationApp:
                             tail['threshold'], tail['speech_level'], tail['last_frame_rms'],
                         )
                     except Exception:
-                        logger.exception('[TAIL] streaming release tail failed; finalizing without it')
+                        safe_exception(logger, '[TAIL] streaming release tail failed; finalizing without it')
                     finally:
                         # The reader stays alive for the worker's final pass;
                         # freeze admission before the earcon can enter it.
@@ -11996,7 +11996,7 @@ class DictationApp:
                 try:
                     sess.finalize()
                 except Exception as e:
-                    logger.exception(f"[STREAM] finalize failed: {e}")
+                    safe_exception(logger, f"[STREAM] finalize failed: {describe_text(e)}")
                     self._finish_empty_hold_capture(_hold_chip_seq)
                 return
 
@@ -12091,7 +12091,7 @@ class DictationApp:
                             ),
                         ), app=self)
                     except Exception as _diag_exc:
-                        logger.debug(f"[DIAG] gated record failed: {_diag_exc}")
+                        logger.debug(f"[DIAG] gated record failed: {describe_text(_diag_exc)}")
                     return
 
                 if stage_timing is not None:
@@ -12165,7 +12165,7 @@ class DictationApp:
                 try:
                     _diag_sig = diagnostics.segment_signals(_diag_all_segs)
                 except Exception as _diag_exc:
-                    logger.debug(f"[DIAG] segment signal extraction failed: {_diag_exc}")
+                    logger.debug(f"[DIAG] segment signal extraction failed: {describe_text(_diag_exc)}")
                     _diag_sig = {}
 
                 # Performance logging
@@ -12190,7 +12190,7 @@ class DictationApp:
                         ),
                     )
                     if _dropped:
-                        logger.info('[HALLUCINATION] dropped: %s (%s)', text, _reason)
+                        logger.info('[HALLUCINATION] dropped: %s (%s)', describe_text(text), _reason)
                         text = ''
 
                 if text:
@@ -12205,7 +12205,7 @@ class DictationApp:
                     if is_command_mode and normalize_utterance(text) in {
                         normalize_utterance(p) for p in ("exit command mode", "stop listening")
                     }:
-                        logger.info(f"[CMD MODE] Voice exit: '{text_lower}'")
+                        logger.info(f"[CMD MODE] Voice exit: '{describe_text(text_lower)}'")
                         self.exit_command_mode()
                         return
 
@@ -12233,7 +12233,7 @@ class DictationApp:
                                 **_diag_sig,
                             ), app=self)
                         except Exception as _diag_exc:
-                            logger.debug(f"[DIAG] command-mode record failed: {_diag_exc}")
+                            logger.debug(f"[DIAG] command-mode record failed: {describe_text(_diag_exc)}")
 
                         if stage_timing is not None:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
@@ -12246,7 +12246,7 @@ class DictationApp:
                                 from samsara.session_modes import DispatchOutcome
                                 outcome = DispatchOutcome(kind='command_failed', detail={'phrase': result, 'state': 'failed', 'heard': text})
                                 self._log_command_dispatch(text, result, 'failed')
-                                logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, outcome.detail)
+                                logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, describe_text(outcome.detail))
                                 self._handle_session_dispatch_outcome(outcome, text)
                                 self.add_to_history(text, is_command=True)
                                 self._log_history(raw_text=text, duration_ms=int(audio_duration * 1000), mode='command', status='failed', entry_type='command', matched_command=str(result))
@@ -12292,7 +12292,7 @@ class DictationApp:
                             )
                             return
                         self._show_dispatch_outcome_chip(resolved_outcome)
-                        logger.info(f"[CMD] No command matched: '{text}'")
+                        logger.info(f"[CMD] No command matched: '{describe_text(text)}'")
                         if self.command_mode_active:
                             self._command_mode_miss_count += 1
                             cm_cfg = self.config.get('command_mode', {})
@@ -12378,7 +12378,7 @@ class DictationApp:
                                 category_source=(quick_memo.CATEGORY_SPOKEN
                                                  if category else None))
                         except Exception as exc:
-                            logger.exception(f"[MEMO] Save failed: {exc}")
+                            safe_exception(logger, f"[MEMO] Save failed: {describe_text(exc)}")
                             self.play_sound('error')
                             return
                         # Best-effort extras, AFTER the memo is safely stored:
@@ -12386,7 +12386,7 @@ class DictationApp:
                         try:
                             quick_memo.mirror_to_vault(record, self.config, home=memo_home)
                         except Exception as exc:
-                            logger.debug(f"[MEMO] Mirror skipped: {exc}")
+                            logger.debug(f"[MEMO] Mirror skipped: {describe_text(exc)}")
                         try:
                             quick_memo.prune_audio(self.config, home=memo_home)
                         except Exception as exc:
@@ -12512,7 +12512,7 @@ class DictationApp:
                             **_diag_sig,
                         ), app=self)
                     except Exception as _diag_exc:
-                        logger.debug(f"[DIAG] hotkey record failed: {_diag_exc}")
+                        logger.debug(f"[DIAG] hotkey record failed: {describe_text(_diag_exc)}")
 
                     # Personal WER benchmark sample (opt-in, off by default --
                     # see samsara/benchmark_store.py). Raw audio buffer at
@@ -12621,10 +12621,10 @@ class DictationApp:
                             **_diag_sig,
                         ), app=self)
                     except Exception as _diag_exc:
-                        logger.debug(f"[DIAG] empty-result record failed: {_diag_exc}")
+                        logger.debug(f"[DIAG] empty-result record failed: {describe_text(_diag_exc)}")
 
             except Exception as e:
-                logger.exception(f"[ERROR] Transcription failed: {e}")
+                safe_exception(logger, f"[ERROR] Transcription failed: {describe_text(e)}")
                 if stage_timing is not None:
                     stage_timing.mark("feedback_done", outcome="error")
                 self.play_sound("error")
@@ -12915,8 +12915,8 @@ class DictationApp:
             logger.exception(f"[UI] Failed to hide main window: {e}")
 
     def set_streaming_mode(self, enabled):
-        """Settings entry point: flip the streaming-mode flag."""
-        enabled = bool(enabled)
+        """Legacy entry point: dedicated capture stays disabled."""
+        enabled = False
         with self._capslock_lifecycle_lock:
             if not enabled and getattr(self, '_streaming_session', None) is not None:
                 logger.info("[STREAM] Mode disabled during active session -- cancelling")
@@ -13144,7 +13144,7 @@ class DictationApp:
                 self._history_qt = HistoryQt(self)
             self._history_qt.show()
         except Exception as e:
-            logger.exception(f"[HISTORY] Error opening history: {e}")
+            safe_exception(logger, f"[HISTORY] Error opening history: {describe_text(e)}")
 
     def open_dictation_diagnostics(self):
         """Open dictation diagnostics window"""
@@ -13177,7 +13177,7 @@ class DictationApp:
             from samsara.ui.correction_capture_qt import CorrectionCaptureQt
             CorrectionCaptureQt(self).open(last_text)
         except Exception as e:
-            logger.exception(f"[CORRECT-CAP] Error opening correction capture: {e}")
+            safe_exception(logger, f"[CORRECT-CAP] Error opening correction capture: {describe_text(e)}")
 
     def open_transcribe_file(self):
         """Open the "Transcribe a file" dialog (queue 123).
@@ -13190,7 +13190,7 @@ class DictationApp:
             from samsara.ui.transcribe_file_qt import open_transcribe_file
             self._transcribe_file_qt = open_transcribe_file(self)
         except Exception as e:
-            logger.exception(f"[FILE-TX] Error opening the transcribe-file dialog: {e}")
+            safe_exception(logger, f"[FILE-TX] Error opening the transcribe-file dialog: {describe_text(e)}")
 
     def open_benchmark_review(self):
         """Open the personal WER benchmark gold-standard review window"""
@@ -13581,7 +13581,7 @@ class DictationApp:
             on_complete=self.alarm_manager.complete,
         )
         if not posted:
-            logger.warning(f"[ALARM] Visual notification rejected for {name!r}")
+            logger.warning(f"[ALARM] Visual notification rejected for {describe_text(name)!r}")
 
     def open_main_log(self):
         """Open the main log file in default text editor"""
@@ -13617,7 +13617,7 @@ class DictationApp:
             from samsara.ui.quit_draft_dialog_qt import ask_quit_draft
             choice = ask_quit_draft()
         except Exception as exc:
-            logger.warning('[EXIT] Pending draft decision could not be shown: %s', exc)
+            logger.warning('[EXIT] Pending draft decision could not be shown: %s', describe_text(exc))
             return False
         return resolve_quit_choice(manager, choice)
 
@@ -13797,7 +13797,7 @@ class DictationApp:
             if getattr(self, 'history_db', None) is not None:
                 self.history_db.close()
         except Exception as e:
-            logger.debug(f"[EXIT] History DB close failed: {e}")
+            logger.debug(f"[EXIT] History DB close failed: {describe_text(e)}")
 
         # Stop keyboard listener
         try:

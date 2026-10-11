@@ -119,10 +119,11 @@ def test_restart_is_above_exit_and_uses_existing_guard(qapp, code_changed):
 
 
 # Independent pre-move inventory; includes already-retired echo metadata.
+# 525: exclude the retired capture editor; all other pre-move keys stay pinned.
 KEYS_BEFORE = {
     'General': (
         'command_mode.preview_idle_delay_s command_mode.preview_idle_opacity hints_enabled language launch_at_login '
-        'listening_indicator_position microphone microphone_name start_hidden streaming_mode '
+        'listening_indicator_position microphone microphone_name start_hidden '
         'ui.listening_display ui.theme ui_scale '
     ),
     'Audio': (

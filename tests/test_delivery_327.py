@@ -1,4 +1,5 @@
 """Exercise wake delivery without importing the running desktop app."""
+from samsara.log import describe_text, safe_exception
 import ast
 import copy
 import logging
@@ -28,6 +29,7 @@ def production():
     route = ast.parse("def route(self, text):\n text_lower = text.lower()\n ww_config = self.config.get('wake_word_config', {})\n stage_timing = None\n").body[0]
     route.body.append(copy.deepcopy(branch))
     namespace = {
+        "describe_text": describe_text, "safe_exception": safe_exception,
         "logger": logging.getLogger(__name__), "time": time,
         "config_defaults": config_defaults, "_WAKE_SESSION_SEND_WORDS": ["over"],
         "pyautogui": SimpleNamespace(press=Mock()),

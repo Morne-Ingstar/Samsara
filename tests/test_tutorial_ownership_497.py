@@ -1,4 +1,5 @@
 """Destination ownership at capture onset, with fake native window boundaries."""
+from samsara.log import describe_text, safe_exception
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -355,7 +356,8 @@ def test_extracted_wake_branch_resolves_capture_module_without_global():
         and any(isinstance(value, ast.Tuple) for value in node.test.comparators))
     route = ast.parse("def route(self, text):\n text_lower = text.lower()\n ww_config = self.config.get('wake_word_config', {})\n stage_timing = None\n").body[0]
     route.body.append(copy.deepcopy(branch))
-    namespace = dict(config_defaults=config_defaults, logger=Mock())
+    namespace = dict(describe_text=describe_text, safe_exception=safe_exception,
+                     config_defaults=config_defaults, logger=Mock())
     exec(compile(ast.fix_missing_locations(ast.Module(body=[route], type_ignores=[])),
                  '<tutorial-wake-route>', 'exec'), namespace)
     app = SimpleNamespace(app_state='quick_dictation', config={'wake_word_config': {}},

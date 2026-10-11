@@ -1,4 +1,5 @@
 """483 regression proof: real config assertion, no dictation bootstrap."""
+from samsara.log import describe_text, safe_exception
 import ast
 import collections
 import copy
@@ -28,7 +29,8 @@ def config_methods():
     names = {"save_config", "update_config"}
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in methods} == names
-    namespace = dict(json=json, os=os, shutil=shutil, time=time, copy=copy,
+    namespace = dict(describe_text=describe_text, safe_exception=safe_exception,
+                     json=json, os=os, shutil=shutil, time=time, copy=copy,
                      logger=logging.getLogger(__name__))
     exec(compile(ast.Module(body=methods, type_ignores=[]), "dictation-config-483", "exec"), namespace)
     return namespace
@@ -113,7 +115,8 @@ def production_methods(names):
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in methods} == names
     from samsara import outcome_ring
-    ns = dict(logger=logging.getLogger("483.production"), collections=collections,
+    ns = dict(describe_text=describe_text, safe_exception=safe_exception,
+              logger=logging.getLogger("483.production"), collections=collections,
               time=time, outcome_ring=outcome_ring)
     exec(compile(ast.Module(body=methods, type_ignores=[]), "dictation-feedback-483", "exec"), ns)
     return ns
@@ -146,7 +149,8 @@ def hold_dispatch():
                  and ast.unparse(n.test) == "stage_timing is not None")
     wrapper = ast.parse("def run(self, text, audio_duration=1.0, stage_timing=None): pass").body[0]
     wrapper.body = lane.body[start:]
-    ns = dict(logger=logging.getLogger("483.hold"),
+    ns = dict(describe_text=describe_text, safe_exception=safe_exception,
+              logger=logging.getLogger("483.hold"),
               _is_repeat_blacklisted=Mock(return_value=False), increment_command_count=Mock())
     exec(compile(ast.fix_missing_locations(ast.Module(body=[wrapper], type_ignores=[])),
                  "dictation-hold-result-483", "exec"), ns)

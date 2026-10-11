@@ -29,7 +29,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-
+from samsara.log import describe_text
 import psutil
 import win32api
 import win32con
@@ -247,7 +247,7 @@ def find_windows_by_app(app_name, extra_ignore=None):
         return True
 
     win32gui.EnumWindows(_cb, None)
-    logger.debug("find_windows_by_app('%s'): %d windows", app_name, len(results))
+    logger.debug("find_windows_by_app('%s'): %d windows", describe_text(app_name), len(results))
     return results
 
 
@@ -686,7 +686,7 @@ register_arg_type('app_name', _validate_app_name)
          risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}})
 def handle_bring(app, remainder):
     """Brings the app you name to the screen your pointer is on."""
-    logger.info("bring: remainder='%s'", remainder)
+    logger.info("bring: remainder='%s'", describe_text(remainder))
     extra_ignore = _get_extra_ignore(app)
     target = get_monitor_under_cursor()
 
@@ -703,7 +703,7 @@ def handle_bring(app, remainder):
         logger.info("Brought %d windows to monitor %s", len(windows), target['index'])
         return True
 
-    logger.info("Bringing '%s' to monitor %s", r, target['index'])
+    logger.info("Bringing '%s' to monitor %s", describe_text(r), target['index'])
     windows = find_windows_by_app(r, extra_ignore)
     if not windows:
         print(f"[WINDOWS] No windows found for: {r}")
@@ -726,7 +726,7 @@ def _windows_for(app_name, extra_ignore):
         from plugins.commands.app_verbs import resolve_window  # noqa: PLC0415
         match = resolve_window(app_name)
     except Exception as e:
-        logger.debug("resolve_window(%r) unavailable: %s", app_name, e)
+        logger.debug("resolve_window(%r) unavailable: %s", describe_text(app_name), describe_text(e))
         match = None
     if match is not None:
         return [match[0]], 'resolved'
@@ -770,12 +770,12 @@ def handle_send(app, remainder):
     FAILED with the detail naming it: partial completion is never called success
     and the first move is never undone.
     """
-    logger.info("send: remainder='%s'", remainder)
+    logger.info("send: remainder='%s'", describe_text(remainder))
     extra_ignore = _get_extra_ignore(app)
 
     placements = _parse_placements(remainder)
     if not placements or not any(dest for _app, dest in placements):
-        logger.warning("send: could not parse destination from '%s'", remainder)
+        logger.warning("send: could not parse destination from '%s'", describe_text(remainder))
         return DispatchResult(DispatchState.REJECTED, 'send', 'send',
                               {'reason': f"refused: no destination in '{remainder}'"})
 
@@ -785,7 +785,7 @@ def handle_send(app, remainder):
         outcome = _place_one(app_name, dest_text, app, monitors, extra_ignore)
         if not outcome['ok']:
             break
-        logger.info("Placed %s on monitor %s", outcome['app'], outcome['monitor'])
+        logger.info("Placed %s on monitor %s", describe_text(outcome['app']), outcome['monitor'])
         if outcome.get('note'):
             print(f"[WINDOWS] {outcome['note']}")
         done.append(outcome)
@@ -798,12 +798,12 @@ def handle_send(app, remainder):
         msg = (f"partial: placed {', '.join(d['app'] for d in done)}; "
                f"could not place {outcome['app']} -- {outcome['reason']}")
         print(f"[WINDOWS] {msg}")
-        logger.warning("send: %s", msg)
+        logger.warning("send: %s", describe_text(msg))
         return DispatchResult(DispatchState.FAILED, 'send', 'send',
                               {'partial': True, 'placements': done, 'failed': outcome, 'reason': msg})
 
     print(f"[WINDOWS] {outcome['reason']}")
-    logger.warning("send: %s", outcome['reason'])
+    logger.warning("send: %s", describe_text(outcome['reason']))
     state = DispatchState.REJECTED if outcome['reason'].startswith('refused') else DispatchState.FAILED
     return DispatchResult(state, 'send', 'send', {'placements': [], 'failed': outcome, 'reason': outcome['reason']})
 
@@ -1009,7 +1009,7 @@ def _restore_layout(name):
                     logger.debug("Restored hwnd %s but Windows refused to raise it", hwnd)
                 restored += 1
             except Exception as e:
-                logger.warning("Restore failed for %s hwnd=%s: %s", app_name, hwnd, e)
+                logger.warning("Restore failed for %s hwnd=%s: %s", describe_text(app_name), hwnd, describe_text(e))
 
     print(f"[LAYOUTS] Restored {restored} of {total} windows")
 
@@ -1211,7 +1211,7 @@ def handle_find_specific(app, remainder):
 )
 def handle_cursor(app, remainder):
     """Moves the mouse pointer to the screen or place you name."""
-    logger.info("cursor: remainder='%s'", remainder)
+    logger.info("cursor: remainder='%s'", describe_text(remainder))
     monitors = get_monitors()
     target = _parse_destination(remainder, app, monitors)
     if target:
@@ -1227,7 +1227,7 @@ def handle_cursor(app, remainder):
             cx = (rect[0] + rect[2]) // 2
             cy = (rect[1] + rect[3]) // 2
             win32api.SetCursorPos((cx, cy))
-            logger.info("Cursor -> '%s' window center (%d,%d)", r, cx, cy)
+            logger.info("Cursor -> '%s' window center (%d,%d)", describe_text(r), cx, cy)
             return True
         except Exception as e:
             logger.warning("Cursor teleport to app failed: %s", e)

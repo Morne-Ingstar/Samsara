@@ -40,7 +40,7 @@ first; on failure they are not treated as a switch/scratch at all and fall
 through to step 4 instead (fail CLOSED for switches, not fail-open).
 """
 from __future__ import annotations
-
+from samsara.log import describe_text
 import logging
 import re
 import string
@@ -2592,7 +2592,7 @@ class SessionModeManager:
         if self._correction_undo_fn is not None and is_forget_correction(text):
             if passes_switch_anti_hallucination_gate(signals):
                 return self._undo_last_correction_outcome()
-            log.info("[SESSION] forget-correction phrase refused by the gate for %r", text)
+            log.info("[SESSION] forget-correction phrase refused by the gate for %r", describe_text(text))
 
         # 1d-85. Scroll the preview so the whole draft can be read back by
         # voice. Non-destructive, whole-utterance, and only while there is a
@@ -2628,7 +2628,7 @@ class SessionModeManager:
             if passes_switch_anti_hallucination_gate(signals):
                 return self._recover_draft_outcome()
             log.info("[SESSION] recover-draft phrase refused by the anti-hallucination gate for %r; "
-                     "treating as ordinary dictation", text)
+                     "treating as ordinary dictation", describe_text(text))
 
         if (self._buffer_dictate_until_commit
                 and self.mode is SessionMode.DICTATE
@@ -2644,7 +2644,7 @@ class SessionModeManager:
             if passes_switch_anti_hallucination_gate(signals):
                 return self._request_clear_draft()
             log.info("[SESSION] clear-draft phrase refused by the anti-hallucination gate for %r; "
-                     "treating as ordinary dictation", text)
+                     "treating as ordinary dictation", describe_text(text))
 
         # 220-F: an exact, separately-spoken control phrase parks the shared
         # document.  It is deliberately unavailable in literal mode and does
@@ -2676,7 +2676,7 @@ class SessionModeManager:
             if passes_switch_anti_hallucination_gate(signals):
                 return self._scratch_counted_outcome(counted)
             log.info("[SESSION] counted-scratch phrase refused by the anti-hallucination gate "
-                     "for %r; treating as ordinary dictation", text)
+                     "for %r; treating as ordinary dictation", describe_text(text))
 
         scratch = is_scratch_that(text)
         commit = (
@@ -2695,7 +2695,7 @@ class SessionModeManager:
                 # Fail closed for the control reading only: the chunk is
                 # staged as prose, exactly as before this path existed.
                 log.info("[SESSION] trailing commit word refused by the commit gate for %r; "
-                         "staging it as dictation", text)
+                         "staging it as dictation", describe_text(text))
         switch = None if (scratch or commit) else match_switch_word(text, current_mode=self.mode)
         if (switch is None and not (scratch or commit)
                 and match_ava_invocation(text, self._ava_invocations)):
@@ -2748,7 +2748,7 @@ class SessionModeManager:
             # Gate failed: fail CLOSED for the control-word interpretation
             # only -- fall through and let the current mode handle the text.
             log.info("[SESSION] control-word anti-hallucination gate failed for %r; "
-                      "treating as ordinary %s text", text, self.mode.value)
+                      "treating as ordinary %s text", describe_text(text), self.mode.value)
 
         # Combined hands-free lane: window commands retain buffered dictation;
         # explicit text-field metadata alone permits paste before the effect.
@@ -2774,7 +2774,7 @@ class SessionModeManager:
                 if hands_free_match is not None:
                     from samsara.command_catalog import hands_free_media_phrases
                     if fragment_guard and hands_free_match.dispatch_text not in hands_free_media_phrases():
-                        log.info("[SESSION] paced fragment kept as dictation: %r", text)
+                        log.info("[SESSION] paced fragment kept as dictation: %r", describe_text(text))
                         return self._dispatch_dictate(text)
                     if not passes_switch_anti_hallucination_gate(signals):
                         return DispatchOutcome(kind="hands_free_command_refused", detail={
@@ -2830,7 +2830,7 @@ class SessionModeManager:
             return
         if not should_speak(notice_class, self.spoken_notices):
             log.debug("[SESSION] notice not spoken (%s at %r): %s",
-                      notice_class, self.spoken_notices, text)
+                      notice_class, self.spoken_notices, describe_text(text))
             return
         try:
             self._speak_fn(text, "confirmation")
@@ -2972,7 +2972,7 @@ class SessionModeManager:
                 "source": source,
             }
         log.info("[SESSION] word correction armed for %r (occurrence %d, source %s)",
-                 word, occurrence, source)
+                 describe_text(word), occurrence, source)
         self._speak(f'Say the replacement for "{word}".', QUESTION)
         return {"ok": True, "word": word, "occurrence": occurrence,
                 "ttl_s": WORD_CORRECTION_TTL_S}
@@ -3095,12 +3095,12 @@ class SessionModeManager:
                 or match_ava_invocation(text, self._ava_invocations)):
             # A real control word wins and still does its own job.
             self._pending_correction = None
-            log.info("[SESSION] word correction dropped: %r is a control phrase", text)
+            log.info("[SESSION] word correction dropped: %r is a control phrase", describe_text(text))
             return None
         if not passes_switch_anti_hallucination_gate(signals):
             # Degraded audio must not edit the draft; the click stays armed so
             # the user can simply say the word again.
-            log.info("[SESSION] replacement refused by the anti-hallucination gate for %r", text)
+            log.info("[SESSION] replacement refused by the anti-hallucination gate for %r", describe_text(text))
             return DispatchOutcome(kind="dictate_correction_refused",
                                    detail={"word": pending["word"]})
         self._pending_correction = None
@@ -3219,7 +3219,7 @@ class SessionModeManager:
                 chunk_ends_terminal(new_buffer) if new_buffer else None)
             context = new_buffer[max(0, start - 40):start + len(replacement) + 40].strip()
         log.info("[SESSION] draft word corrected: %r -> %r (occurrence %d)",
-                 word, replacement, occurrence)
+                 describe_text(word), describe_text(replacement), occurrence)
         return {"ok": True, "replacement": replacement, "before": buffer,
                 "after": new_buffer, "context": context, "audio": audio}
 

@@ -1,4 +1,5 @@
 """Exercise the production dispatch seam without importing the live app."""
+from samsara.log import describe_text, safe_exception
 import ast
 import copy
 import logging
@@ -45,6 +46,7 @@ def production():
                       "    ww_config = self.config['wake_word_config']\n    stage_timing = None\n").body[0]
     route.body.extend(copy.deepcopy(dispatch_body[start:start + 3]))
     namespace = {
+        "describe_text": describe_text, "safe_exception": safe_exception,
         "CommandDispatchResult": CommandDispatchResult, "HandsFreeCommandMatch": HandsFreeCommandMatch,
         "PendingTextPolicy": PendingTextPolicy, "SessionMode": SessionMode, "StageTiming": StageTiming,
         "normalize_utterance": normalize_utterance, "apply_phonetic_wash": lambda text: text,

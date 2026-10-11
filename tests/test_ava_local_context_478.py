@@ -66,7 +66,8 @@ def test_both_routes_send_fresh_system_facts_without_storing_them(
         "ava_memory": {"mode": "last"}, "ollama": {},
         "cloud_llm": {"enabled": True, "provider": provider,
                       "api_key": "test-placeholder", "web_search": route == "search"},
-        "ava": {"provider_policy": "local" if provider == "ollama" else "cloud"},
+        "ava": {"provider_policy": "local" if provider == "ollama" else "cloud",
+                "conversation_log_enabled": True},
     })
     memory_path = tmp_path / "history.json"
     app._ava_memory = AvaMemory(persist_path=str(memory_path))

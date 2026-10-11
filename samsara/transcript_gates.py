@@ -27,7 +27,7 @@ must never import dictation.
 import logging
 import re
 import string
-
+from samsara.log import describe_text
 from samsara import diagnostics
 
 
@@ -585,7 +585,7 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
     raw_text = "".join(getattr(seg, "text", "") or "" for seg in seg_list).strip()
 
     if _is_hallucinated_segments(seg_list, raw_text):
-        log.info(f"[GUARD] Suppressed hallucination: {raw_text!r}")
+        log.info(f"[GUARD] Suppressed hallucination: {describe_text(raw_text)!r}")
         return "", False
 
     kept = []
@@ -595,7 +595,7 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
         if not seg_text:
             continue
         if _is_hallucinated_segments([seg], seg_text):
-            log.info(f"[GUARD] Suppressed hallucinated segment: {seg_text!r}")
+            log.info(f"[GUARD] Suppressed hallucinated segment: {describe_text(seg_text)!r}")
             continue
         if _is_quality_exhausted([seg], transcribe_params):
             dropped_for_quality = True
@@ -603,7 +603,7 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
             log.info(
                 f"[QUALITY] dropped low-confidence segment (logprob "
                 f"{sig['avg_logprob']}, compression {sig['compression_ratio']}, "
-                f"no_speech {sig['no_speech_prob']}): {seg_text!r}"
+                f"no_speech {sig['no_speech_prob']}): {describe_text(seg_text)!r}"
             )
             continue
         kept.append(seg)
@@ -617,12 +617,12 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
     if raw_text and _keep_low_confidence_long_chunk(seg_list, raw_text, audio_duration):
         log.warning(
             f"[QUALITY] every segment failed quality gates -- delivering "
-            f"low-confidence decode ({audio_duration:.1f}s): {raw_text!r}"
+            f"low-confidence decode ({audio_duration:.1f}s): {describe_text(raw_text)!r}"
         )
         return raw_text, True
 
     log.info(
         f"[QUALITY] every segment failed quality gates and floor criteria "
-        f"not met -- rejecting ({audio_duration:.1f}s): {raw_text!r}"
+        f"not met -- rejecting ({audio_duration:.1f}s): {describe_text(raw_text)!r}"
     )
     return "", False

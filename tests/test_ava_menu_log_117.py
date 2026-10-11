@@ -42,7 +42,8 @@ class TestTheMenuIsInTheLog:
         with caplog.at_level(logging.DEBUG, logger=ask_ollama.logger.name):
             ask_ollama._log_menu("hide all these windows for me", ["minimize all"])
         line = "\n".join(r.getMessage() for r in caplog.records)
-        assert "hide all these windows" in line
+        assert "29 chars, 6 words" in line
+        assert "hide all these windows" not in line
 
     def test_a_turn_whose_target_is_in_the_menu_records_that_fact(self, caplog):
         """The question the old log could not answer."""

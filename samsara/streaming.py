@@ -44,7 +44,7 @@ except ImportError:
 
 from samsara import kept_session_draft, listening_display, tutorial_capture
 from samsara.cleanup import clean_text
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 from samsara.runtime import thread_registry
 from samsara.session_modes import (
     SessionMode,
@@ -1674,7 +1674,7 @@ class StreamingWorker(threading.Thread):
             if self._stop_event.is_set() or self._cancel_event.is_set():
                 return
             if text:
-                logger.debug(f"[STREAM] Partial: {text}")
+                logger.debug(f"[STREAM] Partial: {describe_text(text)}")
                 self._session.on_partial(text)
 
     def _transcribe_partial(self):
@@ -2772,7 +2772,7 @@ class DictatePreviewSession:
         self._refresh_prompt()
         self._hide_correction_choices()
         self._render("")
-        logger.info("[DICTATE-PREVIEW] correction choice %r -> %s", candidate,
+        logger.info("[DICTATE-PREVIEW] correction choice %r -> %s", describe_text(candidate),
                     getattr(outcome, "kind", outcome))
 
     def _on_candidates_dismissed(self) -> None:
@@ -2883,7 +2883,7 @@ class DictatePreviewSession:
             return None
         if not result.get("stored"):
             logger.info('[DICTATE-PREVIEW] "%s" -> "%s" fixed in the draft only (%s)',
-                        wrong, right, result.get("reason"))
+                        describe_text(wrong), describe_text(right), result.get("reason"))
         return result
 
     def on_utterance_final(

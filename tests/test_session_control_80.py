@@ -6,6 +6,7 @@ helper is compiled from source with ast, as tests/test_session_safety_50.py does
 """
 
 from __future__ import annotations
+from samsara.log import describe_text, safe_exception
 
 import ast
 import json
@@ -186,7 +187,7 @@ def _compile_dictation_method(name):
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == name:
             module = ast.Module(body=[node], type_ignores=[])
-            namespace = {"logger": Mock()}
+            namespace = {"logger": Mock(), "describe_text": describe_text, "safe_exception": safe_exception}
             exec(compile(module, "dictation.py", "exec"), namespace)
             return namespace[name]
     raise AssertionError(f"{name} not found in dictation.py")

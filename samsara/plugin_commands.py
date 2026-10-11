@@ -42,7 +42,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
-
+from samsara.log import describe_text, safe_exception
 logger = logging.getLogger(__name__)
 
 # Global registry: phrase -> {func, aliases, source}
@@ -298,7 +298,7 @@ def execute_command(text, app=None):
         state = adapt_handler_return(entry['func'](app, remainder))
         return entry['phrase'], state in (DispatchState.COMPLETED, DispatchState.QUEUED)
     except Exception as e:
-        logger.exception(f"Plugin command '{entry['phrase']}' failed: {e}")
+        safe_exception(logger, f"Plugin command '{entry['phrase']}' failed: {describe_text(e)}")
         return entry['phrase'], False
 
 

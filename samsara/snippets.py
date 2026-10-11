@@ -45,7 +45,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 from samsara.paths import samsara_home_dir
 
 logger = get_logger("Samsara")
@@ -293,7 +293,7 @@ def add_snippet(name: str, text: str, home=None, app=None, now=None) -> dict:
         "use_count": 0,
     }
     _append(record, home)
-    logger.info("[SNIPPET] saved %r (%d chars)", record["name"], len(text))
+    logger.info("[SNIPPET] saved %r (%d chars)", describe_text(record["name"]), len(text))
     return record
 
 

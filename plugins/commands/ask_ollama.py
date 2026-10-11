@@ -24,7 +24,7 @@ from samsara import execution_policy
 from samsara.execution_policy import Invocation, Route
 from samsara.intent.grammar import asks_to_run_action, catalog_question_goal
 
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 
 logger = get_logger(__name__)
 
@@ -281,7 +281,7 @@ def _build_ava_memory(app):
         if os.path.exists(stale):
             os.remove(stale)
     except OSError as e:
-        logger.debug(f"_build_ava_memory: {e}")
+        logger.debug(f"_build_ava_memory: {describe_text(e)}")
     memory = AvaMemory(max_turns=max_turns)
     memory._mode = "clear"
     return memory
@@ -1226,8 +1226,7 @@ def _answered_chip():
 
 
 def _preview(text, limit):
-    text = " ".join(str(text or "").split())
-    return text if len(text) <= limit else text[:limit] + "..."
+    return describe_text(text or "")
 
 
 #: Queue 117 §1. Bounds on the menu log line. The menu can be 400 names /
@@ -1271,7 +1270,7 @@ def _log_menu(request, menu):
             len(shown), omitted, ", ".join(shown),
         )
     except Exception as exc:
-        logger.debug(f"[AVA-MENU] logging failed: {exc}")
+        logger.debug(f"[AVA-MENU] logging failed: {describe_text(exc)}")
 
 
 def menu_contains(menu, name) -> bool:
@@ -1328,9 +1327,9 @@ def _log_turn(app, request, *, outcome, started=None):
                          ava_spoken="\n".join(getattr(_turn_local, "spoken_text", None) or []),
                          ava_shown=reply.text if reply is not None and reply.text is not None else "",
                          action=outcome,
-                         working_context=getattr(_turn_local, "working_context", ""))
+                         working_context=getattr(_turn_local, "working_context", ""), enabled=(getattr(app, "config", {}).get("ava", {}) or {}).get("conversation_log_enabled", False) is True)
     except Exception as exc:
-        logger.debug(f"[AVA-TURN] logging failed: {exc}")
+        logger.debug(f"[AVA-TURN] logging failed: {describe_text(exc)}")
     finally:
         _turn_local.speech = None
         _turn_local.reply = None
@@ -1606,7 +1605,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             try:
                 menu = executor.ava_menu(prompt, app=app, route=Route.MODEL)
             except Exception as exc:
-                logger.warning("[AVA PROMPT] menu unavailable (%s); using the fallback list", exc)
+                logger.warning("[AVA PROMPT] menu unavailable (%s); using the fallback list", describe_text(exc))
                 menu = None
         _log_menu(prompt, menu)
         if menu:
@@ -1944,7 +1943,7 @@ def _parse_structured_response(response):
             # The hybrid 117 measured: ACTION's tag carrying APP's grammar.
             # Never treat "open | firefox" as a command NAME -- that is how a
             # malformed line turns into an executed effect.
-            logger.info("[AVA-TAG] ACTION line carries APP grammar: %r", name)
+            logger.info("[AVA-TAG] ACTION line carries APP grammar: %r", describe_text(name))
             return {"type": "hybrid", "confirm_text": confirm_match.group(1).strip(),
                     "raw": name}
         return {
@@ -2065,7 +2064,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
             return TurnOutcome("action", "failed", reason="no_executor", name=command_name)
         if not execution_policy.command_exists(command_name, app=app,
                                                executor=executor):
-            logger.info("[AVA-GATE] %r is not a command at all -- invented", command_name)
+            logger.info("[AVA-GATE] %r is not a command at all -- invented", command_name[:40])
             return _conversational_refusal(app, original_text, command_name, generation)
 
         # The menu is the model's complete authority for this turn.  A
@@ -2076,7 +2075,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         names = {str(item).lower() for item in menu} if menu is not None else set()
         if command_name not in names:
             status = "menu unavailable" if menu is None else "not offered"
-            logger.warning("[AVA-GATE] refused model ACTION %r: %s", command_name, status)
+            logger.warning("[AVA-GATE] refused model ACTION %r: %s", command_name[:40], status)
             execution_policy._emit(
                 app, Invocation(command_name, route=Route.MODEL, generation=generation,
                                 source_text=original_text or ""),
@@ -2087,7 +2086,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # user said. This is the one that stops "Bring up Blender" ->
         # `ACTION open firefox`. Membership cannot: firefox IS on the menu.
         if not action_is_grounded(command_name, original_text or ""):
-            logger.info("[AVA-GATE] %r not grounded in %r", command_name, original_text)
+            logger.info("[AVA-GATE] %r not grounded in %r", command_name, describe_text(original_text))
             speak(app, "I'm not sure which app you meant, so I didn't open anything.")
             return TurnOutcome("action", "refused", reason="ungrounded",
                                name=command_name)
@@ -2117,7 +2116,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # "Bring up Blender" may not produce `APP open | firefox`.
         if not grounded_in_utterance(argument, original_text or ""):
             logger.info("[AVA-GATE] APP argument %r not grounded in %r",
-                        argument, original_text)
+                        describe_text(argument), describe_text(original_text))
             speak(app, "I'm not sure which app you meant, so I didn't open anything.")
             return TurnOutcome("action2", "refused", reason="ungrounded",
                                name=f"{verb} {argument}".strip())

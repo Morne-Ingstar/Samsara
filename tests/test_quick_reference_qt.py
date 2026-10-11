@@ -75,17 +75,10 @@ class TestResolveHotkeys:
         assert by_label["Paste staged thought"]["value"] == "Ctrl+Space"
         assert by_label["Ava"]["enabled"] is True
 
-    def test_streaming_enabled_reflected(self):
+    def test_retired_streaming_has_no_hotkey_row_even_with_saved_true(self):
         app = _make_app({"streaming_mode": True, "streaming_hotkey": "capslock"})
         rows = qr._resolve_hotkeys(app)
-        by_label = {r["label"]: r for r in rows}
-        assert by_label["Streaming (live partials)"]["enabled"] is True
-        # Guidance audit row 170: the key is not configurable -- the hook hardcodes
-        # CapsLock and the row says so, whatever streaming_hotkey holds.
-        assert by_label["Streaming (live partials)"]["value"].startswith(qr.STREAMING_KEY_LABEL)
-        app.config["streaming_hotkey"] = "f9"
-        rows2 = qr._resolve_hotkeys(app)
-        assert {r["label"]: r for r in rows2}["Streaming (live partials)"]["value"].startswith("CapsLock (fixed)")
+        assert all("Streaming" not in row["label"] and "CapsLock" not in row["value"] for row in rows)
 
 
 class TestResolveSessionPhrases:
@@ -465,7 +458,7 @@ class TestGuidanceAuditFixes:
         try:
             texts = _all_label_texts(win)
             assert "Dictate (press to start, press to stop)" in texts
-            assert any(t.startswith("CapsLock (fixed)") for t in texts)
+            assert not any("CapsLock" in t for t in texts)
             assert "Stop (keeps the draft, mic stays on)" in texts
             assert "Sleep (keeps the draft, ends the session)" in texts
             assert any("opens the hands-free session" in t for t in texts)
@@ -493,4 +486,4 @@ class TestModesTabRoundTripIntoQuickReference:
         assert rows["Memo recording"]["value"] == "Ctrl+Alt+Q"
         assert rows["Correction capture"]["value"] == "Ctrl+Alt+Y"
         assert rows["Continuous commit"]["value"].startswith("Ctrl+Alt+K") and rows["Continuous commit"]["enabled"]
-        assert rows["Streaming (live partials)"]["value"].startswith(qr.STREAMING_KEY_LABEL)
+        assert "Streaming (live partials)" not in rows

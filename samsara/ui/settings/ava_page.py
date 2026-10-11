@@ -54,6 +54,12 @@ BASE = [
 ]
 ADVANCED = [
     [
+        "Keep a conversation log",
+        "Saves each request to Ava, her reply and the context she used in a file on this PC, for troubleshooting. Off by default.",
+        "ava_conversation_log_enabled",
+        "ava.conversation_log_enabled"
+    ],
+    [
         "Ava consent",
         "Read how Ava handles local and cloud requests.",
         "ava:Read this again",
@@ -163,8 +169,34 @@ ADVANCED = [
     ]
 ]
 
+def _conversation_log_control(owner):
+    from PySide6.QtWidgets import QCheckBox
+    from samsara.config_defaults import DEFAULTS
+    log_switch = QCheckBox()
+    log_switch.setChecked((owner.app.config.get("ava", {}) or {}).get(
+        "conversation_log_enabled", DEFAULTS["ava.conversation_log_enabled"]) is True)
+    log_switch.setAccessibleName("Keep a conversation log")
+    return log_switch
+
+
 def build(owner):
+    from functools import wraps
+    log_switch = _conversation_log_control(owner)
+    owner._widgets["ava_conversation_log_enabled"] = log_switch
+    save_ava = owner._source_saves["ava"][0]
+    @wraps(save_ava)
+    def save_log(acc):
+        updates = save_ava(acc)
+        ava = dict(updates.get("ava", owner.app.config.get("ava", {})) or {})
+        ava["conversation_log_enabled"] = log_switch.isChecked()
+        updates["ava"] = ava
+        return updates
+    owner._source_saves["ava"][0] = save_log
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    # A long description must not move the switch below the title's line.
+    log_row = owner._rows_by_widget["ava_conversation_log_enabled"]
+    log_row.text.layout().removeWidget(log_row.detail)
+    log_row.grid.addWidget(log_row.detail, 2, 0, 1, 3)
     from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
     # A plain group, with no nested outline or second disclosure.
     group = page.smart_corrections = QWidget()

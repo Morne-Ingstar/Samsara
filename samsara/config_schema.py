@@ -310,6 +310,11 @@ SETTINGS_SCHEMA = {
         "default": "hold",
         "tab": "hotkeys",
     },
+    "streaming_mode": {
+        "type": "bool", "default": False, "tab": "hotkeys",
+        "settings_ui": False,
+        "ui_less_reason": "Retired dedicated capture; retained for saved-config compatibility and normalized off.",
+    },
     "wake_word_enabled": {"type": "bool", "default": False, "tab": "hotkeys", "help": {"why": "Wake activation keeps the microphone ready for a trained phrase so you can start without pressing a key. Enable it when that hands-free entry is useful and your wake model is set up. It is off by default, so a button remains the normal way to start.", "docs": "https://morneis.com/samsara/docs/settings/#wake_word_enabled"}},
     "threshold_mode": {
         "type": "enum",
@@ -509,7 +514,7 @@ SETTINGS_SCHEMA = {
         "tab": "commands",
         "depends_on": "command_mode.enabled",
         "settings_ui": False,
-        "ui_less_reason": "Config-only legacy session-preview switch; separate from the dedicated CapsLock streaming-capture preference.",
+        "ui_less_reason": "Config-only legacy session-preview switch.",
     },
     # Queue 75: that preview fades to this opacity after this many seconds
     # with no speech and no new text, and lets clicks through while faded.
@@ -1107,6 +1112,9 @@ SETTINGS_SCHEMA = {
         "default": "relaxed",
         "tab": "ava",
     },
+    "ava.conversation_log_enabled": {
+        "type": "bool", "default": False, "tab": "ava",
+    },
     "ava.warm_on_boot": {
         "type": "bool",
         "default": False,
@@ -1246,6 +1254,14 @@ if not getattr(sys, "frozen", False):
     }
 
 
+def retire_streaming_mode(config: dict) -> bool:
+    """Normalize the retired capture flag at load and external reload."""
+    if config.get("streaming_mode", False) is not False:
+        config["streaming_mode"] = False
+        return True
+    return False
+
+
 # Prompt 284: pure, idempotent removal/mapping before defaults merge.
 _REMOVED_SETTING_KEYS = {
     "feedback": {"spoken_notices"},
@@ -1264,6 +1280,7 @@ def migrate_removed_settings(config: dict) -> bool:
                  ) if tts.get("enabled") is True else "silent"
     changed = (tts.get("feedback_level") != level
                or tts.get("enabled") is not (level != "silent"))
+    changed = retire_streaming_mode(config) or changed
     apply_feedback_level(config, level)
     # 400: one-time transition from the old migration's False. A later user
     # opt-out is preserved on every subsequent load, including Settings saves.

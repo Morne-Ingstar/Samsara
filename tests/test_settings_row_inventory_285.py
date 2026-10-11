@@ -139,7 +139,6 @@ AUDITED_KEYS = set([
     "sound_theme",
     "sound_volume",
     "start_hidden",
-    "streaming_mode",
     "tasks.todoist.api_token",
     "tasks.todoist.enabled",
     "threshold_mode",
@@ -175,7 +174,7 @@ def window(qapp, monkeypatch):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 148
+    assert len(AUDITED_KEYS) == 147  # 525 retires the dedicated capture editor.
     bindings = window.config_row_inventory()
     counts = Counter(key for key, _page, _widget in bindings)
     assert AUDITED_KEYS <= counts.keys(), sorted(AUDITED_KEYS - counts.keys())
@@ -209,6 +208,9 @@ def test_six_pages_keep_approved_base_budgets(window):
     # 479: everyday choices move into the four owned pages' basic sections.
     for name, count in {'General': 7, 'Dictation': 10, 'Audio': 11, 'Shortcuts': 11}.items():
         assert len(window._pages[name].base_rows) == count
+    # 525: General basic stays at 7; only the retired Advanced capture row leaves.
+    assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced
+               for row in window._destination_rows) == 5
     assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [8, 5]
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}
 

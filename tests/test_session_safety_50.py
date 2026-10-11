@@ -10,6 +10,7 @@
 The integrity check is mocked (no elevated process needed). dictation.py is
 never imported: its methods under test are compiled from source with ast.
 """
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import threading
@@ -139,7 +140,8 @@ def _dictation_methods(*names):
                            decorator_list=[])
     module = ast.Module(body=[harness], type_ignores=[])
     ast.fix_missing_locations(module)
-    ns = {"logger": logging.getLogger("test.session50"), "time": __import__("time"),
+    ns = {"describe_text": describe_text, "safe_exception": safe_exception,
+          "logger": logging.getLogger("test.session50"), "time": __import__("time"),
           "thread_registry": None}
     exec(compile(module, str(ROOT / "dictation.py"), "exec"), ns)
     return ns

@@ -27,8 +27,10 @@ _conversation_lock = threading.Lock()
 
 
 def log_conversation(*, lane, provider, user_text, ava_spoken, ava_shown, action,
-                     working_context=""):
-    """Write one complete private turn, independently of the preview log."""
+                     working_context="", enabled=False):
+    """Write a private diagnostic turn only when explicitly enabled."""
+    if enabled is not True:
+        return
     record = {"at": datetime.now(timezone.utc).isoformat(), "lane": lane,
               "provider": provider, "user": user_text, "ava_spoken": ava_spoken,
               "ava_shown": ava_shown, "action": action,

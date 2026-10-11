@@ -4,6 +4,7 @@ Evidence: ~/.samsara/logs/samsara.log, 2026-09-14 22:31-22:41, live hands-free.
 Never imports dictation (the app may be running): dictation.py methods are
 compiled out of the source with ast, the same way test_wake_session_policy does.
 """
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import types
@@ -223,6 +224,7 @@ def _load_methods():
     assert {n.name for n in nodes} == set(_METHODS)
     module = types.ModuleType("dictation_extract_54")
     module.__dict__.update(
+        describe_text=describe_text, safe_exception=safe_exception,
         np=np, logger=logging.getLogger("dictation_extract_54"), SessionMode=SessionMode,
         resample_audio=lambda audio, *a: audio,
         # Queue 128 moved these pure, Qt/model-free gates out of dictation.
@@ -311,7 +313,7 @@ def test_command_dispatch_log_names_canonical_id_and_a_silent_confirmation(caplo
     app = _app()
     app._log_command_dispatch("show windows", "show windows", "queued")
     messages = [r.message for r in caplog.records]
-    assert ("[CMD-DISPATCH] mode=command utterance='show windows' resolved='show windows' "
+    assert ("[CMD-DISPATCH] mode=command utterance='12 chars, 2 words' resolved='show windows' "
             "canonical=window_switcher.show_windows state=queued awaiting_confirmation=True") in messages
     # Queue 58: confirmation questions are exempt from tts_char_limit, so the
     # "will not be spoken" warning is gone.
@@ -324,5 +326,5 @@ def test_command_miss_is_logged_with_mode(caplog, monkeypatch):
     caplog.set_level(logging.INFO, logger="dictation_extract_54")
     app = _app(mode=SessionMode.DICTATE)
     app._log_command_dispatch("flibber", None, "miss")
-    assert ("[CMD-DISPATCH] mode=dictate utterance='flibber' resolved=None canonical=None "
+    assert ("[CMD-DISPATCH] mode=dictate utterance='7 chars, 1 words' resolved=None canonical=None "
             "state=miss awaiting_confirmation=False") in [r.message for r in caplog.records]

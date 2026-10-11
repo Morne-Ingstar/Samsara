@@ -86,6 +86,7 @@ def test_cloud_without_memory_ack_gets_persona_but_no_memory(tmp_path, monkeypat
     monkeypatch.setattr(ask_ollama, "speak", lambda _app, message: spoken.append(message))
     assert ask_ollama._handle_working_context_intent(app, "what are you working from")
     assert "cedar kite project" in spoken[-1]
+    app.config["ava"]["conversation_log_enabled"] = True
     ask_ollama._log_turn(app, "cedar kite", outcome="answered")
     records = (tmp_path / "logs" / "ava_conversation.log").read_text(encoding="utf-8")
     assert "cedar kite project" in json.loads(records.splitlines()[-1])["working_context"]

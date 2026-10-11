@@ -1,4 +1,5 @@
 """387: decoder verdicts protect streaming delivery, including quiet speech."""
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import threading
@@ -202,7 +203,8 @@ def test_release_caller_passes_measured_signals_before_finalizing(make_worker):
                          for child in ast.walk(node)))
     fn = ast.parse('def release(self, sess, streaming_release_tail):\n    pass').body[0]
     fn.body = [block]
-    namespace = dict(logger=logging.getLogger('387-release'),
+    namespace = dict(describe_text=describe_text, safe_exception=safe_exception,
+                     logger=logging.getLogger('387-release'),
                      HOLD_RELEASE_TAIL_SPEECH_THRESHOLD=FLOOR)
     exec(compile(ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[])),
                  str(ROOT / 'dictation.py'), 'exec'), namespace)

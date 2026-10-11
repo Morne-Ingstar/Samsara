@@ -18,7 +18,7 @@ def test_full_user_and_ava_text_without_preview_truncation(tmp_path, monkeypatch
     spoken = "S" * 3200
     shown = "D" * 3300
     log_conversation(lane="model", provider="deepseek", user_text=user,
-                     ava_spoken=spoken, ava_shown=shown, action="answered")
+                     ava_spoken=spoken, ava_shown=shown, action="answered", enabled=True)
     row = _records(tmp_path)[0]
     assert row["lane"] == "model" and row["provider"] == "deepseek"
     assert row["user"] == user and row["ava_spoken"] == spoken
@@ -32,7 +32,7 @@ def test_model_turn_logger_keeps_full_reply_while_preview_stays_short(tmp_path, 
     ask_ollama._turn_local.reply = ask_ollama.AvaReply(answer, "deepseek", 4)
     ask_ollama._turn_local.speech = [(True, "tts", len(answer))]
     ask_ollama._turn_local.spoken_text = [answer]
-    ask_ollama._log_turn(SimpleNamespace(), user, outcome="answered")
+    ask_ollama._log_turn(SimpleNamespace(config={"ava": {"conversation_log_enabled": True}}), user, outcome="answered")
     row = _records(tmp_path)[0]
     assert row["user"] == user
     assert row["ava_spoken"] == answer
@@ -67,7 +67,7 @@ def test_conversation_file_rotates_without_truncating_records(tmp_path, monkeypa
     large = "A" * 710_000
     for number in range(4):
         log_conversation(lane="model", provider="local", user_text=str(number),
-                         ava_spoken=large, ava_shown=large, action="answered")
+                         ava_spoken=large, ava_shown=large, action="answered", enabled=True)
     base = tmp_path / "logs" / "ava_conversation.log"
     assert base.exists() and (tmp_path / "logs" / "ava_conversation.log.1").exists()
     assert _records(tmp_path)[-1]["ava_spoken"] == large

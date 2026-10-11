@@ -72,12 +72,6 @@ ADVANCED = [
         "Choose how visible the idle preview stays.",
         "cmd_preview_idle_opacity",
         "command_mode.preview_idle_opacity"
-    ],
-    [
-        "Streaming capture",
-        "Use the existing dedicated CapsLock capture.",
-        "streaming_mode,streaming_key_display",
-        "streaming_mode"
     ]
 ]
 

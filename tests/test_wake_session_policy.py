@@ -1,5 +1,6 @@
 """Session admission with real policy methods, a fake clock, and no mic/models."""
 
+from samsara.log import describe_text, safe_exception
 import ast
 import copy
 import logging
@@ -39,6 +40,7 @@ def load_app_policy_methods():
     assert {node.name for node in methods} == names
     module = ModuleType('wake_session_policy_methods')
     module.__dict__.update(
+        describe_text=describe_text, safe_exception=safe_exception,
         time=time, logger=logging.getLogger(__name__), np=np,
         thread_registry=SimpleNamespace(timer=Mock()),
         flight_recorder=wake_module.flight_recorder,

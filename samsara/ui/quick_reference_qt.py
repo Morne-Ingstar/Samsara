@@ -70,11 +70,6 @@ _HOTKEY_FALLBACKS = {
     "continuous_commit_trigger": "silence",
 }
 
-# The streaming key is NOT a config value: dictation.py _install_capslock_hook
-# hardcodes keyboard.hook_key("caps lock") and only installs it while
-# streaming_mode is on (Settings > General > Advanced). The old streaming_hotkey config key
-# is read by nothing (guidance audit row 170) -- shown here as fixed text.
-STREAMING_KEY_LABEL = "CapsLock (fixed)"
 
 _DICTATE_MODE_LABELS = {
     "hold": "Dictate (hold to talk)",
@@ -173,7 +168,6 @@ def _resolve_hotkeys(app) -> list[dict]:
     cm_button = cm_cfg.get("button", _schema_default("command_mode.button", "rctrl"))
     cm_mode = cm_cfg.get("mode", _schema_default("command_mode.mode", "hold"))
 
-    streaming_enabled = bool(cfg.get("streaming_mode", False))
     dictate_mode = str(cfg.get("mode", _schema_default("mode", "hold")))
     hotkeys_cfg = cfg.get("hotkeys", {}) or {}
     commit_trigger = cfg.get("continuous_commit_trigger", _HOTKEY_FALLBACKS["continuous_commit_trigger"])
@@ -211,11 +205,6 @@ def _resolve_hotkeys(app) -> list[dict]:
             "label": "Ava",
             "value": f'Say "{ava_phrase}" during the voice session',
             "enabled": cm_enabled,
-        },
-        {
-            "label": "Streaming (live partials)",
-            "value": STREAMING_KEY_LABEL + "  (enable Streaming capture in Settings > General > Advanced)",  # STAND-IN COPY (523)
-            "enabled": streaming_enabled,
         },
         {"label": "Undo last dictation", "value": _key("undo_hotkey"), "enabled": True},
         {"label": "Memo recording", "value": _key("memo_hotkey"), "enabled": True},

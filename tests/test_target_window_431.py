@@ -1,5 +1,6 @@
 """Characterize the target-window leaf without bootstrapping dictation."""
 
+from samsara.log import describe_text, safe_exception
 import ast
 import ctypes
 import logging
@@ -191,7 +192,8 @@ def test_dispatch_patch_also_works_as_main():
     node = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
                 and node.name == "_dispatch_wake_profile")
     replacement = Mock(return_value=None)
-    namespace = {"__name__": "__main__", "logger": logging.getLogger("Samsara"),
+    namespace = {"describe_text": describe_text, "safe_exception": safe_exception,
+                 "__name__": "__main__", "logger": logging.getLogger("Samsara"),
                  "os": SimpleNamespace(getpid=lambda: 999),
                  "_resolve_target_window": replacement}
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), namespace)

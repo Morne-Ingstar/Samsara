@@ -1,4 +1,5 @@
 """Bind production methods to fake apps; never import the desktop bootstrap."""
+from samsara.log import describe_text, safe_exception
 import ast
 import collections
 from pathlib import Path
@@ -50,7 +51,8 @@ def app():
     cls = next(n for n in source.body if isinstance(n, ast.ClassDef)
                and n.name == 'DictationApp')
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in METHODS]
-    ns = dict(StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
+    ns = dict(describe_text=describe_text, safe_exception=safe_exception,
+              StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
               reset_current_stage_timing=reset_current_stage_timing, time=time, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
               audio_ducking=SimpleNamespace(SessionDucker=None, start_recording_media=Mock()),
               thread_registry=SimpleNamespace(timer=Timer),

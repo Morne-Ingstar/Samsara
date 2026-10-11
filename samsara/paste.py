@@ -8,7 +8,7 @@ typed Unicode delivery, coordinates focus checks, and tracks native undo.
 import ctypes
 import logging
 import time
-
+from samsara.log import describe_text, safe_exception
 from samsara import flight_recorder, injection_safety
 from samsara.clipboard import (
     DeliveryOutcome,
@@ -341,12 +341,11 @@ def undo_last_dictation(app, *, get_foreground_hwnd_fn=_get_foreground_hwnd):
     try:
         pyautogui.hotkey('ctrl', 'z')
     except Exception as exc:
-        logger.exception("[UNDO] Ctrl+Z injection failed: %s", exc)
+        safe_exception(logger, "[UNDO] Ctrl+Z injection failed: %s", describe_text(exc))
         app.play_sound("error")
         return False
 
-    preview = text[:50] + ("..." if len(text) > 50 else "")
-    logger.info(f"[UNDO] Native Ctrl+Z sent for: {preview}")
+    logger.info(f"[UNDO] Native Ctrl+Z sent for: {describe_text(text)}")
     app.play_sound("success")
     app._clear_undo()
     if callable(getattr(app, '_show_outcome_chip', None)):

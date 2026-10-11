@@ -55,7 +55,7 @@ Astra review 2026-09-12, section 1 items 1 and 3, and section 5 item 3;
 02_conversational_architecture.md sections 1, 5 and 7 step 1.
 """
 from __future__ import annotations
-
+from samsara.log import describe_text
 import hashlib
 import json
 import logging
@@ -1201,7 +1201,7 @@ def resolve_target(name: str) -> Optional[dict]:
         from plugins.commands.app_verbs import resolve_window  # noqa: PLC0415
         found = resolve_window(name)
     except Exception as exc:
-        logger.debug("[POLICY] target resolve failed for %r: %s", name, exc)
+        logger.debug("[POLICY] target resolve failed for %r: %s", describe_text(name), describe_text(exc))
         return None
     if not found:
         return None
@@ -1236,7 +1236,7 @@ def bind_target(inv: Invocation, resolver=None):
             # A probe that throws must REFUSE, never approve. {"gone": ...}
             # cannot compare equal to a resolved window, so the mismatch
             # check refuses on its own.
-            logger.debug("[POLICY] target probe raised for %r: %s", name, exc)
+            logger.debug("[POLICY] target probe raised for %r: %s", describe_text(name), describe_text(exc))
             return {"gone": name}
         return found or {"gone": name}
 
@@ -1577,7 +1577,7 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
     if reply is None or op is None:
         return None
     if source not in (ANSWER_VOICE, ANSWER_DIALOG):
-        logger.warning("[POLICY] ignored a %s-sourced %r for pending %s", source, reply, op.op_id[:8])
+        logger.warning("[POLICY] ignored a %s-sourced %r for pending %s", source, describe_text(reply), op.op_id[:8])
         return "refused:model"
     op.reply_text = text  # The owning local lane may log the full spoken reply.
     if reply == REPLY_WAIT:

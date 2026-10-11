@@ -1,4 +1,5 @@
 """First-use layout and loss-safe quit decision regressions; no app bootstrap."""
+from samsara.log import describe_text, safe_exception
 import ast
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,7 +58,7 @@ def _quit_method():
     tree = ast.parse((Path(__file__).resolve().parents[1] / "dictation.py").read_text(encoding="utf-8-sig"))
     method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
                   and n.name == "_resolve_parked_draft_before_quit")
-    namespace = {"logger": Mock()}
+    namespace = {"logger": Mock(), "describe_text": describe_text, "safe_exception": safe_exception}
     exec(compile(ast.Module(body=[method], type_ignores=[]), "<quit decision>", "exec"), namespace)
     return namespace[method.name]
 

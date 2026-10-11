@@ -10,6 +10,7 @@ RotatingFileHandler to the owner's live log if Samsara is running. The real
 DictationApp methods under test are extracted from dictation.py's source with
 `ast` and bound onto a small harness class instead.
 """
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import re
@@ -51,6 +52,7 @@ def _load_dictation_methods():
     assert set(found) == set(_METHODS), f"missing methods in dictation.py: {set(_METHODS) - set(found)}"
     nodes.extend(found[name] for name in _METHODS)
     namespace = {
+        "describe_text": describe_text, "safe_exception": safe_exception,
         "__name__": "dictation_extract",
         "np": np,
         "re": re,

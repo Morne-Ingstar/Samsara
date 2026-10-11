@@ -24,8 +24,10 @@ log-capture handler).
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
+from enum import Enum
 from logging.handlers import RotatingFileHandler
 
 from samsara.paths import samsara_home_dir
@@ -43,6 +45,101 @@ SAMSARA_LOG_HANDLER_TAG = "_samsara_log_handler"
 # window) can import one shared constant instead of recomputing or
 # hardcoding a second copy of "logs" / "samsara.log".
 SAMSARA_LOG_FILE = samsara_home_dir() / "logs" / "samsara.log"
+
+
+def describe_text(text):
+    """Describe private content without including it in ordinary logs.
+
+    Structured outcomes retain numeric measurements while string fields
+    are described. Unknown objects are named by type, never stringified.
+    """
+    try:
+        if isinstance(text, BaseException):
+            try:
+                result = f"{type(text).__name__}: {len(str(text))} chars"
+            except BaseException:
+                result = f"{type(text).__name__}: <str failed>"
+            if isinstance(text, OSError):
+                result += f" errno={describe_text(text.errno)} winerror={describe_text(getattr(text, 'winerror', None))}"
+                filename = text.filename
+                if filename is not None:
+                    try:
+                        basename = os.path.basename(os.fspath(filename))
+                        result += f" file={basename}"
+                    except BaseException:
+                        result += f" file=<{type(filename).__name__}>"
+            return result
+        if isinstance(text, Enum):
+            return text.value
+        if isinstance(text, str):
+            return f"{len(text)} chars, {len(text.split())} words"
+        if isinstance(text, dict):
+            metadata = {"mode", "state", "process", "target_process", "exe", "expected_exe", "actual_exe",
+                        "phrase", "reason", "pack", "source", "kind", "lane", "origin",
+                        "stage", "where", "reverted_to", "commit_outcome"}
+            # Plugin refusals can put a spoken app/destination in reason.
+            reasons = {"stale", "pack_disabled", "dispatch_unresolved", "unknown_command", "out_of_scope",
+                       "not_allowed_for_model", "unvalidated", "empty", "unavailable", "invalid_selection",
+                       "not_dictating", "no_word", "no_draft", "not_found", "draft_changed", "draft_pending",
+                       "focus_changed", "session changed", "no_handler", "unknown_type", "cancelled",
+                       "user_speech_interrupt", "tts_complete", "cancel_speech", "refused", "applied",
+                       "focus moved", "the window changed", "nothing to edit", "nothing to apply", "no change"}
+            return {key: value if key in metadata and isinstance(value, str) and not isinstance(value, Enum)
+                    and (key != "reason" or value in reasons)
+                    else describe_text(value) for key, value in text.items()}
+        if isinstance(text, (list, tuple)):
+            return [describe_text(value) for value in text]
+        if text is None or isinstance(text, (bool, int, float)):
+            return text
+        return f"<{type(text).__name__}>"
+    except BaseException:
+        return f"<{type(text).__name__}>"
+
+
+def safe_exception(logger, msg, *args, level=logging.ERROR, exc_info=None):
+    """Retain exception types and frames without private exception messages.
+
+    A detached exception carries only safe metadata; both the ordinary file
+    formatter and other handlers (including capture handlers) see that copy.
+    No original exception, traceback frame, or handler is changed.
+    """
+    try:
+        if not logger.isEnabledFor(level):
+            return
+    except BaseException:
+        return
+    info = sys.exc_info() if exc_info is None else exc_info
+    seen = set()
+    def sanitized(error):
+        if error is None or id(error) in seen:
+            return None
+        seen.add(id(error))
+        base = BaseExceptionGroup if isinstance(error, BaseExceptionGroup) else BaseException
+        proxy_type = type(type(error).__name__, (base,),
+                          {"__module__": type(error).__module__})
+        summary = describe_text(error).split(": ", 1)[1]
+        proxy = (proxy_type(summary, [sanitized(child) for child in error.exceptions])
+                 if isinstance(error, BaseExceptionGroup) else proxy_type(summary))
+        proxy.__traceback__ = error.__traceback__
+        proxy.__cause__ = sanitized(error.__cause__)
+        proxy.__context__ = sanitized(error.__context__)
+        proxy.__suppress_context__ = error.__suppress_context__
+        if getattr(error, "__notes__", None):
+            proxy.add_note("notes=" + str(describe_text(error.__notes__)))
+        seen.remove(id(error))
+        return proxy
+    try:
+        error = sanitized(info[1])
+        safe_info = (type(error), error, info[2]) if error is not None else None
+        logger.log(level, msg, *args, exc_info=safe_info, stacklevel=2)
+    except BaseException:
+        # Logging must never replace the failure or prevent recovery. Preserve
+        # its type and frames even if a custom exception rejects inspection.
+        try:
+            proxy = type(type(info[1]).__name__, (BaseException,), {})("<metadata unavailable>")
+            logger.log(level, msg, *args, exc_info=(type(proxy), proxy, info[2]), stacklevel=2)
+        except BaseException:
+            pass
 
 
 def _fallback_configure() -> None:

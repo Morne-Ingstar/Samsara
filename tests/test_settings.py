@@ -964,31 +964,25 @@ class TestModesTabClaims:
         from PySide6.QtWidgets import QLabel
         return [lbl.text() for lbl in win.findChildren(QLabel)]
 
-    # 1. streaming --------------------------------------------------------
-    def test_streaming_key_is_a_fixed_label_and_the_config_key_is_gone(self, qapp):
-        from samsara.ui.settings import modes_qt as sq   # Modes constants live with the page (21)
-        _stub, win = self._win({"streaming_hotkey": "f9"})
-        assert 'streaming_hotkey' not in win._widgets
-        assert win._widgets['streaming_key_display'].text() == sq._STREAMING_KEY_LABEL == "CapsLock (fixed)"
-        assert win._widgets['streaming_key_display'].isReadOnly()
-        assert 'streaming_hotkey' not in win._source_saves['modes'][0]({})
-        assert sq._STREAMING_KEY_DESC in self._labels(win)
+    # 525: the dedicated capture editor and its setter path are retired.
+    def test_retired_streaming_controls_are_absent(self, qapp):
+        _stub, win = self._win({"streaming_hotkey": "f9", "streaming_mode": True})
+        try:
+            assert not {'streaming_hotkey', 'streaming_key_display', 'streaming_mode'} & win._widgets.keys()
+            assert not any('CapsLock' in label for label in self._labels(win))
+        finally:
+            win.deleteLater()
 
-    def test_streaming_checkbox_calls_set_streaming_mode_like_the_tray(self, qapp):
+    def test_settings_save_does_not_call_retired_streaming_setter(self, qapp):
         stub = _StubApp()
         stub.set_streaming_mode = Mock()
-        _stub, win = self._win({"streaming_mode": False}, app=stub)
-        cb = win._widgets['streaming_mode']
-        assert cb.isChecked() is False
-        cb.setChecked(True)
-        produced = win._source_saves['modes'][0]({})
-        stub.set_streaming_mode.assert_called_once_with(True)
-        assert 'streaming_mode' not in produced          # the setter saves the flag itself
-        # unchanged state -> no call
-        stub.set_streaming_mode.reset_mock()
-        stub.config['streaming_mode'] = True
-        win._source_saves['modes'][0]({})
-        stub.set_streaming_mode.assert_not_called()
+        _stub, win = self._win({"streaming_mode": True}, app=stub)
+        try:
+            produced = win._source_saves['modes'][0]({})
+            stub.set_streaming_mode.assert_not_called()
+            assert 'streaming_mode' not in produced
+        finally:
+            win.deleteLater()
 
     # 2. enable voice control ---------------------------------------------
     def test_enable_voice_control_says_the_command_only_key_always_works(self, qapp):

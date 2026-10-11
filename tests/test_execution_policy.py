@@ -15,6 +15,7 @@ Covers, in order:
     adapter (the Smart Actions dialog); voice "yes" and the dialog resolve
     ONE pending operation
 """
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import collections
@@ -555,7 +556,8 @@ def _dictation_app(executor):
     names = {"_ava_session_agent_dispatch_fn", "_start_ava_session_worker",
              "_try_stop_utterance", "_on_ava_session_request_done",
              "exit_ava_command_session", "_route_to_ava"}
-    namespace = {"logger": logging.getLogger("policy_test")}
+    namespace = {"logger": logging.getLogger("policy_test"),
+                 "describe_text": describe_text, "safe_exception": safe_exception}
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
     exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
     harness = type("PolicyAppHarness", (), {name: namespace[name] for name in names})

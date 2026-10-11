@@ -1,4 +1,5 @@
 """Voice feedback policy and migration; no live app, engine or dictation import."""
+from samsara.log import describe_text, safe_exception
 import ast
 import copy
 import logging
@@ -324,7 +325,8 @@ def _app_methods(*names, timing=None):
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "DictationApp")
     selected = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in selected} == set(names)
-    namespace = {"logger": logging.getLogger(__name__), "time": time, "threading": threading,
+    namespace = {"describe_text": describe_text, "safe_exception": safe_exception,
+                 "logger": logging.getLogger(__name__), "time": time, "threading": threading,
                  "current_stage_timing": lambda: timing}
     exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), "exec"), namespace)
     return namespace

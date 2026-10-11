@@ -1,4 +1,5 @@
 """492: synthetic sign-off evidence at real recogniser guard boundaries."""
+from samsara.log import describe_text, safe_exception
 import ast
 import logging
 from pathlib import Path
@@ -35,7 +36,8 @@ def _batch_boundary(lane):
     assert isinstance(body[1], ast.If) and isinstance(body[1].test, ast.Name) and body[1].test.id == "_dropped"
     body = [*body, ast.Return(ast.Name("text", ast.Load()))]
     fn = ast.FunctionDef(name="boundary", args=ast.arguments(posonlyargs=[], args=[ast.arg("self"), ast.arg("text"), ast.arg("seg_list"), ast.arg("audio_duration")], kwonlyargs=[], kw_defaults=[], defaults=[]), body=body, decorator_list=[])
-    ns = dict(SignoffContext=SignoffContext, is_signoff_hallucination=is_signoff_hallucination,
+    ns = dict(describe_text=describe_text, safe_exception=safe_exception,
+              SignoffContext=SignoffContext, is_signoff_hallucination=is_signoff_hallucination,
               config_defaults=config_defaults, logger=logging.getLogger("492.synthetic"),
               _capture_mode="dictate")
     # Hold uses the same segments under its diagnostic variable name.

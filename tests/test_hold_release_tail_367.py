@@ -188,6 +188,7 @@ def test_batch_tail_log_retains_real_elapsed_and_frame_count(monkeypatch):
 
 
 def test_streaming_release_tail_failure_still_cuts_off_and_finalizes(app):
+    import logging
     events = []
     app.recording = True
     app._ace_streaming_active = True
@@ -214,5 +215,10 @@ def test_streaming_release_tail_failure_still_cuts_off_and_finalizes(app):
     app._dictation_consumer.finish_capture.assert_called_once_with(force=True)
     app.play_sound.assert_called_once_with('stop')
     finalize.assert_called_once_with()
-    app.ns['logger'].exception.assert_called_once_with(
-        '[TAIL] streaming release tail failed; finalizing without it')
+    log = app.ns['logger']
+    log.log.assert_called_once()
+    assert log.log.call_args.args == (
+        logging.ERROR, '[TAIL] streaming release tail failed; finalizing without it')
+    info = log.log.call_args.kwargs['exc_info']
+    assert info[0].__name__ == 'RuntimeError' and str(info[1]) == '21 chars'
+    assert info[2] is not None

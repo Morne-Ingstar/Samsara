@@ -52,7 +52,7 @@ from samsara.command_registry import DispatchResult, DispatchState
 from samsara.plugin_commands import command
 from samsara import execution_policy
 from samsara.execution_policy import Invocation, Route
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 from samsara.agent_channel import claude_reply
 
 logger = get_logger(__name__)
@@ -409,7 +409,7 @@ def handle_claude_message_prepare(app, remainder):
                                    extra={"draft_id": draft.id})
     _speak(app, question + " Say yes to send, or ava cancel.")
     _chip(app, "Send?", "pending")
-    logger.info("[CLAUDE] draft %s prepared for %r (%s): %s", draft.id, conversation or title, draft.hash, question)
+    logger.info("[CLAUDE] draft %s prepared for %r (%s): %s", draft.id, describe_text(conversation) or describe_text(title), draft.hash, describe_text(question))
     return DispatchResult(DispatchState.QUEUED, "claude message prepare", "claude message prepare", {
         "question": question, "draft_id": draft.id, "body": body, "hash": draft.hash,
         "window": title, "conversation": conversation, "awaiting_confirmation": True,
@@ -482,7 +482,7 @@ def handle_claude_message_submit(app, remainder):
                 draft.outcome = "sent: observed"
                 _chip(app, "Sent to Claude", "success")
                 _speak(app, "Sent.")
-                logger.info("[CLAUDE] draft %s observed in conversation %r", draft.id, conversation)
+                logger.info("[CLAUDE] draft %s observed in conversation %r", draft.id, describe_text(conversation))
                 claude_reply.start_after_send(app, reply_context)
                 return DispatchResult(DispatchState.COMPLETED, "claude message submit", "claude message submit", {
                     "state": "sent", "detail": "sent: observed", "draft_id": draft.id,

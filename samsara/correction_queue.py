@@ -38,7 +38,7 @@ import time
 from typing import Optional
 
 from samsara.correction_capture import extract_corrections
-from samsara.log import get_logger
+from samsara.log import describe_text, get_logger
 
 logger = get_logger(__name__)
 
@@ -283,7 +283,7 @@ class CorrectionQueue:
         now = time.time() if now is None else now
         verdict, reason = classify(wrong, right)
         if verdict == "never":
-            logger.info('[CORRECTIONS] not learnable: "%s" -> "%s" (%s)', wrong, right, reason)
+            logger.info('[CORRECTIONS] not learnable: "%s" -> "%s" (%s)', describe_text(wrong), describe_text(right), reason)
             return {"stored": False, "verdict": verdict, "reason": reason, "entry": None}
         entry = self.find(wrong, right)
         if entry is None:
@@ -307,7 +307,7 @@ class CorrectionQueue:
             del self._data["pending"][:overflow]
         self.save()
         logger.info('[CORRECTIONS] queued for review: "%s" -> "%s" (seen %d time(s), audio %d)',
-                    wrong, right, entry["count"], len(entry["audio"]))
+                    describe_text(wrong), describe_text(right), entry["count"], len(entry["audio"]))
         return {"stored": True, "verdict": verdict, "reason": "", "entry": entry}
 
     def accept(self, wrong: str, right: str, now: Optional[float] = None) -> Optional[dict]:
@@ -344,7 +344,7 @@ class CorrectionQueue:
         self._data["rejected"].append(entry)
         self.save()
         logger.info('[CORRECTIONS] undo: "%s" -> "%s" removed from the accepted list',
-                    entry.get("wrong"), entry.get("right"))
+                    describe_text(entry.get("wrong")), describe_text(entry.get("right")))
         return entry
 
     def drop_pending(self, wrong: str, right: str) -> Optional[dict]:
@@ -473,7 +473,7 @@ def undo_last_correction(app=None) -> dict:
                 save = getattr(vt, "save_training_data", None)
                 if callable(save):
                     save()
-                logger.info('[CORRECTIONS] removed "%s" -> "%s" from the dictionary', wrong, right)
+                logger.info('[CORRECTIONS] removed "%s" -> "%s" from the dictionary', describe_text(wrong), describe_text(right))
             except Exception as exc:
                 logger.warning("[CORRECTIONS] could not remove the entry: %s", exc)
                 return {"undone": False, "wrong": wrong, "right": right, "where": "dictionary"}

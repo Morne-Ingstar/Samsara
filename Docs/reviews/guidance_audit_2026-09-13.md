@@ -13,7 +13,7 @@ Every string literal in the seven surfaces was extracted with `tokenize` (line n
 | Ground truth | Where |
 |---|---|
 | config defaults | `dictation.py:3346-3700` (`default_config`) |
-| hotkey handling | `dictation.py:5762` `on_key_press`, `:5961` `on_key_release`, `:6185` `_check_command_mode_key`, `:6024-6120` CapsLock hook, `:6255-6271` Ava key |
+| hotkey handling | `dictation.py:5762` `on_key_press`, `:5961` `on_key_release`, `:6185` `_check_command_mode_key`, `:6255-6271` Ava key |
 | session control words | `samsara/session_modes.py:79-155` (`_WHOLE_UTTERANCE_SWITCHES`, `_PREFIX_SWITCHES`, `SCRATCH_THAT_PHRASE`, `DICTATE_COMMIT_PHRASE`, `_DICTATE_COMMIT_HOMOPHONES`, `SESSION_SLEEP_PHRASES`, `SESSION_STOP_PHRASES`, `GLOBAL_SESSION_EXIT_PHRASES`), `:279` `DEFAULT_AVA_INVOCATIONS`, `:346-366` `detect_stage_reference` |
 | settings schema | `samsara/config_schema.py` (`SETTINGS_SCHEMA`) |
 | command table | `commands.json` + `plugins/commands/*.py` via `tools/dump_command_metadata.py` |
@@ -25,7 +25,6 @@ Verdicts: **OK** / **STALE** (was true, changed) / **FALSE** (never true or wron
 
 | Finding | Verdict | Decided by |
 |---|---|---|
-| `streaming_hotkey` is DEAD: hook hardcodes 'caps lock', gated on `streaming_mode` which only the tray toggles | **Confirmed** | `dictation.py:6042` (`if not self.config.get('streaming_mode', False): return`), `:6047-6048` (`keyboard.hook_key('caps lock', ...)`); `streaming_hotkey` is read only by `samsara/ui/quick_reference_qt.py:141` and `samsara/ui/settings_qt.py` (display); the only toggle is `samsara/ui/tray_qt.py:360-362` -> `app.set_streaming_mode` (`dictation.py:12380`) |
 | `command_hotkey` is not gated by `command_mode.enabled` | **Confirmed** | `dictation.py:5794` reads `command_hotkey`, `:5814` fires on `check_hotkey_state(command_hotkey) and not self.hotkey_pressed and not self.recording` -- no `command_mode` read; `command_mode.enabled` gates only `_check_command_mode_key` (`:6205-6209`) |
 | toggle hands-free opens in DICTATE and buffers until "end" / `dictate_commit_hotkey` | **Confirmed** | `dictation.py:6832` `reset(initial_mode=SessionMode.DICTATE)`, `:6596` `buffer_dictate_until_commit=True`, `:5862-5868` commit hotkey gated by `_hands_free_dictation_commit_available()` (toggle + DICTATE lane + buffering); `session_modes.py:117` `DICTATE_COMMIT_PHRASE = "end"`, `:129` "and" is accepted as a homophone |
 | memo / correction / capture_correction / continuous_commit hotkeys exist in code with no settings surface | **Confirmed** | `dictation.py:5796` `memo_hotkey` (ctrl+alt+m), `:5832` `correction_hotkey` (ctrl+alt+r), `:5843` `hotkeys.capture_correction` (ctrl+alt+x), `:5889-5891` `continuous_commit_hotkey` (ctrl+space, only with `continuous_commit_trigger == 'key'`); zero references to any of the four in `samsara/ui/settings_qt.py` or `samsara/config_schema.py`; none of the seven guidance surfaces mentions them either (see MISSING rows below) |
@@ -43,7 +42,6 @@ Verdicts: **OK** / **STALE** (was true, changed) / **FALSE** (never true or wron
 | 338 | "Say 'stop listening' at any time to leave hands-free mode." | OK | `session_modes.py:150-155` `GLOBAL_SESSION_EXIT_PHRASES` |
 | 336-338 | (the card lists no sleep or stop word) | MISSING **FIXED** (samsara/ui/first_run_wizard_qt.py:396) | `session_modes.py:141-145` `SESSION_SLEEP_PHRASES` ("go to sleep", "samsara sleep", "sleep now") and `:149` `SESSION_STOP_PHRASES = ("stop",)` -- no surface mentions "stop" |
 | 341-342 | "All your data stays on this machine. Voice recognition runs locally via Whisper — nothing is sent to the cloud." | OK | true at the profile's defaults: `privacy` sets `cloud_llm.enabled = False` (`:319`); `smart_corrections.allow_cloud_fallback = False` (`dictation.py:3605`). Opt-in exceptions exist ("ava cloud" command, `cloud_llm.enabled`) -- the sentence does not say "unless you turn on cloud mode" |
-| 345 | "CapsLock streaming is enabled. Hold CapsLock for live transcription." | OK | `power_user` sets `streaming_mode = True` (`:324`); hook installed only then (`dictation.py:6042-6048`); press starts, release stops (`:6076-6120`) |
 | 349-350 | "Hold Ctrl+Shift, speak, and release." / "Text appears wherever your cursor is." | OK | defaults `hotkey = "ctrl+shift"`, `mode = "hold"` (`dictation.py:3347, 3366`) |
 | 371 | `"wake_word": "jarvis"` written to config | STALE **FIXED** (samsara/ui/first_run_wizard_qt.py:452) | legacy flat key; migrated into `wake_word_config.phrase` at `dictation.py:4013-4014` then treated as a migration marker (`:4082`). The live key is `wake_word_config.phrase` |
 | 372 | `"wake_word_timeout": 5.0` written to config | DEAD **FIXED** (samsara/ui/first_run_wizard_qt.py:453) | `dictation.py:4016-4023` only copies it into `wake_word_config.modes.dictate.silence_timeout` *if that nesting exists*; the defaults (`:3413-3440`) have no `modes` block, so the value is dropped. The live key is `wake_word_config.audio.wake_command_timeout` (`config_schema.py:88`) |
@@ -174,7 +172,6 @@ The file's own hard rule (`:1-20`): "every value shown is read from live config/
 
 | line | claim (quoted) | verdict | decided by |
 |---|---|---|---|
-| 59 | `"streaming_hotkey": "capslock"` (fallback) | OK (value) | matches `dictation.py:3377` -- but see line 170 |
 | 60 | `"dictate_commit_hotkey": "ctrl+space"` (fallback) | OK | `DEFAULT_CONTINUOUS_COMMIT_HOTKEY = 'ctrl+space'` (`constants.py:21`) |
 | 66-67 | `"end_words": ["over", "done", "end dictation"]` / `"wake_abort_phrase": ["cancel", "cancel dictation", "abort"]` (fallbacks) | OK | `dictation.py:3423-3424` |
 | 148 | "Dictate (hold to talk)" | FALSE (conditional) **FIXED** (samsara/ui/quick_reference_qt.py:184) | label is hardcoded (`:147-150`) and `mode` is never read; with `mode = "toggle"` or `"continuous"` (`config_schema.py:67-71`) the row misdescribes the key |
@@ -182,7 +179,6 @@ The file's own hard rule (`:1-20`): "every value shown is read from live config/
 | 158-160 | "Paste staged thought" = `dictate_commit_hotkey`, enabled when `command_mode.enabled` and mode toggle | OK | `dictation.py:5862-5868` + `_hands_free_dictation_commit_available()` |
 | 165-166 | "Ava" -> f'Say "{ava_phrase}" during the voice session' | OK | `resolve_ava_invocations` (`session_modes.py:282`), default "hey ava" / "so ava" / "oracle" |
 | 165-166 | (the "ava mode" whole-utterance switch is not listed) | MISSING **FIXED** (samsara/ui/quick_reference_qt.py:154) | `session_modes.py:96` `"ava mode": SessionMode.AVA`; `_lane_switch_phrases` filters to COMMAND/DICTATE (`:104-116`) |
-| 170-172 | "Streaming (live partials)" = `config['streaming_hotkey']` | DEAD **FIXED** (samsara/ui/quick_reference_qt.py:76) | the hook hardcodes `'caps lock'` (`dictation.py:6047-6048`); no code path reads `streaming_hotkey`; the row is dimmed unless `streaming_mode`, which only the tray toggles (`tray_qt.py:360-362`) |
 | 175 | "Undo last dictation" = `undo_hotkey` | OK | `dictation.py:5826-5829` |
 | 210-215, 458-459 | hands-free toggle: "latches a session" / "requires command_mode.enabled and mode=toggle" | OK | `dictation.py:6205-6232` |
 | 249 | "Legacy command-only lane retained for compatibility." (COMMAND) | OK | `session_modes.py:60-66` `SessionMode` docstring ("COMMAND remains the legacy command-only lane") |
@@ -241,9 +237,8 @@ Every non-OK row above carries **FIXED** (with the file:line of the fix at commi
 | stress_wizard_qt.py | 9 | 0 | 0 | 0 | 1 |
 | **all** | **94** | **8** | **4** | **3** | **17** |
 
-## The ten worst
+## The worst
 
-1. `quick_reference_qt.py:170` "Streaming (live partials)" shows `streaming_hotkey` -- **DEAD**: the hook hardcodes 'caps lock' (`dictation.py:6047`) and nothing reads the key; the Settings field for it is equally dead.
 2. `first_run_wizard_qt.py:336` "Say 'command', 'dictate', or 'hey ava' to switch lanes." -- **FALSE**: bare "command" is not a switch word (`session_modes.py:79-96`); a chronic-pain user following the card cannot leave the dictate lane by voice.
 3. `mic_setup_wizard_qt.py:912` 'Use "Test Wake Word..." in Settings -> Advanced' -- **FALSE**: the control does not exist.
 4. `ava_guide_qt.py:616` '"{wake}, Ava local" — same as above, but guaranteed to stay on your computer.' -- **FALSE**: "ava local" only flips `cloud_llm.enabled` off; it never asks anything.
@@ -256,4 +251,4 @@ Every non-OK row above carries **FIXED** (with the file:line of the fix at commi
 
 ## Not fixed here
 
-Nothing was changed. Every row names the line that decides it so each fix is a one-line edit or a one-row addition to the surface in question; the DEAD items (streaming hotkey field, mouse options for the Ava key, `wake_word_timeout`) need a decision -- wire them or remove the controls -- before any wording change.
+Nothing was changed. Every row names the line that decides it so each fix is a one-line edit or a one-row addition to the surface in question; the DEAD items (mouse options for the Ava key, `wake_word_timeout`) need a decision -- wire them or remove the controls -- before any wording change.

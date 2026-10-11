@@ -207,7 +207,7 @@ def install_exception_hooks(log=None):
     then the previous hooks. Never raises."""
     log = log or logging.getLogger("Samsara")
     import traceback as _tb
-
+    from samsara.log import describe_text, safe_exception
     previous_thread_hook = threading.excepthook
     previous_unraisable = sys.unraisablehook
 
@@ -216,8 +216,8 @@ def install_exception_hooks(log=None):
             if args.exc_type is SystemExit:
                 return
             name = args.thread.name if args.thread is not None else "?"
-            log.critical(f"[CRASH-DIAG] Uncaught exception in thread {name}:\n"
-                         + "".join(_tb.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
+            safe_exception(log, "[CRASH-DIAG] Uncaught exception in thread %s: %s", name, describe_text(args.exc_value),
+                           level=logging.CRITICAL, exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
         except Exception:
             pass
         try:
@@ -228,9 +228,8 @@ def install_exception_hooks(log=None):
     def _unraisable_hook(unraisable):
         try:
             where = unraisable.err_msg or "Exception ignored in"
-            log.error(f"[CRASH-DIAG] {where}: {unraisable.object!r}\n"
-                      + "".join(_tb.format_exception(unraisable.exc_type, unraisable.exc_value,
-                                                     unraisable.exc_traceback)))
+            safe_exception(log, "[CRASH-DIAG] %s: %r %s", where, getattr(unraisable.object, '__qualname__', type(unraisable.object).__qualname__), describe_text(unraisable.exc_value),
+                           level=logging.ERROR, exc_info=(unraisable.exc_type, unraisable.exc_value, unraisable.exc_traceback))
         except Exception:
             pass
         try:
