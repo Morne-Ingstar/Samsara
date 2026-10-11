@@ -27,6 +27,10 @@ def command_payload(text, app):
     whole = text.lower().strip().rstrip('.!?,;: ')
     if whole in {'command mode on', 'command mode off', 'command mode enable', 'command mode disable'}:
         return None
+    executor = getattr(app, 'command_executor', None)
+    find_exact = getattr(executor, 'find_exact_command', None)
+    if callable(find_exact) and find_exact(text) is not None:
+        return None
     config = getattr(app, 'config', {})
     intent = config.get('intent', {}) if isinstance(config, dict) else {}
     prefix = str(intent.get('command_prefix') or 'command').strip()

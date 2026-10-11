@@ -62,9 +62,9 @@ COMMAND_SOURCES = frozenset({
 
 #: Of those, the ones where the app did not recognise what was said. A
 #: ``command_miss`` carrying a ``pack`` was recognised perfectly well and
-#: refused because its pack is switched off (``session_modes.outcome_chip``
-#: renders it "pack off: <pack>"); that is a command outcome but not a miss,
-#: and the label is what tells the two apart.
+#: refused because its pack is switched off; that is a command outcome but
+#: not a miss. The source identifies the attempt and the error/warning chip
+#: kind distinguishes an unrecognised command from a pack-off refusal.
 MISS_LABEL = "MISS"
 
 
@@ -213,6 +213,8 @@ def is_command_miss(item) -> bool:
     rec = as_record(item)
     if rec is None or not is_command_outcome(rec):
         return False
+    if rec.source == "command_miss":
+        return rec.kind == "error"
     return rec.label.upper() == MISS_LABEL
 
 

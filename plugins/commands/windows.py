@@ -1336,7 +1336,10 @@ def snap_window(hwnd, direction, *, preflight=None) -> bool:
 @command("snap", aliases=["dock"], pack="window-management",
          risk_class="ui", param_schema={"side": {"type": "side", "required": False}})
 def handle_snap(app, remainder):
-    """Legacy foreground snap delegates to the exact-HWND helper."""
+    """Snaps the focused window to the side you name, such as left or right.
+
+    Legacy foreground snap delegates to the exact-HWND helper.
+    """
     direction = remainder.strip().lower()
     if direction not in _SNAP_DIRECTIONS:
         print(f"[SNAP] Unknown direction '{direction}'.")

@@ -34,7 +34,10 @@ def speak_if_available(app, text):
          risk_class="destructive",
 )
 def restart_app(app, remainder="", **kwargs):
-    """Request the same guarded restart used by the tray, on its Qt thread."""
+    """Closes Samsara and starts it again.
+
+    Uses the same guarded restart as the tray, on its Qt thread.
+    """
     from samsara.ui import qt_runtime
 
     def _restart_on_ui():

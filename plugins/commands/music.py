@@ -645,7 +645,7 @@ def handle_play(app, remainder):
 @command("search music", aliases=["search"], pack="media", risk_class='safe', ai_composable=True,
          side_effects=['audio'])
 def handle_music_search(app, remainder):
-    """Search Spotify only after a named-library miss asked for it."""
+    """Searches Spotify after music was not found in your library and a search was offered."""  # PLACEHOLDER COPY (531)
     pending = getattr(app, "_music_pending_search", None)
     if not isinstance(pending, dict):
         return False
@@ -691,7 +691,7 @@ def handle_media_play(app, remainder):
          side_effects=['audio'],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_playlist(app, remainder):
-    """Play a named Spotify playlist from the user's Music library."""
+    """Plays a named Spotify playlist from your Music library."""  # PLACEHOLDER COPY (531)
     return handle_play(app, f"playlist {remainder}")
 
 
@@ -699,7 +699,7 @@ def handle_playlist(app, remainder):
          side_effects=['audio'],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_album(app, remainder):
-    """Play a named Spotify album from the user's Music library."""
+    """Plays a named Spotify album from your Music library."""  # PLACEHOLDER COPY (531)
     return handle_play(app, f"album {remainder}")
 
 
@@ -707,14 +707,14 @@ def handle_album(app, remainder):
          side_effects=['audio'],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def handle_artist(app, remainder):
-    """Play a named Spotify artist from the user's Music library."""
+    """Plays a named Spotify artist from your Music library."""  # PLACEHOLDER COPY (531)
     return handle_play(app, f"artist {remainder}")
 
 
 @command("import my Spotify playlists", aliases=["import Spotify playlists"],
          pack="media", risk_class="safe", ai_composable=False, side_effects=["ui"])
 def handle_import_spotify_playlists(app, remainder):
-    """Open the local Spotify data export picker from voice."""
+    """Opens the picker for importing playlists from your downloaded Spotify data."""  # PLACEHOLDER COPY (531)
     from samsara.ui.settings.music_qt import open_spotify_import_picker
 
     if not open_spotify_import_picker(app):

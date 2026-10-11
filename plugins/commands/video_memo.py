@@ -251,7 +251,7 @@ def _controller(app):
          pack="utilities", risk_class="reversible", reversible=True,
          side_effects=["camera", "audio", "file"])
 def start_video_memo(app, remainder):
-    """Count down, then record webcam video with audio from the ACE ring."""
+    """Counts down, then records a webcam video memo with microphone audio."""  # PLACEHOLDER COPY (531)
     return _controller(app).start()
 
 
@@ -259,7 +259,7 @@ def start_video_memo(app, remainder):
          risk_class="reversible", reversible=True,
          side_effects=["camera", "audio", "file"])
 def stop_video_memo(app, remainder):
-    """Finish an active video memo; otherwise leave ordinary routing intact."""
+    """Finishes and saves the video memo currently being recorded."""  # PLACEHOLDER COPY (531)
     controller = getattr(app, "_video_memo_controller", None)
     return bool(controller and controller.finish())
 

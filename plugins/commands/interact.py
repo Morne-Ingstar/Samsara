@@ -18,22 +18,26 @@ _META = dict(pack="core", ai_visible=False, ai_composable=False,
 
 @command("interact focus", risk_class="ui", param_schema=_SCHEMA, **_META)
 def focus(_app, _remainder=""):
+    """Identifies Interact's focus action for its selected window; direct calls are refused."""  # PLACEHOLDER COPY (531)
     return DispatchState.FAILED
 
 
 @command("interact minimize", risk_class="ui", param_schema=_SCHEMA, **_META)
 def minimize(_app, _remainder=""):
+    """Identifies Interact's minimize action for its selected window; direct calls are refused."""  # PLACEHOLDER COPY (531)
     return DispatchState.FAILED
 
 
 @command("interact maximize", risk_class="ui", param_schema=_SCHEMA, **_META)
 def maximize(_app, _remainder=""):
+    """Identifies Interact's maximize action for its selected window; direct calls are refused."""  # PLACEHOLDER COPY (531)
     return DispatchState.FAILED
 
 
 @command("interact move", risk_class="ui", param_schema={
     **_SCHEMA, "monitor": {"type": "int", "min": 1, "required": True}}, **_META)
 def move(_app, _remainder=""):
+    """Identifies Interact's move action for its selected window; direct calls are refused."""  # PLACEHOLDER COPY (531)
     return DispatchState.FAILED
 
 
@@ -42,12 +46,14 @@ def move(_app, _remainder=""):
         "left", "right", "top", "bottom", "top left", "top right",
         "bottom left", "bottom right"]}}, **_META)
 def snap(_app, _remainder=""):
+    """Identifies Interact's snap action for its selected window; direct calls are refused."""  # PLACEHOLDER COPY (531)
     return DispatchState.FAILED
 
 
 @command("interact close", risk_class="destructive", param_schema=_SCHEMA,
          preview_template="Close the bound window?", **_META)
 def close(_app, _remainder=""):
+    """Identifies Interact's close action for its selected window; direct calls are refused."""  # PLACEHOLDER COPY (531)
     return DispatchState.FAILED
 
 

@@ -107,6 +107,7 @@ def capture_spoken_task(app, text) -> bool:
 
 @command("sync tasks", aliases=["sync my tasks"], pack="tasks", risk_class="write")
 def handle_sync_tasks(app, remainder="", **kwargs):
+    """Sends pending tasks from your local list to Todoist when the connection is enabled."""  # PLACEHOLDER COPY (531)
     token = _todoist_token(app)
     if not token:
         _speak(app, "Todoist is off.")
@@ -129,6 +130,7 @@ def handle_sync_tasks(app, remainder="", **kwargs):
 
 @command("what's on today", aliases=["today's tasks", "read today"], pack="tasks", risk_class="read")
 def handle_today_tasks(app, remainder="", **kwargs):
+    """Reads the tasks due today from your connected Todoist account."""  # PLACEHOLDER COPY (531)
     token = _todoist_token(app)
     if not token:
         _speak(app, "Todoist is off.", category="readback")

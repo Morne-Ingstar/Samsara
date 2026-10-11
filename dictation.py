@@ -7232,7 +7232,7 @@ class DictationApp:
                                           not self._session_mode_manager.dictate_pending_buffer),
                         # Re-read an earlier draft alongside an immediate receipt.
                         draft_recovered=(outcome.kind == 'dictate_draft_recovered' or
-                                         outcome.detail.get('immediate') and
+                                         bool(outcome.detail.get('immediate')) and
                                          bool(self._session_mode_manager.dictate_pending_buffer)),
                     )
                 except Exception as e:

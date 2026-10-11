@@ -29,21 +29,21 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `ask_agent.ask_gpt` | `ask codex`, `ask gpt` | text:text | ui | yes |  | ask gpt | `plugins/commands/ask_agent.py:70` |
-| `ask_agent.new_conversation_with` | `new conversation with` | text:text | ui | yes |  | new conversation with | `plugins/commands/ask_agent.py:83` |
+| `ask_agent.ask_gpt` | `ask codex`, `ask gpt` | text:text | ui | yes |  | Asks GPT a question through your signed-in account and reads the reply aloud. | `plugins/commands/ask_agent.py:70` |
+| `ask_agent.new_conversation_with` | `new conversation with` | text:text | ui | yes |  | Starts a fresh conversation with GPT or Claude, without the previous chat's context. | `plugins/commands/ask_agent.py:84` |
 
 ## ask_ollama (8)
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3305` |
-| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3357` |
-| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3343` |
-| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3384` |
-| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | ui | yes | yes | Asks Ava the question that follows, out loud. | `plugins/commands/ask_ollama.py:2981` |
-| `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3144` |
-| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3324` |
-| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3200` |
+| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3304` |
+| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3356` |
+| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3342` |
+| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3383` |
+| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | ui | yes | yes | Asks Ava the question that follows, out loud. | `plugins/commands/ask_ollama.py:2980` |
+| `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3143` |
+| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3323` |
+| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3199` |
 
 ## audio_switch (2)
 
@@ -362,16 +362,16 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `core_utils.check_for_updates` | `check for update`, `check for updates`, `update samsara` | - | write | no |  | Checks GitHub for a newer version of Samsara. | `plugins/commands/core_utils.py:57` |
-| `core_utils.move_preview_to_this_screen` | `move live surface to this screen`, `move preview to this screen` | text:text | ui | yes |  | Moves the live surface's saved placement to the foreground display. | `plugins/commands/core_utils.py:278` |
-| `core_utils.read_that_back` | `read it back`, `read my last dictation`, `read that back`, `what did you type` | - | read | yes |  | Reads the latest committed dictation or command aloud for accessibility. | `plugins/commands/core_utils.py:184` |
-| `core_utils.reload_config` | `refresh config`, `reload config`, `reload configuration`, `reread config` | - | ui | yes |  | Re-reads your settings from disk without restarting. | `plugins/commands/core_utils.py:75` |
-| `core_utils.reset_floating_windows` | `reset floating windows`, `reset indicator position`, `reset live surface`, `reset preview position`, `reset window positions` | text:text | ui | yes |  | Alias for the one live-surface recovery action when available. | `plugins/commands/core_utils.py:241` |
-| `core_utils.reset_hints` | `replay hints`, `reset hints`, `show hints again` | - | write | no |  | Clears the hints you have already seen so they can appear again. | `plugins/commands/core_utils.py:223` |
-| `core_utils.restart_samsara` | `reboot samsara`, `restart`, `restart samsara` | - | destructive | no |  | Request the same guarded restart used by the tray, on its Qt thread. | `plugins/commands/core_utils.py:33` |
-| `core_utils.save_alias` | `remove alias`, `save alias` | text:text | write | no |  | Saves the offered wording; say "remove alias <words>" to undo it. | `plugins/commands/core_utils.py:304` |
-| `core_utils.what_can_i_say` | `help`, `what are my commands`, `what can i say`, `what commands do i have` | - | read | yes |  | Opens the catalog-backed commands for the focused application. | `plugins/commands/core_utils.py:98` |
-| `core_utils.why_didnt_that_work` | `what did you hear`, `what just happened`, `why didnt that work` | - | read | yes |  | Speaks and shows the most recent recorded outcome chip. | `plugins/commands/core_utils.py:473` |
+| `core_utils.check_for_updates` | `check for update`, `check for updates`, `update samsara` | - | write | no |  | Checks GitHub for a newer version of Samsara. | `plugins/commands/core_utils.py:60` |
+| `core_utils.move_preview_to_this_screen` | `move live surface to this screen`, `move preview to this screen` | text:text | ui | yes |  | Moves the live surface's saved placement to the foreground display. | `plugins/commands/core_utils.py:281` |
+| `core_utils.read_that_back` | `read it back`, `read my last dictation`, `read that back`, `what did you type` | - | read | yes |  | Reads the latest committed dictation or command aloud for accessibility. | `plugins/commands/core_utils.py:187` |
+| `core_utils.reload_config` | `refresh config`, `reload config`, `reload configuration`, `reread config` | - | ui | yes |  | Re-reads your settings from disk without restarting. | `plugins/commands/core_utils.py:78` |
+| `core_utils.reset_floating_windows` | `reset floating windows`, `reset indicator position`, `reset live surface`, `reset preview position`, `reset window positions` | text:text | ui | yes |  | Alias for the one live-surface recovery action when available. | `plugins/commands/core_utils.py:244` |
+| `core_utils.reset_hints` | `replay hints`, `reset hints`, `show hints again` | - | write | no |  | Clears the hints you have already seen so they can appear again. | `plugins/commands/core_utils.py:226` |
+| `core_utils.restart_samsara` | `reboot samsara`, `restart`, `restart samsara` | - | destructive | no |  | Closes Samsara and starts it again. | `plugins/commands/core_utils.py:33` |
+| `core_utils.save_alias` | `remove alias`, `save alias` | text:text | write | no |  | Saves the offered wording; say "remove alias <words>" to undo it. | `plugins/commands/core_utils.py:307` |
+| `core_utils.what_can_i_say` | `help`, `what are my commands`, `what can i say`, `what commands do i have` | - | read | yes |  | Opens the catalog-backed commands for the focused application. | `plugins/commands/core_utils.py:101` |
+| `core_utils.why_didnt_that_work` | `what did you hear`, `what just happened`, `why didnt that work` | - | read | yes |  | Speaks and shows the most recent recorded outcome chip. | `plugins/commands/core_utils.py:476` |
 
 ## example_greet (1)
 
@@ -436,12 +436,12 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `interact.interact_close` | `interact close` | subject_token:text* | destructive | no |  | interact close | `plugins/commands/interact.py:48` |
-| `interact.interact_focus` | `interact focus` | subject_token:text* | ui | yes |  | interact focus | `plugins/commands/interact.py:19` |
-| `interact.interact_maximize` | `interact maximize` | subject_token:text* | ui | yes |  | interact maximize | `plugins/commands/interact.py:29` |
-| `interact.interact_minimize` | `interact minimize` | subject_token:text* | ui | yes |  | interact minimize | `plugins/commands/interact.py:24` |
-| `interact.interact_move` | `interact move` | subject_token:text*, monitor:int* | ui | yes |  | interact move | `plugins/commands/interact.py:34` |
-| `interact.interact_snap` | `interact snap` | subject_token:text*, side:text* | ui | yes |  | interact snap | `plugins/commands/interact.py:40` |
+| `interact.interact_close` | `interact close` | subject_token:text* | destructive | no |  | Identifies Interact's close action for its selected window; direct calls are refused. | `plugins/commands/interact.py:53` |
+| `interact.interact_focus` | `interact focus` | subject_token:text* | ui | yes |  | Identifies Interact's focus action for its selected window; direct calls are refused. | `plugins/commands/interact.py:19` |
+| `interact.interact_maximize` | `interact maximize` | subject_token:text* | ui | yes |  | Identifies Interact's maximize action for its selected window; direct calls are refused. | `plugins/commands/interact.py:31` |
+| `interact.interact_minimize` | `interact minimize` | subject_token:text* | ui | yes |  | Identifies Interact's minimize action for its selected window; direct calls are refused. | `plugins/commands/interact.py:25` |
+| `interact.interact_move` | `interact move` | subject_token:text*, monitor:int* | ui | yes |  | Identifies Interact's move action for its selected window; direct calls are refused. | `plugins/commands/interact.py:37` |
+| `interact.interact_snap` | `interact snap` | subject_token:text*, side:text* | ui | yes |  | Identifies Interact's snap action for its selected window; direct calls are refused. | `plugins/commands/interact.py:44` |
 
 ## macros (6)
 
@@ -470,27 +470,27 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 |---|---|---|---|---|---|---|---|
 | `message_claude.claude_message_prepare` | `ask claude`, `claude message prepare`, `message claude`, `send claude`, `tell claude` | text:text | write | no |  | Drafts a message to the Claude desktop app and asks you to confirm. | `plugins/commands/message_claude.py:362` |
 | `message_claude.claude_message_submit` | `claude message submit` | remainder:text* | destructive | no |  | Sends the message you had prepared for Claude. | `plugins/commands/message_claude.py:423` |
-| `message_claude.read_the_rest` | `read the rest` | - | ui | yes |  | read the rest | `plugins/commands/message_claude.py:499` |
-| `message_claude.repeat_that` | `repeat that` | - | ui | yes |  | repeat that | `plugins/commands/message_claude.py:505` |
-| `message_claude.stop_claude` | `quiet claude`, `stop claude`, `stop claude reply`, `stop the reply` | - | ui | yes |  | stop claude | `plugins/commands/message_claude.py:511` |
+| `message_claude.read_the_rest` | `read the rest` | - | ui | yes |  | Reads the remaining part of Claude's most recent reply aloud. | `plugins/commands/message_claude.py:499` |
+| `message_claude.repeat_that` | `repeat that` | - | ui | yes |  | Repeats the part of Claude's reply that was last read aloud. | `plugins/commands/message_claude.py:506` |
+| `message_claude.stop_claude` | `quiet claude`, `stop claude`, `stop claude reply`, `stop the reply` | - | ui | yes |  | Stops reading Claude's reply aloud. | `plugins/commands/message_claude.py:513` |
 
 ## music (15)
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `music.import_my_spotify_playlists` | `import my spotify playlists`, `import spotify playlists` | - | ui | yes |  | Open the local Spotify data export picker from voice. | `plugins/commands/music.py:714` |
+| `music.import_my_spotify_playlists` | `import my spotify playlists`, `import spotify playlists` | - | ui | yes |  | Opens the picker for importing playlists from your downloaded Spotify data. | `plugins/commands/music.py:714` |
 | `music.mute` | `mute`, `mute spotify` | - | ui | yes |  | Mutes or unmutes Spotify without touching the system volume. | `plugins/commands/music.py:757` |
 | `music.next` | `next`, `next song`, `next track`, `skip`, `skip song`, `skip track` | - | ui | yes |  | Skips to the next track. | `plugins/commands/music.py:743` |
 | `music.pause` | `pause`, `pause music`, `play pause`, `stop music` | - | ui | yes |  | Pauses whatever is playing. | `plugins/commands/music.py:736` |
 | `music.pause_spotify` | `pause spotify`, `stop spotify` | - | ui | yes |  | Pauses Spotify, whatever else is playing. | `plugins/commands/music.py:266` |
 | `music.play` | `play`, `resume`, `resume music`, `unpause music` | name:text | ui | yes |  | Resumes whatever was playing. | `plugins/commands/music.py:680` |
-| `music.play_album` | `album`, `play album` | remainder:text* | ui | yes |  | Play a named Spotify album from the user's Music library. | `plugins/commands/music.py:698` |
-| `music.play_artist` | `artist`, `play artist` | remainder:text* | ui | yes |  | Play a named Spotify artist from the user's Music library. | `plugins/commands/music.py:706` |
+| `music.play_album` | `album`, `play album` | remainder:text* | ui | yes |  | Plays a named Spotify album from your Music library. | `plugins/commands/music.py:698` |
+| `music.play_artist` | `artist`, `play artist` | remainder:text* | ui | yes |  | Plays a named Spotify artist from your Music library. | `plugins/commands/music.py:706` |
 | `music.play_music` | `place music`, `place of music`, `place some music`, `play me`, `play me some`, `play me some music`, `play music`, `play of music`, `play some`, `play some music`, `playing me some`, `playing some`, `plays music`, `plays some music`, `put on`, `put on some` | playlist:playlist | ui | yes |  | Plays what you name on Spotify, such as play music by Nick Cave. | `plugins/commands/music.py:594` |
-| `music.play_playlist` | `play playlist`, `playlist` | remainder:text* | ui | yes |  | Play a named Spotify playlist from the user's Music library. | `plugins/commands/music.py:690` |
+| `music.play_playlist` | `play playlist`, `playlist` | remainder:text* | ui | yes |  | Plays a named Spotify playlist from your Music library. | `plugins/commands/music.py:690` |
 | `music.play_spotify` | `play spotify`, `resume spotify` | - | ui | yes |  | Resumes Spotify, whatever else is playing. | `plugins/commands/music.py:266` |
 | `music.previous_music` | `back a song`, `previous`, `previous music`, `previous song`, `previous track` | - | ui | yes |  | Skips back in the current media session. | `plugins/commands/music.py:750` |
-| `music.search_music` | `search`, `search music` | - | ui | yes |  | Search Spotify only after a named-library miss asked for it. | `plugins/commands/music.py:645` |
+| `music.search_music` | `search`, `search music` | - | ui | yes |  | Searches Spotify after music was not found in your library and a search was offered. | `plugins/commands/music.py:645` |
 | `music.spotify_volume_down` | `spotify quieter`, `spotify volume down`, `turn spotify down` | - | ui | yes |  | Lowers Spotify's own volume by ten points. | `plugins/commands/music.py:278` |
 | `music.spotify_volume_up` | `spotify louder`, `spotify volume up`, `turn spotify up` | - | ui | yes |  | Raises Spotify's own volume by ten points. | `plugins/commands/music.py:278` |
 
@@ -612,14 +612,14 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
 | `tasks.add_to_list` | `add task`, `add to list`, `add to tasks`, `add to the list`, `new task`, `todo` | remainder:text | write | yes |  | Adds what you say next to your task list. | `plugins/commands/tasks.py:73` |
-| `tasks.clear_completed` | `clear completed`, `clear done tasks`, `remove completed` | - | destructive | no |  | Deletes every task already marked as done. | `plugins/commands/tasks.py:220` |
-| `tasks.complete_task` | `check task`, `complete task`, `done task`, `finish task`, `task complete` | task_number:int | write | no |  | Marks the task you name as done. | `plugins/commands/tasks.py:174` |
-| `tasks.hide_tasks` | `close task list`, `close tasks`, `hide tasks` | - | ui | yes |  | Takes the task list off the screen. | `plugins/commands/tasks.py:161` |
-| `tasks.read_tasks` | `list tasks`, `read my tasks`, `read tasks`, `what are my tasks` | - | read | yes |  | Reads out the tasks you have not finished. | `plugins/commands/tasks.py:237` |
-| `tasks.remove_task` | `delete task`, `remove task` | task_number:int | destructive | no |  | Deletes the task you name from the list. | `plugins/commands/tasks.py:197` |
-| `tasks.show_tasks` | `open tasks`, `show my tasks`, `show task list`, `show tasks`, `task list` | - | ui | yes |  | Puts your task list on the screen. | `plugins/commands/tasks.py:149` |
-| `tasks.sync_tasks` | `sync my tasks`, `sync tasks` | - | write | no |  | sync tasks | `plugins/commands/tasks.py:108` |
-| `tasks.whats_on_today` | `read today`, `todays tasks`, `whats on today` | - | read | yes |  | whats on today | `plugins/commands/tasks.py:130` |
+| `tasks.clear_completed` | `clear completed`, `clear done tasks`, `remove completed` | - | destructive | no |  | Deletes every task already marked as done. | `plugins/commands/tasks.py:222` |
+| `tasks.complete_task` | `check task`, `complete task`, `done task`, `finish task`, `task complete` | task_number:int | write | no |  | Marks the task you name as done. | `plugins/commands/tasks.py:176` |
+| `tasks.hide_tasks` | `close task list`, `close tasks`, `hide tasks` | - | ui | yes |  | Takes the task list off the screen. | `plugins/commands/tasks.py:163` |
+| `tasks.read_tasks` | `list tasks`, `read my tasks`, `read tasks`, `what are my tasks` | - | read | yes |  | Reads out the tasks you have not finished. | `plugins/commands/tasks.py:239` |
+| `tasks.remove_task` | `delete task`, `remove task` | task_number:int | destructive | no |  | Deletes the task you name from the list. | `plugins/commands/tasks.py:199` |
+| `tasks.show_tasks` | `open tasks`, `show my tasks`, `show task list`, `show tasks`, `task list` | - | ui | yes |  | Puts your task list on the screen. | `plugins/commands/tasks.py:151` |
+| `tasks.sync_tasks` | `sync my tasks`, `sync tasks` | - | write | no |  | Sends pending tasks from your local list to Todoist when the connection is enabled. | `plugins/commands/tasks.py:108` |
+| `tasks.whats_on_today` | `read today`, `todays tasks`, `whats on today` | - | read | yes |  | Reads the tasks due today from your connected Todoist account. | `plugins/commands/tasks.py:131` |
 
 ## text_marker (3)
 
@@ -646,8 +646,8 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `video_memo.record_video_memo` | `record video memo`, `start video memo`, `video memo` | - | write | no |  | Count down, then record webcam video with audio from the ACE ring. | `plugins/commands/video_memo.py:250` |
-| `video_memo.stop_memo` | `stop memo`, `stop video memo` | - | write | no |  | Finish an active video memo; otherwise leave ordinary routing intact. | `plugins/commands/video_memo.py:258` |
+| `video_memo.record_video_memo` | `record video memo`, `start video memo`, `video memo` | - | write | no |  | Counts down, then records a webcam video memo with microphone audio. | `plugins/commands/video_memo.py:250` |
+| `video_memo.stop_memo` | `stop memo`, `stop video memo` | - | write | no |  | Finishes and saves the video memo currently being recorded. | `plugins/commands/video_memo.py:258` |
 
 ## voice_memo (2)
 
@@ -732,7 +732,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `windows.restore_layout` | `load layout`, `restore layout`, `restore window layout` | name:text | ui | yes |  | Puts your windows back the way a saved layout had them. | `plugins/commands/windows.py:1085` |
 | `windows.save_layout` | `save layout`, `save this layout`, `save window layout` | name:text | write | no |  | Saves where your windows are now, under the name you give it. | `plugins/commands/windows.py:1070` |
 | `windows.send` | `move`, `put`, `send`, `throw` | app_name:app_name, monitor:monitor* | ui | yes |  | Moves the app you name to the screen you name, such as the left one. | `plugins/commands/windows.py:764` |
-| `windows.snap` | `dock`, `snap` | side:side | ui | yes |  | Legacy foreground snap delegates to the exact-HWND helper. | `plugins/commands/windows.py:1336` |
+| `windows.snap` | `dock`, `snap` | side:side | ui | yes |  | Snaps the focused window to the side you name, such as left or right. | `plugins/commands/windows.py:1336` |
 
 ## word (24)
 

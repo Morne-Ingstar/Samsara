@@ -499,12 +499,14 @@ def handle_claude_message_submit(app, remainder):
 @command("read the rest", pack="core", risk_class="safe", reversible=True,
          side_effects=["audio"])
 def handle_claude_read_rest(app, remainder):
+    """Reads the remaining part of Claude's most recent reply aloud."""  # PLACEHOLDER COPY (531)
     return claude_reply.followup(app, "read the rest")
 
 
 @command("repeat that", pack="core", risk_class="safe", reversible=True,
          side_effects=["audio"])
 def handle_claude_repeat(app, remainder):
+    """Repeats the part of Claude's reply that was last read aloud."""  # PLACEHOLDER COPY (531)
     return claude_reply.followup(app, "repeat that")
 
 
@@ -512,4 +514,5 @@ def handle_claude_repeat(app, remainder):
          pack="ai", risk_class="safe", reversible=True,
          side_effects=["audio"])
 def handle_claude_stop(app, remainder):
+    """Stops reading Claude's reply aloud."""  # PLACEHOLDER COPY (531)
     return claude_reply.followup(app, "stop claude")

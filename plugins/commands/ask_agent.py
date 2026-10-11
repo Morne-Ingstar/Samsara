@@ -70,6 +70,7 @@ def ask_cli(app, name: str, question: str):
 @command("ask gpt", aliases=["ask codex"], pack="core", risk_class="safe",
          reversible=True, side_effects=["network", "audio", "ui", "file"])
 def ask_gpt(app, remainder=""):
+    """Asks GPT a question through your signed-in account and reads the reply aloud."""  # PLACEHOLDER COPY (531)
     return ask_cli(app, "gpt", remainder)
 
 
@@ -83,6 +84,7 @@ def ask_claude(app, remainder=""):
 @command("new conversation with", pack="core", risk_class="safe", reversible=True,
          side_effects=["file", "audio", "ui"])
 def new_conversation(app, remainder=""):
+    """Starts a fresh conversation with GPT or Claude, without the previous chat's context."""  # PLACEHOLDER COPY (531)
     name = remainder.strip().lower().rstrip(".?!")
     if name not in {"gpt", "codex", "claude"}:
         _say(app, "Say new conversation with GPT or Claude.")

@@ -82,7 +82,7 @@ def _build_shortlist(app, utterance: str, cfg: dict) -> list[str]:
     if executor is None or not hasattr(executor, "ava_menu"):
         return []
     from samsara.execution_policy import Route
-    return executor.ava_menu(utterance, limit=int(cfg["shortlist_size"]), app=app, route=Route.MODEL)
+    return executor.ava_menu(utterance, limit=int(cfg.get("shortlist_size", _DEFAULTS["shortlist_size"])), app=app, route=Route.MODEL)
 
 
 def _normalise_command_id(value: str | None) -> str:
