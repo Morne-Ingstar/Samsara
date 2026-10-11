@@ -77,15 +77,14 @@ _ENABLE_VOICE_CONTROL_DESC = (
     "works, even with this off."
 )
 # dictation.py _install_capslock_hook: keyboard.hook_key('caps lock'), installed
-# only while streaming_mode is on; the tray's Streaming Mode toggle and the
-# checkbox below share set_streaming_mode(). streaming_hotkey is read by nothing.
+# only while streaming_mode is on; the checkbox below calls set_streaming_mode().
+# streaming_hotkey is read by nothing.
 _STREAMING_KEY_LABEL = "CapsLock (fixed)"
 _STREAMING_KEY_DESC = (
     "The streaming key is fixed in code and only works while Streaming preview is on."
 )
 _STREAMING_PREVIEW_DESC = (
-    "Show live partials in the overlay while you hold CapsLock -- the same switch as "
-    "the tray's Streaming Mode."
+    "Show live partials in the overlay while you hold CapsLock."  # STAND-IN COPY (523)
 )
 _PASTE_STAGED_DESC = "Toggle hands-free only; same as saying '{commit}'."
 _CMD_DEBOUNCE_DESC = "Taps shorter than this are ignored (audio discarded)."
@@ -1119,7 +1118,7 @@ class ModesPage:
             ava_combo = self._widgets.get('ava_mode_key')
             if isinstance(ava_combo, _HotkeyButton):
                 updates['ava_mode_key'] = ava_combo.combo
-            # Streaming preview goes through the SAME path as the tray toggle
+            # Streaming preview uses the streaming setter
             # (set_streaming_mode installs/uninstalls the CapsLock hook and
             # saves the flag itself), never through the bulk config write.
             streaming_cb = self._widgets.get('streaming_mode')

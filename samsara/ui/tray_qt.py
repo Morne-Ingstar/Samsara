@@ -1413,9 +1413,6 @@ class SamsaraTrayQt(QObject):
                 report_as="Reset floating windows")
             tools_sub.addMenu(window_recovery)
             tools_sub.addSeparator()
-            add(tools_sub, "Streaming Mode  (CapsLock)",
-                lambda checked: app.set_streaming_mode(checked),
-                checked=app.config.get("streaming_mode", False), report_as="Streaming Mode")
             add(tools_sub, "Gesture Lane  (webcam)",
                 lambda checked: self._set_gesture_lane(checked),
                 checked=app.config.get("gesture", {}).get("enabled", False),
@@ -1425,8 +1422,9 @@ class SamsaraTrayQt(QObject):
             add(tools_sub, "Show Listening Indicator",
                 lambda _checked: app.toggle_listening_indicator(),
                 checked=listening_display.display_visible(app))
-            add(tools_sub, "Move listening indicator...",
-                lambda: app.enter_indicator_move_mode(), report_as="Move listening indicator")
+            if listening_display.display_choice(app.config).value == "compact":
+                add(tools_sub, "Move listening indicator...",
+                    lambda: app.enter_indicator_move_mode(), report_as="Move listening indicator")
             tools_sub.addSeparator()
             add(tools_sub, "Interactive Tutorial", lambda: app.show_tutorial())
             add(tools_sub, "Mic Setup Guide",

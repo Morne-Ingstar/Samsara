@@ -29,15 +29,17 @@ def test_profile_labels_are_plain(qapp):
 def test_placement_explanation_once(qapp, setup):
     page = DisplayPlacementPage({}, setup=setup)
     page.show()
-    page.demo.timer.stop() if page.demo.timer else None
-    page.demo.set_frame(0)
+    page.picker.timer.stop() if page.picker.timer else None
+    page.picker.set_frame(0)
     qapp.processEvents()
     assert sum(label.isVisibleTo(page) and label.text() == CAPTIONS[0] for label in page.findChildren(QLabel)) == 1
-    assert page.reason.y() < page.demo.y()
-    page.demo.set_frame(1)
-    assert page.demo.caption.isVisibleTo(page)
-    page.demo.set_frame(0)
-    assert not page.demo.caption.isVisibleTo(page)
+    assert page.reason.y() < page.picker.y()
+    page.picker.set_frame(1)
+    assert page.picker.caption.isVisibleTo(page)
+    page.picker.set_frame(0)
+    # 522: one caption remains visible below the sole desktop on every beat.
+    assert page.picker.caption.isVisibleTo(page)
+    assert page.picker.caption.text() != CAPTIONS[0]
     page.hide()
     page.deleteLater()
 

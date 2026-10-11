@@ -546,6 +546,10 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Config override for exact registered phrases in hands-free Dictate; reserved controls remain available.",
     },
+    "hands_free.send_mode": {
+        "type": "enum", "default": "staged", "tab": "commands",
+        "options": ["staged", "as_i_speak"],
+    },
     # Queue 140: during a latched AVA reply, suppress the session capture
     # path (including an already-open capture) while keeping OpenWakeWord
     # available as the hands-free interruption route.

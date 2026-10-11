@@ -207,7 +207,7 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
     # 479: everyday choices move into the four owned pages' basic sections.
-    for name, count in {'General': 7, 'Dictation': 9, 'Audio': 11, 'Shortcuts': 11}.items():
+    for name, count in {'General': 7, 'Dictation': 10, 'Audio': 11, 'Shortcuts': 11}.items():
         assert len(window._pages[name].base_rows) == count
     assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [8, 5]
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}

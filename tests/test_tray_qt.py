@@ -410,7 +410,7 @@ _INFO_PREFIXES = ("Hotkey:", "Model:", "Mouse hotkey disabled")
 _HANDLERS = (
     "show_main_window", "reenable_mouse_hotkey", "release_mouse_buttons",
     "switch_microphone_and_refresh", "switch_mode_from_tray", "set_wake_word_enabled",
-    "set_streaming_mode", "set_gesture_enabled", "snooze_listening", "resume_listening",
+    "set_gesture_enabled", "snooze_listening", "resume_listening",
     "open_settings", "open_history", "open_quick_reference", "toggle_cheat_sheet",
     "toggle_listening_indicator", "enter_indicator_move_mode", "show_tutorial",
     "open_mic_setup_guide", "open_ava_guide", "open_benchmark_review",
@@ -646,10 +646,41 @@ class TestMenuGrouping61:
         app = _make_app()
         t, _started = _stub_tray(monkeypatch, app)
         tools = {a.text() for a in _submenu(t._menu, "Tools").actions()}
-        for label in ("Streaming Mode  (CapsLock)", "Gesture Lane  (webcam)", "Command Reference",
+        for label in ("Gesture Lane  (webcam)", "Command Reference",
                       "Show Listening Indicator", "Move listening indicator..."):
             assert label in tools
             assert label not in _top_level_texts(t._menu)
+
+    @pytest.mark.parametrize("display", ["full", "compact"])
+    @pytest.mark.parametrize("streaming_enabled", [False, True])
+    def test_tools_entries_follow_display_choice(self, qapp, monkeypatch, display, streaming_enabled):
+        app = _make_app()
+        app.config["ui"] = {"listening_display": display}
+        app.config["streaming_mode"] = streaming_enabled
+        t, _started = _stub_tray(monkeypatch, app)
+        tools = _submenu(t._menu, "Tools")
+        actions = tools.actions()
+        labels = {a.text() for a in actions if not a.isSeparator()}
+        assert "Streaming Mode  (CapsLock)" not in labels
+        assert ("Move listening indicator..." in labels) == (display == "compact")
+        assert not actions[0].isSeparator() and not actions[-1].isSeparator()
+        assert not any(a.isSeparator() and b.isSeparator() for a, b in zip(actions, actions[1:]))
+        assert app.config["streaming_mode"] is streaming_enabled
+        app.set_streaming_mode.assert_not_called()
+        if display == "compact":
+            _action(t._menu, "Move listening indicator...").trigger()
+            app.enter_indicator_move_mode.assert_called_once_with()
+
+    def test_tools_move_entry_reads_choice_when_menu_rebuilt(self, qapp, monkeypatch):
+        app = _make_app()
+        app.config["ui"] = {"listening_display": "full"}
+        t, _started = _stub_tray(monkeypatch, app)
+        app.config["ui"]["listening_display"] = "compact"
+        t._rebuild_menu()
+        assert "Move listening indicator..." in {a.text() for a in _submenu(t._menu, "Tools").actions()}
+        app.config["ui"]["listening_display"] = "full"
+        t._rebuild_menu()
+        assert "Move listening indicator..." not in {a.text() for a in _submenu(t._menu, "Tools").actions()}
 
     def test_everyday_records_are_in_workspace_not_the_recovery_top_level(self, qapp, monkeypatch):
         app = _make_app()
@@ -661,12 +692,7 @@ class TestMenuGrouping61:
 
     def test_toggles_keep_their_checked_state_and_pass_it_on(self, qapp, monkeypatch):
         app = _make_app()
-        app.config["streaming_mode"] = True
         t, _started = _stub_tray(monkeypatch, app)
-        act = _action(t._menu, "Streaming Mode  (CapsLock)")
-        assert act.isCheckable() and act.isChecked()
-        act.trigger()
-        app.set_streaming_mode.assert_called_once_with(False)
         wake = _action(t._menu, "Wake Word  (samsara)")
         assert not wake.isChecked()
         wake.trigger()

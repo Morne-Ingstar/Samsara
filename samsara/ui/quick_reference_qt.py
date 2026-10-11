@@ -72,7 +72,7 @@ _HOTKEY_FALLBACKS = {
 
 # The streaming key is NOT a config value: dictation.py _install_capslock_hook
 # hardcodes keyboard.hook_key("caps lock") and only installs it while
-# streaming_mode is on (the tray toggle). The old streaming_hotkey config key
+# streaming_mode is on (Settings > General > Advanced). The old streaming_hotkey config key
 # is read by nothing (guidance audit row 170) -- shown here as fixed text.
 STREAMING_KEY_LABEL = "CapsLock (fixed)"
 
@@ -214,7 +214,7 @@ def _resolve_hotkeys(app) -> list[dict]:
         },
         {
             "label": "Streaming (live partials)",
-            "value": STREAMING_KEY_LABEL + "  (live only while streaming mode is on -- tray toggle)",
+            "value": STREAMING_KEY_LABEL + "  (enable Streaming capture in Settings > General > Advanced)",  # STAND-IN COPY (523)
             "enabled": streaming_enabled,
         },
         {"label": "Undo last dictation", "value": _key("undo_hotkey"), "enabled": True},

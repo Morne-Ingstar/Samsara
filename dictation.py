@@ -5379,27 +5379,19 @@ class DictationApp:
         def _inject_fn(text: str, commit_focus_guard=None):
             """Commit one complete unified-session DICTATE thought.
 
-            `text` is the complete, RAW, multi-chunk accumulated buffer --
-            natural-pause chunks were staged with no formatting applied
-            (see session_modes._stage_dictate_chunk). This runs the SAME
-            formatting pipeline normal wake-lane dictation uses
-            (_output_dictation), in the same order, exactly once, over the
-            complete text -- never duplicated, never per-chunk:
+            Format each explicit thought or automatic sentence once through
+            the shared wake-lane pipeline, in its established order:
 
                 process_transcription (auto_capitalize, format_numbers)
-                -> clean_text (cleanup_mode, incl. verbatim -- unchanged)
-                -> smart_correct (gated on smart_corrections.modes.wake,
-                   the DICTATE/wake lane this session path belongs to)
+                -> clean_text (cleanup_mode, including verbatim)
+                -> smart_correct (gated on smart_corrections.modes.wake)
                 -> add_trailing_space
-                -> _apply_formatting_tokens (must run last, immediately
-                   before delivery -- see formatting_tokens.py)
+                -> _apply_formatting_tokens (last, immediately before delivery)
 
-            Returns the delivered (pasted) text on success, so
-            SessionModeManager's undo stack and stage_buffer record what was
-            ACTUALLY typed rather than the pre-formatting input. Returns
-            False on paste failure OR any unexpected exception during
-            formatting -- either way the caller retains the pending buffer,
-            stays in DICTATE, and plays the existing error earcon.
+            Return delivered bytes for accurate undo and History. Leading seam
+            spacing is added afterward, so cleanup cannot strip it.
+            False signals formatting or delivery failure to the caller.
+            Automatic sends honor clipboard-only output.
             """
             try:
                 raw = text  # pre-pipeline accumulated thought, for history's raw_text
@@ -5423,12 +5415,16 @@ class DictationApp:
                 logger.exception(f'[SESSION] DICTATE commit formatting failed: {e}')
                 return False
 
-            paste_ok, delivery_confirmed = self._paste_preserving_clipboard(
-                formatted,
-                before_paste=commit_focus_guard,
-                return_delivery_confirmation=True,
-                **tutorial_capture.kwargs(tutorial_capture.current()),
-            )
+            formatted = getattr(self._session_mode_manager, '_sentence_prefix', '') + formatted
+            clipboard_only = getattr(self._session_mode_manager, '_sentence_clipboard', False)
+            if clipboard_only:
+                pyperclip.copy(formatted)
+                paste_ok, delivery_confirmed = True, False
+            else:
+                paste_ok, delivery_confirmed = self._paste_preserving_clipboard(
+                    formatted, before_paste=commit_focus_guard,
+                    return_delivery_confirmation=True,
+                    **tutorial_capture.kwargs(tutorial_capture.current()))
             if not paste_ok:
                 return False
 
@@ -5439,7 +5435,7 @@ class DictationApp:
                     raw_text=raw,
                     display_text=display,
                     mode="dictate",
-                    status="success",
+                    status="buffered" if clipboard_only else "success",
                     entry_type="dictation",
                 )
                 self._notify_main_window(display)
@@ -5642,6 +5638,8 @@ class DictationApp:
             live_surface_enabled=listening_display.run_display(self).full,
         )
         tutorial_capture.install(self._session_mode_manager)
+        from samsara.hands_free_delivery import HandsFreeDelivery
+        self._session_mode_manager._hands_free_delivery = HandsFreeDelivery(self)
         from samsara.config_schema import spoken_notices_for_level
         self._session_mode_manager.set_spoken_notices(
             spoken_notices_for_level((self.config.get("tts", {}) or {}).get("feedback_level")))
@@ -7230,12 +7228,12 @@ class DictationApp:
                     from samsara.kept_session_draft import on_session_final
                     on_session_final(self._dictate_preview, text,
                         scratch_success=(outcome.kind == 'scratch_success'),
-                        dictate_committed=(outcome.kind == 'dictate_committed'),
-                        # Queue 88: "bring back my draft" rewrote the staged
-                        # buffer from the recovery slot. The preview has no
-                        # other way to learn that -- the utterance's own text
-                        # is the control phrase, not the draft.
-                        draft_recovered=(outcome.kind == 'dictate_draft_recovered'),
+                        dictate_committed=(outcome.kind == 'dictate_committed' and
+                                          not self._session_mode_manager.dictate_pending_buffer),
+                        # Re-read an earlier draft alongside an immediate receipt.
+                        draft_recovered=(outcome.kind == 'dictate_draft_recovered' or
+                                         outcome.detail.get('immediate') and
+                                         bool(self._session_mode_manager.dictate_pending_buffer)),
                     )
                 except Exception as e:
                     logger.debug(f'[DICTATE-PREVIEW] on_utterance_final failed: {e}')
@@ -7244,6 +7242,8 @@ class DictationApp:
                 if controller is not None:
                     from samsara.kept_session_draft import sync_session_draft
                     sync_session_draft(controller, manager)
+                from samsara.hands_free_delivery import finish_sentence_display
+                finish_sentence_display(self, outcome)
             if _was_dictate_lane:
                 # Shadow intent gate (36): observer only, strictly AFTER
                 # dispatch_utterance has staged/injected the text and the
@@ -12915,7 +12915,7 @@ class DictationApp:
             logger.exception(f"[UI] Failed to hide main window: {e}")
 
     def set_streaming_mode(self, enabled):
-        """Tray-menu entry point: flip the streaming-mode flag."""
+        """Settings entry point: flip the streaming-mode flag."""
         enabled = bool(enabled)
         with self._capslock_lifecycle_lock:
             if not enabled and getattr(self, '_streaming_session', None) is not None:

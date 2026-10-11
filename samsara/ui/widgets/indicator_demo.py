@@ -49,10 +49,14 @@ class DesktopSketch(QWidget):
         y = area.top() if vertical == "top" else area.bottom() - height
         return QRectF(x, y, width, height)
 
-    def indicator_rect(self):
+    def indicator_size(self):
         receipt = bool(self.result_message())
         width = min(210 if self.display == "full" or receipt else (154 if self.beat == 1 else 104), self.work_rect().width() - 20)
         height = (96 if receipt else 60) if self.display == "full" else (68 if receipt else 36)
+        return width, height
+
+    def indicator_rect(self):
+        width, height = self.indicator_size()
         start = self.target_rect("bottom-left", width, height)
         if self.beat != 4:
             return start
@@ -211,7 +215,8 @@ class IndicatorDemo(QWidget):
     BEAT_MS = 2400
     LOOP_MS = 12000
 
-    def __init__(self, parent=None, *, reduced_motion=None, display="full"):
+    def __init__(self, parent=None, *, reduced_motion=None, display="full",
+                 desktop_type=DesktopSketch, manual_steps=True):
         super().__init__(parent)
         self.reduced_motion = system_reduced_motion() if reduced_motion is None else bool(reduced_motion)
         self.setFont(theme.qfont(theme.TYPE_BODY))
@@ -223,7 +228,7 @@ class IndicatorDemo(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 16, 28, 16)
         layout.setSpacing(12)
-        self.desktop = DesktopSketch(self, display=display)
+        self.desktop = desktop_type(self, display=display)
         self.desktop.still = self.reduced_motion
         layout.addWidget(self.desktop, 1)
         self.caption = QLabel()
@@ -236,7 +241,7 @@ class IndicatorDemo(QWidget):
         row.setSpacing(0)
         row.addStretch()
         names = ("rest", "listening", "typed result", "command result", "placement")
-        for index in range(5):
+        for index in range(5 if manual_steps else 0):
             button = _StepDot()
             button.setCheckable(True)
             button.setAccessibleName(f"Step {index+1} of 5: {names[index]}")
@@ -244,7 +249,8 @@ class IndicatorDemo(QWidget):
             row.addWidget(button)
             self.steps.append(button)
         row.addStretch()
-        layout.addLayout(row)
+        if manual_steps:
+            layout.addLayout(row)
         for button in self.steps:
             button.setVisible(self.reduced_motion)
         self._elapsed = None if self.reduced_motion else QElapsedTimer()
@@ -264,13 +270,17 @@ class IndicatorDemo(QWidget):
             raise ValueError(beat)
         changed = beat != self.desktop.beat
         self.desktop.beat, self.desktop.phase = beat, phase
-        self.caption.setText(CAPTIONS[beat])
-        self.caption.setAccessibleName(CAPTIONS[beat])
+        caption = self.caption_for_beat(beat)
+        self.caption.setText(caption)
+        self.caption.setAccessibleName(caption)
         for index, button in enumerate(self.steps):
             button.setChecked(index == beat)
         self.desktop.update()
         if changed:
             self.beat_changed.emit(beat)
+
+    def caption_for_beat(self, beat):
+        return CAPTIONS[beat]
 
     def seek(self, milliseconds):
         elapsed = milliseconds % self.LOOP_MS

@@ -11,6 +11,8 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from samsara.onboarding import display_placement as placement
 from samsara.ui import first_run_wizard_qt as wizard, tutorial_qt, theme
 
+# 522: the picker owns the sole desktop and the shared demo loop now.
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -33,7 +35,7 @@ def test_fresh_setup_starts_bottom_left(windows, tmp_path, display):
     win._listening_display_page.group.button(('compact', 'full').index(display)).setChecked(True)
     assert placement.current_position(win._config, display) == 'bottom-left'
     assert win._display_placement_page.picker.value() == 'bottom-left'
-    assert win._display_placement_page.demo.desktop.display == display
+    assert win._display_placement_page.picker.desktop.display == display
     assert win._display_placement_page.picker.desktop.display == display
 
 
@@ -130,15 +132,15 @@ def test_leaving_page_and_closing_stops_demo(windows, qapp, tmp_path, kind):
     win.show()
     win._show_step()
     qapp.processEvents()
-    if page.demo.timer is not None:
-        assert page.demo.timer.isActive()
+    if page.picker.timer is not None:
+        assert page.picker.timer.isActive()
     win._step = index + 1
     win._show_step()
-    assert page.demo.timer is None or not page.demo.timer.isActive()
+    assert page.picker.timer is None or not page.picker.timer.isActive()
     win._step = index
     win._show_step()
     win.close()
-    assert page.demo.timer is None or not page.demo.timer.isActive()
+    assert page.picker.timer is None or not page.picker.timer.isActive()
 
 
 @pytest.mark.parametrize('with_try', [False, True])
@@ -167,8 +169,8 @@ def test_tutorial_page_fits_default_and_order(windows, qapp, monkeypatch, with_t
     assert win.height() <= win._default_window_height
     assert win._display_page.minimumSizeHint().height() <= win._display_page.height()
     for beat in range(5):
-        win._display_page.demo.set_frame(beat)
-        assert win._display_page.demo.desktop.work_rect().contains(win._display_page.demo.desktop.indicator_rect())
+        win._display_page.picker.set_frame(beat)
+        assert win._display_page.picker.desktop.work_rect().contains(win._display_page.picker.desktop.indicator_rect())
 
 
 @pytest.mark.parametrize('reduced', [False, True])

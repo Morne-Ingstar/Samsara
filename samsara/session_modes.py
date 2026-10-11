@@ -1697,6 +1697,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
             return (f"{CHIP_ARROW} {mode}: display error" if mode else f"{CHIP_ARROW} display error", "warning")
         return (f"{CHIP_ARROW} {mode}" if mode else CHIP_ARROW, "accent")
 
+    if detail.get('saved_to_history'):
+        label, severity = outcome_chip(kind, {k: v for k, v in detail.items() if k != 'saved_to_history'})
+        return (f'{label} - saved to History', severity)
     if kind == "dictate_commit_failed":
         detail = detail or {}
         reason = _reason(kind, detail) if detail.get("reason") or detail.get("error") \
@@ -1773,6 +1776,10 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return ("nothing to take back", "warning")
 
     if kind in ("dictate_committed", "dictate_injected"):
+        if detail.get('copied_to_clipboard'):
+            return ('copied to clipboard', 'success')
+        if detail.get('empty') and detail.get('immediate'):
+            return ('nothing to send', 'accent')
         if detail.get("delivery_unverified"):
             return ("sent, unconfirmed", "warning")
         return ("typed", "success")
@@ -3601,6 +3608,9 @@ class SessionModeManager:
     def _dispatch_dictate(
         self, chunk_raw: str, audio_ref: Any = None,
     ) -> DispatchOutcome:
+        delivery = getattr(self, '_hands_free_delivery', None)
+        if delivery is not None and delivery.enabled(self):
+            return delivery.deliver(self, chunk_raw, audio_ref)
         if self._buffer_dictate_until_commit:
             return self._stage_dictate_chunk(chunk_raw, audio_ref=audio_ref)
 
@@ -3781,13 +3791,11 @@ class SessionModeManager:
                 self._dictate_target_hwnd = None
             return DispatchOutcome(kind="dictate_committed", detail={
                 "text": "", "empty": True, "mode_retained": self.mode,
+                **({'immediate': True} if getattr(self, '_hands_free_delivery', None)
+                   and self._hands_free_delivery.enabled(self) else {}),
             })
 
-        # A persistent hands-free session is intentionally allowed to span
-        # applications and text boxes. The foreground at the explicit commit
-        # word ("end") is therefore the destination for this thought; staging
-        # speech must not pin the session to whichever window happened to be
-        # focused minutes earlier.
+        # Choose the current destination for each explicit or immediate send.
         foreground = self._foreground_exe_resolver()
         current_hwnd = self._foreground_hwnd_resolver()
         self._dictate_target_process = foreground
@@ -3816,7 +3824,6 @@ class SessionModeManager:
                 "foreground_hwnd": current_hwnd,
             })
 
-        # Queue 50: never "type" into a window that will silently drop it.
         verdict = self._foreground_verdict()
         if verdict is not None and getattr(verdict, "blocked", False):
             log.warning(
@@ -3895,13 +3902,7 @@ class SessionModeManager:
                 "pending_chars": len(text), "error": str(error),
             })
 
-        # inject_fn runs the full formatting pipeline (process_transcription,
-        # clean_text, smart_correct, formatting tokens) over `text` and may
-        # return the ACTUAL delivered/formatted string -- use that (not the
-        # pre-formatting `text` passed in) for the undo record and
-        # stage_buffer, so scratch-that and any "the staged text" AVA
-        # reference reflect what was really typed. Legacy bool/None-returning
-        # injectors keep today's behavior (record the pre-formatting text).
+        # Record the delivered bytes for undo; legacy callbacks retain text.
         delivery_confirmed = True
         if isinstance(delivered, InjectionDelivery):
             final_text = delivered.text
@@ -3925,9 +3926,7 @@ class SessionModeManager:
                 extra={"target_process": self._dictate_target_process,
                        "hwnd": current_hwnd},
             ))
-        # A completed thought must not end the persistent DICTATE lane. Drop
-        # only its focus lock; the next staged chunk captures whichever text
-        # box is focused then.
+        # Release the completed thought's focus lock, retaining DICTATE.
         self._dictate_target_process = None
         self._dictate_target_hwnd = None
         if target_mode is not None:
@@ -3996,11 +3995,12 @@ class SessionModeManager:
              the user right now, so undoing here would delete content in
              the wrong window -- irreversible for a keyboard-unable user.
              We refuse rather than guess or auto-refocus."""
-        # A parked draft is wholly local.  After the higher-priority pending
-        # execution/correction paths in dispatch_utterance have declined it,
-        # undo its newest document operation and never fall through to an
-        # external delete merely because the local stack is empty.
-        if self._parked_hold:
+        # Immediate scratch uses only confirmed external undo; parked drafts stay local.
+        delivery = getattr(self, '_hands_free_delivery', None)
+        immediate = self.mode is SessionMode.DICTATE and delivery is not None and delivery.enabled(self)
+        if immediate and not delivery.scratch_ready(self):
+            return False
+        if self._parked_hold and not immediate:
             operation = self._draft.newest_operation
             if operation and self._draft.undo():
                 if operation == "append":

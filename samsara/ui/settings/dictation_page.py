@@ -1,10 +1,11 @@
 """Dictation Settings destination."""
 
 import copy
+from functools import wraps
 from samsara.config_schema import SETTINGS_SCHEMA
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QLineEdit, QWidget, QSizePolicy
-from .presentation import SettingRow
+from .presentation import SettingRow, CleanComboBox
 
 TITLE = "Dictation"
 SUBTITLE = "Choose how you start speaking and deliver text."
@@ -15,6 +16,9 @@ BASE = [
         "cmd_tab_enabled",
         "command_mode.enabled"
     ],
+    ["Hands-free sends",
+     "As I speak types each sentence when you pause. When I say send holds your words in the display until you say your paste word or choose Insert text.",
+     "hands_free_send_mode", "hands_free.send_mode"],  # Stand-in wording (518).
     [
         "Wake activation",
         "Start a session by saying your wake phrase.",
@@ -268,6 +272,25 @@ class _WakeProfilesEditor(QWidget):
 
 
 def build(owner):
+    sends = CleanComboBox()
+    sends.addItem("When I say send", "staged")
+    sends.addItem("As I speak", "as_i_speak")
+    current = (owner.app.config.get('hands_free') or {}).get('send_mode', 'staged')
+    sends.setCurrentIndex(max(0, sends.findData(current)))
+    sends.setAccessibleName('Hands-free sends')
+    owner._widgets['hands_free_send_mode'] = sends
+
+    save_general = owner._source_saves['general'][0]
+
+    @wraps(save_general)
+    def save_sends(_updates):
+        updates = save_general(_updates)
+        hands_free = dict(updates.get('hands_free') or owner.app.config.get('hands_free') or {})
+        hands_free['send_mode'] = sends.currentData()
+        updates['hands_free'] = hands_free
+        return updates
+
+    owner._source_saves['general'][0] = save_sends
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
     profiles = copy.deepcopy(owner.app.config.get("wake_profiles", []))
     if "wake_profiles" not in owner.app.config:
