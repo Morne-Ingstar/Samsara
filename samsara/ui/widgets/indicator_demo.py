@@ -9,7 +9,6 @@ from samsara.ui import theme
 from samsara.ui.live_surface_accessibility import system_reduced_motion
 from samsara.ui.tray_qt import render_mark
 
-# PLACEHOLDER COPY (490)
 CAPTIONS = (
     "This is where Samsara shows that it is listening and what it did — keep it where you can always see it.",
     "Hold your dictation key to speak; the red mark shows that Samsara is listening.",

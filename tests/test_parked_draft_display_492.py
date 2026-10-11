@@ -16,7 +16,8 @@ def test_ended_session_names_kept_draft_and_available_clicks(qapp):
     w = LiveSurfaceWidget(parked())
     w.show(); qapp.processEvents()
     assert w._lane.text() == "Kept draft"
-    assert "Insert text" in w._state.text() and "Clear" in w._state.text()
+    # 517 A1: old visible "Insert text ... Clear" hint -> buttons alone.
+    assert w._state.text() == "" and not w._state.isVisible()
     assert w._insert.isVisible() and w._clear.isVisible()
     w.hide(); w.deleteLater()
 
@@ -49,7 +50,10 @@ def test_active_hands_free_keeps_its_live_label(qapp):
 def test_failed_paste_notice_stays_visible_with_kept_text(qapp):
     w = LiveSurfaceWidget(parked(notice=Notice(NoticeKind.ERROR, "Synthetic paste failure", None)))
     w.show(); qapp.processEvents()
-    assert w._band.isVisible() and "failure" in w._band.label.text()
+    # 517: old full-width failure band -> single-line error chip in header.
+    assert not w._band.isVisible()
+    assert w._chip.isVisible() and "failure" in w._chip.notice.message
+    assert w._chip.toolTip() == "Synthetic paste failure"
     assert "Synthetic." in w._transcript.toPlainText()
     assert w._insert.isVisible() and w._clear.isVisible()
     w.hide(); w.deleteLater()
@@ -188,7 +192,9 @@ def test_notice_resizes_only_away_from_dock_and_preserves_text_distance(qapp, fo
         distance = bottom - (w.y()+w._transcript.y())
         assert w._band_height == 0 and not w._band.isVisible()
         w.set_reduced_motion(False)
-        w.refresh(replace(base, notice=Notice(NoticeKind.ERROR, 'Synthetic message', None)))
+        # 517: old one-line notice grew by >=56 DIP; only content needing
+        # a row now grows away from its dock. Short receipts are header chips.
+        w.refresh(replace(base, notice=Notice(NoticeKind.ERROR, 'Synthetic message\nSecond line', None)))
         c._place_widget()
         assert w._animation.state() == QAbstractAnimation.State.Running
         w._animation.setCurrentTime(w._animation.duration()//2); qapp.processEvents()

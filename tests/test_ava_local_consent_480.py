@@ -85,7 +85,7 @@ def test_saved_pending_button_accepts_without_route_toggle(make_window, monkeypa
     assert button.text() == 'Give your OK'
     assert button.accessibleName() == 'Give your OK'
     assert row.heading.text() == 'Before Ava can answer'
-    assert row.detail.text() == 'What Ava needs before answering.'
+    assert not row.isAncestorOf(row.detail) and row.text.layout().count() == 1
     assert row.isAncestorOf(button)
     monkeypatch.setattr(consent, 'request_consent', lambda parent, staged, **kw: grant(staged))
     button.click()
@@ -182,6 +182,7 @@ def test_useful_status_visible(make_window, monkeypatch, case):
     expected = {'pending': 'Ava needs your OK to run in the cloud.', 'needs-key': 'API key needed', 'unreachable': "can't reach DeepSeek"}[case]
     assert expected in win._widgets['ava_route_status'].text()
     assert win._widgets['ava_consent_button'].text() == ('Give your OK' if case == 'pending' else 'Read this again')
+    assert win._rows_by_widget['ava_route_status'].text.layout().count() == 1
 
 
 def test_pending_wins_over_cached_ready(make_window, monkeypatch):

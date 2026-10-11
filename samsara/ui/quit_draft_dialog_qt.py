@@ -25,7 +25,6 @@ class QuitDraftDialog(QDialog):
         layout.addWidget(label)
         row = QHBoxLayout()
         self.action_buttons = []
-        # Stand-in copy, pending the owner's three write asks in 501/ASK.json.
         for text, choice in (("Send it", "send"), ("Discard it", "discard"),
                              ("Keep Samsara open", "keep")):
             button = QPushButton(text, self)

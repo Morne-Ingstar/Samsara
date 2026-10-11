@@ -1,5 +1,4 @@
 """Refills must survive signals, pending feedback and first-open requests."""
-import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -52,29 +51,27 @@ def test_model_signal_refill_is_coalesced_and_latest_query_wins(window):
     assert not win._refill_running
 
 
-def test_flash_closure_does_not_keep_item_wrapper_and_ignores_new_generation(window, monkeypatch):
+def test_details_do_not_keep_item_wrapper_and_close_on_new_generation(window, monkeypatch):
     _, win = window
     callbacks = []
     monkeypatch.setattr(cs.QTimer, "singleShot", lambda *args: callbacks.append(args[-1]))
     win._on_item_clicked(win._list.item(0))
-    callback = callbacks.pop()
-    saved = inspect.getclosurevars(callback).nonlocals.values()
-    assert not any(isinstance(value, QListWidgetItem) for value in saved)
+    assert not callbacks  # row activation no longer schedules flash callbacks
+    assert not any(isinstance(value, QListWidgetItem) for value in vars(win._detail_card).values())
     win._apply_filter("")
-    before = win._list.item(0).foreground()
-    callback()
-    assert win._list.item(0).foreground() == before
+    assert win._detail_card.phrase is None
 
 
-def test_flash_restores_by_command_id_after_row_moves(window, monkeypatch):
+def test_details_use_phrase_after_row_moves(window, monkeypatch):
     _, win = window
     callbacks = []
     monkeypatch.setattr(cs.QTimer, "singleShot", lambda *args: callbacks.append(args[-1]))
     win._on_item_clicked(win._list.item(0))
     item = win._list.takeItem(0)
     win._list.addItem(item)
-    callbacks.pop()()
-    assert item.background().color().alpha() == 0
+    assert not callbacks
+    assert win._detail_card.phrase == item.data(Qt.ItemDataRole.UserRole)
+    assert item.background().style() == Qt.BrushStyle.NoBrush
 
 
 def test_refill_restores_signals_and_guard_on_exception(window, monkeypatch):

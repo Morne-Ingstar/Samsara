@@ -265,7 +265,7 @@ _STEPS = [
     ("Music", COPY["music.title"]),
     ("Voice", COPY["voice.title"]),
     (listening_display.LABEL, listening_display.QUESTION),
-    ("Position", PLACEMENT_TITLE),  # PLACEHOLDER COPY (490)
+    ("Position", PLACEMENT_TITLE),
     ("Complete",   "Setup Complete!"),
 ]
 

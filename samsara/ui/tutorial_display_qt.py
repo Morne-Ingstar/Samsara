@@ -48,7 +48,6 @@ class DisplayPlacementPage(QWidget):
             self.demo.desktop.drawing_scale = .6
             self.demo.desktop.setFixedHeight(96)
         layout.addWidget(self.demo)
-        # PLACEHOLDER COPY (490)
         self.reason = QLabel(CAPTIONS[0], self)
         self.reason.setWordWrap(True)
         layout.addWidget(self.reason)

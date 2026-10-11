@@ -28,8 +28,8 @@ BASE = [
         "ava_mode_key"
     ],
     [
-        "Before Ava can answer",  # PLACEHOLDER COPY (480)
-        "What Ava needs before answering.",  # PLACEHOLDER COPY (480)
+        "Before Ava can answer",
+        "",
         "ava_route_status",
         ""
     ],

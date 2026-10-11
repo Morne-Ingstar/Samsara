@@ -51,15 +51,19 @@ def test_roles_effective_font_ink_and_accessible_names(surface, qapp, palette, k
     assert w._lane.text() == 'Command' and w._state.text() == 'listening'
     assert w._lane.font().pixelSize() == 18 and int(w._lane.font().weight()) == 700
     assert w._state.font().pixelSize() == 16 and int(w._state.font().weight()) == 400
-    label = w._band.label
-    fill = getattr(theme, FILL_TOKENS[w.view.notice.feedback])
-    assert label.font().pixelSize() == 14 and int(label.font().weight()) == 700
-    assert label.palette().color(QPalette.ColorRole.WindowText).name() == theme.qcolor(theme.ink_on(fill)).name()
-    assert theme.contrast_ratio(theme.ink_on(fill), fill) >= 4.5
+    feedback = w._chip if w._chip is not None else w._band
+    label = feedback.label
+    # 517: old 14px bold ink-on-solid-fill -> 14px chip / 16px row,
+    # normal body ink on the card with a quiet tint or a thin accent rule.
+    assert label.font().pixelSize() == (14 if feedback.chip else 16)
+    assert int(label.font().weight()) == 400
+    assert label.palette().color(QPalette.ColorRole.WindowText).name() == theme.qcolor(theme.TEXT_PRIMARY).name()
+    assert theme.contrast_ratio(theme.TEXT_PRIMARY, theme.BG1) >= 4.5
     assert theme.contrast_ratio(theme.TEXT_SECONDARY, theme.BG1) >= 4.5
     assert len({x.objectName() for x in [w._lane, w._state, label]}) == 3
-    assert all(x.accessibleName() for x in [w._lane, w._state, w._band, label])
-    assert w._lane.y() < w._state.y() < w._band.y()
+    assert all(x.accessibleName() for x in [w._lane, w._state, feedback, label])
+    assert w._lane.y() < w._state.y()
+    assert (feedback.y() < w._state.y()) if feedback.chip else (w._state.y() < feedback.y())
 
 
 @pytest.mark.parametrize('kind, expected', [('success', NoticeKind.SUCCESS), ('warning', NoticeKind.WARNING),
@@ -91,10 +95,12 @@ def test_question_owns_band_while_results_drop_and_failures_coexist(surface):
     i.show_outcome('Recording failed', 'error', 3000); c.drain()
     assert c.view().notice.owner == 'q1'
     assert c.view().secondary_notice.feedback is FeedbackKind.ERROR
-    assert c.widget.height() > 132
+    assert c.widget.height() == 76 + c.widget._band_height
+    assert c.widget._secondary_band.isVisible()
     clock[0] = 90; c.refresh_expired()
     assert c.view().notice.owner == 'q1' and c.view().secondary_notice is None
-    assert c.widget.height() == 132
+    # Old question-only height 132 -> 76 + content-measured question row.
+    assert c.widget.height() == 76 + c.widget._band.required_height(c.widget.card_content_rect.width())
     i.clear_feedback('other'); c.drain(); assert c.view().notice.owner == 'q1'
     i.clear_feedback('q1'); c.drain(); assert c.view().notice.kind is NoticeKind.NONE
     assert 'Captured' not in c.widget.accessibleDescription()
@@ -192,10 +198,10 @@ def test_question_resolved_before_queued_handoff_does_not_reappear(surface):
 
 @pytest.mark.parametrize('edge', list(Edge))
 def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, edge):
-    """492, 2026-10-10: owner's huge-gap question reverses band reservation.
+    """517: old `height == before.height() + band_height` -> exact geometry.
 
-    Bottom keeps its bottom edge and transcript distance; other docks keep
-    the header/mark with room below. Clear stays in its header slot throughout.
+    Short receipts occupy the fixed header; every dock keeps mark, Clear,
+    transcript, position and size unchanged, including on expiry.
     """
     c, i, clock = surface
     c.app.config['ui']['live_surface']['placement'] = {'preferred_monitor': 'test',
@@ -211,7 +217,8 @@ def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, 
     for kind in ['success', 'warning', 'error', 'accent']:
         i.show_outcome('Synthetic receipt', kind, 1800); c.drain(); qapp.processEvents()
         band_height = w._band.required_height(w.card_content_rect.width())
-        assert band_height > 0 and w.height() == before.height() + band_height
+        assert band_height == 0 and w.geometry() == before
+        assert w._chip is not None and w._chip.isVisible()
         assert w.x() == before.x() and w.width() == before.width()
         assert w._clear.geometry() == clear
         assert w._transcript.size() == transcript.size()
@@ -221,9 +228,10 @@ def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, 
         else:
             assert w.y() == before.y()
             assert w.mapToGlobal(w.mark_rect.topLeft()) == mark
-            assert w._transcript.y() == transcript.y() + band_height
+            assert w._transcript.y() == transcript.y()
         clock[0] = c.view().notice.expires_at; c.refresh_expired(); qapp.processEvents()
         assert w._band.required_height(w.card_content_rect.width()) == 0
+        assert w._chip is None
         assert w.geometry() == before
         assert w._clear.geometry() == clear and w._transcript.geometry() == transcript
         assert w.mapToGlobal(w.mark_rect.topLeft()) == mark

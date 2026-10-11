@@ -1,4 +1,4 @@
-"""Pure first-run recommendations and reviewable stand-in copy (373)."""
+"""Pure first-run recommendations and owner-approved copy (373)."""
 from samsara.config_schema import SETTINGS_SCHEMA
 
 
@@ -46,7 +46,6 @@ COPY = {
     'talking.title': 'Talking',
     'talking.question': 'How do you want to record?',
     'talking.current': 'Current recording mode',
-    # STAND-IN COPY (373): shared option/summary labels; one grouped write ask.
     'talking.hold': 'Hold',
     'talking.toggle': 'Tap',
     'talking.record_key': 'Record key',

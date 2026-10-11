@@ -134,11 +134,14 @@ def test_dictionary_save_error_ignores_deleted_child(qapp, tmp_path, monkeypatch
     callbacks[0]()
 
 
-def test_cheatsheet_flash_timer_is_owned_and_ignores_removed_item(qapp, monkeypatch):
+def test_cheatsheet_details_keep_no_removed_item_or_flash_timer(qapp, monkeypatch):
     owner = QWidget()
     owner._item_generation = 3
     owner._list = QListWidget(owner)
-    owner._execute = lambda _phrase: None
+    executed, details = [], []
+    owner._execute = executed.append
+    owner._detail_card = SimpleNamespace(parentWidget=lambda: owner)
+    owner._show_details = lambda *args: details.append(args)
     item = QListWidgetItem("Test command")
     owner._list.addItem(item)
     item.setData(Qt.ItemDataRole.UserRole, "test command")
@@ -148,8 +151,8 @@ def test_cheatsheet_flash_timer_is_owned_and_ignores_removed_item(qapp, monkeypa
                         lambda delay, context, callback: scheduled.append((delay, context, callback)))
 
     _CheatSheetWindow._on_item_clicked(owner, item)
-    assert len(scheduled) == 1
-    assert scheduled[0][0] == 300
-    assert scheduled[0][1] is owner
+    assert not scheduled and not executed
+    assert details[0][0] == "test command"
+    assert not any(isinstance(value, QListWidgetItem) for value in details[0])
     owner._list.clear()
-    scheduled[0][2]()
+    assert details[0][0] == "test command"

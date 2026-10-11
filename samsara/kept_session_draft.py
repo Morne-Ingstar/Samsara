@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 
-# Stand-in copy; the owner can replace both sentences through 510/ASK.json.
 COMPACT_KEPT_DRAFT_HINT = "Kept draft: restart hands-free to send or clear."
 PAUSED_HOLD_HISTORY_HINT = "Saved to History. The kept draft is unchanged."
 

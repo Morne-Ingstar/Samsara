@@ -149,7 +149,7 @@ class AvaCloudPage:
         ava_enabled.setAccessibleName("Turn Ava on or off")
         self._widgets["ava_enabled"] = ava_enabled
         status = QLabel(ai_preferences.ava_route_status(self.app.config), container)
-        status.setAccessibleName("Ava setup status")  # PLACEHOLDER COPY (480)
+        status.setAccessibleName("Ava setup status")
         status.setWordWrap(True)
         self._widgets["ava_route_status"] = status
         layout.addWidget(status)
@@ -759,8 +759,10 @@ class AvaCloudPage:
         replay = rows.get('ava:Read this again')
         if row is None or replay is None:
             return
+        row.detail.hide()
+        row.detail.setParent(None)
         button = self._widgets['ava_consent_button']
-        button.setText("Give your OK" if pending else "Read this again")  # PLACEHOLDER COPY (480)
+        button.setText("Give your OK" if pending else "Read this again")
         button.setAccessibleName(button.text())
         if pending:
             row.grid.addWidget(button, 1, 2, Qt.AlignmentFlag.AlignLeft)
@@ -786,7 +788,6 @@ class AvaCloudPage:
         state = ai_preferences.runtime_state(effective, 'ava')
         text = ai_preferences.ava_route_status(effective)
         if pending:
-            # PLACEHOLDER COPY (480): approved OK wording, route-specific sentence.
             text = "Ava needs your OK to run in the cloud." if policy == 'cloud' else "Ava needs your OK to run on this PC."
         visible = pending or (policy != 'off' and not state.allowed)
         if not visible and policy != 'off':

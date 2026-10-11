@@ -241,7 +241,9 @@ def test_optional_ai_off_expires_without_further_input(surface):
     c, indicator, clock = surface
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
-    assert c.widget._band.label.text() == "Optional AI is off"
+    # 517: old full band label -> bounded chip; full words survive elision.
+    assert c.widget._chip.notice.message == "Optional AI is off"
+    assert c.widget._chip.toolTip() == "Optional AI is off"
     clock[0] += 4.1
     QTest.qWait(150)
     assert c.widget.view.notice.kind is NoticeKind.NONE

@@ -252,7 +252,9 @@ def test_both_widgets_keep_feedback_visible_when_returning_to_rest(qapp, monkeyp
         full.set_listening(False); full.clear_outcome(); full.hide(); c.drain()
         compact.set_listening(False); compact.clear_outcome(); compact.hide()
         qapp.processEvents()
-        assert c.widget.isVisible() and c.widget._band.label.text() == label
+        # 517: old band label equality -> visible header chip with full tooltip.
+        assert c.widget.isVisible() and c.widget._chip.isVisible()
+        assert c.widget._chip.notice.message == label and c.widget._chip.toolTip() == label
         assert c.widget._state.text() == 'Idle'
         assert compact.isVisible() and compact._active_chip() == (label, 'warning')
         destination = os.environ.get('SAMSARA_475_PROOF_DIR')

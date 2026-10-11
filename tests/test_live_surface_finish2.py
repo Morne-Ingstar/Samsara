@@ -120,7 +120,7 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
     assert not app.recording and app._streaming_session is None
     assert app._session_mode_manager.draft_document.text == ''
     assert c.view().text == '' and c.view().provisional_text == ''
-    assert c.widget._band.label.text() == 'cleared; nothing inserted'
+    assert c.widget._chip.notice.message == 'cleared; nothing inserted'  # 517: result moved into header.
     assert c.widget._mark.capture != 'recording'
     app._paste_preserving_clipboard.assert_not_called()
     assert injected == []

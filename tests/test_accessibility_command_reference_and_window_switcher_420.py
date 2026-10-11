@@ -121,8 +121,13 @@ def test_execute_keys_and_mouse_use_the_same_callback(reference, qapp, phrase, k
     row.setFocus()
     QTest.keyClick(row, key)
     qapp.processEvents()
+    assert app.executed == []
+    assert win._detail_card.isVisible()
+    win._detail_card.run_button.click()
     assert app.executed == [phrase]
     QTest.mouseClick(row, Qt.MouseButton.LeftButton)
+    assert app.executed == [phrase]
+    win._detail_card.run_button.click()
     assert app.executed == [phrase, phrase]
 
 

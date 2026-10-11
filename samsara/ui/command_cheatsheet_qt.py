@@ -22,7 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Callable, List
 
-from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect, QSignalBlocker
+from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect, QSignalBlocker, QEvent
 from PySide6.QtGui import QColor, QCursor, QPalette, QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -37,6 +37,8 @@ from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
 from samsara.ui import theme
+from samsara.ui.command_reference_detail import CommandDetailCard, CommandRowDelegate, style_search
+from samsara.ui.settings.calm_layout import ScrollEdges
 
 logger = get_logger(__name__)
 
@@ -252,7 +254,7 @@ QListWidget {{
     color: {theme.TEXT_PRIMARY};
     font-size: {theme.TYPE_BODY}px;
 }}
-QListWidget::item {{ padding: 6px 10px; }}
+QListWidget::item {{ padding: 0; }}
 QListWidget::item:hover {{ background: {theme.BG2}; }}
 QListWidget::item:selected {{ background: {_selected_bg()}; color: {theme.ACCENT}; }}
 QLineEdit {{
@@ -264,17 +266,7 @@ QLineEdit {{
     padding: 6px 10px;
 }}
 QLineEdit:focus {{ border-color: {theme.ACCENT}; }}
-QScrollBar:vertical {{
-    background: {theme.BG0};
-    width: 6px;
-    border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {theme.BORDER};
-    border-radius: 3px;
-    min-height: 20px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+{theme.SCROLLBAR_QSS}
 QSlider::groove:horizontal {{
     height: 4px;
     background: {theme.BORDER};
@@ -296,7 +288,8 @@ QComboBox {{
     color: {theme.TEXT_PRIMARY};
     border: 1px solid {theme.BORDER};
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 0 8px;
+    min-height: 0;
     font-size: {theme.TYPE_BODY}px;
     min-width: 120px;
 }}
@@ -415,14 +408,14 @@ class CommandCheatSheetQt:
 class _TitleBar(QWidget):
     def __init__(self, win: "_CheatSheetWindow"):
         super().__init__(win)
-        self.setFixedHeight(48)
+        self.setFixedHeight(theme.HIT_TARGET_MIN + 2 * theme.SPACE_1)
         self.setStyleSheet(f"background:{theme.BG1};")
         self._win = win
         self._drag_pos: QPoint | None = None
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 0, 4, 0)
-        lay.setSpacing(6)
+        lay.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
+        lay.setSpacing(theme.SPACE_1)
 
         self._title_label = QLabel("Command Reference")
         self._title_label.setStyleSheet(
@@ -434,7 +427,6 @@ class _TitleBar(QWidget):
         self._opacity_label = QLabel("Opacity")
         self._opacity_label.setStyleSheet(
             f"background:transparent;color:{theme.TEXT_SECONDARY};"
-            f"border-left:1px solid {theme.BORDER};padding-left:10px;"
             f"font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(self._opacity_label)
 
@@ -454,7 +446,7 @@ class _TitleBar(QWidget):
         self._close_button = QPushButton("✕")
         self._close_button.setAccessibleName("Close command reference")
         self._close_button.setToolTip("Close command reference")
-        self._close_button.setFixedSize(44, 44)
+        self._close_button.setFixedSize(theme.HIT_TARGET_MIN, theme.HIT_TARGET_MIN)
         self._close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._close_button.setStyleSheet(
             f"QPushButton{{background:{theme.BG2};color:{theme.TEXT_SECONDARY};"
@@ -515,16 +507,15 @@ class _StaticRow(_ActionButton):
         self._phrase = cmd["phrase"]
         self._execute_cb  = execute_cb
         self._toggle_pin  = toggle_pin_cb
-        self._flashing    = False
 
-        self.setFixedHeight(32)        # 78: 28 px clipped 16 px text
+        self.setFixedHeight(theme.HIT_TARGET_MIN)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._set_background(theme.BG1)
         self.clicked.connect(self._activate)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(4, 0, 8, 0)
-        lay.setSpacing(0)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(theme.SPACE_1)
 
         self._pin_lbl = _ActionButton(self)
         self._pin_lbl.setCheckable(True)
@@ -542,7 +533,6 @@ class _StaticRow(_ActionButton):
         pin_layout.addWidget(self._pin_mark)
         self._pin_lbl.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._pin_lbl.clicked.connect(self._on_pin)
-        lay.addWidget(self._pin_lbl)
 
         phrase_lbl = QLabel(cmd["phrase"].title())
         self.setAccessibleName(phrase_lbl.text())
@@ -559,6 +549,7 @@ class _StaticRow(_ActionButton):
             right_lbl = QLabel(right_text)
             right_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             lay.addWidget(right_lbl)
+        lay.addWidget(self._pin_lbl)
 
     def _on_pin(self):
         pinned = self._pin_lbl.isChecked()
@@ -571,33 +562,23 @@ class _StaticRow(_ActionButton):
 
     def _set_background(self, colour):
         # QLabel inherits QFrame: the former frame rule also filled its labels.
-        self.setStyleSheet(f"QAbstractButton,QLabel{{background:{colour};border:none;}}")
+        self.setStyleSheet(
+            f"QAbstractButton{{background:{colour};border:none;border-bottom:1px solid {theme.BORDER_FAINT};}}"
+            f"QLabel{{background:transparent;border:none;}}")
 
     def _activate(self):
-        self._flash()
         try:
-            self._execute_cb(self._phrase)
+            self._execute_cb(self._phrase, self)
         except Exception as exc:
             print(f"[CHEATSHEET] Execute '{self._phrase}': {exc}")
 
     def enterEvent(self, e):
-        if not self._flashing:
-            self._set_background(theme.BG2)
+        self._set_background(theme.BG2)
         super().enterEvent(e)
 
     def leaveEvent(self, e):
-        if not self._flashing:
-            self._set_background(theme.BG1)
-        super().leaveEvent(e)
-
-    def _flash(self):
-        self._flashing = True
-        self._set_background(_selected_bg())
-        QTimer.singleShot(300, self, self._unflash)
-
-    def _unflash(self):
-        self._flashing = False
         self._set_background(theme.BG1)
+        super().leaveEvent(e)
 
 
 # ---------------------------------------------------------------------------
@@ -618,19 +599,20 @@ class _CategoryTabBar(QWidget):
         self._on_live_only = on_live_only
         self._pack_ids: List[str] = []
 
-        self.setFixedHeight(44)
+        self.setFixedHeight(theme.HIT_TARGET_MIN + theme.SPACE_2)
         self.setStyleSheet(
-            f"background:{theme.BG1};border-bottom:1px solid {theme.BORDER};"
+            f"background:{theme.BG0};"
         )
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 0, 8, 0)
-        lay.setSpacing(6)
+        lay.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
+        lay.setSpacing(theme.SPACE_1)
 
         self._combo = QComboBox()
         self._combo.setAccessibleName("Command category")
         self._combo.setToolTip("Choose a command category")
         self._combo.setStyleSheet(_ss())
+        self._combo.setFixedHeight(theme.HIT_TARGET_MIN)
         # Queue 78: AdjustToContents made the combo demand the width of its
         # longest pack name, and everything to its right -- "Live here only"
         # among them -- was clipped instead. The combo is the one thing on
@@ -647,6 +629,7 @@ class _CategoryTabBar(QWidget):
         # Queue 68: commands scoped to another app / state are hidden by
         # default; the box says how many and lets the user see them all.
         self._live_only = QCheckBox("Live only")
+        self._live_only.setFixedHeight(theme.HIT_TARGET_MIN)
         self._live_only.setAccessibleName("Show commands live here only")
         self._live_only.setChecked(True)
         self._live_only.setToolTip(
@@ -721,6 +704,17 @@ class _VisibleSizeGrip(QSizeGrip):
         self._cue.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._cue.setStyleSheet(
             f"background:transparent;color:{theme.ACCENT};font-size:{theme.TYPE_HEADING}px;")
+        parent.installEventFilter(self)
+
+    def eventFilter(self, parent, event):
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            QTimer.singleShot(0, self, self._place)
+        return super().eventFilter(parent, event)
+
+    def _place(self):
+        parent = self.parentWidget()
+        self.move(parent.width() - self.width(), parent.height() - self.height())
+        self.raise_()
 
     def resizeEvent(self, event):
         self._cue.setGeometry(self.rect())
@@ -797,16 +791,11 @@ class _CheatSheetWindow(QMainWindow):
         search_wrap = QWidget()
         search_wrap.setStyleSheet(f"background:{theme.BG0};")
         search_layout = QHBoxLayout(search_wrap)
-        search_layout.setContentsMargins(8, 6, 8, 6)
+        search_layout.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
         self._filter = QLineEdit()
         self._filter.setAccessibleName("Search commands")
         self._filter.setPlaceholderText("Search commands…")
-        self._filter.setMinimumHeight(44)
-        self._filter.setStyleSheet(
-            f"QLineEdit{{background:{theme.BG2};border:1px solid {theme.BORDER};"
-            f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;"
-            f"padding:7px 10px;}}QLineEdit:focus{{border-color:{theme.ACCENT};}}"
-        )
+        style_search(self._filter)
         # Queue 78: Qt paints a placeholder at ~50% of the text colour, which
         # lands under 3:1. The role is set explicitly so it is TEXT_SECONDARY.
         _palette = self._filter.palette()
@@ -828,7 +817,7 @@ class _CheatSheetWindow(QMainWindow):
         self._static_pane = QWidget()
         self._static_pane.setStyleSheet(f"background:{theme.BG0};")
         self._static_layout = QVBoxLayout(self._static_pane)
-        self._static_layout.setContentsMargins(0, 0, 0, 0)
+        self._static_layout.setContentsMargins(theme.SPACE_2, 0, theme.SPACE_2, 0)
         self._static_layout.setSpacing(0)
         lay.addWidget(self._static_pane)
 
@@ -840,17 +829,23 @@ class _CheatSheetWindow(QMainWindow):
         self._list = QListWidget()
         self._list.setAccessibleName("Command list")
         self._list.setStyleSheet(_ss())
+        self._list.setViewportMargins(theme.SPACE_2, 0, theme.SPACE_2, 0)
+        self._list.setItemDelegate(CommandRowDelegate(self._list))
+        self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self._list.setMouseTracking(True)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setWordWrap(True)
         self._list.setTextElideMode(Qt.TextElideMode.ElideNone)
         self._list.setResizeMode(QListView.ResizeMode.Adjust)
         self._list.setUniformItemSizes(False)
-        self._list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setSpacing(0)
         self._list.itemClicked.connect(self._on_item_clicked)
+        self._list.itemActivated.connect(self._on_item_clicked)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._on_context_menu)
         lay.addWidget(self._list, stretch=1)
+        self._scroll_edges = ScrollEdges(self._list)
 
         # Degraded path: no catalog -> one honest line and a Help link.
         self._unavailable = QLabel(UNAVAILABLE_TEXT)
@@ -863,13 +858,8 @@ class _CheatSheetWindow(QMainWindow):
         self._unavailable.setVisible(False)
         lay.addWidget(self._unavailable)
 
-        # Resize grip row
-        grip_row = QHBoxLayout()
-        grip_row.setContentsMargins(0, 0, 0, 0)
-        grip_row.addStretch()
+        # Overlay the grip in the corner instead of reserving an empty strip.
         self._resize_grip = _VisibleSizeGrip(inner)
-        grip_row.addWidget(self._resize_grip)
-        lay.addLayout(grip_row)
 
         # Queue 78: the narrowest this window may be is the widest row it
         # has to draw -- the title bar and the category row, measured, not
@@ -877,6 +867,17 @@ class _CheatSheetWindow(QMainWindow):
         self._apply_width_floor()
 
         theme.apply_design_scale(self)
+        # The additive guide treatment sets minimum heights plus padding;
+        # these fixed controls already include both in their 44-DIP target.
+        self._category_bar._combo.setStyleSheet(_ss())
+        self._title_bar._close_button.setStyleSheet(
+            theme.secondary_button_qss() + 'QPushButton{padding:0;min-height:0;}')
+        self._most_used_qss = (
+            f'QPushButton{{background:{theme.BG0};color:{theme.TEXT_SECONDARY};border:none;'
+            f'text-align:left;padding:0;min-height:{theme.HIT_TARGET_MIN}px;max-height:{theme.HIT_TARGET_MIN}px;'
+            f'font-size:{theme.TYPE_BODY}px;font-weight:600;}}'
+            f'QPushButton:hover{{background:{theme.BG2};color:{theme.TEXT_PRIMARY};}}')
+        self._detail_card = CommandDetailCard(self, inner)
         self.refresh_commands()
 
     # ----------------------------------------------------------------
@@ -958,6 +959,7 @@ class _CheatSheetWindow(QMainWindow):
             self._apply_filter(text)
 
     def _refill_list(self, text: str):
+        self._detail_card.dismiss()
         raw = text.strip().lower()
         self._static_pane.setVisible(not raw and getattr(self, "_static_has_content", False))
         if raw:
@@ -1018,6 +1020,7 @@ class _CheatSheetWindow(QMainWindow):
     # ----------------------------------------------------------------
 
     def _rebuild_static_pane(self):
+        self._detail_card.dismiss()
         # Clear existing rows
         for i in reversed(range(self._static_layout.count())):
             child = self._static_layout.takeAt(i)
@@ -1050,13 +1053,9 @@ class _CheatSheetWindow(QMainWindow):
                 ("Collapse" if self._most_used_expanded else "Expand") + " most used commands")
             self._most_used_button.setToolTip(
                 "Hide most used commands" if self._most_used_expanded else "Show most used commands")
-            self._most_used_button.setMinimumHeight(44)
             self._most_used_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self._most_used_button.setStyleSheet(
-                f"QPushButton{{background:{theme.BG0};color:{theme.TEXT_SECONDARY};border:none;"
-                f"text-align:left;padding:4px 10px;font-size:{theme.TYPE_BODY}px;font-weight:600;}}"
-                f"QPushButton:hover{{background:{theme.BG2};color:{theme.TEXT_PRIMARY};}}"
-            )
+            self._most_used_button.setStyleSheet(self._most_used_qss)
+            self._most_used_button.setFixedHeight(theme.HIT_TARGET_MIN)
             self._most_used_button.clicked.connect(self._toggle_most_used)
             self._static_layout.addWidget(self._most_used_button)
             if self._most_used_expanded:
@@ -1064,7 +1063,7 @@ class _CheatSheetWindow(QMainWindow):
                     row = _StaticRow(
                         phrase_to_cmd[phrase], count=cnt,
                         pinned=(phrase_to_cmd[phrase]["phrase"] in self._pinned),
-                        execute_cb=self._execute, toggle_pin_cb=self._toggle_pin,
+                        execute_cb=self._show_details, toggle_pin_cb=self._toggle_pin,
                         parent=self._static_pane,
                     )
                     self._static_layout.addWidget(row)
@@ -1083,7 +1082,7 @@ class _CheatSheetWindow(QMainWindow):
                 row = _StaticRow(
                     cmd, count=None,
                     pinned=True,
-                    execute_cb=self._execute, toggle_pin_cb=self._toggle_pin,
+                    execute_cb=self._show_details, toggle_pin_cb=self._toggle_pin,
                     parent=self._static_pane,
                 )
                 self._static_layout.addWidget(row)
@@ -1118,7 +1117,7 @@ class _CheatSheetWindow(QMainWindow):
         lbl = QLabel(text)
         lbl.setStyleSheet(
             f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-weight:bold;"
-            f"padding:3px 10px 2px 10px;background:{theme.BG0};"
+            f"padding:3px 0 2px 0;background:{theme.BG0};"
         )
         return lbl
 
@@ -1136,25 +1135,19 @@ class _CheatSheetWindow(QMainWindow):
         phrase = item.data(Qt.ItemDataRole.UserRole)
         if not phrase:
             return
-        generation = item.data(Qt.ItemDataRole.UserRole + 2)
-        command_id = item.data(Qt.ItemDataRole.UserRole + 1)
-        # Flash
-        orig = item.foreground()
-        item.setForeground(theme.qcolor(theme.ACCENT))
-        item.setBackground(theme.qcolor(_selected_bg()))
+        rect = self._list.visualItemRect(item)
+        rect.moveTopLeft(self._list.viewport().mapTo(self._detail_card.parentWidget(), rect.topLeft()))
+        self._list.setCurrentItem(item)
         del item
-        def _restore():
-            if self._item_generation != generation:
-                return
-            for index in range(self._list.count()):
-                current = self._list.item(index)
-                if (current.data(Qt.ItemDataRole.UserRole + 1) == command_id
-                        and current.data(Qt.ItemDataRole.UserRole + 2) == generation):
-                    current.setForeground(orig)
-                    current.setBackground(QColor(Qt.GlobalColor.transparent))
-                    break
-        QTimer.singleShot(300, self, _restore)
-        self._execute(phrase)
+        self._show_details(phrase, self._list, rect)
+
+    def _show_details(self, phrase, origin, anchor=None):
+        command = next((row for row in self._all if row['phrase'] == phrase), None)
+        if command is None:
+            return
+        if anchor is None:
+            anchor = QRect(origin.mapTo(self._detail_card.parentWidget(), QPoint()), origin.size())
+        self._detail_card.open(command, origin, anchor)
 
     def _apply_width_floor(self):
         """Minimum width = the widest fixed row's own size hint (queue 78).
@@ -1209,12 +1202,9 @@ class _CheatSheetWindow(QMainWindow):
         is_pinned = phrase in self._pinned
         action = menu.addAction("Unpin" if is_pinned else "Pin")
         menu.addSeparator()
-        exec_action = menu.addAction("Execute")
         chosen = menu.exec(self._list.mapToGlobal(pos))
         if chosen == action:
             self._toggle_pin(phrase)
-        elif chosen == exec_action:
-            self._execute(phrase)
 
     # ----------------------------------------------------------------
     # Persistence
@@ -1378,5 +1368,6 @@ class _CheatSheetWindow(QMainWindow):
         self.hide()
 
     def hideEvent(self, e):
+        self._detail_card.dismiss()
         self._save_palette()
         e.accept()
