@@ -1,8 +1,9 @@
 """Illustrative listening displays only: no capture, config or real surface."""
+import logging
 import math
 
 from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QPainter, QPen
+from PySide6.QtGui import QPainter, QPen, QPicture
 from PySide6.QtWidgets import QLabel, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
 from samsara.ui import theme
@@ -16,6 +17,42 @@ CAPTIONS = (
     "After a command, the display tells you what Samsara did.",
     "Put the display where you can always see it; you can also drag the real one anywhere.",
 )
+_log = logging.getLogger("Samsara.ui.indicator_demo")
+
+
+def log_paint_failure_once(widget, where):
+    """Log a paint failure once per widget instance, not once per frame.
+
+    Called from inside an except block. safe_exception keeps the exception
+    type, its frames and (for code-identifier errors) the attribute name.
+    """
+    if getattr(widget, "_paint_failure_logged", False):
+        return
+    widget._paint_failure_logged = True
+    try:
+        from samsara.log import safe_exception
+        safe_exception(_log, "[UI] %s paint failed; drawing nothing: %s", where, type(widget).__name__)
+    except Exception:
+        pass
+
+
+def compact_stand_in(*, thinking=False, command_mode=False, listening=False, mode_text=""):
+    """The stand-in for a Compact pill: every `self._x` the real pill painters read.
+
+    ListeningIndicator._resolve_colors / _paint_pill / _paint_chip / _font read
+    these (tests/test_indicator_demo_490.py checks the list against their
+    source, so a new field on the real pill fails a test, not a repaint).
+    The values are the pill's own resting defaults; the state arguments are the
+    demonstration's. _glyph_mark, _font and _chip_font are bound by the caller.
+    """
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        _pulse_step=0, _unlocked=False, _flash_bg=None, _flash_fg=None,
+        _snoozed=False, _agent_waiting=None, _session_mode_name=None,
+        _session_mode_color=theme.ACCENT, _thinking=thinking,
+        _command_mode=command_mode, _listening=listening, _mode_text=mode_text)
+
+
 POSITIONS = ("top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right")
 
 
@@ -120,16 +157,39 @@ class DesktopSketch(QWidget):
                 LiveSurfaceWidget._state_text(proxy, view))
 
     def paint_indicator(self, painter, rect):
-        from types import SimpleNamespace
-        from samsara.ui.live_surface_qt import render_device_mark, _mark_color
-        from samsara.live_surface.feedback import FeedbackKind, FILL_TOKENS, paint_glyph
-        from samsara.ui.listening_indicator import ListeningIndicator, _chip_fill
+        """Draw the display, whole or not at all.
+
+        The drawing is recorded on a QPicture and replayed only if it finished,
+        so a failure draws nothing (not half a pill), never leaves a painter
+        open or a saved state behind, and is logged once for this widget.
+        """
+        dpr = max(1.0, painter.transform().m11() * painter.device().devicePixelRatioF())
+        picture = QPicture()
+        recorder = QPainter(picture)
+        try:
+            self._paint_indicator_into(recorder, rect, dpr)
+        except Exception:
+            log_paint_failure_once(self, "indicator")
+            return
+        finally:
+            recorder.end()
+        painter.drawPicture(0, 0, picture)
+
+    def _paint_indicator_into(self, painter, rect, dpr):
         header, subline = self.state_words()
         message = self.result_message()
         state = "recording" if self.beat == 1 else "transcribing" if self.working() else "idle"
         rotation = 0 if self.still else self.phase * 360 if state != "idle" else 0
-        dpr = max(1.0, painter.transform().m11() * painter.device().devicePixelRatioF())
         painter.save()
+        try:
+            self._paint_indicator_body(painter, rect, dpr, header, subline, message, state, rotation)
+        finally:
+            painter.restore()
+
+    def _paint_indicator_body(self, painter, rect, dpr, header, subline, message, state, rotation):
+        from samsara.ui.live_surface_qt import render_device_mark, _mark_color
+        from samsara.live_surface.feedback import FeedbackKind, FILL_TOKENS, paint_glyph
+        from samsara.ui.listening_indicator import ListeningIndicator
         if self.display == "full":
             painter.setBrush(theme.qcolor(theme.BG1))
             painter.setPen(QPen(theme.qcolor(theme.BORDER), 1))
@@ -159,9 +219,8 @@ class DesktopSketch(QWidget):
         else:
             # Reuse the real pill painter and colour resolver without constructing
             # a display widget, timers, controller, or native overlay window.
-            proxy = SimpleNamespace(_pulse_step=0, _unlocked=False, _flash_bg=None,
-                _session_mode_name=None, _thinking=self.working(), _snoozed=False,
-                _command_mode=self.beat == 3, _listening=self.beat == 1, _mode_text=header)
+            proxy = compact_stand_in(thinking=self.working(), command_mode=self.beat == 3,
+                                     listening=self.beat == 1, mode_text=header)
             proxy._glyph_mark = lambda: ("recording" if state == "recording" else "idle", "asleep", rotation, 1.0)
             proxy._font = lambda: ListeningIndicator._font(proxy)
             pill = QRectF(rect.x(), rect.bottom()-36, 104, 36)
@@ -177,14 +236,15 @@ class DesktopSketch(QWidget):
                 level = 3 + (4 if self.still else 4*(1+math.sin(self.phase*24+index)))
                 x, y = rect.right()-52+index*7, rect.bottom()-7
                 painter.drawLine(QPointF(x, y), QPointF(x, y-level))
-        painter.restore()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.scale(self.drawing_scale, self.drawing_scale)
         try:
+            painter.scale(self.drawing_scale, self.drawing_scale)
             self.paint_desktop(painter)
             self.paint_indicator(painter, self.indicator_rect())
+        except Exception:
+            log_paint_failure_once(self, "desktop")
         finally:
             painter.end()
 

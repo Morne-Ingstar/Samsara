@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import threading
 from enum import Enum
@@ -47,16 +48,69 @@ SAMSARA_LOG_HANDLER_TAG = "_samsara_log_handler"
 SAMSARA_LOG_FILE = samsara_home_dir() / "logs" / "samsara.log"
 
 
+_NAME = r"[A-Za-z_][A-Za-z0-9_]{0,63}"
+_DOTTED = r"[A-Za-z_<][A-Za-z0-9_.<>]{0,95}"
+_NAMES = rf"'{_NAME}'(?:, '{_NAME}')*(?:,? and '{_NAME}')?"
+# The exact shapes the interpreter gives to its own "this identifier is wrong"
+# errors. A message is printed only if the WHOLE of it matches one of these for
+# its own exception class: a code identifier is not speech, but any other text
+# (a value, a path, a dictated word in a KeyError or ValueError) never matches.
+_CODE_MESSAGES = (
+    (AttributeError, re.compile("|".join((
+        rf"'{_DOTTED}' object has no attribute '{_NAME}'",
+        rf"(?:partially initialized )?module '{_DOTTED}' has no attribute '{_NAME}'(?: \(most likely due to a circular import\))?",
+        rf"type object '{_DOTTED}' has no attribute '{_NAME}'",
+        rf"'{_DOTTED}' object attribute '{_NAME}' is read-only",
+        rf"attribute '{_NAME}' of '{_DOTTED}' objects is not writable",
+        rf"property '{_NAME}' of '{_DOTTED}' object has no setter")))),
+    (NameError, re.compile("|".join((
+        rf"name '{_NAME}' is not defined",
+        rf"cannot access local variable '{_NAME}' where it is not associated with a value",
+        rf"cannot access free variable '{_NAME}' where it is not associated with a value in enclosing scope",
+        rf"free variable '{_NAME}' referenced before assignment in enclosing scope")))),
+    (ImportError, re.compile("|".join((
+        rf"No module named '{_DOTTED}'",
+        rf"cannot import name '{_NAME}' from '{_DOTTED}'")))),
+    (TypeError, re.compile("|".join((
+        rf"'{_DOTTED}' object is not (?:callable|subscriptable|iterable|a mapping)",
+        rf"'{_DOTTED}' object does not support item assignment",
+        rf"object of type '{_DOTTED}' has no len\(\)",
+        rf"{_DOTTED}\(\) takes (?:from )?\d+(?: to \d+)? positional arguments? but \d+ (?:was|were) given",
+        rf"{_DOTTED}\(\) got an unexpected keyword argument '{_NAME}'",
+        rf"{_DOTTED}\(\) got multiple values for argument '{_NAME}'",
+        rf"{_DOTTED}\(\) missing \d+ required (?:keyword-only|positional) arguments?: {_NAMES}",
+        rf"'[<>=!]=?' not supported between instances of '{_DOTTED}' and '{_DOTTED}'",
+        rf"unsupported operand type\(s\) for [^:\s]{{1,3}}: '{_DOTTED}' and '{_DOTTED}'")))),
+)
+
+
+def _code_message(error):
+    """The error's message if it is a code identifier shape, else None."""
+    for kind, pattern in _CODE_MESSAGES:
+        if isinstance(error, kind):
+            text = str(error)
+            if kind is ImportError:
+                text = re.sub(r" \([^)]{0,300}\)$", "", text)  # the module's file path is not ours to print
+            if len(text) <= 300 and pattern.fullmatch(text):
+                return text
+    return None
+
+
 def describe_text(text):
     """Describe private content without including it in ordinary logs.
 
     Structured outcomes retain numeric measurements while string fields
     are described. Unknown objects are named by type, never stringified.
+    An exception's message becomes a length, except the identifier-only
+    messages of AttributeError, NameError, ImportError and TypeError (see
+    _CODE_MESSAGES), so the log says WHICH attribute or name was wrong.
     """
     try:
         if isinstance(text, BaseException):
             try:
-                result = f"{type(text).__name__}: {len(str(text))} chars"
+                code_message = _code_message(text)
+                result = (f"{type(text).__name__}: {code_message}" if code_message is not None
+                          else f"{type(text).__name__}: {len(str(text))} chars")
             except BaseException:
                 result = f"{type(text).__name__}: <str failed>"
             if isinstance(text, OSError):

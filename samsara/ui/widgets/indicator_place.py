@@ -4,7 +4,8 @@ from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QPushButton
 
 from samsara.ui import theme
-from samsara.ui.widgets.indicator_demo import CAPTIONS, DesktopSketch, IndicatorDemo, POSITIONS
+from samsara.ui.widgets.indicator_demo import (CAPTIONS, DesktopSketch, IndicatorDemo, POSITIONS,
+                                               log_paint_failure_once)
 
 DRAG_CAPTION = "You can also drag the real display anywhere."
 
@@ -22,6 +23,14 @@ class _Target(QPushButton):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        try:
+            self._paint(painter)
+        except Exception:
+            log_paint_failure_once(self, "placement target")
+        finally:
+            painter.end()
+
+    def _paint(self, painter):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         shape = QRectF(3, 6, self.width()-6, self.height()-12)
         selected = self.isChecked()
@@ -32,10 +41,12 @@ class _Target(QPushButton):
             width, height = desktop.indicator_size()
             scale = desktop.preview_scale
             painter.save()
-            painter.translate((self.width()-width*scale)/2, (self.height()-height*scale)/2)
-            painter.scale(scale, scale)
-            desktop.paint_indicator(painter, QRectF(0, 0, width, height))
-            painter.restore()
+            try:
+                painter.translate((self.width()-width*scale)/2, (self.height()-height*scale)/2)
+                painter.scale(scale, scale)
+                desktop.paint_indicator(painter, QRectF(0, 0, width, height))
+            finally:
+                painter.restore()
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(theme.qcolor(theme.BORDER), 1))
@@ -53,7 +64,6 @@ class _Target(QPushButton):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(theme.qcolor(theme.ACCENT), 2))
             painter.drawRoundedRect(QRectF(1, 1, self.width()-2, self.height()-2), radius, radius)
-        painter.end()
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
@@ -109,10 +119,13 @@ class _PlacementDesktop(DesktopSketch):
         self.place_targets()
 
     def paintEvent(self, event):
-        from PySide6.QtGui import QPainter
         painter = QPainter(self)
-        self.paint_desktop(painter)
-        painter.end()
+        try:
+            self.paint_desktop(painter)
+        except Exception:
+            log_paint_failure_once(self, "placement desktop")
+        finally:
+            painter.end()
 
 
 class IndicatorPlacePicker(IndicatorDemo):
