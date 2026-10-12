@@ -7,7 +7,7 @@ Shared names are imported back from samsara.ui.settings_qt; see
 samsara/ui/settings/__init__.py for why that import is cycle-safe.
 """
 
-from PySide6.QtCore import Qt, QEvent, QSignalBlocker
+from PySide6.QtCore import Qt, QEvent, QSignalBlocker, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -147,33 +147,9 @@ class TTSPage:
         layout.addWidget(edge_note)
         layout.addSpacing(8)
 
-        # Populate voice list from current engine instance
-        voice_labels: list[str] = []
-        label_to_id: dict[str, str] = {}
-        id_to_label: dict[str, str] = {}
-        engine_obj = getattr(self.app, 'tts_engine', None)
-        if engine_obj is not None:
-            try:
-                for v in engine_obj.list_voices():
-                    lbl = f"{v.display_name} ({v.language})"
-                    voice_labels.append(lbl)
-                    label_to_id[lbl] = v.voice_id
-                    id_to_label[v.voice_id] = lbl
-            except Exception as e:
-                logger.debug(f"_build_tts_tab: {e}")
-
-        current_voice_id = cfg.get('voice_id')
-        if voice_labels:
-            initial_lbl = id_to_label.get(current_voice_id, voice_labels[0])
-        else:
-            initial_lbl = current_voice_id or "No voices available"
-
         voice_combo = QComboBox()
-        voice_combo.addItems(voice_labels or [initial_lbl])
-        voice_combo.setCurrentText(initial_lbl)
-        voice_combo.setEnabled(bool(voice_labels))
-        self._widgets['tts_voice_combo']        = voice_combo
-        self._widgets['tts_voice_label_to_id']  = label_to_id
+        self._widgets['tts_voice_combo'] = voice_combo
+        self._refresh_tts_voices(cfg.get('voice_id'))
         layout.addLayout(self._setting_row(
             "Voice",
             "Voice used for Ava's spoken responses",
@@ -295,9 +271,9 @@ class TTSPage:
                 tts_cfg['engine']  = self._widgets['tts_engine'].currentText()
                 if self._network_voice_accepted:
                     tts_cfg['network_voice_accepted'] = True
-                voice_label = self._widgets['tts_voice_combo'].currentText()
-                voice_id    = self._widgets.get('tts_voice_label_to_id', {}).get(voice_label)
-                if voice_id:
+                voice_id = self._widgets['tts_voice_combo'].currentData()
+                # An unavailable catalog cannot establish that a saved ID is bad.
+                if self._tts_catalog_ids:
                     tts_cfg['voice_id'] = voice_id
                 tts_cfg['speed']  = self._widgets['tts_speed'].value()
                 tts_cfg['volume'] = self._widgets['tts_volume_slider'].value() / 100.0
@@ -313,34 +289,146 @@ class TTSPage:
         scroll.setWidget(container)
         return scroll
 
-    def _test_tts(self) -> None:
-        # The sample uses the live engine until Apply, even if the combo is local.
-        live_network = (self.app.config.get('tts', {}) or {}).get('engine') == 'edge'
-        if (live_network or self._widgets['tts_engine'].currentText() == 'edge'):
-            if not self._ensure_network_voice_accepted():
-                return
+    def _tts_voices_for(self, provider, accepted):
+        """Enumerate local catalogs, disposing private engines without speaking."""
+        from samsara.ui.tutorial_try_preview import make_engine
+        live_provider = (self.app.config.get('tts', {}) or {}).get('engine', 'winrt')
+        live_engine = getattr(self.app, 'tts_engine', None)
         coordinator = getattr(self.app, 'audio_coordinator', None)
+        live_provider = getattr(coordinator, '_engine_provider', None) or live_provider
+        catalog = getattr(self, '_tts_live_catalog', None)
+        if catalog is not None and catalog[0] is live_engine:
+            live_provider = catalog[1]
+        engine = live_engine if provider == live_provider else None
+        if engine is not None:
+            # Config may change before its runtime; an existing engine does
+            # not become another provider merely because the config changed.
+            self._tts_live_catalog = (engine, provider)
+        private = engine is None
+        try:
+            if private:
+                engine = make_engine(self.app, provider)
+            return list(engine.list_voices())
+        except Exception as exc:
+            logger.debug('Settings voice enumeration failed: %s', type(exc).__name__)
+            return []
+        finally:
+            if private and engine is not None:
+                try:
+                    engine.shutdown()
+                except Exception as exc:
+                    logger.debug('Settings voice engine disposal failed: %s', type(exc).__name__)
+
+    def _validate_tts_voice(self, requested):
+        """The merge can retain an outside engine change; validate its final pair."""
+        requested = dict(requested)
+        voice_id = requested.get('voice_id')
+        if voice_id:
+            provider = requested.get('engine', 'winrt')
+            if provider == self._widgets['tts_engine'].currentText():
+                combo = self._widgets['tts_voice_combo']
+                known = [combo.itemData(i) for i in range(combo.count())]
+            else:
+                known = [v.voice_id for v in self._tts_voices_for(
+                    provider, requested.get('network_voice_accepted', False))]
+            if any(known) and voice_id not in known:
+                requested['voice_id'] = None
+        return requested
+
+    def _refresh_tts_voices(self, preferred_id=None):
+        """Show the selected provider's voices and its explicit default."""
+        provider = self._widgets['tts_engine'].currentText()
+        combo = self._widgets['tts_voice_combo']
+        voices = self._tts_voices_for(provider, self._network_voice_accepted)
+        self._tts_catalog_ids = {voice.voice_id for voice in voices}
+        labels = {}
+        with QSignalBlocker(combo):
+            combo.clear()
+            combo.addItem('Default voice', None)  # Stand-in copy (543).
+            for voice in voices:
+                label = f'{voice.display_name} ({voice.language})'
+                combo.addItem(label, voice.voice_id)
+                labels[label] = voice.voice_id
+            index = combo.findData(preferred_id) if preferred_id else 0
+            combo.setCurrentIndex(max(0, index))
+        self._widgets['tts_voice_label_to_id'] = labels
+        # An explicit default remains available when enumeration fails.
+        combo.setEnabled(True)
+        adapter = combo.parentWidget()
+        if getattr(adapter, '_canonical_control', None) is combo:
+            adapter.refresh()
+
+    def _test_tts(self) -> None:
+        provider = self._widgets['tts_engine'].currentText()
+        live_cfg = self.app.config.get('tts', {}) or {}
+        live_provider = live_cfg.get('engine', 'winrt')
         status = self._widgets.get('tts_test_status')
+        if provider != live_provider:
+            if status is not None:
+                status.setText('Apply the engine change, then reopen Settings to test this voice.')  # Stand-in copy (543).
+            return
+        if provider == 'edge' and not self._ensure_network_voice_accepted():
+            return
+        voice_id = self._widgets['tts_voice_combo'].currentData()
+        # The live coordinator interprets None as "use the saved voice".
+        # An unapplied default must not silently test that previous voice.
+        if voice_id is None and live_cfg.get('voice_id'):
+            if status is not None:
+                status.setText('Apply the voice change, then reopen Settings to test this voice.')  # Stand-in copy (543).
+            return
+        coordinator = getattr(self.app, 'audio_coordinator', None)
         if coordinator is None or coordinator.engine is None:
-            if status:
+            if status is not None:
                 status.setText("TTS is off. Enable it and Apply settings.")
             return
-        voice_combo = self._widgets.get('tts_voice_combo')
-        voice_label = voice_combo.currentText() if voice_combo else None
-        voice_id = self._widgets.get('tts_voice_label_to_id', {}).get(voice_label)
         speed  = self._widgets['tts_speed'].value() if 'tts_speed' in self._widgets else 1.0
         volume = (self._widgets['tts_volume_slider'].value() / 100.0
                   if 'tts_volume_slider' in self._widgets else 0.8)
         _PHRASE = "Note saved. Your reminder will be in the brain dump."
         try:
-            coordinator.speak(
+            handle = coordinator.speak(
                 _PHRASE, voice_id=voice_id, speed=speed, volume=volume, category="readback"
             )
             if status:
                 status.setText(f'Speaking: "{_PHRASE}"')
+            self._watch_tts_sample(handle, status)
         except Exception as exc:
             if status:
                 status.setText(f"Error: {exc}")
+
+    def _watch_tts_sample(self, handle, status):
+        """Read optional 542 outcomes on the Qt thread, for this visit/sample."""
+        previous = getattr(self, '_tts_sample_timer', None)
+        if previous is not None:
+            previous.stop()
+            previous.deleteLater()
+        self._tts_sample_timer = None
+        if status is None or getattr(handle, 'voice_result', None) not in (
+                'pending', 'network', 'windows', 'failed', 'cancelled'):
+            return
+        timer = QTimer(status)
+        self._tts_sample_timer = timer
+        timer.setInterval(100)
+
+        def poll():
+            if self._tts_sample_timer is not timer:
+                return
+            result = getattr(handle, 'voice_result', None)
+            if result == 'windows':
+                status.setText('Spoken with the Windows voice because the Network voice did not answer.')
+            elif result == 'failed':
+                status.setText('The voice sample could not be spoken.')
+            elif result == 'cancelled':
+                status.setText('Voice sample cancelled.')
+            elif result == 'pending' and getattr(handle, 'network_failed', False):
+                status.setText('The Network voice did not answer. Trying the Windows voice.')
+            if result != 'pending':
+                timer.stop()
+
+        timer.timeout.connect(self._visit_callback(poll, status))
+        poll()
+        if getattr(handle, 'voice_result', None) == 'pending':
+            timer.start()
 
     def _voice_notice_dialog(self, read_only=False):
         dialog = network_voice_notice.NetworkVoiceNotice(self)
@@ -365,6 +453,8 @@ class TTSPage:
         if accepted:
             self._network_voice_accepted = True
             self._refresh_voice_notice()
+            if 'tts_voice_combo' in self._widgets:
+                self._refresh_tts_voices(self._widgets['tts_voice_combo'].currentData())
         return accepted
 
     def _show_voice_notice(self):
@@ -436,12 +526,16 @@ class TTSPage:
             self._widgets['tts_engine'].setCurrentText('winrt')
         else:
             self._network_voice_accepted = True
+            self._refresh_tts_voices((self.app.config.get('tts', {}) or {}).get('voice_id'))
         self._refresh_voice_notice()
 
     def _network_voice_changed(self, engine):
         if engine == 'edge' and not self._ensure_network_voice_accepted():
             self._widgets['tts_engine'].setCurrentText('winrt')
         self._refresh_voice_notice()
+        saved = self.app.config.get('tts', {}) or {}
+        preferred = saved.get('voice_id') if self._widgets['tts_engine'].currentText() == saved.get('engine', 'winrt') else None
+        self._refresh_tts_voices(preferred)
 
     def _refresh_voice_notice(self):
         network = self._widgets['tts_engine'].currentText() == 'edge'

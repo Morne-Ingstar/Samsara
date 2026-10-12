@@ -959,6 +959,7 @@ class AvaCloudPage:
             }}
 
         fake = _FakeApp()
+        report = self._visit_callback(self._on_test_result)
 
         def _do():
             try:
@@ -970,6 +971,6 @@ class AvaCloudPage:
             except Exception:
                 msg = "The connection could not be checked."  # PLACEHOLDER COPY (472)
                 color = theme.ERROR
-            self._test_result.emit(msg, color)
+            self._visit_test_result.emit(report, msg, color)
 
         thread_registry.spawn("settings_qt._do", _do, daemon=True)

@@ -398,7 +398,7 @@ from samsara.smart_corrections import (
 )
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import autostart
-from samsara import config_defaults, listening_display, tutorial_capture
+from samsara import config_defaults, listening_display, tutorial_capture, speech_presence
 from samsara.onboarding import display_placement
 from samsara import injection_safety
 from samsara import diagnostics
@@ -419,6 +419,7 @@ from samsara import ava_corrections as _ava_corrections
 from samsara import plugin_commands as _plugin_commands
 from samsara.commands import CommandExecutor
 from samsara.constants import (
+    HEAD_GRACE_CLICK_PAD_MS,
     MODEL_SAMPLE_RATE, DEFAULT_CAPTURE_RATE,
     DEFAULT_SPEECH_THRESHOLD, DEFAULT_MIN_SPEECH_DURATION, DEFAULT_SILENCE_TIMEOUT,
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER, DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
@@ -587,7 +588,7 @@ _GATE_MIN_CONTIG_MS  = 150   # minimum CONTIGUOUS high-confidence speech run req
 _GATE_VAD_PROB       = CONTIGUOUS_VAD_PROB_THRESHOLD  # Silero speech-probability threshold for the contiguous-run gate
 _FADE_MS             = 50    # linear fade-in/out applied to hotkey buffers, kills the
                              # press/release click transient before it can reach VAD or Whisper
-_GATE_HEAD_GRACE_CLICK_PAD_MS = 60
+_GATE_HEAD_GRACE_CLICK_PAD_MS = HEAD_GRACE_CLICK_PAD_MS
 
 #: One contiguous-speech scan: the longest run, where it starts, how much was scanned.
 _SpeechRun = collections.namedtuple(
@@ -7839,9 +7840,10 @@ class DictationApp:
             # Guard: Whisper hallucinates on very short audio (<0.5s).
             # It outputs phantom phrases like "Thank you" or "Subtitles by Amara".
             if audio_duration < 0.51:
+                from samsara.speech_presence import skip_decode
+                skip_decode(audio, self, path="continuous", skip_reason="not_decoded")
                 logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping transcription")
                 return
-            
             from samsara.speech_presence import skip_decode
             if skip_decode(audio, self, path='continuous'): return
             transcribe_start = time.time()
@@ -9634,6 +9636,8 @@ class DictationApp:
             # the audio energy is not meaningfully above the ambient noise floor.
             audio_rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
             if self._wake_audio_is_below_gate(audio_rms, oww_confirmed=oww_confirmed):
+                from samsara.speech_presence import skip_decode
+                skip_decode(audio, self, path="wake", skip_reason="rms_dropped")
                 if stage_timing is not None:
                     stage_timing.mark("capture_finalised", outcome="gated")
                 return
@@ -9668,8 +9672,9 @@ class DictationApp:
                     beam=transcribe_params.get("beam_size"),
                 )
             transcribe_start = time.time()
-            from samsara.speech_presence import skip_decode, show_empty_capture
-            if skip_decode(audio, self, path='wake'): stage_timing.mark('transcribe_end', outcome='empty') if stage_timing is not None else None; show_empty_capture(self, audio_duration, 'wake'); return
+            from samsara.speech_presence import reject_wake
+            if reject_wake(self, audio, stage_timing):
+                return
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
                 # Whisper returns a lazy iterator: decoding runs while it is
@@ -11410,6 +11415,7 @@ class DictationApp:
             replaced_timing = getattr(self, "_stage_timing_playback", None)
             self._stage_timing_playback = timing
             self._playback_buffer = scaled  # Replace buffer (new sound wins)
+        speech_presence.note_hold_earcon(self, sound_type, cached)
         if replaced_timing is not None:
             replaced_timing.feedback_finished()
 
@@ -11635,7 +11641,7 @@ class DictationApp:
         play_earcon: play the "start" sound and brief wait (skip for command mode
           which manages its own debounced earcon).
         """
-        from samsara import kept_session_draft, tutorial_capture
+        from samsara import kept_session_draft, tutorial_capture, speech_presence
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
@@ -11654,6 +11660,7 @@ class DictationApp:
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
+        speech_presence.begin_hold(self)
         self._tutorial_capture_token = tutorial_capture.begin(self)
         if self._live_surface_hold_parking_enabled():
             # Freeze tutorial ownership and the ordinary destination before feedback.
@@ -11709,22 +11716,8 @@ class DictationApp:
             mode=self.config.get('mode', 'hold'),
         )
 
-        # Play start sound before opening capture.
-        # Skipped for command mode which manages its own debounced 200ms earcon.
-        # Head-grace bookkeeping (2026-07-10 hotkey word-loss investigation):
-        # record the earcon's measured duration when it actually plays, so
-        # the hotkey gate call in stop_recording() can grant a grace span
-        # covering it (see _GATE_HEAD_GRACE_CLICK_PAD_MS). Reset to 0 first
-        # so a recording with play_earcon=False (e.g. command mode) never
-        # inherits a stale value from a previous hotkey press.
-        self._last_recording_earcon_ms = 0.0
-        if play_earcon:
-            self.play_sound("start", use_winsound=True)
-            _start_earcon = self._sound_cache.get('start')
-            if (_start_earcon is not None and self.config.get('audio_feedback', True)
-                    and self.config.get('sound_volume', 0.5) > 0):
-                self._last_recording_earcon_ms = len(_start_earcon) / self._sound_stream_sr * 1000.0
-            time.sleep(0.15)  # Brief pause for sound to start
+        # Preserve start playback/wait; evidence follows this hold's timestamps.
+        speech_presence.play_hold_start(self, play_earcon)
 
         if not streaming:
             # ACE path (ACE-03): DictationSessionConsumer provides audio from the
@@ -12026,6 +12019,9 @@ class DictationApp:
             return
 
         # Transcribe in background to not block hotkey listener
+        from samsara.speech_presence import capture_context
+        presence_capture = capture_context(self)
+
         def transcribe():
             _timing_token = (
                 set_current_stage_timing(stage_timing) if stage_timing is not None else None
@@ -12041,6 +12037,8 @@ class DictationApp:
 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
+                    from samsara.speech_presence import skip_decode
+                    skip_decode(audio, self, path="batch", skip_reason="not_decoded")
                     logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     flight_recorder.record(
                         'hold_recording.stop_reason', reason='audio_too_short',
@@ -12068,7 +12066,9 @@ class DictationApp:
                     head_grace_ms=_head_grace_ms,
                 )
                 from samsara.speech_presence import skip_decode, show_empty_capture
-                if skip_decode(audio_faded, self, path="batch", existing_gate=_gate): show_empty_capture(self, audio_duration); return
+                if skip_decode(audio_faded, self, path="batch", existing_gate=_gate, capture=presence_capture):
+                    show_empty_capture(self, audio_duration)
+                    return
                 if _gate:
                     logger.info(_gate.describe() if isinstance(_gate, _GateDecision) else
                                 f"[GATE] skip: no contiguous speech ({audio_duration:.2f}s)")

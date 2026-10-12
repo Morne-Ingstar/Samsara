@@ -414,6 +414,9 @@ class SettingsServices:
             if kept:
                 logger.info('[SETTINGS] kept changes made outside this window: %s', ', '.join(kept))
 
+        if 'tts' in updates and hasattr(self, '_validate_tts_voice'):
+            updates['tts'] = self._validate_tts_voice(updates['tts'])
+
         # Switch the live stream before the bulk config write. If the new ID
         # were written first, switch_microphone() would hit its same-ID guard
         # and ACE would continue recording from the old device.

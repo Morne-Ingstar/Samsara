@@ -32,6 +32,7 @@ LIVE_VAD_PROB_THRESHOLD = 0.5        # single-frame "is anyone talking" Silero g
 CONTIGUOUS_VAD_PROB_THRESHOLD = 0.45  # contiguous-run confidence gate (same Silero model)
 ADAPTIVE_SPEECH_FLOOR_RATIO = 1.5     # speech passes when rms >= ambient floor * this ratio
 HOLD_RELEASE_TAIL_SPEECH_THRESHOLD = 0.008  # hold-mode release-tail RMS floor
+HEAD_GRACE_CLICK_PAD_MS = 60       # measured start earcon plus mechanical press pad
 WAKE_SPEECH_THRESHOLD_CAP = 0.01      # hands-free speech_threshold cap when VAD is unavailable
 
 # Wake word defaults (overridable via config)

@@ -1638,6 +1638,8 @@ class StreamingWorker(threading.Thread):
         self._session = session
         self._stop_event = session.stop_event
         self._cancel_event = session.cancel_event
+        from samsara.speech_presence import capture_context
+        self._speech_presence_capture = capture_context(session.app)
 
     def run(self):
         try:
@@ -1712,12 +1714,9 @@ class StreamingWorker(threading.Thread):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
-            if audio is None or audio.size == 0:
-                self._session.on_final(None)
+            from samsara.speech_presence import finish_streaming_if_empty
+            if finish_streaming_if_empty(self, audio):
                 return
-            from samsara.speech_presence import skip_decode
-            if skip_decode(audio, app, path='streaming', state=self):
-                self._session.on_final(None, duration_s=len(audio) / app.model_rate); return
             with app.model_lock:
                 params = self._final_params()
                 t0 = time.time()

@@ -169,6 +169,8 @@ class DictationSessionConsumer:
 
     def _select_capture_boundary(self):
         """Use only this ordinary hold's policy; preserve absent/legacy bounds."""
+        from samsara.speech_presence import capture_context
+        self._speech_presence_capture = capture_context(self._app)
         confirmed = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
         onset = getattr(self._app, '_hold_capture_onset', None)
         self._capture_onset = None
@@ -195,6 +197,9 @@ class DictationSessionConsumer:
                 and (after is None or frame.t_capture <= after))
         if self._capture_onset is not None:
             self._capture_onset.observe(start, kept, before)
+        context = getattr(self, '_speech_presence_capture', None)
+        if kept and context is not None:
+            context.observe(start)
         return kept
 
     def _hold_drain_loop(self, stop_event) -> None:

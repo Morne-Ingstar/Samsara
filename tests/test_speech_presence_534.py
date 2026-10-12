@@ -126,7 +126,10 @@ def test_speech_uncertainty_failure_and_escape_hatch_decode_as_before(make_worke
     else:
         def scores(audio):
             result = np.zeros(audio.size // 512, dtype=np.float32)
-            result[0] = .11 if case == 'one_frame_word' else .23
+            if case == 'one_frame_word':
+                result[10] = .51
+            else:
+                result[10:12] = .23
             return result
         detector._model.side_effect = scores
     if path == 'final':
@@ -257,13 +260,13 @@ def test_speech_cached_for_later_partials_and_final_only_in_same_hold(make_worke
     detector._model.side_effect = lambda audio: np.full(audio.size // 512, .8)
     assert worker._transcribe_partial() == _segment().text
     detector._model.reset_mock()
-    detector._model.side_effect = RuntimeError('must not be rescored')
+    detector._model.side_effect = lambda audio: np.full(audio.size // 512, .95)
     assert worker._transcribe_partial() == _segment().text
     with caplog.at_level(logging.INFO, logger='Samsara'):
         worker._final_pass()
-    detector._model.assert_not_called()
+    detector._model.assert_called_once()  # final always measures the full capture (544)
     lines = [r.getMessage() for r in caplog.records if 'speech_presence path=' in r.getMessage()]
-    assert len(lines) == 1 and 'peak=0.80' in lines[0] and 'cached=1' in lines[0]
+    assert len(lines) == 1 and 'peak=0.950000' in lines[0] and 'cached=1' in lines[0]
     other, other_session = make_worker([_segment()])
     enable(other_session, pcm('silence'))
     detector._model.side_effect = lambda audio: np.zeros(audio.size // 512)
@@ -287,7 +290,7 @@ def test_load_error_logged_once_and_retried_only_after_minute(monkeypatch, caplo
 
 
 @pytest.mark.parametrize('reject', [True, False])
-def test_batch_scan_is_not_repeated_and_keeps_existing_result(detector, reject, caplog):
+def test_batch_decision_kept_without_duplicate_inference(detector, reject, caplog):
     class Decision:
         path = 'short'
         def __bool__(self):
@@ -295,7 +298,7 @@ def test_batch_scan_is_not_repeated_and_keeps_existing_result(detector, reject, 
     with caplog.at_level(logging.INFO, logger='Samsara'):
         assert not presence.skip_decode(pcm('silence'), 16000, existing_gate=Decision(), path='batch')
     detector._model.assert_not_called()
-    assert ('verdict=batch_reject' if reject else 'verdict=batch_pass') in caplog.records[-1].getMessage()
+    assert 'verdict=skipped reason=batch_decided' in caplog.records[-1].getMessage()
 
 
 def test_batch_check_follows_existing_scan_before_decode():
@@ -304,7 +307,8 @@ def test_batch_check_follows_existing_scan_before_decode():
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name=='_stop_recording_impl')
     calls = [n for n in ast.walk(method) if isinstance(n, ast.Call)]
     old = next(n for n in calls if isinstance(n.func, ast.Attribute) and n.func.attr=='_buffer_should_skip_decode')
-    new = next(n for n in calls if isinstance(n.func, ast.Name) and n.func.id=='skip_decode')
+    new = next(n for n in calls if isinstance(n.func, ast.Name) and n.func.id=='skip_decode'
+               and any(k.arg=='existing_gate' for k in n.keywords))
     assert old.lineno < new.lineno
 
 

@@ -32,7 +32,11 @@ def make_window(qapp, monkeypatch):
         config['tts'].update(engine=engine, network_voice_accepted=accepted,
                              feedback_level=level, enabled=level != 'silent')
         app = _StubApp(config)
-        app.tts_engine = SimpleNamespace(list_voices=lambda: [])
+        # Network listing is a built-in catalog even before consent (543).
+        # Model it so this consent test can preview its saved, selected voice.
+        from samsara.tts.edge_tts_engine import _BUILTIN_VOICES
+        voices = list(_BUILTIN_VOICES) if engine == 'edge' else []
+        app.tts_engine = SimpleNamespace(list_voices=lambda: voices)
         app.audio_coordinator = SimpleNamespace(engine=object(), speak=Mock(), _dispatch_lock=RLock())
         app.save_config = Mock()
         app._session_mode_manager = SimpleNamespace(set_spoken_notices=Mock())
@@ -147,8 +151,14 @@ def test_test_voice_requires_consent_for_live_engine(make_window, monkeypatch, a
     if pending_local: window._widgets['tts_engine'].setCurrentText('winrt')
     calls = respond(monkeypatch, accept)
     window._test_tts()
-    assert len(calls) == 1
-    assert window.app.audio_coordinator.speak.call_count == int(accept)
+    if pending_local:
+        # 543: a pending engine change must not sample the other live engine.
+        assert calls == []
+        window.app.audio_coordinator.speak.assert_not_called()
+        assert 'Apply' in window._widgets['tts_test_status'].text()
+    else:
+        assert len(calls) == 1
+        assert window.app.audio_coordinator.speak.call_count == int(accept)
     assert window.app.config['tts']['network_voice_accepted'] is False
 
 

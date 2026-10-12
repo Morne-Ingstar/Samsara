@@ -243,6 +243,10 @@ class CommandsPage:
                 todoist_result.setStyleSheet(f"color: {theme.ERROR}; font-size: {theme.TYPE_BODY}px;")
                 return
             todoist_result.setText("Testing Todoist…")
+            def show_result(msg, color):
+                todoist_result.setText(msg)
+                todoist_result.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_BODY}px;")
+            finish = self._visit_callback(show_result, todoist_result)
             def _run():
                 from samsara import todoist_client
                 try:
@@ -250,7 +254,7 @@ class CommandsPage:
                     msg, color = "Todoist connection works.", theme.ACCENT
                 except Exception:
                     msg, color = "Todoist connection failed.", theme.ERROR
-                qt_runtime.post(lambda: (todoist_result.setText(msg), todoist_result.setStyleSheet(f"color: {color}; font-size: {theme.TYPE_BODY}px;")))
+                qt_runtime.post(lambda: finish(msg, color))
             thread_registry.spawn("settings-todoist-test", _run, daemon=True)
         test_todoist.clicked.connect(_test_todoist)
         layout.addWidget(test_todoist)
@@ -584,6 +588,8 @@ class CommandsPage:
         if exe is None:
             return
         self.showMinimized()
+        report = self._visit_callback(self._on_test_result)
+        restore = self._visit_callback(self.showNormal)
         import threading, time
         def _run():
             time.sleep(0.4)
@@ -592,14 +598,15 @@ class CommandsPage:
                     phrase, self.app, force_commands=True,
                 )
                 msg = f"'{phrase}' executed OK." if ok else f"'{phrase}' not found or failed."
-                self._test_result.emit(msg, theme.ACCENT if ok else theme.ERROR)
+                qt_runtime.post(lambda: report(msg, theme.ACCENT if ok else theme.ERROR))
             except Exception as exc:
-                self._test_result.emit(f"Error: {exc}", theme.ERROR)
+                message = f"Error: {exc}"
+                qt_runtime.post(lambda: report(message, theme.ERROR))
             # showNormal() is a QWidget method -- must run on the Qt thread,
             # not this worker thread. qt_runtime.post() is the established
             # marshal-a-callable-onto-the-Qt-thread idiom used throughout
             # the codebase (already imported in this module).
-            qt_runtime.post(self.showNormal)
+            qt_runtime.post(restore)
         thread_registry.spawn("settings_qt._run", _run, daemon=True)
 
     def _edit_selected_command(self, table: QTableWidget) -> None:

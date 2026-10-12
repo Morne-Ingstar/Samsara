@@ -19,6 +19,7 @@ from samsara.ui.settings.help_qt import HelpPage
 from samsara.ui.settings.music_qt import MusicPage
 from PySide6.QtWidgets import QMenu
 from pathlib import Path
+from shiboken6 import isValid
 
 PAGE_MODULES = (general_page, dictation_page, audio_page, ava_page, shortcuts_page, help_page)
 _TAB_NAMES = [module.TITLE for module in PAGE_MODULES]
@@ -56,12 +57,23 @@ class _SettingsWindow(
     HelpPage, MusicPage, QMainWindow,
 ):
     _test_result = Signal(str, str)
+    _visit_test_result = Signal(object, str, str)
 
     def __init__(self, app, tool=None):
         super().__init__()
         self.app = app
+        self._visit_generation = 0
+        self._visit_shown = False
         self._config_at_open = copy.deepcopy(self.app.config)
+        self._test_result.connect(self._on_test_result)
+        self._visit_test_result.connect(self._deliver_visit_test_result)
+        self._build_contents(tool)
+
+    def _build_contents(self, tool=None):
+        # Ava assembly wraps this method per tree; never nest old wrappers.
+        self.__dict__.pop('_refresh_conditions', None)
         self._tool_name = tool
+        self._ava_consent_staged = None
         self._widgets = {}
         self._save_fns = []
         self._source_rows = []
@@ -72,7 +84,6 @@ class _SettingsWindow(
         self._pages = {}
         self._cloud_reachable = None
         self._advanced_stack_index = None
-        self._test_result.connect(self._on_test_result)
         self._source_store = QWidget(self)
         self._source_store.hide()
         self.setWindowTitle("Samsara — " + (tool or "Settings"))
@@ -176,6 +187,71 @@ class _SettingsWindow(
         if tool:
             self._select_tool(tool)
 
+    def _refresh_visit(self):
+        """Each hidden-to-shown visit starts from live config, not abandoned edits."""
+        self._visit_generation += 1
+        self._stop_visit_timers()
+        tool = self._tool_name
+        page = _TAB_NAMES[self._stack.currentIndex()] if not tool else None
+        self._search_debounce.stop()
+        self.removeEventFilter(self._widgets['tts_engine_warn'])
+        input_layout = self.__dict__.pop('_settings_input_layout', None)
+        if input_layout is not None:
+            self.removeEventFilter(input_layout)
+            input_layout.deleteLater()
+        old_central = self.takeCentralWidget()
+        old_store = self._source_store
+        old_central.hide()
+        old_store.hide()
+        old_central.setParent(None)
+        old_store.setParent(None)
+        old_central.deleteLater()
+        old_store.deleteLater()
+        self._search_debounce.deleteLater()
+        self._config_at_open = copy.deepcopy(self.app.config)
+        self._build_contents(tool)
+        if page:
+            self._sidebar.setCurrentRow(_TAB_NAMES.index(page))
+
+    def show(self):
+        # Build before Qt begins delivering show events to the old child tree.
+        # Already-visible navigation retains both edits and the snapshot.
+        if not self.isVisible() and self._visit_shown:
+            self._refresh_visit()
+        self._visit_shown = True
+        super().show()
+
+    def showNormal(self):
+        # surface_requested restores minimized windows through this entry.
+        if not self.isVisible() and self._visit_shown:
+            self._refresh_visit()
+        self._visit_shown = True
+        super().showNormal()
+
+    def _visit_callback(self, callback, *widgets):
+        generation = self._visit_generation
+
+        def guarded(*args, **kwargs):
+            if (isValid(self) and generation == self._visit_generation
+                    and all(isValid(widget) for widget in widgets)):
+                return callback(*args, **kwargs)
+
+        return guarded
+
+    def _deliver_visit_test_result(self, callback, message, color):
+        callback(message, color)
+
+    def _stop_visit_timers(self):
+        # Physical capture posts retain the old button until delivery. Revoke
+        # capture before retiring its widgets so those posts become no-ops.
+        for button in self.findChildren(_HotkeyButton):
+            button._capturing = False
+            button._held.clear()
+        timer = getattr(self, '_tts_sample_timer', None)
+        if timer is not None and isValid(timer):
+            timer.stop()
+        self._tts_sample_timer = None
+
     def _build_search_registry(self):
         self._search_rows = [
             (row.title, row.full_help, _TAB_NAMES.index(row.page_name), row.heading, row.detail, row.value)
@@ -245,6 +321,8 @@ class _SettingsWindow(
 
     def closeEvent(self, event):
         event.ignore()
+        self._visit_generation += 1
+        self._stop_visit_timers()
         self.hide()
 
     def apply_theme(self):
