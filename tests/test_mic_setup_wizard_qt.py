@@ -332,8 +332,10 @@ def test_no_model_tip_points_at_a_control_that_exists():
     source = Path(msw.__file__).read_text(encoding="utf-8")
     assert "Test Wake Word" not in msw._OWW_NO_MODEL_TIP
     assert "Advanced" not in msw._OWW_NO_MODEL_TIP
-    assert "Open Wake Word Debug (advanced)" in msw._OWW_NO_MODEL_TIP
-    assert 'QPushButton("Open Wake Word Debug (advanced)")' in source     # the wizard's own button
+    # 545 (12 Oct): the wake word debug window is retired from the guide - no button, no tip pointing at it.
+    assert "Wake Word Debug" not in msw._OWW_NO_MODEL_TIP
+    assert "Wake Word Debug" not in source
+    assert "open_wake_word_debug" not in source
 
 
 def test_miss_tip_names_the_real_settings_label_and_page():

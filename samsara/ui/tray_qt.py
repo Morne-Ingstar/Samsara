@@ -1459,7 +1459,6 @@ class SamsaraTrayQt(QObject):
         with self._optional_menu_section(menu, "Developer"):
             dev_sub = QMenu("Developer")
             add(dev_sub, "Dictation Diagnostics", lambda: app.open_dictation_diagnostics())
-            add(dev_sub, "Wake Word Debug", lambda: app.open_wake_word_debug())
             add(dev_sub, "View Live Log", lambda: app.open_log_viewer())
             dev_sub.addSeparator()
             # 2026-10-08: retired pending a better method; add(dev_sub, "Calibrate Echo Cancellation", lambda: app.calibrate_echo_cancellation())

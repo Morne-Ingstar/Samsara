@@ -321,7 +321,7 @@ class TestToolsSubmenuContents:
 
 class TestDeveloperSubmenuContents:
     EXPECTED = {
-        "Dictation Diagnostics", "Wake Word Debug", "View Live Log",
+        "Dictation Diagnostics", "View Live Log",
         "Calibrate Echo Cancellation", "Open Config Folder", "View Logs",
     }
 
@@ -351,7 +351,7 @@ class TestAllPreviousActionsStillReachable:
         "Show Samsara", "Settings", "History", "Quick Reference",
         "Command Reference", "Show Listening Indicator",
         "Interactive Tutorial", "Mic Setup Guide", "Ava Guide",
-        "Wake Word Debug", "Dictation Diagnostics",
+        "Dictation Diagnostics",
         "Benchmark Review", "Correct Last Dictation", "View Live Log",
         "Stress Test Wizard", "Recalibrate Mic",
         "Calibrate Echo Cancellation", "Open Config Folder",
@@ -415,7 +415,7 @@ _HANDLERS = (
     "toggle_listening_indicator", "enter_indicator_move_mode", "show_tutorial",
     "open_mic_setup_guide", "open_ava_guide", "open_benchmark_review",
     "open_correction_capture", "open_stress_test_wizard", "recalibrate_mic", "set_cleanup_mode",
-    "open_dictation_diagnostics", "open_wake_word_debug", "open_log_viewer",
+    "open_dictation_diagnostics", "open_log_viewer",
     "calibrate_echo_cancellation", "open_config_folder", "preview_first_run",
     "open_main_log", "quit_app",
 )

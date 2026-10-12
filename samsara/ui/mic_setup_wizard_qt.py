@@ -62,10 +62,9 @@ _GREEN_DWELL_S = 1.5   # seconds level must stay green before Next enables
 _OWW_PASS_THRESHOLD = 2
 _OWW_ATTEMPTS       = 3
 # Guidance audit 2026-09-13 row 912: there is no "Test Wake Word..." control
-# anywhere in Settings; the live detector test is this wizard's own step 3
-# and the debug window on its last page.
-_OWW_NO_MODEL_TIP = ('For a live detector test, click "Open Wake Word Debug (advanced)" '
-                     'on the last page of this guide.')
+# anywhere in Settings. 545 (12 Oct): the wake word debug window is retired from
+# the guide, so a missing model gets no further tip.
+_OWW_NO_MODEL_TIP = ''
 _WAKE_OFF_NOTE = ('Wake word is currently off (Settings -> Modes -> Wake word). '
                   'This test still runs; turn it on to use the phrase day to day.')
 _OWW_ATTEMPT_TIMEOUT = 8.0
@@ -527,14 +526,6 @@ class _WizardWindow(QDialog):
         self._done_summary.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(self._done_summary)
         lay.addStretch()
-        adv_btn = QPushButton("Open Wake Word Debug (advanced)")
-        theme.make_secondary(adv_btn)
-        adv_btn.clicked.connect(self._open_debug)
-        adv_row = QHBoxLayout()
-        adv_row.addStretch()
-        adv_row.addWidget(adv_btn)
-        adv_row.addStretch()
-        lay.addLayout(adv_row)
         return page
 
     # ----------------------------------------------------------------
@@ -1332,12 +1323,6 @@ class _WizardWindow(QDialog):
     def _finish(self):
         # Device selection is applied when leaving the device page.
         self.close()
-
-    def _open_debug(self):
-        try:
-            self._app.open_wake_word_debug()
-        except Exception as e:
-            logger.debug(f"_open_debug: {e}")
 
     # ----------------------------------------------------------------
     # Cleanup
