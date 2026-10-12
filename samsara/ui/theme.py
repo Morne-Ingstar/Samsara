@@ -728,6 +728,7 @@ def primary_button_qss() -> str:
         f"border:1px solid {ACCENT};border-radius:{CONTROL_RADIUS}px;font-weight:600;"
         f"min-height:{HIT_TARGET_MIN}px;padding:0 {SPACE_2}px;}}"
         f"QPushButton:hover{{background:{ACCENT_HOVER};color:{TEXT_ON_ACCENT};}}"
+        f"QPushButton:focus{{border-color:{TEXT_PRIMARY};}}"
         f"QPushButton:pressed{{background:{ACCENT_PRESSED};color:{TEXT_ON_ACCENT};}}"
         f"QPushButton:disabled{{background:{ACCENT_DISABLED};color:{TEXT_DISABLED};}}"
     )
@@ -740,6 +741,7 @@ def secondary_button_qss() -> str:
         f"min-height:{HIT_TARGET_MIN}px;padding:0 {SPACE_2}px;}}"
         f"QPushButton:hover{{background:{HOVER_WASH};color:{TEXT_PRIMARY};"
         f"border-color:{BORDER};}}"
+        f"QPushButton:focus{{border-color:{ACCENT};}}"
         f"QPushButton:pressed{{background:{PRESS_WASH};color:{TEXT_PRIMARY};}}"
         f"QPushButton:disabled{{background:transparent;color:{TEXT_DISABLED};"
         f"border-color:{BORDER_FAINT};}}"
@@ -874,6 +876,8 @@ class _SettingsInputLayout(QObject):
             if isinstance(widget, QAbstractSpinBox):
                 qss += f'QAbstractSpinBox {{ background: {BG2}; border: 1px solid {BORDER}; border-radius: 6px; }}'
                 qss += 'QAbstractSpinBox QLineEdit { margin: 0; padding: 0; border: none; background: transparent; }'
+            from samsara.ui.focus_ring import keyboard_stylesheet
+            qss = keyboard_stylesheet(qss)
             if widget.styleSheet() != original + qss:
                 widget.setStyleSheet(original + qss)
             if isinstance(widget, QAbstractSpinBox) and widget.buttonSymbols() != widget._settings_input_symbols:

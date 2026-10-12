@@ -14,7 +14,7 @@ from PySide6.QtGui import QAccessible
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
-from samsara.ui import tutorial_qt, network_voice_notice
+from samsara.ui import tutorial_qt, network_voice_notice, tutorial_try_preview
 from samsara.tts import runtime
 from samsara.tts.engine_base import VoiceInfo
 from samsara.audio_engine.ring import EMPTY
@@ -40,7 +40,18 @@ def build(qapp, monkeypatch):
         app = SimpleNamespace(config=cfg, _config_lock=threading.Lock(), recording=False,
                               _hold_capture_lifecycle_lock=threading.RLock(), history_db=MagicMock(),
                               audio_coordinator=make_coordinator() if engine else MagicMock(engine=None, is_speaking=False),
+                              command_executor=SimpleNamespace(_matcher=SimpleNamespace(list_commands=lambda: [])),
+                              sample_engines=[],
                               save_config=MagicMock(), play_sound=MagicMock())
+        def sample_engine(_app, _provider):
+            if not engine:
+                raise RuntimeError('synthetic unavailable speech')
+            sample = MagicMock()
+            sample.list_voices.return_value = [VoiceInfo('preview-a', 'Preview A', 'en', 'unknown'), VoiceInfo('preview-b', 'Preview B', 'en', 'unknown')]
+            sample.speak.return_value = SimpleNamespace(utterance_id='synthetic-private-sample')
+            app.sample_engines.append(sample)
+            return sample
+        monkeypatch.setattr(tutorial_try_preview, 'make_engine', sample_engine)
         app.set_feedback_level = MagicMock(side_effect=lambda value: namespace['set_feedback_level'](app, value))
         app.update_config_and_save = MagicMock(side_effect=lambda changes: app.config.update(changes))
         from samsara.live_surface.controller import LiveSurfaceController, LiveSurfaceIndicatorAdapter
@@ -71,7 +82,7 @@ def build(qapp, monkeypatch):
     def make_coordinator():
         engine = MagicMock()
         engine.list_voices.return_value = [VoiceInfo('voice-a', 'Voice A', 'en', 'unknown'), VoiceInfo('voice-b', 'Voice B', 'en', 'unknown')]
-        coordinator = MagicMock(engine=engine, is_speaking=False)
+        coordinator = MagicMock(engine=engine, is_speaking=False, _speech_pending=0)
         def speak(*args, **kwargs):
             handle = SimpleNamespace(utterance_id='synthetic-preview')
             coordinator._last_spoken_handle = handle
@@ -96,7 +107,13 @@ def build(qapp, monkeypatch):
 
 
 def select(box, value):
+    # Explicit sample tests set a voice without also triggering the automatic sample.
+    quiet = box.accessibleName() == 'Voice'
+    if quiet:
+        box.blockSignals(True)
     box.setCurrentIndex(box.findData(value))
+    if quiet:
+        box.blockSignals(False)
 
 
 def test_step_navigation_and_skip_does_not_write(build):
@@ -104,7 +121,8 @@ def test_step_navigation_and_skip_does_not_write(build):
     before = deepcopy(app.config)
     assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'display', 'try', 'done']
     assert window._next_btn.isEnabled()
-    window._go_next()
+    for _ in range(3):
+        window._go_next()
     assert window._steps[window._step][0] == 'done'
     assert app.config == before and not page.kept
     app.save_config.assert_not_called()
@@ -140,17 +158,18 @@ def test_sample_routes_real_feedback_policy_without_setting_write(build, level, 
     assert app.play_sound.called == (level == 'brief')
     if level == 'brief':
         app.play_sound.assert_called_once_with('action_complete')
-    speech = level == in_use == 'full'
-    assert app.audio_coordinator.speak.called == speech
+    speech = level == 'full'
+    live_speech = speech and in_use != 'silent'
+    assert app.audio_coordinator.speak.called == live_speech
     assert (page.preview is not None) == speech
-    if speech:
+    if live_speech:
         assert page.preview is app.audio_coordinator
         app.audio_coordinator.speak.assert_called_once_with('Example complete.', voice_id=None, speed=1, volume=.8, category='readback')
-    elif level == 'full':
-        assert page.result.text() == 'Example complete.'
-        assert 'Keep this to hear it spoken.' in page.states['level'].text()
+    elif speech:
+        app.sample_engines[-1].speak.assert_called_once()
     else:
         assert page.result.text() == 'Example complete.'
+    assert 'Keep this to hear it spoken.' not in page.states['level'].text()
     assert app.config == before
 
 
@@ -158,22 +177,29 @@ def test_sample_routes_real_feedback_policy_without_setting_write(build, level, 
 def test_level_keep_uses_named_setter_and_only_its_keys(build, level):
     window, page, app = build()
     select(page.level, level)
+    page.sample('level')
     page.keep('level')
     app.set_feedback_level.assert_called_once_with(level)
     app.save_config.assert_called_once()
     app.update_config_and_save.assert_not_called()
     assert app.config['tts']['engine'] == 'winrt'
+    window._go_next()
     assert page.cards['voice'].isVisible() == (level != 'silent')
+    window._go_next()
     window._go_next()
     assert page.kept['level'] in window._try_summary.text()
     assert 'Voice kept' not in window._try_summary.text()
 
 
-def test_silent_uses_in_use_level_not_unsaved_choice(build):
-    _, page, _ = build(level='silent')
-    assert not page.cards['voice'].isVisible()
-    select(page.level, 'full')
-    assert not page.cards['voice'].isVisible()
+def test_silent_skip_uses_played_choice_then_saved_level(build):
+    window, page, app = build(level='silent')
+    page.show_stage(1)
+    assert page.voice_skip.isVisible() and not page.cards['voice'].isVisible()
+    page.show_stage(0)
+    page.level.buttons[2].click()
+    window._go_next()
+    assert page.cards['voice'].isVisible()
+    assert app.config['tts']['feedback_level'] == 'silent'
 
 
 def test_voice_keep_calls_shared_runtime_with_only_voice_updates(build, monkeypatch):
@@ -229,8 +255,11 @@ def test_network_acceptance_stays_unsaved_until_voice_keep(build, monkeypatch):
     select(page.voice, 'edge')
     assert 'network_voice_accepted' not in app.config['tts']
     page.sample('voice')
-    assert page.preview is None and not page.actions['voice'].isEnabled()
-    assert 'Keep this to hear the other voice.' in page.states['voice'].text()
+    assert isinstance(page.preview, tutorial_try_preview.SampleSpeech)
+    assert page.actions['voice'].isEnabled()
+    assert len(app.sample_engines) == 2
+    assert all(engine.speak.call_count == 1 for engine in app.sample_engines)
+    app.sample_engines[0].shutdown.assert_called_once()  # Active Network trials cannot share cancellation.
     app.audio_coordinator.speak.assert_not_called()
     assert 'network_voice_accepted' not in app.config['tts']
     page.keep('voice')
@@ -244,9 +273,10 @@ def test_busy_app_disables_and_refuses_samples(build, flag):
     _, page, app = build()
     setattr(app, flag, True)
     page.poll()
+    assert all(not control.isEnabled() for control in page.level.buttons)
+    assert not page.actions['voice'].isEnabled()
+    assert page.actions['voice'].text() == 'Samsara is busy'
     for name in ('level', 'voice'):
-        assert not page.actions[name].isEnabled()
-        assert page.actions[name].text() == 'Samsara is busy'
         page.sample(name)
     assert page.preview is None
     app.play_sound.assert_not_called()
@@ -280,7 +310,8 @@ def test_transcription_owner_disables_samples(build):
     _, page, app = build()
     app._transcription_owners = SimpleNamespace(current=lambda lane: lane == 'hold')
     page.poll()
-    assert not page.actions['level'].isEnabled() and not page.actions['voice'].isEnabled()
+    assert all(not control.isEnabled() for control in page.level.buttons)
+    assert not page.actions['voice'].isEnabled()
     page.sample('voice')
     app.audio_coordinator.speak.assert_not_called()
 
@@ -289,8 +320,11 @@ def test_no_engine_offers_no_voice_actions(build):
     _, page, app = build(engine=False)
     assert page.states['voice'].text() == 'Speech is unavailable.'
     assert not page.actions['voice'].isEnabled()
-    assert not page.voice.isEnabled() and not page.speed.isEnabled()
-    assert not page.voice_id.isEnabled() and not page.volume.isEnabled()
+    assert all(not control.isEnabled() for control in (page.voice, page.voice_id, page.speed, page.volume))
+    page.sample('voice')
+    assert page.states['voice'].text() == 'Speech is unavailable.'
+    assert page.preview is None
+    assert not app.sample_engines
     page.keep('voice')
     app.save_config.assert_not_called()
 
@@ -355,7 +389,7 @@ def test_keyboard_names_and_layout_at_actual_text_scale(build, qapp, scale):
         assert button.accessibleName() == button.text()
         assert QAccessible.queryAccessibleInterface(button) is not None
         assert button.height() >= 44
-    button = page.actions['level']
+    button = page.level.buttons[1]
     button.setFocus()
     QTest.keyClick(button, Qt.Key.Key_Return)
     assert page.result.text() == 'Example complete.'
@@ -377,7 +411,10 @@ def test_provider_change_clears_incompatible_voice_only_on_keep(build, monkeypat
     monkeypatch.setattr(network_voice_notice, 'request_acceptance', lambda _: True)
     select(page.voice, 'edge')
     page.sample('voice')
-    assert page.preview is None
+    assert isinstance(page.preview, tutorial_try_preview.SampleSpeech)
+    assert len(app.sample_engines) == 2
+    assert all(engine.speak.call_count == 1 for engine in app.sample_engines)
+    app.sample_engines[0].shutdown.assert_called_once()  # Active Network trials cannot share cancellation.
     app.audio_coordinator.speak.assert_not_called()
     assert app.config == before
     page.keep('voice')
@@ -387,8 +424,11 @@ def test_provider_change_clears_incompatible_voice_only_on_keep(build, monkeypat
 
 def test_done_lists_each_kept_card_once(build):
     window, page, _ = build()
+    page.sample('level')
+    page.suggest([.4])
     for key in ('level', 'voice', 'pace'):
         page.keep(key)
+    page.stage = 2
     window._go_next()
     assert window._try_summary.text().splitlines() == list(page.kept.values())
     assert len(page.kept) == 3
@@ -423,7 +463,7 @@ def test_switching_provider_cancels_only_owned_live_preview(build, monkeypatch):
     page.sample('voice')
     assert page.preview is app.audio_coordinator
     select(page.voice, 'edge')
-    assert page.preview is None
+    assert isinstance(page.preview, tutorial_try_preview.SampleSpeech)
     app.audio_coordinator.cancel_speech.assert_called_once()
     app.audio_coordinator.shutdown.assert_not_called()
     assert app.config == before
@@ -449,19 +489,19 @@ def test_live_voice_speed_and_volume_preview_then_keep(build, monkeypatch):
     app.save_config.assert_called_once()
 
 
-def test_other_provider_cannot_be_heard_until_kept(build, monkeypatch):
+def test_other_provider_is_heard_without_replacing_live_runtime(build, monkeypatch):
     _, page, app = build()
     monkeypatch.setattr(network_voice_notice, 'request_acceptance', lambda _: True)
-    live = app.audio_coordinator
+    live, before = app.audio_coordinator, deepcopy(app.config)
     select(page.voice, 'edge')
-    assert not page.actions['voice'].isEnabled() and not page.voice_id.isEnabled()
-    page.sample('voice')
-    live.speak.assert_not_called()
-    page.keep('voice')
     assert page.actions['voice'].isEnabled() and page.voice_id.isEnabled()
-    page.sample('voice')
-    app.audio_coordinator.speak.assert_called_once()
-    assert page.preview is app.audio_coordinator and page.preview is not live
+    assert isinstance(page.preview, tutorial_try_preview.SampleSpeech)
+    app.sample_engines[-1].speak.assert_called_once()
+    live.speak.assert_not_called()
+    assert app.audio_coordinator is live and app.config == before
+    page.keep('voice')
+    assert app.config['tts']['engine'] == 'edge'
+    assert app.audio_coordinator is not live
 
 
 def test_preview_speech_is_in_live_echo_tracking(build, monkeypatch):
@@ -519,12 +559,16 @@ def test_calm_rows_share_surfaces_heights_and_columns(build, qapp, scale):
     assert page.voice.accessibleName() == provider_label
     labels = [page.voice_labels[name] for name in ('Voice', provider_label, 'Speaking speed', 'Volume')]
     controls = [page.voice_id, page.voice, page.speed, page.volume]
-    assert len({widget.mapTo(page.widget(), QPoint()).x() for widget in labels}) == 1
-    assert len({widget.mapTo(page.widget(), QPoint()).x() for widget in controls}) == 1
-    assert labels[0].y() < labels[1].y() < labels[2].y() < labels[3].y()
+    # Two columns keep the voice step within the tutorial at large text sizes.
+    for column in (0, 1):
+        assert labels[column].x() == labels[column + 2].x()
+        assert controls[column].x() == controls[column + 2].mapTo(page.cards['voice'], QPoint()).x()
+        assert labels[column].y() < labels[column + 2].y()
     for key, choice in (('level', page.level), ('pace', page.pace)):
-        assert choice.height() == page.actions[key].height() == page.keeps[key].height() == theme.HIT_TARGET_MIN
+        assert all(button.height() == theme.HIT_TARGET_MIN for button in choice.buttons)
+        assert page.keeps[key].height() == theme.HIT_TARGET_MIN
     assert page.voice.height() == page.voice_id.height() == page.actions['voice'].height() == page.keeps['voice'].height()
+    page.show_stage(1)
     card = page.cards['voice'].grab().toImage()
     for slider in (page.speed, page.volume):
         pixel = card.pixelColor(slider.x() + 4, slider.y() + 4)
@@ -581,6 +625,8 @@ def test_keep_stops_own_sample_without_busy_message(build, key):
     page.sample('voice')
     page.refresh()
     assert page.actions['voice'].text() == 'Hear it'
+    page.played_level = 'full'
+    page._pace_ready = True
     page.keep(key)
     app.audio_coordinator.cancel_speech.assert_called_once()
     assert key in page.kept and 'busy' not in page.result.text()

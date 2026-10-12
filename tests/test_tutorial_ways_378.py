@@ -70,11 +70,13 @@ def test_seven_steps_and_passive_navigation(build, qapp):
     assert window._steps[window._step][0] == 'display'
     window._go_next()
     assert window._steps[window._step][0] == 'try'
-    window._go_next()
+    for _ in range(3):  # Each Try walkthrough step must be visited.
+        window._go_next()
     assert window._steps[window._step][0] == 'done'
     window._go_back()
     assert window._steps[window._step][0] == 'try'
-    window._go_back()
+    for _ in range(3):
+        window._go_back()
     assert window._steps[window._step][0] == 'display'
     window._go_back()
     assert window._next_btn.isEnabled() and window._step_lbl.text() == f'Step 4 of {len(window._steps)}'
@@ -196,7 +198,8 @@ def test_commit_word_matches_accepted_config(build, monkeypatch, word):
     # Done deliberately preserves recovery-only copy, with no redundant paste word.
     window._go_next()  # Ways -> Display
     window._go_next()  # Display -> Try
-    window._go_next()  # Try -> Done
+    for _ in range(3):  # Try's three steps -> Done
+        window._go_next()
     assert 'scratch that' in '\n'.join(l.text() for l in window._current_page.findChildren(QLabel))
 
 

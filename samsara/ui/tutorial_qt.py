@@ -565,10 +565,19 @@ class TutorialWindow(QMainWindow):
             return
         layout.activate()
         if self._steps[self._step][0] in ('ways', 'try'):
+            if self._steps[self._step][0] == 'try':
+                # The voice trial needs two usable columns at large text sizes.
+                self.resize(min(self.maximumWidth(), max(self.width(), 900)), self.height())
+                self._fit_available_screen()
+                content.resize(page.viewport().width(), content.height())
+                layout.activate()
             natural_height = max(content.minimumSizeHint().height(), layout.minimumSize().height())
+            if self._steps[self._step][0] == 'try' and layout.hasHeightForWidth():
+                natural_height = max(natural_height, layout.heightForWidth(page.viewport().width()))
             chrome = self.height() - page.viewport().height()
             self.resize(self.width(), min(self.maximumHeight(),
                         max(self._default_window_height, chrome + natural_height)))
+            self._fit_available_screen()
             return
         natural_height = max(
             content.height(), content.minimumSizeHint().height(),
@@ -1022,6 +1031,17 @@ class TutorialWindow(QMainWindow):
         self._cancel_hint_timer()
         self._remove_all_hooks()
 
+        # Restore the user's pre-Try width and keep all frame edges inside the work area.
+        key = self._steps[self._step][0]
+        previous_try = self._current_page is not None and self._current_page is getattr(self, '_try_page', None)
+        if key == 'try' and not previous_try:
+            self._try_previous_width = self.width()
+        if previous_try and key != 'try':
+            self.resize(getattr(self, '_try_previous_width', 620), self.height())
+            self._fit_available_screen()
+        if key == 'try' or previous_try:
+            self._next_btn.setEnabled(True)
+            self._next_btn.setFocus()
         # Swap page
         page = self._pages[self._step]
         if self._current_page is not None:
@@ -1094,6 +1114,8 @@ class TutorialWindow(QMainWindow):
 
     def _go_next(self):
         key = self._steps[self._step][0]
+        if key == 'try' and getattr(self, '_try_page', None) is not None and self._try_page.advance(1):
+            return
         if key == "done":
             self._finish()
             return
@@ -1102,6 +1124,9 @@ class TutorialWindow(QMainWindow):
         self._show_step()
 
     def _go_back(self):
+        if (self._steps[self._step][0] == 'try' and getattr(self, '_try_page', None) is not None
+                and self._try_page.advance(-1)):
+            return
         # Reuses _show_step() -- the exact same page-setup/dots/title/nav-
         # button routine forward navigation uses, so there is no separate
         # "go backward" page-setup path to keep in sync. _show_step()'s

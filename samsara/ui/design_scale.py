@@ -79,6 +79,7 @@ def _button_qss(primary: bool, *, calm: bool = False) -> str:
                 min-height: {TAP_TARGET}px; padding: 0 {SPACE_SCALE[2]}px;
                 font-weight: {WEIGHT_SCALE['regular' if calm else 'semibold']}; }}
             QPushButton:hover {{ background: {theme.ACCENT_HOVER}; border-color: {theme.ACCENT_HOVER}; }}
+            QPushButton:focus {{ border-color: {theme.TEXT_PRIMARY}; }}
             QPushButton:pressed {{ background: {theme.ACCENT_PRESSED}; border-color: {theme.ACCENT_PRESSED}; }}
             QPushButton:disabled {{ background: {theme.ACCENT_DISABLED}; color: {theme.TEXT_DISABLED};
                 border-color: {theme.ACCENT_DISABLED}; }}
@@ -89,6 +90,7 @@ def _button_qss(primary: bool, *, calm: bool = False) -> str:
             min-height: {TAP_TARGET}px; padding: 0 {SPACE_SCALE[2]}px;
             font-weight: {WEIGHT_SCALE['regular' if calm else 'medium']}; }}
         QPushButton:hover {{ background: {theme.HOVER_WASH}; border-color: {theme.ACCENT}; }}
+        QPushButton:focus {{ border-color: {theme.ACCENT}; }}
         QPushButton:pressed {{ background: {theme.PRESS_WASH}; border-color: {theme.ACCENT}; }}
         QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.BORDER_FAINT}; }}
     """

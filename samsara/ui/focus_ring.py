@@ -16,6 +16,12 @@ def keyboard_stylesheet(sheet):
     def rule(match):
         selectors, declarations = match[1], match[2]
         revised = re.sub(r'([^\s,{}]+):focus', selector, selectors)
+        if ':focus' in selectors and '::' not in selectors and re.search(r'\bborder(?:-color)?\s*:', declarations):
+            # Keep the existing edge/radius; focus changes ink, never layout.
+            if not re.search(r'\b(?:padding|margin)(?:-[\w-]+)?\s*:', declarations):
+                declarations = re.sub(r'\bborder\s*:\s*2px\s+solid', 'border: 1px solid', declarations)
+            if not re.search(r'\boutline\s*:', declarations):
+                declarations += ' outline: none;'
         # Underline suppression is independent of the visible focus border.
         decoration = re.search(r'text-decoration\s*:[^;{}]+;', declarations)
         plain = ''
