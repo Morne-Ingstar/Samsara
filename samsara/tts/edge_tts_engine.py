@@ -19,9 +19,10 @@ import asyncio
 import io
 import logging
 import threading
+import time
 import uuid
 from typing import Callable, List, Optional
-from samsara.log import describe_text
+from samsara.log import describe_text, safe_exception
 from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
 
@@ -81,13 +82,15 @@ class _SynthesisRevoked(Exception):
 
 
 def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
-                    authorize=None) -> bytes:
+                    authorize=None, max_attempts=3, timeout=10.0) -> bytes:
     """Synthesize text via edge-tts, return raw MP3 bytes.
 
     edge-tts streams audio over a websocket that can drop mid-utterance on
     longer texts, ending the async loop early with no exception and yielding
     a silently-truncated MP3. We estimate a minimum expected byte count from
     the text length and retry if the stream comes back suspiciously short.
+    timeout bounds first audio and each subsequent audio gap, never total
+    duration. Metadata alone cannot keep an inaudible request alive.
     """
     import edge_tts
 
@@ -106,12 +109,29 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
         communicate = edge_tts.Communicate(text, voice_id, rate=rate, volume=volume)
         buf = io.BytesIO()
         got_audio = False
-        async for chunk in communicate.stream():
-            _require_authorized()
-            if chunk["type"] == "audio":
-                buf.write(chunk["data"])
-                got_audio = True
-        return buf.getvalue(), got_audio
+        stream = communicate.stream().__aiter__()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        error = None
+        try:
+            while True:
+                _require_authorized()
+                chunk = await asyncio.wait_for(stream.__anext__(),
+                                               max(0.0, deadline - loop.time()))
+                _require_authorized()
+                if chunk["type"] == "audio" and chunk["data"]:
+                    buf.write(chunk["data"])
+                    got_audio = True
+                    deadline = loop.time() + timeout
+        except StopAsyncIteration:
+            pass
+        except _SynthesisRevoked:
+            raise
+        except Exception as exc:
+            error = exc
+        finally:
+            await stream.aclose()
+        return buf.getvalue(), got_audio, error
 
     def _run_isolated():
         """Run _do() on a private event loop in this thread.
@@ -146,20 +166,37 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
         return result['value']
 
     mp3 = b""
-    for attempt in range(1, 4):  # up to 3 tries
+    for attempt in range(1, max_attempts + 1):
         _require_authorized()
         try:
-            mp3, got_audio = _run_isolated()
+            audio, got_audio, error = _run_isolated()
         except _SynthesisRevoked:
             raise
         except Exception as exc:  # websocket / network blip
-            logger.warning("[EdgeTTS] stream attempt %d failed: %s", attempt, exc)
+            status = getattr(exc, 'status', None)
+            logger.warning("[EdgeTTS] stream attempt %d failed (status=%s, type=%s)",
+                           attempt, status if isinstance(status, int) else 'unknown',
+                           type(exc).__name__)
+            if isinstance(status, int) and 400 <= status < 500:
+                break
             continue
 
-        if got_audio and len(mp3) >= min_expected_bytes:
+        # Keep the best partial result even if a later attempt returns nothing.
+        if len(audio) > len(mp3):
+            mp3 = audio
+        if error is not None:
+            status = getattr(error, 'status', None)
+            logger.warning("[EdgeTTS] stream attempt %d failed (status=%s, type=%s)",
+                           attempt, status if isinstance(status, int) else 'unknown',
+                           type(error).__name__)
+            if not got_audio and isinstance(status, int) and 400 <= status < 500:
+                break  # A handshake refusal cannot recover by repeating it now.
+            continue
+
+        if got_audio and len(audio) >= min_expected_bytes:
             if attempt > 1:
                 logger.info("[EdgeTTS] stream recovered on attempt %d", attempt)
-            return mp3
+            return audio
 
         logger.warning(
             "[EdgeTTS] short stream on attempt %d: %d bytes "
@@ -171,11 +208,11 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
     # better than silence); only fail hard if we got nothing at all.
     if mp3:
         logger.error(
-            "[EdgeTTS] still short after 3 attempts (%d bytes) -- "
-            "speaking partial audio", len(mp3),
+            "[EdgeTTS] still short after %d attempts (%d bytes) -- "
+            "speaking partial audio", max_attempts, len(mp3),
         )
         return mp3
-    raise RenderError("edge-tts returned no audio after 3 attempts")
+    raise RenderError("edge-tts returned no audio")
 
 
 def _mp3_to_pcm(mp3_bytes: bytes, target_sr: int = 44100) -> bytes:
@@ -193,13 +230,21 @@ class EdgeTTSEngine(TTSEngine):
     def __init__(self, output_device: Optional[int] = None, output_device_resolver=None):
         _import_edge_tts()
         self._voices = list(_BUILTIN_VOICES)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._active_handle: Optional[SpeechHandle] = None
         self._state = "idle"
         self._cancelled = False
         self._output_device = output_device
         self._output_device_resolver = output_device_resolver
+        self._output_revision = 0
         self._authorization_checker = None
+        self._jobs = {}
+        self._worker_lock = threading.Lock()
+        self._fallback_engine = None
+        self._fallback_listener = None
+        self._failure_count = 0
+        self._retry_at = 0.0
+        self._shutdown = False
         logger.info("[TTS] EdgeTTSEngine initialized (Azure Neural voices via edge-tts)")
 
     def set_authorization_checker(self, checker) -> None:
@@ -215,7 +260,27 @@ class EdgeTTSEngine(TTSEngine):
 
     def set_output_device(self, device_id: Optional[int]) -> None:
         """Route subsequent speech to a Samsara-specific output device."""
-        self._output_device = device_id
+        with self._lock:
+            self._output_device = device_id
+            self._output_revision += 1
+            local = self._fallback_engine
+        if local is not None:
+            local.set_output_device(device_id)
+
+    def restart_stream(self) -> None:
+        """Forward the existing default-output watcher to the Windows stream.
+
+        Network playback opens a fresh stream for every utterance.
+        """
+        with self._lock:
+            self._output_revision += 1
+            local = self._fallback_engine
+        if local is not None:
+            local.restart_stream()
+
+    def set_fallback_listener(self, callback) -> None:
+        """Non-speech notification hook; called when Windows takes an utterance."""
+        self._fallback_listener = callback
 
     def _playback_device(self):
         """Resolve output immediately before this utterance opens its stream."""
@@ -246,100 +311,209 @@ class EdgeTTSEngine(TTSEngine):
         queue_mode: str = "append",
         on_done: Optional[Callable] = None,
     ) -> SpeechHandle:
+        # voice_result is pending/network/windows/failed/cancelled. Consumers may
+        # inspect network_failed during fallback, or both fields after on_done.
+        # network_bypassed means cooldown used Windows without a Network request.
         handle = SpeechHandle(utterance_id=str(uuid.uuid4()))
-
-        if not self._authorized(check_cancelled=False):
-            handle._state = "done"
-            return handle
-
+        handle.voice_result = 'pending'
+        handle.network_failed = False
+        handle.network_bypassed = False
+        job = {'handle': handle, 'cancelled': threading.Event(), 'local': None}
         with self._lock:
-            self._cancelled = False
-            self._active_handle = handle
+            self._jobs[handle.utterance_id] = job
 
-        voice = voice_id or _DEFAULT_VOICE
+        def authorized():
+            return (not job['cancelled'].is_set() and not self._shutdown
+                    and self._authorized(check_cancelled=False))
 
-        # edge-tts rate/volume as relative percentage strings
-        rate_pct = int((speed - 1.0) * 100)
-        rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-        vol_pct = int((volume - 1.0) * 100)
-        vol_str = f"+{vol_pct}%" if vol_pct >= 0 else f"{vol_pct}%"
-
-        def _worker():
-            try:
-                with self._lock:
-                    self._state = "synthesizing"
-
-                if not self._authorized():
-                    return
-                logger.debug("[EdgeTTS] synthesizing: %r (voice=%s)", describe_text(text), voice)
-                mp3_bytes = _synthesize_mp3(
-                    voice, text, rate_str, vol_str, authorize=self._authorized,
-                )
-
-                with self._lock:
-                    if self._cancelled:
-                        return
-                    self._state = "playing"
-
-                pcm = _mp3_to_pcm(mp3_bytes)
-
-                with self._lock:
-                    if self._cancelled:
-                        return
-
-                self._play_pcm(pcm)
-
-            except _SynthesisRevoked:
-                return
-            except EngineUnavailableError:
-                raise
-            except Exception as exc:
-                logger.error("[EdgeTTS] error: %s", exc)
-            finally:
-                with self._lock:
-                    self._state = "idle"
+        def finish():
+            with self._lock:
+                self._jobs.pop(handle.utterance_id, None)
+                if self._active_handle is handle:
+                    self._state = 'idle'
                     self._active_handle = None
-                handle._state = "done"
-                if on_done:
-                    try:
-                        on_done()
-                    except Exception as e:
-                        logger.debug(f"[EdgeTTS] on_done callback failed: {e}")
+            handle._state = 'done'
+            if on_done:
+                try:
+                    on_done()
+                except Exception:
+                    safe_exception(logger, '[EdgeTTS] on_done callback failed', level=logging.DEBUG)
 
-        t = thread_registry.spawn("EdgeTTS-worker", _worker, daemon=True)
+        def worker():
+            try:
+                # Serial playback also serializes circuit-breaker decisions.
+                with self._worker_lock:
+                    if not authorized():
+                        handle.voice_result = 'cancelled'
+                        return
+                    with self._lock:
+                        self._active_handle = handle
+                        self._state = 'synthesizing'
+                        bypass = time.monotonic() < self._retry_at
+                        probe = self._retry_at > 0 and not bypass
+                    handle.network_bypassed = bypass
+                    if not bypass:
+                        try:
+                            rate_pct = int((speed - 1.0) * 100)
+                            vol_pct = int((volume - 1.0) * 100)
+                            mp3 = _synthesize_mp3(
+                                voice_id or _DEFAULT_VOICE, text,
+                                f'{rate_pct:+d}%', f'{vol_pct:+d}%',
+                                authorize=authorized, max_attempts=1 if probe else 3,
+                            )
+                            pcm = _mp3_to_pcm(mp3)
+                            if not pcm:
+                                raise RenderError('Network voice decoded no audio')
+                        except _SynthesisRevoked:
+                            handle.voice_result = 'cancelled'
+                            return
+                        except Exception:
+                            if not authorized():
+                                handle.voice_result = 'cancelled'
+                                return
+                            safe_exception(logger, '[EdgeTTS] Network voice unavailable',
+                                           level=logging.WARNING)
+                            with self._lock:
+                                self._failure_count += 1
+                                if self._failure_count >= 2:
+                                    self._retry_at = time.monotonic() + 600.0
+                        else:
+                            if not authorized():
+                                handle.voice_result = 'cancelled'
+                                return
+                            with self._lock:
+                                self._failure_count = 0
+                                self._retry_at = 0.0
+                                self._state = 'playing'
+                            self._play_pcm(pcm, authorize=authorized)
+                            handle.voice_result = 'network' if authorized() else 'cancelled'
+                            return
+                    handle.network_failed = not bypass
+                    self._speak_windows(job, text, speed, pitch, volume, category,
+                                        queue_mode, authorized)
+            except Exception:
+                handle.voice_result = 'failed' if authorized() else 'cancelled'
+                safe_exception(logger, '[EdgeTTS] speech failed', level=logging.WARNING)
+            finally:
+                finish()
+
+        if not authorized():
+            handle.voice_result = 'cancelled'
+            finish()
+        else:
+            try:
+                thread_registry.spawn('EdgeTTS-worker', worker, daemon=True)
+            except Exception:
+                handle.voice_result = 'failed'
+                finish()
+                raise
         return handle
+
+    def _speak_windows(self, job, text, speed, pitch, volume, category, queue_mode,
+                       authorized):
+        completed = threading.Event()
+        with self._lock:
+            if not authorized():
+                job['handle'].voice_result = 'cancelled'
+                return
+            local = self._fallback_engine
+            device, revision = self._output_device, self._output_revision
+        if local is None:
+            # _worker_lock serializes builders. Voice enumeration and opening
+            # an output stream must not block cancel_all or state inspection.
+            from .winrt_engine import WinRTEngine
+            local = WinRTEngine(output_device=device,
+                                output_device_resolver=self._output_device_resolver)
+            with self._lock:
+                stopped = self._shutdown
+                if not stopped:
+                    self._fallback_engine = local
+                changed = revision != self._output_revision
+                device = self._output_device
+            if stopped:
+                local.shutdown()
+                job['handle'].voice_result = 'cancelled'
+                return
+            if changed:
+                local.set_output_device(device)
+        with self._lock:
+            if not authorized():
+                job['handle'].voice_result = 'cancelled'
+                return
+            # A Network voice ID is not a Windows voice ID: use Windows' default.
+            job['local'] = local.speak(text, speed=speed, pitch=pitch, volume=volume,
+                                      category=category, queue_mode=queue_mode,
+                                      on_done=completed.set)
+        notified = False
+        while True:
+            if not authorized():
+                local.cancel(job['local'])
+                job['handle'].voice_result = 'cancelled'
+                return
+            state = job['local']._state
+            # done also confirms successful playback if a short utterance
+            # finished between polls. Failed synthesis must never show a chip.
+            if not notified and state in ('playing', 'done'):
+                notified = True
+                if self._fallback_listener:
+                    try:
+                        self._fallback_listener()
+                    except Exception:
+                        safe_exception(logger, '[EdgeTTS] fallback notification failed', level=logging.DEBUG)
+            if completed.is_set() or state in ('done', 'failed', 'cancelled', 'cancelling'):
+                break
+            completed.wait(.02)
+        job['handle'].voice_result = (
+            'cancelled' if not authorized() or job['local']._state in ('cancelled', 'cancelling') else
+            'failed' if job['local']._state == 'failed' else 'windows')
 
     def cancel(self, handle: SpeechHandle) -> None:
         with self._lock:
-            if self._active_handle and self._active_handle.utterance_id == handle.utterance_id:
-                self._cancelled = True
-                self._state = "cancelling"
+            job = self._jobs.get(handle.utterance_id)
+            if job:
+                job['cancelled'].set()
+                if job['local'] is not None:
+                    self._fallback_engine.cancel(job['local'])
 
     def cancel_all(self) -> None:
         with self._lock:
             self._cancelled = True
-            self._state = "cancelling"
+            for job in self._jobs.values():
+                job['cancelled'].set()
+            if self._fallback_engine is not None:
+                self._fallback_engine.cancel_all()
 
     def set_volume(self, handle: SpeechHandle, volume: float, fade_ms: int = 5) -> None:
-        # Phase 1: no per-utterance volume adjustment after synthesis starts
-        pass
+        with self._lock:
+            job = self._jobs.get(handle.utterance_id)
+            if job and job['local'] is not None:
+                self._fallback_engine.set_volume(job['local'], volume, fade_ms=fade_ms)
 
     def is_speaking(self) -> bool:
         with self._lock:
-            return self._state in ("synthesizing", "playing")
+            return bool(self._jobs)
 
     def get_engine_state(self) -> str:
         with self._lock:
+            active = self._active_handle
+            job = self._jobs.get(active.utterance_id) if active else None
+            if job and job['local'] is not None:
+                return self._fallback_engine.get_engine_state()
             return self._state
 
     def shutdown(self) -> None:
+        self._shutdown = True
         self.cancel_all()
+        with self._lock:
+            if self._fallback_engine is not None:
+                self._fallback_engine.shutdown()
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    def _play_pcm(self, pcm_bytes: bytes, sample_rate: int = 44100) -> None:
+    def _play_pcm(self, pcm_bytes: bytes, sample_rate: int = 44100,
+                  authorize=None) -> None:
         """Play raw 16-bit mono PCM through sounddevice.
 
         Uses an explicit OutputStream written in chunks rather than the
@@ -395,9 +569,13 @@ class EdgeTTSEngine(TTSEngine):
             with stream_context as stream:
                 idx = 0
                 while idx < total_frames:
-                    with self._lock:
-                        if self._cancelled:
+                    if authorize is not None:
+                        if not authorize():
                             break
+                    else:
+                        with self._lock:
+                            if self._cancelled:
+                                break
                     block = audio[idx:idx + blocksize]
                     stream.write(block)
                     frames_written += len(block)
@@ -411,4 +589,5 @@ class EdgeTTSEngine(TTSEngine):
                 time.time() - t0,
             )
         except Exception as exc:
-            logger.error("[EdgeTTS] playback error: %s", exc)
+            safe_exception(logger, '[EdgeTTS] playback error', level=logging.ERROR)
+            raise

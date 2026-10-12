@@ -151,6 +151,9 @@ class AudioCoordinator:
         self.app = app
         self.engine = engine
         self._dispatch_lock = threading.RLock()
+        fallback_listener = getattr(engine, 'set_fallback_listener', None)
+        if callable(fallback_listener):
+            fallback_listener(self._on_network_fallback)
         self._engine_provider = (getattr(app, 'config', {}).get('tts', {}) or {}).get('engine')
         authorize = getattr(engine, 'set_authorization_checker', None)
         if callable(authorize):
@@ -332,8 +335,14 @@ class AudioCoordinator:
                 self._speech_pending += 1
                 generation = self._speech_generation
 
+            finished = False
+
             def _on_tts_done():
+                nonlocal finished
                 with self._state_lock:
+                    if finished:
+                        return
+                    finished = True
                     current = generation == self._speech_generation
                     if current:
                         self._speech_pending = max(0, self._speech_pending - 1)
@@ -350,15 +359,19 @@ class AudioCoordinator:
             self.transition_to(SPEAKING, context={'text': text})
 
             from samsara.result_messages import spoken_result
-            handle = self.engine.speak(
-                spoken_result(text),
-                voice_id=effective_voice,
-                speed=effective_speed,
-                volume=effective_volume,
-                category=category,
-                queue_mode=queue_mode,
-                on_done=_on_tts_done,
-            )
+            try:
+                handle = self.engine.speak(
+                    spoken_result(text),
+                    voice_id=effective_voice,
+                    speed=effective_speed,
+                    volume=effective_volume,
+                    category=category,
+                    queue_mode=queue_mode,
+                    on_done=_on_tts_done,
+                )
+            except Exception:
+                _on_tts_done()
+                raise
 
         self._active_handle = handle
         self._last_spoken_handle = handle
@@ -757,3 +770,23 @@ class AudioCoordinator:
                 cb(old, new, context)
             except Exception:
                 safe_exception(logger, "AudioCoordinator: state listener raised")
+
+    def _on_network_fallback(self):
+        """One non-spoken warning for the app session, including engine rebuilds."""
+        with self._dispatch_lock:
+            if getattr(self.app, '_network_voice_fallback_notified', False) is True:
+                return
+            from samsara import outcome_ring
+            from samsara.live_surface.feedback import schedule_feedback
+            label = 'Network voice unavailable - using the Windows voice.'  # STAND-IN COPY (542)
+            if getattr(self.app, '_outcome_ring', None) is None:
+                self.app._outcome_ring = deque(maxlen=8)
+            self.app._outcome_ring.append(
+                outcome_ring.record(label, 'warning', time.time(), 'network_voice_fallback'))
+            # The ordinary outcome helper resolves a pending dictation hold.
+            # This bridge posts to Qt and retains unrelated feedback owners.
+            indicator = getattr(self.app, 'listening_indicator', None)
+            if indicator is not None and hasattr(indicator, 'show_outcome'):
+                schedule_feedback(self.app, label, 'warning', 10000,
+                                  source='network_voice_fallback')
+            self.app._network_voice_fallback_notified = True

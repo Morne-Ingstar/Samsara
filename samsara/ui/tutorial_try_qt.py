@@ -390,6 +390,10 @@ class _TryPage(QScrollArea):
     def poll(self):
         from samsara.audio_engine.guide_capture import running_engine, block_rms
         from samsara.audio_engine.ring import EMPTY
+        if (self.stage == 1 and self.preview_handle is not None
+                and getattr(self.preview_handle, 'network_failed', False) is True):
+            self.result.setText('The Network voice did not answer.')  # STAND-IN COPY (542)
+            self.states['voice'].setText(self.result.text())
         if (self.busy(include_speech=False) or
                 (isinstance(self.preview, SampleSpeech) and not self.preview.authorized())):
             self.stop_preview()
