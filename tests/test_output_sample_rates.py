@@ -49,6 +49,7 @@ def test_persistent_earcons_recache_and_open_at_selected_device_rate(monkeypatch
     app.output_device_name = "Headphones (Arctis Nova Pro Wireless)"
     app._sound_stream_sr = 44100
     app._sound_stream = None
+    app._audio_refresh_lock = threading.RLock()
     app._buffer_lock = threading.Lock()
     app._playback_buffer = np.ones((4, 1), dtype=np.float32)
     app._load_sound_cache = Mock()

@@ -549,7 +549,7 @@ def test_start_hidden_policy_keeps_wizard_visible():
     assert should_show_main_window(ready) is False
     assert should_show_main_window({**ready, "start_hidden": False}) is True
     assert should_show_main_window({"start_hidden": True}) is True
-    assert should_show_main_window({**ready, "microphone": None}) is True
+    assert should_show_main_window({**ready, "microphone": None}) is False
 
 
 def test_run_entry_update_and_removal_use_only_injected_registry():

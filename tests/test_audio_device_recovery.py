@@ -306,10 +306,9 @@ class TestEngineRecovery:
         engine._device_identity = None
         engine._device_name = None
 
-        device, note = engine._resolve_device()
-
-        assert device == 2  # config['microphone']
-        assert note == ""
+        # A stale legacy index is not proof of a usable microphone.
+        with pytest.raises(dr.DeviceNotFound):
+            engine._resolve_device()
 
     def test_hostapi_change_is_reported(self, monkeypatch):
         sd = _OpenableSD([_dev(FOCUSRITE, 0)])

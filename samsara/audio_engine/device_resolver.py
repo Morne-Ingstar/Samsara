@@ -152,3 +152,42 @@ def device_present(sd, name: str) -> bool:
         return bool(_input_candidates(sd, name))
     except DeviceNotFound:
         return False
+
+
+def select_input(sd, config: dict, identity=None):
+    """Resolve the preference afresh without mutating it.
+
+    Return (index, using_default_fallback). An absent named device may use
+    the current system input, never its last-known numerical index.
+    """
+    name = config.get('microphone_name')
+    api = config.get('microphone_hostapi') or ''
+    use_default = name in ('System default', 'Default') or (
+        not name and config.get('microphone') is None)
+    if use_default:
+        name = None
+    elif not name and identity:
+        name, api = identity
+    elif name and not api and identity and identity[0] == name:
+        api = identity[1]
+    if name:
+        try:
+            index, _api, _exact = resolve(sd, name, api)
+            return index, False
+        except DeviceNotFound:
+            pass
+    elif not use_default and config.get('microphone') is not None:
+        index = config['microphone']
+        try:
+            info = sd.query_devices(index, kind='input')
+            if int(info.get('max_input_channels', 0)) > 0:
+                return index, False
+        except Exception:
+            pass
+    try:
+        index = int(sd.default.device[0])
+        if index >= 0 and int(sd.query_devices(index, kind='input').get('max_input_channels', 0)) > 0:
+            return index, bool(name)
+    except Exception:
+        pass
+    raise DeviceNotFound(f"No microphone available ({name or 'system default'})")

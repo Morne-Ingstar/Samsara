@@ -279,6 +279,7 @@ class AudioCaptureEngine:
         on_stream_death: "Any" = None,
         on_recovery_success: "Any" = None,
         on_give_up: "Any" = None,
+        before_reopen: "Any" = None,
     ) -> None:
         self._ring    = ring
         self._config  = config or {}
@@ -327,20 +328,67 @@ class AudioCaptureEngine:
         self._on_stream_death     = on_stream_death
         self._on_recovery_success = on_recovery_success
         self._on_give_up          = on_give_up
+        self._before_reopen = before_reopen
+        self._stream_lock = threading.RLock()
+        self._using_default_fallback = False
 
     # ── Stream lifecycle ──────────────────────────────────────────────────────
 
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    def update_config(self, config, *, capture_rate=None):
+        """Update capture intent without exposing engine internals to the app."""
+        with self._stream_lock:
+            self._config.update(config)
+            if capture_rate is not None:
+                self._config['_capture_rate'] = capture_rate
+
+    def refresh(self, config, *, capture_rate=None, guard=None):
+        """Serialize close/rescan/open, retaining this engine and its consumers.
+
+        An existing recovery worker owns its next attempt. A failed deliberate
+        refresh enters that same recovery path rather than pretending to run.
+        """
+        from contextlib import nullcontext
+        with self._stream_lock:
+            # Admit before closing input. A deferred scan leaves it untouched.
+            with guard() if guard else nullcontext():
+                self.update_config(config, capture_rate=capture_rate)
+                self._running = True
+                self._recovering = True
+                if self._try_reopen_locked(phase='device change', rescan=True):
+                    return True
+                self._recovering = False
+                self._on_stream_finished()
+                return False
+
+    @property
+    def rescan_stream(self):
+        return self._stream
+
+    @property
+    def capture_name(self):
+        return self._device_name
+
+    def mark_device_lost(self):
+        """A Windows capture-endpoint removal is equivalent to stream death."""
+        self._on_stream_finished()
+
     def start(self) -> None:
+        with self._stream_lock:
+            self._start_locked()
+
+    def _start_locked(self) -> None:
         """Open a sounddevice InputStream and begin writing to the ring."""
         if self._running:
             return
-        # Stashed for recovery only -- the initial open below is UNCHANGED
-        # from before (still opens by config['microphone'], the already-
-        # reconciled index/None) so first-boot behavior is untouched.
         self._device_name = self._config.get('microphone_name')
         device = self._config.get('microphone', None)
         self._open_stream(device)
         self._running = True
+        self._device_lost = False
 
     def _open_stream(self, device) -> None:
         """Build the polyphase resample ratio for `device` and open the
@@ -360,6 +408,10 @@ class AudioCaptureEngine:
         """
         import sounddevice as sd
 
+        device, self._using_default_fallback = device_resolver.select_input(
+            sd, self._config, self._device_identity,
+        )
+
         # If the caller passed an explicit rate (e.g. to match a concurrent
         # stream on the same WASAPI device), use it directly; otherwise query.
         # WASAPI shared mode serves multiple streams through separate clients.
@@ -367,7 +419,8 @@ class AudioCaptureEngine:
         # via different audio engines and only one gets callbacks reliably.
         # Forcing the ACE engine to the same rate as the app's other streams
         # (wake word, prebuffer) ensures they share a single WASAPI session.
-        explicit_rate = self._config.get('_capture_rate')
+        explicit_rate = (self._config.get('_capture_rate')
+                         if device == self._config.get('microphone') else None)
         if explicit_rate:
             self._native_rate = int(explicit_rate)
         else:
@@ -450,12 +503,18 @@ class AudioCaptureEngine:
         self._reconnect_now.set()
 
     def stop(self) -> None:
+        with self._stream_lock:
+            self._stop_locked()
+
+    def _stop_locked(self) -> None:
         """Stop and close the PortAudio stream (deliberate, external stop --
         e.g. app shutdown or a user-initiated mic switch). Clears _running
         BEFORE tearing down the stream so _on_stream_finished can tell this
         apart from an unexpected death (which fires with _running still
         True) and skip triggering recovery."""
         self._running   = False
+        self._device_lost = False
+        self._reconnect_now.set()
         self._recovering = False
         self._teardown_stream_only()
         logger.info("[ACE] Engine stopped.")
@@ -466,8 +525,10 @@ class AudioCaptureEngine:
         engine must stay "supposed to be running" throughout."""
         if self._stream is not None:
             try:
-                self._stream.stop()
-                self._stream.close()
+                try:
+                    self._stream.stop()
+                finally:
+                    self._stream.close()
             except Exception as exc:
                 logger.debug(f"[ACE] stream teardown error: {exc}")
             self._stream = None
@@ -489,6 +550,7 @@ class AudioCaptureEngine:
             return  # already handling a prior death; avoid a second thread
         logger.error("[ACE] Input stream died unexpectedly -- entering recovery")
         self._recovering = True
+        self._device_lost = True
         thread_registry.spawn("ace-recovery", self._recovery_loop, daemon=True)
 
     def _recovery_loop(self) -> None:
@@ -517,8 +579,9 @@ class AudioCaptureEngine:
         deadline = time.monotonic() + 60.0
         try:
             while self._running and time.monotonic() < deadline:
-                time.sleep(2.0)
-                if not self._running:
+                self._reconnect_now.wait(2.0)
+                self._reconnect_now.clear()
+                if not self._running or not self._device_lost:
                     return  # a deliberate stop() happened while we waited
                 if self._try_reopen(phase="recovery"):
                     return
@@ -550,28 +613,35 @@ class AudioCaptureEngine:
         """
         import sounddevice as sd
 
-        identity = self._device_identity
-        name = identity[0] if identity else self._device_name
-        recorded_api = identity[1] if identity else ""
-        if not name:
-            return (self._config.get('microphone', None), "")
-        try:
-            index, api, exact = device_resolver.resolve(sd, name, recorded_api)
-        except device_resolver.DeviceNotFound as exc:
-            raise RuntimeError(str(exc)) from exc
-        if exact:
-            return (index, "")
-        return (index, f"host API changed {recorded_api or '(unrecorded)'} -> {api}")
+        identity = self._device_identity or (self._device_name, '')
+        device, self._using_default_fallback = device_resolver.select_input(sd, self._config, identity)
+        current = device_resolver.capture_identity(sd, device)
+        note = ''
+        if identity[1] and current and identity[1] != current[1]:
+            note = f"host API changed {identity[1]} -> {current[1]}"
+        return device, note
 
     def _try_reopen(self, *, phase: str) -> bool:
+        with self._stream_lock:
+            if not self._running:
+                return False
+            return self._try_reopen_locked(phase=phase)
+
+    def _try_reopen_locked(self, *, phase: str, rescan=False) -> bool:
         """One resolve-and-open attempt. True when the stream is live again."""
         try:
-            device, note = self._resolve_device()
             self._teardown_stream_only()  # never two streams alive at once
+            if rescan and self._before_reopen:
+                config = self._before_reopen()
+                if isinstance(config, dict):
+                    self._config.update(config)
+            device, note = self._resolve_device()
             self._open_stream(device)
             self.bump_device_epoch()  # signal the discontinuity to consumers
         except Exception as exc:
+            self._teardown_stream_only()
             logger.debug(f"[ACE] {phase} attempt failed: {exc}")
+            self._device_lost = True
             return False
         if note:
             logger.warning("[ACE] Recovered on a different backend -- %s", note)
@@ -599,7 +669,7 @@ class AudioCaptureEngine:
         while self._running:
             forced = self._reconnect_now.wait(timeout=interval_s)
             self._reconnect_now.clear()
-            if not self._running:
+            if not self._running or (not self._device_lost and not forced):
                 return
             try:
                 present = device_resolver.device_present(sd, name) if name else True

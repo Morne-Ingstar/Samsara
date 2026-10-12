@@ -61,10 +61,7 @@ def current_run_command() -> str:
 
 def should_show_main_window(config) -> bool:
     """Keep the shell visible until the first-run wizard is complete."""
-    wizard_pending = (
-        not bool(config.get("first_run_complete", False))
-        or config.get("microphone") is None
-    )
+    wizard_pending = not bool(config.get("first_run_complete", False))
     return wizard_pending or not bool(config.get("start_hidden", False))
 
 

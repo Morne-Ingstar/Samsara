@@ -1425,35 +1425,11 @@ class DictationApp:
         # File-system watcher; started after load_config completes.
         self._config_watcher = None
 
-        # Check if first-run wizard is needed.
-        # Triggers when: config missing, first_run_complete absent/false,
-        # or no microphone was ever configured.
-        need_wizard = False
-        if not self.config_path.exists():
-            need_wizard = True
-        else:
-            for _attempt in range(3):
-                try:
-                    with open(self.config_path, 'r') as f:
-                        existing_config = json.load(f)
-                    if not existing_config.get('first_run_complete', False):
-                        need_wizard = True
-                    elif existing_config.get('microphone') is None:
-                        need_wizard = True
-                    break
-                except (OSError, PermissionError) as _e:
-                    logger.warning("[CONFIG] pre-wizard check attempt %d failed: %s", _attempt + 1, _e)
-                    if _attempt < 2:
-                        time.sleep(0.1)
-                    else:
-                        logger.warning("[CONFIG] pre-wizard check failed 3x -- skipping wizard (assuming valid config)")
-                        need_wizard = False
-                except json.JSONDecodeError:
-                    need_wizard = True
-                    break
-                except Exception:
-                    need_wizard = True
-                    break
+        from samsara.portaudio_guard import install
+        install(sd)  # Before any wizard, calibration or playback can open a stream.
+        # Device availability is not setup completion.
+        from samsara.microphone_recovery import needs_setup
+        need_wizard = needs_setup(self.config_path)
 
         # Run first-run wizard if needed
         if need_wizard:
@@ -1572,33 +1548,6 @@ class DictationApp:
         # resolved at call time, so this is safe.
         self._reconcile_microphone_selection()
 
-        # Validate saved microphone ID against available devices.
-        # Device indices change when switching host APIs (e.g. MME → WASAPI)
-        # or when hardware is added/removed. Fall back to the first available.
-        saved_mic = self.config.get('microphone')
-        valid_ids = {mic['id'] for mic in self.available_mics}
-        if saved_mic not in valid_ids and self.available_mics:
-            old_id = saved_mic
-            with self._config_lock:
-                self.config['microphone'] = self.available_mics[0]['id']
-                self.save_config()
-            new_name = self.available_mics[0]['name']
-            logger.info(f"[CONFIG] Saved microphone {old_id} not found in current devices, "
-                  f"switched to {new_name} (id={self.config['microphone']})")
-            # Notify the user so they can confirm the right mic is selected
-            def _mic_changed_dialog():
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(
-                    None,
-                    "Microphone Changed",
-                    f"Your previously selected microphone was not found on this machine.\n\n"
-                    f"Samsara has switched to: {new_name}\n\n"
-                    f"If this is wrong, open Settings to choose the correct microphone.",
-                )
-            from PySide6.QtCore import QTimer
-            from PySide6.QtWidgets import QApplication as _QApp
-            QTimer.singleShot(2000, _QApp.instance(), _mic_changed_dialog)
-
         # Audio settings -- dual sample rates for WASAPI compatibility
         self.model_rate = MODEL_SAMPLE_RATE
         _t = time.perf_counter()
@@ -1625,6 +1574,7 @@ class DictationApp:
         self.command_mode_recording = False  # True when using command-only hotkey
         self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
         self._hold_capture_lifecycle_lock = threading.RLock()
+        self._audio_refresh_lock = threading.RLock()
         self._hold_capture_duck_seq = 0
         self._hold_capture_duck_token = None
         self._hold_capture_duck_confirmed_at = None
@@ -2410,6 +2360,7 @@ class DictationApp:
                 on_stream_death=self._on_ace_stream_death,
                 on_recovery_success=self._on_ace_recovery_success,
                 on_give_up=self._on_ace_recovery_give_up,
+                before_reopen=self._prepare_audio_rescan,
             )
             _dt_ctor = (time.perf_counter() - _t_ctor) * 1000
             logger.info(f"[BOOT-DIAG] AudioCaptureEngine() construction: {_dt_ctor:.0f}ms")
@@ -2454,10 +2405,14 @@ class DictationApp:
             )
 
             logger.debug("[ACE] Engine started — hold / continuous / wake dictation ready")
+            self._set_microphone_state(False)
         except Exception as exc:
             logger.exception(f"[ACE] Engine failed to start: {exc}")
+            if self._ace_engine is not None:
+                self._ace_engine.stop()
             self._ace_engine         = None
             self._dictation_consumer = None
+            self._set_microphone_state(True)
 
     def _start_ace_debug_rec(self) -> None:
         """Attach a DebugRecorder to the running ACE engine.
@@ -2494,6 +2449,7 @@ class DictationApp:
         their mic to reconnect doesn't get silently kicked out of an
         otherwise-fine session."""
         logger.error("[ACE] Audio device lost -- entering recovery")
+        self._set_microphone_state(True)
         try:
             self.play_sound('error')
         except Exception as e:
@@ -2521,6 +2477,7 @@ class DictationApp:
         and the stream was rebuilt on the same FrameBus; all consumers
         resume automatically (they never re-register)."""
         logger.info("[ACE] Audio device recovered -- stream rebuilt")
+        self._set_microphone_state(False)
         try:
             self.play_sound('start')
         except Exception as e:
@@ -2549,6 +2506,10 @@ class DictationApp:
             except Exception as e:
                 logger.debug(f"[ACE] Give-up notification failed: {e}")
         self._resume_session_inactivity_after_device_recovery()
+
+    def _set_microphone_state(self, lost: bool, *, notify=False) -> None:
+        from samsara.microphone_recovery import set_state
+        set_state(self, lost, notify=notify)
 
     def _stop_ace_engine(self) -> None:
         """Deactivate all consumers, flush debug WAV, stop engine. Called from quit_app."""
@@ -3877,6 +3838,8 @@ class DictationApp:
     def _detect_capture_rate(self, device_id):
         """Query the native sample rate of a device. Falls back to DEFAULT_CAPTURE_RATE."""
         try:
+            from samsara.audio_engine.device_resolver import select_input
+            device_id, _fallback = select_input(sd, self.config)
             if device_id is not None:
                 info = sd.query_devices(device_id)
                 rate = int(info['default_samplerate'])
@@ -3893,15 +3856,8 @@ class DictationApp:
     _CALIBRATION_MAX_AGE_S = 24 * 3600
 
     def _calibration_identity(self) -> dict:
-        """What a stored calibration must match to be reused: same device
-        (by name when known -- PortAudio indices shift -- else by index),
-        same capture rate, same multiplier."""
-        return {
-            'device_id': self.config.get('microphone'),
-            'device_name': self.config.get('microphone_name'),
-            'capture_rate': int(getattr(self, 'capture_rate', 0) or 0),
-            'multiplier': float(self.config.get('cal_multiplier', 3.0)),
-        }
+        from samsara.microphone_recovery import calibration_identity
+        return calibration_identity(self, sd)
 
     def _calibration_cache_path(self) -> Path:
         return self.config_path.parent / self._CALIBRATION_CACHE_FILENAME
@@ -3974,9 +3930,10 @@ class DictationApp:
         """Record ambient noise and derive a threshold. Returns (threshold,
         measured_ok); a failed or empty recording yields the default and
         False so it is never persisted as a real calibration."""
-        mic_id = self.config.get('microphone')
         multiplier = self.config.get('cal_multiplier', 3.0)
         try:
+            from samsara.audio_engine.device_resolver import select_input
+            mic_id, _fallback = select_input(sd, self.config)
             rms_samples = measure_ambient_rms(mic_id, self.capture_rate)
             threshold = calibrate_threshold(rms_samples, multiplier=multiplier)
             ambient = float(np.median(rms_samples)) if rms_samples else 0.0
@@ -4005,6 +3962,9 @@ class DictationApp:
         microphone switch) always records. Returns 'manual', 'cached',
         'measured' or 'failed'.
         """
+        from samsara.microphone_recovery import input_available
+        if not input_available(self, sd):
+            return 'unavailable'
         mode = self.config.get('threshold_mode', 'auto')
         if mode != 'auto':
             thresh = self.config.get('wake_word_config', {}).get('audio', {}).get(
@@ -4060,117 +4020,18 @@ class DictationApp:
         )
 
     def _mic_refresh_blocked(self) -> bool:
-        """True only for the one case refresh_audio_devices() genuinely
-        cannot proceed: an actual hold-to-dictate press is open right now
-        (self.recording). Deliberately narrower than
-        _is_audio_capture_active() -- see that method's docstring for why
-        the two questions ("is a stream open that re-enumeration would
-        disturb, and can it be cycled?" vs "does the always-on ACE engine
-        exist?") are not the same question, and 2026-07-17's fix comment on
-        refresh_audio_devices() for the bug this predicate exists to avoid
-        reintroducing.
-
-        continuous_active/wake_word_active are NOT included: as of the ACE
-        ring-consumer migration (_start_ace_engine), neither owns a
-        separate PortAudio stream -- both read the same FrameBus the ACE
-        engine writes, so refresh_audio_devices() cycling that ONE engine
-        around the PortAudio re-init is sufficient; there is nothing left
-        for those two flags to protect here. self.recording is excluded
-        from that cycling on UX/data-integrity grounds, not stream
-        ownership: interrupting a live user-held utterance mid-word to
-        cycle capture would risk losing or corrupting what they're saying,
-        unlike an idle continuous/wake listener which only misses a brief
-        (sub-second) window of ambient audio.
-        """
-        return self.recording
+        """Protect a live hold or listening session from device refresh."""
+        from samsara.microphone_recovery import capture_busy
+        return capture_busy(self)
 
     def refresh_audio_devices(self):
-        """Re-enumerate input microphones, picking up devices connected after boot.
+        """Refresh capture and outputs through the serialized recovery path."""
+        from samsara.microphone_recovery import request_refresh
+        return request_refresh(self)
 
-        sounddevice/PortAudio caches its host API device list at
-        initialization time -- a Bluetooth mic (or any device) plugged in
-        after launch never appears from a plain sd.query_devices() call.
-        Forcing PortAudio to re-scan requires sd._terminate() + sd._initialize()
-        (the documented re-enumeration pattern). That re-init is best-effort:
-        if it raises, we log a warning and fall back to a plain re-query
-        (get_available_microphones() always re-queries regardless, so the
-        fallback is implicit -- no separate code path needed).
-
-        2026-07-17 FIX -- this function was UNREACHABLE in production before
-        this change. It used to gate on _is_audio_capture_active(), which
-        OR's in `self._ace_engine is not None and self._ace_engine._running`
-        -- and the ACE engine is started unconditionally in __init__ and
-        runs for the whole process lifetime (_start_ace_engine's own
-        docstring: "runs permanently"), so that term is true from shortly
-        after boot until shutdown. The guard was therefore a constant True
-        for the entire life of a running app: every refresh call hit
-        "[MIC] refresh skipped -- audio active" and returned the stale
-        list, and _reconcile_microphone_selection() below it never ran
-        either. Confirmed empirically 2026-07-16 -- not a hypothesis.
-
-        Fixed by splitting what the guard was conflating: whether a stream
-        is open that re-enumeration would disturb, and separately, whether
-        that stream can just be cycled around the re-init instead of
-        treated as an unconditional block. The ACE engine -- the sole
-        remaining stream owner post ring-consumer-migration (see
-        _mic_refresh_blocked's docstring) -- gets stopped before
-        sd._terminate()/_initialize() and restarted after, in a finally
-        block so a raising re-init can never leave the user with no
-        capture at all. The one genuine hard block
-        (_mic_refresh_blocked(): self.recording) still refuses outright,
-        same as the old behavior for that one case -- "Stop dictation to
-        refresh devices" is honest there, just not for every other state
-        the old guard also blocked on.
-
-        Thread-safety: call only from the Qt/UI thread, same contract as
-        before -- switch_microphone() (existing precedent) already cycles
-        this same ACE engine's stop()/start() synchronously from the Qt
-        thread with no additional marshalling, and every existing reader/
-        writer of self.available_mics (tray_qt.py's menu rebuild,
-        settings_qt.py, the setup wizards) already only touches it from
-        the Qt thread too. Callers that need to invoke this off the Qt
-        thread must marshal onto it themselves (e.g. via
-        samsara.ui.qt_runtime.post()) rather than this method inventing
-        its own thread-hop -- see first_run_wizard_qt.py's refresh handler
-        for the pattern.
-
-        Returns the fresh list, in the same shape as
-        get_available_microphones() (this IS that same method -- there is
-        only one enumeration code path).
-        """
-        if self._mic_refresh_blocked():
-            logger.info("[MIC] refresh skipped — dictation hold in progress")
-            return self.available_mics
-
-        ace = self._ace_engine
-        ace_was_running = ace is not None and ace._running
-        if ace_was_running:
-            try:
-                ace.stop()
-            except Exception as exc:
-                logger.exception(f"[MIC] ACE engine stop before refresh failed: {exc}")
-
-        try:
-            try:
-                force_rescan()
-            except Exception as exc:
-                logger.warning(
-                    "[MIC] PortAudio re-scan failed, continuing with re-query: %s", exc,
-                )
-
-            self.available_mics = self.get_available_microphones()
-            self._reconcile_microphone_selection()
-        finally:
-            # Restart unconditionally if it was running -- this must happen
-            # even if the re-init or re-enumeration above raised, or the
-            # user is left with no audio capture at all until next restart.
-            if ace_was_running:
-                try:
-                    ace.start()
-                except Exception as exc:
-                    logger.exception(f"[MIC] ACE engine restart after refresh failed: {exc}")
-
-        return self.available_mics
+    def _prepare_audio_rescan(self):
+        from samsara.microphone_recovery import prepare_rescan
+        return prepare_rescan(self, sd)
 
     def get_available_output_devices(self):
         """Return deduplicated output endpoints for Settings."""
@@ -4697,27 +4558,8 @@ class DictationApp:
         )
 
     def _reconcile_microphone_selection(self) -> None:
-        """Reconcile self.config['microphone'] against the current device list using name.
-
-        PortAudio indices are not stable across reconnects or reboots.
-        If a stored microphone_name is found in the current list under a different
-        index, the config is updated silently so the right device is used.
-        Does NOT save — the caller decides whether to persist.
-        """
-        stored_name = self.config.get('microphone_name')
-        if not stored_name:
-            return  # older config with no stored name — no-op
-
-        for mic in self.available_mics:
-            if mic['name'] == stored_name:
-                if self.config.get('microphone') != mic['id']:
-                    old_idx = self.config.get('microphone')
-                    self.config['microphone'] = mic['id']
-                    logger.debug(f"[MIC] Reconciled '{stored_name}': index {old_idx} -> {mic['id']}")
-                return  # found — whether index changed or not, we're done
-
-        logger.debug(f"[MIC] Selected device '{stored_name}' not currently available "
-              "— keeping last-known index")
+        from samsara.microphone_recovery import reconcile
+        reconcile(self, sd)
 
     def switch_microphone(self, mic_id):
         """Switch to a different microphone at runtime.
@@ -4763,9 +4605,7 @@ class DictationApp:
             try:
                 self._ace_engine.bump_device_epoch()
                 self._ace_engine.stop()
-                self._ace_engine._config['microphone']      = mic_id
-                self._ace_engine._config['microphone_name'] = self.config.get('microphone_name')
-                self._ace_engine._config['_capture_rate']   = self.capture_rate
+                self._ace_engine.update_config(self.config, capture_rate=self.capture_rate)
                 self._ace_engine.start()
                 logger.debug("[ACE] Engine restarted on new device")
             except Exception as exc:
@@ -11282,47 +11122,48 @@ class DictationApp:
         (which creates/destroys a temporary stream per call), a persistent
         OutputStream coexists safely with the InputStream used for recording.
         """
-        try:
-            # WASAPI endpoints often accept only their mix-format rate (the
-            # Arctis Nova endpoint, for example, rejects 44.1 kHz and requires
-            # 48 kHz). Rebuild the cache whenever routing changes so callback
-            # frames always match the stream's native/default rate.
-            from samsara.output_devices import output_sample_rate
-            device = None if force_windows_default else self._resolve_playback_output()
-            stream_rate = output_sample_rate(
-                sd, device,
-                fallback=getattr(self, '_sound_stream_sr', 44100),
-            )
-            if stream_rate != self._sound_stream_sr:
-                self._sound_stream_sr = stream_rate
-                self._load_sound_cache()
-                with self._buffer_lock:
-                    self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
-            self._sound_stream = sd.OutputStream(
-                samplerate=self._sound_stream_sr,
-                channels=1,
-                dtype='float32',
-                callback=self._sound_stream_callback,
-                blocksize=1024,  # ~21-23 ms at common 44.1/48 kHz rates
-                device=device,
-            )
-            self._sound_stream.start()
-            self._sound_stream_device = device
-            logger.info(
-                "[AUDIO] Persistent sound stream started (device=%s, rate=%d Hz)",
-                device, self._sound_stream_sr,
-            )
-        except Exception as e:
-            requested = locals().get('device')
-            if requested is not None:
-                logger.warning(
-                    "[AUDIO] Output device %s failed (%s); falling back to system default",
-                    requested, e,
+        with self._audio_refresh_lock:
+            try:
+                # WASAPI endpoints often accept only their mix-format rate (the
+                # Arctis Nova endpoint, for example, rejects 44.1 kHz and requires
+                # 48 kHz). Rebuild the cache whenever routing changes so callback
+                # frames always match the stream's native/default rate.
+                from samsara.output_devices import output_sample_rate
+                device = None if force_windows_default else self._resolve_playback_output()
+                stream_rate = output_sample_rate(
+                    sd, device,
+                    fallback=getattr(self, '_sound_stream_sr', 44100),
                 )
-                self._start_sound_stream(force_windows_default=True)
-                return
-            logger.exception(f"[AUDIO] Failed to start sound stream: {e}")
-            self._sound_stream = None
+                if stream_rate != self._sound_stream_sr:
+                    self._sound_stream_sr = stream_rate
+                    self._load_sound_cache()
+                    with self._buffer_lock:
+                        self._playback_buffer = np.zeros((0, 1), dtype=np.float32)
+                self._sound_stream = sd.OutputStream(
+                    samplerate=self._sound_stream_sr,
+                    channels=1,
+                    dtype='float32',
+                    callback=self._sound_stream_callback,
+                    blocksize=1024,  # ~21-23 ms at common 44.1/48 kHz rates
+                    device=device,
+                )
+                self._sound_stream.start()
+                self._sound_stream_device = device
+                logger.info(
+                    "[AUDIO] Persistent sound stream started (device=%s, rate=%d Hz)",
+                    device, self._sound_stream_sr,
+                )
+            except Exception as e:
+                requested = locals().get('device')
+                if requested is not None:
+                    logger.warning(
+                        "[AUDIO] Output device %s failed (%s); falling back to system default",
+                        requested, e,
+                    )
+                    self._start_sound_stream(force_windows_default=True)
+                    return
+                logger.exception(f"[AUDIO] Failed to start sound stream: {e}")
+                self._sound_stream = None
 
     def _sound_stream_callback(self, outdata, frames, time_info, status):
         """Callback for the persistent output stream. Feeds audio from buffer."""
@@ -11375,103 +11216,88 @@ class DictationApp:
         if not self.config.get('audio_feedback', True):
             return
 
-        # A PortAudio index dies when a monitor sleeps or is unplugged. Check
-        # the stable name/default at every earcon, reopening only on change.
-        device = self._resolve_playback_output()
-        if device != getattr(self, '_sound_stream_device', object()):
-            self.stop_sound_stream()
-            self._start_sound_stream()
-
-        # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
-        # getattr guard means play_sound works before the coordinator is set up.
-        if getattr(self, 'audio_coordinator', None) is not None:
-            self.audio_coordinator.on_earcon_starting(sound_type)
-
-        cached = self._sound_cache.get(sound_type)
-        if cached is None:
-            # Surface unknown names once per name so missing earcons show up
-            # in logs instead of silently dropping.
-            if not hasattr(self, '_warned_sound_misses'):
-                self._warned_sound_misses = set()
-            if sound_type not in self._warned_sound_misses:
-                self._warned_sound_misses.add(sound_type)
-                logger.info(f"[AUDIO] No cached sound for '{sound_type}' "
-                      f"(check sounds/themes/<theme>/{sound_type}.wav)")
+        # A late hold cue is misleading; drop it while a rescan owns audio.
+        refresh_lock = getattr(self, '_audio_refresh_lock', None)
+        if refresh_lock is not None and not refresh_lock.acquire(blocking=False):
             return
-
-        if volume is None:
-            volume = self.config.get('sound_volume', 0.5)
         try:
-            volume = min(max(float(volume), 0.0), 1.0)
-        except (TypeError, ValueError):
-            volume = self.config.get('sound_volume', 0.5)
-        if volume <= 0:
-            return
+            # A PortAudio index dies when a monitor sleeps or is unplugged. Check
+            # the stable name/default at every earcon, reopening only on change.
+            device = self._resolve_playback_output()
+            if device != getattr(self, '_sound_stream_device', object()):
+                self.stop_sound_stream()
+                self._start_sound_stream()
 
-        # Scale volume and write to buffer — the stream callback handles the rest
-        scaled = (cached * volume).astype(np.float32)
-        timing = current_stage_timing()
-        timing.feedback_started()
-        replaced_timing = None
-        with self._buffer_lock:
-            replaced_timing = getattr(self, "_stage_timing_playback", None)
-            self._stage_timing_playback = timing
-            self._playback_buffer = scaled  # Replace buffer (new sound wins)
-        speech_presence.note_hold_earcon(self, sound_type, cached)
-        if replaced_timing is not None:
-            replaced_timing.feedback_finished()
+            # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
+            # getattr guard means play_sound works before the coordinator is set up.
+            if getattr(self, 'audio_coordinator', None) is not None:
+                self.audio_coordinator.on_earcon_starting(sound_type)
+
+            cached = self._sound_cache.get(sound_type)
+            if cached is None:
+                # Surface unknown names once per name so missing earcons show up
+                # in logs instead of silently dropping.
+                if not hasattr(self, '_warned_sound_misses'):
+                    self._warned_sound_misses = set()
+                if sound_type not in self._warned_sound_misses:
+                    self._warned_sound_misses.add(sound_type)
+                    logger.info(f"[AUDIO] No cached sound for '{sound_type}' "
+                          f"(check sounds/themes/<theme>/{sound_type}.wav)")
+                return
+
+            if volume is None:
+                volume = self.config.get('sound_volume', 0.5)
+            try:
+                volume = min(max(float(volume), 0.0), 1.0)
+            except (TypeError, ValueError):
+                volume = self.config.get('sound_volume', 0.5)
+            if volume <= 0:
+                return
+
+            # Scale volume and write to buffer — the stream callback handles the rest
+            scaled = (cached * volume).astype(np.float32)
+            timing = current_stage_timing()
+            timing.feedback_started()
+            replaced_timing = None
+            with self._buffer_lock:
+                replaced_timing = getattr(self, "_stage_timing_playback", None)
+                self._stage_timing_playback = timing
+                self._playback_buffer = scaled  # Replace buffer (new sound wins)
+                if refresh_lock is not None:
+                    self._audio_output_idle_after = time.monotonic() + len(scaled) / self._sound_stream_sr + 0.25
+            speech_presence.note_hold_earcon(self, sound_type, cached)
+            if replaced_timing is not None:
+                replaced_timing.feedback_finished()
+        finally:
+            if refresh_lock is not None:
+                refresh_lock.release()
 
     def stop_sound_stream(self):
         """Stop the persistent sound stream (call on app shutdown)"""
-        logger.info("[AUDIO] Stopping sound stream...")
-        if self._sound_stream is not None:
-            try:
-                self._sound_stream.stop()
-                self._sound_stream.close()
-            except Exception as e:
-                logger.debug(f"[AUDIO] Sound stream stop/close failed: {e}")
-            self._sound_stream = None
+        with self._audio_refresh_lock:
+            logger.info("[AUDIO] Stopping sound stream...")
+            if self._sound_stream is not None:
+                try:
+                    try:
+                        self._sound_stream.stop()
+                    finally:
+                        self._sound_stream.close()
+                except Exception as e:
+                    logger.debug(f"[AUDIO] Sound stream stop/close failed: {e}")
+                self._sound_stream = None
 
     def _watch_output_device(self):
-        """Daemon thread: poll Windows every 2 s for default output device changes."""
-        current_id = _get_default_render_id()
-        stop = getattr(self, '_output_watcher_stop', None)
-        if stop is None:
-            return
-        while not stop.wait(2.0):
-            # An explicit Samsara device is independent of the Windows default.
-            if getattr(self, 'output_device', None) is not None:
-                continue
-            new_id = _get_default_render_id()
-            if new_id and new_id != current_id:
-                current_id = new_id
-                try:
-                    self._on_output_device_changed()
-                except Exception as exc:
-                    logger.exception(f'[AUDIO] Device change handler error: {exc}')
+        from samsara.microphone_recovery import watch
+        watch(self, _get_default_render_id)
 
     def _on_output_device_changed(self):
-        """Restart output streams after the Windows default audio device changes."""
-        logger.info('[AUDIO] Default output device changed — restarting streams')
-        self.stop_sound_stream()
-        self._start_sound_stream()
-        eng = getattr(self, 'tts_engine', None)
-        if eng is not None and hasattr(eng, 'restart_stream'):
-            eng.restart_stream()
+        from samsara.microphone_recovery import changes_for
+        changes_for(self).notify()
 
 
     def _duck_audio(self):
-        """Lower other apps' audio for the dictation window about to open,
-        if ducking.enabled -- no-op otherwise. See samsara/audio_ducking.py;
-        this is the single place config is consulted so every call site
-        (hotkey start_recording, wake-session start) stays in sync."""
-        ducking_cfg = self.config.get('ducking', {}) or {}
-        mode = ducking_cfg.get(
-            'recording_mode',
-            'duck' if (self.config.get('capture_duck_hold_enabled', True)
-                       or ducking_cfg.get('enabled', False)) else 'off',
-        )
-        audio_ducking.start_recording_media(mode, ducking_cfg.get('level', 0.2))
+        from samsara.microphone_recovery import duck_audio
+        duck_audio(self, audio_ducking)
 
     def _restore_audio(self):
         """Counterpart to _duck_audio -- always safe to call even if
@@ -11563,55 +11389,8 @@ class DictationApp:
                             self._close_hold_capture_duck()
 
     def _open_hold_capture_duck(self):
-        """Reuse capture ownership; wait for synchronous volume acknowledgements."""
-        from samsara import hold_capture_onset
-        self._hold_capture_duck_confirmed_at = None
-        self._hold_capture_onset = hold_capture_onset.HoldOnset(None, None, None, False, flight_recorder.record)
-        cfg = self.config.get('ducking', {}) or {}
-        media_mode = cfg.get(
-            'recording_mode',
-            'duck' if (self.config.get('capture_duck_hold_enabled', True)
-                       or cfg.get('enabled', False)) else 'off',
-        )
-        if media_mode != 'duck':
-            audio_ducking.start_recording_media(media_mode, cfg.get('level', 0.2))
-            return
-        if (not self.config.get('capture_duck_hold_enabled', True)
-                or not cfg.get('hands_free_enabled', True)
-                or float(cfg.get('hands_free_level', 0.15)) >= 1.0):
-            return
-        self._hold_capture_duck_seq += 1
-        token = -self._hold_capture_duck_seq
-        self._hold_capture_duck_token = token
-        self._hold_capture_onset.token = token
-        started = time.perf_counter()
-        confirmed = False
-        try:
-            owner, fresh = hold_capture_onset.open_owned_duck(self, token, audio_ducking, logger)
-            if owner != token:
-                raise RuntimeError('Hold capture duck could not engage')
-            deadline = time.perf_counter() + 2.0
-            while True:
-                with self._hands_free_duck_lock:
-                    ducker = self._hands_free_capture_ducker
-                    starting = self._hands_free_capture_duck_starting
-                    owned = token in self._hands_free_capture_duck_owners
-                if not owned or not self._running:
-                    raise RuntimeError('Hold capture duck lost ownership')
-                if ducker is not None and not starting:
-                    if ducker.sessions_failed or ducker.last_error:
-                        raise RuntimeError('Hold capture duck volume update failed')
-                    break
-                if not starting or time.perf_counter() >= deadline:
-                    raise RuntimeError('Hold capture duck did not confirm')
-                time.sleep(0.005)
-            self._hold_capture_duck_confirmed_at = time.perf_counter()
-            self._hold_capture_onset = hold_capture_onset.HoldOnset(
-                token, started, self._hold_capture_duck_confirmed_at,
-                fresh and getattr(ducker, 'sessions_ducked', None) == 0, flight_recorder.record)
-            confirmed = True
-        finally:
-            hold_capture_onset.finish_open(self, token, started, confirmed, time, flight_recorder, logger)
+        from samsara.microphone_recovery import open_hold_duck
+        open_hold_duck(self, audio_ducking, flight_recorder, time)
 
     def _close_hold_capture_duck(self, *, immediate=False):
         """Release only this hold; shutdown also flushes an unowned debounce."""
@@ -11644,6 +11423,12 @@ class DictationApp:
           which manages its own debounced earcon).
         """
         from samsara import kept_session_draft, tutorial_capture, speech_presence
+        engine = getattr(self, '_ace_engine', None)
+        if engine is not None and not engine.running and not engine.device_lost:
+            return False  # Intentional switch/restart, not a missing microphone.
+        if self._dictation_consumer is None or (engine is not None and engine.device_lost):
+            self._set_microphone_state(True, notify=True)
+            return False
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
@@ -11679,6 +11464,8 @@ class DictationApp:
             self._open_hold_capture_duck()
         else:
             self._duck_audio()
+        if not getattr(self, '_running', True):
+            return False
 
         # Suspend wake admission before opening the ordinary hold accumulator.
         # WakeConsumer skips held frames while its ring reader keeps advancing.
@@ -12957,6 +12744,12 @@ class DictationApp:
     def _update_tray_tooltip(self):
         """Refresh the tray icon tooltip to reflect current mode/wake state."""
         if not hasattr(self, 'tray_icon'):
+            return
+        if getattr(self, '_no_microphone', False):
+            self.tray_icon.title = 'Samsara - No microphone'
+            return
+        if getattr(self, '_using_default_mic', False):
+            self.tray_icon.title = 'Samsara - Using system default microphone; chosen microphone not connected'
             return
         if self.snoozed:
             return  # snooze tooltip managed by _update_snooze_tooltip

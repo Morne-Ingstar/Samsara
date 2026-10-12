@@ -84,7 +84,7 @@ def app():
         _hands_free_duck_excludes=lambda: set(), _bump_wake_gate_freeze=Mock(),
         _log_duck_result=Mock(), _duck_audio=Mock(), _restore_audio=Mock(),
         play_sound=Mock(), _request_icon_chase=Mock(), _release_icon_chase=Mock(),
-        _update_tray_tooltip=Mock(), events=[], duckers=[], volume=1.0, ns=ns,
+        _update_tray_tooltip=Mock(), _set_microphone_state=Mock(), events=[], duckers=[], volume=1.0, ns=ns,
     )
     for name in METHODS:
         setattr(a, name, MethodType(ns[name], a))
@@ -283,7 +283,7 @@ def test_waits_for_hands_free_start_in_progress(app):
 
 
 @pytest.mark.parametrize('failure', ['raise', 'reported', 'refused', 'missing_consumer'])
-def test_failed_start_aborts_without_orphaning_duck(app, failure):
+def test_optional_duck_failure_continues_but_capture_failure_aborts(app, failure):
     original = app.ns['audio_ducking'].SessionDucker.start
     def fail(ducker):
         if failure == 'raise':
@@ -292,9 +292,10 @@ def test_failed_start_aborts_without_orphaning_duck(app, failure):
         ducker.sessions_failed = 1
     if failure in ('raise', 'reported'):
         app.ns['audio_ducking'].SessionDucker.start = fail
-        with pytest.raises(RuntimeError, match='Hold capture duck'):
-            start(app)
-        app._dictation_consumer.activate.assert_not_called()
+        start(app)
+        app._dictation_consumer.activate.assert_called_once()
+        assert app.recording
+        app.stop_recording()
     else:
         if failure == 'refused':
             app._dictation_consumer.activate.return_value = False
@@ -547,7 +548,7 @@ def test_404_strict_cases_preserve_confirmed_sample_boundary(app, monkeypatch, c
 
 
 @pytest.mark.parametrize('failure', ['raise', 'counter', 'error', 'lost_owner'])
-def test_404_failed_open_clears_policy_and_never_activates(app, failure):
+def test_404_failed_duck_clears_eligibility_but_capture_can_continue(app, failure):
     app.sessions_to_duck = 0
     start(app)
     old_onset = app._hold_capture_onset
@@ -568,12 +569,15 @@ def test_404_failed_open_clears_policy_and_never_activates(app, failure):
         if failure == 'lost_owner':
             app._running = False
     app.ns['audio_ducking'].SessionDucker.start = fail
-    with pytest.raises(RuntimeError, match='Hold capture duck'):
-        start(app)
-    assert app._hold_capture_onset is None
+    start(app)
     assert app._hold_capture_duck_confirmed_at is None
     assert app._hold_capture_duck_token is None
-    app._dictation_consumer.activate.assert_not_called()
+    if failure == 'lost_owner':
+        app._dictation_consumer.activate.assert_not_called()
+    else:
+        assert app._hold_capture_onset.policy == 'strict'
+        app._dictation_consumer.activate.assert_called_once()
+        app.stop_recording()
 
 
 def test_404_back_to_back_noop_holds_do_not_inherit_eligibility(app):

@@ -60,7 +60,7 @@ class TestOpenByIndex:
 
     def test_native_rate_and_resample_ratio_come_from_the_device(self, monkeypatch):
         sd = _OpenableSD([_dev(FOCUSRITE, 2, rate=44100)])
-        engine = _engine(sd, monkeypatch)
+        engine = _engine(sd, monkeypatch, config={"microphone": 0})
 
         engine._open_stream(0)
 
@@ -70,7 +70,7 @@ class TestOpenByIndex:
     def test_rate_is_recomputed_per_open_not_cached(self, monkeypatch):
         """A recovered device can come back at a different native rate."""
         sd = _OpenableSD([_dev(FOCUSRITE, 2, rate=44100)])
-        engine = _engine(sd, monkeypatch)
+        engine = _engine(sd, monkeypatch, config={"microphone": 0})
         engine._open_stream(0)
         assert engine._native_rate == 44100
 
@@ -101,7 +101,7 @@ class TestNeverOpensByBareName:
 
     def test_reopen_after_death_opens_the_recorded_index(self, monkeypatch):
         sd = _three_hostapis()
-        engine = _engine(sd, monkeypatch)
+        engine = _engine(sd, monkeypatch, config={"microphone": 1})
         engine._running = True
         engine._open_stream(1)          # DirectSound
         sd.opened.clear()
@@ -236,7 +236,7 @@ class TestPolyphaseFilterCache:
 
     def test_open_stream_uses_the_cache(self, mod, monkeypatch):
         sd = _OpenableSD([_dev(FOCUSRITE, 2, rate=44100)])
-        engine = _engine(sd, monkeypatch)
+        engine = _engine(sd, monkeypatch, config={"microphone": 0})
         engine._open_stream(0)
         assert mod._filter_cache_path(160, 441).is_file()
 
