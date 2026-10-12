@@ -2,7 +2,9 @@
 
 All notable changes to Samsara are documented here.
 
-## [Unreleased]
+## [0.30.0-beta.3] - 2026-10-12
+
+Expanded media integrations, Ava intelligence, a calmer Settings and a new setup walkthrough.
 
 ### New
 
@@ -30,6 +32,10 @@ All notable changes to Samsara are documented here.
 - **Put the listening display where you want it** - Place the Compact or Full display during setup or in the tutorial, and either display stays where you drop it and snaps to screen edges and corners.
 - **A new first-run walkthrough** - Ten short pages, from the microphone check to a recognition model picked for your hardware.
 - **Try your voice settings in the tutorial** - Hear the voice, its speed and its volume, and see each feedback level before you keep them; nothing changes until you press "Keep this".
+- **Choose when hands-free types** - Settings > Dictation > "Hands-free sends": "When I say send" keeps your words in the display until you send them, as before; "As I speak" types each sentence when you pause.
+- **Click a command to see what it does** - In the Command Reference a click opens a short card that explains the command; "Run it" runs it.
+- **Try your settings, one step at a time** - The tutorial now walks you through it: how much Samsara talks, which voice, and your own pace. Each step plays at once, and nothing is saved until you choose "Keep this".
+- **Ask your Hermes agent by voice** - If you use Hermes Agent, turn on the Hermes pack in Settings > Command library and say "ask Hermes ..." or "tell Hermes ..."; the answer comes back on screen and by voice. "New session with Hermes" and "stop Hermes" work too. Off by default, and nothing is sent until you accept.
 
 ### Changed
 
@@ -45,6 +51,14 @@ All notable changes to Samsara are documented here.
 - **A compact loading screen and a smaller "What's new" card.**
 - **App commands find your apps** - "Open Spotify", "open Discord", "open Obsidian", "open Warp" and "run Claude Code" look for the app on your PC instead of a fixed folder, and say so when it is not installed.
 - **Setup's questions sit in clear rows** - Each question has its own line, and every choice can be reached from the keyboard.
+- **Your words stay out of the log file** - Samsara's log now records what happened and how long your text was, not what you said, wrote or had read aloud. Logs written before this update are left as they are.
+- **Ava's conversation log is off unless you turn it on** - Settings > Ava > Advanced > "Keep a conversation log".
+- **A quieter listening display** - Short messages appear as a small chip in the display's header, and the display no longer changes size when they come and go.
+- **"Where it sits" shows one desktop** - The position you choose carries the animation.
+- **The CapsLock streaming mode is retired** - Its setting and its tray entry are gone; a saved "on" no longer starts it.
+- **A shorter Tools menu** - "Move listening indicator..." appears only with the Compact display, which needs it; the Full display can be dragged at any time.
+- **Settings scrolls softly** - Thin lines between rows, and a fade at the edge instead of text cut off mid-line.
+- **One clean keyboard outline** - When you move with the keyboard, each control shows one outline that fits its shape; the second, square outline inside it is gone.
 
 ### Fixed
 
@@ -84,7 +98,13 @@ All notable changes to Samsara are documented here.
 - **Your words stay with the window you chose** - Samsara refuses a paste if the window you were dictating into has changed, and a quick "Thanks" spoken while holding the dictation key is kept.
 - **Setup and the tutorial fit smaller screens** - Pages scroll while the steps and navigation buttons remain visible at 150% scaling and on a 1366 × 768 laptop.
 - **Windows and text are easier to read** - Mic Setup, Wake profiles, Workflow, Updates and Profiles fit their content, the Full display's long draft has a readable scrollbar, Home's links and the Tasks line fit, and the quit question names what each button does.
-- **Holding the key still types while a draft is kept** - A draft left after hands-free no longer swallows your next ordinary dictation.
+- **Holding the key always types** - Also during a hands-free session: your held words go to the window, and the waiting draft is left alone.
+- **Quitting with a kept draft asks first** - In the Compact display too: send it, discard it, or stay.
+- **No stray blue outline on Home** - The focus outline appears when you use the keyboard, not after a mouse click.
+- **Profiles and setup look right** - Profiles' labels lose their boxes, the placement explanation appears once, and setup's window grows before it scrolls.
+- **An empty recording stays empty** - Before your words go to the speech model, Samsara checks that the recording contains a voice.
+- **Samsara keeps talking when the Network voice is down** - If Microsoft's online voice does not answer, Samsara says it with the Windows voice instead and tells you once.
+- **A setting you change back is changed back** - Changing a setting and later changing it back while Samsara is running now takes effect, and the voice list shows the voices of the engine you picked.
 
 ## [0.30.0-beta.2] - 2026-09-19
 
