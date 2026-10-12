@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
 )
 from datetime import datetime
 
-from samsara.audio_devices import pick_index_by_name
 from samsara import autostart
 from samsara.config_transfer import (
     ConfigTransferError,
@@ -65,6 +64,53 @@ def _saved_theme(config) -> str:
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
+
+
+_MIC_CHOICE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+
+
+def _populate_microphone_combo(combo, devices, config):
+    """A missing saved input is a choice, not an implicit default selection."""
+    saved_id = config.get('microphone')
+    saved_name = config.get('microphone_name')
+    default = saved_name in ('System default', 'Default') or (
+        saved_name is None and saved_id is None)
+    # A named preference must not match an unrelated device reusing its old ID.
+    match = next((d for d in devices if d['name'] == saved_name), None)
+    if match is None and not saved_name and saved_id is not None:
+        match = next((d for d in devices if d['id'] == saved_id), None)
+    blocked = combo.blockSignals(True)
+    try:
+        combo.clear()
+        combo.addItem('System default', userData=None)
+        combo.setItemData(0, {'microphone': None, 'microphone_name': 'System default'},
+                          _MIC_CHOICE_ROLE)
+        selected = 0
+        for device in devices:
+            combo.addItem(device['name'], userData=device['id'])
+            index = combo.count() - 1
+            combo.setItemData(index, {'microphone': device['id'],
+                                     'microphone_name': device['name']}, _MIC_CHOICE_ROLE)
+            if not default and device is match:
+                selected = index
+        if not default and match is None and saved_name:
+            # Stand-in copy (549): owner reviews the disconnected suffix. An
+            # unnamed id that matches nothing keeps the System default row.
+            combo.addItem(f'{saved_name} (not connected)', userData=saved_id)
+            selected = combo.count() - 1
+            combo.setItemData(selected, {'microphone': saved_id,
+                                        'microphone_name': saved_name,
+                                        '_missing': True}, _MIC_CHOICE_ROLE)
+        combo.setCurrentIndex(selected)
+    finally:
+        combo.blockSignals(blocked)
+
+
+def _microphone_updates(combo):
+    choice = combo.currentData(_MIC_CHOICE_ROLE) or {}
+    if choice.get('_missing'):
+        return {}  # Do not submit either key, or call switch_microphone.
+    return {key: choice[key] for key in ('microphone', 'microphone_name') if key in choice}
 
 
 class GeneralPage:
@@ -168,8 +214,6 @@ class GeneralPage:
         layout.addWidget(audio_card)
 
         mics = list(getattr(self.app, 'available_mics', None) or [])
-        current_mic_id = self.app.config.get('microphone')
-
         mic_combo = QComboBox()
         # "System default" mirrors output_combo's pattern (~line 1211):
         # index 0, userData=None, so config['microphone']=None round-trips
@@ -179,13 +223,7 @@ class GeneralPage:
         # transcribed system audio for days -- there was previously no way
         # to say "just use whatever Windows considers default" instead of
         # pinning a specific numbered device.
-        mic_combo.addItem("System default", userData=None)
-        default_idx = 0
-        for i, dev in enumerate(mics):
-            mic_combo.addItem(dev['name'], userData=dev['id'])
-            if current_mic_id is not None and dev['id'] == current_mic_id:
-                default_idx = i + 1
-        mic_combo.setCurrentIndex(default_idx)
+        _populate_microphone_combo(mic_combo, mics, self.app.config)
         self._widgets['mic_combo'] = mic_combo
 
         mic_row_widget = QWidget()
@@ -231,21 +269,8 @@ class GeneralPage:
                 logger.debug(f"[MIC] refresh failed: {exc}")
                 return
 
-            preserved_name = mic_combo.currentText()
-            mic_combo.blockSignals(True)
-            mic_combo.clear()
-            mic_combo.addItem("System default", userData=None)
-            for dev in fresh_mics:
-                mic_combo.addItem(dev['name'], userData=dev['id'])
-            # +1 to account for the "System default" item at index 0
-            # (mirrors mic_setup_wizard_qt.py's _on_refresh_devices). A
-            # preserved_name of "System default" itself never matches a
-            # real device (pick_index_by_name only searches fresh_mics),
-            # so idx is None and the fallback 0 correctly reselects the
-            # System-default row -- no special case needed for that name.
-            idx = pick_index_by_name(fresh_mics, preserved_name)
-            mic_combo.setCurrentIndex(idx + 1 if idx is not None else 0)
-            mic_combo.blockSignals(False)
+            choice = mic_combo.currentData(_MIC_CHOICE_ROLE) or self.app.config
+            _populate_microphone_combo(mic_combo, fresh_mics, choice)
 
         mic_refresh_btn.clicked.connect(_on_refresh_mics)
         _add_row(
@@ -684,8 +709,7 @@ class GeneralPage:
             # (no way to fall back to "whatever Windows considers
             # default" once a pinned device id went stale).
             mic_combo = self._widgets['mic_combo']
-            updates['microphone'] = mic_combo.currentData()
-            updates['microphone_name'] = mic_combo.currentText()
+            updates.update(_microphone_updates(mic_combo))
 
             output_label = self._widgets['output_combo'].currentText()
             output_id, output_name, output_hostapi = self._widgets['output_label_map'].get(

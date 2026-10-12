@@ -6,7 +6,8 @@ import os
 import weakref
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QLocale, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QLocale, QObject, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractButton, QButtonGroup, QCheckBox, QComboBox, QFrame,
     QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea, QRadioButton, QSizePolicy, QVBoxLayout, QWidget,
@@ -28,6 +29,53 @@ logger = get_logger(__name__)
 
 
 class SetupSegmentedChoice(SegmentedChoice):
+    def __init__(self, combo):
+        super().__init__(combo)
+        for button in self.buttons:
+            # Reserve separate text and tick lanes inside the painted part.
+            button.setFixedWidth(button.fontMetrics().horizontalAdvance(button.text()) + theme.SPACE_6)
+            button.installEventFilter(self)
+        self.setFixedWidth(sum(button.width() for button in self.buttons) + 2)
+
+    @staticmethod
+    def paint_rects(button):
+        inset = theme.SPACE_1 / 2
+        box = QRectF(button.rect()).adjusted(inset, inset, -inset, -inset)
+        tick = QRectF(box.right() - theme.SPACE_3, box.center().y() - theme.SPACE_1 / 2,
+                      theme.SPACE_1, theme.SPACE_1)
+        text = box.adjusted(theme.SPACE_1, 0, -theme.SPACE_3 - theme.SPACE_1, 0)
+        return box, tick, text
+
+    def eventFilter(self, widget, event):
+        if widget in self.buttons and event.type() == QEvent.Type.Paint:
+            painter = QPainter(widget)
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                box, tick, text = self.paint_rects(widget)
+                fill = theme.BG2 if widget.isChecked() else (theme.HOVER_WASH if widget.underMouse() else theme.BG1)
+                ink = theme.TEXT_PRIMARY if widget.isEnabled() else theme.TEXT_DISABLED
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(theme.qcolor(fill))
+                painter.drawRoundedRect(box, theme.CONTROL_RADIUS, theme.CONTROL_RADIUS)
+                painter.setPen(theme.qcolor(ink))
+                painter.setFont(widget.font())
+                painter.drawText(text, Qt.AlignmentFlag.AlignCenter, widget.text())
+                if widget.isChecked():
+                    path = QPainterPath()
+                    path.moveTo(tick.left(), tick.center().y())
+                    path.lineTo(tick.left() + tick.width() / 3, tick.bottom())
+                    path.lineTo(tick.right(), tick.top())
+                    painter.setPen(QPen(theme.qcolor(ink), 2))
+                    painter.drawPath(path)
+                if widget.hasFocus():
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.setPen(QPen(theme.qcolor(theme.ACCENT), 2))
+                    painter.drawRoundedRect(box, theme.CONTROL_RADIUS, theme.CONTROL_RADIUS)
+            finally:
+                painter.end()
+            return True
+        return super().eventFilter(widget, event)
+
     def refresh(self, *args):
         super().refresh(*args)
         if self.group.checkedButton() is None:
@@ -211,6 +259,12 @@ class Decisions(QObject):
         self.refresh_recognition()
 
     def eventFilter(self, watched, event):
+        if watched.property('setupChoiceQuestion'):
+            if event.type() == QEvent.Type.FontChange:
+                watched.setMaximumWidth(watched.fontMetrics().horizontalAdvance(watched.text()) + 2)
+            elif event.type() == QEvent.Type.Resize:
+                # The help target must not cap a wrapped heading at 44px.
+                watched.setMinimumHeight(watched.heightForWidth(watched.width()))
         if event.type() == QEvent.Type.LayoutRequest and watched.property('setupFitContent'):
             QTimer.singleShot(0, self, self.refit_page)
         if self.closed:
@@ -313,18 +367,23 @@ class Decisions(QObject):
         row, heading = QHBoxLayout(), QHBoxLayout()
         heading.setSpacing(theme.SPACE_1)
         question = label(title)
+        question.setFont(theme.qfont(theme.TYPE_BODY))
         question.ensurePolished()
-        question.setMinimumWidth(min(question.fontMetrics().horizontalAdvance(title) + 2, theme.TYPE_BODY * 20))
+        question.setMaximumWidth(question.fontMetrics().horizontalAdvance(title) + 2)
+        question.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        question.setProperty('setupChoiceQuestion', True)
+        question.installEventFilter(self)
         text_area = QWidget()
         text_column = QVBoxLayout(text_area)
         text_column.setContentsMargins(0, 0, 0, 0)
         text_column.setSpacing(theme.SPACE_1)
-        text_column.addWidget(question)
-        heading.addWidget(text_area)
-        self.detail(heading, column, title, lambda: '\n\n'.join(
-            dict.fromkeys(details(value) for value, _, _ in rows)))
-        heading.addStretch()
-        row.addLayout(heading, 1)
+        text_column.addLayout(heading)
+        heading.addWidget(question, 1)
+        heading.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.detail(heading, text_column, title, lambda: details(combo.currentData()) or '')
+        help_button, expanded = self.details[-1]
+        help_button.setAccessibleName(title)
+        row.addWidget(text_area, 1)
         combo = QComboBox()
         for value, text, _ in rows:
             combo.addItem(text, value)
@@ -338,16 +397,20 @@ class Decisions(QObject):
         description.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
         def refresh(*_):
             chosen = combo.currentIndex()
+            help_button.setEnabled(chosen >= 0)
             text = rows[chosen][2] if chosen >= 0 else ''
             description.setText(text)
-            description.setVisible(bool(text))
+            description.setVisible(bool(text) and not help_button.isChecked())
+            expanded.setText((details(combo.currentData()) or '') if chosen >= 0 else '')
+            expanded.setVisible(help_button.isChecked() and bool(expanded.text()))
             for index, button in enumerate(segments.buttons):
-                button.setAccessibleDescription(rows[index][2])
+                button.setAccessibleDescription(details(rows[index][0]) or rows[index][2])
         for index, button in enumerate(segments.buttons):
             button.setProperty('_value', rows[index][0])
             button.installEventFilter(self)
         group.buttonToggled.connect(lambda button, checked: combo.setCurrentIndex(group.id(button)) if checked else None)
         combo.currentIndexChanged.connect(refresh)
+        help_button.toggled.connect(refresh)
         group._row, group._description, group._segments = section, description, segments
         row.addWidget(segments, 0, Qt.AlignmentFlag.AlignVCenter)
         column.insertLayout(0, row)

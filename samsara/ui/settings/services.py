@@ -2,6 +2,43 @@
 from samsara.ui.settings.shared_qt import *
 from contextlib import nullcontext
 
+def apply_microphone_choice(app, updates):
+    """Publish the deliberate name before the audio resolver sees the ID.
+
+    In particular, None + an old named device means that named preference,
+    whereas None + 'System default' deliberately selects Windows' input.
+    Missing picker entries submit neither key and never get here.
+    """
+    if 'microphone' not in updates:
+        return
+    requested = updates['microphone']
+    name = updates.get('microphone_name')
+    if requested is None:
+        name = updates['microphone_name'] = 'System default'
+    old_id = app.config.get('microphone')
+    old_name = app.config.get('microphone_name')
+    if requested == old_id and name == old_name:
+        return
+    # switch_microphone persists and rebuilds capture itself. Give its
+    # name-based resolver the new intent, not the previous preference.
+    with app._config_lock:
+        app.config['microphone_name'] = name
+    try:
+        if requested != old_id:
+            app.switch_microphone(requested)
+        elif old_name and old_name not in ('System default', 'Default'):
+            # A null ID may still carry an old disconnected device name.
+            # The switch method's same-ID guard would skip recovery.
+            app.refresh_audio_devices()
+    except Exception:
+        with app._config_lock:
+            if old_name is None:
+                app.config.pop('microphone_name', None)
+            else:
+                app.config['microphone_name'] = old_name
+        raise
+
+
 class SettingsServices:
     def _refresh_sc_status(self) -> None:
         """Refresh the Smart Corrections status line --
@@ -420,12 +457,7 @@ class SettingsServices:
         # Switch the live stream before the bulk config write. If the new ID
         # were written first, switch_microphone() would hit its same-ID guard
         # and ACE would continue recording from the old device.
-        requested_mic = updates.get('microphone')
-        current_mic = self.app.config.get('microphone')
-        if 'microphone' in updates and requested_mic != current_mic:
-            updates.pop('microphone', None)
-            updates.pop('microphone_name', None)
-            self.app.switch_microphone(requested_mic)
+        apply_microphone_choice(self.app, updates)
 
 
         requested_output = updates.get('output_device')

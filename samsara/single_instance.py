@@ -16,6 +16,8 @@ import ctypes
 import hashlib
 import os
 import sys
+import time
+import logging
 from typing import Any
 
 
@@ -173,3 +175,221 @@ __all__ = [
     "acquire_single_instance_mutex",
     "mutex_name_for_profile",
 ]
+
+
+# A hidden HWND belongs to the same Qt thread as setup, tutorial and Home.
+# Its identity uses the mutex profile, so preview launches cannot surface the
+# owner's normal instance. There are no sockets, config files or PID files.
+_activation_receiver = None
+_ACTIVATION_MESSAGE = 'Samsara.ShowExistingWindow.549'
+# Stand-in copy (549), reviewed through ASK.json.
+ACTIVATION_FAILURE_TEXT = (
+    'Samsara is already running, but its window could not be brought forward. '
+    'Please try again.'
+)
+_WINDOW_PRIORITY = ('_WizardWindow', 'TutorialWindow', '_SettingsWindow', '_MainWindow')
+
+
+def _receiver_title(mutex_name):
+    return mutex_name + '.ActivationReceiver'
+
+
+def _activation_user32():
+    from ctypes import wintypes
+    api = ctypes.WinDLL('user32', use_last_error=True)
+    signatures = {
+        'FindWindowW': ([wintypes.LPCWSTR, wintypes.LPCWSTR], wintypes.HWND),
+        'GetWindowThreadProcessId': ([wintypes.HWND, ctypes.POINTER(wintypes.DWORD)], wintypes.DWORD),
+        'AllowSetForegroundWindow': ([wintypes.DWORD], wintypes.BOOL),
+        'RegisterWindowMessageW': ([wintypes.LPCWSTR], wintypes.UINT),
+        'SendMessageTimeoutW': ([wintypes.HWND, wintypes.UINT, ctypes.c_size_t,
+                                ctypes.c_ssize_t, wintypes.UINT, wintypes.UINT,
+                                ctypes.POINTER(ctypes.c_size_t)], ctypes.c_ssize_t),
+        'SetForegroundWindow': ([wintypes.HWND], wintypes.BOOL),
+        'GetForegroundWindow': ([], wintypes.HWND),
+    }
+    for name, (args, result) in signatures.items():
+        fn = getattr(api, name)
+        fn.argtypes, fn.restype = args, result
+    return api
+
+
+def request_existing_activation(mutex_name, timeout=2.0, *, api=None,
+                                clock=time.monotonic, sleep=time.sleep):
+    """Grant the first PID foreground rights BEFORE requesting a Qt-thread raise.
+
+    Startup may not have created the receiver yet. Discovery and replies share
+    one two-second budget. A reply of 1 means a real window became foreground.
+    """
+    from ctypes import wintypes
+    api = api or _activation_user32()
+    message = api.RegisterWindowMessageW(_ACTIVATION_MESSAGE)
+    if not message:
+        return False
+    deadline = clock() + timeout
+    while clock() < deadline:
+        hwnd = api.FindWindowW(None, _receiver_title(mutex_name))
+        if hwnd:
+            pid = wintypes.DWORD()
+            api.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value:
+                # A grant can be refused by Windows; still request the raise,
+                # but only the receiver's verified foreground result is success.
+                api.AllowSetForegroundWindow(pid.value)
+                remaining = max(1, int((deadline - clock()) * 1000))
+                reply = ctypes.c_size_t()
+                delivered = api.SendMessageTimeoutW(
+                    hwnd, message, 0, 0, 0x0001 | 0x0002 | 0x0020,
+                    remaining, ctypes.byref(reply))
+                if delivered and reply.value == 1:
+                    return True
+        remaining = deadline - clock()
+        if remaining > 0:
+            sleep(min(0.05, remaining))
+    return False
+
+
+def _activation_failure_dialog():
+    from PySide6.QtWidgets import QMessageBox
+    from samsara.ui import theme
+    dialog = QMessageBox()
+    dialog.setStyleSheet(theme.build_stylesheet())
+    dialog.setWindowTitle('Samsara')
+    dialog.setIcon(QMessageBox.Icon.Information)
+    dialog.setText(ACTIVATION_FAILURE_TEXT)
+    dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+    return dialog
+
+
+def _show_activation_failure():
+    """The refused second process owns this small, dismissible Qt message."""
+    import threading
+    from samsara.ui import qt_runtime
+    dismissed = threading.Event()
+
+    def show():
+        try:
+            dialog = _activation_failure_dialog()
+            dialog.exec()
+        finally:
+            dismissed.set()
+
+    qt_runtime.ensure_started()
+    qt_runtime.post(show)
+    dismissed.wait()
+    qt_runtime.shutdown()
+
+
+def bring_existing_forward(mutex_name):
+    """Never turn a failed activation into a second application startup."""
+    log = logging.getLogger('Samsara')
+    try:
+        if request_existing_activation(mutex_name):
+            return True
+    except Exception:
+        log.exception('[INSTANCE] Could not contact existing window')
+    try:
+        _show_activation_failure()
+    except Exception:
+        log.exception('[INSTANCE] Could not show activation failure message')
+    return False
+
+
+def _choose_activation_window(windows, *, modal=None, active=None, last=None):
+    """Prefer the current task; if all task windows are hidden, open Home."""
+    if modal is not None:
+        return modal
+    eligible = [w for w in windows if type(w).__name__ in _WINDOW_PRIORITY]
+    for window in (active, last):
+        if window in eligible and window.isVisible():
+            return window
+    visible = [w for w in eligible if w.isVisible()]
+    if visible:
+        return min(visible, key=lambda w: _WINDOW_PRIORITY.index(type(w).__name__))
+    return next((w for w in eligible if type(w).__name__ == '_MainWindow'), None)
+
+
+def _activate_existing_window(last=None):
+    from PySide6.QtWidgets import QApplication
+    window = _choose_activation_window(
+        QApplication.topLevelWidgets(), modal=QApplication.activeModalWidget(),
+        active=QApplication.activeWindow(), last=last)
+    if window is None:
+        # The normal entry point publishes app after construction; Home itself
+        # is lazy when start_hidden is enabled. Its public opener posts to Qt.
+        # During setup app is still None, so discovery simply keeps waiting.
+        app = getattr(sys.modules.get('__main__'), 'app', None)
+        opener = getattr(app, 'show_main_window', None)
+        if callable(opener):
+            opener()
+        return False
+    if window.isMinimized():
+        window.showNormal()
+    else:
+        window.show()
+    window.raise_()
+    window.activateWindow()
+    api = _activation_user32()
+    hwnd = int(window.winId())
+    api.SetForegroundWindow(hwnd)
+    return api.GetForegroundWindow() == hwnd
+
+
+def _create_activation_receiver(mutex_name):
+    """Only called on qt_runtime's thread; retained until process exit."""
+    global _activation_receiver
+    from ctypes import wintypes
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication, QWidget
+    from shiboken6 import isValid
+    if _activation_receiver is not None:
+        return
+    message_id = _activation_user32().RegisterWindowMessageW(_ACTIVATION_MESSAGE)
+    if not message_id:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    class ActivationReceiver(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.last = None
+            self.setWindowTitle(_receiver_title(mutex_name))
+            self.winId()  # Create a discoverable native handle, without showing.
+            QApplication.instance().installEventFilter(self)
+
+        def closeEvent(self, event):
+            event.ignore()
+            self.hide()
+
+        def eventFilter(self, watched, event):
+            if (event.type() == QEvent.Type.WindowActivate
+                    and type(watched).__name__ in _WINDOW_PRIORITY):
+                self.last = watched
+            return False
+
+        def nativeEvent(self, event_type, message):
+            msg = wintypes.MSG.from_address(int(message))
+            if msg.message == message_id:
+                try:
+                    last = self.last if self.last is not None and isValid(self.last) else None
+                    return True, int(_activate_existing_window(last))
+                except Exception:
+                    logging.getLogger('Samsara').exception('[INSTANCE] Window activation failed')
+                    return True, 0
+            return super().nativeEvent(event_type, message)
+
+    _activation_receiver = ActivationReceiver()
+
+
+def start_activation_listener():
+    if sys.platform != 'win32':
+        return
+    from samsara.ui import qt_runtime
+    name = mutex_name_for_profile()
+
+    def install():
+        try:
+            _create_activation_receiver(name)
+        except Exception:
+            logging.getLogger('Samsara').exception('[INSTANCE] Activation receiver unavailable')
+
+    qt_runtime.post(install)

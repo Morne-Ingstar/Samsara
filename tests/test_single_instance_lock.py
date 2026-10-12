@@ -171,6 +171,8 @@ def test_check_single_instance_exits_immediately_on_mutex_collision(
     from samsara.single_instance import AlreadyRunningError
 
     monkeypatch.setattr(boot.sys, "platform", "win32")
+    notify = MagicMock()
+    monkeypatch.setattr('samsara.single_instance.bring_existing_forward', notify)
     with patch(
         "samsara.single_instance.acquire_single_instance_mutex",
         side_effect=AlreadyRunningError("Local\\Samsara.test"),
@@ -180,6 +182,7 @@ def test_check_single_instance_exits_immediately_on_mutex_collision(
                 boot._check_single_instance()
 
     assert exc_info.value.code == 0
+    notify.assert_called_once_with("Local\\Samsara.test")
     assert any("Samsara is already running" in r.message for r in caplog.records)
 
 

@@ -768,10 +768,12 @@ def _check_single_instance():
         )
         try:
             return acquire_single_instance_mutex()
-        except AlreadyRunningError:
+        except AlreadyRunningError as existing:
             # Keep this exact marker: frozen smoke tooling recognizes it as
             # the expected fast refusal when a real instance is already up.
             logger.warning("[WARN] Samsara is already running")
+            from samsara.single_instance import bring_existing_forward
+            bring_existing_forward(existing.mutex_name)
             from samsara.process_exit import exit_with_trace
             exit_with_trace(0, "existing-instance-mutex", log=logger)
         except Exception as e:
@@ -939,6 +941,9 @@ def create_splash():
     _t = time.perf_counter()
     from samsara.ui.splash_qt import SplashScreenQt
     splash = SplashScreenQt()
+    # Qt exists now, before DictationApp or its blocking setup wizard does.
+    from samsara.single_instance import start_activation_listener
+    start_activation_listener()
     _ready_ladder = ReadyLadder()
     _ready_ladder.attach_splash(splash)
     if hasattr(splash, "set_ready_ladder_observer"):
