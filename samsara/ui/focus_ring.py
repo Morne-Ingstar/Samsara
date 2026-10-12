@@ -62,7 +62,7 @@ class FocusRings(QObject):
     def mark(self, widget, visible):
         if widget is None or not isValid(widget):
             return
-        widget.window().setAttribute(Qt.WidgetAttribute.WA_KeyboardFocusChange, visible)
+        QWidget.window(widget).setAttribute(Qt.WidgetAttribute.WA_KeyboardFocusChange, visible)
         if widget.property('settingsKeyboardFocus') is not None:
             widget.setProperty('settingsKeyboardFocus', visible)
         if bool(widget.property('keyboardFocus')) == visible:
@@ -81,21 +81,21 @@ class FocusRings(QObject):
             self.navigation = False
             self.mark(self.app.focusWidget(), False)
             if isinstance(widget, QWidget):
-                widget.window().setProperty('keyboardFocusFresh', False)
+                QWidget.window(widget).setProperty('keyboardFocusFresh', False)
         elif kind == QEvent.Type.Shortcut or (kind == QEvent.Type.KeyPress and event.key() in (
                 Qt.Key.Key_Tab, Qt.Key.Key_Backtab, Qt.Key.Key_Left, Qt.Key.Key_Right,
                 Qt.Key.Key_Up, Qt.Key.Key_Down)):
             self.navigation = True
             current = self.app.focusWidget()
             if current is not None:
-                current.window().setProperty('keyboardFocusFresh', False)
+                QWidget.window(current).setProperty('keyboardFocusFresh', False)
             self.mark(self.app.focusWidget(), True)
             QTimer.singleShot(0, self, self.end_navigation)
         if isinstance(widget, QWidget):
             if kind in (QEvent.Type.Polish, QEvent.Type.StyleChange):
                 self.style(widget)
             elif kind == QEvent.Type.FocusIn:
-                navigating = self.navigation and not widget.window().property('keyboardFocusFresh')
+                navigating = self.navigation and not QWidget.window(widget).property('keyboardFocusFresh')
                 self.mark(widget, navigating or event.reason() in (
                     Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason,
                     Qt.FocusReason.ShortcutFocusReason))
