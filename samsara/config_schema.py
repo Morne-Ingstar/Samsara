@@ -64,6 +64,12 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "hermes.profile": {"type": "str", "default": "", "tab": "commands", "optional_pack": "hermes"},
+    "hermes.model": {"type": "str", "default": "", "tab": "commands", "optional_pack": "hermes"},
+    "hermes.effort": {"type": "enum", "default": "", "tab": "commands", "optional_pack": "hermes",
+                      "options": ["", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]},
+    "hermes.notice_accepted": {"type": "bool", "default": False, "tab": "commands", "settings_ui": False,
+                               "ui_less_reason": "Recorded by the Hermes accept notice, never enabled implicitly."},
     "comfy.base_url": {
         "type": "str", "default": "http://127.0.0.1:8001", "tab": "general",
         "settings_ui": False, "ui_less_reason": "Local ComfyUI server address; loopback only.",

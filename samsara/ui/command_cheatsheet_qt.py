@@ -237,6 +237,8 @@ def _annotate_disabled(rows, disabled: set) -> list:
     """Copy rows, flagging those whose pack is off so the UI can say so."""
     out = []
     for row in rows:
+        if row.get("pack") == "hermes" and "hermes" in disabled:
+            continue
         row = dict(row)
         row["pack_disabled"] = row.get("pack", "core") in disabled
         out.append(row)

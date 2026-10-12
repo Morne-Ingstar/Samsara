@@ -222,6 +222,30 @@
     },
     {
       "aliases": [
+        "ask hermes",
+        "tell hermes"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "ask_agent.ask_hermes",
+      "description": "Sends your question to your own Hermes while you keep dictating.",
+      "kind": "plugin",
+      "object": "hermes",
+      "pack": "hermes",
+      "plugin": "ask_agent",
+      "risk": "ui",
+      "source": "plugins/commands/ask_agent.py:100",
+      "undoable": true,
+      "verb": "ask",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "new conversation with"
       ],
       "args": [
@@ -241,6 +265,47 @@
       "source": "plugins/commands/ask_agent.py:84",
       "undoable": true,
       "verb": "new",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "new conversation with hermes",
+        "new hermes session"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "ask_agent.new_hermes_session",
+      "description": "Starts a fresh Hermes conversation; optionally say with high effort.",
+      "kind": "plugin",
+      "object": "hermes_session",
+      "pack": "hermes",
+      "plugin": "ask_agent",
+      "risk": "ui",
+      "source": "plugins/commands/ask_agent.py:108",
+      "undoable": true,
+      "verb": "new",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "stop hermes"
+      ],
+      "args": [],
+      "canonical_id": "ask_agent.stop_hermes",
+      "description": "Stops Hermes's current turn and keeps your conversation for later.",
+      "kind": "plugin",
+      "object": "hermes",
+      "pack": "hermes",
+      "plugin": "ask_agent",
+      "risk": "ui",
+      "source": "plugins/commands/ask_agent.py:116",
+      "undoable": true,
+      "verb": "stop",
       "whole_utterance": false
     },
     {

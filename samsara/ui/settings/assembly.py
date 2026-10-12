@@ -253,6 +253,9 @@ class PageAssembly:
         for pack_id, control in self._widgets['_pack_checkboxes'].items():
             if pack_id != 'ai':
                 bindings.append(('command_packs.' + pack_id, 'Command library', control))
+        for key in ('profile', 'model', 'effort'):
+            if 'hermes_' + key in self._widgets:
+                bindings.append(('hermes.' + key, 'Command library', self._widgets['hermes_' + key]))
         for key, tool, widget in (
             ('tasks.todoist.enabled', 'Integrations', 'todoist_enabled'),
             ('tasks.todoist.api_token', 'Integrations', 'todoist_token'),

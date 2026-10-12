@@ -168,6 +168,12 @@ PACKS = {
         'always_on': True,
         'default_enabled': True,
     },
+    'hermes': {
+        'label': 'Hermes (experimental)',  # PLACEHOLDER COPY (539)
+        'description': 'Talk to your own Hermes while you keep dictating.',
+        'always_on': False,
+        'default_enabled': False,
+    },
 }
 
 
@@ -215,6 +221,10 @@ def get_enabled_packs(config: dict) -> set:
     user_packs = config.get('command_packs', {})
     enabled = set()
     for pack_id, meta in PACKS.items():
+        if pack_id == 'hermes':
+            from samsara.agent_channel.hermes import installed, permitted
+            if not permitted(config) or not installed():
+                continue
         if meta['always_on']:
             enabled.add(pack_id)
         elif user_packs.get(pack_id, meta['default_enabled']):

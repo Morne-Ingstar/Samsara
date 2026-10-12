@@ -336,7 +336,7 @@ class _SettingsWindow(
         updates = {}
         if self._tool_name:
             source, allowed = {
-                'Command library': ('commands', {'command_packs'}),
+                'Command library': ('commands', {'command_packs', 'hermes'}),
                 'Integrations': ('commands', {'tasks'}),
                 'Alarms': ('alarms', {'alarms'}),
                 'Music': ('music', {'music_library'}),
@@ -380,6 +380,10 @@ class _SettingsWindow(
     def _apply_and_close(self):
         previous_sound = self.app.config.get('sound_theme', 'cute')
         super()._apply_and_close()
+        if self._tool_name == 'Command library':
+            rebuild = getattr(getattr(self.app, 'command_executor', None), 'rebuild_matcher', None)
+            if callable(rebuild):
+                rebuild()
         if not self._tool_name and self.app.config.get('sound_theme', 'cute') != previous_sound:
             root = Path(getattr(self.app, 'sounds_dir', None) or Path(__file__).resolve().parents[2] / 'sounds')
             self._apply_sound_theme(self.app.config['sound_theme'], root, root / 'themes')

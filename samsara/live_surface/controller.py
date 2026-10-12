@@ -570,6 +570,13 @@ class LiveSurfaceIndicatorAdapter:
         # Only entering a real session may advertise hands-free listening.
         self._wake_armed = armed
 
+    def set_agent_waiting(self, label: str, active: bool) -> None:
+        if active:
+            self.show_feedback(label, "accent", None,
+                               Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, "hermes"))
+        else:
+            self.clear_feedback("hermes")
+
     def set_snoozed(self, snoozed: bool) -> None:
         self.controller.post(SurfaceEvent(EventKind.SNOOZE_CHANGED, snoozed=bool(snoozed)))
 

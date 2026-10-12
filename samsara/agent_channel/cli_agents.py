@@ -256,6 +256,9 @@ class CliAgent:
 
 
 def agent(name: str) -> CliAgent:
+    if name == "hermes":
+        from .hermes import HermesAgent
+        return HermesAgent()
     if name in {"gpt", "codex"}:
         return CliAgent("gpt", codex_argv, parse_codex)
     if name == "claude":
@@ -267,6 +270,9 @@ def followup(app, action: str) -> bool:
     state = getattr(app, "_cli_agent_voice_state", None)
     if not state or time.monotonic() > state["expires"]:
         return False
+    if state.get("agent") == "hermes":
+        from .hermes_voice import followup as hermes_followup
+        return hermes_followup(app, action, state)
     coordinator = getattr(app, "audio_coordinator", None)
     if coordinator is None:
         return False

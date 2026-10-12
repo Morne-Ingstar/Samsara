@@ -86,12 +86,39 @@ def ask_claude(app, remainder=""):
 def new_conversation(app, remainder=""):
     """Starts a fresh conversation with GPT or Claude, without the previous chat's context."""  # PLACEHOLDER COPY (531)
     name = remainder.strip().lower().rstrip(".?!")
+    if name == "hermes":
+        from samsara.agent_channel.hermes_voice import new
+        return new(app)
     if name not in {"gpt", "codex", "claude"}:
         _say(app, "Say new conversation with GPT or Claude.")
         return DispatchState.FAILED
     cli_agents.agent(name).new_conversation()
     _say(app, f"New {('GPT' if name == 'codex' else name.upper())} conversation ready.")
     return True
+
+
+@command("ask hermes", aliases=["tell hermes"], pack="hermes", risk_class="safe",
+         reversible=True, side_effects=["network", "audio", "ui", "file"])
+def ask_hermes(app, remainder=""):
+    """Sends your question to your own Hermes while you keep dictating."""  # PLACEHOLDER COPY (539)
+    from samsara.agent_channel.hermes_voice import ask
+    return ask(app, remainder)
+
+
+@command("new hermes session", aliases=["new conversation with hermes"], pack="hermes",
+         risk_class="safe", reversible=True, side_effects=["file", "audio", "ui"])
+def new_hermes_session(app, remainder=""):
+    """Starts a fresh Hermes conversation; optionally say with high effort."""  # PLACEHOLDER COPY (539)
+    from samsara.agent_channel.hermes_voice import new
+    return new(app, remainder)
+
+
+@command("stop hermes", pack="hermes", risk_class="safe", reversible=True,
+         side_effects=["audio", "ui"])
+def stop_hermes(app, remainder=""):
+    """Stops Hermes's current turn and keeps your conversation for later."""  # PLACEHOLDER COPY (539)
+    from samsara.agent_channel.hermes_voice import stop
+    return stop(app)
 
 
 def start_services(app):

@@ -193,6 +193,11 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
     counts = Counter(key for key, _page, _widget in window.config_row_inventory())
     missing = []
     for key, spec in SETTINGS_SCHEMA.items():
+        if spec.get('optional_pack') == 'hermes':
+            from samsara.agent_channel.hermes import installed
+            if not installed():
+                assert counts[key] == 0
+                continue
         if spec.get('settings_ui') is False:
             assert spec.get('ui_less_reason', '').strip(), key
             assert counts[key] == 0, (key, 'UI-less key has a Settings row')

@@ -125,6 +125,8 @@ class CommandsPage:
         self._widgets['_pack_restart_lbl'] = restart_lbl
 
         for pack_id, meta in PACKS.items():
+            if pack_id == 'hermes':
+                continue  # Dedicated, consent-gated section below; never a second switch.
             always_on     = meta.get('always_on', False)
             default_on    = meta.get('default_enabled', False)
             enabled       = bool(current_packs.get(pack_id, default_on)) or always_on
@@ -190,6 +192,8 @@ class CommandsPage:
         self._widgets['_pack_scroll'] = pack_scroll
         layout.addWidget(pack_scroll)
         layout.addWidget(restart_lbl)
+        from .hermes_section import add_section
+        add_section(self, layout)
         layout.addSpacing(4)
 
         # ---- Todoist ------------------------------------------------------
@@ -405,9 +409,12 @@ class CommandsPage:
 
         def _save(acc):
             updates = {}
+            if 'hermes_section' in self._widgets:
+                updates['hermes'] = self._widgets['hermes_section'].updates()
             if '_pack_checkboxes' in self._widgets:
                 from samsara.command_packs import PACKS
                 new_packs = dict(self.app.config.get('command_packs', {}) or {})
+                new_packs.setdefault('hermes', PACKS['hermes']['default_enabled'])
                 for pack_id, cb in self._widgets['_pack_checkboxes'].items():
                     meta = PACKS.get(pack_id, {})
                     if not meta.get('always_on'):

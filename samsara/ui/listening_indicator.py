@@ -282,6 +282,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         self._corner       = "bottom-center"
         self._command_mode = False
         self._thinking     = False
+        self._agent_waiting = None
 
         # Custom drag-to-position placement. None means "use self._corner".
         # {'screen': QScreen.name(), 'cx': 0..1, 'cy': 0..1} -- a screen
@@ -428,6 +429,16 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         if self.isVisible():
             self._reposition()
             self.update()
+
+    def set_agent_waiting(self, label: str, active: bool):
+        self._agent_waiting = label if active else None
+        self._state_changed()
+        if active and not self.isVisible():
+            self.show()
+        if not self._spinning():
+            self._pulse_timer.stop()
+        self._reposition()
+        self.update()
 
     def set_listening(self, active):
         if active == self._listening:
@@ -756,6 +767,8 @@ class ListeningIndicator(IndicatorDocking, QWidget):
             return "move"
         if self._flash_bg is not None:
             return "heard" if self._flash_wake else "flash"
+        if self._agent_waiting and not self._listening:
+            return "thinking"
         if self._session_mode_name:
             return "session"
         if self._thinking:
@@ -779,6 +792,8 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         if self._flash_bg is not None and self._flash_wake:
             return "listening", "heard", 0.0, 1.0
         pace = self._capture_pace()
+        if self._agent_waiting and not self._listening:
+            return "ava", "off", self._spin("thinking"), 1.0
         if self._session_mode_name:
             capture = "recording" if pace == "recording" else (
                 "ava" if str(self._session_mode_name).upper() == "AVA" else "listening")
@@ -798,7 +813,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         return "idle", "off", 0.0, 1.0
 
     def _spinning(self) -> bool:
-        return self._thinking or self._capture_pace() is not None
+        return self._thinking or bool(self._agent_waiting) or self._capture_pace() is not None
 
     def _idle_allowed(self) -> bool:
         """Blink/glance only on a visible, unminimised pill whose eye is open
@@ -1107,6 +1122,9 @@ class ListeningIndicator(IndicatorDocking, QWidget):
             else:
                 label = self._mode_text
             return self._flash_bg, self._flash_fg, label, True
+
+        if self._agent_waiting and not self._listening:
+            return _lerp_color(_vision_bg(), _vision_bg_bright(), t), theme.AVA, self._agent_waiting, True
 
         if self._session_mode_name:
             # Unified session (COMMAND/DICTATE/AVA) dominates the generic
