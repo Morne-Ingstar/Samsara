@@ -1138,26 +1138,11 @@ class SessionDucker:
             logger.debug("SessionDucker: failed to close a session handle")
 
 
-# --- Child-process transport (tribunal arc_20260803_163412, tier-2) --------
-#
-# Every Core Audio COM call now happens in samsara/ducking_host.py, a
-# separate process. The tribunal rejected in-process COM timeouts as fake
-# isolation: a wedged COM call cannot be abandoned from inside the process
-# -- the thread stays stuck in the RPC runtime still holding its locks, so
-# "timing out" only stops the caller waiting while the damage is already
-# done and permanent. A wedged CHILD, by contrast, is killed and respawned
-# and the parent never notices.
-#
-# NOTE that this module no longer imports ctypes/ole32 at all: the parent
-# process does not so much as load the COM machinery any more. Everything
-# below is pipes and bookkeeping.
-
-# Per-command deadline. Generous relative to a healthy call (sub-millisecond
-# round trip locally) and short relative to a human noticing.
+# A cold child gets startup time; later calls retain the 2-second bound.
 _CHILD_DEADLINE_S = 2.0
+_CHILD_STARTUP_DEADLINE_S = 10.0
 
-# Shutdown is best-effort by design: app exit must never wait on the child
-# longer than this before killing it outright.
+# App exit must not wait for a cold child.
 _CHILD_SHUTDOWN_DEADLINE_S = 1.0
 
 # Mirrors samsara/ducking_host.py's HOST_ENV_SENTINEL. Deliberately a
@@ -1297,9 +1282,9 @@ class DuckingHostTransport:
             generation=self._generation,
         )
 
-    def request(self, op: str, deadline: float = _CHILD_DEADLINE_S, **fields) -> dict:
+    def request(self, op: str, deadline: float | None = None, **fields) -> dict:
         """Send one command and await its reply. Never raises."""
-        if not self._lock.acquire(timeout=deadline):
+        if not self._lock.acquire(timeout=_CHILD_DEADLINE_S if deadline is None else deadline):
             # Someone else is inside a hanging op and owns the restart.
             flight_recorder.record("ducker_child_busy", pending_op=op)
             return {"ok": False, "err": "ducking host busy"}
@@ -1309,6 +1294,10 @@ class DuckingHostTransport:
             self._lock.release()
 
     def _request_locked(self, op: str, deadline: float, fields: dict) -> dict:
+        cold = self._proc is None
+        if deadline is None:
+            deadline = _CHILD_STARTUP_DEADLINE_S if cold else _CHILD_DEADLINE_S
+        started = time.monotonic()
         if self._proc is None:
             try:
                 self._spawn_locked()
@@ -1346,6 +1335,9 @@ class DuckingHostTransport:
                 continue  # garbage line; keep waiting within the deadline
             if not isinstance(reply, dict) or reply.get("id") != request_id:
                 continue  # stale reply from an earlier op
+            flight_recorder.record("ducker_host_request", op=op, cold_start=cold,
+                                  elapsed_ms=int((time.monotonic() - started) * 1000),
+                                  host_elapsed_ms=reply.get("elapsed_ms"), deadline_s=deadline)
             return reply
 
     def shutdown(self) -> None:
@@ -1489,6 +1481,17 @@ def ducking_host_pids() -> set[int]:
 _shim_ducker: "SessionDucker | None" = None
 _recording_media_pauser: Any = None
 _recording_media_lock = threading.Lock()
+_media_notice_shown = False
+
+
+def _recording_media_failed(step, error):
+    global _media_notice_shown
+    logger.warning("[MEDIA] %s failed: %s", step, error)
+    with _recording_media_lock:
+        if _media_notice_shown:
+            return
+        _media_notice_shown = True
+    _surface_once("Other audio could not be controlled")
 
 
 def start_recording_media(mode: str, duck_level: float = 0.2) -> None:
@@ -1496,17 +1499,14 @@ def start_recording_media(mode: str, duck_level: float = 0.2) -> None:
     global _recording_media_pauser
     if mode == "off":
         return
-    if mode != "pause":
-        duck(duck_level)
-        return
-
-    # Lazy import keeps normal startup free of WinRT media-session imports.
-    from samsara.media_pause import RecordingMediaPauser
+    from samsara.media_pause import RecordingDucker, RecordingMediaPauser
 
     with _recording_media_lock:
         if _recording_media_pauser is not None:
             return
-        pauser = RecordingMediaPauser(fallback=lambda: duck(duck_level))
+        fallback = RecordingDucker(lambda: SessionDucker(duck_level=duck_level), _recording_media_failed)
+        pauser = (RecordingMediaPauser(fallback=fallback.start, fallback_finish=fallback.finish,
+                                      on_failure=_recording_media_failed) if mode == "pause" else fallback)
         _recording_media_pauser = pauser
     pauser.start()
 

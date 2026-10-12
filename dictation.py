@@ -1960,7 +1960,9 @@ class DictationApp:
 
         def _init_indicator():
             if listening_display.build_display(self, ListeningIndicator):
+                audio_ducking.set_notice_sink(lambda message: self._schedule_ui(self._show_outcome_chip, message, 'warning'))
                 return
+            audio_ducking.set_notice_sink(lambda message: self._schedule_ui(self._show_outcome_chip, message, 'warning'))
             self.listening_indicator.set_mode(self._get_mode_display())
             position = self.config.get('listening_indicator_position', 'bottom-center')
             custom = self.config.get('listening_indicator_custom_position')
