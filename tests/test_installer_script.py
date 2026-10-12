@@ -117,6 +117,9 @@ class TestGpuAndComingSoon:
 
     def test_build_cmd_generates_the_availability_define_from_the_manifest(self):
         cmd = CMD.read_text(encoding="utf-8")
+        # The manifest step moved out of the .cmd into a script: cmd cannot parse it inline (v0.30.0-beta.3 release build).
+        assert "write_manifest_defines.py" in cmd
+        cmd = (CMD.parent / "write_manifest_defines.py").read_text(encoding="utf-8")
         assert "manifest_defines.iss" in cmd
         assert "Available" in cmd and "'command-model': 'CommandModel'" in cmd
         assert "'cuda-pack': 'CudaPack'" in cmd and "'wake-word-models': 'WakeWordModels'" in cmd
