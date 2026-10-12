@@ -35,6 +35,7 @@ from samsara.update_customizations import migrate_update_customizations
 GITHUB_RELEASES_API = (
     "https://api.github.com/repos/Morne-Ingstar/Samsara/releases/latest"
 )
+GITHUB_RELEASE_LIST_API = GITHUB_RELEASES_API.removesuffix('/latest') + '?per_page=30'
 MAX_RELEASE_JSON_BYTES = 1 * 1024 * 1024
 MAX_CHECKSUM_BYTES = 4096
 MAX_DOWNLOAD_BYTES = 3 * 1024 * 1024 * 1024
@@ -61,14 +62,8 @@ CUDA_DLL_ALLOWLIST = frozenset(
 )
 
 _STABLE_VERSION_RE = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-#: The INSTALLED version may be a prerelease -- 0.23.0-beta.1 is a real build
-#: people are running (108/F10). Two separate decisions live here and must not
-#: be conflated again:
-#:   * what this build IS          -> _parse_version, prereleases allowed
-#:   * what may be OFFERED to it   -> _parse_stable_version, stable only
-#: Before 108 the installed version went through the stable-only parser, so a
-#: beta raised ReleaseMetadataError before any network request and could not
-#: see an update of any kind, including the stable release that supersedes it.
+# Installed versions may be prereleases; offered/prepared prereleases require
+# explicit opt-in. Never infer that preference from the installed version.
 _VERSION_RE = re.compile(
     r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-([0-9A-Za-z.-]+))?"          # prerelease: beta.1, rc.2, alpha
@@ -252,8 +247,8 @@ def _validate_github_api_url(url: str) -> None:
     expected = urlparse(GITHUB_RELEASES_API)
     if (
         parsed.hostname != "api.github.com"
-        or parsed.path != expected.path
-        or parsed.query
+        or (parsed.path, parsed.query) not in {
+            (expected.path, ''), (expected.path.removesuffix('/latest'), GITHUB_RELEASE_LIST_API.partition('?')[2])}
         or parsed.params
     ):
         raise ReleaseMetadataError("The updater accepts only Samsara's GitHub Releases API.")
@@ -305,24 +300,17 @@ def check_for_update(
     timeout: float = NETWORK_TIMEOUT_S,
     allow_prerelease: bool = False,
 ) -> ReleaseInfo | None:
-    """Query GitHub's latest stable release after an explicit caller action.
+    """Query stable releases, or published prereleases after explicit opt-in.
 
-    Returns ``None`` when the current build is already current. An unverified
-    release (including v0.22.0, which has no checksum asset) is reported as a
-    visible :class:`ReleaseMetadataError`, never offered for installation.
-
-    ``current_version`` MAY be a prerelease: what this build is and what it is
-    allowed to install are separate questions (108/F10). ``allow_prerelease``
-    answers only the second one and defaults to False -- the offered-update
-    policy stays stable-only, which is the intent: a beta tester should be
-    moved onto the stable release that supersedes their build, not sideways
-    onto another beta. Note that GitHub's /releases/latest endpoint does not
-    serve prereleases at all, so switching the policy in production also means
-    switching to /releases; the flag exists so the two decisions are separate
-    in code and separately testable, not as a finished feature.
+    Beta opt-in queries the 30 newest releases and chooses SemVer precedence, not
+    publication order; an entry with an unparsable tag is skipped. Stable releases
+    remain eligible. No downgrade or unverified archive is offered; invalid
+    metadata fails visibly and closed.
     """
     _require_update_eligible()
     current = _parse_version(current_version)
+    if allow_prerelease and api_url == GITHUB_RELEASES_API:
+        api_url = GITHUB_RELEASE_LIST_API
     _validate_github_api_url(api_url)
     request = urllib.request.Request(
         api_url,
@@ -342,6 +330,13 @@ def check_for_update(
     except Exception as exc:
         raise UpdateError(f"Could not check GitHub for updates: {exc}") from exc
 
+    if allow_prerelease and isinstance(payload, list):
+        if any(not isinstance(item, dict) for item in payload):
+            raise ReleaseMetadataError("GitHub returned invalid release metadata.")
+        usable = [i for i in payload if not i.get('draft') and _VERSION_RE.fullmatch(str(i.get('tag_name')).strip())]
+        if not usable:
+            return None
+        payload = max(usable, key=lambda item: _parse_version(item['tag_name']))
     if not isinstance(payload, dict):
         raise ReleaseMetadataError("GitHub returned invalid release metadata.")
     if payload.get("draft") or (payload.get("prerelease") and not allow_prerelease):
@@ -713,10 +708,14 @@ def prepare_update(
     opener=urllib.request.urlopen,
     timeout: float = NETWORK_TIMEOUT_S,
     disk_usage=shutil.disk_usage,
+    allow_prerelease: bool = False,
 ) -> PreparedUpdate:
     """Download, verify, and safely stage an update beside the install."""
     _require_update_eligible()
-    _parse_stable_version(release.tag)
+    if allow_prerelease:
+        _parse_version(release.tag)
+    else:
+        _parse_stable_version(release.tag)
     if release.version != release.tag.lstrip("v"):
         raise ReleaseMetadataError("The update version and tag do not agree.")
     if install_dir is None:

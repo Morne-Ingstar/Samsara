@@ -9,16 +9,20 @@ from __future__ import annotations
 
 import os
 import time
+from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 
 from samsara import __version__
@@ -33,6 +37,7 @@ from samsara.updater import (
     update_unavailable_reason,
 )
 from samsara.ui import theme
+from samsara.ui.update_channel_qt import channel_token, includes_betas, save_beta_choice
 
 
 logger = get_logger(__name__)
@@ -49,6 +54,23 @@ def _format_bytes(size: int) -> str:
             return f"{value:.0f} {unit}" if unit == "bytes" else f"{value:.1f} {unit}"
         value /= 1024.0
     return f"{size} bytes"
+
+
+_BODY_MIN_WIDTH = 472   # the dialog's 520 minimum less its 24 px margins
+
+
+class _BodyScroll(QScrollArea):
+    """The window's text. It asks for the room its wrapped labels need and
+    scrolls, rather than squeezing them, when the screen has less."""
+
+    def sizeHint(self):
+        body = self.widget()
+        # As if the scrollbar were showing, so the window never asks for one line too few.
+        bar = self.verticalScrollBar().sizeHint().width()
+        width = max(_BODY_MIN_WIDTH, self.width() - 2 * self.frameWidth()) - bar
+        layout = body.layout()
+        height = layout.totalHeightForWidth(width) if layout.hasHeightForWidth() else body.sizeHint().height()
+        return QSize(width + 2 * self.frameWidth(), height + 2 * self.frameWidth())
 
 
 class _UpdateDialog(QDialog):
@@ -72,10 +94,26 @@ class _UpdateDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 22)
         layout.setSpacing(12)
+        self._body = QWidget()
+        self._body.setObjectName("updateBody")
+        self._body.setStyleSheet("#updateBody { background: transparent; }")
+        body = QVBoxLayout(self._body)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(12)
+        self._scroll = _BodyScroll()
+        self._scroll.setObjectName("updateBodyScroll")
+        self._scroll.setStyleSheet("#updateBodyScroll { background: transparent; border: none; }")
+        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.viewport().setAutoFillBackground(False)
+        self._scroll.setWidget(self._body)
+        self._body.installEventFilter(self)
+        layout.addWidget(self._scroll, 1)
 
         title = QLabel("Samsara Updates")
         title.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_TITLE}px; font-weight: 700;")
-        layout.addWidget(title)
+        body.addWidget(title)
 
         privacy = QLabel(
             "Samsara has no update server or push-notification channel. Checks "
@@ -84,20 +122,30 @@ class _UpdateDialog(QDialog):
             "ordinary IP address and request headers required for the connection."
         )
         privacy.setWordWrap(True)
-        layout.addWidget(privacy)
+        body.addWidget(privacy)
+
+        self._beta_choice = QCheckBox("Include beta updates")
+        self._beta_choice.setObjectName("includeBetaUpdatesCheckbox")
+        self._beta_choice.setAccessibleName(self._beta_choice.text())
+        self._beta_choice.setChecked(includes_betas(getattr(app, "config", {})))
+        self._beta_choice.toggled.connect(self._on_channel_changed)
+        body.addWidget(self._beta_choice)
+        beta_note = QLabel("Beta updates are experimental and less tested. This does not enable automatic checks.")
+        beta_note.setWordWrap(True)
+        body.addWidget(beta_note)
 
         self._status = QLabel("Ready to check for a packaged update.")
         self._status.setObjectName("updateStatusLabel")
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Update status")
-        layout.addWidget(self._status)
+        body.addWidget(self._status)
 
         self._progress = QProgressBar()
         self._progress.setObjectName("updateProgressBar")
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.setVisible(False)
-        layout.addWidget(self._progress)
+        body.addWidget(self._progress)
 
         buttons = QHBoxLayout()
         buttons.addStretch()
@@ -121,6 +169,31 @@ class _UpdateDialog(QDialog):
         if initial_release is not None:
             self._show_available(initial_release)
 
+    def eventFilter(self, watched, event):
+        # A longer message changes what the text needs: ask for the room now.
+        if watched is self._body and event.type() == QEvent.Type.LayoutRequest:
+            QTimer.singleShot(0, self._grow_to_fit)
+        return super().eventFilter(watched, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._grow_to_fit()
+        QTimer.singleShot(0, self._grow_to_fit)   # again once the width has settled
+
+    def _grow_to_fit(self) -> None:
+        """Open tall enough for all the text, up to most of the screen; past
+        that the text scrolls (never clipped, never on top of the next line)."""
+        if self._closed or not self.isVisible():
+            return
+        screen = self.screen()
+        # The room around the text (margins, buttons) is what the window has
+        # beyond the scroll area right now.
+        wanted = self.height() - self._scroll.height() + self._scroll.sizeHint().height()
+        if screen:
+            wanted = min(wanted, int(screen.availableGeometry().height() * 0.9))
+        if wanted > self.height():
+            self.resize(self.width(), wanted)
+
     def closeEvent(self, event):
         if self._phase == "checking":
             # The urllib request is bounded but not cancellable. Keep the Qt
@@ -140,6 +213,19 @@ class _UpdateDialog(QDialog):
         self._closed = True
         super().closeEvent(event)
 
+    def _on_channel_changed(self, enabled) -> None:
+        if not save_beta_choice(self.app, enabled):
+            blocked = self._beta_choice.blockSignals(True)
+            self._beta_choice.setChecked(includes_betas(getattr(self.app, "config", {})))
+            self._beta_choice.blockSignals(blocked)
+            self._status.setText("Could not save the update choice. Your previous choice remains in effect.")
+            return
+        self._release = None
+        self._phase = "idle"
+        self._primary.setText("Check Now")
+        self._primary.setEnabled(True)
+        self._status.setText("Update choice saved. Check Now when you are ready.")
+
     def start_check(self) -> None:
         if self._phase in {"checking", "preparing"}:
             return
@@ -155,10 +241,13 @@ class _UpdateDialog(QDialog):
         self._primary.setEnabled(False)
         self._primary.setText("Checking…")
         self._status.setText("Checking GitHub Releases…")
+        self._check_channel = channel_token(self.app)
+        options: dict[str, Any] = {"allow_prerelease": True} if self._check_channel[0] else {}
+        self._beta_choice.setEnabled(False)
 
         def _worker():
             try:
-                release = check_for_update(current_version=__version__)
+                release = check_for_update(current_version=__version__, **options)
             except Exception as exc:
                 logger.warning("[UPDATE] Manual update check failed: %s", exc)
                 self._check_finished.emit(None, str(exc))
@@ -178,6 +267,13 @@ class _UpdateDialog(QDialog):
             self.deleteLater()
             return
         self._primary.setEnabled(True)
+        self._beta_choice.setEnabled(True)
+        if channel_token(self.app) != getattr(self, "_check_channel", channel_token(self.app)):
+            self._release = None
+            self._phase = "idle"
+            self._primary.setText("Check Now")
+            self._status.setText("Update choice changed. Check again for your current choice.")
+            return
         if error:
             self._phase = "idle"
             self._primary.setText("Try Again")
@@ -227,13 +323,16 @@ class _UpdateDialog(QDialog):
         self._progress.setVisible(True)
         self._progress.setValue(0)
         self._status.setText("Downloading the verified update from GitHub…")
+        self._prepare_channel = channel_token(self.app)
+        options: dict[str, Any] = {"allow_prerelease": True} if self._prepare_channel[0] else {}
+        self._beta_choice.setEnabled(False)
 
         def _progress(downloaded: int, total: int):
             self._progress_changed.emit(downloaded, total)
 
         def _worker():
             try:
-                prepared = prepare_update(release, progress_callback=_progress)
+                prepared = prepare_update(release, progress_callback=_progress, **options)
             except Exception as exc:
                 logger.exception("[UPDATE] Could not prepare update")
                 self._prepare_finished.emit(None, str(exc))
@@ -257,6 +356,15 @@ class _UpdateDialog(QDialog):
 
     def _on_prepare_finished(self, prepared, error: str) -> None:
         if self._closed:
+            return
+        self._beta_choice.setEnabled(True)
+        if channel_token(self.app) != getattr(self, "_prepare_channel", channel_token(self.app)):
+            self._release = None
+            self._phase = "idle"
+            self._progress.setVisible(False)
+            self._primary.setText("Check Now")
+            self._primary.setEnabled(True)
+            self._status.setText("Update choice changed. Check again before installing.")
             return
         if error or prepared is None:
             self._phase = "available"
@@ -285,6 +393,8 @@ class _UpdateDialog(QDialog):
 
         self._status.setText("Update verified. Closing Samsara and installing now…")
         self._primary.setEnabled(False)
+        from samsara.process_exit import trace_exit
+        trace_exit("update-helper-launched-requesting-quit", log=logger)
         QTimer.singleShot(0, self.app.quit_app)
 
 
@@ -341,20 +451,26 @@ def maybe_start_automatic_update_check(app, on_available, on_error=None) -> bool
         return False
 
     logger.info("[UPDATE] Starting opted-in automatic GitHub release check")
+    checked_channel = channel_token(app)
+    options: dict[str, Any] = {"allow_prerelease": True} if checked_channel[0] else {}
+
+    def _deliver(callback, value):
+        if channel_token(app) == checked_channel:
+            callback(value)
 
     def _worker():
         global _automatic_check_failure_reported
         try:
-            release = check_for_update(current_version=__version__)
+            release = check_for_update(current_version=__version__, **options)
         except Exception as exc:
             logger.info("[UPDATE] Automatic check unavailable: %s", exc)
             if on_error is not None and not _automatic_check_failure_reported:
                 _automatic_check_failure_reported = True
                 error = str(exc)
-                qt_runtime.post(lambda error=error: on_error(error))
+                qt_runtime.post(lambda error=error: _deliver(on_error, error))
             return
         if release is not None:
-            qt_runtime.post(lambda: on_available(release))
+            qt_runtime.post(lambda: _deliver(on_available, release))
 
     thread_registry.spawn("update-automatic-check", _worker, daemon=True)
     return True

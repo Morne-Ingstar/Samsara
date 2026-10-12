@@ -1157,13 +1157,13 @@ class _EOF:
 
 
 def _kill_process_tree(proc) -> None:
-    """Kill the child and anything it spawned. Never raises.
-
-    Tree-kill rather than a plain kill(): a wedged COM call can be blocked
-    inside an RPC to another process, and leaving descendants behind is how
-    "restarted cleanly" quietly becomes "two hosts fighting over volumes".
+    """Kill the child and descendants. Never raises.
+    A wedged COM call may be blocked in a descendant's RPC; leaving
+    descendants alive can leave two hosts fighting over volumes.
     """
     pid = getattr(proc, "pid", None)
+    from samsara.process_exit import trace_exit
+    trace_exit("ducking-child-tree-kill", target_pid=pid)
     if pid is not None and sys.platform == "win32":
         try:
             subprocess.run(

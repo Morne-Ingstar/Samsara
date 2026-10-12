@@ -24,6 +24,7 @@ from samsara.constants import DEFAULT_WAKE_PHRASE
 # docs/reviews/build_and_config_audit.md Part B3c and the "keys unified"
 # section of this task's report for the reasoning behind each choice.
 _EXTRA_DEFAULTS = {
+    "updates.include_prerelease": False,
     # Matches samsara.constants.DEFAULT_WAKE_PHRASE and the live config
     # value; the debug UI's 'samsara' / 'hey samsara' literals were the
     # outliers.

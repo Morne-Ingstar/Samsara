@@ -111,6 +111,8 @@ class AgentReply:
 def _kill_tree(process: subprocess.Popen) -> None:
     if process.poll() is not None:
         return
+    from samsara.process_exit import trace_exit
+    trace_exit("agent-child-tree-kill", target_pid=process.pid)
     try:
         import psutil
         parent = psutil.Process(process.pid)

@@ -114,7 +114,7 @@ def test_fresh_next_only_is_schema_defaults(make_window):
 def test_complete_has_only_startup_checkbox_and_preserves_hints(make_window):
     window = make_window({'hints_enabled': False})
     visit(window, 'Complete')
-    assert window._current_page.findChildren(QCheckBox) == [window._decisions.launch]
+    assert window._current_page.findChildren(QCheckBox) == [window._decisions.launch, window._decisions.include_beta_updates]
     result = finish(window)
     assert result['hints_enabled'] is False
 

@@ -1068,6 +1068,8 @@ class _WizardWindow(QDialog):
         self._ollama_recheck_timer.stop()
         if self._pull_proc is not None:
             try:
+                from samsara.process_exit import trace_exit
+                trace_exit("model-pull-child-terminate", target_pid=self._pull_proc.pid)
                 self._pull_proc.terminate()
             except Exception as e:
                 logger.debug(f"closeEvent: {e}")

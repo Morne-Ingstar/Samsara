@@ -608,6 +608,13 @@ class Decisions(QObject):
         self.launch.setChecked(self.owner._config['launch_at_login'])
         self.launch.installEventFilter(self)
         layout.addWidget(self.launch)
+        self.include_beta_updates = QCheckBox('Include beta updates')
+        self.include_beta_updates.setObjectName('includeBetaUpdatesCheckbox')
+        self.include_beta_updates.setAccessibleName(self.include_beta_updates.text())
+        self.include_beta_updates.setAccessibleDescription('Beta updates are experimental and less tested. This does not enable automatic checks.')
+        self.include_beta_updates.setChecked(config_defaults.cfg_get(self.owner._config, 'updates.include_prerelease') is True)
+        self.include_beta_updates.installEventFilter(self)
+        layout.addWidget(self.include_beta_updates)
         layout.addStretch()
         return w
 
@@ -627,6 +634,7 @@ class Decisions(QObject):
             widget.setText(text)
 
     def finish(self):
+        put(self.owner._config, 'updates.include_prerelease', self.include_beta_updates.isChecked())
         requested = self.launch.isChecked()
         if requested or self.owner._existing_config.get('launch_at_login', False):
             try:

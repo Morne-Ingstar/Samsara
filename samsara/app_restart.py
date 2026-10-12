@@ -139,6 +139,8 @@ def start_handoff(target_argv, *, cwd, parent_pid=None, helper_argv=None,
             time.sleep(0.025)
         raise TimeoutError("restart helper did not become ready")
     except Exception:
+        from samsara.process_exit import trace_exit
+        trace_exit("restart-helper-terminate", target_pid=helper.pid)
         helper.terminate()
         raise
     finally:

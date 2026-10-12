@@ -214,6 +214,8 @@ def install_exception_hooks(log=None):
     def _thread_hook(args):
         try:
             if args.exc_type is SystemExit:
+                from samsara.process_exit import trace_exit
+                trace_exit("worker-system-exit-thread-only", log=log)
                 return
             name = args.thread.name if args.thread is not None else "?"
             safe_exception(log, "[CRASH-DIAG] Uncaught exception in thread %s: %s", name, describe_text(args.exc_value),
@@ -264,14 +266,12 @@ def install_qt_message_handler(log=None):
             if context is not None and getattr(context, "file", None):
                 where = f" ({context.file}:{context.line})"
             log.log(levels.get(msg_type, logging.WARNING), f"[QT] {message}{where}")
-            if msg_type == QtMsgType.QtFatalMsg:
-                for handler in logging.getLogger().handlers:
-                    try:
-                        handler.flush()
-                    except Exception:
-                        pass
         except Exception:
             pass
+        finally:
+            if msg_type == QtMsgType.QtFatalMsg:
+                from samsara.process_exit import trace_exit
+                trace_exit("qt-fatal", log=log)
 
     try:
         qInstallMessageHandler(_handler)
@@ -528,6 +528,42 @@ def summarize_faulthandler_dumps(faulthandler_log, pid):
         "com_disconnects": disconnects,
     }
 
+def _previous_log_tail(log_dir, started):
+    """Return timestamp/tag only, stopping at the next bootstrap banner.
+
+    Historical logs have no per-line PID. This is a session-boundary estimate,
+    not proof of which process wrote a line (a refused launch can interleave).
+    Tracebacks and message bodies are never returned or copied to the report.
+    """
+    import re
+    from datetime import datetime
+    try:
+        datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return "unknown", "unknown"
+    record = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?:,\d{3})?) - [A-Z]+ - (.*)$")
+    tag = re.compile(r"^\[([A-Z][A-Z0-9_-]{0,39})\]")
+    last = ("unknown", "unknown")
+    for name in ("samsara.log.3", "samsara.log.2", "samsara.log.1", "samsara.log"):
+        try:
+            with (Path(log_dir) / name).open(encoding="utf-8", errors="replace") as stream:
+                for line in stream:
+                    match = record.match(line)
+                    if not match:
+                        continue
+                    timestamp, message = match.groups()
+                    if timestamp[:19] < started:
+                        continue
+                    # Logging starts before begin_session in dictation.py.
+                    if message.startswith("Samsara starting at ") and timestamp[:19] > started:
+                        return last
+                    found = tag.match(message)
+                    last = (timestamp, found.group(1) if found else "untagged")
+        except OSError:
+            continue
+    return last
+
+
 def begin_session(log_dir, log=None):
     """Record this run as in progress. If the previous run's marker is still
     there, that run ended without quit_app (a crash, a kill, a power loss):
@@ -543,12 +579,16 @@ def begin_session(log_dir, log=None):
         if marker.exists():
             try:
                 previous = _json.loads(marker.read_text(encoding="utf-8"))
+                if not isinstance(previous, dict):
+                    raise ValueError("invalid marker")
             except Exception:
                 previous = {"pid": None, "started": "unknown"}
             summary = summarize_faulthandler_dumps(log_dir / "faulthandler.log", previous.get("pid"))
+            last_time, last_tag = _previous_log_tail(log_dir, previous.get("started"))
             log.warning(
                 f"[CRASH-DIAG] The previous Samsara session (pid {previous.get('pid')}, started "
                 f"{previous.get('started')}) did not shut down cleanly. "
+                + f"\n  last log record (session boundary): time={last_time} tag=[{last_tag}]\n  "
                 + (f"faulthandler.log recorded: {summary['events']}" if summary.get("events")
                    else "faulthandler.log recorded no native fault for it "
                         "(a kill, os._exit, power loss or a fast-fail leaves none).")
@@ -601,7 +641,8 @@ def check_vc_redistributable():
                 "https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n"
                 "Install it and restart Samsara.",
             )
-            sys.exit(1)
+            from samsara.process_exit import exit_with_trace
+            exit_with_trace(1, "missing-vc-runtime", log=logger)
 
 
 # ============================================================================
@@ -698,7 +739,8 @@ def _steal_stale_lock_if_any(lock_file_path) -> None:
 
     if _is_samsara_process(recorded_pid):
         logger.warning(f"[WARN] Samsara is already running (PID: {recorded_pid})")
-        sys.exit(0)
+        from samsara.process_exit import exit_with_trace
+        exit_with_trace(0, "existing-instance-pid", log=logger)
 
     logger.info(f"[LOCK] stale lock from PID {recorded_pid}, stealing")
     try:
@@ -730,7 +772,8 @@ def _check_single_instance():
             # Keep this exact marker: frozen smoke tooling recognizes it as
             # the expected fast refusal when a real instance is already up.
             logger.warning("[WARN] Samsara is already running")
-            sys.exit(0)
+            from samsara.process_exit import exit_with_trace
+            exit_with_trace(0, "existing-instance-mutex", log=logger)
         except Exception as e:
             # Preserve the existing fail-open startup policy. A broken
             # single-instance check must not make an accessibility app
@@ -781,7 +824,8 @@ def _check_single_instance():
                 except Exception as e:
                     logger.debug(f"Could not read other instance PID: {e}")
                     logger.warning("[WARN] Samsara is already running")
-                sys.exit(0)
+                from samsara.process_exit import exit_with_trace
+                exit_with_trace(0, "existing-instance-file-lock", log=logger)
         else:
             # Unix-like systems (macOS, Linux)
             import fcntl
@@ -803,7 +847,8 @@ def _check_single_instance():
                 except Exception as e:
                     logger.debug(f"Could not read other instance PID: {e}")
                     logger.warning("[WARN] Samsara is already running")
-                sys.exit(0)
+                from samsara.process_exit import exit_with_trace
+                exit_with_trace(0, "existing-instance-file-lock", log=logger)
     except Exception as e:
         # If locking fails for any reason, log but continue
         # (better to have duplicate instances than no instances)
