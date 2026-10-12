@@ -62,7 +62,7 @@ if not defined ISCC (
 )
 
 rem ---- version: the same source as the build ---------------------------
-for /f "usebackq delims=" %%V in (`"%PYTHON_EXE%" %PYTHON_ARGS% -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.check_release_version import _string_assignment; print(_string_assignment(Path('samsara/__init__.py'), '__version__'))"`) do set "APP_VERSION=%%V"
+for /f "usebackq delims=" %%V in (`call "%PYTHON_EXE%" %PYTHON_ARGS% -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.check_release_version import _string_assignment; print(_string_assignment(Path('samsara/__init__.py'), '__version__'))"`) do set "APP_VERSION=%%V"
 if not defined APP_VERSION (
     echo Could not read __version__ from samsara\__init__.py.
     popd & exit /b 1
