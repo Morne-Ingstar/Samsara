@@ -291,6 +291,13 @@ SETTINGS_SCHEMA = {
         "tab": "general",
         "help": {"why": "This controls how much Samsara changes recognized words before delivery. Use a lighter mode when exact wording matters, or more cleanup when you prefer polished text. The default clean mode applies normal formatting, so review it if you dictate code or unusual names.", "docs": "https://morneis.com/samsara/docs/settings/#cleanup_mode"},
     },
+    # Whole-capture audio presence gate; developer evaluation switch only.
+    "dictation.speech_presence_gate": {
+        "settings_ui": False,
+        "ui_less_reason": "Developer escape hatch for audio speech-presence false-positive evaluation.",
+        "type": "bool", "default": True, "tab": "advanced",
+    },
+
     # Final text-only backstop for short Whisper sign-off hallucinations.
     # No Settings row: this stays on by default and is only an escape hatch
     # while its real-world false-positive rate is dogfooded.

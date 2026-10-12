@@ -5757,17 +5757,14 @@ class DictationApp:
         cm_cfg = self.config.get("command_mode", {})
         if not isinstance(cm_cfg, dict):
             cm_cfg = {}
-
         if not cm_cfg.get("dictate_commit_redecode", True):
             logger.info(
                 "[SESSION] Skipping commit re-decode because command_mode.dictate_commit_redecode is False",
             )
             return None
-
         refs = [np.asarray(ref, dtype=np.float32) for ref in audio_refs if ref is not None]
         if not refs:
             return None
-
         # Each float32 mono stream is model-rate (16 kHz), so one second is
         # about 64 KB — this 120 s default cap keeps a worst-case staged
         # thought under ~7.7 MB for a single re-decode.
@@ -5776,7 +5773,6 @@ class DictationApp:
             max_s = float(cm_cfg.get("dictate_commit_redecode_max_s", 120.0))
         except (TypeError, ValueError):
             max_s = 120.0
-
         if max_s and max_s > 0 and total_s > max_s:
             logger.info(
                 "[SESSION] Skipping commit re-decode because stitched duration %.2fs exceeds "
@@ -5785,14 +5781,14 @@ class DictationApp:
                 max_s,
             )
             return None
-
+        from samsara.speech_presence import skip_decode
         concatenated_audio = np.concatenate(refs) if len(refs) > 1 else refs[0]
+        if skip_decode(concatenated_audio, self, path="commit_redecode"): return None
         params = self.get_transcription_params(include_vocabulary=False)
         params["language"] = "en"
         params["vad_filter"] = False
         # 02e00b9: long-lived DICTATE commits must not carry a prompt.
         params["initial_prompt"] = None
-
         with self.model_lock:
             segments, info = self.model.transcribe(concatenated_audio, **params)
         segments = list(segments)
@@ -5800,21 +5796,17 @@ class DictationApp:
         text = self.voice_training_window.apply_corrections(text)
         if not text:
             return None
-
         kept_segments = _drop_trailing_garbage_segments(segments)
         text = _trim_trailing_garbage_run(text)
         if not text:
             logger.info(f'[GUARD] Suppressed commit re-decode: {describe_text(text)!r}')
             return None
-
         if _is_hallucinated_segments(kept_segments, text):
             logger.info(f'[GUARD] Suppressed commit re-decode hallucination: {describe_text(text)!r}')
             return None
-
         if not self._filter_dictation_language(text, info):
             return None
         return text
-
     def _pop_pending_action_for_scratch(self) -> "bool | None":
         """Unified 'scratch that' stage 1 (Ava Front Door spec v2,
         "Confirmation binding"): if a staged action is pending
@@ -6496,13 +6488,11 @@ class DictationApp:
     def _handle_ava_command_utterance(self, buffer: list, src_rate: int) -> None:
         """Transcribe one VAD-gated utterance and push to the Ava command
         session's waterfall queue.
-
         Called from WakeConsumer._flush() while ava_command_session_active.
         Owns an Ava-lane token; model_lock serializes cross-lane decodes.
         Abort phrases, and "scratch
         that", are both checked before enqueue so they're always
         responsive even while the waterfall queue is backed up.
-
         Session-generation guard (2026-07-19 incident report items 7-8,
         carried over verbatim per spec): captures the generation active
         when this utterance was flushed, and rechecks it after the ready
@@ -6533,6 +6523,8 @@ class DictationApp:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
+            from samsara.speech_presence import skip_decode
+            if skip_decode(audio, self, path="ava_session"): return
             if audio_duration < 0.3:
                 return
             logger.info(f'[AVA-CMD-UTT] Transcribing {audio_duration:.1f}s')
@@ -6910,6 +6902,8 @@ class DictationApp:
             audio_duration = len(audio) / self.model_rate
             stage_timing.mark("capture_finalised", audio_s=audio_duration)
 
+            from samsara.speech_presence import skip_decode
+            if skip_decode(audio, self, path='handsfree'): self._log_cmd_utt_dropped('no_speech_in_audio', _capture_mode, audio_duration); return
             _self_hear = is_self_hear_capture(
                 getattr(self, 'audio_coordinator', None), speech_start_ns, last_voice_ns)
             if _capture_mode == 'command' and _self_hear:
@@ -7848,6 +7842,8 @@ class DictationApp:
                 logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping transcription")
                 return
             
+            from samsara.speech_presence import skip_decode
+            if skip_decode(audio, self, path='continuous'): return
             transcribe_start = time.time()
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
@@ -9672,6 +9668,8 @@ class DictationApp:
                     beam=transcribe_params.get("beam_size"),
                 )
             transcribe_start = time.time()
+            from samsara.speech_presence import skip_decode, show_empty_capture
+            if skip_decode(audio, self, path='wake'): stage_timing.mark('transcribe_end', outcome='empty') if stage_timing is not None else None; show_empty_capture(self, audio_duration, 'wake'); return
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
                 # Whisper returns a lazy iterator: decoding runs while it is
@@ -12069,6 +12067,8 @@ class DictationApp:
                     audio_faded, self.model_rate,
                     head_grace_ms=_head_grace_ms,
                 )
+                from samsara.speech_presence import skip_decode, show_empty_capture
+                if skip_decode(audio_faded, self, path="batch", existing_gate=_gate): show_empty_capture(self, audio_duration); return
                 if _gate:
                     logger.info(_gate.describe() if isinstance(_gate, _GateDecision) else
                                 f"[GATE] skip: no contiguous speech ({audio_duration:.2f}s)")

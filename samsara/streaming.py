@@ -1683,8 +1683,9 @@ class StreamingWorker(threading.Thread):
         if not lock.acquire(blocking=False):
             return None
         try:
+            from samsara.speech_presence import skip_decode
             audio = self._snapshot_audio()
-            if audio is None:
+            if audio is None or skip_decode(audio, app, final=False, path='streaming', state=self):
                 return None
             params = self._partial_params()
             segments, _ = app.model.transcribe(audio, **params)
@@ -1711,11 +1712,12 @@ class StreamingWorker(threading.Thread):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
-
             if audio is None or audio.size == 0:
                 self._session.on_final(None)
                 return
-
+            from samsara.speech_presence import skip_decode
+            if skip_decode(audio, app, path='streaming', state=self):
+                self._session.on_final(None, duration_s=len(audio) / app.model_rate); return
             with app.model_lock:
                 params = self._final_params()
                 t0 = time.time()
@@ -1725,13 +1727,11 @@ class StreamingWorker(threading.Thread):
                 text = "".join(seg.text for seg in seg_list).strip()
                 duration_s = len(audio) / app.model_rate
                 elapsed_ms = int((time.time() - t0) * 1000)
-
             try:
                 diag_sig = diagnostics.segment_signals(seg_list)
             except Exception as e:
                 logger.debug(f"[STREAM] segment signal extraction failed: {e}")
                 diag_sig = {}
-
             if not text:
                 self._session.on_final(None, duration_s=duration_s,
                                        elapsed_ms=elapsed_ms)
@@ -1784,7 +1784,6 @@ class StreamingWorker(threading.Thread):
             # pass through this method and are deliberately left as raw
             # transcription text.
             cleaned = app._apply_formatting_tokens(cleaned)
-
             # Diagnostics record -- total measured from transcribe start to
             # just before handoff to on_final (the streaming equivalent of
             # "just before paste").
@@ -2166,7 +2165,7 @@ class StreamingSession:
             if isinstance(self._overlay, _LiveSurfaceStreamingOverlay):
                 self._overlay.show_empty_result()
             else:
-                self._overlay.update_text("(no speech)",
+                self._overlay.update_text("No speech",
                                           StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
             return
@@ -3229,8 +3228,9 @@ class DictatePreviewSession:
         if not lock.acquire(blocking=False):
             return None
         try:
+            from samsara.speech_presence import skip_decode
             audio = self._snapshot_audio()
-            if audio is None:
+            if audio is None or skip_decode(audio, app, final=False, path='handsfree_preview'):
                 return None
             params = self._partial_params()
             segments, info = app.model.transcribe(audio, **params)

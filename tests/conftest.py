@@ -15,6 +15,15 @@ from unittest.mock import Mock, MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+@pytest.fixture(autouse=True)
+def _speech_presence_unknown_for_decoder_fixtures(request, monkeypatch):
+    """Synthetic decoder inputs are not a speech-detector corpus (534)."""
+    if request.path.name != 'test_speech_presence_534.py':
+        from samsara import speech_presence
+        monkeypatch.setattr(speech_presence._presence, 'measure',
+                            lambda *args: speech_presence.Presence(False))
+
+
 # ============================================================================
 # Shared fake-app baseline (docs/reviews/test_suite_audit.md "bring the
 # suite to green" pass)

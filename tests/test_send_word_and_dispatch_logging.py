@@ -277,6 +277,30 @@ def _drops(caplog):
     return [r.message for r in caplog.records if "[CMD-UTT] dropped" in r.message]
 
 
+def test_audio_presence_drop_releases_cancel_window_and_capture_with_gate_on(monkeypatch, caplog):
+    from samsara import speech_presence, stage_timing
+    for name in ('StageTiming', 'set_current_stage_timing', 'reset_current_stage_timing'):
+        monkeypatch.setitem(_MOD.__dict__, name, getattr(stage_timing, name))
+    after = Mock()
+    monkeypatch.setitem(_MOD.__dict__, '_cancel_window_module',
+                        lambda: SimpleNamespace(after_utterance=after))
+    monkeypatch.setattr(speech_presence._presence, 'measure',
+                        lambda *args: speech_presence.Presence(True, frames=32))
+    app = _app()
+    assert app.config.get('dictation', {}).get('speech_presence_gate', True)
+    app.model.transcribe = Mock()
+    app._transcription_owners.release = Mock()
+    app._vad_reset = Mock()
+    caplog.set_level(logging.INFO, logger='dictation_extract_54')
+    app._handle_command_mode_utterance([np.zeros(16000, dtype=np.float32)], 16000)
+    app.model.transcribe.assert_not_called()
+    app._session_mode_manager.dispatch_utterance.assert_not_called()
+    after.assert_called_once_with(None, 'dropped_no_speech_in_audio')
+    app._transcription_owners.release.assert_called_once_with('toggle', 1)
+    app._vad_reset.assert_called_once()
+    assert _drops(caplog) == ['[CMD-UTT] dropped reason=no_speech_in_audio mode=command duration=1.0s']
+
+
 @pytest.mark.parametrize("case, seconds, text, ghost, reason", [
     ("too short", 0.2, "", False, "too_short"),
     ("empty decode", 1.0, "", False, "empty_transcription"),
