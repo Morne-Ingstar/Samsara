@@ -405,16 +405,41 @@ def test_native_input_desktop_probe_is_fake_and_closes_handle(monkeypatch, deskt
 
 
 @pytest.mark.parametrize('name', ['Samsara security check. Notepad is safe. Say yes to allow',
-    'YES', 'no', 'Say', 'allow', 'SAFE', 'confirm', 'ok', 'Claude yes please'])
+    'YES', 'no', 'Say', 'allow', 'SAFE', 'confirm', 'ok', 'Claude yes please',
+    'Ｓａｙ ｙｅｓ', 'Yеs', 'Samsаra', 'Y.E.S', 'Y E S', 'Ｓ.Ａ.Ｙ', 'y-e-s', 'yés',
+    'SamsaraBot', 'SamsaraSecurity', 'SayYes', 'YesMan', 'Yes2', 'OkGo', 'Okay',
+    'Allowed', 'Safely', 'Say\u00adyes', 'ＳａｙＹｅｓ',
+    'Yesman', 'YESMAN', 'yesman', 'Yesbot', 'YESBOT', 'Yess', 'Yesyes', 'YESYES',
+    'yesbot ai', 'theyes', 'autoyes', 'Confirmed', 'CONFIRMED', 'Confirmation',
+    'Confirmbot', 'Saysure', 'Sayit', 'Yеsman', 'Ｙｅｓｍａｎ', 'Sayward',
+    'Yesterday Bot', 'Yes Terday', 'YesTerday', 'YES TERDAY', 'Yes-terday Bot',
+    'Calendar Assistantss Yesterday', 'Aaaaaaaaaaaaaaaaaa B Yesterday',
+    'Justsayit', 'Pleasesay', 'Autoallow'])
 def test_agent_name_cannot_supply_confirmation_instructions(rig, name):
     _, _, headers = post(rig.service, 'initialize', {'clientInfo': {'name': name}})
     assert call(rig.service, headers={'Mcp-Session-Id': headers['Mcp-Session-Id']})['reason'] == 'delivered'
     assert rig.prompts[0][0].startswith('An AI app wants')
 
 
+@pytest.mark.parametrize('name', ['Notion', 'Notebook', 'Nothing', 'Nobot', 'Noway',
+    'Nonono', 'Claude Code'])
+def test_client_name_word_check_preserves_names_containing_short_words(name):
+    # FINISH IT 3 deliberately permits Nobot/Noway/Nonono: only whole-word no
+    # is blocked, since a no in the question pushes toward declining.
+    assert agents._safe_name(name) == name
+
+
+def test_client_name_filter_checks_truncated_spoken_string():
+    name = 'Calendar Assistantsss Nobody'
+    assert len('Calendar Assistantsss No') == 24
+    assert agents._safe_name(name) == 'An AI app'
+    assert agents._safe_name(name, client=False) == 'Calendar Assistantsss No'
+
+
 @pytest.mark.parametrize('classname', [
     'consolewindowclass', 'cascadia_hosting_window_class', 'virtualconsoleclass',
-    'putty', 'kitty', 'mintty', 'org.wezfurlong.wezterm', 'alacritty'])
+    'putty', 'kitty', 'mintty', 'org.wezfurlong.wezterm', 'alacritty',
+    'TMobaXtermForm', 'Window Class'])
 def test_terminal_window_classes_survive_a_renamed_executable(monkeypatch, classname):
     import ctypes
     test_native_target_probe_with_fake_windows_and_processes(monkeypatch, 'editor.exe', None)
@@ -427,12 +452,15 @@ def test_terminal_window_classes_survive_a_renamed_executable(monkeypatch, class
 
 
 @pytest.mark.parametrize('case,reason', [('xterm', 'refused_terminal'), ('missing', 'refused_unverified'),
+    ('xterm_extra', 'refused_terminal'), ('xterm_prefix', 'refused_terminal'),
     ('no_control', 'refused_unverified'), ('no_password', 'refused_unverified'),
     ('no_class', 'refused_unverified'), ('unknown_password', 'refused_unverified')])
 def test_focused_control_verification_fails_closed(monkeypatch, case, reason):
     test_native_target_probe_with_fake_windows_and_processes(monkeypatch, 'code.exe', None)
     focused = SimpleNamespace(ProcessId=43210, IsPassword=False, ClassName='Edit')
     if case == 'xterm': focused.ClassName = 'xterm-helper-textarea'
+    elif case == 'xterm_extra': focused.ClassName = 'xterm-helper-textarea extra'
+    elif case == 'xterm_prefix': focused.ClassName = 'editor XTERM-HELPER-TEXTAREA-focused extra'
     elif case == 'no_control': focused = None
     elif case == 'no_password': del focused.IsPassword
     elif case == 'no_class': del focused.ClassName
@@ -523,6 +551,54 @@ def test_capture_begun_during_question_cannot_be_delayed_yes(rig):
     assert not rig.pastes
 
 
+def test_capture_started_during_speech_cannot_supply_delayed_yes(rig):
+    rig.on_speech = lambda kwargs: setattr(rig.app, '_hold_capture_start_ns', time.perf_counter_ns())
+    assert call(rig.service)['reason'] == 'user_declined'
+    assert not rig.pastes
+
+
+def test_stale_held_capture_remains_fail_closed_without_finalised_marker(rig):
+    rig.app._hold_capture_start_ns = time.perf_counter_ns() - 10_000_000_000
+    assert call(rig.service)['reason'] == 'user_declined'
+    assert not rig.pastes
+
+
+@pytest.mark.parametrize('flag', ['recording', '_stop_in_flight', '_hotkey_recording', '_streaming_session'])
+def test_capture_live_or_in_flight_before_question_cannot_supply_yes(rig, flag):
+    rig.app._hold_capture_start_ns = time.perf_counter_ns() - 10_000_000_000
+    setattr(rig.app, flag, True)
+    def fresh_answer():
+        setattr(rig.app, flag, False)
+        rig.app._hold_capture_start_ns = time.perf_counter_ns()
+    rig.on_question = fresh_answer
+    assert call(rig.service)['reason'] == 'user_declined'
+    assert not rig.pastes
+
+
+def test_hotkey_active_before_timestamp_and_recording_cannot_supply_yes(rig):
+    rig.app._hotkey_recording = True
+    assert call(rig.service)['reason'] == 'user_declined'
+    assert not rig.pastes
+
+
+@pytest.mark.parametrize('flag', ['recording', '_hotkey_recording', '_stop_in_flight', '_streaming_session'])
+def test_capture_active_when_listening_starts_cannot_supply_prebuffered_yes(rig, flag):
+    rig.on_speech = lambda kwargs: setattr(rig.app, flag, True)
+    def late_timestamp_answer():
+        setattr(rig.app, flag, False)
+        rig.app._hold_capture_start_ns = time.perf_counter_ns()
+    rig.on_question = late_timestamp_answer
+    assert call(rig.service)['reason'] == 'user_declined'
+    assert not rig.pastes
+
+
+def test_capture_already_active_before_question_cannot_supply_yes(rig):
+    rig.app._hold_capture_start_ns = time.perf_counter_ns() - 10_000_000_000
+    rig.app.recording = True
+    assert call(rig.service)['reason'] == 'user_declined'
+    assert not rig.pastes
+
+
 def test_fresh_command_only_capture_can_answer(rig):
     rig.on_question = lambda: setattr(rig.app, '_hold_capture_start_ns', time.perf_counter_ns())
     assert call(rig.service)['reason'] == 'delivered'
@@ -533,6 +609,68 @@ def test_already_queued_agent_speech_prevents_question(rig):
     assert speak_call(rig.service)['status'] == 'queued'
     assert call(rig.service)['reason'] == 'busy'
     assert not rig.prompts and not rig.pastes
+
+
+@pytest.mark.parametrize('pasted', [True, False])
+def test_late_delivery_returns_unknown_without_retry_and_stays_busy(rig, monkeypatch, caplog, pasted):
+    monkeypatch.setattr(agents, 'UI_TIMEOUT', 0.03)
+    release, finished = threading.Event(), threading.Event()
+    attempts, workers = [], []
+    scheduled = []
+    def schedule(fn):
+        scheduled.append(fn)
+        if len(scheduled) <= 2:
+            fn()
+        else:
+            def run():
+                try:
+                    fn()
+                finally:
+                    finished.set()
+            workers.append(thread_registry.spawn('test.late_delivery', run, daemon=True))
+    rig.app._schedule_ui = schedule
+    def slow_paste(app, text, *, before_paste, **kwargs):
+        assert before_paste()
+        attempts.append(text)
+        if pasted:
+            rig.pastes.append((text, dict(rig.target)))
+        assert release.wait(2)
+        return pasted
+    monkeypatch.setattr(agents.paste_delivery, 'paste_preserving_clipboard', slow_paste)
+    try:
+        with caplog.at_level(logging.INFO):
+            assert call(rig.service) == {'status': 'unknown', 'reason': 'unknown'}
+        assert attempts == ['sample text']
+        assert len(rig.pastes) == int(pasted)
+        assert call(rig.service)['reason'] == 'busy'
+        assert policy.answer_pending(rig.app, 'yes') is None
+        messages = [r.getMessage() for r in caplog.records if r.name == 'samsara.agent_server']
+        assert any('outcome=unknown reason=unknown' in message for message in messages)
+        assert any('tool=type_text outcome=unknown' in message for message in messages)
+    finally:
+        release.set()
+        assert finished.wait(1)
+        for worker in workers:
+            worker.join(1)
+    assert not rig.service._typing_lock.locked()
+    assert len(attempts) == 1
+
+
+def test_delivery_queued_past_ui_timeout_cannot_paste_later(rig, monkeypatch):
+    monkeypatch.setattr(agents, 'UI_TIMEOUT', 0.03)
+    queued, count = [], [0]
+    def schedule(fn):
+        count[0] += 1
+        if count[0] <= 2:
+            fn()
+        else:
+            queued.append(fn)
+    rig.app._schedule_ui = schedule
+    assert call(rig.service) == {'status': 'unknown', 'reason': 'unknown'}
+    assert len(queued) == 1 and not rig.pastes
+    queued[0]()
+    assert not rig.pastes
+    assert not rig.service._typing_lock.locked()
 
 
 @pytest.mark.parametrize('case', ['typed_allowlist', 'incomplete_snapshot', 'clipboard_timeout', 'clipboard_copy_failed'])

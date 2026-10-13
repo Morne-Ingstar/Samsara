@@ -55,11 +55,15 @@ _TERMINAL_PROCESSES = frozenset({
 _TERMINAL_CLASSES = frozenset({
     "consolewindowclass", "cascadia_hosting_window_class", "virtualconsoleclass",
     "putty", "kitty", "mintty", "org.wezfurlong.wezterm", "alacritty",
+    # Alacritty uses winit's default Win32 class (also used by other winit apps):
+    # https://github.com/alacritty/alacritty/blob/master/alacritty/src/display/window.rs
+    # https://github.com/rust-windowing/winit/blob/v0.30.12/src/platform_impl/windows/mod.rs
+    "tmobaxtermform", "window class",
 })
 MAX_CONNECTIONS = 8
 _TYPE_REASONS = frozenset({"refused_terminal", "refused_elevated", "refused_own_window",
                            "refused_password", "refused_delivery", "refused_unverified", "user_declined", "timeout", "window_changed",
-                           "too_long", "invalid_text", "disabled", "busy", "delivered"})
+                           "too_long", "invalid_text", "disabled", "busy", "delivered", "unknown"})
 _METHODS = frozenset({"initialize", "notifications/initialized", "ping",
                       "notifications/cancelled", "server/discover", "tools/list", "tools/call"})
 _INFO = {"name": "samsara", "version": __version__}
@@ -89,12 +93,28 @@ TYPE_TOOL = {
 def _safe_name(value, fallback="An AI app", *, client=True):
     if not isinstance(value, str):
         return fallback
+    # Compatibility forms and common Cyrillic/Greek look-alikes must undergo
+    # the same word check as ASCII; no dependency on a transliteration library.
+    value = unicodedata.normalize("NFKC", value)
+    value = "".join(c for c in value if unicodedata.category(c) != "Cf")
+    lookalikes = str.maketrans("аеорсхуіјѕΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "aeopcxyijsABEZHIKMNOPTYX")
+    value = value.translate(lookalikes).translate(str.maketrans("АЕОРСХУІЈЅ", "AEOPCXYIJS"))
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     # No punctuation, markup, invisible characters or sentence injection.
     value = " ".join("".join(c if c.isalnum() or c == " " else " " for c in value).split())
-    if client and any(word in value.casefold() for word in
-           ("samsara", "yes", "no", "say", "allow", "safe", "confirm", "ok")):
-        return fallback
-    return " ".join(value.split()[:3])[:24].strip() or fallback
+    spoken = " ".join(value.split()[:3])[:24].strip()
+    if client:
+        # Check both the full name and what will actually be spoken: the cut
+        # can expose a confirmation word at the end of an otherwise safe name.
+        for name in (value, spoken):
+            words = re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])", " ", name)
+            words = re.sub(r"\b(?:[a-z]\s+)+[a-z]\b", lambda m: m[0].replace(" ", ""), words.casefold())
+            letters = re.sub(r"[^a-z]", "", words)
+            if (any(word in letters for word in ("yes", "confirm", "samsara", "say", "allow"))
+                    or "no" in words.split()
+                    or any(word.startswith(("safe", "ok")) for word in words.split())):
+                return fallback
+    return spoken or fallback
 
 
 def _text_reason(args):
@@ -154,7 +174,7 @@ def _focused_control_reason(pid):
                     result["reason"] = "refused_unverified"
                 elif focused.ProcessId != pid:
                     result["reason"] = "window_changed"
-                elif focused.ClassName.casefold() == "xterm-helper-textarea":
+                elif "xterm-helper-textarea" in focused.ClassName.casefold():
                     result["reason"] = "refused_terminal"
                 elif focused.IsPassword is True:
                     result["reason"] = "refused_password"
@@ -410,7 +430,7 @@ class _Handler(BaseHTTPRequestHandler):
             outcome = "error" if response and "error" in response else "accepted"
             if response and "result" in response:
                 tool_outcome = response["result"].get("structuredContent", {}).get("status")
-                if tool_outcome in {"spoken", "queued", "suppressed", "delivered", "refused", "busy"}:
+                if tool_outcome in {"spoken", "queued", "suppressed", "delivered", "refused", "busy", "unknown"}:
                     outcome = tool_outcome
             client_id = None
             if method == "initialize" and response and "result" in response:
@@ -721,7 +741,7 @@ class AgentServer:
 
         def finish(reason):
             reason = reason if reason in _TYPE_REASONS else "window_changed"
-            status = "delivered" if reason == "delivered" else "refused"
+            status = reason if reason in {"delivered", "unknown"} else "refused"
             logger.info("[AGENTS] tool=type_text outcome=%s reason=%s length_bucket=%s", status, reason, bucket)
             return {"status": status, "reason": reason}
 
@@ -743,6 +763,7 @@ class AgentServer:
         staged_record = {}
         speech_done = threading.Event()
         question = {}
+        delivery_state = {"started": False, "done": False, "release": False}
         deadline = time.monotonic() + TYPE_TIMEOUT
 
         def eligible():
@@ -773,6 +794,9 @@ class AgentServer:
                 # STAND-IN COPY (565)
                 prompt = f"{client_name} wants to type {len(text.split())} words into {target['app']}. Say yes to allow."
                 question.update(target=target, prompt=prompt)
+                question["capture_start"] = getattr(self.app, "_hold_capture_start_ns", None)
+                question["capture_active"] = any(bool(getattr(self.app, flag, False)) for flag in
+                    ("recording", "_hotkey_recording", "_stop_in_flight", "_streaming_session"))
 
                 def spoken():
                     question["listen_after"] = time.monotonic() + CONFIRM_ECHO_TAIL
@@ -795,6 +819,8 @@ class AgentServer:
                     return finish("disabled" if time.monotonic() < deadline else "timeout")
                 abandoned.wait(0.01)
             listen_start_ns = time.perf_counter_ns()
+            question["capture_active_at_listen"] = any(bool(getattr(self.app, flag, False)) for flag in
+                ("recording", "_hotkey_recording", "_stop_in_flight", "_streaming_session"))
 
             def ask():
                 pending = policy.pending_operation()
@@ -812,11 +838,18 @@ class AgentServer:
                         refused["reason"] = "disabled" if time.monotonic() < deadline else "timeout"
                     elif getattr(self.app.audio_coordinator, "is_speaking", False):
                         refused["reason"] = "user_declined"
+                    elif question["capture_active_at_listen"]:
+                        refused["reason"] = "user_declined"
                     else:
                         # A held-key capture begun during the question cannot
                         # become a delayed spoken yes after playback finishes.
                         capture_start = getattr(self.app, "_hold_capture_start_ns", None)
-                        if capture_start is not None and capture_start < listen_start_ns:
+                        if capture_start is None:
+                            capture_start = question["capture_start"]
+                        # Without a transcript-finalised marker an old timestamp
+                        # cannot be distinguished from an answer still in flight.
+                        if (question["capture_active"]
+                                or (capture_start is not None and capture_start < listen_start_ns)):
                             refused["reason"] = "user_declined"
                             return refused["reason"]
                         current, why = probe()
@@ -882,7 +915,7 @@ class AgentServer:
             if not eligible():
                 return finish("disabled" if time.monotonic() < deadline else "timeout")
 
-            def deliver():
+            def perform_delivery():
                 def final_guard():
                     if not eligible():
                         refused["reason"] = "disabled" if time.monotonic() < deadline else "timeout"
@@ -903,7 +936,24 @@ class AgentServer:
                     pasted = False
                 return "delivered" if pasted else refused.get("reason", "refused_delivery")
 
-            return finish(self._on_ui(deliver))
+            def deliver():
+                with self._state_lock:
+                    delivery_state["started"] = True
+                try:
+                    return perform_delivery()
+                finally:
+                    with self._state_lock:
+                        delivery_state["done"] = True
+                        if delivery_state["release"]:
+                            self._typing_quiet_until = self._clock() + SPEAK_QUIET_AFTER_TYPING
+                            self._typing_lock.release()
+
+            try:
+                return finish(self._on_ui(deliver))
+            except TimeoutError:
+                # The UI callback may already have sent Ctrl+V. Its cancellation
+                # cannot undo that side effect; never claim refusal or retry.
+                return finish("unknown")
         except TimeoutError:
             return finish("timeout")
         except Exception:
@@ -920,7 +970,10 @@ class AgentServer:
                     self._typing_op = None
                 if question:
                     self._typing_quiet_until = self._clock() + SPEAK_QUIET_AFTER_TYPING
-                self._typing_lock.release()
+                if delivery_state["started"] and not delivery_state["done"]:
+                    delivery_state["release"] = True
+                else:
+                    self._typing_lock.release()
 
     def dispatch(self, request, headers, *, generation=None):
         method, params, identity = request["method"], request.get("params", {}), request.get("id")
