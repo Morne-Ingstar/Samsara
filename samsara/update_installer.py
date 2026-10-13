@@ -205,6 +205,8 @@ def prepare(release, install_dir, progress_callback, *, opener,timeout,disk_usag
     if release.version!=release.tag.removeprefix('v'):
         raise updater.ReleaseMetadataError('The update version and tag do not agree.')
     folder = info.folder
+    from samsara.update_installer_customizations import validate_installer_customizations
+    validate_installer_customizations(folder)
     name = f'SamsaraSetup-{release.version}.exe'
     updater._validate_release_asset_url(release.asset_url,release.tag,name)
     updater._validate_release_asset_url(release.checksum_url,release.tag,name+'.sha256')
@@ -278,11 +280,19 @@ def helper(prepared,current_pid):
         raise updater.UpdateIntegrityError('The prepared installer checksum changed.')
     base = updater._archive_helper_script(prepared,current_pid)
     prefix = base[:base.index('$oldMoved = $false')]
+    # The new app can distinguish a live rollback owner from an orphan after reboot.
+    prefix = prefix.replace(
+        "workspace_dir=$workspace; helper_path=$PSCommandPath;",
+        "workspace_dir=$workspace; helper_path=$PSCommandPath; "
+        "helper_pid=$PID; helper_started_filetime="
+        "([Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToFileTimeUtc().ToString());",
+    )
     literal = updater._ps_literal
     arguments = ' '.join('"'+arg.replace('"','""')+'"' for arg in installer_arguments(prepared.install_dir,prepared.components))
     registry_name = UNINSTALL_ROOT+'\\'+APP_KEY
     prefix += f"\n$installer = {literal(path)}\n$installerHash = {literal(prepared.installer_sha256)}\n$installerArgs = {literal(arguments)}\n$registryName = {literal(registry_name)}\n"
     prefix += '$registryView = [Microsoft.Win32.RegistryView]::'+('Registry32' if prepared.registry_view==32 else 'Registry64')+'\n'
+    prefix += f"$customizationBackups = {literal(prepared.status_path.parent/'backups')}\n"
     return prefix+INSTALLER_TRANSACTION
 
 
@@ -315,10 +325,30 @@ function Assert-InstalledMetadata {
         if (-not [string]::Equals([IO.Path]::GetFullPath([string]$key.GetValue('InstallLocation')), [IO.Path]::GetFullPath($install), [StringComparison]::OrdinalIgnoreCase)) { throw 'The installer registered another folder.' }
     } finally { $key.Close(); $baseKey.Close() }
 }
+# STAND-IN COPY (560): customization maintenance failure details.
+function Invoke-CustomizationMigration {
+    $receipt = Join-Path $workspace 'customizations-migrated.json'
+    Assert-NotReparsePoint $install $installParent
+    Assert-NotReparsePoint $rollback $installParent
+    Assert-NotReparsePoint $receipt $installParent
+    $arguments = '--migrate-update-customizations "' + $rollback + '" "' + $customizationBackups + '" "' + $receipt + '"'
+    $script:migrationProcess = Start-Process -FilePath (Join-Path $install $executable) -ArgumentList $arguments -WorkingDirectory $install -WindowStyle Hidden -PassThru
+    if (-not $migrationProcess.WaitForExit(180000)) { throw 'Customization migration did not finish.' }
+    if ($migrationProcess.ExitCode -ne 0) { throw 'Customization migration failed.' }
+    if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) { throw 'Customization migration did not confirm completion.' }
+    $result = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+    if ($result.schema_version -ne 1 -or $result.install_dir -ine $install -or $result.snapshot_dir -ine $rollback) { throw 'Customization migration returned an invalid receipt.' }
+    $backup = [IO.Path]::GetFullPath([string]$result.backup_dir)
+    if ([IO.Path]::GetDirectoryName($backup) -ine [IO.Path]::GetFullPath($customizationBackups)) { throw 'Customization backup is outside its persistent folder.' }
+    Assert-NotReparsePoint $backup $customizationBackups
+    if (-not (Test-Path -LiteralPath (Join-Path $backup 'manifest.json') -PathType Leaf)) { throw 'The customization backup is missing.' }
+}
 $installerProcess = $null
+$migrationProcess = $null
 $newProcess = $null
 $snapshot = $null
 $backupReady = $false
+$migrationTimedOut = $false
 try {
     Assert-NotReparsePoint $installer $installParent
     $stream = [IO.File]::OpenRead($installer)
@@ -328,6 +358,16 @@ try {
     if ($actualHash -ine $installerHash) { throw 'The installer checksum changed.' }
     $snapshot = Read-InstallRegistry
     Assert-NotReparsePoint $staged $installParent
+    # Refresh the preparation snapshot after the old process has quit.
+    # Edits made while the installer was downloading must also survive.
+    foreach ($root in @($install, $staged)) {
+        Assert-NotReparsePoint $root $installParent
+        foreach ($item in (Get-ChildItem -LiteralPath $root -Recurse -Force)) {
+            Assert-NotReparsePoint $item.FullName $installParent
+        }
+    }
+    Remove-Item -LiteralPath $staged -Recurse -Force
+    Copy-Item -LiteralPath $install -Destination $staged -Recurse -Force
     Move-Item -LiteralPath $staged -Destination $rollback
     $backupReady = $true
     $installerProcess = Start-Process -FilePath $installer -ArgumentList $installerArgs -WindowStyle Hidden -PassThru
@@ -335,6 +375,7 @@ try {
     if ($installerProcess.ExitCode -ne 0) { throw "The installer returned code $($installerProcess.ExitCode)." }
     if (-not (Test-Path -LiteralPath (Join-Path $install 'unins000.exe') -PathType Leaf) -or -not (Test-Path -LiteralPath (Join-Path $install 'unins000.dat') -PathType Leaf)) { throw 'The installer did not preserve its uninstaller.' }
     Assert-InstalledMetadata
+    Invoke-CustomizationMigration
     Write-UpdateStatus 'awaiting_confirmation' 'The installer completed; waiting for Samsara to start.'
     $newProcess = Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install -WindowStyle Hidden -PassThru
     $healthDeadline = (Get-Date).AddSeconds(180)
@@ -356,6 +397,20 @@ try {
     throw 'Samsara did not confirm startup.'
 } catch {
     $problem = $_.Exception.Message
+    if (($null -ne $migrationProcess) -and (-not $migrationProcess.HasExited)) {
+        $migrationTimedOut = $true
+        # This handle belongs only to the maintenance subprocess we launched;
+        # stop its writes before restoring or launching any normal app copy.
+        try {
+            $migrationProcess.Kill()
+            if (-not $migrationProcess.WaitForExit(10000)) { throw 'Customization maintenance did not stop.' }
+        } catch {
+            Write-UpdateStatus 'awaiting_confirmation' 'Customization recovery is pending; the previous folder backup is retained.'
+            # STAND-IN COPY (560)
+            Show-UpdateFailure 'Customization recovery is pending. The previous installation has been kept in its backup folder.'
+            exit 3
+        }
+    }
     if (($null -ne $installerProcess) -and (-not $installerProcess.HasExited)) {
         Write-UpdateStatus 'failed' "Installer still running; the previous folder backup is retained. $problem"
         Show-UpdateFailure 'The installer has not finished. The previous version backup has been kept; nothing was closed by force.'
@@ -380,9 +435,34 @@ try {
         }
         Write-UpdateStatus 'rolled_back' "The installer update failed; the previous installation was restored. $problem"
         Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install -WindowStyle Hidden
-        Show-UpdateFailure 'The update failed. The previous Samsara installation has been restored. You can use the installer to try again.'
+        if ($migrationTimedOut) {
+            # STAND-IN COPY (560)
+            Show-UpdateFailure 'Customization migration took too long. The previous Samsara installation has been restored and will open now.'
+        } else {
+            Show-UpdateFailure 'The update failed. The previous Samsara installation has been restored. You can use the installer to try again.'
+        }
         exit 2
     } catch {
+        if ($migrationTimedOut) {
+            # Leave the next shortcut launch eligible for the early-boot bridge,
+            # rather than recording "failed" over a half-migrated installation.
+            Write-UpdateStatus 'awaiting_confirmation' 'Customization recovery is pending; the previous folder backup is retained.'
+            # STAND-IN COPY (560)
+            Show-UpdateFailure 'Customization migration took too long. Automatic restoration could not finish; Samsara will try to open a retained copy.'
+            # One failed reparse check must not abort the entire recovery catch.
+            foreach ($copy in @($rollback, $install)) {
+                try {
+                    Assert-NotReparsePoint $copy $installParent
+                    $copyExe = Join-Path $copy $executable
+                    Assert-NotReparsePoint $copyExe $installParent
+                    if (Test-Path -LiteralPath $copyExe -PathType Leaf) {
+                        Start-Process -FilePath $copyExe -WorkingDirectory $copy -WindowStyle Hidden
+                        break
+                    }
+                } catch { }
+            }
+            exit 3
+        }
         Write-UpdateStatus 'failed' "The update and restoration failed: $problem / $($_.Exception.Message)"
         Show-UpdateFailure 'The update could not be restored automatically. The retained files must be checked before trying the installer again.'
         exit 3

@@ -129,6 +129,27 @@ def active_ready_ladder():
     return _ready_ladder
 
 
+def migrate_before_boot():
+    """Dispatch maintenance or bridge a pending installer before native startup.
+
+    Maintenance exits with its result. A failed bridge exits only when a live
+    helper owns rollback; malformed metadata and orphan failures allow boot.
+    """
+    if sys.argv[1:2] == ["--migrate-update-customizations"]:
+        from samsara.update_installer_customizations import maintenance_main
+        raise SystemExit(maintenance_main(sys.argv[1:]))
+    if getattr(sys, "frozen", False):
+        from samsara.update_installer_customizations import (
+            CustomizationMigrationError, migrate_pending_installer_update,
+        )
+        try:
+            migrate_pending_installer_update()
+        except CustomizationMigrationError:
+            raise SystemExit(2)  # Verified live helper restores the old install.
+        except Exception:
+            logger.warning("[UPDATE] Early update recovery unavailable; continuing startup")
+
+
 def _enable_faulthandler(log_dir):
     """Dump every thread's Python stack to <SAMSARA_HOME>/logs/faulthandler.log
     on a native crash (access violation, SIGSEGV/SIGFPE/SIGILL/SIGABRT).
@@ -138,9 +159,10 @@ def _enable_faulthandler(log_dir):
     only thing that can speak after a native fault, and in a windowless
     build sys.stderr is a null stream, so it gets its own file. enable()
     already covers SIGABRT; faulthandler.register() does not exist on Windows
-    and refuses SIGABRT elsewhere, so it is not called. Never raises: a
-    diagnostic must not stop boot. Returns the open file (kept alive for the
-    process lifetime) or None."""
+    and refuses SIGABRT elsewhere, so it is not called. Diagnostic failures
+    return None. The preceding maintenance dispatcher may exit explicitly.
+    Otherwise returns the open file, kept alive for the process lifetime."""
+    migrate_before_boot()  # Existing pre-native call site; dictation.py stays untouched.
     import faulthandler as _faulthandler
     try:
         log_dir.mkdir(parents=True, exist_ok=True)

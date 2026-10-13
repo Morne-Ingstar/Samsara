@@ -1416,6 +1416,7 @@ def reconcile_update_on_startup(
         )
 
     status = UpdateStatus(state, message, tag)
+    if state == "customization_recovery_pending": return None  # 560: retained, unarchived failure; never acknowledge success.
     known_states = {
         "ready",
         "waiting",
@@ -1545,7 +1546,6 @@ def reconcile_update_on_startup(
                 f"The staged update started, but status validation failed: {exc}",
             )
     if state == "staged_healthy":
-        # The helper consumes this handshake and performs the swap.  The
         # staged process can see it on a subsequent startup poll, but the
         # active installation must never surface it as an installed update.
         return status

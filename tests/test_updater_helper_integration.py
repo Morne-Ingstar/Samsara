@@ -481,6 +481,7 @@ def test_real_installer_helper_transaction_with_fake_registry_and_installer(tmp_
 function Read-InstallRegistry {{ return @{{ version='0.30.0' }} }}
 function Restore-InstallRegistry($saved) {{ Set-Content -LiteralPath {up._ps_literal(registry)} -Value ('{{"DisplayVersion":"'+$saved.version+'"}}') }}
 function Assert-InstalledMetadata {{ if ((Get-Content -LiteralPath {up._ps_literal(registry)} -Raw | ConvertFrom-Json).DisplayVersion -ne '0.31.0') {{ throw 'fake installer registry version mismatch' }} }}
+function Invoke-CustomizationMigration {{ }} # Covered with a real migration by test_installer_customizations_560.py.
 function Start-Process {{
     param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,[switch]$PassThru)
     if ($FilePath -eq $installer) {{ $FilePath={up._ps_literal(fake)}; $ArgumentList=$null }}
