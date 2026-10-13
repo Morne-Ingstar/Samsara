@@ -1368,6 +1368,7 @@ class AvaReply:
     # actually ran. Such a reply is untrusted web-derived data: it is spoken
     # and shown, never parsed for commands (see _deliver_search_answer).
     search: Optional[object] = None
+    failure: object = None
 
     @property
     def ok(self) -> bool:
@@ -1418,6 +1419,7 @@ _URL_RE = re.compile(r'https?://\S+')
 
 
 def _search_failure_kind(result):
+    if getattr(result, "failure", None) is not None: return result.failure.kind
     if result.error_kind == "timeout":
         return ava_readiness.TIMEOUT
     if result.error_kind == "unreachable":
@@ -1438,9 +1440,8 @@ def _ask_with_web_search(app, system, messages, provider, ms):
     if not ava_turn_queue.can_deliver(app): return AvaReply(None, provider, ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
     if not result.ok:
         kind = _search_failure_kind(result)
-        logger.warning("[AVA-SEARCH] %s search request failed: %s (http=%s, search_error=%s) after %d ms",
-                       provider, kind, result.http_status, result.search_error_code, ms())
-        return AvaReply(None, provider, ms(), failure_kind=kind)
+        logger.warning("[AVA-SEARCH] kind=%s status=%s", kind, result.http_status)
+        return AvaReply(None, provider, ms(), failure_kind=kind, failure=getattr(result, "failure", None))
 
     ava_readiness.tracker.record_turn(provider, None)
     searched = bool(result.searched or result.search_requests or result.sources)
@@ -1543,17 +1544,15 @@ def readiness_chip(app):
     name = ava_readiness.display_name(snap.provider)
     if snap.ready:
         return (f"{snap.badge_label()} ({name})", "success")
-    if snap.offline:
-        return (f"{snap.badge_label()}: {snap.short_reason()}", "error")
+    if snap.failure_kind is not None:
+        return (f"{snap.badge_label()}: {snap.short_reason()}", "error" if snap.offline else "warning")
     return (f"{snap.badge_label()} ({name})", "accent")
 
 
 def unavailable_sentence(app):
     """The spoken reason Ava could not answer, for the configured provider."""
     snap = ava_readiness.readiness_for(app)
-    if snap.offline:
-        return snap.spoken_reason()
-    return ava_readiness.failure_sentence(None, snap.provider)
+    return snap.spoken_reason()
 
 
 def ask_ollama(prompt, app, model=None, system=None):
@@ -1711,11 +1710,11 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
                     return AvaReply(None, cloud_provider, _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
                 return reply
             cloud_response = "Error: web search request failed"
-            cloud_failure = reply.failure_kind
+            cloud_failure = reply.failure or reply.failure_kind
         else:
             cloud_response = ava_turn_queue.cloud_send(cloud_llm.send, system, prompt, app, messages=messages)
         if not ava_turn_queue.can_deliver(app): return AvaReply(None, cloud_provider, _ms())
-        if not cloud_response.startswith("Error:"):
+        if cloud_failure is None and getattr(cloud_response, "failure", None) is None:
             if _disabled_since_request(app):
                 memory.pop_last_if_user()
                 return AvaReply(None, cloud_provider, _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
@@ -1723,13 +1722,12 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             memory.save()
             ava_readiness.tracker.record_turn(cloud_provider, None)
             return AvaReply(cloud_response, cloud_provider, _ms())
-        cloud_failure = cloud_failure or ava_readiness.classify_error_text(cloud_response)
-        # deliberately forbids trying a second provider after this failure.
+        cloud_failure = cloud_failure or getattr(cloud_response, "failure", None) or ava_readiness.PROVIDER_ERROR
         ava_readiness.tracker.record_turn(cloud_provider, cloud_failure)
-        logger.warning("[AVA-CLOUD] %s failed (%s) after %d ms",
-                       cloud_provider, cloud_failure, _ms())
+        kind = getattr(cloud_failure, "kind", cloud_failure)
+        logger.warning("[AVA-CLOUD] kind=%s status=%s", kind, getattr(cloud_failure, "http_status", None))
         memory.pop_last_if_user()
-        return AvaReply(None, cloud_provider, _ms(), failure_kind=cloud_failure)
+        return AvaReply(None, cloud_provider, _ms(), failure_kind=kind, failure=cloud_failure)
 
     # ── Local Ollama path ──
     if state.provider.identity != "ollama" or not _check_ollama_available(host, timeout=1):
@@ -3110,7 +3108,8 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
                     outcome = "failed"
                     speak(app, unavailable_sentence(app))
                     snap = ava_readiness.readiness_for(app)
-                    _set_turn_outcome(app, (f"{_CHIP_CROSS} Ava offline: {snap.short_reason()}", "error"))
+                    # STAND-IN COPY (566)
+                    _set_turn_outcome(app, (f"{_CHIP_CROSS} {snap.badge_label().replace('Ava:', 'Ava')}: {snap.short_reason()}", "error" if snap.offline else "warning"))
                     return
                 reply = getattr(_turn_local, "reply", None)
                 if getattr(reply, "search", None) is not None:

@@ -7,6 +7,10 @@ Samsara does not store conversation content beyond the local session.
 """
 
 import logging
+import math
+import time
+from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 import requests
 from samsara import ai_transport
 from urllib.parse import urlparse
@@ -40,6 +44,158 @@ RETIRED_DEFAULTS = {
     "anthropic": {"claude-sonnet-4-20250514": BUILTIN_PROVIDERS["anthropic"]["model"]},
 }
 _reported_retired_defaults = set()
+
+
+
+@dataclass(frozen=True)
+class CloudFailure:
+    """Private provider failures retain only bounded, allowlisted metadata.
+
+    Raw messages/metadata may echo keys or prompts. Never retain them, even
+    after regex redaction: project known meanings onto fixed summaries.
+    """
+    kind: str
+    provider: str
+    http_status: int | None = None
+    retry_after_seconds: float | None = None
+    provider_error_code: str | int | None = None
+    provider_error_message: str | None = None
+
+
+class CloudError(str):
+    """Keep send()/send_json()'s string API; attach per-request failure data."""
+    def __new__(cls, failure, message=None):
+        obj = super().__new__(cls, "Error: " + (message or failure.provider_error_message or "Cloud request failed."))
+        obj.failure = failure
+        return obj
+
+
+class _CloudRequestFailed(Exception):
+    def __init__(self, failure):
+        self.failure = failure
+        super().__init__(failure.kind)
+
+
+# STAND-IN COPY (566): all failure copy is grouped in report 566's COPY_DRAFT,
+# referencing the existing write.openrouter.failure_copy ask in report 562.
+_FAILURE_SUMMARIES = {
+    "bad_key": "The API key was rejected.",
+    "out_of_credit": "Account credit or the API key spending limit was exhausted.",
+    "blocked": "The request was blocked by provider policy or budget.",
+    "model_unavailable": "The model or an eligible provider route is unavailable.",
+    "rate_limited": "Requests are rate limited.",
+    "provider_down": "The provider is unavailable.",
+    "timeout": "The request timed out.",
+    "unreachable": "The provider could not be reached.",
+    "not_configured": "No API key configured for cloud LLM.",
+    "error": "The provider returned an error.",
+}
+_SAFE_ERROR_CODES = frozenset({
+    "invalid_api_key", "authentication_error", "permission_error",
+    "insufficient_quota", "insufficient_balance", "rate_limit_exceeded",
+    "rate_limit_error", "model_not_found", "overloaded_error",
+    "content_filter", "moderation_error", "budget_exceeded",
+})
+
+
+def make_failure(kind, provider, status=None, retry_after=None, code=None):
+    # Provider identifiers originate in a closed table, never in response data.
+    provider = provider if provider in SUPPORTED_PROVIDERS else "cloud"
+    return CloudFailure(kind, provider, status, retry_after, code, _FAILURE_SUMMARIES[kind])
+
+
+def _retry_after(response):
+    value = (getattr(response, "headers", None) or {}).get("Retry-After")
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        try:
+            seconds = parsedate_to_datetime(str(value)).timestamp() - time.time()
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return max(0.0, seconds) if math.isfinite(seconds) else None
+
+
+def failure_from_response(provider, response):
+    """One HTTP classifier shared by ordinary/JSON/search turns and probes.
+
+    OpenRouter's documented error.code/message envelope is inspected only
+    here. Unknown provider codes and all raw messages/metadata are dropped.
+    """
+    http_status = status = int(getattr(response, "status_code", 200) or 0)
+    error = {}
+    try:
+        body = response.json()
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            error = body["error"]
+    except Exception:
+        pass
+    if 200 <= status < 300 and not error:
+        return None
+    code = error.get("code", error.get("type"))
+    if type(code) is int and 400 <= code <= 599:
+        # Some compatible services return the documented error envelope on 200.
+        if 200 <= status < 300:
+            status = code
+    elif not isinstance(code, str) or code not in _SAFE_ERROR_CODES:
+        code = None
+    raw_message = error.get("message")
+    message = raw_message.lower() if isinstance(raw_message, str) else ""
+    if status == 401:
+        kind = "bad_key"
+    elif status == 402:
+        kind = "out_of_credit"
+    elif status == 403:
+        auth = code in {"invalid_api_key", "authentication_error"} or any(
+            text in message for text in ("invalid api key", "invalid api_key", "invalid key", "invalid credentials"))
+        policy = code in {"content_filter", "moderation_error", "budget_exceeded"} or any(
+            text in message for text in ("policy", "moderation", "budget", "spending limit"))
+        kind = "bad_key" if auth or (provider != "openrouter" and not policy) else "blocked"
+    elif status == 404:
+        kind = "model_unavailable"
+    elif status == 429:
+        kind = "rate_limited"
+    elif status == 408:
+        kind = "timeout"
+    elif 500 <= status <= 599:
+        kind = "provider_down"
+    else:
+        kind = "error"
+    return make_failure(kind, provider, http_status, _retry_after(response), code)
+
+
+def failure_from_exception(provider, exc):
+    if isinstance(exc, _CloudRequestFailed):
+        return exc.failure
+    response = getattr(exc, "response", None)
+    if response is not None:
+        failure = failure_from_response(provider, response)
+        if failure is not None:
+            return failure
+    if isinstance(exc, requests.exceptions.Timeout):
+        kind = "timeout"
+    elif isinstance(exc, (requests.exceptions.ConnectionError, ai_transport.AITransportRefused)):
+        kind = "unreachable"
+    else:
+        kind = "error"
+    return make_failure(kind, provider)
+
+
+def _check_response(base_url, response):
+    provider = next((name for name, cfg in BUILTIN_PROVIDERS.items()
+                     if urlparse(base_url).hostname == cfg["host"]), "cloud")
+    failure = failure_from_response(provider, response)
+    if failure is not None:
+        raise _CloudRequestFailed(failure)
+    response.raise_for_status()
+
+
+def _error_result(failure, message=None):
+    logging.getLogger("Samsara.cloud_llm").warning(
+        "[CLOUD-FAILURE] kind=%s status=%s", failure.kind, failure.http_status)
+    return CloudError(failure, message)
 
 
 def resolve_default_model(provider, model, *, log_replacement=False):
@@ -89,44 +245,35 @@ def _get_provider_config(app):
 
 
 def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
-    """Shared implementation for send()/send_ex(). Returns
-    (text_or_None, error_kind, error_message): error_kind is None on
-    success (error_message is also None then), 'timeout' for a request
-    timeout, or 'error' for anything else (missing API key, connection
-    failure, HTTP error, ...). error_message is the human-readable detail
-    used to build send()'s "Error: ..." string -- never includes the
-    "Error: " prefix itself, so both send() and send_ex() derive their
-    return value from the exact same classification.
-    """
+    """Return (text, legacy_error_kind, structured CloudError)."""
     cfg = _get_config(app)
+    provider = cfg.get("provider", "deepseek")
     api_key = cfg.get("api_key", "")
+    if provider not in SUPPORTED_PROVIDERS:
+        # STAND-IN COPY (566)
+        return None, "error", _error_result(make_failure("error", provider),
+                                           "Cloud LLM request failed: Unsupported cloud LLM provider.")
     if not api_key:
-        return None, "error", "No API key configured for cloud LLM."
-
+        return None, "error", _error_result(make_failure("not_configured", provider))
     timeout = cfg.get("timeout_seconds", timeout)
     max_tokens = cfg.get("max_tokens", 300)
-
     try:
         provider, base_url, model = _get_provider_config(app)
         if provider == "anthropic":
             text = _send_anthropic(base_url, api_key, model, system_prompt,
-                                   user_message, timeout, max_tokens,
-                                   messages=messages)
+                                   user_message, timeout, max_tokens, messages=messages)
         else:
-            text = _send_openai_compatible(base_url, api_key, model,
-                                           system_prompt, user_message,
-                                           timeout, max_tokens,
-                                           messages=messages)
+            text = _send_openai_compatible(base_url, api_key, model, system_prompt,
+                                          user_message, timeout, max_tokens, messages=messages)
         return text, None, None
-    except ai_transport.AITransportRefused as exc:
-        ai_transport.notify_refusal(app, exc)
-        return None, "error", str(exc)
-    except requests.exceptions.ConnectionError:
-        return None, "error", "Could not connect to the cloud LLM provider."
-    except requests.exceptions.Timeout:
-        return None, "timeout", f"Cloud LLM request timed out after {timeout}s."
-    except Exception as e:
-        return None, "error", f"Cloud LLM request failed: {e}"
+    except Exception as exc:
+        failure = failure_from_exception(provider, exc)
+        if isinstance(exc, ai_transport.AITransportRefused):
+            ai_transport.notify_refusal(app, exc)
+        # STAND-IN COPY (566): retain legacy safe text for existing callers.
+        message = (f"Cloud LLM request timed out after {timeout}s." if failure.kind == "timeout" else
+                   str(exc) if isinstance(exc, ai_transport.AITransportRefused) else None)
+        return None, "timeout" if failure.kind == "timeout" else "error", _error_result(failure, message)
 
 
 def send(system_prompt, user_message, app, timeout=30, messages=None):
@@ -147,7 +294,7 @@ def send(system_prompt, user_message, app, timeout=30, messages=None):
         system_prompt, user_message, app, timeout=timeout, messages=messages,
     )
     if error_kind is not None:
-        return f"Error: {error_message}"
+        return error_message
     return text
 
 
@@ -187,7 +334,7 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
         "temperature": 0.3,
     }
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
-    response.raise_for_status()
+    _check_response(base_url, response)
     data = response.json()
     return data["choices"][0]["message"]["content"].strip()
 
@@ -217,7 +364,7 @@ def _send_anthropic(base_url, api_key, model, system_prompt,
         "messages": api_messages,
     }
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
-    response.raise_for_status()
+    _check_response(base_url, response)
     data = response.json()
     text_blocks = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
     return " ".join(text_blocks).strip()
@@ -282,7 +429,7 @@ class SearchResult:
     web_search_tool_result_error; search_error_code set) or 'error'."""
 
     def __init__(self, text=None, sources=None, searched=False, search_requests=0,
-                 error_kind=None, http_status=None, search_error_code=None, queries=None):
+                 error_kind=None, http_status=None, search_error_code=None, queries=None, failure=None):
         self.text = text
         self.sources = sources or []
         self.searched = searched
@@ -291,6 +438,7 @@ class SearchResult:
         self.http_status = http_status
         self.search_error_code = search_error_code
         self.queries = queries or []
+        self.failure = failure
 
     @property
     def ok(self):
@@ -393,10 +541,11 @@ def send_web_search(system_prompt, messages, app, http_post=None):
     cfg = _get_config(app)
     api_key = cfg.get("api_key", "")
     if not api_key:
-        return SearchResult(error_kind="http", http_status=401)
+        return SearchResult(error_kind="http", http_status=401,
+                            failure=make_failure("not_configured", "deepseek", 401))
     parsed = urlparse(DEEPSEEK_ANTHROPIC_BASE_URL)
     if parsed.scheme != "https" or parsed.hostname != DEEPSEEK_ANTHROPIC_HOST:
-        return SearchResult(error_kind="error")
+        return SearchResult(error_kind="error", failure=make_failure("error", "deepseek"))
 
     timeout = cfg.get("timeout_seconds", 30)
     try:
@@ -438,8 +587,10 @@ def send_web_search(system_prompt, messages, app, http_post=None):
             }
             response = post(url, json=payload, headers=headers, timeout=timeout)
             status = int(getattr(response, "status_code", 0) or 0)
-            if status < 200 or status >= 300:
-                return SearchResult(error_kind="http", http_status=status)
+            failure = failure_from_response("deepseek", response)
+            if failure is not None:
+                _error_result(failure)
+                return SearchResult(error_kind="http", http_status=status, failure=failure)
             data = response.json()
             answer, sources, did_search, queries, err_code, stop_reason = parse_search_response(data)
             usage = (data.get("usage") or {}).get("server_tool_use") or {}
@@ -461,19 +612,20 @@ def send_web_search(system_prompt, messages, app, http_post=None):
             api_messages = api_messages + [{"role": "assistant", "content": data.get("content") or []}]
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)
-        return SearchResult(error_kind="unreachable")
+        return SearchResult(error_kind="unreachable", failure=make_failure("unreachable", "deepseek"))
     except requests.exceptions.Timeout:
-        return SearchResult(error_kind="timeout")
+        return SearchResult(error_kind="timeout", failure=make_failure("timeout", "deepseek"))
     except requests.exceptions.ConnectionError:
-        return SearchResult(error_kind="unreachable")
+        return SearchResult(error_kind="unreachable", failure=make_failure("unreachable", "deepseek"))
     except Exception:
-        return SearchResult(error_kind="error")
+        return SearchResult(error_kind="error", failure=make_failure("error", "deepseek"))
 
     text = "\n\n".join(t for t in all_texts if t).strip()
     if not text:
         return SearchResult(searched=searched, search_requests=search_requests,
                              error_kind="search_error" if search_error_code else "error",
-                             search_error_code=search_error_code, queries=all_queries)
+                             search_error_code=search_error_code, queries=all_queries,
+                             failure=make_failure("rate_limited" if search_error_code == "too_many_requests" else "error", "deepseek"))
     return SearchResult(text=text, sources=all_sources[:_MAX_SOURCES], searched=searched,
                         search_requests=search_requests, search_error_code=search_error_code,
                         queries=all_queries)
@@ -487,9 +639,10 @@ def send_json(system_prompt, user_message, app):
     Returns the response text string, or an "Error:..." string on failure.
     """
     cfg = _get_config(app)
+    provider = cfg.get("provider", "deepseek")
     api_key = cfg.get("api_key", "")
     if not api_key:
-        return "Error: No API key configured for cloud LLM."
+        return _error_result(make_failure("not_configured", provider))
 
     timeout = cfg.get("timeout_seconds", 30)
     max_tokens = cfg.get("max_tokens", 300)
@@ -502,15 +655,14 @@ def send_json(system_prompt, user_message, app):
         else:
             return _send_openai_json(base_url, api_key, model, system_prompt,
                                      user_message, timeout, max_tokens)
-    except ai_transport.AITransportRefused as exc:
-        ai_transport.notify_refusal(app, exc)
-        return f"Error: {exc}"
-    except requests.exceptions.ConnectionError:
-        return "Error: Could not connect to the cloud LLM provider."
-    except requests.exceptions.Timeout:
-        return f"Error: Cloud LLM request timed out after {timeout}s."
-    except Exception as e:
-        return f"Error: Cloud LLM request failed: {e}"
+    except Exception as exc:
+        failure = failure_from_exception(provider, exc)
+        if isinstance(exc, ai_transport.AITransportRefused):
+            ai_transport.notify_refusal(app, exc)
+        # STAND-IN COPY (566)
+        message = (f"Cloud LLM request timed out after {timeout}s." if failure.kind == "timeout" else
+                   str(exc) if isinstance(exc, ai_transport.AITransportRefused) else None)
+        return _error_result(failure, message)
 
 
 def _send_openai_json(base_url, api_key, model, system_prompt,
@@ -532,7 +684,7 @@ def _send_openai_json(base_url, api_key, model, system_prompt,
         "response_format": {"type": "json_object"},
     }
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
-    response.raise_for_status()
+    _check_response(base_url, response)
     data = response.json()
     return data["choices"][0]["message"]["content"].strip()
 
@@ -540,13 +692,16 @@ def _send_openai_json(base_url, api_key, model, system_prompt,
 def check_available(app):
     """Authenticated check: (True, provider_name) or (False, safe reason)."""
     from samsara import ava_readiness as readiness
-    # PLACEHOLDER COPY (472); only classified reasons, never raw provider errors.
+    # STAND-IN COPY (566); only classified reasons, never raw provider errors.
     reasons = {readiness.BAD_KEY: "The key was rejected.",
                readiness.OUT_OF_CREDIT: "The account is out of balance.",
                readiness.RATE_LIMITED: "Rate limited. Try again in a minute.",
                readiness.TIMEOUT: "Did not answer in time.",
                readiness.UNREACHABLE: "Could not be reached.",
-               readiness.PROVIDER_ERROR: "The provider returned an error."}
+               readiness.PROVIDER_ERROR: "The provider returned an error.",
+               "provider_down": "The provider returned an error.",
+               "blocked": "Blocked by provider policy or budget.",
+               "model_unavailable": "The model or provider route is unavailable."}
     if not is_enabled(app):
         return False, "Cloud LLM not enabled"
     cfg = _get_config(app)
@@ -558,7 +713,8 @@ def check_available(app):
         else:
             headers = {"Authorization": f"Bearer {api_key}"}
         r = ai_transport.get_cloud(f"{base_url}/models", timeout=3, headers=headers)
-        kind = readiness.classify_http_status(int(r.status_code))
+        failure = failure_from_response(provider, r)
+        kind = failure.kind if failure else None
         return (False, reasons[kind]) if kind else (True, provider)
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)

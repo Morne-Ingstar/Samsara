@@ -41,6 +41,11 @@ READY = "ready"
 OFFLINE = "offline"
 UNKNOWN = "unknown"
 WARMING = "warming"
+NEEDS_ATTENTION = "needs_attention"
+WAITING = "waiting"
+BLOCKED = "blocked"
+MODEL_UNAVAILABLE = "model_unavailable"
+PROVIDER_DOWN = "provider_down"
 
 # Failure kinds, shared by the probe and by real turns.
 UNREACHABLE = "unreachable"
@@ -77,6 +82,8 @@ class Readiness:
     failure_kind: Optional[str] = None
     source: str = "initial"         # "probe" | "turn" | "initial"
     checked_at: float = 0.0         # time.monotonic() of the evidence
+    retry_at: Optional[float] = None
+    failure: object = None
 
     @property
     def ready(self) -> bool:
@@ -96,6 +103,11 @@ class Readiness:
             return "Ava: ready"
         if self.state == WARMING:
             return "Ava: warming"
+        # STAND-IN COPY (566)
+        if self.state == NEEDS_ATTENTION:
+            return "Ava: needs attention"
+        if self.state == WAITING:
+            return "Ava: waiting"
         if self.state == OFFLINE:
             return "Ava: offline"
         return "Ava: checking"
@@ -106,39 +118,52 @@ class Readiness:
             return "Ava is ready to answer."
         if self.state == WARMING:
             return "Ava is warming up."
-        if self.state == OFFLINE:
+        if self.failure_kind is not None:
             return self.spoken_reason()
         return "Ava has not been checked yet."
 
     def spoken_reason(self) -> str:
-        return failure_sentence(self.failure_kind, self.provider)
+        return failure_sentence(self.failure_kind, self.provider,
+                                getattr(self.failure, "retry_after_seconds", None))
 
     def short_reason(self) -> str:
         return failure_short(self.failure_kind)
 
 
-def failure_sentence(kind: Optional[str], provider: Optional[str]) -> str:
+def failure_sentence(kind: Optional[str], provider: Optional[str], retry_after=None) -> str:
     """What Ava SAYS when it cannot answer. Never contains key material or
     the provider's raw error text."""
+    # STAND-IN COPY (566): grouped under report 562's existing wording ask.
     name = display_name(provider)
     if kind == BAD_KEY:
         return f"Ava is offline. {name} rejected the API key. Check it in Settings."
     if kind == RATE_LIMITED:
-        return f"Ava is offline. {name} is rate limiting requests. Try again in a minute."
+        wait = f" Try again in {max(1, int(retry_after + 0.999))} seconds." if retry_after is not None else " Try again shortly."
+        return f"{name} is rate limiting requests." + wait
     if kind == TIMEOUT:
-        return f"Ava is offline. {name} did not answer in time."
+        return f"{name} did not answer in time. Try again."
     if kind == OUT_OF_CREDIT:
-        return f"Ava is offline. {name} says the account is out of balance."
+        return f"{name} says account credit or the API key spending limit is exhausted."
+    if kind == BLOCKED:
+        return f"{name} blocked the request because of provider policy or budget."
+    if kind == MODEL_UNAVAILABLE:
+        return f"The selected model or provider route is unavailable on {name}."
+    if kind == PROVIDER_DOWN:
+        return f"Ava is offline. {name} is temporarily unavailable."
     if kind == NOT_CONFIGURED:
-        return f"Ava is offline. {name} has no API key set."
+        return f"{name} has no API key set."
     if kind == UNREACHABLE:
         if provider == "ollama":
             return "Ava is offline. Ollama is not running on this computer."
         return f"Ava is offline. I can't reach {name}."
-    return f"Ava is offline. {name} returned an error."
+    return f"{name} could not complete the request."
 
 
+# STAND-IN COPY (566)
 _SHORT = {
+    BLOCKED: "policy or budget block",
+    MODEL_UNAVAILABLE: "model or route unavailable",
+    PROVIDER_DOWN: "provider unavailable",
     BAD_KEY: "bad API key",
     RATE_LIMITED: "rate limited",
     TIMEOUT: "timed out",
@@ -153,34 +178,10 @@ def failure_short(kind: Optional[str]) -> str:
 
 
 def classify_http_status(status: int) -> Optional[str]:
-    """None when the status means the provider accepted us."""
-    if 200 <= status < 300:
-        return None
-    if status in (401, 403):
-        return BAD_KEY
-    if status == 402:
-        return OUT_OF_CREDIT
-    if status == 429:
-        return RATE_LIMITED
-    return PROVIDER_ERROR
-
-
-def classify_error_text(message: str) -> str:
-    """Classify cloud_llm.send()'s "Error: ..." string. cloud_llm keeps its
-    string contract (other callers match on it); the text carries the
-    requests exception, which names the HTTP status."""
-    text = (message or "").lower()
-    if "timed out" in text or "timeout" in text:
-        return TIMEOUT
-    if "no api key" in text:
-        return NOT_CONFIGURED
-    if "401" in text or "403" in text or "unauthorized" in text or "forbidden" in text:
-        return BAD_KEY
-    if "429" in text or "too many requests" in text or "rate limit" in text:
-        return RATE_LIMITED
-    if "could not connect" in text or "connection" in text:
-        return UNREACHABLE
-    return PROVIDER_ERROR
+    """Compatibility status-only wrapper; cloud callers pass full responses."""
+    from samsara.cloud_llm import failure_from_response
+    failure = failure_from_response("cloud", SimpleNamespace(status_code=status))
+    return failure.kind if failure else None
 
 
 def ollama_response_content(response) -> str:
@@ -273,7 +274,7 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
             headers = {"Authorization": f"Bearer {api_key}"}
         r = ai_transport.get_cloud(f"{base_url}/models", timeout=timeout, headers=headers,
                                    request_fn=http_get)
-        return provider, classify_http_status(int(r.status_code))
+        return provider, cloud_llm.failure_from_response(provider, r)
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)
         return provider, UNREACHABLE
@@ -309,8 +310,7 @@ def warm_configured_provider(app) -> Readiness:
             "You are warming up. Reply only: ready.", "ready", app,
             timeout=float((getattr(app, "config", {}) or {}).get("cloud_llm", {}).get("timeout_seconds", 30) or 30),
         )
-        if str(response).startswith("Error:"):
-            failure_kind = classify_error_text(str(response))
+        failure_kind = getattr(response, "failure", None)
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)
         failure_kind = UNREACHABLE
@@ -339,7 +339,13 @@ class ReadinessTracker:
 
     def snapshot(self) -> Readiness:
         with self._lock:
-            return self._current
+            current, generation = self._current, self._warm_generation
+        if current.state == WAITING and current.retry_at is not None and self._clock() >= current.retry_at:
+            # An expired delay permits a fresh check; it cannot prove a turn works.
+            current = self._set(current.provider, None, "retry", state=UNKNOWN,
+                                expected_warm_generation=generation)[0]
+            request_recheck()
+        return current
 
     def add_listener(self, fn: Callable[[Readiness, Readiness], None]) -> None:
         with self._lock:
@@ -354,12 +360,23 @@ class ReadinessTracker:
     def _set(self, provider: Optional[str], failure_kind: Optional[str], source: str,
              state: Optional[str] = None, *, expected_warm_generation: Optional[int] = None,
              invalidate_warm: bool = False, begin_warm: bool = False) -> tuple[Readiness, Optional[int]]:
+        failure = failure_kind if hasattr(failure_kind, "kind") else None
+        failure_kind = failure.kind if failure is not None else failure_kind
+        checked_at = self._clock()
+        delay = getattr(failure, "retry_after_seconds", None)
+        if failure_kind == RATE_LIMITED and delay is None:
+            delay = OFFLINE_POLL_S
+        inferred = (READY if failure_kind is None else
+                    OFFLINE if failure_kind in (BAD_KEY, UNREACHABLE, PROVIDER_DOWN) else
+                    WAITING if failure_kind == RATE_LIMITED else NEEDS_ATTENTION)
         new = Readiness(
-            state=state or (READY if failure_kind is None else OFFLINE),
+            state=state or inferred,
             provider=provider,
             failure_kind=failure_kind,
             source=source,
-            checked_at=self._clock(),
+            checked_at=checked_at,
+            retry_at=checked_at + delay if failure_kind == RATE_LIMITED else None,
+            failure=failure,
         )
         with self._lock:
             if expected_warm_generation is not None and \
@@ -369,6 +386,11 @@ class ReadinessTracker:
                 self._warm_generation += 1
             generation = self._warm_generation if begin_warm else None
             old = self._current
+            # Public /models success does not prove balance, routing or quota.
+            if source == "probe" and failure_kind is None and old.provider == provider and (
+                    old.state == NEEDS_ATTENTION or
+                    (old.state == WAITING and old.retry_at is not None and checked_at < old.retry_at)):
+                return old, generation
             self._current = new
             listeners = list(self._listeners)
         changed = (old.state, old.provider, old.failure_kind) != (new.state, new.provider, new.failure_kind)
@@ -455,6 +477,8 @@ class ReadinessMonitor:
                 logger.debug(f"[AVA-READY] monitor iteration failed: {exc}")
                 current = self._tracker.snapshot()
             interval = self._ready_poll_s if current.ready else self._offline_poll_s
+            if current.state == WAITING and current.retry_at is not None:
+                interval = min(interval, max(0.01, current.retry_at - self._tracker._clock()))
             self._wake.wait(interval)
 
 

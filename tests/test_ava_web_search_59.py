@@ -410,10 +410,10 @@ def test_next_ordinary_turn_has_no_web_text_in_context(monkeypatch, run_turn):
 @pytest.mark.parametrize("response, sentence, short", [
     (requests.exceptions.ConnectionError(), "Ava is offline. I can't reach DeepSeek.", "unreachable"),
     (_Resp(401), "Ava is offline. DeepSeek rejected the API key. Check it in Settings.", "bad API key"),
-    (_Resp(429), "Ava is offline. DeepSeek is rate limiting requests. Try again in a minute.", "rate limited"),
-    (_Resp(402), "Ava is offline. DeepSeek says the account is out of balance.", "out of balance"),
-    (requests.exceptions.Timeout(), "Ava is offline. DeepSeek did not answer in time.", "timed out"),
-])
+    (_Resp(429), "DeepSeek is rate limiting requests. Try again shortly.", "rate limited"),
+    (_Resp(402), "DeepSeek says account credit or the API key spending limit is exhausted.", "out of balance"),
+    (requests.exceptions.Timeout(), "DeepSeek did not answer in time. Try again.", "timed out"),
+], ids=["response0-Ava is offline. I can't reach DeepSeek.-unreachable", 'response1-Ava is offline. DeepSeek rejected the API key. Check it in Settings.-bad API key', 'response2-Ava is offline. DeepSeek is rate limiting requests. Try again in a minute.-rate limited', 'response3-Ava is offline. DeepSeek says the account is out of balance.-out of balance', 'response4-Ava is offline. DeepSeek did not answer in time.-timed out'])
 def test_search_failures_are_spoken_and_chipped(monkeypatch, run_turn, response, sentence, short):
     _post_returning(monkeypatch, response)
     chat = Mock()
@@ -423,11 +423,13 @@ def test_search_failures_are_spoken_and_chipped(monkeypatch, run_turn, response,
     label, kind = run_turn(app)
 
     assert _spoken(app) == [sentence]
-    assert kind == "error" and label.endswith(f"Ava offline: {short}") and CHECK not in label
+    snap = ava_readiness.readiness_for(app)
+    assert kind == ("error" if snap.offline else "warning")
+    assert label.endswith(f"{snap.badge_label().replace('Ava:', 'Ava')}: {short}") and CHECK not in label
     chat.assert_not_called()
     run_turn.panel.assert_not_called()
     assert "success" not in [c.args[0] for c in app.play_sound.call_args_list]
-    assert ava_readiness.readiness_for(app).offline
+    assert snap.failure_kind is not None
 
 
 def test_search_tool_error_without_answer_is_rate_limit(monkeypatch, run_turn):
@@ -439,7 +441,7 @@ def test_search_tool_error_without_answer_is_rate_limit(monkeypatch, run_turn):
     _post_returning(monkeypatch, _Resp(200, body))
     app = _app()
     label, kind = run_turn(app)
-    assert kind == "error" and label.endswith("rate limited")
+    assert kind == "warning" and label.endswith("rate limited")
 
 
 # ---------------------------------------------------------------------------

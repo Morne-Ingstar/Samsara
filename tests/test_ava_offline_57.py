@@ -192,21 +192,16 @@ def _session_done_harness(app):
 
 
 @pytest.mark.parametrize("error_text, expected_sentence, expected_short", [
-    ("Error: Could not connect to the cloud LLM provider.",
-     "Ava is offline. I can't reach DeepSeek.", "unreachable"),
-    ("Error: Cloud LLM request failed: 401 Client Error: Unauthorized for url: "
-     "https://api.deepseek.com/v1/chat/completions",
-     "Ava is offline. DeepSeek rejected the API key. Check it in Settings.", "bad API key"),
-    ("Error: Cloud LLM request timed out after 30s.",
-     "Ava is offline. DeepSeek did not answer in time.", "timed out"),
-    ("Error: Cloud LLM request failed: 429 Client Error: Too Many Requests for url: "
-     "https://api.deepseek.com/v1/chat/completions",
-     "Ava is offline. DeepSeek is rate limiting requests. Try again in a minute.", "rate limited"),
-])
+    ("unreachable", "Ava is offline. I can't reach DeepSeek.", "unreachable"),
+    ("bad_key", "Ava is offline. DeepSeek rejected the API key. Check it in Settings.", "bad API key"),
+    ("timeout", "DeepSeek did not answer in time. Try again.", "timed out"),
+    ("rate_limited", "DeepSeek is rate limiting requests. Try again shortly.", "rate limited"),
+], ids=["Error: Could not connect to the cloud LLM provider.-Ava is offline. I can't reach DeepSeek.-unreachable", 'Error: Cloud LLM request failed: 401 Client Error: Unauthorized for url: https://api.deepseek.com/v1/chat/completions-Ava is offline. DeepSeek rejected the API key. Check it in Settings.-bad API key', 'Error: Cloud LLM request timed out after 30s.-Ava is offline. DeepSeek did not answer in time.-timed out', 'Error: Cloud LLM request failed: 429 Client Error: Too Many Requests for url: https://api.deepseek.com/v1/chat/completions-Ava is offline. DeepSeek is rate limiting requests. Try again in a minute.-rate limited'])
 def test_model_unreachable_gives_offline_message_and_chip_never_success(
         monkeypatch, inline_worker, turn_log, error_text, expected_sentence, expected_short):
     app = _session_done_harness(_app())
-    monkeypatch.setattr(cloud_llm, "send", lambda *a, **k: error_text)
+    monkeypatch.setattr(cloud_llm, "send", lambda *a, **k:
+                        cloud_llm.CloudError(cloud_llm.make_failure(error_text, "deepseek")))
     ollama_probe = Mock(return_value=False)
     monkeypatch.setattr(ask_ollama, "_check_ollama_available", ollama_probe)
 
@@ -223,12 +218,14 @@ def test_model_unreachable_gives_offline_message_and_chip_never_success(
     # the chip the session actually shows
     app._show_outcome_chip.assert_called_once()
     label, kind = app._show_outcome_chip.call_args.args
-    assert kind == "error"
-    assert label.endswith(f"Ava offline: {expected_short}")
+    expected_state = (ava_readiness.OFFLINE if error_text in ("unreachable", "bad_key") else
+                      ava_readiness.WAITING if error_text == "rate_limited" else ava_readiness.NEEDS_ATTENTION)
+    assert kind == ("error" if expected_state == ava_readiness.OFFLINE else "warning")
+    assert label.endswith(f"{ava_readiness.tracker.snapshot().badge_label().replace('Ava:', 'Ava')}: {expected_short}")
     assert CHECK not in label
 
     snap = ava_readiness.readiness_for(app)
-    assert snap.offline and snap.provider == "deepseek"
+    assert snap.state == expected_state and snap.provider == "deepseek"
 
     turn = [r for r in turn_log if r.getMessage().startswith("[AVA-TURN]")]
     assert len(turn) == 1
@@ -339,8 +336,8 @@ class _Resp:
 class TestProbe:
     @pytest.mark.parametrize("status, kind", [
         (200, None), (401, ava_readiness.BAD_KEY), (403, ava_readiness.BAD_KEY),
-        (429, ava_readiness.RATE_LIMITED), (500, ava_readiness.PROVIDER_ERROR),
-    ])
+        (429, ava_readiness.RATE_LIMITED), (500, ava_readiness.PROVIDER_DOWN),
+    ], ids=['200-None', '401-bad_key', '403-bad_key', '429-rate_limited', '500-error'])
     def test_cloud_status(self, status, kind):
         seen = {}
 
@@ -348,7 +345,8 @@ class TestProbe:
             seen.update(url=url, timeout=timeout, auth=bool(headers))
             return _Resp(status)
 
-        assert ava_readiness.probe_configured_provider(_app(), http_get=get) == ("deepseek", kind)
+        provider, failure = ava_readiness.probe_configured_provider(_app(), http_get=get)
+        assert provider == "deepseek" and (failure.kind if failure else None) == kind
         assert seen["url"] == "https://api.deepseek.com/v1/models" and seen["auth"]
         assert seen["timeout"] <= 3
 

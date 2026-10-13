@@ -153,6 +153,8 @@ def test_authenticated_test_reads_status(monkeypatch, provider, status, reason):
     get = Mock(return_value=SimpleNamespace(status_code=status))
     monkeypatch.setattr(cloud_llm.ai_transport, 'get_cloud', get)
     result = cloud_llm.check_available(app)
+    if provider == "openrouter" and status == 403:
+        reason = "Blocked by provider policy or budget."
     assert result == ((False, reason) if reason else (True, provider))
     assert get.call_args.args[0] == cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + '/models'
     headers = get.call_args.kwargs['headers']
