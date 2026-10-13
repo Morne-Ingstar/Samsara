@@ -174,6 +174,12 @@ PACKS = {
         'always_on': False,
         'default_enabled': False,
     },
+    'agents': {
+        'label': 'Let AI apps use Samsara',  # STAND-IN COPY (564)
+        'description': 'Apps on this PC can check Samsara and ask it to speak.',  # STAND-IN COPY (564)
+        'always_on': False,
+        'default_enabled': False,
+    },
 }
 
 

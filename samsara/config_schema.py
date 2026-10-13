@@ -64,6 +64,9 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "agent_server.port": {"type": "int", "min": 1, "max": 65535, "default": 47832,
+                          "tab": "commands", "optional_pack": "agents", "settings_ui": False,
+                          "ui_less_reason": "Advanced loopback MCP port; the agents pack switch controls the server."},
     "hermes.profile": {"type": "str", "default": "", "tab": "commands", "optional_pack": "hermes"},
     "hermes.model": {"type": "str", "default": "", "tab": "commands", "optional_pack": "hermes"},
     "hermes.effort": {"type": "enum", "default": "", "tab": "commands", "optional_pack": "hermes",

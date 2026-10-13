@@ -148,7 +148,8 @@ class CommandsPage:
             # target rather than relying on the label column as a proxy.
             cb.setMinimumWidth(theme.HIT_TARGET_MIN)
             cb.setMinimumHeight(theme.HIT_TARGET_MIN)
-            cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
+            if pack_id != 'agents':
+                cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
             pack_checkboxes[pack_id] = cb
             if always_on:
                 cb.hide()  # The adjacent manifest label is a capability badge, not a preference.
@@ -181,6 +182,9 @@ class CommandsPage:
                 QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
             )
             text_col.addWidget(desc_lbl)
+            if pack_id == 'agents':
+                from .agents_section import AgentsControls
+                text_col.addWidget(AgentsControls(self, cb))
             row_h.addLayout(text_col, stretch=1)
             row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignVCenter)
 

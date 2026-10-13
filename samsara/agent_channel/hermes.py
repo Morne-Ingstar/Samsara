@@ -19,7 +19,7 @@ from samsara.runtime import thread_registry
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 SESSION = re.compile(r"[0-9A-Za-z_\-]{6,64}\Z")
 SETTING = re.compile(r"[\w./:\-]{1,80}\Z", re.ASCII)
-# PLACEHOLDER COPY (539): reviewed together with Docs/hermes/SKILL.md and notice.
+# PLACEHOLDER COPY (539): reviewed together with Docs/hermes/samsara-voice/SKILL.md and notice.
 PREAMBLE = (
     "The user is speaking through Samsara voice dictation; words may be misheard. "
     "If a name or a destructive instruction is ambiguous, ask before acting. "
