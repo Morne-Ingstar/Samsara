@@ -153,6 +153,10 @@ def test_authenticated_test_reads_status(monkeypatch, provider, status, reason):
     get = Mock(return_value=SimpleNamespace(status_code=status))
     monkeypatch.setattr(cloud_llm.ai_transport, 'get_cloud', get)
     result = cloud_llm.check_available(app)
+    if status == 429:
+        # Stand-in copy: no Retry-After header means a short, unspecified wait.
+        names = {"deepseek": "DeepSeek", "openai": "OpenAI", "anthropic": "Anthropic", "openrouter": "OpenRouter"}
+        reason = f"{names[provider]} is rate limiting requests. Try again shortly."
     if provider == "openrouter" and status == 403:
         reason = "Blocked by provider policy or budget."
     assert result == ((False, reason) if reason else (True, provider))

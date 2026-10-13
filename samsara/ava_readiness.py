@@ -138,7 +138,11 @@ def failure_sentence(kind: Optional[str], provider: Optional[str], retry_after=N
     if kind == BAD_KEY:
         return f"Ava is offline. {name} rejected the API key. Check it in Settings."
     if kind == RATE_LIMITED:
-        wait = f" Try again in {max(1, int(retry_after + 0.999))} seconds." if retry_after is not None else " Try again shortly."
+        from samsara.cloud_llm import bounded_retry_after
+        retry_after = bounded_retry_after(retry_after)
+        wait = (" Try again shortly." if retry_after is None else
+                " Try again later." if retry_after > 60 else
+                f" Try again in {max(1, int(retry_after + 0.999))} seconds.")
         return f"{name} is rate limiting requests." + wait
     if kind == TIMEOUT:
         return f"{name} did not answer in time. Try again."
@@ -363,7 +367,8 @@ class ReadinessTracker:
         failure = failure_kind if hasattr(failure_kind, "kind") else None
         failure_kind = failure.kind if failure is not None else failure_kind
         checked_at = self._clock()
-        delay = getattr(failure, "retry_after_seconds", None)
+        from samsara.cloud_llm import bounded_retry_after
+        delay = bounded_retry_after(getattr(failure, "retry_after_seconds", None))
         if failure_kind == RATE_LIMITED and delay is None:
             delay = OFFLINE_POLL_S
         inferred = (READY if failure_kind is None else

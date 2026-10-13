@@ -104,8 +104,22 @@ def make_failure(kind, provider, status=None, retry_after=None, code=None):
     return CloudFailure(kind, provider, status, retry_after, code, _FAILURE_SUMMARIES[kind])
 
 
+MAX_RETRY_AFTER_SECONDS = 3600.0
+
+
+def bounded_retry_after(value):
+    """Bound provider delays, including metadata supplied outside HTTP parsing."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return min(MAX_RETRY_AFTER_SECONDS, max(0.0, seconds)) if math.isfinite(seconds) else None
+
+
 def _retry_after(response):
-    value = (getattr(response, "headers", None) or {}).get("Retry-After")
+    headers = getattr(response, "headers", None) or {}
+    value = next((value for key, value in headers.items()
+                  if str(key).lower() == "retry-after"), None)
     if value is None:
         return None
     try:
@@ -115,7 +129,7 @@ def _retry_after(response):
             seconds = parsedate_to_datetime(str(value)).timestamp() - time.time()
         except (TypeError, ValueError, OverflowError):
             return None
-    return max(0.0, seconds) if math.isfinite(seconds) else None
+    return bounded_retry_after(seconds)
 
 
 def failure_from_response(provider, response):
@@ -695,7 +709,6 @@ def check_available(app):
     # STAND-IN COPY (566); only classified reasons, never raw provider errors.
     reasons = {readiness.BAD_KEY: "The key was rejected.",
                readiness.OUT_OF_CREDIT: "The account is out of balance.",
-               readiness.RATE_LIMITED: "Rate limited. Try again in a minute.",
                readiness.TIMEOUT: "Did not answer in time.",
                readiness.UNREACHABLE: "Could not be reached.",
                readiness.PROVIDER_ERROR: "The provider returned an error.",
@@ -715,6 +728,8 @@ def check_available(app):
         r = ai_transport.get_cloud(f"{base_url}/models", timeout=3, headers=headers)
         failure = failure_from_response(provider, r)
         kind = failure.kind if failure else None
+        if kind == readiness.RATE_LIMITED:
+            return False, readiness.failure_sentence(kind, provider, failure.retry_after_seconds)
         return (False, reasons[kind]) if kind else (True, provider)
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)

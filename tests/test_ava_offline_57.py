@@ -196,7 +196,7 @@ def _session_done_harness(app):
     ("bad_key", "Ava is offline. DeepSeek rejected the API key. Check it in Settings.", "bad API key"),
     ("timeout", "DeepSeek did not answer in time. Try again.", "timed out"),
     ("rate_limited", "DeepSeek is rate limiting requests. Try again shortly.", "rate limited"),
-], ids=["Error: Could not connect to the cloud LLM provider.-Ava is offline. I can't reach DeepSeek.-unreachable", 'Error: Cloud LLM request failed: 401 Client Error: Unauthorized for url: https://api.deepseek.com/v1/chat/completions-Ava is offline. DeepSeek rejected the API key. Check it in Settings.-bad API key', 'Error: Cloud LLM request timed out after 30s.-Ava is offline. DeepSeek did not answer in time.-timed out', 'Error: Cloud LLM request failed: 429 Client Error: Too Many Requests for url: https://api.deepseek.com/v1/chat/completions-Ava is offline. DeepSeek is rate limiting requests. Try again in a minute.-rate limited'])
+], ids=['unreachable-offline', 'bad-key-offline', 'timeout-needs-attention', 'rate-limited-waiting'])
 def test_model_unreachable_gives_offline_message_and_chip_never_success(
         monkeypatch, inline_worker, turn_log, error_text, expected_sentence, expected_short):
     app = _session_done_harness(_app())
@@ -337,7 +337,7 @@ class TestProbe:
     @pytest.mark.parametrize("status, kind", [
         (200, None), (401, ava_readiness.BAD_KEY), (403, ava_readiness.BAD_KEY),
         (429, ava_readiness.RATE_LIMITED), (500, ava_readiness.PROVIDER_DOWN),
-    ], ids=['200-None', '401-bad_key', '403-bad_key', '429-rate_limited', '500-error'])
+    ], ids=['200-None', '401-bad_key', '403-bad_key', '429-rate_limited', '500-provider_down'])
     def test_cloud_status(self, status, kind):
         seen = {}
 

@@ -89,11 +89,55 @@ def test_exceptions_are_structured_and_never_echoed(monkeypatch, caplog, excepti
 
 
 @pytest.mark.parametrize("retry,expected", [("3.5", 3.5), ("0", 0), ("-1", 0),
+    ("3600", 3600), ("3601", 3600), ("1000000000", 3600),
     ("nan", None), ("inf", None), ("invalid", None),
-    ("Wed, 21 Oct 2015 07:28:00 GMT", 15)])
-def test_retry_after_numeric_date_and_invalid(monkeypatch, retry, expected):
+    ("Wed, 21 Oct 2015 07:28:00 GMT", 15),
+    ("Wed, 21 Oct 2015 09:28:00 GMT", 3600),
+    ("Thu, 01 Jan 2099 00:00:00 GMT", 3600)])
+@pytest.mark.parametrize("header", ["Retry-After", "retry-after", "rEtRy-AfTeR"])
+def test_retry_after_numeric_date_and_invalid(monkeypatch, retry, expected, header):
     monkeypatch.setattr(cloud_llm.time, "time", lambda: 1445412465)
-    assert cloud_llm.failure_from_response("openrouter", response(429, retry=retry)).retry_after_seconds == expected
+    resp = response(429)
+    resp.headers = {header: retry}
+    assert cloud_llm.failure_from_response("openrouter", resp).retry_after_seconds == expected
+
+
+@pytest.mark.parametrize("retry,delay", [(3601, 3600), (1e9, 3600), (-1, 0),
+    (None, 10), (float("nan"), 10), (float("inf"), 10)])
+@pytest.mark.parametrize("source", ["record_turn", "record_probe"])
+def test_readiness_bounds_direct_failure_delay_and_rechecks(monkeypatch, retry, delay, source):
+    now, wakes = [100.0], []
+    tracker = ava_readiness.ReadinessTracker(clock=lambda: now[0])
+    monkeypatch.setattr(ava_readiness, "request_recheck", lambda: wakes.append(True))
+    failure = cloud_llm.make_failure("rate_limited", "openrouter", 429, retry)
+    snap = getattr(tracker, source)("openrouter", failure)
+    assert snap.retry_at == 100 + delay
+    if delay:
+        now[0] += delay - 0.1
+        assert tracker.snapshot().state == "waiting"
+    now[0] = 100 + delay
+    assert tracker.snapshot().state == "unknown"
+    assert wakes == [True]
+    assert tracker.record_probe("openrouter", None).state == "ready"
+
+
+@pytest.mark.parametrize("retry,ending", [(None, "shortly."), (0, "in 1 seconds."),
+    (3.5, "in 4 seconds."), (60, "in 60 seconds."), (60.1, "later."),
+    (3600, "later."), (1e9, "later."), (float("inf"), "shortly.")])
+def test_rate_limit_sentence_keeps_long_delays_out_of_speech(retry, ending):
+    assert ava_readiness.failure_sentence("rate_limited", "openrouter", retry) == (
+        "OpenRouter is rate limiting requests. Try again " + ending)
+
+
+@pytest.mark.parametrize("retry,ending", [(None, "shortly."), ("12", "in 12 seconds."),
+    ("60", "in 60 seconds."), ("61", "later."), ("1000000000", "later."),
+    ("Thu, 01 Jan 2099 00:00:00 GMT", "later.")])
+def test_check_available_rate_limit_reason_uses_retry_after(monkeypatch, retry, ending):
+    resp = response(429)
+    resp.headers = {"retry-after": retry} if retry is not None else {}
+    monkeypatch.setattr(cloud_llm.ai_transport, "get_cloud", lambda *a, **kw: resp)
+    assert cloud_llm.check_available(app_for()) == (
+        False, "OpenRouter is rate limiting requests. Try again " + ending)
 
 
 def test_unknown_body_codes_and_metadata_are_discarded():
