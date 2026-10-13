@@ -2,6 +2,30 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.4] - 2026-10-12
+
+Fixes from a second computer: a microphone that arrives late, Pause, setup, and updates that respect how Samsara was installed.
+
+### New
+
+- **Beta updates are your choice** - Tick "Include beta updates" in setup or in the Updates window and Samsara also offers tester builds. It is off until you turn it on, and turning it on does not start automatic checks.
+- **Starting Samsara twice shows the one that is running** - A second start brings Samsara's window forward instead of ending without a word.
+
+### Changed
+
+- **Installed copies update through the installer** - A copy installed with the installer no longer swaps its folder. When a release carries a verified installer, the Updates window installs it for you; until then it gives you a link to it.
+- **Setup's choices explain one thing at a time** - Each choice shows only the explanation of the option you picked, and its tick sits inside it.
+
+### Fixed
+
+- **A microphone plugged in later just works** - Start Samsara without your microphone, or plug it in afterwards, and dictation works without a restart. With no microphone, Samsara says so instead of failing silently.
+- **A finished install stays finished** - Samsara no longer returns to setup because its microphone is missing.
+- **Settings keeps a microphone that is not connected** - It is listed as not connected and stays your choice.
+- **Pause for other audio works in the installed app** - Choosing Pause stops other audio while you record and resumes it afterwards; if other audio cannot be controlled, Samsara tells you once.
+- **The Compact placement picture draws again** - The picture on the placement page had stopped drawing.
+- **Updating no longer removes the uninstaller** - On an installed copy the update button could remove Samsara's uninstaller. If that already happened to you, Samsara tells you and links to the installer.
+- **Samsara notes how it ended** - If Samsara closes unexpectedly, its next start records how the last session ended, to help find the cause.
+
 ## [0.30.0-beta.3] - 2026-10-12
 
 Expanded media integrations, Ava intelligence, a calmer Settings and a new setup walkthrough.

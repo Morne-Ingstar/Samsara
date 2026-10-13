@@ -367,6 +367,19 @@ jobs:
         #   output-artifact-directory: 'signed'
         run: echo "SignPath signing not yet configured -- see docs/RELEASE_CI.md"
 
+      # 554: an installed copy updates through SamsaraSetup only when its
+      # checksum is published beside it. One ASCII line, the same shape as the
+      # ZIP's sidecar: "<sha256>  SamsaraSetup-<version>.exe". Kept directly
+      # before the release step so that it always describes the final exe.
+      - name: Checksum the installer
+        shell: pwsh
+        run: |
+          $setup = @(Get-ChildItem -LiteralPath dist -Filter 'SamsaraSetup-*.exe')
+          if ($setup.Count -ne 1) { throw "expected exactly one SamsaraSetup exe in dist, found $($setup.Count)" }
+          $checksum = (Get-FileHash -LiteralPath $setup[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$($setup[0].FullName).sha256" -Value "$checksum  $($setup[0].Name)" -Encoding ascii
+          Write-Host "$($setup[0].Name) SHA-256: $checksum"
+
       - name: Create draft GitHub Release
         if: github.ref_type == 'tag'
         # softprops/action-gh-release v2.6.2
@@ -383,3 +396,4 @@ jobs:
             ${{ steps.gesture.outputs.checksum_name }}
             ${{ steps.manifest.outputs.manifest_name }}
             dist/SamsaraSetup-*.exe
+            dist/SamsaraSetup-*.exe.sha256
