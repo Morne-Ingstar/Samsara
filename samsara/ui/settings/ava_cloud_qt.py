@@ -7,7 +7,9 @@ Shared names are imported back from samsara.ui.settings_qt; see
 samsara/ui/settings/__init__.py for why that import is cycle-safe.
 """
 
-from PySide6.QtCore import Qt, QUrl
+from copy import deepcopy
+
+from PySide6.QtCore import Qt, QUrl, QObject, QEvent
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -31,6 +33,7 @@ from samsara.ava_memory import PersonalMemory
 from samsara.paths import samsara_home_dir
 from samsara.log import get_logger
 from samsara.ui import ava_consent_qt, theme
+from samsara.settings_merge import merge_outside_changes
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
 
@@ -74,6 +77,16 @@ logger = get_logger(__name__)
 
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
+
+class _AvaVisit(QObject):
+    """Cancel rolls back this visit's immediate route, retaining consent."""
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Close:
+            watched._cancel_ava_route_preview()
+        return False
+
+
 class AvaCloudPage:
     """Methods of the Ava / Cloud settings page (moved from _SettingsWindow)."""
 
@@ -92,6 +105,16 @@ class AvaCloudPage:
         layout.setSpacing(12)
 
         cfg = self.app.config.get('cloud_llm', {}) or {}
+        old_filter = getattr(self, '_ava_visit_filter', None)
+        if old_filter is not None:
+            self.removeEventFilter(old_filter)
+            old_filter.deleteLater()
+        self._ava_visit_filter = _AvaVisit(self)
+        self.installEventFilter(self._ava_visit_filter)
+        self._ava_immediate_before = None
+        self._ava_immediate_after = None
+        self._ava_apply_committed = False
+        self._ava_cloud_field_baseline = deepcopy(cfg)
         self._ava_route_touched = False
         self._ava_route_confirmation_pending = ai_preferences.cloud_route_confirmation_needed(self.app.config)
         if self._ava_route_confirmation_pending and not getattr(self.app, "_ava_route_confirmation_logged", False):
@@ -137,6 +160,14 @@ class AvaCloudPage:
             if staged is not None:
                 ava_cfg["consent"] = staged
             effective["ava"] = ava_cfg
+            opened = deepcopy(self._config_at_open)
+            opened['cloud_llm'] = deepcopy(self._ava_cloud_field_baseline)
+            merged, _kept = merge_outside_changes(opened, self.app.config, {
+                key: effective[key] for key in ('cloud_llm', 'ava_command_session')})
+            effective.update(merged)
+            # These are explicit route choices, including a round trip back.
+            effective['ava']['provider_policy'] = policy
+            effective['cloud_llm']['enabled'] = policy == 'cloud'
             return effective
 
         self._ava_staged_config = _staged_ava_config
@@ -560,6 +591,7 @@ class AvaCloudPage:
         _sync_edit_options(edit_enabled.isChecked())
 
         def _save(_acc):
+            self._ava_apply_committed = True
             updates = {}
             if 'cloud_enabled' in self._widgets:
                 policy = self._widgets['providerRoute'].currentData()
@@ -583,6 +615,40 @@ class AvaCloudPage:
                 elif 'model' in cloud_cfg:
                     del cloud_cfg['model']
                 updates['cloud_llm'] = cloud_cfg
+                # Provider changes replace the credential fields' baseline.
+                opened = deepcopy(self._config_at_open)
+                opened['cloud_llm'] = deepcopy(self._ava_cloud_field_baseline)
+                merged, _kept = merge_outside_changes(
+                    opened, self.app.config, {'cloud_llm': cloud_cfg})
+                saved = merged['cloud_llm']
+                live = self.app.config.get('cloud_llm', {}) or {}
+                saved_provider = saved.get('provider', 'deepseek')
+                own = (live if live.get('provider', 'deepseek') == saved_provider else
+                       (live.get('provider_settings', {}) or {}).get(saved_provider, {}))
+                if saved.get('provider') != provider:
+                    # An outside provider change wins over an untouched combo.
+                    # Typed fields still belong to the provider shown here.
+                    for key in ('api_key', 'model'):
+                        if cloud_cfg.get(key, '') != self._ava_cloud_field_baseline.get(key, ''):
+                            saved.setdefault('provider_settings', {}).setdefault(provider, {})[key] = cloud_cfg.get(key, '')
+                        saved[key] = own.get(key, '')
+                elif live.get('provider', 'deepseek') != provider:
+                    # The combo won the merge, but unchanged credentials may
+                    # have come from live's other provider. Keep their owner.
+                    for key in ('api_key', 'model'):
+                        if cloud_cfg.get(key, '') == self._ava_cloud_field_baseline.get(key, ''):
+                            saved[key] = own.get(key, '')
+                if saved_provider != live.get('provider', 'deepseek'):
+                    # Apply reconciles once more. Its baseline must reflect
+                    # the live owner, so that pass cannot restore another
+                    # provider's key over these already reconciled fields.
+                    opening_cloud = self._config_at_open.setdefault('cloud_llm', {})
+                    for key in ('provider', 'api_key', 'model'):
+                        if key in live:
+                            opening_cloud[key] = deepcopy(live[key])
+                        else:
+                            opening_cloud.pop(key, None)
+                updates.update(merged)
 
             if 'ava_personality' in self._widgets:
                 updates['ava_personality'] = self._widgets['ava_personality'].currentText().lower()
@@ -813,10 +879,123 @@ class AvaCloudPage:
             return
         record = ava_consent_qt.request_consent(self, effective, cloud_enabled=policy == 'cloud')
         if record is not None:
-            self._ava_consent_staged = record
-            self._ava_route_touched = True
-            self._ava_route_confirmation_pending = False
+            if self._persist_ava_route(policy, record):
+                self._ava_route_confirmation_pending = False
         self._refresh_ava_route_status()
+
+    def _persist_ava_route(self, policy, record=None):
+        """Acceptance is durable now, not an unsaved Settings preview."""
+        previous = ava_readiness.settings_signature(self.app)
+        before = deepcopy(self.app.config)
+        effective = deepcopy(before)
+        # Ordinary fields still require Apply. A route click never saves a key.
+        selected = self._ava_staged_config()['cloud_llm'].get('provider', 'deepseek')
+        cloud = effective.setdefault('cloud_llm', {})
+        old_provider = cloud.get('provider', 'deepseek')
+        if selected != old_provider:
+            profiles = cloud.setdefault('provider_settings', {})
+            profiles[old_provider] = {key: cloud.get(key, '') for key in ('api_key', 'model')}
+            own = profiles.get(selected, {})
+            cloud.update(provider=selected, api_key=own.get('api_key', ''), model=own.get('model', ''))
+        try:
+            if policy == 'off':
+                updated = ava_consent_qt.apply_disabled_ava(self.app, config=effective, persist=False)
+                for section in ('smart_corrections', 'smart_actions'):
+                    updated[section] = deepcopy(before.get(section, {}) or {})
+            else:
+                destination = ai_preferences.provider_for(effective, policy)
+                grant = ai_preferences.merge_consent_grants(
+                    (before.get('ava', {}) or {}).get('consent'),
+                    record or (before.get('ava', {}) or {}).get('consent'),
+                    provider=destination, cloud=policy == 'cloud')
+                updated = ava_consent_qt.apply_accepted_ava(
+                    self.app, grant, policy=policy, config=effective, persist=False)
+        except (TypeError, ValueError):
+            # Retain explicit acceptance even when a local endpoint is invalid.
+            if record is not None:
+                ava = deepcopy(before.get('ava', {}) or {})
+                try:
+                    ava['consent'] = ai_preferences.merge_consent_grants(
+                        ava.get('consent'), record,
+                        provider=ai_preferences.provider_for(effective, policy), cloud=policy == 'cloud')
+                except (TypeError, ValueError):
+                    pass  # No verified grant exists to persist.
+                else:
+                    self.app.update_config({'ava': ava}, save=True)
+            self._restore_ava_route((before.get('ava', {}) or {}).get('provider_policy', 'off'))
+            self._refresh_ava_route_status()
+            return False
+        if self._ava_apply_committed:
+            self._ava_immediate_before = self._ava_immediate_after = None
+            self._ava_apply_committed = False
+        if self._ava_immediate_before is None:
+            self._ava_immediate_before = before
+        # Use the same three-way reconciliation as Apply. The transaction was
+        # built from live data and contains only this immediate choice.
+        updates, _kept = merge_outside_changes(before, self.app.config, {
+            key: updated[key] for key in ava_consent_qt._PREFERENCE_KEYS})
+        self.app.update_config(updates, save=True)
+        self._track_ava_route_preview(before, self.app.config)
+        if not (before.get('command_packs', {}) or {}).get('ai') and updated['command_packs'].get('ai'):
+            rebuild = getattr(getattr(self.app, 'command_executor', None), 'rebuild_matcher', None)
+            if callable(rebuild):
+                try:
+                    rebuild()
+                except Exception:
+                    logger.exception("Could not refresh commands after enabling the AI pack")
+        ava_readiness.recheck_after_settings(self.app, previous)
+        self._ava_consent_staged = None
+        self._ava_route_touched = False
+        return True
+
+    def _track_ava_route_preview(self, previous, written):
+        """Record our writes while advancing the rollback base for outside edits."""
+        if self._ava_immediate_after is None:
+            self._ava_immediate_after = deepcopy(written)
+            return
+        missing = object()
+        def track(start, expected, old, new):
+            if all(isinstance(value, dict) for value in (start, expected, old, new)):
+                starts, ends = {}, {}
+                for key in dict.fromkeys((*start, *expected, *old, *new)):
+                    first, last = track(start.get(key, missing), expected.get(key, missing),
+                                        old.get(key, missing), new.get(key, missing))
+                    if first is not missing:
+                        starts[key] = first
+                    if last is not missing:
+                        ends[key] = last
+                return starts, ends
+            if old != expected:
+                start = old
+            return (missing if start is missing else deepcopy(start),
+                    missing if new is missing else deepcopy(new))
+        self._ava_immediate_before, self._ava_immediate_after = track(
+            self._ava_immediate_before, self._ava_immediate_after, previous, written)
+
+    def _cancel_ava_route_preview(self):
+        before, after = self._ava_immediate_before, self._ava_immediate_after
+        if self._ava_apply_committed or before is None or after is None:
+            return
+        previous = ava_readiness.settings_signature(self.app)
+        # Reverse only our changed leaves that still equal our last write.
+        missing = object()
+        def restore(old, written, current):
+            if all(isinstance(value, dict) for value in (old, written, current)):
+                result = {}
+                for key in dict.fromkeys((*old, *written, *current)):
+                    value = restore(old.get(key, missing), written.get(key, missing), current.get(key, missing))
+                    if value is not missing:
+                        result[key] = value
+                return result
+            value = old if old != written and current == written else current
+            return missing if value is missing else deepcopy(value)
+        updates = {key: restore(before.get(key, {}), after.get(key, {}), self.app.config.get(key, {}))
+                   for key in ava_consent_qt._PREFERENCE_KEYS}
+        updates.setdefault('ava', {})['consent'] = deepcopy(
+            (self.app.config.get('ava', {}) or {}).get('consent', {}))
+        self.app.update_config(updates, save=True)
+        self._ava_immediate_before = self._ava_immediate_after = None
+        ava_readiness.recheck_after_settings(self.app, previous)
 
     def _on_ava_route_choice(self, _index):
         policy = self._widgets['providerRoute'].currentData()
@@ -836,8 +1015,14 @@ class AvaCloudPage:
                             "Cloud was not selected because consent was not accepted. Ava's previous route is unchanged.", True,
                             pending=previous != 'off' and ava_consent_qt.consent_required(self._ava_staged_config(), cloud_enabled=previous == 'cloud'))
                     return
-                self._ava_consent_staged = consent
-        self._ava_route_touched = True
+                if not self._persist_ava_route(policy, consent):
+                    return
+            else:
+                if not self._persist_ava_route(policy):
+                    return
+        else:
+            if not self._persist_ava_route(policy):
+                return
         self._ava_route_confirmation_pending = False
         self._ava_last_route = policy
         self._sync_ava_cloud_controls()
@@ -875,19 +1060,48 @@ class AvaCloudPage:
     def _on_cloud_provider_changed(self, display_name: str):
         route = self._widgets.get('providerRoute')
         previous = getattr(self, '_ava_previous_provider_display', display_name)
+        fields = {key: self._widgets.get(key) for key in ('cloud_api_key', 'cloud_model')}
+        old_fields = {key: widget.text() for key, widget in fields.items() if widget is not None}
+        old_baseline = self._ava_cloud_field_baseline
+        def restore_provider():
+            provider = self._widgets['cloud_provider']
+            blocked = provider.blockSignals(True)
+            provider.setCurrentText(previous)
+            provider.blockSignals(blocked)
+            self._ava_previous_provider_display = previous
+            self._ava_cloud_field_baseline = old_baseline
+            for key, value in old_fields.items():
+                fields[key].setText(value)
+        if display_name != previous:
+            code = _DISPLAY_TO_CODE[display_name]
+            live = self.app.config.get('cloud_llm', {}) or {}
+            own = live if live.get('provider', 'deepseek') == code else (live.get('provider_settings', {}) or {}).get(code, {})
+            self._ava_cloud_field_baseline = {**deepcopy(live),
+                                             'api_key': own.get('api_key', ''), 'model': own.get('model', '')}
+            for key, config_key in (('cloud_api_key', 'api_key'), ('cloud_model', 'model')):
+                widget = fields[key]
+                if widget is not None:
+                    blocked = widget.blockSignals(True)
+                    widget.setText(own.get(config_key, ''))
+                    widget.blockSignals(blocked)
         if route is not None and route.currentData() == 'cloud' and display_name != previous:
             effective = self._ava_staged_config()
             if ava_consent_qt.consent_required(effective, cloud_enabled=True):
                 consent = ava_consent_qt.request_consent(self, effective, cloud_enabled=True)
                 if consent is None:
-                    provider = self._widgets['cloud_provider']
-                    blocked = provider.blockSignals(True)
-                    provider.setCurrentText(previous)
-                    provider.blockSignals(blocked)
+                    restore_provider()
                     self._set_ava_route_status(
                         "Provider was not changed because consent was not accepted.", True)  # OWNER COPY
                     return
-                self._ava_consent_staged = consent
+                if not self._persist_ava_route('cloud', consent):
+                    restore_provider()
+                    self._refresh_ava_route_status()
+                    return
+            else:
+                if not self._persist_ava_route('cloud'):
+                    restore_provider()
+                    self._refresh_ava_route_status()
+                    return
         self._ava_previous_provider_display = display_name
         info_label = self._widgets.get('cloud_info_label')
         if info_label:

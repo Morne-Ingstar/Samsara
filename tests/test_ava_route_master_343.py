@@ -52,7 +52,7 @@ def test_new_cloud_policy_cannot_be_built_without_consent():
         ai.apply_ava_route_choice(_config(), policy="cloud")
 
 
-def test_cloud_acceptance_stages_then_writes_policy_and_consent(window, monkeypatch):
+def test_cloud_acceptance_immediately_writes_policy_and_consent(window, monkeypatch):
     def accept(_parent, staged, *, cloud_enabled):
         assert cloud_enabled and window.app.config["ava"]["provider_policy"] == "local"
         return ava_consent_qt.accepted_consent(
@@ -60,7 +60,7 @@ def test_cloud_acceptance_stages_then_writes_policy_and_consent(window, monkeypa
 
     monkeypatch.setattr(ava_consent_qt, "request_consent", accept)
     window._widgets["providerRoute"].setCurrentIndex(2)
-    assert window.app.config["ava"]["provider_policy"] == "local"
+    assert window.app.config["ava"]["provider_policy"] == "cloud"
     assert window._widgets["cloud_enabled"].isChecked()
     for key in ("cloud_provider", "cloud_model", "cloud_api_key"):
         assert window._widgets[key].isEnabled()

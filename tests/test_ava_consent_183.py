@@ -144,9 +144,10 @@ def test_ava_page_accept_and_apply_enables_once_and_survives_reload(
         checkbox.click()
         assert checkbox.isChecked() is True
         assert _AcceptedDialog.shown == 1
-        assert len(saves) == 0
-        window._apply_and_close()
         assert len(saves) == 1
+        assert ai_preferences.runtime_state(app.config, "ava").allowed
+        window._apply_and_close()
+        assert len(saves) == 2
         assert app.config["ava"]["provider_policy"] == "local"
         assert app.config["ava_command_session"]["enabled"] is True
         assert app.config["ava_mode_enabled"] is True

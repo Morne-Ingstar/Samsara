@@ -95,6 +95,16 @@ def consent_covers(record: object, *, features, provider: Provider, cloud: bool,
                    version: int = CONSENT_VERSION) -> bool:
     """Check grants and exact destination. v1 may cover only migrated Ava scope."""
     selected = _features(features)
+    if not isinstance(record, dict):
+        return False
+    previous = record.get("previous_grants", [])
+    candidates = [record] + (previous if isinstance(previous, list) else [])
+    return any(_grant_covers(grant, selected, provider, cloud, version)
+               for grant in candidates)
+
+
+def _grant_covers(record, selected, provider, cloud, version):
+    """Validate one flat grant; nested history cannot extend its scope."""
     if not isinstance(record, dict) or not isinstance(record.get("accepted_at"), str) or not record["accepted_at"].strip():
         return False
     if record.get("provider") != provider.record():
@@ -120,22 +130,90 @@ def accept_consent(config: dict, *, features=("ava",), provider: Provider,
     """
     selected = _features(features)
     verified = identify_provider(provider.identity, provider.origin)
-    old = _section(config, "ava").get("consent", {})
-    old = old if isinstance(old, dict) else {}
+    record = _section(config, "ava").get("consent", {})
+    record = record if isinstance(record, dict) else {}
+    previous_grants = record.get("previous_grants", [])
+    candidates = [record] + (previous_grants if isinstance(previous_grants, list) else [])
+    old = next((grant for grant in candidates if isinstance(grant, dict)
+                and grant.get("provider") == verified.record()), {})
     same = old.get("provider") == verified.record()
     previously_accepted = (same and type(old.get("version")) is int
                           and old.get("version") == version
                           and isinstance(old.get("accepted_at"), str)
                           and bool(old["accepted_at"].strip()))
-    previous = old.get("features", []) if previously_accepted else []
+    previous = old.get("features", []) if (previously_accepted and
+                (not cloud or old.get("cloud_version") == version)) else []
     if not isinstance(previous, list):
         previous = []
     grants = sorted(set(selected) | {f for f in previous if isinstance(f, str) and f in FEATURES})
     if accepted_at is not None and (not isinstance(accepted_at, str) or not accepted_at.strip()):
         raise ValueError("acceptance needs a nonempty timestamp")
-    return {"version": version, "accepted_at": accepted_at if accepted_at is not None else datetime.now(timezone.utc).isoformat(),
+    result = {"version": version, "accepted_at": accepted_at if accepted_at is not None else datetime.now(timezone.utc).isoformat(),
             "cloud_version": version if cloud else (old.get("cloud_version") if previously_accepted else None),
             "features": grants, "provider": verified.record()}
+    # Preserve independently accepted destinations, never manufacture a grant.
+    history = []
+    for grant in candidates:
+        if (isinstance(grant, dict) and
+                (grant.get("provider") != verified.record()
+                 or grant.get("version") != version
+                 or (cloud and grant.get("cloud_version") != version))):
+            saved = deepcopy({key: value for key, value in grant.items()
+                              if key != "previous_grants"})
+            if saved.get("accepted_at") and saved.get("provider") and saved not in history:
+                history.append(saved)
+    if history:
+        result["previous_grants"] = history
+    if (previously_accepted and old.get("cloud_version") == version
+            and old.get("memory_cloud_accepted") is True):
+        result["memory_cloud_accepted"] = True
+    return result
+
+
+def merge_consent_grants(live, accepted, *, provider: Provider, cloud: bool) -> dict:
+    """Retain only verified exact grants, with the active destination first.
+
+    A modal dialog may return a snapshot older than another explicit accept.
+    Keep separate records rather than combining their purposes or versions.
+    The legacy memory reader reads the primary grant, so promote this route.
+    """
+    grants = []
+    for record in (accepted, live):
+        if not isinstance(record, dict):
+            continue
+        history = record.get("previous_grants", [])
+        for grant in [record] + (history if isinstance(history, list) else []):
+            if not isinstance(grant, dict):
+                continue
+            try:
+                destination = identify_provider(**{
+                    "identity": grant["provider"]["identity"],
+                    "endpoint": grant["provider"]["origin"],
+                })
+                valid = any(consent_covers(
+                    {k: v for k, v in grant.items() if k != "previous_grants"},
+                    features=(feature,), provider=destination, cloud=False)
+                    for feature in FEATURES)
+            except (KeyError, TypeError, ValueError):
+                valid = False
+            if valid:
+                flat = deepcopy({k: v for k, v in grant.items() if k != "previous_grants"})
+                if flat not in grants:
+                    grants.append(flat)
+    active = next((grant for grant in grants if consent_covers(
+        grant, features=("ava",), provider=provider, cloud=cloud)), None)
+    if active is None:
+        raise ValueError("explicit feature/provider consent required")
+    result = deepcopy(active)
+    if cloud and any(grant.get("memory_cloud_accepted") is True
+                     and grant.get("version") == active.get("version")
+                     and consent_covers(grant, features=("ava",), provider=provider, cloud=True)
+                     for grant in grants):
+        result["memory_cloud_accepted"] = True
+    history = [grant for grant in grants if grant != active]
+    if history:
+        result["previous_grants"] = history
+    return result
 
 
 def apply_preferences(config: dict, *, policy: str, ava: bool = False,
@@ -228,6 +306,9 @@ def apply_accepted_ava(config: dict, *, policy: str, consent: dict) -> dict:
         local_model=local_model, resolved_addresses=resolved_addresses,
     )
     result["ava_edit"] = deepcopy(_section(config, "ava_edit"))
+    # An Ava choice does not apply the independent corrections/actions controls.
+    for section in ("smart_corrections", "smart_actions"):
+        result[section] = deepcopy(_section(config, section))
     return result
 
 

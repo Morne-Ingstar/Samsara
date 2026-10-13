@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import threading
 import time
+from copy import deepcopy
+from types import SimpleNamespace
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -242,26 +244,29 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
     cloud_llm.check_available) reported as available.
     Ollama: GET <host>/api/tags."""
     from samsara import ai_preferences  # noqa: PLC0415
-    state = ai_preferences.runtime_state(getattr(app, "config", {}) or {}, "ava")
+    # One immutable input: a Settings provider change may replace the live
+    # section between validation and header construction.
+    configured = SimpleNamespace(config=deepcopy(getattr(app, "config", {}) or {}))
+    state = ai_preferences.runtime_state(configured.config, "ava")
     if not state.allowed:
         return "none", NOT_CONFIGURED
     import requests  # noqa: PLC0415
     from samsara import cloud_llm  # noqa: PLC0415
 
     from samsara import ai_transport
-    provider = configured_provider(app)
+    provider = configured_provider(configured)
     try:
         if provider == "ollama":
             from plugins.commands.ask_ollama import get_host  # noqa: PLC0415
-            r = ai_transport.get_local(f"{get_host(app)}/api/tags", timeout=timeout,
+            r = ai_transport.get_local(f"{get_host(configured)}/api/tags", timeout=timeout,
                                        request_fn=http_get)
             return provider, (None if r.status_code == 200 else UNREACHABLE)
 
-        cfg = getattr(app, "config", {}).get("cloud_llm", {}) or {}
+        cfg = configured.config.get("cloud_llm", {}) or {}
         api_key = cfg.get("api_key", "")
         if not api_key:
             return provider, NOT_CONFIGURED
-        provider, base_url, _model = cloud_llm._get_provider_config(app)
+        provider, base_url, _model = cloud_llm._get_provider_config(configured)
         if provider == "anthropic":
             headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
         else:
@@ -521,7 +526,7 @@ def recheck_after_settings(app, previous: tuple) -> None:
     schedule(app, lambda name, fn: thread_registry.spawn(name, fn, daemon=True))
     if not ai_preferences.runtime_state(app.config, "ava").allowed:
         from samsara import execution_policy
-        execution_policy.bump_generation(app, "optional AI disabled")
+        execution_policy.stop_all(app, "optional AI disabled", chip=False)
         tracker.reset()
         return
     start_monitor(app, lambda name, fn: thread_registry.spawn(name, fn, daemon=True),

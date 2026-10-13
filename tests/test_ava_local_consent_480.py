@@ -1,4 +1,4 @@
-"""Settings local consent, staged persistence and useful route status."""
+"""Settings local consent, immediate persistence and useful route status."""
 from copy import deepcopy
 from unittest.mock import Mock
 
@@ -49,15 +49,15 @@ def test_local_choice_decline_restores_without_writes(make_window, monkeypatch):
     assert not updates['ava'].get('consent')
 
 
-def test_local_choice_accept_stages_and_apply_rechecks_once(make_window, monkeypatch):
+def test_local_choice_accept_persists_and_apply_rechecks_once(make_window, monkeypatch):
     cfg = _config()
     cfg['ava']['provider_policy'] = 'off'
     win = make_window(cfg)
     original = deepcopy(win.app.config)
     monkeypatch.setattr(consent, 'request_consent', lambda parent, staged, **kw: grant(staged))
     win._widgets['providerRoute'].setCurrentIndex(1)
-    assert win.app.config == original
-    record = win._ava_consent_staged
+    assert win.app.config != original
+    record = win.app.config['ava']['consent']
     assert ai.consent_covers(record, features=('ava',), provider=ai.provider_for(win._ava_staged_config(), 'local'), cloud=False)
     recheck = Mock()
     monkeypatch.setattr(ava_readiness, 'recheck_after_settings', recheck)
@@ -89,7 +89,8 @@ def test_saved_pending_button_accepts_without_route_toggle(make_window, monkeypa
     assert row.isAncestorOf(button)
     monkeypatch.setattr(consent, 'request_consent', lambda parent, staged, **kw: grant(staged))
     button.click()
-    assert win.app.config == original
+    assert win.app.config != original
+    assert ai.runtime_state(win.app.config, 'ava').allowed
     updates = win._collect_destination_updates({})
     assert ai.runtime_state({**win.app.config, **updates}, 'ava').allowed
     assert row.isHidden()

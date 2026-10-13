@@ -35,6 +35,12 @@ class _StubApp:
     def save_config(self):
         pass
 
+    def update_config(self, changes, save=True):
+        with self._config_lock:
+            self.config.update(changes)
+            if save:
+                self.save_config()
+
     def load_commands(self):
         return {}
 
