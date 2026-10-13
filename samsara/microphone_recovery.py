@@ -1,7 +1,7 @@
 """Device recovery orchestration, separate from the desktop bootstrap.
 
 Endpoint callbacks only schedule work. The existing output watcher thread does
-the debounced work; only a missing input is polled. Saved preferences never
+the debounced work; missing and fallback inputs are compared when needed. Saved preferences never
 become a cache of PortAudio's current numeric device IDs.
 """
 from contextlib import nullcontext, ExitStack, contextmanager
@@ -102,14 +102,64 @@ def capture_busy(app):
                 'ava_mode_active', 'ava_command_session_active'))
 
 
+# Callback progress, rather than queued data, proves a cue is playing. Allow
+# one second for the first/next callback; a progressing cue never times out.
+CUE_PROGRESS_TIMEOUT = 1.0
+
+
+def _discard_cue_locked(app):
+    app._playback_buffer = getattr(app, '_playback_buffer', ())[:0]
+    timing = getattr(app, '_stage_timing_playback', None)
+    app._stage_timing_playback = None
+    app._cue_wait_since = None
+    app._audio_output_idle_after = 0
+    return timing
+
+
+def discard_cue(app):
+    with getattr(app, '_buffer_lock', None) or nullcontext():
+        timing = _discard_cue_locked(app)
+    if timing is not None:
+        timing.feedback_finished()
+
+
+def cue_output_ready(app):
+    stream = getattr(app, '_sound_stream', None)
+    try:
+        return stream is not None and bool(getattr(stream, 'active', True))
+    except Exception:
+        return False  # A disconnected/closed stream cannot drain the cue.
+
+
+def cue_busy(app):
+    timing = None
+    with getattr(app, '_buffer_lock', None) or nullcontext():
+        queued = bool(len(getattr(app, '_playback_buffer', ())))
+        if not queued:
+            app._cue_wait_since = None
+            if not cue_output_ready(app):
+                app._audio_output_idle_after = 0
+            return False
+        now = time.monotonic()
+        since = getattr(app, '_cue_wait_since', None)
+        if since is None:
+            app._cue_wait_since = since = now
+        progress = getattr(app, '_sound_callback_at', since)
+        playing = cue_output_ready(app) and now - max(since, progress) < CUE_PROGRESS_TIMEOUT
+        if not playing:
+            timing = _discard_cue_locked(app)
+    if timing is not None:
+        timing.feedback_finished()
+    return playing
+
+
 def output_busy(app):
     tts = getattr(app, 'tts_engine', None)
     local = getattr(tts, '_fallback_engine', None)
     for owner in (tts, local):
         if owner is not None and owner.is_speaking():
             return True
-    with getattr(app, '_buffer_lock', None) or nullcontext():
-        return bool(len(getattr(app, '_playback_buffer', ())))
+    return cue_busy(app)
 
 
 @contextmanager
@@ -253,6 +303,15 @@ def restart_outputs(app):
                 tts.restart_stream()
 
 
+def matching_capture_endpoints(endpoints, name):
+    # WinMM/MME exposes only the first 31 characters of a FriendlyName.
+    # Include exact matches in the same ambiguity check as truncated matches.
+    if not name:
+        return ()
+    return tuple(identity for identity, friendly in endpoints
+                 if friendly == name or (len(name) == 31 and friendly[:31] == name))
+
+
 class DeviceChanges:
     def __init__(self, app, *, clock=time.monotonic, endpoints=capture_endpoints,
                  render_id=lambda: None):
@@ -266,6 +325,7 @@ class DeviceChanges:
         self.notifications = True
         self._capture = None
         self._render = None
+        self._name_ambiguity_reported = False
         self._reported = set()
 
     def warn_once(self, message):
@@ -307,9 +367,15 @@ class DeviceChanges:
         lost = getattr(ace, 'device_lost', self.app._no_microphone)
         name = getattr(ace, 'capture_name', None)
         # An unrelated endpoint must never cycle a healthy chosen input.
-        was_present = any(n == name for _, n in before)
-        still_present = any(n == name for _, n in current)
-        removed = was_present and not still_present
+        previous = matching_capture_endpoints(before, name)
+        present = matching_capture_endpoints(current, name)
+        if len(previous) > 1 or len(present) > 1:
+            if not self._name_ambiguity_reported:
+                log.warning('[MIC] Capture endpoint name is ambiguous; leaving audio unchanged')
+                self._name_ambiguity_reported = True
+            removed = False
+        else:
+            removed = bool(previous) and previous != present
         if lost or removed or getattr(self.app, '_using_default_mic', False):
             if removed and ace is not None:
                 ace.mark_device_lost()
@@ -323,7 +389,8 @@ class DeviceChanges:
         with self._lock:
             pending = self._pending
             due = pending is not None and now - pending >= 0.75
-        poll = not self.notifications and self.app._no_microphone and now >= self._next_probe
+        poll = (not self.notifications and now >= self._next_probe
+                and (self.app._no_microphone or getattr(self.app, '_using_default_mic', False)))
         if due or poll:
             try:
                 self._observe()

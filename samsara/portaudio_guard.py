@@ -2,7 +2,8 @@
 
 Installed before the first wizard. Instrument the common base, not individual
 factories: RawStream, InputStream and play/rec convenience streams all use it.
-No stream is closed by this registry. Owners retain exclusive close authority.
+Failed starts are closed here before owners can discard their handles.
+Successfully started streams retain their owners' exclusive close authority.
 """
 from contextlib import contextmanager
 from functools import wraps
@@ -51,6 +52,23 @@ def install(sd):
             result = original_close(stream, *args, **kwargs)
             guard.streams.pop(id(stream), None)
             return result
+
+    original_start = getattr(base, 'start', None)
+    if original_start is not None:
+        @wraps(original_start)
+        def start(stream, *args, **kwargs):
+            with guard.lock:
+                started = False
+                try:
+                    result = original_start(stream, *args, **kwargs)
+                    started = True
+                    return result
+                finally:
+                    if not started:
+                        # Also covers __enter__ failures, where __exit__ never
+                        # runs. Native close defaults to ignoring driver errors.
+                        stream.close()
+        base.start = start
 
     base.__init__, base.close = initialise, close
     # Device-info pointers also belong to PortAudio. Finish copying query

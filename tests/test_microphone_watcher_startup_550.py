@@ -91,6 +91,10 @@ def test_comparing_mode_tracks_output_without_capture_query_and_waits_for_idle(
     app._audio_refresh_lock = threading.RLock()
     app._buffer_lock = threading.RLock()
     app._playback_buffer = [1] if busy == 'cue' else []
+    # A queued cue alone is not playback: model a live output callback too.
+    app._sound_stream = SimpleNamespace(active=True)
+    monkeypatch.setattr(recovery.time, 'monotonic', lambda: 0.0)
+    app._sound_callback_at = 0.0
     speaking = [busy == 'speech']
     app.tts_engine = SimpleNamespace(is_speaking=lambda: speaking[0],
                                     restart_stream=lambda: restarts.append('tts'))

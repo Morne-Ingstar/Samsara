@@ -20,6 +20,7 @@ import collections
 import functools
 import logging
 import threading
+import time
 import uuid
 import weakref
 from typing import Callable, Deque, List, Optional, Tuple
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 _TARGET_SR = 44100  # safe fallback when PortAudio exposes no device rate
 _CHUNK_FRAMES = 4096  # ~93ms at 44100 Hz
+_TTS_PROGRESS_TIMEOUT = 1.0  # No audio drained for a second means stalled output.
 
 # Neither registry owns an engine. Failed closes retain their native callback
 # until retry at exit, before sounddevice terminates PortAudio.
@@ -91,7 +93,7 @@ class _StreamCleanup:
             return error
 
 
-def _drain_tts_buffer(buffer, lock, outdata, frames, time_info, status):
+def _drain_tts_buffer(buffer, lock, outdata, frames, time_info, status, *, progress=None):
     """PortAudio callback state is independent of the engine's lifetime."""
     with lock:
         output = np.zeros(frames, dtype=np.float32)
@@ -107,6 +109,8 @@ def _drain_tts_buffer(buffer, lock, outdata, frames, time_info, status):
                 buffer.popleft()
             offset += take
             remaining -= take
+        if offset and progress is not None:
+            progress[0] = time.monotonic()
     outdata[:, 0] = output
 
 
@@ -242,6 +246,7 @@ class WinRTEngine(TTSEngine):
         # can purge a specific utterance's queued audio.
         self._tts_buffer: Deque[Tuple[np.ndarray, str]] = collections.deque()
         self._tts_buffer_lock = threading.Lock()
+        self._tts_callback_progress = [None]  # Shared with the engine-independent callback.
         self._tts_stream = None
         self._stream_finalizer = None
         self._using_persistent_stream = False
@@ -286,6 +291,7 @@ class WinRTEngine(TTSEngine):
                 dtype='float32',
                 callback=functools.partial(
                     _drain_tts_buffer, self._tts_buffer, self._tts_buffer_lock,
+                    progress=self._tts_callback_progress,
                 ),
                 blocksize=_CHUNK_FRAMES,
                 device=self._output_device,
@@ -323,6 +329,7 @@ class WinRTEngine(TTSEngine):
         _drain_tts_buffer(
             self._tts_buffer, self._tts_buffer_lock,
             outdata, frames, time_info, status,
+            progress=getattr(self, '_tts_callback_progress', None),
         )
 
     def _close_persistent_stream(self):
@@ -718,6 +725,7 @@ class WinRTEngine(TTSEngine):
         # Wait for buffer to drain so on_done fires AFTER the audio plays.
         # Poll at 10ms intervals; bail early on cancel.
         if not utterance.cancelled.is_set():
+            wait_since = time.monotonic()
             while True:
                 with self._tts_buffer_lock:
                     remaining = sum(len(c) for c, u in self._tts_buffer if u == uid)
@@ -725,7 +733,16 @@ class WinRTEngine(TTSEngine):
                     break
                 if utterance.cancelled.is_set():
                     break
-                import time
+                with self._tts_buffer_lock:
+                    progress = self._tts_callback_progress[0]
+                    last = max(wait_since, progress if progress is not None else wait_since)
+                    if time.monotonic() - last >= _TTS_PROGRESS_TIMEOUT:
+                        # Fail only this stranded utterance. Progress by earlier
+                        # queued speech protects every waiting utterance.
+                        retained = [(c, u) for c, u in self._tts_buffer if u != uid]
+                        self._tts_buffer.clear()
+                        self._tts_buffer.extend(retained)
+                        raise RenderError('TTS output callback made no progress')
                 time.sleep(0.01)
 
     def _stream_pcm_ephemeral(self, pcm: np.ndarray, utterance: _Utterance) -> None:

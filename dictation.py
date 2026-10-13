@@ -11127,12 +11127,7 @@ class DictationApp:
             logger.exception(f"[AUDIO] Extended-earcon discovery failed: {e}")
 
     def _start_sound_stream(self, force_windows_default=False):
-        """Start the persistent output stream for sound playback.
-        
-        This stream stays open for the lifetime of the app. Unlike sd.play()
-        (which creates/destroys a temporary stream per call), a persistent
-        OutputStream coexists safely with the InputStream used for recording.
-        """
+        """Start persistent cue output alongside the capture stream."""
         with self._audio_refresh_lock:
             try:
                 # WASAPI endpoints often accept only their mix-format rate (the
@@ -11175,6 +11170,8 @@ class DictationApp:
                     return
                 logger.exception(f"[AUDIO] Failed to start sound stream: {e}")
                 self._sound_stream = None
+                from samsara.microphone_recovery import discard_cue
+                discard_cue(self)
 
     def _sound_stream_callback(self, outdata, frames, time_info, status):
         """Callback for the persistent output stream. Feeds audio from buffer."""
@@ -11182,6 +11179,8 @@ class DictationApp:
         try:
             with self._buffer_lock:
                 n_buffered = len(self._playback_buffer)
+                if n_buffered:
+                    self._sound_callback_at = time.monotonic()
                 if n_buffered >= frames:
                     outdata[:] = self._playback_buffer[:frames]
                     self._playback_buffer = self._playback_buffer[frames:]
@@ -11210,10 +11209,7 @@ class DictationApp:
     def play_sound(self, sound_type, use_winsound=False, volume=None):
         """Play audio feedback sound via persistent output stream (non-blocking, low-latency).
 
-        Writes pre-loaded audio data into the playback buffer. The persistent
-        OutputStream callback drains it automatically. New sounds replace any
-        currently playing sound (clean cutoff, no artifacts).
-
+        The callback drains pre-loaded data; each new cue replaces the old one.
         Args:
             sound_type: legacy ('start'|'stop'|'success'|'error') or any
                 earcon name auto-discovered from the active theme directory
@@ -11239,6 +11235,10 @@ class DictationApp:
                 self.stop_sound_stream()
                 self._start_sound_stream()
 
+            from samsara.microphone_recovery import cue_output_ready, discard_cue
+            if not cue_output_ready(self):
+                discard_cue(self)
+                return
             # Notify AudioCoordinator so it can duck TTS volume if TTS is active.
             # getattr guard means play_sound works before the coordinator is set up.
             if getattr(self, 'audio_coordinator', None) is not None:
@@ -11265,7 +11265,6 @@ class DictationApp:
             if volume <= 0:
                 return
 
-            # Scale volume and write to buffer — the stream callback handles the rest
             scaled = (cached * volume).astype(np.float32)
             timing = current_stage_timing()
             timing.feedback_started()
@@ -11274,6 +11273,7 @@ class DictationApp:
                 replaced_timing = getattr(self, "_stage_timing_playback", None)
                 self._stage_timing_playback = timing
                 self._playback_buffer = scaled  # Replace buffer (new sound wins)
+                self._cue_wait_since = None  # Fresh cue gets its first-callback grace.
                 if refresh_lock is not None:
                     self._audio_output_idle_after = time.monotonic() + len(scaled) / self._sound_stream_sr + 0.25
             speech_presence.note_hold_earcon(self, sound_type, cached)
