@@ -39,14 +39,14 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3304` |
-| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3356` |
-| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3342` |
-| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3383` |
-| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | ui | yes | yes | Asks Ava the question that follows, out loud. | `plugins/commands/ask_ollama.py:2980` |
+| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3302` |
+| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3354` |
+| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3340` |
+| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3381` |
+| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | ui | yes | yes | Asks Ava the question that follows, out loud. | `samsara/ava_turn_queue.py:2986` |
 | `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3143` |
-| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3323` |
-| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3199` |
+| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3321` |
+| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3197` |
 
 ## audio_switch (2)
 

@@ -322,7 +322,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3304",
+      "source": "plugins/commands/ask_ollama.py:3302",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -341,7 +341,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3356",
+      "source": "plugins/commands/ask_ollama.py:3354",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -361,7 +361,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3342",
+      "source": "plugins/commands/ask_ollama.py:3340",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -380,7 +380,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3383",
+      "source": "plugins/commands/ask_ollama.py:3381",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -408,7 +408,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:2980",
+      "source": "samsara/ava_turn_queue.py:2986",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -454,7 +454,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3323",
+      "source": "plugins/commands/ask_ollama.py:3321",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -479,7 +479,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3199",
+      "source": "plugins/commands/ask_ollama.py:3197",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
