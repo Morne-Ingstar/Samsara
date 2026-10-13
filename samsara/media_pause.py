@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from time import monotonic
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
@@ -94,6 +95,7 @@ class _PausedSession:
     session: Any
     app_id: str
     remove_observer: Callable[[], None]
+    pause_event_deadline: float = 0.0
     saw_our_pause: bool = False
     status_changed: bool = False
 
@@ -103,8 +105,9 @@ class RecordingMediaPauser:
 
     One worker owns the WinRT objects for the entire recording.  ``start``
     returns immediately; ``finish`` merely signals the worker after final
-    captured audio is available.  A later status event means the user or app
-    changed playback, so the session is intentionally left alone.
+    captured audio is available. Paused readings within one second of our
+    request acknowledge it, including duplicates. Any non-paused reading
+    (including Playing or Changing), or a later event, opts out of resume.
     """
 
     def __init__(
@@ -122,6 +125,8 @@ class RecordingMediaPauser:
         self._worker: threading.Thread | None = None
         self._lock = threading.Lock()
         self._paused: list[_PausedSession] = []
+        self._playing_at_start: set[str] = set()
+        self._pause_attempted: set[str] = set()
 
     def start(self) -> None:
         self._worker = thread_registry.spawn("samsara.media-pause", self._run, daemon=True)
@@ -152,10 +157,9 @@ class RecordingMediaPauser:
         except Exception:
             paused.status_changed = True
             return
-        # The Playing -> Paused transition caused by our own pause is expected.
-        # Any subsequent event, including another Paused event, is ambiguity
-        # and therefore opts out of resume.
-        if not paused.saw_our_pause and state == "paused":
+        # Pause completion and PlaybackInfoChanged can arrive in either order.
+        # Repeated Paused readings in the request window are acknowledgements.
+        if state == "paused" and monotonic() <= paused.pause_event_deadline:
             paused.saw_our_pause = True
         else:
             paused.status_changed = True
@@ -164,6 +168,11 @@ class RecordingMediaPauser:
         try:
             layer = self._layer_factory()
             sessions = layer.list_sessions()
+            # Snapshot before pausing, including players a short hold never reaches.
+            self._playing_at_start = {
+                layer.app_id(session) for session in sessions
+                if layer.playback_status(session) == "playing"
+            }
         except MediaSessionUnavailable as exc:
             global _missing_api_logged
             with _missing_api_lock:
@@ -185,7 +194,10 @@ class RecordingMediaPauser:
             try:
                 if layer.playback_status(session) != "playing":
                     continue
-                paused = _PausedSession(session, layer.app_id(session), lambda: None)
+                app_id = layer.app_id(session)
+                self._pause_attempted.add(app_id)
+                paused = _PausedSession(session, app_id, lambda: None)
+                paused.pause_event_deadline = monotonic() + 1.0
                 paused.remove_observer = layer.observe(
                     session, lambda paused=paused: self._on_status(paused, layer),
                 )
@@ -195,7 +207,6 @@ class RecordingMediaPauser:
                     logger.info("[MEDIA] Pause refused by app_id=%s", paused.app_id)
                     self._failed("pause", "app refused the pause request")
                     continue
-                paused.saw_our_pause = True
                 with self._lock:
                     self._paused.append(paused)
             except Exception as exc:
@@ -212,12 +223,22 @@ class RecordingMediaPauser:
     def _resume_owned(self, layer: MediaSessionLayer) -> None:
         with self._lock:
             paused, self._paused = self._paused, []
+        try:
+            playing_elsewhere = any(
+                layer.app_id(session) not in self._playing_at_start
+                and layer.app_id(session) not in self._pause_attempted
+                and layer.playback_status(session) == "playing"
+                for session in layer.list_sessions()
+            )
+        except Exception as exc:
+            playing_elsewhere = True
+            logger.warning("[MEDIA] Resume session check failed: %s", exc)
         for item in paused:
             try:
                 # A second user pause while already paused is inherently not
                 # observable through this API.  The observable cases are
                 # conservative: only our unchanged Paused session resumes.
-                if (not item.status_changed
+                if (not playing_elsewhere and not item.status_changed
                         and layer.playback_status(item.session) == "paused"):
                     if not layer.resume(item.session):
                         self._failed("resume", "app refused the resume request")

@@ -85,7 +85,10 @@ def test_pauses_only_playing_sessions_and_resumes_exactly_them():
 def test_changed_session_is_left_paused():
     music = _Session("music")
     pauser = _run([music])
-    # A later status notification makes the user's/app's intent ambiguous.
+    # A real user Play then Pause must win over our acknowledgement window.
+    music.status = "playing"
+    music.emit()
+    music.status = "paused"
     music.emit()
     pauser.finish()
     pauser.wait()
