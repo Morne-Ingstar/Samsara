@@ -19,7 +19,7 @@ def resolve_quit_choice(manager, choice, *, app=None) -> bool:
     if choice == 'discard':
         if retained:
             manager.discard_retained_draft()
-        else:
+        if manager.dictate_pending_buffer or not retained:
             manager.confirm_clear_draft('quit discard')
         return True
     if choice != 'send':
@@ -28,7 +28,7 @@ def resolve_quit_choice(manager, choice, *, app=None) -> bool:
         return _quit_send_result(manager.commit_pending_dictation(), app)
     # Restore the retained text/audio/undo metadata, then allow the trusted
     # local commit in the idle lane, just as a parked Full draft does.
-    manager._restore_retained_draft()
+    _restore_quit_draft(manager)
     try:
         # pause_draft is Full-only. Arm the same parked-document latch here
         # for this explicit local send, without changing the selected display.
@@ -39,6 +39,32 @@ def resolve_quit_choice(manager, choice, *, app=None) -> bool:
             # A refused/failed send keeps Compact's snapshot and reminder.
             manager.retain_draft()
             manager.clear_pending_draft()
+
+
+def _restore_quit_draft(manager) -> None:
+    """Restore older words without overwriting newer text/audio/undo state."""
+    from dataclasses import replace
+
+    with manager._dispatch_lock:
+        live = manager.dictate_pending_buffer
+        if live:
+            kept = manager._retained_draft
+            separator = '' if kept['buffer'][-1].isspace() or live[0].isspace() else ' '
+            live_items = [item for item in manager._stack._items
+                          if item.kind == 'dictation_staged_chunk']
+            if separator and live_items:
+                live_items[0] = replace(live_items[0], payload=separator + live_items[0].payload)
+            manager._retained_draft = {
+                'buffer': kept['buffer'] + separator + live,
+                'audio': kept['audio'] + list(manager._dictate_pending_audio),
+                'last_ended_terminal': manager._last_dictate_ended_terminal,
+                'stack_items': kept['stack_items'] + live_items,
+            }
+            other_items = [item for item in manager._stack._items
+                           if item.kind != 'dictation_staged_chunk']
+            manager._stack._items.clear()
+            manager._stack._items.extend(other_items)
+        manager._restore_retained_draft()
 
 
 def _quit_send_result(outcome, app) -> bool:

@@ -13416,16 +13416,21 @@ class DictationApp:
         Keeping Samsara open leaves the snapshot and its reminder untouched.
         """
         from samsara.kept_session_draft import quit_draft_waiting, resolve_quit_choice
+        if getattr(self, '_quit_draft_pending', False) is True:
+            return False
         manager = getattr(self, '_session_mode_manager', None)
         if not quit_draft_waiting(self, manager):
             return True
+        self._quit_draft_pending = True
         try:
             from samsara.ui.quit_draft_dialog_qt import ask_quit_draft
             choice = ask_quit_draft()
+            return resolve_quit_choice(manager, choice, app=self)
         except Exception as exc:
-            logger.warning('[EXIT] Pending draft decision could not be shown: %s', describe_text(exc))
+            logger.warning('[EXIT] Pending draft decision failed: %s', describe_text(exc))
             return False
-        return resolve_quit_choice(manager, choice, app=self)
+        finally:
+            self._quit_draft_pending = False
 
     def quit_app(self, *, _restart_draft_resolved=False):
         """Exit the application"""
