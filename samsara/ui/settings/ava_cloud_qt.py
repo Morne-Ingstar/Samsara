@@ -208,7 +208,8 @@ class _OpenRouterPicker(QWidget):
     def select_model(self):
         item = self.models.currentItem()
         if self.active() and item is not None:
-            self.entry.setText(item.data(Qt.ItemDataRole.UserRole))
+            model_id = item.data(Qt.ItemDataRole.UserRole)
+            self.entry.setText("" if model_id == "openrouter/auto" else model_id)
 
     def load(self, *, refresh=False):
         if self.busy or not self.active():
@@ -220,7 +221,10 @@ class _OpenRouterPicker(QWidget):
         deliver = self.loaded.emit
 
         def worker():
-            result = openrouter_catalog.load_catalogue(path, refresh=refresh)
+            try:
+                result = openrouter_catalog.load_catalogue(path, refresh=refresh)
+            except Exception:
+                result = openrouter_catalog.Catalogue(reason="offline")
             try:
                 deliver(result)  # Qt queues this signal onto the widget's owning thread.
             except RuntimeError:
@@ -240,7 +244,7 @@ class _OpenRouterPicker(QWidget):
         note = reasons.get(result.reason, "")
         if not result.models and not note:
             note = "No models were returned."
-        self.status.setText(f"{age} {note} You can enter a model id above.".strip())
+        self.status.setText(" ".join(part for part in (age, note, "You can enter a model id above.") if part))
 
 
 class AvaCloudPage:

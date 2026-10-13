@@ -177,7 +177,7 @@ def test_custom_auto_filters_accessibility_and_keyboard_choice(picker):
     picker.models.setFocus()
     picker.models.setCurrentRow(0)
     QTest.keyClick(picker.models, Qt.Key.Key_Return)
-    assert picker.entry.text() == "openrouter/auto"
+    assert picker.entry.text() == ""
 
 
 def test_prices_context_and_near_past_expiration_are_visible(picker):
@@ -257,7 +257,7 @@ def test_outside_provider_change_parks_picker_choice_under_openrouter_only(harne
     window._apply_and_close()
     cloud = window.app.config["cloud_llm"]
     assert cloud["provider"] == "openai" and cloud["model"] == "other/owned"
-    assert cloud["provider_settings"]["openrouter"]["model"] == "openrouter/auto"
+    assert cloud["provider_settings"]["openrouter"]["model"] == ""
 
 
 def test_offline_manual_id_still_saves_and_auto_default_is_unchanged(harness):
@@ -269,3 +269,54 @@ def test_offline_manual_id_still_saves_and_auto_default_is_unchanged(harness):
     assert window.app.config["cloud_llm"]["model"] == "custom/manual"
     from samsara import cloud_llm
     assert cloud_llm.BUILTIN_PROVIDERS["openrouter"]["model"] == "openrouter/auto"
+
+
+def test_auto_applies_without_pinning_provider_default(harness, monkeypatch):
+    from samsara import cloud_llm
+    make, _, _ = harness
+    window = make(openrouter_config())
+    picker = window._widgets["openrouter_picker"]
+    picker.models.setCurrentRow(0)
+    picker.select_model()
+    window._apply_and_close()
+    assert not window.app.config["cloud_llm"].get("model")
+    monkeypatch.setitem(cloud_llm.BUILTIN_PROVIDERS["openrouter"], "model", "future/default")
+    assert cloud_llm._get_provider_config(window.app)[2] == "future/default"
+
+
+def test_unexpected_fetch_exception_returns_picker_to_idle_and_allows_retry(picker, monkeypatch, tmp_path):
+    workers = []
+    monkeypatch.setattr("samsara.ui.settings.ava_cloud_qt.samsara_home_dir", lambda: tmp_path)
+    monkeypatch.setattr("samsara.ui.settings.ava_cloud_qt.thread_registry.spawn",
+                        lambda name, fn, **k: workers.append(fn))
+    fetch = Mock(side_effect=MemoryError())
+    monkeypatch.setattr(catalog, "load_catalogue", fetch)
+    picker.load()
+    assert picker.busy and not picker.refresh.isEnabled()
+    workers.pop()()
+    assert not picker.busy and picker.refresh.isEnabled()
+    assert picker.catalogue.reason == "offline" and "Could not reach" in picker.status.text()
+    assert picker.entry.text() == "custom/kept"
+    fetch.side_effect = None
+    fetch.return_value = catalog.Catalogue(catalog.parse_models({"data": [model()]}))
+    picker.refresh.click()
+    workers.pop()()
+    assert not picker.busy and "example/paid" in ids(picker)
+
+
+def test_status_without_reason_has_single_spaces(picker):
+    picker.receive(catalog.Catalogue(catalog.parse_models({"data": [model()]}), fetched_at=1))
+    assert "  " not in picker.status.text()
+    assert ". You can enter" in picker.status.text()
+
+
+def test_free_filter_includes_prices_displayed_as_zero(picker):
+    rows = catalog.parse_models({"data": [
+        model("tiny/free", pricing={"prompt": "0.00000000001", "completion": "0.00000000001"}),
+        model("tiny/paid", pricing={"prompt": "0.00000000006", "completion": "0"}),
+        model("unknown", pricing={}),
+    ]})
+    picker.receive(catalog.Catalogue(rows))
+    assert "in $0 · out $0" in picker.row_text(rows[0])
+    picker.free.setChecked(True)
+    assert ids(picker) == ["openrouter/auto", "custom/kept", "tiny/free"]

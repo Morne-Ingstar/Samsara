@@ -75,8 +75,9 @@ def parse_models(payload):
 
 def matches(model, search="", free_only=False, capabilities=False):
     pricing = model["pricing"]
-    free = model["id"].endswith(":free") or all(pricing[key] == "0" or (
-        pricing[key] is not None and Decimal(pricing[key]) == 0) for key in ("prompt", "completion"))
+    free = model["id"].endswith(":free") or all(
+        pricing[key] is not None and f"{Decimal(pricing[key]) * 1_000_000:.4f}" == "0.0000"
+        for key in ("prompt", "completion"))
     params = set(model["supported_parameters"])
     capable = "tools" in params and bool(params & {"response_format", "structured_outputs"})
     return (search.casefold() in (model["name"] + " " + model["id"]).casefold()
