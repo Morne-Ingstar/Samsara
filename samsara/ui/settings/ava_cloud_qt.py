@@ -9,7 +9,7 @@ samsara/ui/settings/__init__.py for why that import is cycle-safe.
 
 from copy import deepcopy
 
-from PySide6.QtCore import Qt, QUrl, QObject, QEvent
+from PySide6.QtCore import Qt, QUrl, QObject, QEvent, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -34,6 +36,9 @@ from samsara.paths import samsara_home_dir
 from samsara.log import get_logger
 from samsara.ui import ava_consent_qt, theme
 from samsara.settings_merge import merge_outside_changes
+from samsara import openrouter_catalog
+from datetime import date
+from decimal import Decimal
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
 
@@ -85,6 +90,157 @@ class _AvaVisit(QObject):
         if event.type() == QEvent.Type.Close:
             watched._cancel_ava_route_preview()
         return False
+
+
+class _OpenRouterPicker(QWidget):
+    """An inline picker; browsing never saves or changes the model field."""
+
+    loaded = Signal(object)
+
+    def __init__(self, entry, active, parent=None):
+        super().__init__(parent)
+        self.entry, self.active = entry, active
+        self.catalogue = openrouter_catalog.Catalogue()
+        self.busy = False
+        # STAND-IN COPY (568): all picker labels, status and row copy below.
+        self.setAccessibleName("OpenRouter model picker")
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(theme.SPACE_2)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search models by name or id")
+        self.search.setAccessibleName("Search OpenRouter models by name or id")
+        column.addWidget(self.search)
+        filters = QHBoxLayout()
+        self.free = QCheckBox()
+        self.capabilities = QCheckBox()
+        self.free_label = QLabel("Free only")
+        self.capabilities_label = QLabel("Supports tools / JSON")
+        for control, label in ((self.free, self.free_label), (self.capabilities, self.capabilities_label)):
+            # Settings paints checkboxes as switches, so their labels are separate.
+            control.setAccessibleName(label.text())
+            control.setMinimumHeight(theme.HIT_TARGET_MIN)
+            label.setBuddy(control)
+            label.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
+            group = QHBoxLayout()
+            group.setSpacing(theme.SPACE_1)
+            group.addWidget(control)
+            group.addWidget(label)
+            filters.addLayout(group)
+            control.toggled.connect(self.populate)
+        filters.addStretch()
+        column.addLayout(filters)
+        self.models = QListWidget()
+        self.models.setAccessibleName("OpenRouter models, prices and context sizes")
+        self.models.setMinimumHeight(240)
+        self.models.setStyleSheet(f"QListWidget {{ font-size: {theme.TYPE_BODY}px; }}"
+                                 f"QListWidget::item {{ padding: {theme.SPACE_2}px; }}" + theme.SCROLLBAR_QSS)
+        self.models.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.models.setWordWrap(True)
+        column.addWidget(self.models)
+        self.status = QLabel("Open the list to load models. You can also enter a model id above.")
+        self.status.setAccessibleName("OpenRouter catalogue status")
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setWordWrap(True)
+        self.status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        column.addWidget(self.status)
+        actions = QHBoxLayout()
+        self.choose = QPushButton("Use selected model")
+        self.refresh = QPushButton("Refresh")
+        for button in (self.choose, self.refresh):
+            button.setAccessibleName(button.text())
+            button.setMinimumHeight(theme.HIT_TARGET_MIN)
+            theme.make_secondary(button)
+            actions.addWidget(button)
+        actions.addStretch()
+        column.addLayout(actions)
+        self.search.textChanged.connect(self.populate)
+        self.entry.textChanged.connect(self.populate)
+        self.models.itemActivated.connect(lambda _item: self.select_model())
+        self.choose.clicked.connect(self.select_model)
+        self.refresh.clicked.connect(lambda: self.load(refresh=True))
+        self.loaded.connect(self.receive)
+        self.populate()
+
+    @staticmethod
+    def row_text(model):
+        # STAND-IN COPY (568)
+        def price(key):
+            value = model["pricing"][key]
+            return "unknown" if value is None else f"${Decimal(value) * 1_000_000:,.4f}".rstrip("0").rstrip(".")
+        context = model["context_length"]
+        context = f"{context:,}" if context else "unknown"
+        text = (f"{model['name']}\n{model['id']}\n"
+                f"USD / 1M tokens: in {price('prompt')} · out {price('completion')} | Context: {context}")
+        expiration = model["expiration_date"]
+        if expiration:
+            remaining = (date.fromisoformat(expiration) - date.today()).days
+            if remaining <= 30:
+                text += f"\nWarning: {'expired' if remaining < 0 else 'expires'} {expiration}"
+        return text
+
+    def populate(self, *_args):
+        selected = self.models.currentItem()
+        selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else self.entry.text().strip()
+        current = self.entry.text().strip() or "openrouter/auto"
+        self.models.clear()
+        # STAND-IN COPY (568): Auto and the saved choice stay visible through filters.
+        rows = [("openrouter/auto", "Auto (OpenRouter chooses)")]
+        by_id = {model["id"]: model for model in self.catalogue.models}
+        if current != "openrouter/auto":
+            rows.append((current, self.row_text(by_id[current]) if current in by_id else f"Custom: {current}"))
+        for model in self.catalogue.models:
+            if model["id"] in {"openrouter/auto", current}:
+                continue
+            if openrouter_catalog.matches(model, self.search.text(), self.free.isChecked(), self.capabilities.isChecked()):
+                rows.append((model["id"], self.row_text(model)))
+        for model_id, text in rows:
+            item = QListWidgetItem(text, self.models)
+            item.setData(Qt.ItemDataRole.UserRole, model_id)
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, text)
+            if "Warning:" in text:
+                item.setForeground(theme.qcolor(theme.WARNING))
+            if model_id == (selected_id or current):
+                self.models.setCurrentItem(item)
+        if self.models.currentRow() < 0:
+            self.models.setCurrentRow(0)
+
+    def select_model(self):
+        item = self.models.currentItem()
+        if self.active() and item is not None:
+            self.entry.setText(item.data(Qt.ItemDataRole.UserRole))
+
+    def load(self, *, refresh=False):
+        if self.busy or not self.active():
+            return
+        self.busy = True
+        self.refresh.setEnabled(False)
+        self.status.setText("Loading models… You can still enter a model id above.")  # STAND-IN COPY (568)
+        path = samsara_home_dir() / "openrouter_catalog.json"
+        deliver = self.loaded.emit
+
+        def worker():
+            result = openrouter_catalog.load_catalogue(path, refresh=refresh)
+            try:
+                deliver(result)  # Qt queues this signal onto the widget's owning thread.
+            except RuntimeError:
+                pass  # The Settings visit was rebuilt while the worker was running.
+
+        thread_registry.spawn("settings.openrouter_catalog", worker, daemon=True)
+
+    def receive(self, result):
+        self.busy = False
+        self.refresh.setEnabled(True)
+        self.catalogue = result
+        self.populate()
+        # STAND-IN COPY (568)
+        age = f"Catalogue age: {result.age_hours():.0f} hours." if result.fetched_at else "No cached catalogue."
+        reasons = {"offline": "Could not reach OpenRouter.", "invalid": "OpenRouter sent an unreadable catalogue.",
+                   "cache": "The catalogue could not be cached."}
+        note = reasons.get(result.reason, "")
+        if not result.models and not note:
+            note = "No models were returned."
+        self.status.setText(f"{age} {note} You can enter a model id above.".strip())
 
 
 class AvaCloudPage:
@@ -424,6 +580,21 @@ class AvaCloudPage:
             model_entry,
         ))
         layout.addSpacing(8)
+
+        # Catalogue is not opened, read or fetched while building Settings.
+        # STAND-IN COPY (568)
+        picker_button = QPushButton("Choose OpenRouter model")
+        picker_button.setAccessibleName("Choose an OpenRouter model from the catalogue")
+        picker_button.setMinimumHeight(theme.HIT_TARGET_MIN)
+        theme.make_secondary(picker_button)
+        self._widgets['openrouter_picker_button'] = picker_button
+        picker = _OpenRouterPicker(model_entry, self._openrouter_picker_active)
+        self._widgets['openrouter_picker'] = picker
+        layout.addWidget(picker_button)
+        layout.addWidget(picker)
+        picker.hide()
+        picker_button.clicked.connect(self._open_openrouter_picker)
+        self._sync_openrouter_picker()
 
         # Web search (queue 59) -- explicit cloud opt-in, DeepSeek only.
         layout.addWidget(self._section_title("Web search"))
@@ -816,7 +987,38 @@ class AvaCloudPage:
         for key in ('cloud_provider', 'cloud_api_key', 'cloud_model', 'cloud_timeout', 'cloud_test_button'):
             self._widgets[key].setEnabled(policy == 'cloud')
         self._sync_web_search_availability()
+        self._sync_openrouter_picker()
         self._refresh_conditions()
+
+    def _openrouter_picker_active(self):
+        route = self._widgets.get('providerRoute')
+        return (self._widgets['cloud_provider'].currentText() == 'OpenRouter'
+                and route is not None and route.currentData() == 'cloud')
+
+    def _sync_openrouter_picker(self):
+        button = self._widgets.get('openrouter_picker_button')
+        if button is None:
+            return
+        row = getattr(self, '_rows_by_widget', {}).get('cloud_model')
+        picker = self._widgets['openrouter_picker']
+        if row is not None and picker.parent() is not row:
+            # Source scaffolding is hidden; add to the destination's existing row.
+            row.grid.addWidget(button, 2, 0, 1, 3)
+            row.grid.addWidget(picker, 3, 0, 1, 3)
+            picker.hide()
+        is_openrouter = self._widgets['cloud_provider'].currentText() == 'OpenRouter'
+        button.setVisible(is_openrouter)
+        button.setEnabled(self._openrouter_picker_active())
+        if not self._openrouter_picker_active():
+            self._widgets['openrouter_picker'].hide()
+
+    def _open_openrouter_picker(self):
+        if not self._openrouter_picker_active():
+            return
+        picker = self._widgets['openrouter_picker']
+        picker.show()
+        picker.search.setFocus()
+        picker.load()
 
     def _set_ava_route_status(self, text, visible, *, pending=False):
         self._widgets['ava_route_status'].setText(text)
@@ -841,6 +1043,7 @@ class AvaCloudPage:
         row.setVisible(visible)
 
     def _refresh_ava_route_status(self):
+        self._sync_openrouter_picker()
         if 'ava_route_status' not in self._widgets:
             return
         effective = self._ava_staged_config()
