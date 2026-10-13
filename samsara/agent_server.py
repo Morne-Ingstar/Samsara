@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 PORT = 47832
 VERSIONS = ("2026-07-28", "2025-11-25")
 MAX_BODY = 16384
+# Discard larger refused bodies in small chunks, without growing the body buffer.
+MAX_DRAIN = 4 * 1024 * 1024
 MAX_TEXT = 400
 REQUEST_TIMEOUT = 2.0
 UI_TIMEOUT = 2.0
@@ -129,6 +131,24 @@ class _Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         if data and self.command != "HEAD":
             self.wfile.write(data)
+        if status >= 400:
+            self._linger_close()
+
+    def _linger_close(self):
+        """Deliver refusals before closing with unread bytes (a reset on Windows)."""
+        try:
+            self.wfile.flush()
+            self.connection.shutdown(socket.SHUT_WR)
+            remaining = MAX_DRAIN
+            # read1 includes BufferedReader's prefetched bytes; its raw reader
+            # retains the original whole-request deadline, even for a drip feed.
+            while remaining > 0:
+                discarded = self.rfile.read1(min(MAX_BODY, remaining))
+                if not discarded:
+                    break
+                remaining -= len(discarded)
+        except (TimeoutError, OSError):
+            pass  # The byte budget/deadline and disconnected peers bound the close.
 
     def _guard(self):
         agent = self.server.agent

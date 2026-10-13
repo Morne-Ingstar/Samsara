@@ -1,7 +1,8 @@
 """Real port-0 HTTP, isolated profiles and fake speech; never import dictation."""
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPResponse
 from contextlib import closing
 import errno
+import io
 import json
 import logging
 from pathlib import Path
@@ -299,6 +300,112 @@ def test_oversize_malformed_and_unsupported_transport(server):
     assert post(server, path="/other")[0] == 404
     assert post(server, verb="GET")[0] == 405
     assert post(server, verb="DELETE")[0] == 405
+
+
+def test_two_megabyte_body_gets_413_without_reset(server):
+    assert post(server, raw=b"x" * (2 * 1024 * 1024)) == (413, None)
+    assert not server.app.audio_coordinator.calls
+    assert post(server)[0] == 200
+
+
+@pytest.mark.parametrize("refusal,status", [
+    ("origin", 403), ("host", 403), ("auth", 401), ("stopping", 503),
+    ("disabled", 503), ("path", 404), ("content_type", 415), ("method", 405),
+    ("transfer_encoding", 400), ("length", 400), ("oversize", 413),
+    ("unknown_method", 501),
+])
+def test_refusal_delivered_before_remaining_body_arrives(server, refusal, status):
+    headers = {"Host": "127.0.0.1:" + str(server.port),
+               "Authorization": "Bearer " + server._token,
+               "Content-Type": "application/json", "Content-Length": "32768"}
+    path, method = "/mcp", "POST"
+    if refusal == "origin":
+        headers["Origin"] = "null"
+    elif refusal == "host":
+        headers["Host"] = "example.invalid"
+    elif refusal == "auth":
+        headers.pop("Authorization")
+    elif refusal == "stopping":
+        server._stopping.set()
+    elif refusal == "disabled":
+        server.app.config["command_packs"]["agents"] = False
+    elif refusal == "path":
+        path = "/other"
+    elif refusal == "content_type":
+        headers["Content-Type"] = "text/plain"
+    elif refusal == "method":
+        method = "GET"
+    elif refusal == "unknown_method":
+        method = "UNKNOWN"
+    elif refusal == "transfer_encoding":
+        headers["Transfer-Encoding"] = "chunked"
+    elif refusal == "length":
+        headers["Content-Length"] = "invalid"
+    request = (method + " " + path + " HTTP/1.1\r\n"
+               + "".join(key + ": " + value + "\r\n" for key, value in headers.items())
+               + "\r\n").encode()
+    with socket.create_connection(("127.0.0.1", server.port), timeout=3) as connection:
+        connection.sendall(request + b"x")
+        with closing(HTTPResponse(connection)) as response:
+            response.begin()
+            assert response.status == status
+            assert response.read() == b""
+            # The write half has closed, but late request bytes can still be
+            # discarded. A premature full close/reset fails sendall or recv.
+            connection.sendall(b"x" * 32767)
+            connection.shutdown(socket.SHUT_WR)
+            assert connection.recv(1) == b""
+    server._stopping.clear()
+    server.app.config["command_packs"]["agents"] = True
+    assert not server.app.audio_coordinator.calls
+    assert post(server)[0] == 200
+
+
+def test_lingering_close_discards_with_a_byte_budget():
+    reads = []
+    events = []
+
+    class UnendingBody:
+        def read1(self, size):
+            reads.append(size)
+            return b"x" * size
+
+    handler = object.__new__(agents._Handler)
+    handler.wfile = SimpleNamespace(flush=lambda: events.append("flush"))
+    handler.connection = SimpleNamespace(shutdown=lambda how: events.append(how))
+    handler.rfile = UnendingBody()
+    handler._linger_close()
+    assert events == ["flush", socket.SHUT_WR]
+    assert sum(reads) == agents.MAX_DRAIN
+    assert max(reads) <= agents.MAX_BODY
+
+
+def test_lingering_close_preserves_the_existing_deadline(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(agents, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    timeouts = []
+    reads = []
+
+    def receive(buffer):
+        reads.append(len(buffer))
+        buffer[0] = ord("x")
+        now[0] += agents.REQUEST_TIMEOUT / 4
+        return 1
+
+    connection = SimpleNamespace(shutdown=lambda how: None, settimeout=timeouts.append,
+                                 recv_into=receive)
+    raw = agents._DeadlineReader(connection)
+    # Consume almost the entire original deadline before refusing the request.
+    now[0] += agents.REQUEST_TIMEOUT * 0.75
+    handler = object.__new__(agents._Handler)
+    handler.connection = connection
+    handler.wfile = SimpleNamespace(flush=lambda: None)
+    with io.BufferedReader(raw) as reader:
+        handler.rfile = reader
+        handler._linger_close()
+    assert timeouts == [agents.REQUEST_TIMEOUT / 4]
+    assert len(reads) == 1
+    assert now[0] == raw.deadline
 
 
 def test_token_persists_and_rotates_without_rebind(server):
