@@ -81,7 +81,7 @@ def socket_free_immediate_operations(monkeypatch):
     monkeypatch.setattr(asyncio.events, "new_event_loop", LocalLoop)
 
 
-def _hold(monkeypatch, inline=True, other=None, short=False, wrappers=False):
+def _hold(monkeypatch, inline=True, other=None, wrappers=False):
     clock = [100.0]
     monkeypatch.setattr(media_pause, "monotonic", lambda: clock[0])
     music = _Session(inline)
@@ -101,14 +101,12 @@ def _hold(monkeypatch, inline=True, other=None, short=False, wrappers=False):
         get_sessions=lambda: [Wrapper(s) for s in sessions] if wrappers else sessions,
     )
     pauser = media_pause.RecordingMediaPauser(layer_factory=lambda: layer)
-    if short:
-        music.after_pause = pauser.finish
     pauser.start()
     deadline = time.monotonic() + 2
     while not pauser._paused and time.monotonic() < deadline:
         time.sleep(0.001)
     assert pauser._paused
-    if other is not None and other.state == "Playing" and not short:
+    if other is not None and other.state == "Playing":
         while not other.pause_calls and time.monotonic() < deadline:
             time.sleep(0.001)
         assert other.pause_calls
@@ -245,10 +243,134 @@ def test_non_paused_notification_inside_window_opts_out(monkeypatch, state):
         _finish(pauser, music, 0)
 
 
-def test_genuine_user_pause_after_window_wins(monkeypatch):
+def test_duplicate_paused_event_after_window_opts_out(monkeypatch):
     pauser, music, _, clock = _hold(monkeypatch)
     try:
         clock[0] += 1.001
         music.emit()
     finally:
         _finish(pauser, music, 0)
+
+
+class _UnreadableSession(_Session):
+    def __init__(self, *args, persistent=False, recovered_state="Stopped", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.persistent = persistent
+        self.recovered_state = recovered_state
+        self.reads = 0
+
+    def get_playback_info(self):
+        self.reads += 1
+        if self.persistent or self.reads == 1:
+            self.state = self.recovered_state
+            raise RuntimeError("fake playback unavailable")
+        return super().get_playback_info()
+
+
+@pytest.mark.parametrize("bad_first", [True, False])
+@pytest.mark.parametrize("persistent,recovered_state", [(False, "Stopped"), (False, "Playing"), (True, "Playing")])
+@pytest.mark.parametrize("wrappers", [False, True], ids=["same_objects", "fresh_wrappers"])
+def test_unreadable_snapshot_session_respects_release_state(monkeypatch, caplog, bad_first, persistent, recovered_state, wrappers):
+    music = _Session()
+    bad = _UnreadableSession(app_id="fake.unreadable", persistent=persistent, recovered_state=recovered_state)
+    sessions = [bad, music] if bad_first else [music, bad]
+    layer = media_pause.WinRTMediaSessionLayer.__new__(media_pause.WinRTMediaSessionLayer)
+    class Wrapper:
+        def __init__(self, session):
+            self.session = session
+
+        def __getattr__(self, name):
+            return getattr(self.session, name)
+
+    layer._manager = SimpleNamespace(
+        get_sessions=lambda: [Wrapper(s) for s in sessions] if wrappers else sessions,
+    )
+    fallback = []
+    pauser = media_pause.RecordingMediaPauser(
+        layer_factory=lambda: layer, fallback=lambda: fallback.append(True),
+    )
+    music.after_pause = pauser.finish
+    pauser._run()
+    assert music.pause_calls == 1
+    assert music.resumes == (0 if not persistent and recovered_state == "Playing" else 1)
+    assert not music.observers
+    assert bad.pause_calls == bad.resumes == 0
+    assert bad.source_app_user_model_id not in pauser._playing_at_start
+    assert not fallback
+    warnings = [r.message for r in caplog.records if "Hold-start session unreadable" in r.message]
+    assert warnings == ["[MEDIA] Hold-start session unreadable; skipping session"]
+    assert "fake.unreadable" not in caplog.text
+
+
+def test_all_snapshot_sessions_unreadable_uses_duck_fallback(caplog):
+    sessions = [_UnreadableSession(app_id=f"fake.unreadable.{i}", persistent=True) for i in range(2)]
+    layer = media_pause.WinRTMediaSessionLayer.__new__(media_pause.WinRTMediaSessionLayer)
+    layer._manager = SimpleNamespace(get_sessions=lambda: sessions)
+    fallback, failures = [], []
+    pauser = media_pause.RecordingMediaPauser(
+        layer_factory=lambda: layer, fallback=lambda: fallback.append(True),
+        on_failure=lambda step, error: failures.append((step, error)),
+    )
+    pauser._run()
+    assert fallback == [True]
+    assert failures == [("media snapshot", "no readable media sessions")]
+    assert not pauser._playing_at_start
+    assert not pauser._paused
+    assert all(s.pause_calls == s.resumes == 0 and not s.observers for s in sessions)
+    warnings = [r.message for r in caplog.records if "Hold-start session unreadable" in r.message]
+    assert len(warnings) == len(sessions)
+    assert "fake.unreadable" not in caplog.text
+
+
+@pytest.mark.parametrize("bad_first", [True, False])
+@pytest.mark.parametrize("another_playing", [False, True])
+def test_release_unreadable_session_does_not_block_other_resume(monkeypatch, bad_first, another_playing):
+    pauser, music, sessions, _ = _hold(monkeypatch)
+    bad = _UnreadableSession(app_id="fake.release", persistent=True)
+    sessions.insert(0 if bad_first else len(sessions), bad)
+    if another_playing:
+        sessions.append(_Session(app_id="fake.chosen"))
+    _finish(pauser, music, 0 if another_playing else 1)
+    assert bad.pause_calls == bad.resumes == 0
+
+
+@pytest.mark.parametrize("bad_first", [True, False])
+@pytest.mark.parametrize("wrappers", [False, True], ids=["same_objects", "fresh_wrappers"])
+def test_start_unreadable_session_user_starts_during_hold_wins(monkeypatch, bad_first, wrappers):
+    monkeypatch.setattr(media_pause, "monotonic", lambda: 100.0)
+    music = _Session()
+    other = _UnreadableSession(app_id="fake.chosen", recovered_state="Stopped")
+    other.state = "Stopped"
+    sessions = [other, music] if bad_first else [music, other]
+
+    class Wrapper:
+        def __init__(self, session):
+            self.session = session
+
+        def __getattr__(self, name):
+            return getattr(self.session, name)
+
+    layer = media_pause.WinRTMediaSessionLayer.__new__(media_pause.WinRTMediaSessionLayer)
+    layer._manager = SimpleNamespace(
+        get_sessions=lambda: [Wrapper(s) for s in sessions] if wrappers else sessions,
+    )
+    fallback = []
+    pauser = media_pause.RecordingMediaPauser(
+        layer_factory=lambda: layer, fallback=lambda: fallback.append(True),
+    )
+
+    def user_starts_other():
+        assert other.state == "Stopped"
+        other.emit("Playing")
+        pauser.finish()
+
+    music.after_pause = user_starts_other
+    pauser._run()
+    assert music.pause_calls == 1
+    assert music.resumes == 0
+    assert music.state == "Paused"
+    assert not music.observers
+    assert other.reads == 2
+    assert other.pause_calls == other.resumes == 0
+    assert other.state == "Playing"
+    assert not fallback

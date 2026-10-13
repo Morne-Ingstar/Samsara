@@ -96,7 +96,6 @@ class _PausedSession:
     app_id: str
     remove_observer: Callable[[], None]
     pause_event_deadline: float = 0.0
-    saw_our_pause: bool = False
     status_changed: bool = False
 
 
@@ -159,9 +158,7 @@ class RecordingMediaPauser:
             return
         # Pause completion and PlaybackInfoChanged can arrive in either order.
         # Repeated Paused readings in the request window are acknowledgements.
-        if state == "paused" and monotonic() <= paused.pause_event_deadline:
-            paused.saw_our_pause = True
-        else:
+        if state != "paused" or monotonic() > paused.pause_event_deadline:
             paused.status_changed = True
 
     def _run(self) -> None:
@@ -169,10 +166,22 @@ class RecordingMediaPauser:
             layer = self._layer_factory()
             sessions = layer.list_sessions()
             # Snapshot before pausing, including players a short hold never reaches.
-            self._playing_at_start = {
-                layer.app_id(session) for session in sessions
-                if layer.playback_status(session) == "playing"
-            }
+            readable_sessions = []
+            for session in sessions:
+                try:
+                    state = layer.playback_status(session)
+                    if state == "playing":
+                        self._playing_at_start.add(layer.app_id(session))
+                    readable_sessions.append(session)
+                except Exception:
+                    # Unknown is not playing-at-start: do not take ownership.
+                    # If it later reads Playing, respect that choice at release.
+                    logger.warning("[MEDIA] Hold-start session unreadable; skipping session")
+            if sessions and not readable_sessions:
+                self._failed("media snapshot", "no readable media sessions")
+                self._use_fallback()
+                return
+            sessions = readable_sessions
         except MediaSessionUnavailable as exc:
             global _missing_api_logged
             with _missing_api_lock:
@@ -224,12 +233,18 @@ class RecordingMediaPauser:
         with self._lock:
             paused, self._paused = self._paused, []
         try:
-            playing_elsewhere = any(
-                layer.app_id(session) not in self._playing_at_start
-                and layer.app_id(session) not in self._pause_attempted
-                and layer.playback_status(session) == "playing"
-                for session in layer.list_sessions()
-            )
+            playing_elsewhere = False
+            for session in layer.list_sessions():
+                try:
+                    app_id = layer.app_id(session)
+                    if (app_id not in self._playing_at_start
+                            and app_id not in self._pause_attempted
+                            and layer.playback_status(session) == "playing"):
+                        playing_elsewhere = True
+                        break
+                except Exception:
+                    # A single closing/unreadable session cannot veto resume.
+                    continue
         except Exception as exc:
             playing_elsewhere = True
             logger.warning("[MEDIA] Resume session check failed: %s", exc)
