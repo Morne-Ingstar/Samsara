@@ -379,6 +379,24 @@ def test_tts_worker_failure_leaves_guards_none_and_ready_set(monkeypatch):
 # ── Fix 4: persisted calibration ─────────────────────────────────────────────
 
 def _cal_app(tmp_path, monkeypatch, measured=0.02, samples=10):
+    # Calibration resolves the saved name before measuring or looking up a cache.
+    # Supply the complete device boundary so these tests need no audio hardware.
+    devices = [{"name": f"Output {index}", "max_input_channels": 0}
+               for index in range(3)]
+    devices += [{"name": name, "max_input_channels": 1, "hostapi": 0,
+                 "default_samplerate": 44100}
+                for name in ("Focusrite USB", "Laptop Mic")]
+
+    def query_devices(device=None, kind=None):
+        if device is None and kind is None:
+            return devices
+        return devices[3 if device is None else device]
+
+    monkeypatch.setattr(dictation, "sd", types.SimpleNamespace(
+        query_devices=query_devices,
+        query_hostapis=lambda: [{"name": "Windows WASAPI"}],
+        default=types.SimpleNamespace(device=(3, -1)),
+    ))
     app = dictation.DictationApp.__new__(dictation.DictationApp)
     app.config_path = tmp_path / "config.json"
     app.config = {"threshold_mode": "auto", "microphone": 3,
