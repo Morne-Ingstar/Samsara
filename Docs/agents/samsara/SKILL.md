@@ -1,6 +1,6 @@
 ---
 name: samsara
-description: Use Samsara's MCP tools to check its public status or speak a short reply to a Windows user who controls their PC by voice.
+description: Use Samsara's MCP tools to check public status, speak a short reply, or type approved text for a Windows user who controls their PC by voice.
 compatibility: Windows; Samsara running with the agents pack enabled; local HTTP MCP client.
 ---
 
@@ -66,7 +66,12 @@ mcp_servers:
 
 The endpoint requires a Bearer token, rejects browsers' Origin headers, and
 accepts only a loopback Host header. It is off by default and closes when the
-switch is off or Samsara quits. This version has no typing tool.
+switch is off or Samsara quits.
+
+<!-- # STAND-IN COPY (565): typing prose awaits the owner's wording. -->
+**Let AI apps type for me** is a second switch under the agents pack, off by
+default. Turning the pack off clears this switch. While off, `type_text` is
+absent from `tools/list` and calls to it are refused.
 
 ## Tools
 
@@ -82,7 +87,30 @@ switch is off or Samsara quits. This version has no typing tool.
   limits return a reason. A queued result is acceptance, not proof of playback.
   At most one accepted utterance every two seconds and three pending utterances.
   Pending slots expire after 60 seconds even if interrupted speech never reports
-  completion; switching the pack off resets the slots.
+  completion; switching the pack off resets the slots. During a typing question
+  and for three seconds afterward, `speak` returns `busy` and speaks nothing.
+- `type_text(text)` accepts 1–2,000 characters of plain text. Internal newlines
+  and carriage returns are refused everywhere, along with other control/invisible
+  characters and markup; they are never stripped. Delivery uses only the
+  clipboard, never typed injection or typed fallback; an unsafe/unavailable
+  clipboard returns `refused_delivery`. It cannot press Enter or send. One request may await approval for
+  at most 30 seconds; a second returns `busy` immediately and is never queued.
+  Samsara asks who wants to type how many words into which app, without reading
+  the text. The spoken question must finish and its half-second echo tail clear
+  before the answer window opens; an unspoken question times out. Say yes using Samsara's Command-only key (default Ctrl+Alt+C).
+  One approval permits one paste into the same window and process; a focus or
+  process change cancels it. Decline, timeout, disabled switches and unsafe
+  targets paste nothing. Terminals, elevated windows, Samsara's own windows and
+  lock/UAC desktops are refused before asking. UIA `IsPassword` fields are
+  refused. Missing, failed or timed-out UIA verification returns
+  `refused_unverified`; a provider incorrectly reporting a password as ordinary
+  text still cannot be identified. UIA is checked on a worker with a 350 ms limit. Unknown integrity/desktop state is refused too.
+  The result contains `status` (`delivered` or `refused`) and a closed reason:
+  `delivered`, `refused_terminal`, `refused_elevated`, `refused_own_window`,
+  `refused_password`, `refused_unverified`, `refused_delivery`, `user_declined`, `timeout`, `window_changed`, `too_long`,
+  `invalid_text`, `disabled`, or `busy`. `delivered` means injection accepted;
+  it does not prove the editor displayed the text. Logs contain only the tool,
+  outcome, reason and length bucket, never the text or window title.
 
 ## Etiquette
 
@@ -92,10 +120,16 @@ Use one or two short sentences. Keep code, paths, tables, URLs and long text in
 the written reply. Never read private text aloud unless the user requested it.
 Respect Silent, mute and refusals; do not retry or rephrase around them. Do not
 loop speech or narrate progress. The user's stop command can interrupt speech.
-Ask for information in one short spoken question; v1 cannot listen for an answer.
+Ask for information in one short spoken question; these tools do not return dictation.
 Agent speech uses Ava's voice: never impersonate the user's own messages or
 system warnings.
 Dictated names can be misheard; clarify ambiguous or destructive targets.
+
+<!-- # STAND-IN COPY (565) -->
+Before `type_text`, ask the user in chat and name the destination. Call only
+when the user has asked for that text to be placed there. Never use it to send
+messages, run commands, or fill credentials. The user's spoken yes is required
+every time, even after chat approval. A refusal is final; never retry around it.
 
 ## Protocol and sources
 
@@ -103,11 +137,16 @@ Dual-era MCP: current **2026-07-28** HTTP requests use per-request metadata,
 `MCP-Protocol-Version`, `Mcp-Method`, and (for calls) `Mcp-Name`; `server/discover`
 advertises capabilities. Older clients use `initialize`, which returns
 **2025-11-25**, followed by `notifications/initialized`. Supporting both lets
-handshake clients use the two tools while newer clients use stateless discovery.
-Responses are plain JSON. There are no SSE streams or protocol sessions.
+handshake clients use the tools while newer clients use stateless discovery.
+Responses are plain JSON; there are no SSE streams. Legacy `initialize` returns
+an optional `Mcp-Session-Id` header binding its sanitized clientInfo name for one
+hour (at most 64 identities); echo it on calls. Missing/expired identity is
+"An AI app", never the last app that initialized. Modern requests carry their
+own clientInfo metadata. Client-supplied names are labels, not verified identity.
 Each inbound request has a two-second deadline, including headers and body.
-Requests run one at a time: several slow connections from a local program can
-delay agent speech. The deadline bounds each accepted connection, not queue time.
+At most eight connections run concurrently; a full connection budget is closed
+without queuing another worker. A local program can exhaust that budget and
+delay agent access. A typing call can wait 30 seconds for its spoken answer.
 
 Verified 13 October 2026:
 [MCP versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning),

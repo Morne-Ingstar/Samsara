@@ -3,7 +3,7 @@ from contextlib import nullcontext
 import secrets
 
 from PySide6.QtCore import QMimeData, QTimer
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QCheckBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from samsara.agent_server import for_app
 from samsara.ui import theme
@@ -39,10 +39,16 @@ class AgentsControls(QWidget):
             buttons.addWidget(button)
         buttons.addStretch()
         layout.addLayout(buttons)
+        self.typing = QCheckBox("Let AI apps type for me")  # STAND-IN COPY (565)
+        self.typing.setObjectName("agent_server.allow_typing")
+        self.typing.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.typing.setChecked(self._typing_enabled())
+        layout.addWidget(self.typing)
         guard = getattr(owner, "_visit_callback", lambda fn, *widgets: fn)
         enabled.toggled.connect(guard(self.toggle, self))
         self.copy.clicked.connect(guard(self.copy_details, self))
         self.rotate.clicked.connect(guard(self.new_token, self))
+        self.typing.toggled.connect(guard(self.toggle_typing, self))
         self.refresh()
 
     def refresh(self, token_failed=False):
@@ -52,23 +58,51 @@ class AgentsControls(QWidget):
         self.status.setText("Could not save a new token." if token_failed else labels[self.server.status])
         self.copy.setEnabled(self.server.status == "listening")
         self.rotate.setEnabled(self.server.status == "listening")
+        self.typing.setEnabled((self.owner.app.config.get("command_packs") or {}).get("agents") is True)
+        self.typing.blockSignals(True)
+        self.typing.setChecked(self._typing_enabled())
+        self.typing.blockSignals(False)
+
+    def _typing_enabled(self):
+        config = self.owner.app.config
+        return ((config.get("command_packs") or {}).get("agents") is True
+                and (config.get("agent_server") or {}).get("allow_typing") is True)
 
     def toggle(self, enabled):
         app = self.owner.app
         with getattr(app, "_config_lock", None) or nullcontext():
             packs = app.config.setdefault("command_packs", {})
             old = packs.get("agents", False)
+            typing = app.config.setdefault("agent_server", {})
+            old_typing = typing.get("allow_typing", False)
             packs["agents"] = bool(enabled)
+            if not enabled:
+                typing["allow_typing"] = False
             try:
                 app.save_config()
             except Exception:
                 packs["agents"] = old
+                typing["allow_typing"] = old_typing
                 self.enabled.blockSignals(True)
                 self.enabled.setChecked(old)
                 self.enabled.blockSignals(False)
                 self.refresh()
                 return
         self.server.sync()
+        self.refresh()
+
+    def toggle_typing(self, enabled):
+        app = self.owner.app
+        with getattr(app, "_config_lock", None) or nullcontext():
+            config = app.config.setdefault("agent_server", {})
+            old = config.get("allow_typing", False)
+            config["allow_typing"] = bool(enabled) and self.server.enabled
+            try:
+                app.save_config()
+            except Exception:
+                config["allow_typing"] = old
+        if not self.server.typing_enabled:
+            self.server.cancel_typing()
         self.refresh()
 
     def copy_details(self, *_args):

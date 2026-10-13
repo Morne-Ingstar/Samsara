@@ -85,6 +85,7 @@ def paste_preserving_clipboard(
     return_delivery_confirmation=False,
     *,
     feedback=True,
+    clipboard_only=False,
     paste_with_preservation_fn=paste_with_preservation,
     type_text_unicode_fn=type_text_unicode,
     get_foreground_hwnd_fn=_get_foreground_hwnd,
@@ -114,7 +115,8 @@ def paste_preserving_clipboard(
     # nothing for the target to double. Clipboard-paste remains for long
     # texts where atomic delivery matters.
     threshold = app.config.get('paste_min_chars', 300)
-    _typed_wanted = len(text) < threshold and app._foreground_wants_typed_injection()
+    _typed_wanted = (not clipboard_only and len(text) < threshold
+                     and app._foreground_wants_typed_injection())
     _typed_failed = False
     if _typed_wanted:
         if before_paste is not None and not before_paste():
@@ -181,7 +183,7 @@ def paste_preserving_clipboard(
         paste_delay=CLIPBOARD_PASTE_DELAY,
         restore_delay=delay,
         before_paste=_capture_target_before_paste,
-        incomplete_snapshot_fallback=_typed_fallback_without_clipboard,
+        incomplete_snapshot_fallback=None if clipboard_only else _typed_fallback_without_clipboard,
         delivery_observer=lambda outcome: receipt.update(outcome=outcome),
     )
     outcome = receipt["outcome"]

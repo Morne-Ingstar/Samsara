@@ -9,6 +9,7 @@ No request, argument, client identity, token, or exception message is logged.
 from __future__ import annotations
 
 import base64
+from contextlib import nullcontext
 import hmac
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
@@ -24,6 +25,7 @@ import time
 import unicodedata
 
 from samsara import __version__
+from samsara import paste as paste_delivery
 from samsara.config_defaults import cfg_get
 from samsara.paths import samsara_home_dir
 from samsara.runtime import thread_registry
@@ -40,6 +42,24 @@ UI_TIMEOUT = 2.0
 SPEAK_INTERVAL = 2.0
 MAX_PENDING = 3
 PENDING_TIMEOUT = 60.0
+MAX_TYPE_TEXT = 2000
+TYPE_TIMEOUT = 30.0
+SPEAK_QUIET_AFTER_TYPING = 3.0
+CONFIRM_ECHO_TAIL = 0.5
+UIA_TIMEOUT = 0.35
+_UIA_SLOT = threading.BoundedSemaphore(1)
+_TERMINAL_PROCESSES = frozenset({
+    "putty.exe", "kitty.exe", "mobaxterm.exe", "conemu.exe", "conemu64.exe",
+    "tabby.exe", "hyper.exe", "termius.exe", "git-bash.exe",
+})
+_TERMINAL_CLASSES = frozenset({
+    "consolewindowclass", "cascadia_hosting_window_class", "virtualconsoleclass",
+    "putty", "kitty", "mintty", "org.wezfurlong.wezterm", "alacritty",
+})
+MAX_CONNECTIONS = 8
+_TYPE_REASONS = frozenset({"refused_terminal", "refused_elevated", "refused_own_window",
+                           "refused_password", "refused_delivery", "refused_unverified", "user_declined", "timeout", "window_changed",
+                           "too_long", "invalid_text", "disabled", "busy", "delivered"})
 _METHODS = frozenset({"initialize", "notifications/initialized", "ping",
                       "notifications/cancelled", "server/discover", "tools/list", "tools/call"})
 _INFO = {"name": "samsara", "version": __version__}
@@ -56,6 +76,145 @@ TOOLS = [
      "annotations": {"readOnlyHint": False, "destructiveHint": False,
                      "idempotentHint": False, "openWorldHint": False}},
 ]
+TYPE_TOOL = {
+    "name": "type_text", "description": "Type plain text after the user's spoken approval, without sending.",
+    "inputSchema": {"type": "object", "properties": {
+        "text": {"type": "string", "minLength": 1, "maxLength": MAX_TYPE_TEXT}},
+        "required": ["text"], "additionalProperties": False},
+    "annotations": {"readOnlyHint": False, "destructiveHint": True,
+                    "idempotentHint": False, "openWorldHint": True},
+}
+
+
+def _safe_name(value, fallback="An AI app", *, client=True):
+    if not isinstance(value, str):
+        return fallback
+    # No punctuation, markup, invisible characters or sentence injection.
+    value = " ".join("".join(c if c.isalnum() or c == " " else " " for c in value).split())
+    if client and any(word in value.casefold() for word in
+           ("samsara", "yes", "no", "say", "allow", "safe", "confirm", "ok")):
+        return fallback
+    return " ".join(value.split()[:3])[:24].strip() or fallback
+
+
+def _text_reason(args):
+    if not isinstance(args, dict) or set(args) != {"text"}:
+        return "invalid_text"
+    value = args["text"]
+    if not isinstance(value, str):
+        return "invalid_text"
+    if len(value) > MAX_TYPE_TEXT:
+        return "too_long"
+    if (not value.strip()
+            or any(unicodedata.category(c) in {"Cc", "Cf", "Cs", "Zl", "Zp"} for c in value)
+            or re.search(r"<[^>]*>|```", value)):
+        return "invalid_text"
+    return None
+
+
+def _desktop_allows_typing():
+    """Fail closed on inaccessible/non-default input desktops (lock/UAC)."""
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL("user32", use_last_error=True)
+    api.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    api.OpenInputDesktop.restype = wintypes.HANDLE
+    api.CloseDesktop.argtypes = [wintypes.HANDLE]
+    api.GetUserObjectInformationW.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                             ctypes.c_void_p, wintypes.DWORD,
+                                             ctypes.POINTER(wintypes.DWORD)]
+    desktop = api.OpenInputDesktop(0, False, 1)  # DESKTOP_READOBJECTS
+    if not desktop:
+        return False
+    try:
+        name, needed = ctypes.create_unicode_buffer(256), wintypes.DWORD()
+        return bool(api.GetUserObjectInformationW(desktop, 2, name, ctypes.sizeof(name),
+                                                  ctypes.byref(needed)) and name.value.lower() == "default")
+    finally:
+        api.CloseDesktop(desktop)
+
+
+def _focused_control_reason(pid):
+    """Bound UIA provider work off the UI thread; never read control text.
+
+    One hung provider occupies the sole daemon slot, so later requests refuse
+    rather than spawning unbounded workers. Unknown/missing metadata is unsafe.
+    """
+    if not _UIA_SLOT.acquire(blocking=False):
+        return "refused_unverified"
+    done, result = threading.Event(), {}
+
+    def read():
+        try:
+            import uiautomation as auto
+            initializer = getattr(auto, "UIAutomationInitializerInThread", nullcontext)
+            with initializer():
+                focused = auto.GetFocusedControl()
+                if focused is None:
+                    result["reason"] = "refused_unverified"
+                elif focused.ProcessId != pid:
+                    result["reason"] = "window_changed"
+                elif focused.ClassName.casefold() == "xterm-helper-textarea":
+                    result["reason"] = "refused_terminal"
+                elif focused.IsPassword is True:
+                    result["reason"] = "refused_password"
+                elif focused.IsPassword is not False:
+                    result["reason"] = "refused_unverified"
+                else:
+                    result["reason"] = None
+        except Exception as exc:
+            logger.debug("[AGENTS] outcome=uia_unverified exception=%s", type(exc).__name__)
+            result["reason"] = "refused_unverified"
+        finally:
+            _UIA_SLOT.release()
+            done.set()
+
+    try:
+        thread_registry.spawn("agent_server.uia", read, daemon=True)
+    except Exception:
+        _UIA_SLOT.release()
+        return "refused_unverified"
+    return result.get("reason", "refused_unverified") if done.wait(UIA_TIMEOUT) else "refused_unverified"
+
+
+def _foreground_target():
+    """Identity and safety only: never read a title or a control's text."""
+    import ctypes
+    from ctypes import wintypes
+    import psutil
+    from samsara import injection_safety
+    from samsara.paste import _UNDO_TERMINAL_PROCESSES
+    try:
+        if not _desktop_allows_typing():
+            return {}, "refused_elevated"
+        api = ctypes.WinDLL("user32", use_last_error=True)
+        api.GetForegroundWindow.restype = wintypes.HWND
+        api.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        api.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        hwnd, pid = api.GetForegroundWindow(), wintypes.DWORD()
+        if not hwnd or not api.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)):
+            return {}, "window_changed"
+        process = psutil.Process(pid.value)
+        exe = process.name().lower()
+        target = {"hwnd": int(hwnd), "pid": pid.value, "birth": process.create_time(),
+                  "exe": exe, "app": _safe_name(Path(exe).stem, "the app", client=False)}
+        if pid.value == os.getpid() or exe == "samsara.exe":
+            return target, "refused_own_window"
+        classname = ctypes.create_unicode_buffer(256)
+        api.GetClassNameW(hwnd, classname, len(classname))
+        if exe in _UNDO_TERMINAL_PROCESSES | _TERMINAL_PROCESSES or classname.value.casefold() in _TERMINAL_CLASSES:
+            return target, "refused_terminal"
+        verdict = injection_safety.window_integrity(int(hwnd))
+        if not verdict.confirmed_ok or exe in {"lockapp.exe", "logonui.exe", "consent.exe"}:
+            return target, "refused_elevated"
+        reason = _focused_control_reason(pid.value)
+        if reason:
+            return target, reason
+        if api.GetForegroundWindow() != hwnd:
+            return target, "window_changed"
+        return target, None
+    except Exception:
+        return {}, "window_changed"
 
 
 def _error(code, message):
@@ -65,17 +224,46 @@ def _error(code, message):
 class _HTTPServer(HTTPServer):
     allow_reuse_address = False
 
+    def __init__(self, *args):
+        super().__init__(*args)
+        self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self._workers = set()
+
+    def process_request(self, request, client_address):
+        # A confirmation must not block tools/list or a second call's busy reply.
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+
+        def run():
+            try:
+                self.finish_request(request, client_address)
+            except Exception:
+                self.handle_error(request, client_address)
+            finally:
+                self.shutdown_request(request)
+                self._slots.release()
+                with self.agent._state_lock:
+                    self._workers.discard(threading.current_thread())
+
+        try:
+            with self.agent._state_lock:
+                worker = thread_registry.spawn("agent_server.request", run, daemon=True)
+                self._workers.add(worker)
+        except Exception:
+            self.shutdown_request(request)
+            self._slots.release()
+
     def get_request(self):
         connection, address = super().get_request()
         connection.settimeout(REQUEST_TIMEOUT)
         with self.agent._state_lock:
-            self.agent._connection = connection
+            self.agent._connections.add(connection)
         return connection, address
 
     def close_request(self, request):
         with self.agent._state_lock:
-            if self.agent._connection is request:
-                self.agent._connection = None
+            self.agent._connections.discard(request)
         super().close_request(request)
 
     def handle_error(self, request, client_address):
@@ -116,13 +304,15 @@ class _Handler(BaseHTTPRequestHandler):
     def send_error(self, code, message=None, explain=None):
         self._reply(code)
 
-    def _reply(self, status, payload=None):
+    def _reply(self, status, payload=None, client_id=None):
         data = b"" if payload is None else json.dumps(payload, ensure_ascii=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Connection", "close")
         self.send_header("Cache-Control", "no-store")
+        if client_id is not None:
+            self.send_header("Mcp-Session-Id", client_id)
         if status == 405:
             self.send_header("Allow", "POST")
         if status == 401:
@@ -162,6 +352,7 @@ class _Handler(BaseHTTPRequestHandler):
         candidate = auth[0][7:] if len(auth) == 1 and auth[0].startswith("Bearer ") else ""
         with agent._state_lock:
             token = agent._token
+            self.agent_generation = agent._generation
         if not token or not hmac.compare_digest(candidate.encode("utf-8"), token.encode("utf-8")):
             return 401
         if not agent.enabled or not getattr(agent.app, "_running", True) or agent._stopping.is_set():
@@ -212,15 +403,19 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             method = request["method"] if request["method"] in _METHODS else "unknown"
             params = request.get("params", {})
-            if isinstance(params, dict) and params.get("name") in ("speak", "get_status"):
+            if isinstance(params, dict) and params.get("name") in ("speak", "get_status", "type_text"):
                 tool = params["name"]
-            status, response = self.server.agent.dispatch(request, self.headers)
+            status, response = self.server.agent.dispatch(request, self.headers,
+                                                          generation=self.agent_generation)
             outcome = "error" if response and "error" in response else "accepted"
             if response and "result" in response:
                 tool_outcome = response["result"].get("structuredContent", {}).get("status")
-                if tool_outcome in {"spoken", "queued", "suppressed"}:
+                if tool_outcome in {"spoken", "queued", "suppressed", "delivered", "refused", "busy"}:
                     outcome = tool_outcome
-            self._reply(status, response)
+            client_id = None
+            if method == "initialize" and response and "result" in response:
+                client_id = self.server.agent._remember_client(params.get("clientInfo", {}))
+            self._reply(status, response, client_id)
         except (TimeoutError, OSError):
             outcome = "connection_closed"
         except Exception:
@@ -241,7 +436,8 @@ class AgentServer:
         self.port = PORT
         self.status = "off"
         self._token = None
-        self._http = self._thread = self._connection = None
+        self._http = self._thread = None
+        self._connections = set()
         self._state_lock = threading.RLock()
         self._lifecycle_lock = threading.RLock()
         self._stopping = threading.Event()
@@ -249,10 +445,44 @@ class AgentServer:
         self._pending = {}
         self._clock = clock if clock is not None else time.monotonic
         self._generation = 0
+        self._clients = {}
+        self._typing_lock = threading.Lock()
+        self._typing_op = None
+        self._typing_quiet_until = float("-inf")
+        self._target_probe = _foreground_target
 
     @property
     def enabled(self):
         return (self.app.config.get("command_packs") or {}).get("agents") is True
+
+    @property
+    def _connection(self):
+        """Compatibility view for the existing bounded-shutdown diagnostic."""
+        with self._state_lock:
+            return next(iter(self._connections), None)
+
+    @property
+    def typing_enabled(self):
+        return self.enabled and (self.app.config.get("agent_server") or {}).get("allow_typing") is True
+
+    def _remember_client(self, info):
+        name = _safe_name(info.get("name") if isinstance(info, dict) else None)
+        identity = secrets.token_urlsafe(24)
+        with self._state_lock:
+            now = self._clock()
+            self._clients = {key: value for key, value in self._clients.items() if value[1] > now}
+            if len(self._clients) >= 64:
+                self._clients.pop(next(iter(self._clients)))
+            self._clients[identity] = (name, now + 3600)
+        return identity
+
+    def _client_name(self, params, headers):
+        if headers.get("MCP-Protocol-Version") == VERSIONS[0]:
+            info = params.get("_meta", {}).get("io.modelcontextprotocol/clientInfo", {})
+            return _safe_name(info.get("name") if isinstance(info, dict) else None)
+        with self._state_lock:
+            name, expiry = self._clients.get(headers.get("Mcp-Session-Id"), ("An AI app", 0))
+            return name if expiry > self._clock() else "An AI app"
 
     def _token_path(self):
         return (self._profile if self._profile is not None else samsara_home_dir()) / "agent_server" / "token.json"
@@ -299,6 +529,7 @@ class AgentServer:
                 self._save_token(token)
                 self._token = token
                 self._generation += 1  # Invalidate any UI work queued with the old token.
+                self._clients.clear()
                 return True
             except (OSError, ValueError):
                 logger.warning("[AGENTS] outcome=token_save_failed")
@@ -344,8 +575,9 @@ class AgentServer:
                 self._generation += 1
                 self._pending.clear()
                 self._last_speak = float("-inf")
-                connection = self._connection
-            if connection is not None:
+                connections = tuple(self._connections)
+                self._clients.clear()
+            for connection in connections:
                 try:
                     connection.shutdown(socket.SHUT_RDWR)
                 except OSError:
@@ -353,6 +585,11 @@ class AgentServer:
             if self._http is not None:
                 self._http.shutdown()
                 self._http.server_close()
+                with self._state_lock:
+                    workers = tuple(self._http._workers)
+                deadline = time.monotonic() + UI_TIMEOUT + 0.5
+                for worker in workers:
+                    worker.join(max(0, deadline - time.monotonic()))
             if self._thread is not None:
                 self._thread.join(REQUEST_TIMEOUT + UI_TIMEOUT + 0.5)
             self._http = self._thread = None
@@ -424,6 +661,9 @@ class AgentServer:
                 "ava_route": route if route in {"off", "local", "cloud"} else "off"}
 
     def _speak(self, text):
+        with self._state_lock:
+            if self._typing_lock.locked() or self._clock() < self._typing_quiet_until:
+                return {"status": "busy", "reason": "busy"}
         state = self._get_status()
         if state["feedback_level"] == "silent":
             return {"status": "suppressed", "reason": "silent"}
@@ -433,6 +673,8 @@ class AgentServer:
         if coordinator is None:
             return {"status": "suppressed", "reason": "voice_unavailable"}
         with self._state_lock:
+            if self._typing_lock.locked() or self._clock() < self._typing_quiet_until:
+                return {"status": "busy", "reason": "busy"}
             now = self._clock()
             self._pending = {slot: expiry for slot, expiry in self._pending.items() if expiry > now}
             if len(self._pending) >= MAX_PENDING or now - self._last_speak < SPEAK_INTERVAL:
@@ -463,7 +705,224 @@ class AgentServer:
         return {"status": "spoken" if completed else "queued",
                 "reason": "completed" if completed else "coordinator"}
 
-    def dispatch(self, request, headers):
+    def cancel_typing(self):
+        """Disable the pending permission without altering another lane's slot."""
+        from samsara import execution_policy as policy
+        with self._state_lock:
+            op = self._typing_op
+        if op is not None:
+            policy._release_slot(op)
+            op.cancel(self.app, "disabled", chip=False)
+
+    def _type_text(self, args, client_name, generation):
+        text = args.get("text") if isinstance(args, dict) else None
+        length = len(text) if isinstance(text, str) else 0
+        bucket = "0" if length == 0 else "1-100" if length <= 100 else "101-500" if length <= 500 else "501-2000" if length <= 2000 else "over-2000"
+
+        def finish(reason):
+            reason = reason if reason in _TYPE_REASONS else "window_changed"
+            status = "delivered" if reason == "delivered" else "refused"
+            logger.info("[AGENTS] tool=type_text outcome=%s reason=%s length_bucket=%s", status, reason, bucket)
+            return {"status": status, "reason": reason}
+
+        if not self.typing_enabled or generation != self._generation or self._stopping.is_set():
+            return finish("disabled")
+        if reason := _text_reason(args):
+            return finish(reason)
+        with self._state_lock:
+            self._pending = {slot: expiry for slot, expiry in self._pending.items() if expiry > self._clock()}
+            if self._pending or not self._typing_lock.acquire(blocking=False):
+                return finish("busy")
+        from samsara import execution_policy as policy
+        policy_generation = policy.capture_generation(self.app)
+        op = None
+        ready = threading.Event()
+        approval = {}
+        refused = {}
+        abandoned = threading.Event()
+        staged_record = {}
+        speech_done = threading.Event()
+        question = {}
+        deadline = time.monotonic() + TYPE_TIMEOUT
+
+        def eligible():
+            return (not abandoned.is_set() and self.typing_enabled and generation == self._generation
+                    and not self._stopping.is_set() and getattr(self.app, "_running", True)
+                    and policy.is_fresh(self.app, policy_generation)
+                    and time.monotonic() < deadline)
+
+        def probe():
+            target, reason = self._target_probe()
+            return target, reason if reason in _TYPE_REASONS else "window_changed" if reason else None
+
+        try:
+            def speak_question():
+                pending = policy.pending_operation()
+                if pending is not None and pending.approved is None and not pending.is_expired():
+                    return "busy"
+                if not eligible():
+                    return "disabled"
+                target, reason = probe()
+                if reason or not target:
+                    return reason or "window_changed"
+                coordinator = getattr(self.app, "audio_coordinator", None)
+                if coordinator is None:
+                    return "timeout"
+                if getattr(coordinator, "is_speaking", False):
+                    return "busy"
+                # STAND-IN COPY (565)
+                prompt = f"{client_name} wants to type {len(text.split())} words into {target['app']}. Say yes to allow."
+                question.update(target=target, prompt=prompt)
+
+                def spoken():
+                    question["listen_after"] = time.monotonic() + CONFIRM_ECHO_TAIL
+                    speech_done.set()
+
+                handle = coordinator.speak(prompt, category="confirmation", interruptible=True, on_done=spoken)
+                if str(getattr(handle, "utterance_id", "")).startswith("noop-"):
+                    return "timeout"
+                return None
+
+            reason = self._on_ui(speak_question)
+            if reason:
+                return finish(reason)
+            # No pending yes exists during playback or its echo tail. Waiting is
+            # on the HTTP worker, never on the UI thread. Cancelled/noop speech
+            # cannot open an answer window if its completion callback is absent.
+            while (not speech_done.is_set()
+                   or time.monotonic() < question.get("listen_after", float("inf"))):
+                if not eligible():
+                    return finish("disabled" if time.monotonic() < deadline else "timeout")
+                abandoned.wait(0.01)
+            listen_start_ns = time.perf_counter_ns()
+
+            def ask():
+                pending = policy.pending_operation()
+                if pending is not None and pending.approved is None and not pending.is_expired():
+                    return None, "busy"
+                if not eligible():
+                    return None, "disabled"
+                target, prompt = question["target"], question["prompt"]
+                current, why = probe()
+                if why or current != target:
+                    return None, why or "window_changed"
+
+                def guard():
+                    if not eligible():
+                        refused["reason"] = "disabled" if time.monotonic() < deadline else "timeout"
+                    elif getattr(self.app.audio_coordinator, "is_speaking", False):
+                        refused["reason"] = "user_declined"
+                    else:
+                        # A held-key capture begun during the question cannot
+                        # become a delayed spoken yes after playback finishes.
+                        capture_start = getattr(self.app, "_hold_capture_start_ns", None)
+                        if capture_start is not None and capture_start < listen_start_ns:
+                            refused["reason"] = "user_declined"
+                            return refused["reason"]
+                        current, why = probe()
+                        if why or current != target:
+                            refused["reason"] = why or "window_changed"
+                    return refused.get("reason")
+
+                def approved(_op):
+                    # Capture the target at the user's yes, then recheck at delivery.
+                    try:
+                        if (getattr(_op, "answer_source", None) != policy.ANSWER_VOICE
+                                or policy.classify_reply(getattr(_op, "reply_text", "")) != policy.REPLY_YES):
+                            refused["reason"] = "user_declined"
+                            return
+                        current, why = probe()
+                        if why or current != target:
+                            refused["reason"] = why or "window_changed"
+                        else:
+                            approval["target"] = current
+                    except Exception:
+                        refused["reason"] = "window_changed"
+                    finally:
+                        ready.set()
+
+                inv = policy.Invocation("agent type_text", route=policy.Route.MODEL,
+                                        generation=policy_generation)
+                staged = policy.stage_pending(self.app, inv, prompt, on_approve=approved,
+                                               on_reject=lambda _op: ready.set(),
+                                               targets={}, target_probe=None,
+                                               refusal_guard=guard, ttl_s=TYPE_TIMEOUT)
+                with self._state_lock:
+                    self._typing_op = staged
+                    staged_record["op"] = staged
+                if not eligible():
+                    policy._release_slot(staged)
+                    staged.cancel(self.app, "expired", chip=False)
+                    return staged, "timeout"
+                if policy.pending_operation() is not staged:
+                    staged.cancel(self.app, "unavailable", chip=False)
+                    return staged, "timeout"
+                try:
+                    if callable(chip := getattr(self.app, "_show_outcome_chip", None)):
+                        chip(prompt, "pending", int(TYPE_TIMEOUT * 1000))
+                    coordinator = getattr(self.app, "audio_coordinator", None)
+                    if coordinator is None:
+                        return staged, "timeout"
+                except Exception:
+                    return staged, "timeout"
+                return staged, None
+
+            op, reason = self._on_ui(ask)
+            if reason:
+                return finish(reason)
+            while not ready.wait(min(0.05, max(0, deadline - time.monotonic()))):
+                if not eligible():
+                    return finish("disabled" if time.monotonic() < deadline else "timeout")
+            if refused:
+                return finish(refused["reason"])
+            if not op.approved or "target" not in approval:
+                return finish("disabled" if not self.typing_enabled or generation != self._generation
+                              or not policy.is_fresh(self.app, policy_generation)
+                              else "timeout" if time.monotonic() >= deadline else "user_declined")
+            if not eligible():
+                return finish("disabled" if time.monotonic() < deadline else "timeout")
+
+            def deliver():
+                def final_guard():
+                    if not eligible():
+                        refused["reason"] = "disabled" if time.monotonic() < deadline else "timeout"
+                        return False
+                    current, why = probe()
+                    if why or current != approval["target"]:
+                        refused["reason"] = why or "window_changed"
+                        return False
+                    return True
+
+                if not final_guard():
+                    return refused["reason"]
+                try:
+                    pasted = paste_delivery.paste_preserving_clipboard(
+                        self.app, text, before_paste=final_guard,
+                        feedback="silent", clipboard_only=True)
+                except Exception:
+                    pasted = False
+                return "delivered" if pasted else refused.get("reason", "refused_delivery")
+
+            return finish(self._on_ui(deliver))
+        except TimeoutError:
+            return finish("timeout")
+        except Exception:
+            return finish("window_changed")
+        finally:
+            abandoned.set()
+            op = op or staged_record.get("op")
+            if op is not None:
+                policy._release_slot(op)
+                if op.approved is None:
+                    op.cancel(self.app, "expired", chip=False)
+            with self._state_lock:
+                if self._typing_op is op:
+                    self._typing_op = None
+                if question:
+                    self._typing_quiet_until = self._clock() + SPEAK_QUIET_AFTER_TYPING
+                self._typing_lock.release()
+
+    def dispatch(self, request, headers, *, generation=None):
         method, params, identity = request["method"], request.get("params", {}), request.get("id")
         response = {"jsonrpc": "2.0", "id": identity}
 
@@ -504,11 +963,20 @@ class AgentServer:
         elif method == "ping":
             result = {}
         elif method == "tools/list":
-            result = {"tools": TOOLS}
+            result = {"tools": TOOLS + ([TYPE_TOOL] if self.typing_enabled else [])}
         elif method == "tools/call":
             name, args = params.get("name"), params.get("arguments", {})
-            if not isinstance(args, dict):
+            if not isinstance(args, dict) and name != "type_text":
                 return fail(-32602, "Invalid arguments")
+            if name == "type_text":
+                value = self._type_text(args, self._client_name(params, headers),
+                                        self._generation if generation is None else generation)
+                result = {"content": [{"type": "text", "text": json.dumps(value)}],
+                          "structuredContent": value, "isError": value["status"] != "delivered"}
+                if modern:
+                    result = {**result, "resultType": "complete", "_meta": {
+                        "io.modelcontextprotocol/serverInfo": _INFO}}
+                return 200, {**response, "result": result}
             if name == "get_status" and not args:
                 callback = self._get_status
             elif name == "speak" and set(args) == {"text"}:
