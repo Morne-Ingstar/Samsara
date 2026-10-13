@@ -248,6 +248,26 @@ def _assert_safe_existing_path(path: Path, root: Path) -> None:
             _checked_lstat(current)
 
 
+def _packaged_data_root(root: Path) -> Path:
+    """Resolve PyInstaller 6 data, with older flat builds as a fallback.
+
+    Commands and plugins share this root. Prefer the runtime copy when a
+    release also carries a root commands.json for older updater clients.
+    Validate the parent before probing through it, including broken links.
+    """
+    internal = root / "_internal"
+    _assert_safe_existing_path(internal, root)
+    flat_commands = root / "commands.json"
+    _assert_safe_existing_path(flat_commands, root)
+    commands = internal / "commands.json"
+    if os.path.lexists(commands) or (
+        os.path.lexists(internal) and not os.path.lexists(flat_commands)
+    ):
+        _assert_safe_existing_path(commands, root)
+        return internal
+    return root
+
+
 def _write_new_file(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -293,8 +313,10 @@ def migrate_update_customizations(
     if max_backup_bytes <= 0:
         raise ValueError("max_backup_bytes must be positive")
 
-    installed_commands_path = install / "commands.json"
-    staged_commands_path = staged / "commands.json"
+    installed_data = _packaged_data_root(install)
+    staged_data = _packaged_data_root(staged)
+    installed_commands_path = installed_data / "commands.json"
+    staged_commands_path = staged_data / "commands.json"
     if not os.path.lexists(staged_commands_path):
         raise CustomizationMigrationError(
             "The staged update is missing its packaged commands.json."
@@ -318,8 +340,9 @@ def migrate_update_customizations(
             installed_bytes, installed_commands_path
         )
 
-    old_plugins_root = install / "plugins" / "commands"
-    staged_plugins_root = staged / "plugins" / "commands"
+    old_plugins_root = installed_data / "plugins" / "commands"
+    staged_plugins_root = staged_data / "plugins" / "commands"
+    _assert_safe_existing_path(old_plugins_root, install)
     plugin_files = _enumerate_plugin_files(old_plugins_root)
     if os.path.lexists(staged_plugins_root):
         _assert_safe_existing_path(staged_plugins_root, staged)
