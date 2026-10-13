@@ -49,7 +49,6 @@ or **“double click 7.”**
 
 | Download | Who it is for |
 | --- | --- |
-| [**v0.22.1 — public release**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.22.1) | Start here for everyday use. |
 | [**v0.30.0-beta.4 — tester build**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.4) | Try newer hands-free and command workflows and report rough edges. |
 
 Samsara is still evolving; “public release” does not mean every workflow is
