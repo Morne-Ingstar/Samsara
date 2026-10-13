@@ -1,13 +1,13 @@
 """Tests for the listening indicator's draggable custom positioning.
 
 Covers:
-  - Normal mode remains click-through.
+  - Normal mode receives pill gestures; the painted-shape mask excludes gaps.
   - Move mode enables mouse input without stealing focus.
   - Dragging computes and emits a clamped, normalized placement.
   - A missing saved monitor falls back safely to the primary screen.
   - Label-width changes preserve the custom center (not just presets).
   - Preset positioning remains backward compatible.
-  - dictation.py wiring: tray action enters move mode, placement_committed
+  - dictation.py wiring: dormant app method enters move mode, placement_committed
     persists via the existing config save path.
   - Settings displays "Custom" and discards it when a preset is chosen.
 
@@ -42,16 +42,16 @@ def indicator(qapp):
     ind.destroy()
 
 
-class TestNormalModeClickThrough:
-    def test_starts_click_through(self, indicator):
-        assert bool(indicator.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+class TestNormalModeInteractive:
+    def test_starts_interactive(self, indicator):
+        assert not bool(indicator._pill_window.windowFlags() & Qt.WindowType.WindowTransparentForInput)
 
-    def test_display_state_changes_preserve_click_through(self, indicator):
+    def test_display_state_changes_preserve_interaction(self, indicator):
         indicator.set_mode("Listening...")
         indicator.set_listening(True)
         indicator.set_command_mode(True)
         indicator.flash_success()
-        assert bool(indicator.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+        assert not bool(indicator._pill_window.windowFlags() & Qt.WindowType.WindowTransparentForInput)
 
 
 class TestMoveModeEntryExit:
@@ -74,10 +74,10 @@ class TestMoveModeEntryExit:
         _, _, label, _ = indicator._resolve_colors()
         assert label == "Drag to move"
 
-    def test_exit_move_mode_restores_click_through(self, indicator):
+    def test_exit_move_mode_keeps_pill_interactive(self, indicator):
         indicator.enter_move_mode()
         indicator.exit_move_mode()
-        assert bool(indicator.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+        assert not bool(indicator._pill_window.windowFlags() & Qt.WindowType.WindowTransparentForInput)
         assert indicator._unlocked is False
 
     def test_cancel_reverts_to_pre_move_placement(self, indicator):
@@ -290,18 +290,18 @@ class TestPresetPositionsBackwardCompatible:
 
 
 class TestShutdownAndHiddenSafety:
-    def test_hide_while_unlocked_restores_click_through(self, indicator):
+    def test_hide_while_unlocked_clears_dormant_mode(self, indicator):
         indicator.show()
         indicator.enter_move_mode()
         indicator.hide()
-        assert bool(indicator.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+        assert not bool(indicator._pill_window.windowFlags() & Qt.WindowType.WindowTransparentForInput)
         assert indicator._unlocked is False
 
-    def test_destroy_while_unlocked_restores_click_through(self, indicator):
+    def test_destroy_while_unlocked_clears_dormant_mode(self, indicator):
         indicator.show()
         indicator.enter_move_mode()
         indicator.destroy()
-        assert bool(indicator.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+        assert indicator._pill_window is None
         assert indicator._unlocked is False
 
     def test_enter_move_mode_on_hidden_indicator_is_safe(self, indicator):

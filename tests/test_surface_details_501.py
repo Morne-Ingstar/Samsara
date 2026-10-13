@@ -68,7 +68,7 @@ def _quit_method():
 def test_quit_only_discards_on_discard_choice(monkeypatch, choice, expected, commits, discards):
     from samsara.ui import quit_draft_dialog_qt as dialog
     monkeypatch.setattr(dialog, "ask_quit_draft", lambda: choice)
-    manager = SimpleNamespace(has_parked_hold=True,
+    manager = SimpleNamespace(has_parked_hold=True, dictate_pending_buffer="Synthetic draft.",
         commit_pending_dictation=Mock(return_value=SimpleNamespace(kind="dictate_committed")),
         confirm_clear_draft=Mock())
     app = SimpleNamespace(_live_surface_hold_parking_enabled=lambda: True,
@@ -81,7 +81,7 @@ def test_quit_only_discards_on_discard_choice(monkeypatch, choice, expected, com
 def test_quit_failed_send_preserves_draft(monkeypatch):
     from samsara.ui import quit_draft_dialog_qt as dialog
     monkeypatch.setattr(dialog, "ask_quit_draft", lambda: "send")
-    manager = SimpleNamespace(has_parked_hold=True,
+    manager = SimpleNamespace(has_parked_hold=True, dictate_pending_buffer="Synthetic draft.",
         commit_pending_dictation=Mock(return_value=SimpleNamespace(kind="failed")),
         confirm_clear_draft=Mock())
     app = SimpleNamespace(_live_surface_hold_parking_enabled=lambda: True, _session_mode_manager=manager)

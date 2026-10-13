@@ -29,6 +29,9 @@ class _UpdateApp:
     def update_config_and_save(self, updates):
         self.config.update(updates)
 
+    def _resolve_parked_draft_before_quit(self):
+        return True
+
 
 def test_updates_choice_is_saved_without_network_and_invalidates_offer(qapp, monkeypatch):
     from samsara.ui import update_qt

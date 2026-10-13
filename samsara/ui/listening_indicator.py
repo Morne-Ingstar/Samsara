@@ -52,16 +52,12 @@ Outcome chip:
   "mic lost" chip, driven by the audio engine's DEVICE_LOST state, overrides
   the rest until the microphone reconnects.
 
-Move mode (drag-to-reposition):
-  The tray's "Move listening indicator..." action calls enter_move_mode(),
-  which drops WindowTransparentForInput so the pill can be left-dragged,
-  without activating the window or stealing focus (WindowDoesNotAcceptFocus
-  stays set throughout). Releasing the mouse clamps the drop point to its
-  monitor's available geometry, stores it as a normalized center + screen
-  identity (not raw pixels -- see set_custom_position), restores click-
-  through, and emits placement_committed. A right-click while unlocked
-  offers the six presets plus "Cancel move". dictation.py owns persisting
-  the emitted placement to config.
+Drag-to-reposition:
+  The painted pill receives mouse and touch without taking focus. A move
+  past the platform drag distance starts a drag; a plain click does nothing.
+  A pill-sized input window excludes corners; receipts stay transparent. Release
+  uses the existing docking, clamping and placement_committed save path.
+  Legacy move-mode code stays dormant for after-beta cleanup.
 """
 
 import logging
@@ -74,6 +70,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from samsara.ui import theme
 from samsara.ui.indicator_docking import IndicatorDocking
+from samsara.ui.indicator_drag import IndicatorDrag
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
@@ -252,8 +249,8 @@ STATE_ARMED = "armed"
 CAPTURE_STATES = frozenset({"capture", "command-capture"})
 
 
-class ListeningIndicator(IndicatorDocking, QWidget):
-    """Always-on-top, click-through pill overlay — PySide6 implementation."""
+class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
+    """Always-on-top, draggable pill with transparent surroundings."""
 
     # Emitted once a placement change is committed (drag release, or a
     # preset chosen from the move-mode right-click menu). Payload is either
@@ -274,6 +271,8 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Display state
         self._mode_text    = "Hold"
@@ -292,12 +291,11 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         # taskbar, and label-width changes.
         self._custom_position = None
 
-        # Move-mode ("unlocked") state. Entered via the tray's "Move
-        # listening indicator..." action -- temporarily drops click-through
-        # so the pill can be left-dragged. See enter_move_mode/exit_move_mode.
+        # Dormant move-mode state; normal gestures live in IndicatorDrag.
         self._unlocked              = False
         self._dragging               = False
         self._drag_offset            = None
+        self._press_origin           = None
         self._was_hidden_before_move = False
         self._pre_move_corner        = None
         self._pre_move_custom        = None
@@ -365,6 +363,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         self._idle_frame_timer.timeout.connect(self._idle_frame)
 
         self.resize(_PILL_MIN_W, _PILL_H)
+        self._update_input_mask()
         self.setAccessibleName("Listening indicator")
         self._announcer = LiveSurfaceAnnouncer(self)
         self._update_accessibility(announce=False)
@@ -422,6 +421,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         self._device_lost = False
         self._force_lock()
         super().hide()
+        self._retire_input_window()
 
     def set_mode(self, mode_str):
         self._mode_text = mode_str if mode_str else "Hold"
@@ -554,7 +554,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
     # ------------------------------------------------------------------
 
     def enter_move_mode(self):
-        """Temporarily disable click-through so the pill can be dragged.
+        """Dormant legacy move mode, kept for after-beta cleanup.
 
         Does not activate the window or steal keyboard focus -- Qt.
         WindowDoesNotAcceptFocus stays set throughout, and WA_ShowWithout
@@ -577,7 +577,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         super().show()
 
     def exit_move_mode(self, cancel=False):
-        """Leave move mode, restoring click-through.
+        """Leave dormant move mode, keeping the pill interactive.
 
         cancel=True reverts to whatever placement was active before
         enter_move_mode() (used by the right-click "Cancel move" action and
@@ -600,11 +600,8 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         self.update()
 
     def _force_lock(self):
-        """Immediately restore click-through with no visibility round-trip.
-
-        Used by hide()/destroy() so shutdown or a hidden indicator can never
-        be left in an interactive, non-click-through state.
-        """
+        """Cancel gestures and dormant move mode before hide or shutdown."""
+        self._clear_gesture()
         if not self._unlocked:
             return
         self._dragging = False
@@ -635,11 +632,10 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         return QApplication.primaryScreen()
 
     # ------------------------------------------------------------------
-    # Mouse / context-menu handling -- only meaningful while unlocked;
-    # normal click-through operation never delivers these events.
+    # Dormant legacy handlers / context menu; normal gestures use IndicatorDrag.
     # ------------------------------------------------------------------
 
-    def mousePressEvent(self, event):
+    def _move_mode_mousePressEvent(self, event):
         if not self._unlocked or event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
@@ -647,7 +643,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         self._drag_offset = event.globalPosition().toPoint() - self.pos()
         event.accept()
 
-    def mouseMoveEvent(self, event):
+    def _move_mode_mouseMoveEvent(self, event):
         if not self._unlocked or not self._dragging:
             super().mouseMoveEvent(event)
             return
@@ -658,7 +654,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
             self.move(round(placed.bounds.x), round(placed.bounds.y))
         event.accept()
 
-    def mouseReleaseEvent(self, event):
+    def _move_mode_mouseReleaseEvent(self, event):
         if not self._unlocked or not self._dragging or event.button() != Qt.MouseButton.LeftButton:
             super().mouseReleaseEvent(event)
             return
@@ -1181,6 +1177,17 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         While unlocked (move mode) the position is left alone -- the user
         is dragging it, or it's just been shown so it can be dragged.
         """
+        if self._press_origin is not None:
+            # Receipts may resize the window during a gesture. Preserve the
+            # painted pill's global origin and the pointer's grab offset.
+            old_pill = getattr(self, '_gesture_pill', None)
+            self._resize_to_label()
+            _, _, pill, _ = self._layout()
+            if old_pill is not None and pill is not None:
+                delta = old_pill.topLeft().toPoint() - pill.topLeft().toPoint()
+                self.move(self.pos() + delta)
+            self._gesture_pill = pill
+            return
         self._resize_to_label()
         if self._unlocked:
             return
@@ -1240,6 +1247,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
     def _resize_to_label(self):
         total_w, total_h, _, _ = self._layout()
         self.resize(int(total_w), int(total_h))
+        self._update_input_mask()
 
     def paintEvent(self, event):
         bg_hex, fg_hex, label, show_dot = self._resolve_colors()
@@ -1248,7 +1256,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        if pill_rect is not None:
+        if pill_rect is not None and getattr(self, '_capture_composite', False):
             self._paint_pill(painter, pill_rect, bg_hex, fg_hex, label, show_dot)
 
         chip = self._active_chip()

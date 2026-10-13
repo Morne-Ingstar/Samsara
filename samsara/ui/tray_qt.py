@@ -1422,9 +1422,6 @@ class SamsaraTrayQt(QObject):
             add(tools_sub, "Show Listening Indicator",
                 lambda _checked: app.toggle_listening_indicator(),
                 checked=listening_display.display_visible(app))
-            if listening_display.display_choice(app.config).value == "compact":
-                add(tools_sub, "Move listening indicator...",
-                    lambda: app.enter_indicator_move_mode(), report_as="Move listening indicator")
             tools_sub.addSeparator()
             add(tools_sub, "Interactive Tutorial", lambda: app.show_tutorial())
             add(tools_sub, "Mic Setup Guide",

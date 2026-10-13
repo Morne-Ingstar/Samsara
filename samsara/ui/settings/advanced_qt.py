@@ -357,8 +357,8 @@ class AdvancedPage:
             'bottom-left', 'bottom-center', 'bottom-right',
         ]
         current_pos = cfg.get('listening_indicator_position', 'bottom-center')
-        # "custom" (set by dragging the indicator via the tray's "Move
-        # listening indicator..." action) is only offered as a combo item
+        # "custom" (set by dragging the indicator directly) is only offered
+        # as a combo item
         # when it's the active value -- it isn't a preset a user can pick
         # here since there are no coordinates to assign to it. Choosing any
         # preset below discards/supersedes the custom placement (see _save).

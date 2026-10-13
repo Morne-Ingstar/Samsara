@@ -13425,7 +13425,7 @@ class DictationApp:
         except Exception as exc:
             logger.warning('[EXIT] Pending draft decision could not be shown: %s', describe_text(exc))
             return False
-        return resolve_quit_choice(manager, choice)
+        return resolve_quit_choice(manager, choice, app=self)
 
     def quit_app(self, *, _restart_draft_resolved=False):
         """Exit the application"""

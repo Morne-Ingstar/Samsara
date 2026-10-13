@@ -7,14 +7,13 @@ PAUSED_HOLD_HISTORY_HINT = "Saved to History. The kept draft is unchanged."
 
 
 def quit_draft_waiting(app, manager) -> bool:
-    """Compact's retained snapshot needs the same exit decision as Full."""
+    """Both displays ask for unsent words, including a live staged thought."""
     return manager is not None and (
         bool(getattr(manager, 'retained_draft', '').strip())
-        or (app._live_surface_hold_parking_enabled()
-            and getattr(manager, 'has_parked_hold', False)))
+        or bool(getattr(manager, 'dictate_pending_buffer', '').strip()))
 
 
-def resolve_quit_choice(manager, choice) -> bool:
+def resolve_quit_choice(manager, choice, *, app=None) -> bool:
     """Use Full's explicit commit path without starting a hands-free session."""
     retained = bool(getattr(manager, 'retained_draft', '').strip())
     if choice == 'discard':
@@ -26,7 +25,7 @@ def resolve_quit_choice(manager, choice) -> bool:
     if choice != 'send':
         return False
     if not retained:
-        return manager.commit_pending_dictation().kind == 'dictate_committed'
+        return _quit_send_result(manager.commit_pending_dictation(), app)
     # Restore the retained text/audio/undo metadata, then allow the trusted
     # local commit in the idle lane, just as a parked Full draft does.
     manager._restore_retained_draft()
@@ -34,12 +33,21 @@ def resolve_quit_choice(manager, choice) -> bool:
         # pause_draft is Full-only. Arm the same parked-document latch here
         # for this explicit local send, without changing the selected display.
         manager._parked_hold = True
-        return manager.commit_pending_dictation().kind == 'dictate_committed'
+        return _quit_send_result(manager.commit_pending_dictation(), app)
     finally:
         if manager.dictate_pending_buffer:
             # A refused/failed send keeps Compact's snapshot and reminder.
             manager.retain_draft()
             manager.clear_pending_draft()
+
+
+def _quit_send_result(outcome, app) -> bool:
+    if outcome.kind == 'dictate_committed':
+        return True
+    show = getattr(app, '_show_outcome_chip', None)
+    if callable(show):
+        show('Delivery failed; draft kept', 'error')
+    return False
 
 
 def kept_outside_session(app, manager, *, live_capture=False) -> bool:

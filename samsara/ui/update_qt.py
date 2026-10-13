@@ -414,6 +414,17 @@ class _UpdateDialog(QDialog):
             )
             return
 
+        # Both archive and installer helpers wait for this intentional exit.
+        try:
+            allowed = self.app._resolve_parked_draft_before_quit()
+        except Exception:
+            logger.exception("[UPDATE] Could not resolve pending draft")
+            allowed = False
+        if not allowed:
+            self._progress.setVisible(False)
+            self._show_available(self._release)
+            return
+
         try:
             launch_prepared_update(prepared, current_pid=os.getpid())
         except Exception as exc:
@@ -432,7 +443,9 @@ class _UpdateDialog(QDialog):
         self._primary.setEnabled(False)
         from samsara.process_exit import trace_exit
         trace_exit("update-helper-launched-requesting-quit", log=logger)
-        QTimer.singleShot(0, self.app.quit_app)
+        def quit_after_install():
+            self.app.quit_app(_restart_draft_resolved=True)
+        QTimer.singleShot(0, quit_after_install)
 
 
 def _clear_dialog() -> None:

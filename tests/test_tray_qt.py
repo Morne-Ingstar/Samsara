@@ -647,7 +647,7 @@ class TestMenuGrouping61:
         t, _started = _stub_tray(monkeypatch, app)
         tools = {a.text() for a in _submenu(t._menu, "Tools").actions()}
         for label in ("Gesture Lane  (webcam)", "Command Reference",
-                      "Show Listening Indicator", "Move listening indicator..."):
+                      "Show Listening Indicator"):
             assert label in tools
             assert label not in _top_level_texts(t._menu)
 
@@ -662,14 +662,12 @@ class TestMenuGrouping61:
         actions = tools.actions()
         labels = {a.text() for a in actions if not a.isSeparator()}
         assert "Streaming Mode  (CapsLock)" not in labels
-        assert ("Move listening indicator..." in labels) == (display == "compact")
+        assert "Move listening indicator..." not in labels
         assert not actions[0].isSeparator() and not actions[-1].isSeparator()
         assert not any(a.isSeparator() and b.isSeparator() for a, b in zip(actions, actions[1:]))
         assert app.config["streaming_mode"] is streaming_enabled
         app.set_streaming_mode.assert_not_called()
-        if display == "compact":
-            _action(t._menu, "Move listening indicator...").trigger()
-            app.enter_indicator_move_mode.assert_called_once_with()
+        app.enter_indicator_move_mode.assert_not_called()
 
     def test_tools_move_entry_reads_choice_when_menu_rebuilt(self, qapp, monkeypatch):
         app = _make_app()
@@ -677,7 +675,7 @@ class TestMenuGrouping61:
         t, _started = _stub_tray(monkeypatch, app)
         app.config["ui"]["listening_display"] = "compact"
         t._rebuild_menu()
-        assert "Move listening indicator..." in {a.text() for a in _submenu(t._menu, "Tools").actions()}
+        assert "Move listening indicator..." not in {a.text() for a in _submenu(t._menu, "Tools").actions()}
         app.config["ui"]["listening_display"] = "full"
         t._rebuild_menu()
         assert "Move listening indicator..." not in {a.text() for a in _submenu(t._menu, "Tools").actions()}

@@ -488,9 +488,10 @@ def test_confirmed_install_prepares_off_qt_then_launches_and_queues_quit(
     workers = []
     scheduled = []
     quit = Mock()
-    def quit_app():
-        quit()
-    app = SimpleNamespace(quit_app=quit_app)
+    def quit_app(**kwargs):
+        quit(**kwargs)
+    app = SimpleNamespace(quit_app=quit_app,
+                          _resolve_parked_draft_before_quit=Mock(return_value=True))
     prepare = Mock()
     gui_thread = threading.get_ident()
     prepared_threads = []
@@ -512,7 +513,7 @@ def test_confirmed_install_prepares_off_qt_then_launches_and_queues_quit(
         workers.append((name, thread, daemon))
         return thread
     def single_shot(delay, *args):
-        if len(args) == 1 and args[0] is quit_app:
+        if len(args) == 1 and getattr(args[0], '__name__', '') == 'quit_after_install':
             scheduled.append((delay, args[0]))
             assert not quit.called
             real_timer.singleShot(delay, *args)
@@ -562,7 +563,7 @@ def test_confirmed_install_prepares_off_qt_then_launches_and_queues_quit(
         assert launch_threads == [gui_thread]
         assert len(scheduled) == 1
         assert scheduled[0][0] == 0
-        quit.assert_called_once_with()
+        quit.assert_called_once_with(_restart_draft_resolved=True)
     finally:
         dialog.close()
         dialog.deleteLater()
@@ -595,7 +596,8 @@ def test_install_failure_stays_visible_and_never_quits(
     release = _release()
     prepared = SimpleNamespace(version=release.version)
     workers = []
-    app = SimpleNamespace(quit_app=Mock())
+    app = SimpleNamespace(quit_app=Mock(),
+                          _resolve_parked_draft_before_quit=Mock(return_value=True))
     launch = Mock()
 
     if failure == "prepare":

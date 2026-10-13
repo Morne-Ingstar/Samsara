@@ -275,11 +275,6 @@ def test_intentional_delivery_still_pastes(rig, live, trigger, monkeypatch):
         r.app._live_surface_hold_parking_enabled = lambda: True
         monkeypatch.setattr(quit_draft_dialog_qt, 'ask_quit_draft', lambda: 'send')
         assert sys.modules['dictation'].DictationApp._resolve_parked_draft_before_quit(r.app)
-        if not live:
-            # The parked-HOLD quit decision only exists on the Full path.
-            assert not r.pastes
-            assert r.manager.dictate_pending_buffer == before
-            return
         outcome = SimpleNamespace(kind='dictate_committed')
     else:
         phrase = {'finish': 'finish', 'trailing-finish': 'Synthetic third sentence. Finish.',
