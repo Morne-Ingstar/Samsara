@@ -1,10 +1,12 @@
 """Focused privacy, threading, and Qt integration tests for app updates."""
 
 import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
 from PIL import Image
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -17,6 +19,23 @@ from PySide6.QtWidgets import (
 from samsara.config_schema import SETTINGS_SCHEMA
 from samsara.ui import settings_qt, update_qt
 from samsara.ui.tray_qt import SamsaraTrayQt
+from samsara.updater import UpdateError
+
+
+@pytest.fixture(autouse=True)
+def drain_deleted_qt_objects(qapp):
+    """Do not leave Settings/tray objects and their events for the next test."""
+    yield
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+
+
+def _until(qapp, predicate, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while not predicate() and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(.005)
+    assert predicate()
 
 
 def _release(version="0.22.1", size=536_250_717):
@@ -98,10 +117,13 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
         assert checkbox.isChecked() is False
         assert SETTINGS_SCHEMA["updates.automatic_checks"]["default"] is False
 
-        support_page = window._stack.widget(
-            settings_qt._TAB_NAMES.index("Help & Support")
-        )
-        copy = " ".join(label.text() for label in support_page.findChildren(QLabel))
+        support_page = window._stack.widget(settings_qt._TAB_NAMES.index("Help"))
+        assert window._rows_by_widget['automatic_update_checks'].page_name == 'Help'
+        # Settings now exposes destination rows; their searchable help retains
+        # the source explanations rather than separate paragraph labels.
+        copy = " ".join(window._rows_by_widget[key].full_help for key in
+                        ('checkForUpdatesButton', 'automatic_update_checks'))
+        assert 'daily checks are optional' in ' '.join(label.text() for label in support_page.findChildren(QLabel)).lower()
         lowered = copy.lower()
         for phrase in (
             "no update server",
@@ -109,7 +131,7 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
             "github releases",
             "at most once a day",
             "sends no audio",
-            "dictated text",
+            "text, settings",
             "or identifiers",
             "sees your ip",
         ):
@@ -125,6 +147,7 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
             "automatic_checks": True,
         }
     finally:
+        window.close()
         window.deleteLater()
 
 
@@ -444,7 +467,6 @@ def test_voice_command_opens_explicit_update_check(monkeypatch):
     posted = []
     opened = []
     app = SimpleNamespace()
-    monkeypatch.setattr(core_utils.thread_registry, "spawn", Mock())
     monkeypatch.setattr(update_qt.qt_runtime, "post", posted.append)
     monkeypatch.setattr(
         update_qt,
@@ -465,15 +487,38 @@ def test_confirmed_install_prepares_off_qt_then_launches_and_queues_quit(
     prepared = SimpleNamespace(version=release.version)
     workers = []
     scheduled = []
-    app = SimpleNamespace(quit_app=Mock())
+    quit = Mock()
+    def quit_app():
+        quit()
+    app = SimpleNamespace(quit_app=quit_app)
     prepare = Mock()
+    gui_thread = threading.get_ident()
+    prepared_threads = []
+    launch_threads = []
+    finished = threading.Event()
+    real_spawn = update_qt.thread_registry.spawn
+    real_timer = update_qt.QTimer
 
     def _prepare(actual_release, *, progress_callback):
+        prepared_threads.append(threading.get_ident())
         prepare(actual_release, progress_callback=progress_callback)
         progress_callback(50, 100)
+        finished.set()
         return prepared
 
-    launch = Mock()
+    launch = Mock(side_effect=lambda *_a, **_kw: launch_threads.append(threading.get_ident()))
+    def spawn(name, target, daemon=True):
+        thread = real_spawn(name, target, daemon=daemon)
+        workers.append((name, thread, daemon))
+        return thread
+    def single_shot(delay, *args):
+        if len(args) == 1 and args[0] is quit_app:
+            scheduled.append((delay, args[0]))
+            assert not quit.called
+            real_timer.singleShot(delay, *args)
+            assert not quit.called  # The real Qt timer queues, never calls inline.
+        else:
+            real_timer.singleShot(delay, *args)
     monkeypatch.setattr(
         update_qt.QMessageBox,
         "question",
@@ -484,12 +529,12 @@ def test_confirmed_install_prepares_off_qt_then_launches_and_queues_quit(
     monkeypatch.setattr(
         update_qt.thread_registry,
         "spawn",
-        lambda name, target, daemon=True: workers.append((name, target, daemon)),
+        spawn,
     )
     monkeypatch.setattr(
-        update_qt.QTimer,
-        "singleShot",
-        lambda delay, callback: scheduled.append((delay, callback)),
+        update_qt,
+        "QTimer",
+        SimpleNamespace(singleShot=single_shot),
     )
 
     dialog = update_qt._UpdateDialog(app, initial_release=release)
@@ -498,22 +543,46 @@ def test_confirmed_install_prepares_off_qt_then_launches_and_queues_quit(
         assert dialog._phase == "preparing"
         assert workers[0][0] == "update-download-prepare"
         assert workers[0][2] is True
-        prepare.assert_not_called()
         launch.assert_not_called()
 
-        workers[0][1]()
-        qapp.processEvents()
+        assert finished.wait(2)
+        workers[0][1].join(2)
+        assert not workers[0][1].is_alive()
+        # No Qt pump yet: the worker finished, but the GUI slot cannot have run.
+        launch.assert_not_called()
+        quit.assert_not_called()
+        _until(qapp, lambda: quit.called)
 
         prepare.assert_called_once()
         assert prepare.call_args.args == (release,)
         assert callable(prepare.call_args.kwargs["progress_callback"])
         assert dialog._progress.value() == 50
         launch.assert_called_once_with(prepared, current_pid=update_qt.os.getpid())
-        app.quit_app.assert_not_called()
+        assert prepared_threads and prepared_threads[0] != gui_thread
+        assert launch_threads == [gui_thread]
         assert len(scheduled) == 1
         assert scheduled[0][0] == 0
-        scheduled[0][1]()
-        app.quit_app.assert_called_once_with()
+        quit.assert_called_once_with()
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+
+
+def test_declined_install_starts_nothing(qapp, monkeypatch):
+    app = SimpleNamespace(quit_app=Mock())
+    prepare, launch, spawn = Mock(), Mock(), Mock()
+    monkeypatch.setattr(update_qt.QMessageBox, 'question', lambda *a, **kw: QMessageBox.StandardButton.No)
+    monkeypatch.setattr(update_qt, 'prepare_update', prepare)
+    monkeypatch.setattr(update_qt, 'launch_prepared_update', launch)
+    monkeypatch.setattr(update_qt.thread_registry, 'spawn', spawn)
+    dialog = update_qt._UpdateDialog(app, initial_release=_release())
+    try:
+        dialog._primary_clicked()
+        assert dialog._phase == 'available'
+        prepare.assert_not_called()
+        launch.assert_not_called()
+        spawn.assert_not_called()
+        app.quit_app.assert_not_called()
     finally:
         dialog.close()
         dialog.deleteLater()
@@ -531,7 +600,7 @@ def test_install_failure_stays_visible_and_never_quits(
 
     if failure == "prepare":
         def _prepare(*_args, **_kwargs):
-            raise update_qt.UpdateError("verification failed")
+            raise UpdateError("verification failed")
     else:
         _prepare = Mock(return_value=prepared)
         launch.side_effect = OSError("helper blocked")
