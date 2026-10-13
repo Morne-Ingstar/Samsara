@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import threading
 
+from samsara.runtime import thread_registry
+
 
 class ClearDraftUndo:
     """Keep one snapshot; expire it even if no further utterance arrives."""
@@ -43,9 +45,10 @@ class ClearDraftUndo:
                           if item.kind == "dictation_staged_chunk"],
                 "parked": manager._parked_hold,
             }
-            self._timer = threading.Timer(self._ttl_s, self._expire, args=(token,))
-            self._timer.daemon = True
-            self._timer.start()
+            self._timer = thread_registry.timer(
+                "draft.clear_undo", self._ttl_s, self._expire,
+                args=(token,), daemon=True,
+            )
 
     def _expire(self, token) -> None:
         with self._lock:

@@ -189,3 +189,20 @@ module.hard_exit(7)
     result = subprocess.run([sys.executable, "-B", "-c", script, str(ROOT / "samsara/process_exit.py")],
                             capture_output=True, timeout=8)
     assert result.returncode == 7
+
+
+@pytest.mark.skipif("gate_no_bootstrap" in sys.modules, reason="Gate forbids child processes; checked by isolated process tool")
+def test_watchdog_survives_registry_shutdown_during_blocked_flush():
+    script = '''
+import sys, time
+from samsara import process_exit
+from samsara.runtime import thread_registry
+def blocked_flush():
+    thread_registry.shutdown(timeout=0)
+    time.sleep(120)
+process_exit.logging.shutdown = blocked_flush
+process_exit.hard_exit(7)
+'''
+    result = subprocess.run([sys.executable, "-B", "-c", script],
+                            cwd=ROOT, capture_output=True, timeout=8)
+    assert result.returncode == 7

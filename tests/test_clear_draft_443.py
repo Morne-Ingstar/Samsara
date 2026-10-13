@@ -220,17 +220,44 @@ def test_timer_drops_copy_without_another_utterance_and_old_timer_cannot_drop_ne
         def cancel(self):
             self.cancelled = True
 
-    monkeypatch.setattr("samsara.draft_clear_undo.threading.Timer", Timer)
+    def timer(name, seconds, callback, args, daemon):
+        assert name == "draft.clear_undo"
+        instance = Timer(seconds, callback, args)
+        instance.daemon = daemon
+        instance.start()
+        return instance
+
+    monkeypatch.setattr("samsara.draft_clear_undo.thread_registry.timer", timer)
     manager, _, _, _ = make_manager()
     manager._dictate_pending_buffer = "Synthetic timer draft."
     manager.dispatch_utterance("scratch everything", GOOD)
     assert timers[0].seconds == CLEAR_DRAFT_CONFIRM_TTL_S and timers[0].daemon
     manager.dispatch_utterance("bring it back", GOOD)
+    assert timers[0].cancelled
     manager.dispatch_utterance("scratch everything", GOOD)
     timers[0].callback(*timers[0].args)
     assert manager._clear_draft_undo._snapshot is not None
     timers[1].callback(*timers[1].args)
     assert manager._clear_draft_undo._snapshot is None and manager._clear_draft_undo._timer is None
+
+
+def test_clear_undo_real_timer_is_registered_and_expires_without_utterance(make_manager):
+    from samsara.runtime import thread_registry
+
+    manager, _, _, _ = make_manager()
+    undo = manager._clear_draft_undo
+    undo._ttl_s = 0.05
+    manager._dictate_pending_buffer = "Synthetic timer draft."
+    # Hold the lock until the timer reference and registration are inspected.
+    with undo._lock:
+        manager.dispatch_utterance("scratch everything", GOOD)
+        timer = undo._timer
+        assert timer.daemon and timer.interval == 0.05
+        assert any(entry["ident"] == timer.ident and entry["alive"]
+                   for entry in thread_registry.snapshot())
+    timer.join(timeout=2)
+    assert not timer.is_alive()
+    assert not undo.pending and undo._timer is None
 
 
 def test_gate_and_existing_scratch_meaning_are_preserved(make_manager):
