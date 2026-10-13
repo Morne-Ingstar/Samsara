@@ -215,10 +215,9 @@ def provider_is_configured(app) -> bool:
 
 
 def warm_on_boot_enabled(app) -> bool:
-    """Respect an explicit choice; default local on and cloud off.
+    """Respect the stored choice; absent keys use the schema default (off).
 
-    Cloud warm-ups consume a billable completion, so absence is not consent.
-    Local Ollama warm-up remains on by default for its first-reply benefit.
+    Explicit warming remains independent of this optional startup switch.
     """
     from samsara import ai_preferences  # noqa: PLC0415
     config = getattr(app, "config", {}) or {}
@@ -230,7 +229,7 @@ def warm_on_boot_enabled(app) -> bool:
     elif "ava.warm_on_boot" in config:
         value = config["ava.warm_on_boot"]
     else:
-        value = configured_provider(app) == "ollama"
+        value = False
     return provider_is_configured(app) and bool(value)
 
 
@@ -292,33 +291,21 @@ def warm_configured_provider(app) -> Readiness:
     import requests  # noqa: PLC0415
 
     provider = configured_provider(app)
+    if provider == "ollama":
+        from samsara.ava_local_warmup import load
+        load(app)  # Explicit warming reports its own readiness result.
+        return tracker.snapshot()
     generation = tracker.begin_warming(provider)
     started = time.monotonic()
     failure_kind = None
     try:
-        if provider == "ollama":
-            config = getattr(app, "config", {}) or {}
-            ollama = config.get("ollama", {}) or {}
-            host = str(ollama.get("host", "http://localhost:11434")).rstrip("/")
-            timeout = float(ollama.get("timeout_seconds", 30) or 30)
-            response = ai_transport.post_local(
-                f"{host}/api/chat",
-                json={"model": str(ollama.get("model", "llama3")),
-                      "messages": [{"role": "user", "content": "Reply only: ready."}],
-                      "stream": False},
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            if not ollama_response_content(response):
-                failure_kind = PROVIDER_ERROR
-        else:
-            from samsara import cloud_llm  # noqa: PLC0415
-            response = cloud_llm.send(
-                "You are warming up. Reply only: ready.", "ready", app,
-                timeout=float((getattr(app, "config", {}) or {}).get("cloud_llm", {}).get("timeout_seconds", 30) or 30),
-            )
-            if str(response).startswith("Error:"):
-                failure_kind = classify_error_text(str(response))
+        from samsara import cloud_llm  # noqa: PLC0415
+        response = cloud_llm.send(
+            "You are warming up. Reply only: ready.", "ready", app,
+            timeout=float((getattr(app, "config", {}) or {}).get("cloud_llm", {}).get("timeout_seconds", 30) or 30),
+        )
+        if str(response).startswith("Error:"):
+            failure_kind = classify_error_text(str(response))
     except ai_transport.AITransportRefused as exc:
         ai_transport.notify_refusal(app, exc)
         failure_kind = UNREACHABLE
@@ -529,10 +516,14 @@ def recheck_after_settings(app, previous: tuple) -> None:
     from samsara import ai_preferences
     if previous == settings_signature(app):
         return
+    from samsara.runtime import thread_registry
+    from samsara.ava_local_warmup import schedule
+    schedule(app, lambda name, fn: thread_registry.spawn(name, fn, daemon=True))
     if not ai_preferences.runtime_state(app.config, "ava").allowed:
+        from samsara import execution_policy
+        execution_policy.bump_generation(app, "optional AI disabled")
         tracker.reset()
         return
-    from samsara.runtime import thread_registry
     start_monitor(app, lambda name, fn: thread_registry.spawn(name, fn, daemon=True),
                   recheck=True)
 
@@ -541,6 +532,9 @@ def schedule_warm_on_boot(app, spawn) -> bool:
     """Schedule the optional warm-up after the app has announced startup.
     ``spawn`` is the app's thread registry, so the completion never runs on
     the boot thread."""
+    if configured_provider(app) == "ollama":
+        from samsara.ava_local_warmup import schedule
+        return schedule(app, spawn)
     if not warm_on_boot_enabled(app):
         return False
     spawn("ava-warm-on-boot", lambda: warm_configured_provider(app))

@@ -679,6 +679,12 @@ def is_current(app, generation: Optional[int]) -> bool:
 def bump_generation(app, reason: str = "") -> int:
     """Invalidate every request captured before now. Uses the app's own
     lock when it has one; falls back to a plain increment for fakes."""
+    from samsara import ava_turn_queue
+    with ava_turn_queue.ownership_lock(app):
+        return _bump_generation(app, reason)
+
+
+def _bump_generation(app, reason):
     lock = getattr(app, "_ava_cmd_mode_lock", None)
     if lock is not None and hasattr(lock, "acquire"):
         with lock:
@@ -687,6 +693,8 @@ def bump_generation(app, reason: str = "") -> int:
     else:
         setattr(app, _GEN_ATTR, current_generation(app) + 1)
         gen = current_generation(app)
+    from samsara import ava_turn_queue
+    ava_turn_queue.cancel(app)
     logger.info("[POLICY] generation -> %d (%s)", gen, reason or "bump")
     return gen
 
@@ -708,6 +716,12 @@ def is_stop_utterance(text: str) -> bool:
 
 
 def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True) -> dict:
+    from samsara import ava_turn_queue
+    with ava_turn_queue.ownership_lock(app):
+        return _stop_all(app, reason, chip=chip, bump=bump)
+
+
+def _stop_all(app, reason, *, chip, bump):
     """The stop path that does not wait on understanding (Astra section 5.3).
 
     Bumps the generation FIRST (so any worker that is mid-model-call or
@@ -719,8 +733,17 @@ def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True)
     """
     # bump=False is for a caller that has ALREADY bumped under its own lock
     # (exit_ava_command_session) and only needs the clearing half.
+    queue = getattr(app, "_ava_session_dispatch_queue", ())
+    dispatch_lock = getattr(app, "_ava_session_dispatch_lock", None)
+    from samsara import ava_turn_queue
+    with dispatch_lock if dispatch_lock is not None else ava_turn_queue.ownership_lock(app):
+        queued = len(queue)
+        in_flight = bool(getattr(app, "_ava_session_request_in_flight", False))
     gen = bump_generation(app, reason) if bump else current_generation(app)
-    cleared = {"generation": gen, "pending": False, "queued": 0, "in_flight": False,
+    if not bump:
+        from samsara import ava_turn_queue
+        ava_turn_queue.cancel(app)
+    cleared = {"generation": gen, "pending": False, "queued": queued, "in_flight": in_flight,
                "schedule": False, "speech": False}
 
     # Queue 110. The stop also has to reach the ANSWER ALREADY BEING SPOKEN.
@@ -753,22 +776,6 @@ def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True)
         ask_ollama._stop_schedule()
     except Exception as exc:  # plugin missing in a stripped build
         logger.debug("[POLICY] stop_all: ask_ollama state not cleared: %s", exc)
-
-    # AVA session-mode queue (generation-bound items; drop them all now).
-    q = getattr(app, "_ava_session_dispatch_queue", None)
-    lock = getattr(app, "_ava_session_dispatch_lock", None)
-    if q is not None:
-        try:
-            if lock is not None:
-                with lock:
-                    cleared["queued"] += len(q)
-                    q.clear()
-                    cleared["in_flight"] = bool(getattr(app, "_ava_session_request_in_flight", False))
-            else:
-                cleared["queued"] += len(q)
-                q.clear()
-        except Exception as exc:
-            logger.debug("[POLICY] stop_all: AVA queue not cleared: %s", exc)
 
     if chip:
         _chip(app, "stopped", "warning")

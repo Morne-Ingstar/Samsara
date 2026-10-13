@@ -583,12 +583,21 @@ class LiveSurfaceIndicatorAdapter:
     def flash_wake(self) -> None:
         self.controller.notice(NoticeKind.RESULT, "Wake phrase heard")
 
-    def set_thinking(self, active: bool) -> None:
+    def set_thinking(self, active: bool, label=None, *, owner=None) -> None:
+        previous_owner = getattr(self, "_ava_wait_owner", None)
+        self._ava_wait_owner = owner if active else None
+        if (active == getattr(self, "_thinking", False)
+                and (not active or (label or "Ava") == self._thinking_label)
+                and previous_owner is owner):
+            return
+        self._thinking = active
         if active:
-            self.show_feedback("Ava thinking", "accent", None,
-                               Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, "ava"))
+            self._thinking_label = label or "Ava"
+            self._thinking_owner = "ava" if owner is not None else "thinking"
+            self.show_feedback(self._thinking_label + " thinking", "accent", None,
+                               Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, self._thinking_owner))
         else:
-            self.clear_feedback("ava")
+            self.clear_feedback(self._thinking_owner)
 
     def show_outcome(self, label: str, kind: str, ttl_ms=DEFAULT_TTL_MS) -> None:
         self.show_feedback(label, kind, ttl_ms, feedback_for(kind))

@@ -13,7 +13,7 @@ from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import ava_persona
 from samsara import ava_readiness
-from samsara import cloud_llm, ava_local_context
+from samsara import cloud_llm, ava_local_context, ava_turn_queue
 from samsara import teach_patterns
 from samsara.ava_memory import AvaMemory, PersonalMemory, log_conversation
 from samsara.paths import samsara_home_dir
@@ -862,6 +862,7 @@ def _speak_ai_off_once(app):
 
 def _disabled_since_request(app) -> bool:
     """Discard a completed reply and invalidate its generation after Off."""
+    if not ava_turn_queue.can_deliver(app): return True
     if _ai_state(app).allowed:
         return False
     execution_policy.bump_generation(app, "optional AI disabled")
@@ -913,6 +914,7 @@ def speak(app, text, category="ava_response"):
     command_mode.tts_char_limit (samsara/tts/coordinator.py): Ava's answers
     are the point of asking, not a command acknowledgement. Returns True
     when the text was handed to a TTS engine."""
+    if not ava_turn_queue.can_deliver(app): return False
     if isinstance(text, str):
         text = _strip_tags(text)
     max_len = get_max_response_length(app)
@@ -1165,7 +1167,7 @@ def _set_turn_outcome(app, chip):
     """chip: (label, chip_kind) or None. Read once by the AVA session's
     on_done hook (dictation._on_ava_session_request_done)."""
     try:
-        app._ava_turn_outcome = chip
+        ava_turn_queue.set_outcome(app, chip)
     except Exception as exc:
         logger.debug(f"_set_turn_outcome: {exc}")
 
@@ -1431,7 +1433,9 @@ def _ask_with_web_search(app, system, messages, provider, ms):
     """One conversation turn through DeepSeek's Anthropic-compatible endpoint
     with web search offered. Records readiness. Memory: the user turn is
     already added by ask_model(); a searched answer stores the placeholder."""
+    memory = ava_turn_queue.memory_for(app._ava_memory)
     result = cloud_llm.send_web_search(system + SEARCH_SYSTEM_SUFFIX, messages, app)
+    if not ava_turn_queue.can_deliver(app): return AvaReply(None, provider, ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
     if not result.ok:
         kind = _search_failure_kind(result)
         logger.warning("[AVA-SEARCH] %s search request failed: %s (http=%s, search_error=%s) after %d ms",
@@ -1444,12 +1448,12 @@ def _ask_with_web_search(app, system, messages, provider, ms):
                 "answer_chars=%d latency_ms=%d", provider, searched, result.search_requests,
                 len(result.queries), len(result.sources), len(result.text), ms())
     if searched:
-        app._ava_memory.add_assistant(SEARCH_MEMORY_PLACEHOLDER)
-        app._ava_memory.save()
+        memory.add_assistant(SEARCH_MEMORY_PLACEHOLDER)
+        memory.save()
         return AvaReply(result.text, provider, ms(), search=result)
     # No search ran: an ordinary reply, handled like any other cloud answer.
-    app._ava_memory.add_assistant(result.text)
-    app._ava_memory.save()
+    memory.add_assistant(result.text)
+    memory.save()
     return AvaReply(result.text, provider, ms())
 
 
@@ -1564,11 +1568,11 @@ def ask_ollama(prompt, app, model=None, system=None):
     return MODEL_UNAVAILABLE
 
 
+@ava_turn_queue.serialize_model
 def ask_model(prompt, app, model=None, system=None, allow_search=False):
     """allow_search: offer DeepSeek's web_search server tool on this call
     (queue 59). Only the Ava conversation turn (handle_ask_ava) passes True;
-    the command session, "is it safe", workflow analysis and every other
-    caller never search."""
+    other callers never search."""
     started = time.monotonic()
 
     def _ms():
@@ -1685,7 +1689,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         )
 
     # ── Conversation memory ──
-    ensure_ava_memory(app).add_user(prompt)
+    memory = ava_turn_queue.memory_for(ensure_ava_memory(app)); memory.add_user(prompt)
     # ── Cloud LLM path (bring-your-own-key, no license required) ──
     cloud_provider = None
     cloud_failure = None
@@ -1698,9 +1702,10 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             )
         )
         system += "\n\n" + ava_local_context.local_clock_line()
-        messages = app._ava_memory.get_messages(system, token_limit=cloud_token_limit)
+        messages = memory.get_messages(system, token_limit=cloud_token_limit)
         if allow_search and cloud_llm.web_search_available(app):
             reply = _ask_with_web_search(app, system, messages, cloud_provider, _ms)
+            if not ava_turn_queue.can_deliver(app): return reply
             if reply.ok:
                 if _disabled_since_request(app):
                     return AvaReply(None, cloud_provider, _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
@@ -1708,31 +1713,31 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
             cloud_response = "Error: web search request failed"
             cloud_failure = reply.failure_kind
         else:
-            cloud_response = cloud_llm.send(system, prompt, app, messages=messages)
+            cloud_response = ava_turn_queue.cloud_send(cloud_llm.send, system, prompt, app, messages=messages)
+        if not ava_turn_queue.can_deliver(app): return AvaReply(None, cloud_provider, _ms())
         if not cloud_response.startswith("Error:"):
             if _disabled_since_request(app):
-                app._ava_memory.pop_last_if_user()
+                memory.pop_last_if_user()
                 return AvaReply(None, cloud_provider, _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
-            app._ava_memory.add_assistant(cloud_response)
-            app._ava_memory.save()
+            memory.add_assistant(cloud_response)
+            memory.save()
             ava_readiness.tracker.record_turn(cloud_provider, None)
             return AvaReply(cloud_response, cloud_provider, _ms())
         cloud_failure = cloud_failure or ava_readiness.classify_error_text(cloud_response)
-        # The configured provider failed: that IS Ava's readiness. Policy
         # deliberately forbids trying a second provider after this failure.
         ava_readiness.tracker.record_turn(cloud_provider, cloud_failure)
         logger.warning("[AVA-CLOUD] %s failed (%s) after %d ms",
                        cloud_provider, cloud_failure, _ms())
-        app._ava_memory.pop_last_if_user()
+        memory.pop_last_if_user()
         return AvaReply(None, cloud_provider, _ms(), failure_kind=cloud_failure)
 
     # ── Local Ollama path ──
     if state.provider.identity != "ollama" or not _check_ollama_available(host, timeout=1):
-        app._ava_memory.pop_last_if_user()
+        memory.pop_last_if_user()
         ava_readiness.tracker.record_turn("ollama", ava_readiness.UNREACHABLE)
         return AvaReply(None, "ollama", _ms(), failure_kind=ava_readiness.UNREACHABLE)
     system += "\n\n" + ava_local_context.local_clock_line()
-    messages = app._ava_memory.get_messages(system, token_limit=3000)
+    messages = memory.get_messages(system, token_limit=3000)
     payload = {
         "model": model,
         "messages": messages,
@@ -1740,12 +1745,14 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     }
 
     def _local_failed(kind):
-        app._ava_memory.pop_last_if_user()
+        if not ava_turn_queue.can_deliver(app):
+            return AvaReply(None, "ollama", _ms())
+        memory.pop_last_if_user()
         ava_readiness.tracker.record_turn("ollama", kind)
         return AvaReply(None, "ollama", _ms(), failure_kind=kind)
 
     try:
-        response = ai_transport.post_local(
+        response = ava_turn_queue.transport(ai_transport.post_local,
             f"{host}/api/chat",
             json=payload,
             timeout=get_timeout(app),
@@ -1755,11 +1762,11 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         if not reply:
             return _local_failed(ava_readiness.PROVIDER_ERROR)
         if _disabled_since_request(app):
-            app._ava_memory.pop_last_if_user()
+            memory.pop_last_if_user()
             return AvaReply(None, "ollama", _ms(), failure_kind=ava_readiness.NOT_CONFIGURED)
         if reply:
-            app._ava_memory.add_assistant(reply)
-            app._ava_memory.save()
+            memory.add_assistant(reply)
+            memory.save()
         ava_readiness.tracker.record_turn("ollama", None)
         return AvaReply(reply, "ollama", _ms())
     except ai_transport.AITransportRefused as exc:
@@ -1772,7 +1779,6 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     except Exception as e:
         logger.warning(f"[AVA-OLLAMA] request failed: {type(e).__name__}")
         return _local_failed(ava_readiness.PROVIDER_ERROR)
-
 
 # ── Response parser ───────────────────────────────────────────────────────────
 
@@ -2984,17 +2990,13 @@ def _check_teaching_intent(app, text):
     pack="ai",
     ai_visible=False,
 )
+@ava_turn_queue.own_turn
 def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     """Asks Ava the question that follows, out loud.
 
-    Added for session-mode AVA's request-in-flight tracking
-    (samsara/session_modes.py); existing callers (hold-to-talk's _route_to_ava)
-    don't pass it, so this is a no-op addition with zero behavior change for
-    them.
+    All conversation callers share the ordered worker lane (536).
     """
-    def _done():
-        if on_done is not None:
-            on_done()
+    _done = on_done or (lambda: None)
 
     _turn_local.speech = []
     _turn_local.spoken_text = []
@@ -3098,8 +3100,6 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
                     _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
                     return
 
-            if hasattr(app, "play_sound"):
-                app.play_sound("ava_thinking")
             try:
                 response = ask_ollama(remainder, app)
                 if not execution_policy.is_current(app, generation) or _disabled_since_request(app):
@@ -3137,7 +3137,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
             _log_turn(app, remainder, outcome=outcome, started=started)
             _done()
 
-    thread_registry.spawn("ask_ollama._worker", _worker, daemon=True)
+    ava_turn_queue.submit(app, _worker, generation, _done)
 
 
 @command(
@@ -3166,8 +3166,6 @@ def handle_is_it_safe(app, remainder="", **kwargs):
     def _worker():
         if _check_teaching_intent(app, remainder):
             return
-        if hasattr(app, "play_sound"):
-            app.play_sound("ava_thinking")
         try:
             response = ask_ollama(prompt, app)
             if not execution_policy.is_current(app, generation):
@@ -3177,7 +3175,7 @@ def handle_is_it_safe(app, remainder="", **kwargs):
             print(f"[OLLAMA] Error in worker: {e}")
             speak(app, "Sorry, something went wrong.")
 
-    thread_registry.spawn("ask_ollama._worker", _worker, daemon=True)
+    ava_turn_queue.submit(app, _worker, generation)
 
 
 def _answer_advice_text_only(app, response) -> None:

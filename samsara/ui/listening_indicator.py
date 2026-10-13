@@ -681,10 +681,12 @@ class ListeningIndicator(IndicatorDocking, QWidget):
         cancel_act.triggered.connect(lambda: self.exit_move_mode(cancel=True))
         menu.exec(event.globalPos())
 
-    def set_thinking(self, active: bool):
-        """Activate/deactivate the pulsing purple 'Vision' state."""
-        if active == self._thinking:
+    def set_thinking(self, active: bool, label="Vision", *, owner=None):
+        """Activate/deactivate the pulsing purple thinking state."""
+        self._ava_wait_owner = owner if active else None
+        if active == self._thinking and label == getattr(self, "_thinking_label", "Vision"):
             return
+        self._thinking_label = label
         self._thinking = active
         self._state_changed()
         if not self.isVisible():
@@ -1134,7 +1136,7 @@ class ListeningIndicator(IndicatorDocking, QWidget):
             return theme.BG1, self._session_mode_color, self._session_mode_name, True
 
         if self._thinking:
-            return _lerp_color(_vision_bg(), _vision_bg_bright(), t), theme.AVA, "Vision", True
+            return _lerp_color(_vision_bg(), _vision_bg_bright(), t), theme.AVA, getattr(self, "_thinking_label", "Vision"), True
 
         if self._snoozed:
             return theme.BG1, theme.ICON_IDLE, "Snoozed", True

@@ -158,7 +158,11 @@ class CommandMissResolver:
             if "{COMMAND_LIST}" in system:
                 system = system.replace("{COMMAND_LIST}", ", ".join(shortlist))
             model = cfg["model"] if provider == "ollama" else None
-            response = ask_ollama.ask_ollama(utterance, self.app, model=model, system=system)
+            from samsara.ava_turn_queue import before_deadline
+            with before_deadline(self.app, deadline) as acquired:
+                if not acquired:
+                    return None
+                response = ask_ollama.ask_ollama(utterance, self.app, model=model, system=system)
             if self._cancelled(request_id, deadline) or not isinstance(response, str) or response == "__OLLAMA_DOWN__":
                 return None
             # Repeat the existing APP/ACTION wire lines to carry a list. Keep

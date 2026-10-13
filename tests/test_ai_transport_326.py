@@ -206,7 +206,8 @@ def test_production_local_sinks_refuse_replay_and_notify(app, adapter, monkeypat
     elif feature == "editing":
         assert edit_model._call_ollama(app, "example text", 1)[0] is None
     elif feature == "warmup":
-        assert ava_readiness.warm_configured_provider(app).failure_kind == ava_readiness.UNREACHABLE
+        result = ava_readiness.warm_configured_provider(app)
+        assert result.offline and result.failure_kind == ava_readiness.UNREACHABLE
     else:
         from plugins.commands import ask_ollama
 

@@ -270,13 +270,35 @@ def test_answer_that_could_not_be_spoken_is_not_a_success(monkeypatch, inline_wo
 
 def test_stale_request_resolves_pending_chip_without_success(monkeypatch, inline_worker):
     app = _session_done_harness(_app())
+    app._ava_completion_epoch = 0
+    app._ava_completion_lock = None
+    app._ava_conversation_lane = None
+    app._ava_cmd_generation = 1
+    app._schedule_ui = lambda fn, *args, **kwargs: fn(*args, **kwargs)
+    workers = []
+    monkeypatch.setattr(ask_ollama.thread_registry, "spawn", lambda name, fn, **kw: workers.append(fn))
+    monkeypatch.setattr(ask_ollama.thread_registry, "timer", lambda *args, **kw: Mock())
+    # The cancellation boundary clears the pending display immediately;
+    # the retired worker must never emit a receipt when it returns later.
+    ask_ollama.ava_turn_queue.submit(app, lambda: None, generation=1)
+    assert app.listening_indicator.set_thinking.call_args.args == (True,)
+    ask_ollama.execution_policy.stop_all(app, "retired test request", chip=False, bump=False)
+    assert app.listening_indicator.set_thinking.call_args.args == (False,)
+    app.listening_indicator.clear_feedback.assert_called_once_with("ava")
+    assert app.ava_thinking_since is None
+    assert not app._ava_session_request_in_flight
+    assert not app._ava_session_dispatch_queue
     monkeypatch.setattr(cloud_llm, "send", lambda *a, **k: LONG_ANSWER)
     monkeypatch.setattr(ask_ollama.execution_policy, "is_current", lambda app_, gen: False)
 
+    workers.pop()()  # The abandoned drain returns after the cancellation.
     ask_ollama.handle_ask_ava(app, "hello", on_done=app._on_ava_session_request_done, generation=1)
 
-    label, kind = app._show_outcome_chip.call_args.args
-    assert kind != "success" and CHECK not in label
+    app._show_outcome_chip.assert_not_called()
+    app._touch_session_activity.assert_not_called()
+    assert app._ava_turn_outcome is None
+    assert _spoken(app) == []
+    assert "success" not in [call.args[0] for call in app.play_sound.call_args_list]
 
 
 def test_local_ollama_down_names_ollama(monkeypatch, inline_worker):
