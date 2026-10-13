@@ -266,9 +266,16 @@ class DeviceChanges:
         self.notifications = True
         self._capture = None
         self._render = None
+        self._reported = set()
+
+    def warn_once(self, message):
+        if message not in self._reported:
+            self._reported.add(message)
+            log.warning(message)
 
     def prime(self):
-        self._capture, self._render = self.endpoints(), self.render_id()
+        self._render = self.render_id()
+        self._capture = self.endpoints()
 
     def notify(self, *_args):
         with self._lock:
@@ -279,14 +286,22 @@ class DeviceChanges:
         if self._waiting_since is None:
             self._waiting_since = self.clock()
 
-    def _observe(self):
-        current, render = self.endpoints(), self.render_id()
-        before = self._capture
-        self._capture, old_render = current, self._render
+    def observe_output(self):
+        render = self.render_id()
+        old_render = self._render
         self._render = render
         if render != old_render and getattr(self.app, 'output_device', None) is None:
             self._output_pending = True
-        if before is None or current == before:
+
+    def _observe(self):
+        self.observe_output()
+        current = self.endpoints()
+        before, self._capture = self._capture, current
+        if before is None:
+            if current and self.app._no_microphone:
+                self.request_input()  # Initial observation failed; a device is now visible.
+            return
+        if current == before:
             return
         ace = getattr(self.app, '_ace_engine', None)
         lost = getattr(ace, 'device_lost', self.app._no_microphone)
@@ -313,11 +328,11 @@ class DeviceChanges:
             try:
                 self._observe()
             except Exception:
-                log.debug('[MIC] Endpoint observation deferred', exc_info=True)
-                return
-            with self._lock:
-                if self._pending == pending:
-                    self._pending = None
+                self.warn_once('[MIC] Endpoint observation unavailable; will retry')
+            else:
+                with self._lock:
+                    if self._pending == pending:
+                        self._pending = None
             self._next_probe = now + 5.0
         if now < self._retry_at:
             return
@@ -367,29 +382,54 @@ def watch(app, get_render_id):
     stop = getattr(app, '_output_watcher_stop', None)
     if stop is None:
         return
-    import comtypes
-    comtypes.CoInitializeEx(0)
     changes = changes_for(app)
     changes.render_id = get_render_id
     close = None
+    com_owned = False
+    changes.notifications = False
     try:
         try:
+            import comtypes
+            # Import itself initializes the first importing thread. Match that
+            # apartment; balance only this additional successful initialization.
+            comtypes.CoInitializeEx()
+            com_owned = True
+            from comtypes.client import PumpEvents
             close = register_notifications(changes.notify)
+            changes.notifications = True
         except Exception:
-            changes.notifications = False
-            log.warning('[MIC] Endpoint notifications unavailable; observing Windows endpoints')
+            changes.warn_once('[MIC] Endpoint notifications unavailable; observing Windows endpoints')
         try:
             changes.prime()
         except Exception:
-            log.debug('[MIC] Initial endpoint observation unavailable', exc_info=True)
+            changes.warn_once('[MIC] Initial endpoint observation unavailable; will retry')
         while not stop.wait(0.5):
-            if close is None and changes._pending is None and get_render_id() != changes._render:
-                changes.notify()
-            changes.tick()
+            if changes.notifications:
+                try:
+                    # STA notification callbacks need COM dispatch on this thread.
+                    PumpEvents(0.001)
+                except Exception:
+                    changes.notifications = False
+                    changes.warn_once('[MIC] Endpoint notifications unavailable; observing Windows endpoints')
+            if not changes.notifications:
+                try:
+                    # Output routing must survive even a failed capture query.
+                    changes.observe_output()
+                except Exception:
+                    changes.warn_once('[MIC] Default output observation unavailable; will retry')
+            try:
+                changes.tick()
+            except Exception:
+                changes.warn_once('[MIC] Device watcher pass failed; will retry')
     finally:
-        if close is not None:
-            close()
-        comtypes.CoUninitialize()
+        try:
+            if close is not None:
+                close()
+        except Exception:
+            changes.warn_once('[MIC] Endpoint notification cleanup failed')
+        finally:
+            if com_owned:
+                comtypes.CoUninitialize()
 
 
 def _bounded_open_owned(app, token, audio_ducking, opener, timeout=0.2):

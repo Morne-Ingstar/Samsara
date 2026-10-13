@@ -2407,7 +2407,11 @@ class DictationApp:
             logger.debug("[ACE] Engine started — hold / continuous / wake dictation ready")
             self._set_microphone_state(False)
         except Exception as exc:
-            logger.exception(f"[ACE] Engine failed to start: {exc}")
+            from samsara.audio_engine.device_resolver import DeviceNotFound
+            if isinstance(exc, DeviceNotFound):
+                logger.info('[MIC] No microphone available; capture will wait for a device')
+            else:
+                logger.exception(f"[ACE] Engine failed to start: {exc}")
             if self._ace_engine is not None:
                 self._ace_engine.stop()
             self._ace_engine         = None
@@ -3837,6 +3841,7 @@ class DictationApp:
 
     def _detect_capture_rate(self, device_id):
         """Query the native sample rate of a device. Falls back to DEFAULT_CAPTURE_RATE."""
+        from samsara.audio_engine.device_resolver import DeviceNotFound
         try:
             from samsara.audio_engine.device_resolver import select_input
             device_id, _fallback = select_input(sd, self.config)
@@ -3845,6 +3850,8 @@ class DictationApp:
                 rate = int(info['default_samplerate'])
                 logger.info(f"[AUDIO] Device {device_id} native rate: {rate}Hz")
                 return rate
+        except DeviceNotFound:
+            logger.info('[MIC] No microphone available; using default capture rate')
         except Exception as e:
             logger.exception(f"[WARN] Could not query device {device_id} rate: {e}")
         return DEFAULT_CAPTURE_RATE
@@ -3931,6 +3938,7 @@ class DictationApp:
         measured_ok); a failed or empty recording yields the default and
         False so it is never persisted as a real calibration."""
         multiplier = self.config.get('cal_multiplier', 3.0)
+        from samsara.audio_engine.device_resolver import DeviceNotFound
         try:
             from samsara.audio_engine.device_resolver import select_input
             mic_id, _fallback = select_input(sd, self.config)
@@ -3940,6 +3948,9 @@ class DictationApp:
             logger.debug(f"[CAL] Ambient RMS: {ambient:.4f} | "
                   f"Multiplier: {multiplier}x | Threshold: {threshold:.4f}")
             return threshold, len(rms_samples) >= 3
+        except DeviceNotFound:
+            logger.info('[MIC] No microphone available; calibration deferred')
+            return DEFAULT_SPEECH_THRESHOLD, False
         except Exception as e:
             threshold = DEFAULT_SPEECH_THRESHOLD
             logger.exception(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
