@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -180,11 +181,14 @@ def test_early_boot_migrates_older_installer_helper_before_confirmation(tmp_path
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell transaction")
-@pytest.mark.parametrize("failure", [None, "malformed-old", "malformed-new", "backup-io", "health", "legacy", "migration-timeout", "migration-timeout-reparse", "legacy-malformed", "legacy-orphan-malformed", "legacy-orphan-oversized"])
+@pytest.mark.parametrize("failure", [None, "malformed-old", "malformed-new", "backup-io", "health", "legacy", "migration-timeout", "migration-timeout-reparse", "legacy-malformed", "legacy-orphan-malformed", "legacy-orphan-oversized", "migration-timeout-reparse-status", "migration-timeout-status", "migration-kill-failure", "migration-wait-failure", "migration-kill-status", "migration-timeout-dialog-failure", "restore-failure-status"])
 def test_real_helper_overwrite_migration_and_rollback(tmp_path, monkeypatch, failure):
     orphan = failure in ("legacy-orphan-malformed", "legacy-orphan-oversized")
     success = failure in (None, "legacy") or orphan
-    timed_out = failure in ("migration-timeout", "migration-timeout-reparse")
+    timed_out = bool(failure and (failure.startswith("migration-timeout") or failure.startswith("migration-kill") or failure == "migration-wait-failure"))
+    restore_failure = failure in ("migration-timeout-reparse", "migration-timeout-reparse-status", "restore-failure-status")
+    kill_failure = failure in ("migration-kill-failure", "migration-kill-status", "migration-wait-failure")
+    status_failure = bool(failure and failure.endswith("-status"))
     install = tmp_path / "Samsara"
     install.mkdir()
     for name in ("Samsara.exe", "unins000.exe", "unins000.dat"):
@@ -212,7 +216,7 @@ def test_real_helper_overwrite_migration_and_rollback(tmp_path, monkeypatch, fai
     runner(install / "runner.cmd", f'Set-Content -LiteralPath {up._ps_literal(old_marker)} -Value old')
     # A late edit proves the helper refreshes the earlier preparation snapshot.
     commands(old_commands, {"old": {"action": "late-edit"}})
-    if failure in ("malformed-old", "legacy-malformed", "legacy-orphan-malformed"):
+    if failure in ("malformed-old", "legacy-malformed", "legacy-orphan-malformed", "restore-failure-status"):
         old_commands.write_bytes(b"{broken")
     elif failure == "legacy-orphan-oversized":
         with old_commands.open("wb") as stream:
@@ -311,11 +315,12 @@ function Start-Process {{
             return Microsoft.PowerShell.Management\Start-Process -FilePath {up._ps_literal(sys.executable)} -ArgumentList {up._ps_literal('-B "' + str(hanging) + '"')} -WindowStyle Hidden -PassThru
         }}
         if ({'$true' if timed_out else '$false'}) {{
-            $fake = [pscustomobject]@{{ HasExited=$false; ExitCode=0 }}
+            $fake = [pscustomobject]@{{ HasExited=$false; ExitCode=0; Id=$PID; StartTime=([Diagnostics.Process]::GetCurrentProcess().StartTime) }}
             $fake | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {{ param($timeout) return $this.HasExited }}
             $fake | Add-Member -MemberType ScriptMethod -Name Kill -Value {{
+                if ({'$true' if failure in ('migration-kill-failure','migration-kill-status') else '$false'}) {{ throw 'synthetic Kill failure' }}
                 Set-Content -LiteralPath {up._ps_literal(tmp_path/'migration-killed')} -Value stopped
-                $this.HasExited=$true
+                $this.HasExited={'$false' if failure == 'migration-wait-failure' else '$true'}
             }}
             return $fake
         }}
@@ -328,19 +333,23 @@ function Start-Process {{
     Microsoft.PowerShell.Management\Start-Process @params
 }}
 '''
-    if failure == "migration-timeout-reparse":
+    if restore_failure:
         # Fail exactly the restoration check after kill, then permit fallback.
         shim += fr'''
 $script:checkedAfterKill=$false
 $originalAssert = ${{function:Assert-NotReparsePoint}}
 function Assert-NotReparsePoint($path, $root) {{
-    if ((Test-Path -LiteralPath {up._ps_literal(tmp_path/'migration-killed')}) -and $path -eq $rollback -and -not $script:checkedAfterKill) {{
+    if (({'($null -ne $migrationProcess)' if failure == 'restore-failure-status' else '(Test-Path -LiteralPath '+up._ps_literal(tmp_path/'migration-killed')+')'}) -and $path -eq $rollback -and -not $script:checkedAfterKill) {{
         $script:checkedAfterKill=$true
         throw 'synthetic reparse assertion failure in restoration'
     }}
     & $originalAssert $path $root
 }}
 '''
+    if status_failure:
+        shim += "\nfunction Write-UpdateStatus($state, $message) { throw 'synthetic status write failure' }\n"
+    if failure == "migration-timeout-dialog-failure":
+        shim += "\nfunction Show-UpdateFailure($message) { throw 'synthetic dialog failure' }\n"
     script = script.replace("$installerProcess = $null", shim + "\n$installerProcess = $null", 1)
     prepared.helper_path.write_text(script, encoding="utf-8-sig")
     result = subprocess.run(
@@ -349,13 +358,12 @@ function Assert-NotReparsePoint($path, $root) {{
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, timeout=40, creationflags=subprocess.CREATE_NO_WINDOW,
     )
-    assert result.returncode == (3 if failure == "migration-timeout-reparse" else 0 if success else 2), result.stdout
+    assert result.returncode == (3 if restore_failure or kill_failure else 0 if success else 2), result.stdout
     outcome = json.loads(status.read_text(encoding="utf-8-sig"))
     if failure not in ("legacy", "legacy-malformed") and not orphan:
         assert isinstance(outcome["helper_pid"], int)
         assert int(outcome["helper_started_filetime"]) > 0
     if timed_out:
-        import time
         deadline = time.monotonic() + 5
         while not old_marker.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -363,17 +371,42 @@ function Assert-NotReparsePoint($path, $root) {{
         if failure == "migration-timeout":
             pid = int((tmp_path / "maintenance-pid").read_text())
             assert maintenance._process_creation_filetime(pid) is None
-        else:
+        elif failure not in ("migration-kill-failure", "migration-kill-status"):
             assert (tmp_path / "migration-killed").is_file()
-        assert (tmp_path / "dialog-shown").read_text(encoding="utf-8-sig").startswith("Customization migration took too long.")
-        assert outcome["state"] == ("awaiting_confirmation" if failure == "migration-timeout-reparse" else "rolled_back")
-        assert prepared.rollback_dir.is_dir() == (failure == "migration-timeout-reparse")
+        if failure != "migration-timeout-dialog-failure":
+            message = (tmp_path / "dialog-shown").read_text(encoding="utf-8-sig")
+            assert message.startswith("Customization recovery is pending." if kill_failure else "Customization migration took too long.")
+        assert outcome["state"] == ("waiting" if status_failure else "awaiting_confirmation" if restore_failure or kill_failure else "rolled_back")
+        assert prepared.rollback_dir.is_dir() == (restore_failure or kill_failure)
         assert workspace.is_dir()
-        if failure == "migration-timeout-reparse":
+        if restore_failure or kill_failure:
             assert (prepared.rollback_dir / "_internal/commands.json").read_bytes() == expected_old_bytes
+            if not status_failure:
+                # Continue past launching the old copy: its real tray reconcile
+                # must preserve the installed copy's next-start migration.
+                monkeypatch.setattr(up, "update_unavailable_reason", lambda: None)
+                monkeypatch.setattr(ins, "repair_notice", lambda: None)
+                monkeypatch.setattr(sys, "frozen", True, raising=False)
+                monkeypatch.setenv("SAMSARA_HOME_DIR", str(updates.parent))
+                monkeypatch.setattr(sys, "executable", str(prepared.rollback_dir / "Samsara.exe"))
+                original_status = status.read_bytes()
+                assert up.reconcile_update_on_startup() is None
+                assert status.read_bytes() == original_status
+                monkeypatch.setattr(sys, "executable", str(install / "Samsara.exe"))
+                assert maintenance.migrate_pending_installer_update() is True
+                assert "old" in json.loads(old_commands.read_text())["commands"]
+                assert up.reconcile_update_on_startup().state == "installed"
         else:
             assert old_commands.read_bytes() == expected_old_bytes
             assert json.loads(registry.read_text(encoding="utf-8-sig"))["version"] == "old"
+        return
+    if failure == "restore-failure-status":
+        deadline = time.monotonic() + 5
+        while not old_marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert old_marker.is_file()
+        assert prepared.rollback_dir.is_dir()
+        assert (prepared.rollback_dir / "_internal/commands.json").read_bytes() == expected_old_bytes
         return
     if orphan:
         # Fake legacy helper really consumes reported as success and deletes

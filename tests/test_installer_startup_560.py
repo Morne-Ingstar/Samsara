@@ -310,3 +310,174 @@ def test_raw_archive_copies_whole_plugins_tree_before_any_terminal_status(pendin
     monkeypatch.setattr(migration, "_replace_file_atomically", replace)
     boot.migrate_before_boot()
     assert json.loads(status.read_text())["state"] == "reported"
+
+
+def test_rollback_reconcile_preserves_retry_then_installed_copy_migrates(pending, monkeypatch):
+    install, snapshot, workspace, updates, status, notice = pending
+    payload = json.loads(status.read_text())
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    status.write_text(json.dumps(payload))
+    original = status.read_bytes()
+    monkeypatch.setattr(up, "update_unavailable_reason", lambda: None)
+    monkeypatch.setattr(ins, "repair_notice", lambda: None)
+    monkeypatch.setattr(sys, "executable", str(snapshot / "Samsara.exe"))
+    boot.migrate_before_boot()
+    assert up.reconcile_update_on_startup() is None
+    assert status.read_bytes() == original
+    assert not list(updates.glob("last_update.invalid-*"))
+    monkeypatch.setattr(sys, "executable", str(install / "Samsara.exe"))
+    boot.migrate_before_boot()
+    assert "edited" in json.loads((install / "_internal/commands.json").read_text())["commands"]
+    assert up.reconcile_update_on_startup().state == "installed"
+
+
+@pytest.mark.parametrize("owner", ["identity", "lock"])
+def test_unstopped_migration_defers_boot_and_confirmation_then_retries(pending, monkeypatch, owner):
+    install, snapshot, workspace, updates, status, notice = pending
+    payload = json.loads(status.read_text())
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    status.write_text(json.dumps(payload))
+    if owner == "identity":
+        payload.update(migration_pid=12345, migration_started_filetime="100")
+        status.write_text(json.dumps(payload))
+        monkeypatch.setattr(migration, "_process_creation_filetime", lambda pid: 100)
+    monkeypatch.setattr(up, "update_unavailable_reason", lambda: None)
+    monkeypatch.setattr(ins, "repair_notice", lambda: None)
+    original = status.read_bytes()
+    packaged = (install / "_internal/commands.json").read_bytes()
+    def assert_deferred():
+        boot.migrate_before_boot()
+        assert up.reconcile_update_on_startup() is None
+        assert status.read_bytes() == original
+        assert (install / "_internal/commands.json").read_bytes() == packaged
+        assert not (workspace / "customizations-migrated.json").exists()
+        notice.assert_not_called()
+    if owner == "lock":
+        with migration._migration_lock(updates / "backups"):
+            assert_deferred()
+            with pytest.raises(migration.MigrationBusy):
+                migration.migrate_installer_customizations(snapshot, install, updates / "backups", workspace / "customizations-migrated.json")
+    else:
+        assert_deferred()
+        monkeypatch.setattr(migration, "_process_creation_filetime", lambda pid: 101)
+    boot.migrate_before_boot()
+    assert "edited" in json.loads((install / "_internal/commands.json").read_text())["commands"]
+    assert up.reconcile_update_on_startup().state == "installed"
+
+
+@pytest.mark.parametrize("problem", ["reparse", "over-cap", "too-many", "copy-io"])
+def test_refused_plugins_still_archive_commands_without_acknowledging_success(pending, monkeypatch, problem):
+    install, snapshot, workspace, updates, status, notice = pending
+    old = snapshot / "_internal/commands.json"
+    old.write_bytes(b"{broken")
+    plugin = snapshot / "_internal/plugins/commands/unsafe.py"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_bytes(b"plugin")
+    if problem == "reparse":
+        checked = migration._checked_lstat
+        def inspect(path):
+            if path == plugin:
+                raise shared.UnsafeCustomizationError("synthetic plugin reparse point")
+            return checked(path)
+        monkeypatch.setattr(migration, "_checked_lstat", inspect)
+        monkeypatch.setattr(shared, "_checked_lstat", inspect)
+    elif problem == "over-cap":
+        with plugin.open("wb") as stream:
+            stream.truncate(migration.DEFAULT_MAX_BACKUP_BYTES + 1)
+    elif problem == "too-many":
+        monkeypatch.setattr(shared, "MAX_PLUGIN_FILES", 0)
+    else:
+        copy = migration._copy_verified_file
+        def copy_file(source, *args, **kwargs):
+            if source == plugin:
+                raise PermissionError("synthetic plugin copy error")
+            return copy(source, *args, **kwargs)
+        monkeypatch.setattr(migration, "_copy_verified_file", copy_file)
+    boot.migrate_before_boot()
+    payload = json.loads(status.read_text())
+    archive = Path(payload["customization_backup_dir"])
+    assert (archive / "commands.json").read_bytes() == b"{broken"
+    manifest = json.loads((archive / "manifest.json").read_text())
+    assert manifest["commands_backed_up"] is True
+    assert manifest["plugins_backed_up"] is False
+    assert payload["state"] == "customization_recovery_pending"
+    assert "Your command file was saved" in payload["message"]
+    assert "plugins could not all be archived" in payload["message"]
+    assert plugin.exists() and snapshot.is_dir()
+    migration._prune_backups(updates / "backups", updates / "backups/customizations-current")
+    assert archive.is_dir()
+
+
+@pytest.mark.parametrize("with_plugin", [False, True])
+def test_notice_does_not_claim_absent_command_file(pending, monkeypatch, with_plugin):
+    install, snapshot, workspace, updates, status, notice = pending
+    (snapshot / "_internal/commands.json").unlink()
+    if with_plugin:
+        plugin = snapshot / "_internal/plugins/commands/old.py"
+        plugin.parent.mkdir(parents=True)
+        plugin.write_bytes(b"edited")
+    monkeypatch.setattr(migration, "migrate_installer_customizations", Mock(side_effect=PermissionError("synthetic migration failure")))
+    boot.migrate_before_boot()
+    payload = json.loads(status.read_text())
+    assert "Your command" not in payload["message"]
+    assert ("Your plugins were saved" if with_plugin else "An empty recovery archive was saved") in payload["message"]
+
+
+def test_retention_preserves_every_notice_named_archive(pending):
+    install, snapshot, workspace, updates, status, notice = pending
+    backups = updates / "backups"
+    protected = migration._archive_raw_customizations(snapshot, backups)
+    os.utime(protected, ns=(0, 0))
+    ordinary = []
+    for index in range(8):
+        archive = backups / f"customizations-new-{index}"
+        archive.mkdir()
+        (archive / "manifest.json").write_text('{"schema_version":1}')
+        os.utime(archive, ns=((index+1)*1_000_000_000, (index+1)*1_000_000_000))
+        ordinary.append(archive)
+        migration._prune_backups(backups, archive)
+    assert protected.is_dir()
+    assert {p.name for p in backups.iterdir()} == {protected.name, *(p.name for p in ordinary[-5:])}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows interprocess maintenance lock")
+def test_writer_lock_blocks_retry_even_without_process_identity_or_saved_status(pending, monkeypatch):
+    import subprocess
+    import time
+    install, snapshot, workspace, updates, status, notice = pending
+    ready, release = workspace / "writer-ready", workspace / "writer-release"
+    driver = workspace / "writer.py"
+    driver.write_text(
+        "import sys,time\nfrom pathlib import Path\n"
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})\n"
+        "from samsara.update_installer_customizations import _migration_lock\n"
+        f"with _migration_lock(Path({str(updates / 'backups')!r})):\n"
+        f"    Path({str(ready)!r}).write_text('ready')\n"
+        "    deadline = time.monotonic() + 15\n"
+        f"    while not Path({str(release)!r}).exists() and time.monotonic() < deadline: time.sleep(0.02)\n"
+    )
+    writer = subprocess.Popen([sys._base_executable, "-B", str(driver)],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and writer.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready.exists()
+        original = status.read_bytes()
+        monkeypatch.setattr(up, "update_unavailable_reason", lambda: None)
+        monkeypatch.setattr(ins, "repair_notice", lambda: None)
+        payload = json.loads(status.read_text())
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        status.write_text(json.dumps(payload))
+        original = status.read_bytes()
+        boot.migrate_before_boot()
+        assert up.reconcile_update_on_startup() is None
+        assert status.read_bytes() == original
+        assert not (workspace / "customizations-migrated.json").exists()
+    finally:
+        release.write_text("release")
+        output, _ = writer.communicate(timeout=20)
+    assert writer.returncode == 0, output
+    boot.migrate_before_boot()
+    assert "edited" in json.loads((install / "_internal/commands.json").read_text())["commands"]

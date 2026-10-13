@@ -1593,9 +1593,14 @@ def reconcile_update_on_startup(
 
     install = _frozen_install_dir()
     try:
+        if not isinstance(payload.get("install_dir"), str) or not Path(payload["install_dir"]).is_absolute():
+            raise UpdateError("The update status is missing an absolute installation path.")
         recorded_install = Path(str(payload.get("install_dir", ""))).resolve()
         if recorded_install != install:
-            raise UpdateError("The update status belongs to a different installation.")
+            return None  # Another retained copy must leave this fresh retry intact.
+        from samsara.update_installer_customizations import migration_blocked
+        if migration_blocked(payload, samsara_home_dir() / "updates" / "backups"):
+            return None
         rollback = _validated_recorded_path(
             payload.get("rollback_dir"), install.parent, f".{install.name}-rollback-"
         )
@@ -1605,13 +1610,8 @@ def reconcile_update_on_startup(
         installed = UpdateStatus(
             "installed", "The update was installed successfully.", tag
         )
-        # This is the health handshake consumed by the waiting helper. Never
-        # remove the potentially multi-gigabyte rollback on the Qt startup
-        # thread; the detached helper performs that cleanup after observing
-        # this atomic status transition. The path fields are carried forward
-        # (not dropped) so that if the helper dies before finishing that
-        # cleanup, a later reconcile call (see the "installed" branch above)
-        # can still find and retry it instead of leaking the directories.
+        # The helper owns cleanup. Retain paths so startup can retry if it dies;
+        # never remove a large rollback on the Qt thread.
         _write_status(
             status_path, installed.state, installed.message, installed.tag,
             extra_fields={

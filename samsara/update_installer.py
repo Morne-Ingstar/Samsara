@@ -287,6 +287,9 @@ def helper(prepared,current_pid):
         "helper_pid=$PID; helper_started_filetime="
         "([Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToFileTimeUtc().ToString());",
     )
+    prefix = prefix.replace(
+        "helper_pid=$PID;", "migration_pid=$migrationPid; migration_started_filetime=$migrationStarted; helper_pid=$PID;"
+    )
     literal = updater._ps_literal
     arguments = ' '.join('"'+arg.replace('"','""')+'"' for arg in installer_arguments(prepared.install_dir,prepared.components))
     registry_name = UNINSTALL_ROOT+'\\'+APP_KEY
@@ -325,6 +328,26 @@ function Assert-InstalledMetadata {
         if (-not [string]::Equals([IO.Path]::GetFullPath([string]$key.GetValue('InstallLocation')), [IO.Path]::GetFullPath($install), [StringComparison]::OrdinalIgnoreCase)) { throw 'The installer registered another folder.' }
     } finally { $key.Close(); $baseKey.Close() }
 }
+# Recovery metadata and dialogs are best effort: neither may prevent relaunch.
+function Write-RecoveryStatus($state, $message) {
+    try { Write-UpdateStatus $state $message } catch { }
+}
+function Show-RecoveryFailure($message) {
+    try { Show-UpdateFailure $message } catch { }
+}
+function Start-RecoveryCopy($copies) {
+    foreach ($copy in $copies) {
+        try {
+            Assert-NotReparsePoint $copy $installParent
+            $copyExe = Join-Path $copy $executable
+            Assert-NotReparsePoint $copyExe $installParent
+            if (Test-Path -LiteralPath $copyExe -PathType Leaf) {
+                Start-Process -FilePath $copyExe -WorkingDirectory $copy -WindowStyle Hidden
+                return
+            }
+        } catch { }
+    }
+}
 # STAND-IN COPY (560): customization maintenance failure details.
 function Invoke-CustomizationMigration {
     $receipt = Join-Path $workspace 'customizations-migrated.json'
@@ -349,6 +372,8 @@ $newProcess = $null
 $snapshot = $null
 $backupReady = $false
 $migrationTimedOut = $false
+$migrationPid = $null
+$migrationStarted = $null
 try {
     Assert-NotReparsePoint $installer $installParent
     $stream = [IO.File]::OpenRead($installer)
@@ -405,22 +430,37 @@ try {
             $migrationProcess.Kill()
             if (-not $migrationProcess.WaitForExit(10000)) { throw 'Customization maintenance did not stop.' }
         } catch {
-            Write-UpdateStatus 'awaiting_confirmation' 'Customization recovery is pending; the previous folder backup is retained.'
+            # Retain exact process identity for the next shortcut launch. The
+            # maintenance mode also holds an OS file lock before any writes,
+            # so even a failed status write cannot permit concurrent migration.
+            $migrationPid = 0
+            $migrationStarted = ''
+            try {
+                $migrationPid = $migrationProcess.Id
+                $migrationStarted = $migrationProcess.StartTime.ToUniversalTime().ToFileTimeUtc().ToString()
+            } catch { }
+            Write-RecoveryStatus 'awaiting_confirmation' 'Customization recovery is pending; the previous folder backup is retained.'
+            # The running writer owns install: open only the untouched rollback.
+            Start-RecoveryCopy @($rollback)
             # STAND-IN COPY (560)
-            Show-UpdateFailure 'Customization recovery is pending. The previous installation has been kept in its backup folder.'
+            Show-RecoveryFailure 'Customization recovery is pending. Samsara will try to open the previous installation from its backup folder.'
             exit 3
         }
     }
     if (($null -ne $installerProcess) -and (-not $installerProcess.HasExited)) {
-        Write-UpdateStatus 'failed' "Installer still running; the previous folder backup is retained. $problem"
-        Show-UpdateFailure 'The installer has not finished. The previous version backup has been kept; nothing was closed by force.'
+        Write-RecoveryStatus 'failed' "Installer still running; the previous folder backup is retained. $problem"
+        Start-RecoveryCopy @($rollback)
+        Show-RecoveryFailure 'The installer has not finished. The previous version backup has been kept; nothing was closed by force.'
         exit 3
     }
     if (($null -ne $newProcess) -and (-not $newProcess.HasExited)) {
-        $null = $newProcess.CloseMainWindow()
-        if (-not $newProcess.WaitForExit(10000)) {
-            Write-UpdateStatus 'failed' "Samsara did not close; the previous folder backup is retained. $problem"
-            Show-UpdateFailure 'The update could not be verified. Close Samsara normally before restoring the retained previous-version backup.'
+        try {
+            $null = $newProcess.CloseMainWindow()
+            if (-not $newProcess.WaitForExit(10000)) { throw 'Samsara did not close.' }
+        } catch {
+            Write-RecoveryStatus 'failed' "Samsara did not close; the previous folder backup is retained. $problem"
+            # The copy is already running. Do not restore files beneath it.
+            Show-RecoveryFailure 'The update could not be verified. Close Samsara normally before restoring the retained previous-version backup.'
             exit 3
         }
     }
@@ -433,38 +473,28 @@ try {
             Move-Item -LiteralPath $rollback -Destination $install
             Restore-InstallRegistry $snapshot
         }
-        Write-UpdateStatus 'rolled_back' "The installer update failed; the previous installation was restored. $problem"
-        Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install -WindowStyle Hidden
+        Write-RecoveryStatus 'rolled_back' "The installer update failed; the previous installation was restored. $problem"
+        Start-RecoveryCopy @($install, $rollback)
         if ($migrationTimedOut) {
             # STAND-IN COPY (560)
-            Show-UpdateFailure 'Customization migration took too long. The previous Samsara installation has been restored and will open now.'
+            Show-RecoveryFailure 'Customization migration took too long. The previous Samsara installation has been restored and will open now.'
         } else {
-            Show-UpdateFailure 'The update failed. The previous Samsara installation has been restored. You can use the installer to try again.'
+            Show-RecoveryFailure 'The update failed. The previous Samsara installation has been restored. You can use the installer to try again.'
         }
         exit 2
     } catch {
         if ($migrationTimedOut) {
             # Leave the next shortcut launch eligible for the early-boot bridge,
             # rather than recording "failed" over a half-migrated installation.
-            Write-UpdateStatus 'awaiting_confirmation' 'Customization recovery is pending; the previous folder backup is retained.'
+            Write-RecoveryStatus 'awaiting_confirmation' 'Customization recovery is pending; the previous folder backup is retained.'
+            Start-RecoveryCopy @($rollback, $install)
             # STAND-IN COPY (560)
-            Show-UpdateFailure 'Customization migration took too long. Automatic restoration could not finish; Samsara will try to open a retained copy.'
-            # One failed reparse check must not abort the entire recovery catch.
-            foreach ($copy in @($rollback, $install)) {
-                try {
-                    Assert-NotReparsePoint $copy $installParent
-                    $copyExe = Join-Path $copy $executable
-                    Assert-NotReparsePoint $copyExe $installParent
-                    if (Test-Path -LiteralPath $copyExe -PathType Leaf) {
-                        Start-Process -FilePath $copyExe -WorkingDirectory $copy -WindowStyle Hidden
-                        break
-                    }
-                } catch { }
-            }
+            Show-RecoveryFailure 'Customization migration took too long. Automatic restoration could not finish; Samsara will try to open a retained copy.'
             exit 3
         }
-        Write-UpdateStatus 'failed' "The update and restoration failed: $problem / $($_.Exception.Message)"
-        Show-UpdateFailure 'The update could not be restored automatically. The retained files must be checked before trying the installer again.'
+        Write-RecoveryStatus 'failed' "The update and restoration failed: $problem / $($_.Exception.Message)"
+        Start-RecoveryCopy @($rollback, $install)
+        Show-RecoveryFailure 'The update could not be restored automatically. The retained files must be checked before trying the installer again.'
         exit 3
     }
 }

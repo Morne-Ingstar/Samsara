@@ -15,6 +15,7 @@ import stat
 import sys
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from samsara.update_customizations import (
@@ -31,7 +32,7 @@ logger = logging.getLogger("Samsara")
 _invalid_logged = False
 # STAND-IN COPY (560)
 RECOVERY_NOTICE = (
-    "Samsara could not restore your edited commands after the update. "
+    "Customization recovery did not finish after the update. "
 )
 
 
@@ -77,7 +78,7 @@ def _prune_backups(backups: Path, current: Path) -> None:
                 if not stat.S_ISDIR(info.st_mode):
                     continue
                 manifest = _read_object(archive / "manifest.json", archive)
-                if manifest.get("schema_version") != 1:
+                if manifest.get("schema_version") != 1 or manifest.get("raw_recovery") is True:
                     continue
                 archives.append((info.st_mtime_ns, archive.name, archive))
             except Exception:
@@ -96,7 +97,65 @@ def _prune_backups(backups: Path, current: Path) -> None:
         logger.warning("[UPDATE] Customization backup cleanup deferred")
 
 
+class MigrationBusy(CustomizationMigrationError):
+    """An earlier maintenance process still owns customization writes."""
+
+
+@contextmanager
+def _migration_lock(backups: Path):
+    """OS-owned lock survives helper failure and is released on process exit."""
+    _safe_absolute(backups, backups.parent.parent)
+    backups.parent.mkdir(parents=True, exist_ok=True)
+    path = _safe_absolute(backups.parent / "customization-migration.lock", backups.parent)
+    with path.open("a+b") as stream:
+        stream.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise MigrationBusy("Customization migration is already running.") from exc
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def migration_blocked(payload: dict, backups: Path) -> bool:
+    """Read the timed-out process identity and probe its independent write lock."""
+    if payload.get("migration_pid") is not None:
+        try:
+            pid = payload["migration_pid"]
+            started = payload["migration_started_filetime"]
+            if type(pid) is not int or pid <= 0 or not isinstance(started, str) or not started.isdecimal():
+                return True
+            if _process_creation_filetime(pid) == int(started):
+                return True
+        except Exception:
+            return True
+    path = backups.parent / "customization-migration.lock"
+    if os.path.lexists(path):
+        try:
+            with _migration_lock(backups):
+                pass
+        except Exception:
+            return True
+    return False
+
+
 def migrate_installer_customizations(snapshot, install, backups, receipt):
+    with _migration_lock(Path(backups)):
+        return _migrate_installer_customizations(snapshot, install, backups, receipt)
+
+
+def _migrate_installer_customizations(snapshot, install, backups, receipt):
     """Run the shared migration on confined roots and record completion."""
     snapshot, install, backups, receipt = map(Path, (snapshot, install, backups, receipt))
     workspace = receipt.parent
@@ -225,30 +284,46 @@ def _archive_raw_customizations(snapshot: Path, backups: Path) -> Path:
         if not stat.S_ISREG(command_info.st_mode):
             raise CustomizationMigrationError("Recovery commands are not a regular file.")
     plugins = data / "plugins"
-    _assert_safe_existing_path(plugins, snapshot)
-    files = _enumerate_plugin_files(plugins)
-    manifest = (json.dumps({
+    plugins_backed_up = True
+    try:
+        _assert_safe_existing_path(plugins, snapshot)
+        files = _enumerate_plugin_files(plugins)
+    except Exception:
+        files = []
+        plugins_backed_up = False
+    payload = {
         "schema_version": 1, "raw_recovery": True,
         "commands_backed_up": command_info is not None,
-        "plugin_files": [item.relative.as_posix() for item in files],
-    }) + "\n").encode("utf-8")
-    size = len(manifest) + (command_info.st_size if command_info else 0)
-    size += sum(item.stat_result.st_size for item in files)
-    if size > DEFAULT_MAX_BACKUP_BYTES:
+        "plugins_backed_up": plugins_backed_up,
+        "plugin_files": [],
+    }
+    manifest_size = len((json.dumps(dict(payload, plugin_files=[item.relative.as_posix() for item in files])) + "\n").encode("utf-8"))
+    command_size = command_info.st_size if command_info else 0
+    if command_size + manifest_size + sum(item.stat_result.st_size for item in files) > DEFAULT_MAX_BACKUP_BYTES:
+        files = []
+        payload["plugins_backed_up"] = False
+        manifest_size = len((json.dumps(payload) + "\n").encode("utf-8"))
+    if command_size + manifest_size > DEFAULT_MAX_BACKUP_BYTES:
         raise CustomizationMigrationError("Raw customization archive exceeds the safety limit.")
     _safe_absolute(backups, backups.parent.parent)
     backups.mkdir(parents=True, exist_ok=True)
     archive = backups / ("customizations-" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
                          + "-" + uuid.uuid4().hex[:10])
     archive.mkdir()
-    remaining = DEFAULT_MAX_BACKUP_BYTES - len(manifest)
+    remaining = DEFAULT_MAX_BACKUP_BYTES - manifest_size
     if command_info is not None:
         remaining -= _copy_verified_file(commands, archive / "commands.json",
                                          command_info, byte_limit=remaining)
     for item in files:
-        _assert_safe_existing_path(item.source, snapshot)
-        remaining -= _copy_verified_file(item.source, archive / "plugins" / item.relative,
-                                         item.stat_result, byte_limit=remaining)
+        try:
+            _assert_safe_existing_path(item.source, snapshot)
+            remaining -= _copy_verified_file(item.source, archive / "plugins" / item.relative,
+                                             item.stat_result, byte_limit=remaining)
+            payload["plugin_files"].append(item.relative.as_posix())
+        except Exception:
+            payload["plugins_backed_up"] = False
+            break
+    manifest = (json.dumps(payload) + "\n").encode("utf-8")
     _write_new_file(archive / "manifest.json", manifest)
     return archive
 
@@ -309,6 +384,8 @@ def migrate_pending_installer_update() -> bool:
             if not stat.S_ISREG(_checked_lstat(snapshot / name).st_mode):
                 return _ignore_invalid_update()
         backups = _safe_absolute(updates / "backups", updates.parent)
+        if migration_blocked(payload, backups):
+            return False
         receipt = workspace / "customizations-migrated.json"
         if os.path.lexists(receipt):
             result = _read_object(receipt, workspace)
@@ -334,6 +411,8 @@ def migrate_pending_installer_update() -> bool:
         packaged_bytes, _info = _read_verified_file(packaged_path, MAX_COMMANDS_BYTES)
         migrate_installer_customizations(snapshot, install, backups, receipt)
         return True
+    except MigrationBusy:
+        return False
     except Exception as exc:
         if _helper_owns_update(payload):
             raise CustomizationMigrationError("Pending installer customization migration failed") from exc
@@ -354,13 +433,25 @@ def migrate_pending_installer_update() -> bool:
             logger.warning("[UPDATE] Raw customization archive could not be saved")
         # STAND-IN COPY (560). Keep rollback/workspace for full recovery, rather
         # than deleting the only old executable or any non-customization data.
-        message = RECOVERY_NOTICE + (
-            f"Your command files and plugins were saved to {archive}. " if archive else
-            "No customization archive could be made. "
-        ) + f"The previous installation remains at {snapshot}."
+        complete = False
+        if archive:
+            manifest = _read_object(archive / "manifest.json", backups)
+            complete = manifest["plugins_backed_up"]
+            saved = []
+            if manifest["commands_backed_up"]:
+                saved.append("Your command file")
+            if manifest["plugin_files"]:
+                saved.append("plugins" if saved else "Your plugins")
+            verb = "was" if saved == ["Your command file"] else "were"
+            detail = " and ".join(saved) + f" {verb} saved to {archive}. " if saved else f"An empty recovery archive was saved to {archive}. "
+            if not complete:
+                detail += "The plugins could not all be archived; their original folder has been kept. "
+        else:
+            detail = "No customization archive could be made. "
+        message = RECOVERY_NOTICE + detail + f"Recovery source: {snapshot}."
         # An unarchived failure is NON-terminal and never a legacy success
         # token; both boot and the normal tray leave it pending without retry.
-        payload.update(state="failed" if archive else "customization_recovery_pending", message=message,
+        payload.update(state="failed" if complete else "customization_recovery_pending", message=message,
                        customization_failure="orphaned_helper", customization_retry=False)
         if archive:
             payload["customization_backup_dir"] = str(archive)
@@ -369,7 +460,7 @@ def migrate_pending_installer_update() -> bool:
             _replace_file_atomically(status, (json.dumps(payload) + "\n").encode("utf-8"))
         except Exception:
             logger.warning("[UPDATE] Customization failure status could not be saved")
-        if _show_recovery_notice(message) and archive:
+        if _show_recovery_notice(message) and complete:
             # The ordinary tray reconcile consumes "reported" without another
             # balloon; the failure reason stays recorded until that consumption.
             payload.update(state="reported", customization_state="failed",
