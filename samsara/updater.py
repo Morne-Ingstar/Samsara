@@ -1,9 +1,4 @@
-"""Privacy-conscious, verified updates for frozen Windows builds.
-
-Nothing in this module performs network or process activity at import time.
-Callers must explicitly call :func:`check_for_update`, then
-:func:`prepare_update`, and finally :func:`launch_prepared_update`.
-"""
+"""Verified Windows updates; no network or processes run at import time."""
 from __future__ import annotations
 
 import hashlib
@@ -144,12 +139,7 @@ def update_unavailable_reason(
     home_override: str | None = None,
     disable_override: str | None = None,
 ) -> str | None:
-    """Return why updates are disabled, or ``None`` when they are eligible.
-
-    An explicit ``SAMSARA_HOME_DIR`` identifies smoke tests, first-run
-    previews, or other isolated instances. Those processes must never mutate
-    the shared frozen installation.
-    """
+    """Isolated profiles must never mutate a shared frozen installation."""
     if disable_override is None:
         disable_override = os.environ.get("SAMSARA_DISABLE_UPDATE_CHECK", "")
     if disable_override.strip().casefold() in {"1", "true", "yes"}:
@@ -164,8 +154,8 @@ def update_unavailable_reason(
         home_override = os.environ.get("SAMSARA_HOME_DIR", "")
     if home_override:
         return "Updates are disabled for isolated Samsara profiles."
-    from samsara.update_installer import archive_guard
-    return archive_guard()
+    from samsara.update_installer import routing_guard
+    return routing_guard()
 
 
 def update_check_menu_label() -> str:
@@ -351,7 +341,8 @@ def check_for_update(
     if latest <= current:
         return None
 
-    zip_name = f"Samsara-Windows-{tag}.zip"
+    from samsara.update_installer import asset_name, missing_installer_offer
+    zip_name = asset_name(tag)
     checksum_name = f"{zip_name}.sha256"
     assets = payload.get("assets")
     if not isinstance(assets, list):
@@ -364,6 +355,7 @@ def check_for_update(
                 raise ReleaseMetadataError(f"The release contains duplicate asset {name!r}.")
             by_name[name] = asset
     if zip_name not in by_name or checksum_name not in by_name:
+        if offer := missing_installer_offer(tag): return offer
         raise ReleaseMetadataError(
             f"Release {tag} is missing {zip_name} or its required .sha256 file. "
             "Samsara will not install an unverified update."
@@ -713,7 +705,10 @@ def prepare_update(
 ) -> PreparedUpdate:
     """Download, verify, and safely stage an update beside the install."""
     _require_update_eligible()
-    from samsara.update_installer import archive_guard
+    from samsara.update_installer import archive_guard, prepare
+    if release.asset_url.rsplit('/',1)[-1].startswith('SamsaraSetup-'):
+        return prepare(release,install_dir,progress_callback,opener=opener,timeout=timeout,
+                       disk_usage=disk_usage,allow_prerelease=allow_prerelease)
     if archive_guard(install_dir):
         raise UpdateNotSupported("Installed copies require an installer update.")
     if allow_prerelease:
@@ -868,9 +863,15 @@ _ASSERT_NOT_REPARSE_POINT_PS = """function Assert-NotReparsePoint([string]$path,
 
 
 def _helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
-    from samsara.update_installer import archive_guard
+    from samsara.update_installer import archive_guard, PreparedInstaller, helper
+    if isinstance(prepared,PreparedInstaller):
+        return helper(prepared,current_pid)
     if archive_guard(prepared.install_dir):
         raise UpdateNotSupported("Installed copies may not archive-swap.")
+    return _archive_helper_script(prepared,current_pid)
+
+
+def _archive_helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
     install = _ps_literal(prepared.install_dir)
     staged = _ps_literal(prepared.staged_dir)
     rollback = _ps_literal(prepared.rollback_dir)

@@ -12,6 +12,8 @@ import time
 from typing import Any
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -116,12 +118,14 @@ class _UpdateDialog(QDialog):
         body.addWidget(title)
         from samsara.update_installer import dialog_notice, RELEASES_URL
         installer_notice = dialog_notice()
+        self._installer_note = None
         if installer_notice:
             note = QLabel(f'{installer_notice} <a href="{RELEASES_URL}" style="text-decoration:none;color:{theme.ACCENT}">Get the installer</a>')
             note.setObjectName('installerUpdateNotice')
             note.setWordWrap(True)
             note.setOpenExternalLinks(True)
             body.addWidget(note)
+            self._installer_note = note
 
         privacy = QLabel(
             "Samsara has no update server or push-notification channel. Checks "
@@ -144,6 +148,7 @@ class _UpdateDialog(QDialog):
 
         self._status = QLabel("Ready to check for a packaged update.")
         self._status.setObjectName("updateStatusLabel")
+        self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Update status")
         body.addWidget(self._status)
@@ -265,7 +270,10 @@ class _UpdateDialog(QDialog):
         thread_registry.spawn("update-manual-check", _worker, daemon=True)
 
     def _primary_clicked(self) -> None:
-        if self._phase == "available" and self._release is not None:
+        if self._phase == 'installer':
+            from samsara.update_installer import RELEASES_URL
+            QDesktopServices.openUrl(QUrl(RELEASES_URL))
+        elif self._phase == "available" and self._release is not None:
             self._start_install()
         else:
             self.start_check()
@@ -298,6 +306,17 @@ class _UpdateDialog(QDialog):
         self._show_available(release)
 
     def _show_available(self, release) -> None:
+        if getattr(release,'installer_link_only',False):
+            from samsara.update_installer import GUARD_MESSAGE
+            self._installer_message(GUARD_MESSAGE)
+            self._release = None
+            self._phase = 'installer'
+            self._primary.setText('Get the installer')
+            self._primary.setEnabled(True)
+            self._status.setText(GUARD_MESSAGE)
+            return
+        if str(getattr(release,'asset_url','')).endswith('.exe'):
+            self._installer_message('Installed copies update through their installer.')
         self._release = release
         self._phase = "available"
         self._primary.setEnabled(True)
@@ -307,6 +326,16 @@ class _UpdateDialog(QDialog):
             f"Samsara v{release.version} is available — you have v{__version__}. "
             f"Download size: {_format_bytes(release.asset_size)}."
         )
+
+    def _installer_message(self, message):
+        from samsara.update_installer import RELEASES_URL
+        if self._installer_note is None:
+            self._installer_note = QLabel()
+            self._installer_note.setObjectName('installerUpdateNotice')
+            self._installer_note.setWordWrap(True)
+            self._installer_note.setOpenExternalLinks(True)
+            self._body.layout().insertWidget(1,self._installer_note)
+        self._installer_note.setText(f'{message} <a href="{RELEASES_URL}" style="text-decoration:none;color:{theme.ACCENT}">Get the installer</a>')
 
     def _start_install(self) -> None:
         release = self._release
