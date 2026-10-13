@@ -114,6 +114,14 @@ class _UpdateDialog(QDialog):
         title = QLabel("Samsara Updates")
         title.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_TITLE}px; font-weight: 700;")
         body.addWidget(title)
+        from samsara.update_installer import dialog_notice, RELEASES_URL
+        installer_notice = dialog_notice()
+        if installer_notice:
+            note = QLabel(f'{installer_notice} <a href="{RELEASES_URL}" style="text-decoration:none;color:{theme.ACCENT}">Get the installer</a>')
+            note.setObjectName('installerUpdateNotice')
+            note.setWordWrap(True)
+            note.setOpenExternalLinks(True)
+            body.addWidget(note)
 
         privacy = QLabel(
             "Samsara has no update server or push-notification channel. Checks "

@@ -412,3 +412,96 @@ def test_rollback_integration_restores_and_relaunches_old_installation(tmp_path)
     # return before ever touching PresentationFramework/MessageBox, and the
     # process exited cleanly within the timeout above rather than hanging
     # behind a modal -- both are asserted implicitly by reaching this point.
+
+
+# 554: real PowerShell transaction, fake registry and installer only.
+import hashlib
+from unittest.mock import Mock
+from samsara import updater as up
+from samsara import update_installer as ins
+requires_installer = pytest.mark.skipif(not hasattr(ins,'PreparedInstaller'), reason='installer route absent from guard-only patch')
+
+def owner(folder,**values):
+    return dict(InstallLocation=str(folder),registry_name=ins.APP_KEY,
+                **{'Inno Setup: Selected Components':'core,cuda_pack,wake_word_models'},**values)
+
+def installed(tmp_path,monkeypatch):
+    folder=tmp_path/'Samsara';folder.mkdir()
+    (folder/'Samsara.exe').write_bytes(b'old')
+    (folder/'unins000.exe').write_bytes(b'uninstaller')
+    (folder/'unins000.dat').write_bytes(b'uninstaller-data')
+    (folder/'components').mkdir();(folder/'components'/'keep.dat').write_bytes(b'keep')
+    info=ins.installation(folder,entries=[owner(folder)])
+    monkeypatch.setattr(ins,'installation',lambda folder=None,**kw: info)
+    monkeypatch.setattr(up,'_require_update_eligible',lambda: None)
+    monkeypatch.setattr(up,'_frozen_install_dir',lambda: folder)
+    monkeypatch.setattr(up,'samsara_home_dir',lambda: tmp_path/'profile')
+    return folder
+
+def runner(path,body):
+    script=path.with_suffix('.ps1');script.write_text(body,encoding='utf-8-sig')
+    path.write_text('@echo off\r\n"'+str(up._system_powershell_path())+'" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dpn0.ps1"\r\nexit /b %ERRORLEVEL%\r\n')
+
+
+def run_helper(path):
+    env=dict(os.environ,SAMSARA_UPDATE_TEST_NO_DIALOG='1')
+    result=subprocess.run([str(up._system_powershell_path()),'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(path)],
+        env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=40,
+        creationflags=subprocess.CREATE_NO_WINDOW)
+    return result
+
+
+@pytest.mark.parametrize('installer_exit,health',[(0,True),(4,True),(0,False)])
+@requires_installer
+def test_real_installer_helper_transaction_with_fake_registry_and_installer(tmp_path,monkeypatch,installer_exit,health):
+    folder=installed(tmp_path,monkeypatch)
+    workspace=tmp_path/'.Samsara-update-v0.31.0-helper';staged=workspace/'payload'
+    import shutil
+    shutil.copytree(folder,staged)
+    updates=tmp_path/'profile'/'updates';updates.mkdir(parents=True)
+    status=updates/'last_update.json';status.write_text('{}')
+    registry=tmp_path/'fake-registry.json';registry.write_text('{"DisplayVersion":"0.30.0"}')
+    old_marker=tmp_path/'old-relaunched'
+    runner(folder/'runner.cmd',f'Set-Content -LiteralPath {up._ps_literal(old_marker)} -Value old')
+    shutil.copy2(folder/'runner.cmd',staged/'runner.cmd');shutil.copy2(folder/'runner.ps1',staged/'runner.ps1')
+    installer=workspace/'SamsaraSetup-0.31.0.exe';installer.write_bytes(b'fake installer marker')
+    prepared=ins.PreparedInstaller('0.31.0','v0.31.0',folder,staged,tmp_path/'.Samsara-rollback-v0.31.0-helper',workspace,status,
+        updates/'install-v0.31.0-helper.ps1',executable_name='runner.cmd',installer_path=installer,
+        installer_sha256=hashlib.sha256(installer.read_bytes()).hexdigest())
+    health_script=(f'$j=Get-Content -LiteralPath {up._ps_literal(status)} -Raw | ConvertFrom-Json; $j.state="installed"; $j | ConvertTo-Json | Set-Content -LiteralPath {up._ps_literal(status)}' if health else 'exit 1')
+    (workspace/'new-runner.ps1').write_text(health_script,encoding='utf-8-sig')
+    fake=workspace/'fake-installer.cmd'
+    body=f'Copy-Item -LiteralPath {up._ps_literal(workspace/"new-runner.ps1")} -Destination {up._ps_literal(folder/"runner.ps1")} -Force\n'
+    body+=f'Set-Content -LiteralPath {up._ps_literal(folder/"Samsara.exe")} -Value new\n'
+    body+=f'Set-Content -LiteralPath {up._ps_literal(registry)} -Value \'{{"DisplayVersion":"0.31.0"}}\'\nexit {installer_exit}'
+    runner(fake,body)
+    script=up._helper_script(prepared,2_000_000_000)
+    # Override only external seams; the actual transaction and filesystem code run.
+    shim=fr'''
+function Read-InstallRegistry {{ return @{{ version='0.30.0' }} }}
+function Restore-InstallRegistry($saved) {{ Set-Content -LiteralPath {up._ps_literal(registry)} -Value ('{{"DisplayVersion":"'+$saved.version+'"}}') }}
+function Assert-InstalledMetadata {{ if ((Get-Content -LiteralPath {up._ps_literal(registry)} -Raw | ConvertFrom-Json).DisplayVersion -ne '0.31.0') {{ throw 'fake installer registry version mismatch' }} }}
+function Start-Process {{
+    param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,[switch]$PassThru)
+    if ($FilePath -eq $installer) {{ $FilePath={up._ps_literal(fake)}; $ArgumentList=$null }}
+    $params=@{{FilePath=$FilePath;WindowStyle='Hidden'}}
+    if ($WorkingDirectory) {{ $params.WorkingDirectory=$WorkingDirectory }}
+    if ($ArgumentList) {{ $params.ArgumentList=$ArgumentList }}
+    if ($PassThru) {{ $params.PassThru=$true }}
+    Microsoft.PowerShell.Management\Start-Process @params
+}}
+'''
+    script=script.replace('$installerProcess = $null',shim+'\n$installerProcess = $null',1)
+    prepared.helper_path.write_text(script,encoding='utf-8-sig')
+    completed=run_helper(prepared.helper_path)
+    assert completed.returncode==(0 if installer_exit==0 and health else 2),completed.stdout
+    outcome=json.loads(status.read_text(encoding='utf-8-sig'))
+    if installer_exit:
+        assert 'code 4' in outcome['message']
+    elif not health:
+        assert 'closed before confirming startup' in outcome['message']
+    assert (folder/'unins000.exe').read_bytes()==b'uninstaller'
+    assert (folder/'unins000.dat').read_bytes()==b'uninstaller-data'
+    assert (folder/'components'/'keep.dat').read_bytes()==b'keep'
+    assert json.loads(registry.read_text(encoding='utf-8-sig'))['DisplayVersion']==('0.31.0' if installer_exit==0 and health else '0.30.0')
+

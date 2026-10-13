@@ -164,7 +164,8 @@ def update_unavailable_reason(
         home_override = os.environ.get("SAMSARA_HOME_DIR", "")
     if home_override:
         return "Updates are disabled for isolated Samsara profiles."
-    return None
+    from samsara.update_installer import archive_guard
+    return archive_guard()
 
 
 def update_check_menu_label() -> str:
@@ -712,6 +713,9 @@ def prepare_update(
 ) -> PreparedUpdate:
     """Download, verify, and safely stage an update beside the install."""
     _require_update_eligible()
+    from samsara.update_installer import archive_guard
+    if archive_guard(install_dir):
+        raise UpdateNotSupported("Installed copies require an installer update.")
     if allow_prerelease:
         _parse_version(release.tag)
     else:
@@ -864,6 +868,9 @@ _ASSERT_NOT_REPARSE_POINT_PS = """function Assert-NotReparsePoint([string]$path,
 
 
 def _helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
+    from samsara.update_installer import archive_guard
+    if archive_guard(prepared.install_dir):
+        raise UpdateNotSupported("Installed copies may not archive-swap.")
     install = _ps_literal(prepared.install_dir)
     staged = _ps_literal(prepared.staged_dir)
     rollback = _ps_literal(prepared.rollback_dir)
@@ -1386,6 +1393,9 @@ def reconcile_update_on_startup(
     """
     if update_unavailable_reason() is not None:
         return None
+    from samsara.update_installer import repair_notice
+    if notice := repair_notice():
+        return notice
     status_path = samsara_home_dir() / "updates" / "last_update.json"
     if not status_path.is_file():
         return None
@@ -1539,17 +1549,7 @@ def reconcile_update_on_startup(
         # active installation must never surface it as an installed update.
         return status
     if state == "installed":
-        # The status string alone cannot tell "the detached helper already
-        # cleaned up" apart from "the helper died before it got the chance"
-        # -- both leave state == "installed" forever, since the helper only
-        # writes a further status on cleanup *failure*. Check the recorded
-        # directories' actual existence (cheap stat calls; never a
-        # synchronous multi-gigabyte delete on this Qt-thread call) before
-        # trusting that nothing was orphaned. A malformed/tampered *subset*
-        # of the path fields (as opposed to none of them, which is just a
-        # legacy status predating this check) must never be silently
-        # treated as "nothing to check" -- that would hide a corrupted
-        # status and let its update directories leak unnoticed.
+        # Preserve orphan cleanup validation after a successful health handshake.
         try:
             leftover = _leftover_update_dirs(payload)
         except Exception as exc:
