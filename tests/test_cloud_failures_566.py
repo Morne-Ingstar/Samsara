@@ -118,7 +118,7 @@ def test_readiness_bounds_direct_failure_delay_and_rechecks(monkeypatch, retry, 
     now[0] = 100 + delay
     assert tracker.snapshot().state == "unknown"
     assert wakes == [True]
-    assert tracker.record_probe("openrouter", None).state == "ready"
+    assert tracker.record_probe("openrouter", None).state == "configured"
 
 
 @pytest.mark.parametrize("retry,ending", [(None, "shortly."), (0, "in 1 seconds."),
@@ -186,8 +186,8 @@ def test_rate_limit_expires_and_rechecks_without_user_action(monkeypatch):
     assert tracker.snapshot().state == "waiting"
     now[0] += 0.1
     assert tracker.snapshot().state == "unknown" and wakes == [True]
-    assert tracker.record_probe("openrouter", None).state == "ready"
-    assert transitions == ["waiting", "unknown", "ready"]
+    assert tracker.record_probe("openrouter", None).state == "configured"
+    assert transitions == ["waiting", "unknown", "configured"]
 
 
 @pytest.mark.parametrize("kind", ["out_of_credit", "model_unavailable", "blocked", "timeout", "error"])
@@ -224,6 +224,7 @@ def test_ava_and_warmup_do_not_parse_error_strings(monkeypatch, harness):
     failure = cloud_llm.make_failure("out_of_credit", "openrouter", 402)
     monkeypatch.setattr(cloud_llm, "send", lambda *a, **kw: cloud_llm.CloudError(failure, "401 timeout connection"))
     assert ask_ollama.ask_model("Synthetic question", app, system="Synthetic system").failure_kind == "out_of_credit"
+    monkeypatch.setattr(ava_readiness, "probe_configured_provider", lambda app: ("openrouter", failure))
     assert ava_readiness.warm_configured_provider(app).failure_kind == "out_of_credit"
 
 
@@ -241,4 +242,5 @@ def test_successful_answer_with_error_prefix_is_not_a_failure(monkeypatch, harne
     monkeypatch.setattr(cloud_llm, "send", lambda *a, **kw: "Error: is a word in this answer.")
     reply = ask_ollama.ask_model("Synthetic question", app, system="Synthetic system")
     assert reply.ok and ava_readiness.tracker.snapshot().state == "ready"
+    monkeypatch.setattr(ava_readiness, "probe_configured_provider", lambda app: ("openrouter", None))
     assert ava_readiness.warm_configured_provider(app).state == "ready"

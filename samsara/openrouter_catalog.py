@@ -64,7 +64,13 @@ def parse_models(payload):
             expiration = date.fromisoformat(expiration).isoformat()
         except (ValueError, TypeError):
             expiration = None
+        architecture = row.get("architecture")
+        architecture = architecture if isinstance(architecture, dict) else {}
         models.append({"id": model_id, "name": _text(row.get("name"), 256) or model_id,
+                       "architecture": {key: [v for v in values[:16] if isinstance(v, str) and v in {"text", "image", "audio", "video"}]
+                                        for key in ("input_modalities", "output_modalities")
+                                        for values in [architecture.get(key)]
+                                        if isinstance(values, list)},
                        "pricing": {key: _price(pricing.get(key)) for key in ("prompt", "completion")},
                        "context_length": context, "expiration_date": expiration,
                        "supported_parameters": [_text(p, 64) for p in parameters[:128] if _text(p, 64)]})

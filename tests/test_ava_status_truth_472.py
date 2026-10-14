@@ -150,7 +150,7 @@ def test_off_startup_keeps_a_monitor_without_provider_io(monkeypatch, tracker):
     (429, 'Rate limited. Try again in a minute.'), (500, 'The provider returned an error.')])
 def test_authenticated_test_reads_status(monkeypatch, provider, status, reason):
     app = SimpleNamespace(config=config_for(provider=provider))
-    get = Mock(return_value=SimpleNamespace(status_code=status))
+    get = Mock(return_value=SimpleNamespace(status_code=status, json=lambda: {'data': {}}, close=lambda: None))
     monkeypatch.setattr(cloud_llm.ai_transport, 'get_cloud', get)
     result = cloud_llm.check_available(app)
     if status == 429:
@@ -158,9 +158,17 @@ def test_authenticated_test_reads_status(monkeypatch, provider, status, reason):
         names = {"deepseek": "DeepSeek", "openai": "OpenAI", "anthropic": "Anthropic", "openrouter": "OpenRouter"}
         reason = f"{names[provider]} is rate limiting requests. Try again shortly."
     if provider == "openrouter" and status == 403:
-        reason = "Blocked by provider policy or budget."
-    assert result == ((False, reason) if reason else (True, provider))
-    assert get.call_args.args[0] == cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + '/models'
+        reason = "OpenRouter blocked the request because of provider policy or budget."
+    if provider == "openrouter":
+        if status == 200:
+            assert result[0] and 'Key works.' in result[1] and 'real turn' in result[1]
+        else:
+            assert result == (False, ava_readiness.failure_sentence(
+                cloud_llm.failure_from_response(provider, get.return_value).kind, provider))
+    else:
+        assert result == ((False, reason) if reason else (True, provider))
+    endpoint = '/key' if provider == 'openrouter' else '/models'
+    assert get.call_args.args[0] == cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + endpoint
     headers = get.call_args.kwargs['headers']
     assert ('x-api-key' if provider == 'anthropic' else 'Authorization') in headers
     if provider == 'anthropic':

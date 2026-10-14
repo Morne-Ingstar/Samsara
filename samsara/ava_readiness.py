@@ -43,6 +43,7 @@ UNKNOWN = "unknown"
 WARMING = "warming"
 NEEDS_ATTENTION = "needs_attention"
 WAITING = "waiting"
+CONFIGURED = "configured"
 BLOCKED = "blocked"
 MODEL_UNAVAILABLE = "model_unavailable"
 PROVIDER_DOWN = "provider_down"
@@ -101,6 +102,8 @@ class Readiness:
         """Short label for the indicator."""
         if self.state == READY:
             return "Ava: ready"
+        if self.state == CONFIGURED:
+            return "Ava: configured"  # STAND-IN COPY (569)
         if self.state == WARMING:
             return "Ava: warming"
         # STAND-IN COPY (566)
@@ -116,6 +119,8 @@ class Readiness:
         """One visible, non-secret sentence for this readiness state."""
         if self.state == READY:
             return "Ava is ready to answer."
+        if self.state == CONFIGURED:
+            return "The key works. Ava is proven ready only after a real turn."  # STAND-IN COPY (569)
         if self.state == WARMING:
             return "Ava is warming up."
         if self.failure_kind is not None:
@@ -271,6 +276,21 @@ def probe_configured_provider(app, http_get=None, timeout: float = PROBE_TIMEOUT
         api_key = cfg.get("api_key", "")
         if not api_key:
             return provider, NOT_CONFIGURED
+        if provider == "openrouter":
+            # Stable evidence lasts until recheck; transient failures retry slowly.
+            with _openrouter_probe_lock:
+                cached = getattr(app, "_openrouter_readiness_check", None)
+                now = time.monotonic()
+                transient = cached is not None and getattr(cached[1].failure, "kind", None) in (
+                    UNREACHABLE, TIMEOUT, PROVIDER_DOWN)
+                retry_due = transient and now - cached[2] >= max(OFFLINE_POLL_S,
+                    cloud_llm.bounded_retry_after(cached[1].failure.retry_after_seconds) or 0)
+                if cached is None or cached[0] != _recheck_generation or retry_due:
+                    result = cloud_llm.check_openrouter(configured, http_get=http_get, timeout=timeout)
+                    app._openrouter_readiness_check = (_recheck_generation, result, time.monotonic())
+                else:
+                    result = cached[1]
+                return provider, result.failure
         provider, base_url, _model = cloud_llm._get_provider_config(configured)
         if provider == "anthropic":
             headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
@@ -301,6 +321,10 @@ def warm_configured_provider(app) -> Readiness:
     import requests  # noqa: PLC0415
 
     provider = configured_provider(app)
+    if provider == "openrouter":
+        # Even opt-in startup warming must not spend credits as a readiness check.
+        provider, failure = probe_configured_provider(app)
+        return tracker.record_probe(provider, failure)
     if provider == "ollama":
         from samsara.ava_local_warmup import load
         load(app)  # Explicit warming reports its own readiness result.
@@ -391,6 +415,11 @@ class ReadinessTracker:
                 self._warm_generation += 1
             generation = self._warm_generation if begin_warm else None
             old = self._current
+            if provider == "openrouter" and failure_kind is None and source != "turn" and state is None:
+                if old.provider == provider and old.state == READY and old.source == "turn":
+                    new = old
+                else:
+                    new = Readiness(CONFIGURED, provider=provider, source=source, checked_at=checked_at)
             # Public /models success does not prove balance, routing or quota.
             if source == "probe" and failure_kind is None and old.provider == provider and (
                     old.state == NEEDS_ATTENTION or
@@ -455,6 +484,9 @@ class ReadinessMonitor:
         self._stop = threading.Event()
 
     def run_once(self) -> Readiness:
+        current = self._tracker.snapshot()
+        if current.state == WAITING and current.retry_at is not None and self._tracker._clock() < current.retry_at:
+            return current
         with self._tracker._lock:
             generation = self._tracker._warm_generation
         was_warming = self._tracker.snapshot().warming
@@ -491,10 +523,14 @@ class ReadinessMonitor:
 tracker = ReadinessTracker()
 _monitor: Optional[ReadinessMonitor] = None
 _monitor_lock = threading.Lock()
+_openrouter_probe_lock = threading.Lock()
+_recheck_generation = 0
 
 
 def request_recheck() -> None:
     """Ask the running monitor for an early probe (no-op before start)."""
+    global _recheck_generation
+    _recheck_generation += 1
     monitor = _monitor
     if monitor is not None:
         monitor.wake()
@@ -522,9 +558,10 @@ def readiness_for(app) -> Readiness:
 def start_monitor(app, spawn, *, recheck=False) -> ReadinessMonitor:
     """Start the process-wide monitor once. ``spawn(name, fn)`` is the app's
     thread registry (samsara.runtime.thread_registry.spawn)."""
-    global _monitor
+    global _monitor, _recheck_generation
     with _monitor_lock:
         if recheck:
+            _recheck_generation += 1
             tracker._set(configured_provider(app), None, "settings", state=UNKNOWN,
                          invalidate_warm=True)
         if _monitor is None:
@@ -542,6 +579,7 @@ def settings_signature(app) -> tuple:
         ("ava", "provider_policy"), ("ava", "consent"),
         ("ava_command_session", "enabled"), ("ava_command_session", "model"),
         ("cloud_llm", "provider"), ("cloud_llm", "api_key"),
+        ("cloud_llm", "model"),
         ("ollama", "host"), ("ollama", "model")))
 
 

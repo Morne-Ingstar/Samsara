@@ -703,6 +703,94 @@ def _send_openai_json(base_url, api_key, model, system_prompt,
     return data["choices"][0]["message"]["content"].strip()
 
 
+@dataclass(frozen=True)
+class OpenRouterCheck:
+    failure: CloudFailure | None = None
+    key_valid: bool = False
+    limit: float | None = None
+    limit_remaining: float | None = None
+    usage_reset: str | None = None
+    is_free_tier: bool | None = None
+    model_note: str = "Model not checked."  # STAND-IN COPY (569)
+
+    def status_text(self):
+        # STAND-IN COPY (569): never interpolate account or catalogue text.
+        from samsara.ava_readiness import failure_sentence
+        if self.failure:
+            if self.failure.kind == "not_configured":
+                return "Select the cloud route and accept consent before checking OpenRouter."
+            text = failure_sentence(self.failure.kind, "openrouter", self.failure.retry_after_seconds)
+            return text + " " + self.model_note if self.failure.kind == "model_unavailable" else text
+        return "Key works. " + self.model_note + " Ava is proven ready only after a real turn."
+
+
+def _key_number(value):
+    return float(value) if type(value) in (int, float) and math.isfinite(value) else None
+
+
+def check_openrouter(app, *, http_get=None, timeout=3, catalogue=None, needs_tools=False):
+    """A free, consent-gated key check; catalogue inspection never fetches."""
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from datetime import date
+    from samsara import ai_preferences, openrouter_catalog
+    from samsara.paths import samsara_home_dir
+    configured = SimpleNamespace(config=deepcopy(getattr(app, "config", {}) or {}))
+    cfg = _get_config(configured)
+    if (cfg.get("provider") != "openrouter" or not is_enabled(configured)
+            or configured.config.get("ava", {}).get("provider_policy") != "cloud"
+            or not ai_preferences.runtime_state(configured.config, "ava").allowed):
+        return OpenRouterCheck(make_failure("not_configured", "openrouter"))
+    response = None
+    try:
+        response = ai_transport.get_cloud("https://openrouter.ai/api/v1/key", timeout=timeout,
+            headers={"Authorization": "Bearer " + cfg["api_key"]}, request_fn=http_get)
+        failure = failure_from_response("openrouter", response)
+        if failure:
+            return OpenRouterCheck(failure)
+        body = response.json()
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, dict):
+            return OpenRouterCheck(make_failure("error", "openrouter"))
+        limit, remaining = (_key_number(data.get(k)) for k in ("limit", "limit_remaining"))
+        reset = data.get("limit_reset", data.get("usage_reset"))
+        reset = reset if reset in ("daily", "weekly", "monthly") else None
+        free = data.get("is_free_tier")
+        free = free if type(free) is bool else None
+        if remaining is not None and remaining <= 0:
+            return OpenRouterCheck(make_failure("out_of_credit", "openrouter"), True,
+                                   limit, remaining, reset, free)
+        if catalogue is None:
+            catalogue = openrouter_catalog.read_cache(samsara_home_dir() / "openrouter_catalog.json", time.time())
+        model_id = _get_provider_config(configured)[2]
+        if (not isinstance(model_id, str) or not 0 < len(model_id) <= 256
+                or "/" not in model_id or any(c.isspace() or ord(c) < 32 for c in model_id)):
+            return OpenRouterCheck(make_failure("model_unavailable", "openrouter"), True,
+                limit, remaining, reset, free, "Selected model ID is unknown or invalid.")  # STAND-IN COPY (569)
+        model = next((row for row in catalogue.models if row["id"] == model_id), None)
+        note, failure = "Custom or uncached model not checked.", None  # STAND-IN COPY (569)
+        if model is not None:
+            expiration = model.get("expiration_date")
+            arch = model.get("architecture", {})
+            if expiration and date.fromisoformat(expiration) <= date.today():
+                note, failure = "Selected model has expired.", make_failure("model_unavailable", "openrouter")  # STAND-IN COPY (569)
+            elif any(not arch.get(k) for k in ("input_modalities", "output_modalities")):
+                note = "Selected model text capabilities not checked."  # STAND-IN COPY (569)
+            elif any("text" not in arch[k] for k in ("input_modalities", "output_modalities")):
+                note = "Selected model does not support text input and output."  # STAND-IN COPY (569)
+                failure = make_failure("model_unavailable", "openrouter")
+            elif needs_tools and "tools" not in model.get("supported_parameters", []):
+                note, failure = "Selected model does not support tools.", make_failure("model_unavailable", "openrouter")  # STAND-IN COPY (569)
+            else:
+                note = "Selected model supports this path."  # STAND-IN COPY (569)
+        return OpenRouterCheck(failure, True, limit, remaining, reset, free, note)
+    except Exception as exc:
+        return OpenRouterCheck(failure_from_exception("openrouter", exc))
+    finally:
+        if response is not None and callable(getattr(response, "close", None)):
+            response.close()
+
+
 def check_available(app):
     """Authenticated check: (True, provider_name) or (False, safe reason)."""
     from samsara import ava_readiness as readiness
@@ -718,6 +806,9 @@ def check_available(app):
     if not is_enabled(app):
         return False, "Cloud LLM not enabled"
     cfg = _get_config(app)
+    if cfg.get("provider") == "openrouter":
+        result = check_openrouter(app)
+        return result.failure is None, result.status_text()
     api_key = cfg.get("api_key", "")
     try:
         provider, base_url, _model = _get_provider_config(app)

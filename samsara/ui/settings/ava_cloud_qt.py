@@ -1363,6 +1363,8 @@ class AvaCloudPage:
         btn.setText("Hide" if checked else "Show")
 
     def _run_test_connection(self):
+        provider = _DISPLAY_TO_CODE.get(self._widgets['cloud_provider'].currentText(), 'deepseek')
+        visit = getattr(self, '_visit_generation', 0)
         api_key_entry = self._widgets.get('cloud_api_key')
         api_key = api_key_entry.text().strip() if api_key_entry else ""
         if not api_key:
@@ -1374,12 +1376,29 @@ class AvaCloudPage:
         self._test_result.emit("Testing...", theme.ICON_IDLE)
 
         class _FakeApp:
-            config = {"cloud_llm": {
+            config = deepcopy(self._ava_staged_config())
+            config['cloud_llm'] = {**config.get('cloud_llm', {}),
                 "enabled": True, "api_key": api_key,
                 "provider": provider, "timeout_seconds": 5,
-            }}
+                "model": self._widgets['cloud_model'].text().strip(),
+            }
 
         fake = _FakeApp()
+        if provider == 'openrouter':
+            if (fake.config.get('ava', {}).get('provider_policy') != 'cloud'
+                    or not ai_preferences.runtime_state(fake.config, 'ava').allowed):
+                # STAND-IN COPY (569)
+                self._test_result.emit("Select the cloud route and accept consent before checking OpenRouter.", theme.WARNING)
+                return
+            from hashlib import sha256
+            signature = (sha256(api_key.encode('utf-8')).digest(), fake.config['cloud_llm']['model'])
+            if getattr(self, '_openrouter_key_check_visit', None) != visit:
+                self._openrouter_key_check_visit, self._openrouter_key_checked = visit, set()
+            if signature in self._openrouter_key_checked:
+                # STAND-IN COPY (569)
+                self._test_result.emit("Already checked these settings this visit; change the key or model to check again.", theme.WARNING)
+                return
+            self._openrouter_key_checked.add(signature)
         report = self._visit_callback(self._on_test_result)
 
         def _do():
@@ -1387,7 +1406,8 @@ class AvaCloudPage:
                 from samsara import cloud_llm
                 ok, info = cloud_llm.check_available(fake)
                 from samsara.ava_readiness import display_name
-                msg = f"Connected to {display_name(provider)}." if ok else info  # PLACEHOLDER COPY (472)
+                # STAND-IN COPY (569): a key check does not prove a real turn.
+                msg = info if provider == 'openrouter' or not ok else f"Connected to {display_name(provider)}."
                 color = theme.ACCENT if ok else theme.ERROR
             except Exception:
                 msg = "The connection could not be checked."  # PLACEHOLDER COPY (472)
