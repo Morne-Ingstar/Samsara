@@ -707,6 +707,7 @@ class CommandExecutor:
         *,
         route: Route = Route.EXACT,
         generation: "int | None" = None,
+        capture_path: "str | None" = None,
     ) -> DispatchResult:
         """Process transcribed text — execute a command or return text for dictation.
 
@@ -746,7 +747,7 @@ class CommandExecutor:
         # checked in execution_policy). A yes that is only part of a sentence,
         # or quoted, is not an answer and never reaches the confirm handler.
         if execution_policy.pending_operation() is not None:
-            answer = execution_policy.answer_pending(effective_app, text)
+            answer = execution_policy.answer_pending(effective_app, text, capture_path=capture_path)
             if answer is not None:
                 state = DispatchState.COMPLETED if answer in ("approved", "rejected", "extended") \
                     else DispatchState.REJECTED

@@ -3,7 +3,7 @@ from contextlib import nullcontext
 import secrets
 
 from PySide6.QtCore import QMimeData, QTimer
-from PySide6.QtWidgets import QApplication, QCheckBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from samsara.agent_server import for_app
 from samsara.ui import theme
@@ -44,11 +44,23 @@ class AgentsControls(QWidget):
         self.typing.setMinimumHeight(theme.HIT_TARGET_MIN)
         self.typing.setChecked(self._typing_enabled())
         layout.addWidget(self.typing)
+        # STAND-IN COPY (565c): wording awaits the owner's review.
+        self.approval_label = QLabel("How I approve typing")
+        layout.addWidget(self.approval_label)
+        self.approval_style = QComboBox()
+        self.approval_style.setObjectName("agent_server.command_key_only")
+        self.approval_style.setAccessibleName("How I approve typing")
+        self.approval_style.addItem("Just say yes", False)
+        self.approval_style.addItem("Hold the Command key and say yes", True)
+        self.approval_style.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.approval_style.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(self.approval_style)
         guard = getattr(owner, "_visit_callback", lambda fn, *widgets: fn)
         enabled.toggled.connect(guard(self.toggle, self))
         self.copy.clicked.connect(guard(self.copy_details, self))
         self.rotate.clicked.connect(guard(self.new_token, self))
         self.typing.toggled.connect(guard(self.toggle_typing, self))
+        self.approval_style.currentIndexChanged.connect(guard(self.toggle_approval_style, self))
         self.refresh()
 
     def refresh(self, token_failed=False):
@@ -62,6 +74,11 @@ class AgentsControls(QWidget):
         self.typing.blockSignals(True)
         self.typing.setChecked(self._typing_enabled())
         self.typing.blockSignals(False)
+        self.approval_label.setEnabled(self._typing_enabled())
+        self.approval_style.setEnabled(self._typing_enabled())
+        self.approval_style.blockSignals(True)
+        self.approval_style.setCurrentIndex(int((self.owner.app.config.get("agent_server") or {}).get("command_key_only", False) is True))
+        self.approval_style.blockSignals(False)
 
     def _typing_enabled(self):
         config = self.owner.app.config
@@ -103,6 +120,19 @@ class AgentsControls(QWidget):
                 config["allow_typing"] = old
         if not self.server.typing_enabled:
             self.server.cancel_typing()
+        self.refresh()
+
+    def toggle_approval_style(self, index):
+        app = self.owner.app
+        with getattr(app, "_config_lock", None) or nullcontext():
+            config = app.config.setdefault("agent_server", {})
+            old = config.get("command_key_only", False)
+            config["command_key_only"] = bool(self.approval_style.itemData(index))
+            try:
+                app.save_config()
+            except Exception:
+                config["command_key_only"] = old
+        # A pending question retains its wording and rule; apply changes next time.
         self.refresh()
 
     def copy_details(self, *_args):

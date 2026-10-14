@@ -97,7 +97,11 @@ absent from `tools/list` and calls to it are refused.
   at most 30 seconds; a second returns `busy` immediately and is never queued.
   Samsara asks who wants to type how many words into which app, without reading
   the text. The spoken question must finish and its half-second echo tail clear
-  before the answer window opens; an unspoken question times out. Say yes using Samsara's Command-only key (default Ctrl+Alt+C).
+  before the answer window opens; an unspoken question times out.
+  <!-- STAND-IN COPY (565c) -->
+  The user approves by voice; depending on their setting, a plain spoken yes
+  or a yes said while holding Samsara's Command key.
+  Never speak, play audio or open media while a request is pending.
   One approval permits one paste into the same window and process; a focus or
   process change cancels it. Decline, timeout, disabled switches and unsafe
   targets paste nothing. Terminals, elevated windows, Samsara's own windows and

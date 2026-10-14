@@ -64,6 +64,8 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "agent_server.command_key_only": {"type": "bool", "default": False, "tab": "commands",
+                                      "optional_pack": "agents", "depends_on": "agent_server.allow_typing"},
     "agent_server.allow_typing": {"type": "bool", "default": False, "tab": "commands",
                                   "optional_pack": "agents", "depends_on": "command_packs.agents"},
     "agent_server.port": {"type": "int", "min": 1, "max": 65535, "default": 47832,

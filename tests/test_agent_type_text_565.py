@@ -604,6 +604,88 @@ def test_fresh_command_only_capture_can_answer(rig):
     assert call(rig.service)['reason'] == 'delivered'
 
 
+@pytest.mark.parametrize('command_only', [False, True])
+@pytest.mark.parametrize('path', ['command_key', 'dictation_hold', 'handsfree', 'wake_word', 'streaming', None])
+@pytest.mark.parametrize('reply', ['yes', 'no'])
+def test_approval_style_capture_paths(rig, command_only, path, reply):
+    from samsara.commands import CommandExecutor
+    executor = CommandExecutor.__new__(CommandExecutor)
+    executor._app = rig.app
+    rig.app.config['agent_server']['command_key_only'] = command_only
+    rig.answer = None
+    answers = []
+    def answer():
+        rig.app._hold_capture_start_ns = time.perf_counter_ns()
+        # An ambient command-key flag must never turn another path into a key capture.
+        rig.app.command_mode_recording = True
+        answers.append(executor.process_text(reply, capture_path=path))
+    rig.on_question = answer
+    allowed = reply == 'yes' and (not command_only or path == 'command_key')
+    expected = 'delivered' if allowed else 'user_declined' if reply == 'no' else 'timeout'
+    assert call(rig.service)['reason'] == expected
+    assert bool(rig.pastes) == allowed
+    instruction = 'Hold your Command key and say yes to allow.' if command_only else 'Say yes to allow.'
+    assert rig.prompts[0][0].endswith(instruction)
+    if command_only and reply == 'yes' and path != 'command_key':
+        assert answers[0].detail['answer'] == 'refused:command key required'
+
+
+def test_ignored_yes_can_be_followed_by_command_key_yes(rig):
+    rig.app.config['agent_server']['command_key_only'] = True
+    rig.answer = None
+    def answer():
+        rig.app._hold_capture_start_ns = time.perf_counter_ns()
+        op = policy.pending_operation()
+        assert policy.answer_pending(rig.app, 'yes', capture_path='wake_word') == 'refused:command key required'
+        assert policy.pending_operation() is op and op.approved is None
+        assert policy.answer_pending(rig.app, 'yes', capture_path='command_key') == 'approved'
+    rig.on_question = answer
+    assert call(rig.service)['reason'] == 'delivered'
+    assert len(rig.pastes) == 1
+
+
+def test_approval_style_default_persistence_and_disabled_state(rig, qapp):
+    from PySide6.QtWidgets import QCheckBox
+    from samsara.config_defaults import cfg_get
+    from samsara.ui.settings.agents_section import AgentsControls
+    assert cfg_get({}, 'agent_server.command_key_only') is False
+    rig.app._agent_server = rig.service
+    saved = []
+    rig.app.save_config = lambda: saved.append(json.loads(json.dumps(rig.app.config)))
+    enabled = QCheckBox(); enabled.setChecked(True)
+    controls = AgentsControls(SimpleNamespace(app=rig.app), enabled)
+    try:
+        assert controls.approval_style.currentText() == 'Just say yes'
+        controls.approval_style.setCurrentIndex(1)
+        assert saved[-1]['agent_server']['command_key_only'] is True
+        rig.app.config = json.loads(json.dumps(saved[-1]))
+        controls.refresh()
+        assert controls.approval_style.currentIndex() == 1
+        controls.typing.setChecked(False)
+        assert not controls.approval_style.isEnabled()
+        controls.typing.setChecked(True)
+        assert controls.approval_style.isEnabled() and controls.approval_style.currentIndex() == 1
+        def fail(): raise OSError('synthetic save failure')
+        rig.app.save_config = fail
+        controls.approval_style.setCurrentIndex(0)
+        assert controls.approval_style.currentIndex() == 1
+        rig.app.save_config = lambda: None
+        enabled.setChecked(False)
+        assert not controls.approval_style.isEnabled()
+    finally:
+        controls.close()
+
+
+def test_command_key_capture_provenance_is_explicit():
+    import ast
+    tree = ast.parse((Path(__file__).resolve().parents[1] / 'dictation.py').read_text(encoding='utf-8'))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute) and node.func.attr == 'process_text']
+    tagged = [keyword.value for node in calls for keyword in node.keywords if keyword.arg == 'capture_path']
+    assert len(tagged) == 1
+    assert ast.unparse(tagged[0]) == "'command_key' if is_command_mode else 'dictation_hold'"
+
+
 def test_already_queued_agent_speech_prevents_question(rig):
     rig.app.audio_coordinator.speak = lambda *a, **k: SimpleNamespace(utterance_id='fake')
     assert speak_call(rig.service)['status'] == 'queued'

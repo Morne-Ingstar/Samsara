@@ -1563,9 +1563,8 @@ def mentions_confirmation(text: str) -> bool:
     return any(normalized == p or normalized.startswith(p + " ") for p in CONFIRM_UTTERANCES)
 
 
-def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[str]:
+def answer_pending(app, text: str, *, source: str = ANSWER_VOICE, capture_path: str | None = None) -> Optional[str]:
     """Apply a reply to the live pending question.
-
     Returns None when ``text`` is not a complete-utterance reply or nothing
     is pending; otherwise one of "approved", "rejected", "extended",
     "refused:<why>" (stale / expired / target changed / already answered /
@@ -1586,6 +1585,7 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[st
     if source not in (ANSWER_VOICE, ANSWER_DIALOG):
         logger.warning("[POLICY] ignored a %s-sourced %r for pending %s", source, describe_text(reply), op.op_id[:8])
         return "refused:model"
+    if callable(reply_filter := getattr(op, "voice_reply_filter", None)) and (why := reply_filter(reply, source, capture_path)): return why
     op.answer_source = source  # Local consumers may require a spoken approval specifically.
     op.reply_text = text  # The owning local lane may log the full spoken reply.
     if reply == REPLY_WAIT:

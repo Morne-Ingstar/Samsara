@@ -791,8 +791,10 @@ class AgentServer:
                     return "timeout"
                 if getattr(coordinator, "is_speaking", False):
                     return "busy"
-                # STAND-IN COPY (565)
-                prompt = f"{client_name} wants to type {len(text.split())} words into {target['app']}. Say yes to allow."
+                # STAND-IN COPY (565c)
+                question["command_key_only"] = (self.app.config.get("agent_server") or {}).get("command_key_only", False) is True
+                instruction = "Hold your Command key and say yes to allow." if question["command_key_only"] else "Say yes to allow."
+                prompt = f"{client_name} wants to type {len(text.split())} words into {target['app']}. {instruction}"
                 question.update(target=target, prompt=prompt)
                 question["capture_start"] = getattr(self.app, "_hold_capture_start_ns", None)
                 question["capture_active"] = any(bool(getattr(self.app, flag, False)) for flag in
@@ -860,6 +862,10 @@ class AgentServer:
                 def approved(_op):
                     # Capture the target at the user's yes, then recheck at delivery.
                     try:
+                        if (question["command_key_only"]
+                                and getattr(_op, "answer_capture_path", None) != "command_key"):
+                            refused["reason"] = "user_declined"
+                            return
                         if (getattr(_op, "answer_source", None) != policy.ANSWER_VOICE
                                 or policy.classify_reply(getattr(_op, "reply_text", "")) != policy.REPLY_YES):
                             refused["reason"] = "user_declined"
@@ -880,6 +886,14 @@ class AgentServer:
                                                on_reject=lambda _op: ready.set(),
                                                targets={}, target_probe=None,
                                                refusal_guard=guard, ttl_s=TYPE_TIMEOUT)
+                staged.command_key_only = question["command_key_only"]
+                def filter_reply(reply, source, capture_path):
+                    if (staged.command_key_only and reply == policy.REPLY_YES
+                            and (source != policy.ANSWER_VOICE or capture_path != "command_key")):
+                        return "refused:command key required"
+                    staged.answer_capture_path = capture_path
+                    return None
+                staged.voice_reply_filter = filter_reply
                 with self._state_lock:
                     self._typing_op = staged
                     staged_record["op"] = staged

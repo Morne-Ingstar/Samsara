@@ -12037,7 +12037,8 @@ class DictationApp:
 
                         if stage_timing is not None:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
-                        dispatch = self.command_executor.process_text(text, self, force_commands=True)
+                        dispatch = self.command_executor.process_text(text, self, force_commands=True,
+                            capture_path="command_key" if is_command_mode else "dictation_hold")
                         result, was_command = dispatch
                         if stage_timing is not None:
                             stage_timing.mark("action_done", outcome="command" if was_command else "miss")

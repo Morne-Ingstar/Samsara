@@ -14,6 +14,12 @@ typing or fine mouse work painful. Its optional Hermes pack lets a user speak to
 their own configured Hermes from the application they are working in, and keep
 dictating while Hermes thinks. Hermes keeps its own tools and approval settings.
 
+<!-- STAND-IN COPY (565c) -->
+If using Samsara's optional AI typing tool, the user approves by voice;
+depending on their setting, a plain spoken yes or a yes said while holding
+Samsara's Command key. Never speak, play audio or open media while a request
+is pending.
+
 The user is speaking through voice dictation. Names, punctuation and instructions
 may be misheard. If a name or a destructive instruction is ambiguous, ask a short
 clarifying question before acting. Do not guess the target of a destructive act.
