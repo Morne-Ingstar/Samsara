@@ -48,7 +48,7 @@ def test_live_command_is_masked_and_copy_only_on_press(panel, caplog):
     texts = [w.text() for w in controls.findChildren(QLabel) + controls.findChildren(QPushButton)]
     assert bool(all(state.token not in text for text in texts))
     assert '<token hidden>' in controls.command_preview.text()
-    assert not controls.desktop.isEnabled()
+    assert controls.desktop.isEnabled()
     assert controls.code_copy.accessibleName()
     controls.code_copy.click()
     words = shlex.split(clipboard.text())
@@ -129,7 +129,7 @@ def test_rotation_hint_explains_replacement_and_local_shadow(panel):
     labels = [label.text() for label in controls.findChildren(QLabel)]
     assert any('claude mcp remove samsara --scope user' in text for text in labels)
     assert any('claude mcp remove samsara in that project' in text for text in labels)
-    assert ui.theme.TEXT_DISABLED in controls.desktop.styleSheet()
+    assert ui.theme.TEXT_PRIMARY in controls.desktop.styleSheet()
 
 
 def test_unavailable_preview_does_not_ask_to_enable_again(panel):

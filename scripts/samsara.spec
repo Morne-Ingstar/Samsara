@@ -583,11 +583,29 @@ exe = EXE(
     icon=str(app_dir / 'assets' / 'brand' / 'samsara.ico'),
 )
 
+# A separate stdlib-only console entry point keeps MCP stdio independent of
+# dictation bootstrap and GUI imports. Both executables use this onedir's
+# _internal runtime; installer and portable ZIP already copy the whole tree.
+relay_analysis = Analysis(
+    [str(app_dir / 'tools' / 'mcp_relay.py')],
+    pathex=[str(app_dir)], binaries=[], datas=[], hiddenimports=[],
+    hookspath=[], runtime_hooks=[], excludes=[], noarchive=False,
+)
+relay_pyz = PYZ(relay_analysis.pure)
+relay_exe = EXE(
+    relay_pyz, relay_analysis.scripts, [], exclude_binaries=True,
+    name='samsara-mcp', console=True, contents_directory='_internal',
+    debug=False, strip=False, upx=False,
+)
+
 coll = COLLECT(
     exe,
+    relay_exe,
     a.binaries,
     a.zipfiles,
     a.datas,
+    relay_analysis.binaries,
+    relay_analysis.datas,
     strip=False,
     upx=False,
     upx_exclude=[],

@@ -1,7 +1,10 @@
 """Connection controls below the agents pack's single switch."""
 from contextlib import nullcontext
+import json
+from pathlib import Path
 import secrets
 import re
+import sys
 
 from PySide6.QtCore import QMimeData, QTimer
 from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
@@ -11,6 +14,16 @@ from samsara.ui import theme
 
 _EXCLUDE_HISTORY = 'application/x-qt-windows-mime;value="ExcludeClipboardContentFromMonitorProcessing"'
 _CLIPBOARD_TIMEOUT_MS = 60_000
+
+
+def claude_desktop_entry():
+    """No secret: frozen paths follow the installed or portable executable."""
+    if getattr(sys, 'frozen', False):
+        entry = {'command': str(Path(sys.executable).with_name('samsara-mcp.exe'))}
+    else:
+        relay = Path(__file__).resolve().parents[3] / 'tools' / 'mcp_relay.py'
+        entry = {'command': sys.executable, 'args': ['-u', str(relay)]}
+    return json.dumps({'mcpServers': {'samsara': entry}}, indent=2)
 
 
 def claude_code_command(details, *, masked=False):
@@ -61,17 +74,28 @@ class AgentsControls(QWidget):
         layout.addWidget(self.code_copy)
         for text in ("Show me where it goes: paste into PowerShell. User scope connects Claude Code across your projects.",
                      "After New token: run claude mcp remove samsara --scope user, then copy and run the new command.",
-                     "If you used the earlier local setup, run claude mcp remove samsara in that project first.",
-                     "Claude Desktop needs a small helper - coming next"):
+                     "If you used the earlier local setup, run claude mcp remove samsara in that project first."):
             label = QLabel(text)
             label.setWordWrap(True)
             label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
             layout.addWidget(label)
-            if text.startswith("Claude Desktop"):
-                self.desktop = label
-                label.setEnabled(False)
-                label.setStyleSheet(f"color: {theme.TEXT_DISABLED}; font-size: {theme.TYPE_BODY}px;")
-                label.setAccessibleName(text)
+        # STAND-IN COPY (570b): wording awaits the owner's review.
+        self.desktop = QLabel("Claude Desktop")
+        self.desktop.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(self.desktop)
+        self.desktop_copy = QPushButton("Copy Claude Desktop JSON")
+        self.desktop_copy.setAccessibleName("Copy Claude Desktop connection JSON")
+        self.desktop_copy.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.desktop_copy.setAutoDefault(True)
+        self.desktop_copy.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(self.desktop_copy)
+        desktop_help = QLabel("Show me where it goes: Claude Desktop > Settings > Developer > Edit Config opens "
+                              "%APPDATA%\\Claude\\claude_desktop_config.json. Add the samsara entry under "
+                              "mcpServers, keeping your other entries, then restart Claude Desktop. "
+                              "Keep Samsara open with Let AI apps use Samsara on. After New token, reconnect Claude Desktop.")
+        desktop_help.setWordWrap(True)
+        desktop_help.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(desktop_help)
         buttons = QHBoxLayout()
         self.copy = QPushButton("Copy connection details")  # STAND-IN COPY (564)
         self.rotate = QPushButton("New token")  # STAND-IN COPY (564)
@@ -102,6 +126,7 @@ class AgentsControls(QWidget):
         enabled.toggled.connect(guard(self.toggle, self))
         self.copy.clicked.connect(guard(self.copy_details, self))
         self.code_copy.clicked.connect(guard(self.copy_code_command, self))
+        self.desktop_copy.clicked.connect(guard(self.copy_desktop_entry, self))
         self.rotate.clicked.connect(guard(self.new_token, self))
         self.typing.toggled.connect(guard(self.toggle_typing, self))
         self.approval_style.currentIndexChanged.connect(guard(self.toggle_approval_style, self))
@@ -189,6 +214,9 @@ class AgentsControls(QWidget):
 
     def copy_code_command(self, *_args):
         self._copy_private(claude_code_command(self.server.connection_details()))
+
+    def copy_desktop_entry(self, *_args):
+        self._copy_private(claude_desktop_entry())
 
     def _copy_private(self, details):
         if details is not None:
