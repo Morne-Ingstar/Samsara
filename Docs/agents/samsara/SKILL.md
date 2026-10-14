@@ -12,13 +12,37 @@ is optional and Samsara never installs it into another app's folders.
 
 <!-- STAND-IN COPY (564): all prose in this document awaits the owner's wording. -->
 
+## Setting up
+
+<!-- STAND-IN COPY (570): setup wording awaits the owner's review. -->
+In Samsara, open Settings > Tools > Command library > Command packs and turn on
+**Let AI apps use Samsara**. Under **Connect an AI app**, press
+**Copy Claude Code command**, then paste the command into PowerShell and run it.
+It connects Claude Code in user scope, across your projects. Samsara only copies;
+it never runs Claude's CLI or writes another app's configuration.
+
+The generated command uses the current port and token:
+
+```powershell
+claude mcp add --transport http --scope user samsara http://127.0.0.1:47832/mcp --header "Authorization: Bearer <token>"
+```
+
+The panel hides the token. After **New token**, run
+`claude mcp remove samsara --scope user` first, then copy and run the new command.
+The old token stops working immediately; update every other connected client too.
+If you followed the earlier instructions without `--scope`, a local-scope entry
+overrides the user entry in that project. Run `claude mcp remove samsara` in that
+project to remove it, then use the user-scope setup above.
+Claude Desktop needs a small helper; support is coming.
+
 ## Connect on this PC
 
 In Samsara, open Settings > Tools > Command library > Command packs and turn on
 **Let AI apps use Samsara**.
 **Copy connection details** copies the URL and Authorization header together.
 The default URL is `http://127.0.0.1:47832/mcp`; use the copied port if customized.
-**New token** invalidates the old token immediately; update your client afterward.
+**New token** invalidates the old token immediately; update every connected
+client afterward. For Claude Code, follow the removal steps in **Setting up**.
 Keep the copied token private; do not include it in replies, logs or reports.
 Copying details asks Windows to keep them out of clipboard history and cloud
 sync; native exclusion is unverified. They are cleared after 60 seconds if
@@ -27,7 +51,7 @@ Samsara is still running and the clipboard still contains that copy.
 Claude Code, using the copied token in place of `<token>`:
 
 ```powershell
-claude mcp add --transport http samsara http://127.0.0.1:47832/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http --scope user samsara http://127.0.0.1:47832/mcp --header "Authorization: Bearer <token>"
 ```
 
 After **Copy connection details**, this PowerShell block connects Claude Code
@@ -36,7 +60,7 @@ without manually inserting the token:
 ```powershell
 $samsaraDetails = (Get-Clipboard -Raw).Trim() -split '\r?\n'
 if ($samsaraDetails.Count -ne 2 -or $samsaraDetails[0] -notmatch '^http://127\.0\.0\.1:[0-9]+/mcp$' -or $samsaraDetails[1] -notmatch '^Authorization: Bearer [A-Za-z0-9_-]{40,128}$') { throw 'Copy connection details from Samsara first.' }
-claude mcp add --transport http samsara $samsaraDetails[0] --header $samsaraDetails[1]
+claude mcp add --transport http --scope user samsara $samsaraDetails[0] --header $samsaraDetails[1]
 ```
 
 Codex CLI/IDE: set `SAMSARA_AGENT_TOKEN` in the environment of the process that
@@ -134,6 +158,14 @@ Before `type_text`, ask the user in chat and name the destination. Call only
 when the user has asked for that text to be placed there. Never use it to send
 messages, run commands, or fill credentials. The user's spoken yes is required
 every time, even after chat approval. A refusal is final; never retry around it.
+
+## Future vocabulary
+
+<!-- STAND-IN COPY (570) -->
+The shared AI app vocabulary is planned: **focus, new, dictate, send, stop,
+read, copy, model, attach, resume**. These ten verbs are future app adapter
+work, not MCP tools exposed by this connection panel. Use only the tools
+listed above; no unsupported action should be attempted.
 
 ## Protocol and sources
 

@@ -1,6 +1,7 @@
 """Connection controls below the agents pack's single switch."""
 from contextlib import nullcontext
 import secrets
+import re
 
 from PySide6.QtCore import QMimeData, QTimer
 from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
@@ -10,6 +11,18 @@ from samsara.ui import theme
 
 _EXCLUDE_HISTORY = 'application/x-qt-windows-mime;value="ExcludeClipboardContentFromMonitorProcessing"'
 _CLIPBOARD_TIMEOUT_MS = 60_000
+
+
+def claude_code_command(details, *, masked=False):
+    """Format only validated local connection details; never execute the command."""
+    if not isinstance(details, str):
+        return None
+    match = re.fullmatch(r'(http://127\.0\.0\.1:([0-9]+)/mcp)\nAuthorization: Bearer ([A-Za-z0-9_-]{40,128})', details)
+    if not match or not 1 <= int(match[2]) <= 65535:
+        return None
+    token = '<token hidden>' if masked else match[3]
+    return (f'claude mcp add --transport http --scope user samsara {match[1]} '
+            f'--header "Authorization: Bearer {token}"')
 
 
 def _clear_connection_details(clipboard, details, marker):
@@ -31,11 +44,41 @@ class AgentsControls(QWidget):
         self.status.setWordWrap(True)
         self.status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(self.status)
+        # STAND-IN COPY (570): wording awaits the owner's review.
+        heading = QLabel("Connect an AI app")
+        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(heading)
+        self.command_preview = QLabel()
+        self.command_preview.setWordWrap(True)
+        self.command_preview.setAccessibleName("Claude Code connection command, token hidden")
+        self.command_preview.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(self.command_preview)
+        self.code_copy = QPushButton("Copy Claude Code command")
+        self.code_copy.setAccessibleName("Copy Claude Code connection command")
+        self.code_copy.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.code_copy.setAutoDefault(True)
+        self.code_copy.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(self.code_copy)
+        for text in ("Show me where it goes: paste into PowerShell. User scope connects Claude Code across your projects.",
+                     "After New token: run claude mcp remove samsara --scope user, then copy and run the new command.",
+                     "If you used the earlier local setup, run claude mcp remove samsara in that project first.",
+                     "Claude Desktop needs a small helper - coming next"):
+            label = QLabel(text)
+            label.setWordWrap(True)
+            label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+            layout.addWidget(label)
+            if text.startswith("Claude Desktop"):
+                self.desktop = label
+                label.setEnabled(False)
+                label.setStyleSheet(f"color: {theme.TEXT_DISABLED}; font-size: {theme.TYPE_BODY}px;")
+                label.setAccessibleName(text)
         buttons = QHBoxLayout()
         self.copy = QPushButton("Copy connection details")  # STAND-IN COPY (564)
         self.rotate = QPushButton("New token")  # STAND-IN COPY (564)
         for button in (self.copy, self.rotate):
             button.setMinimumHeight(theme.HIT_TARGET_MIN)
+            button.setAutoDefault(True)
+            button.setAccessibleName(button.text())
             buttons.addWidget(button)
         buttons.addStretch()
         layout.addLayout(buttons)
@@ -58,6 +101,7 @@ class AgentsControls(QWidget):
         guard = getattr(owner, "_visit_callback", lambda fn, *widgets: fn)
         enabled.toggled.connect(guard(self.toggle, self))
         self.copy.clicked.connect(guard(self.copy_details, self))
+        self.code_copy.clicked.connect(guard(self.copy_code_command, self))
         self.rotate.clicked.connect(guard(self.new_token, self))
         self.typing.toggled.connect(guard(self.toggle_typing, self))
         self.approval_style.currentIndexChanged.connect(guard(self.toggle_approval_style, self))
@@ -70,6 +114,11 @@ class AgentsControls(QWidget):
         self.status.setText("Could not save a new token." if token_failed else labels[self.server.status])
         self.copy.setEnabled(self.server.status == "listening")
         self.rotate.setEnabled(self.server.status == "listening")
+        preview = claude_code_command(self.server.connection_details(), masked=True)
+        unavailable = ("Turn on Let AI apps use Samsara to connect." if self.server.status == "off"
+                       else "The server is not running. Connection details are unavailable.")
+        self.command_preview.setText("Claude Code: " + (preview or unavailable))
+        self.code_copy.setEnabled(self.server.status == "listening" and preview is not None)
         self.typing.setEnabled((self.owner.app.config.get("command_packs") or {}).get("agents") is True)
         self.typing.blockSignals(True)
         self.typing.setChecked(self._typing_enabled())
@@ -136,7 +185,12 @@ class AgentsControls(QWidget):
         self.refresh()
 
     def copy_details(self, *_args):
-        details = self.server.connection_details()
+        self._copy_private(self.server.connection_details())
+
+    def copy_code_command(self, *_args):
+        self._copy_private(claude_code_command(self.server.connection_details()))
+
+    def _copy_private(self, details):
         if details is not None:
             clipboard = QApplication.clipboard()
             mime = QMimeData()
