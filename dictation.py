@@ -211,7 +211,7 @@ import subprocess
 
 _RecordingOwnership = collections.namedtuple(
     '_RecordingOwnership',
-    'is_command is_ava command_ghost ava_ghost',
+    'is_command is_ava command_ghost ava_ghost capture_path',
 )
 import logging
 from datetime import datetime
@@ -1572,6 +1572,7 @@ class DictationApp:
 
         self.recording = False
         self.command_mode_recording = False  # True when using command-only hotkey
+        self._capture_provenance = None
         self._stop_in_flight = False         # True while stop_recording + trailing sleep is pending
         self._hold_capture_lifecycle_lock = threading.RLock()
         self._audio_refresh_lock = threading.RLock()
@@ -5952,8 +5953,7 @@ class DictationApp:
         with self._command_mode_lock:
             if not self.command_mode_active or self.recording:
                 return
-            self.command_mode_recording = True
-            self.start_recording(streaming=False, play_earcon=False)
+            self.start_recording(streaming=False, play_earcon=False, capture_path='command_key')
         # 200ms debounce: skip earcon for accidental quick taps
         time.sleep(debounce_ms / 1000.0)
         if self.command_mode_active:
@@ -6110,8 +6110,7 @@ class DictationApp:
         with self._ava_mode_lock:
             if not self.ava_mode_active or self.recording:
                 return
-            self.ava_mode_recording = True
-            self.start_recording(streaming=False, play_earcon=False)
+            self.start_recording(streaming=False, play_earcon=False, capture_path='ava_hold')
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
         time.sleep(debounce_ms / 1000.0)
         if self.ava_mode_active:
@@ -6687,8 +6686,7 @@ class DictationApp:
             return
         time.sleep(0.1)
         if self.command_mode_active and not self.recording:
-            self.command_mode_recording = True
-            self.start_recording(streaming=False, play_earcon=False)
+            self.start_recording(streaming=False, play_earcon=False, capture_path='command_key')
     def _handle_command_mode_utterance(
         self, buffer: list, src_rate: int, *,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
@@ -11368,26 +11366,28 @@ class DictationApp:
         thread_registry.spawn('dictation.park_hold', _stop_for_park, daemon=True)
         return True
 
-    def start_recording(self, streaming=None, play_earcon=True):
+    def start_recording(self, streaming=None, play_earcon=True, *, capture_path='dictation_hold'):
         """Serialize capture startup with release, cancellation and shutdown."""
         with self._hold_capture_lifecycle_lock:
             if (not self._running or self.recording
                     or getattr(self, '_streaming_session', None) is not None
                     or self._stop_in_flight or not self.model_loaded):
                 if not self.recording:
-                    self.command_mode_recording = False
+                    self.command_mode_recording = self.ava_mode_recording = False
+                    self._capture_provenance = None
                 return
             if (self._live_surface_hold_parking_enabled()
                     and getattr(self, '_hold_park_finalizing', False)):
-                self.command_mode_recording = False
+                self.command_mode_recording = self.ava_mode_recording = False
                 self._park_hold_feedback('Still finishing the last hold')
                 return
             started = False
+            self.command_mode_recording = capture_path == 'command_key'
+            self.ava_mode_recording = capture_path == 'ava_hold'
             try:
-                started = self._start_recording_impl(streaming, play_earcon)
+                started = self._start_recording_impl(streaming, play_earcon, capture_path=capture_path)
             finally:
                 if not started:
-                    self.command_mode_recording = False
                     try:
                         self.cancel_recording()
                     finally:
@@ -11427,7 +11427,7 @@ class DictationApp:
                     restore_token = self._hands_free_capture_duck_restore_token
                 self._restore_hands_free_capture_duck_now(generation, restore_token)
 
-    def _start_recording_impl(self, streaming=None, play_earcon=True):
+    def _start_recording_impl(self, streaming=None, play_earcon=True, *, capture_path='dictation_hold'):
         """Start recording audio.
 
         streaming overrides:
@@ -11555,6 +11555,7 @@ class DictationApp:
                 )
 
         self._hold_capture_start_ns = time.perf_counter_ns()
+        self._capture_provenance = (object(), capture_path)
         self.set_app_state(recording=True)
 
         # Update tray icon to show active recording (critical for toggle mode
@@ -11626,19 +11627,16 @@ class DictationApp:
                             stage_timing.complete(outcome=stage_timing.outcome or "discarded")
 
     def _take_recording_ownership(self):
-        """Return and synchronously clear ownership for the recording being stopped.
-
-        The returned tuple is immutable so background transcription cannot
-        observe mode/ghost flags belonging to a later recording.
-        """
+        """Consume immutable capture provenance before background transcription."""
+        token, self._capture_provenance = getattr(self, '_capture_provenance', None), None
         ownership = _RecordingOwnership(
-            is_command=bool(getattr(self, 'command_mode_recording', False)),
-            is_ava=bool(getattr(self, 'ava_mode_recording', False)),
+            is_command=bool(token and token[1] == 'command_key'),
+            is_ava=bool(token and token[1] == 'ava_hold'),
             command_ghost=bool(getattr(self, '_command_mode_ghost_tap', False)),
             ava_ghost=bool(getattr(self, '_ava_mode_ghost_tap', False)),
+            capture_path=token[1] if token else 'dictation_hold',
         )
-        self.command_mode_recording = False
-        self.ava_mode_recording = False
+        self.command_mode_recording = self.ava_mode_recording = False
         self._command_mode_ghost_tap = False
         self._ava_mode_ghost_tap = False
         return ownership
@@ -12042,7 +12040,7 @@ class DictationApp:
                         if stage_timing is not None:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
                         dispatch = self.command_executor.process_text(text, self, force_commands=True,
-                            capture_path="command_key" if is_command_mode else "dictation_hold")
+                            capture_path=ownership.capture_path)
                         result, was_command = dispatch
                         if stage_timing is not None:
                             stage_timing.mark("action_done", outcome="command" if was_command else "miss")
@@ -12480,6 +12478,8 @@ class DictationApp:
 
     def _cancel_recording_impl(self):
         """Cancel recording without transcribing"""
+        self.command_mode_recording = self.ava_mode_recording = False
+        self._capture_provenance = None
         streaming_session = getattr(self, '_streaming_session', None)
         if not self.recording and streaming_session is None:
             return

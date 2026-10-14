@@ -22,7 +22,8 @@ def capture(monkeypatch):
         config={'hotkey': 'f8', 'command_hotkey': 'f9', 'mode': 'hold',
                 'recording_tail_ms': 0},
         _running=True, model_loaded=True, recording=False, snoozed=False,
-        hotkey_pressed=False, command_mode_recording=False,
+        hotkey_pressed=False, command_mode_recording=False, ava_mode_recording=False,
+        _memo_recording=False, _capture_provenance=None,
         command_mode_active=False, toggle_active=False, continuous_active=False,
         _stop_in_flight=False, _streaming_session=None, _wake_consumer=None,
         _hold_capture_lifecycle_lock=threading.RLock(),
@@ -84,8 +85,7 @@ def test_failed_command_start_then_ordinary_hold(capture, monkeypatch, failure, 
         if source == 'command_hotkey':
             HotkeyCluster.on_key_press(app, 'f9')
         else:
-            app.command_mode_recording = True
-            app.start_recording(streaming=False, play_earcon=False)
+            app.start_recording(streaming=False, play_earcon=False, capture_path='command_key')
     if failure == 'activate_raises':
         with pytest.raises(RuntimeError, match='synthetic activation failure'):
             start()
@@ -93,7 +93,11 @@ def test_failed_command_start_then_ordinary_hold(capture, monkeypatch, failure, 
         start()
     assert not app.recording
     assert not app.command_mode_recording
-    assert not app.hotkey_pressed
+    assert app.hotkey_pressed is (source == 'command_hotkey')
+    assert getattr(app, '_capture_provenance', None) is None
+    if source == 'command_hotkey':
+        HotkeyCluster.on_key_release(app, 'f9')
+        assert not app.hotkey_pressed
 
     # Recover the microphone/start guards and press the ordinary dictation key.
     app.current_keys.clear()
@@ -119,8 +123,110 @@ def test_successful_command_start_keeps_command_provenance(capture, monkeypatch)
 
 def test_duplicate_start_preserves_existing_command_capture(capture):
     HotkeyCluster.on_key_press(capture, 'f9')
+    token = capture._capture_provenance
     capture.start_recording(streaming=False, play_earcon=False)
     assert capture.recording and capture.command_mode_recording
+    assert capture._capture_provenance is token
+
+
+@pytest.mark.parametrize('source', ['command_key', 'ava_hold'])
+def test_escape_cancel_then_ordinary_hold(capture, monkeypatch, source):
+    app = capture
+    app.config['cancel_hotkey'] = 'escape'
+    if source == 'command_key':
+        HotkeyCluster.on_key_press(app, 'f9')
+    else:
+        app.start_recording(streaming=False, play_earcon=False, capture_path=source)
+    token = app._capture_provenance
+    assert token is not None
+    HotkeyCluster.on_key_press(app, 'escape')
+    assert not app.recording
+    assert not app.command_mode_recording and not app.ava_mode_recording
+    assert app._capture_provenance is None
+    HotkeyCluster.on_key_release(app, 'escape')
+    HotkeyCluster.on_key_release(app, 'f9')
+    HotkeyCluster.on_key_press(app, 'f8')
+    assert app._capture_provenance is not token
+    _assert_capture_route(app, monkeypatch, command=False)
+
+
+@pytest.mark.parametrize('raises', [False, True])
+def test_failed_command_start_ignores_repeat_until_release(capture, raises):
+    app = capture
+    activate = app._dictation_consumer.activate
+    activate.return_value = False
+    if raises:
+        activate.side_effect = RuntimeError('synthetic failure')
+        with pytest.raises(RuntimeError, match='synthetic failure'):
+            HotkeyCluster.on_key_press(app, 'f9')
+    else:
+        HotkeyCluster.on_key_press(app, 'f9')
+    for _ in range(3):
+        HotkeyCluster.on_key_press(app, 'f9')
+    assert activate.call_count == 1
+    assert app.hotkey_pressed and not app.command_mode_recording
+    HotkeyCluster.on_key_release(app, 'f9')
+    assert not app.hotkey_pressed
+    activate.side_effect = None
+    activate.return_value = True
+    HotkeyCluster.on_key_press(app, 'f9')
+    assert activate.call_count == 2 and app.recording
+    assert app._capture_provenance[1] == 'command_key'
+
+
+def test_concurrent_command_request_cannot_relabel_ordinary_capture(capture, monkeypatch):
+    app = capture
+    requested, proceed = threading.Event(), threading.Event()
+    real_start = app.start_recording
+    errors = []
+    def start(**kwargs):
+        if kwargs.get('capture_path') == 'command_key':
+            requested.set()
+            assert proceed.wait(3)
+        real_start(**kwargs)
+    app.start_recording = start
+    def command_down():
+        try:
+            HotkeyCluster.on_key_press(app, 'f9')
+        except BaseException as exc:
+            errors.append(exc)
+    worker = threading.Thread(target=command_down)
+    worker.start()
+    try:
+        assert requested.wait(3)
+        real_start(streaming=False, play_earcon=False)
+        token = app._capture_provenance
+        assert token[1] == 'dictation_hold'
+    finally:
+        proceed.set()
+        worker.join(3)
+    assert not worker.is_alive() and not errors
+    assert app._capture_provenance is token
+    assert not app.command_mode_recording
+    _assert_capture_route(app, monkeypatch, command=False)
+
+
+@pytest.mark.parametrize('command', [False, True])
+def test_stop_uses_capture_token_even_if_loose_flag_changes(capture, monkeypatch, command):
+    app = capture
+    app.start_recording(streaming=False, play_earcon=False,
+                        capture_path='command_key' if command else 'dictation_hold')
+    app.command_mode_recording = not command
+    _assert_capture_route(app, monkeypatch, command=command)
+
+
+def test_unowned_command_flag_cannot_claim_command_provenance(capture):
+    capture.command_mode_recording = True
+    ownership = capture._take_recording_ownership()
+    assert not ownership.is_command
+    assert ownership.capture_path == 'dictation_hold'
+
+
+def test_failed_ava_start_retires_flags_and_token(capture):
+    capture._dictation_consumer.activate.return_value = False
+    capture.start_recording(streaming=False, play_earcon=False, capture_path='ava_hold')
+    assert not capture.recording and not capture.ava_mode_recording
+    assert capture._capture_provenance is None
 
 
 def _assert_capture_route(app, monkeypatch, *, command):

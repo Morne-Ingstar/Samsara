@@ -698,12 +698,18 @@ def test_failed_command_hotkey_cannot_approve_next_dictation_hold(rig, started):
     app.config['agent_server']['command_key_only'] = True
     app.current_keys, app.key_press_times = set(), {}
     app.snoozed = app.hotkey_pressed = app.recording = False
+    app._memo_recording = False
+    app._hotkey_state_text = lambda: 'synthetic capture'
     app._stop_in_flight = False
     app.get_key_name = lambda key: key
     app.parse_hotkey = lambda combo: {combo}
     app._check_command_mode_key = lambda *a, **kw: None
     app.check_hotkey_state = lambda combo: combo in app.current_keys
-    app.start_recording = lambda **kw: setattr(app, 'recording', started)
+    def fake_start(*, capture_path='dictation_hold', **kw):
+        app.recording = started
+        app.command_mode_recording = started and capture_path == 'command_key'
+        app._capture_provenance = (object(), capture_path) if started else None
+    app.start_recording = fake_start
     rig.answer = None
     executor = CommandExecutor.__new__(CommandExecutor)
     executor._app = app
@@ -712,6 +718,8 @@ def test_failed_command_hotkey_cannot_approve_next_dictation_hold(rig, started):
         HotkeyCluster.on_key_press(app, 'f9')
         assert app.command_mode_recording is started
         if not started:
+            assert app.hotkey_pressed
+            HotkeyCluster.on_key_release(app, 'f9')
             assert not app.hotkey_pressed
             app.current_keys.clear()
             app._hands_free_dictation_commit_available = lambda: False
@@ -719,7 +727,8 @@ def test_failed_command_hotkey_cannot_approve_next_dictation_hold(rig, started):
             app.start_recording = lambda **kw: setattr(app, 'recording', True)
             HotkeyCluster.on_key_press(app, 'f8')
         app._hold_capture_start_ns = time.perf_counter_ns()
-        path = 'command_key' if app.command_mode_recording else 'dictation_hold'
+        token = app._capture_provenance
+        path = token[1] if token else 'dictation_hold'
         paths.append(path)
         # A stopped capture no longer owns the key when dispatch answers.
         app.recording = app.hotkey_pressed = False
@@ -739,7 +748,7 @@ def test_command_key_capture_provenance_is_explicit():
              and isinstance(node.func, ast.Attribute) and node.func.attr == 'process_text']
     tagged = [keyword.value for node in calls for keyword in node.keywords if keyword.arg == 'capture_path']
     assert len(tagged) == 1
-    assert ast.unparse(tagged[0]) == "'command_key' if is_command_mode else 'dictation_hold'"
+    assert ast.unparse(tagged[0]) == 'ownership.capture_path'
 
 
 def test_already_queued_agent_speech_prevents_question(rig):

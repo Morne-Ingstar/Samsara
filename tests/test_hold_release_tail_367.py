@@ -115,6 +115,8 @@ def test_streaming_stop_tail_order_and_fixed_lanes(app, lane):
     app.config['recording_tail_ms'] = 250
     app.command_mode_recording = lane == 'command'
     app.ava_mode_recording = lane == 'ava'
+    app._capture_provenance = (object(), {'command': 'command_key',
+                                        'ava': 'ava_hold'}.get(lane, 'dictation_hold'))
     app._memo_recording = lane == 'memo'
     if lane == 'capslock':
         app.live_surface = None

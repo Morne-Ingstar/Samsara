@@ -59,7 +59,7 @@ def app():
               _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S=0.5,
               HOLD_RELEASE_TAIL_SPEECH_THRESHOLD=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
               _RecordingOwnership=collections.namedtuple(
-                  'Ownership', 'is_command is_ava command_ghost ava_ghost'))
+                  'Ownership', 'is_command is_ava command_ghost ava_ghost capture_path'))
     # Bind the current display dependency only when the extracted source uses it.
     if any(isinstance(node, ast.Name) and node.id == 'listening_display'
            for method in methods for node in ast.walk(method)):
@@ -604,7 +604,9 @@ def test_404_special_lane_start_never_opens_onset_policy(app, lane):
     start(app)
     app.stop_recording()
     setattr(app, lane, True)
-    start(app)
+    capture_path = {'command_mode_recording': 'command_key',
+                    'ava_mode_recording': 'ava_hold'}.get(lane, 'dictation_hold')
+    start(app, capture_path=capture_path)
     assert app._hold_capture_onset is None
     assert app._hold_capture_duck_confirmed_at is None
     assert len(app.duckers) == 1

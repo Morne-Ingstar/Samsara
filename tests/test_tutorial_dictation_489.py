@@ -346,6 +346,7 @@ def test_other_capture_lanes_do_not_consume_dictation(window, hold, tmp_path, mo
         spies.namespace['voice_memo'] = SimpleNamespace(is_armed=lambda cfg: True, capture=destination)
     elif lane == 'ava':
         app.ava_mode_recording = True
+        app._capture_provenance = (object(), 'ava_hold')
         app._route_to_ava = Mock()
     _run(app)
     callback.assert_not_called()

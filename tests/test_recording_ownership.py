@@ -32,6 +32,8 @@ def _app(*, mode=None, ghost=False, audio=None):
     )
     app.command_mode_recording = mode == "command"
     app.ava_mode_recording = mode == "ava"
+    app._capture_provenance = (object(), {"command": "command_key",
+                                        "ava": "ava_hold"}.get(mode, "dictation_hold"))
     app._command_mode_ghost_tap = bool(ghost and mode == "command")
     app._ava_mode_ghost_tap = bool(ghost and mode == "ava")
     app.config = {

@@ -361,6 +361,7 @@ class TestGhostTapPrevention:
         app, clock = self._make_app(monkeypatch, debounce_ms=500)
         app.enter_command_mode()
         app.command_mode_recording = True
+        app._capture_provenance = (object(), 'command_key')
         app.exit_command_mode()
         assert app._command_mode_ghost_tap is True
         ownership = app._take_recording_ownership()

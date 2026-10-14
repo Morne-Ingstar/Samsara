@@ -97,6 +97,7 @@ def _app(tmp_path, monkeypatch, text, *, matching=False, command_key=True,
         SimpleNamespace(language='en', language_probability=.99))
     app = SimpleNamespace(config=config, command_matching_enabled=matching,
         command_mode_recording=command_key, ava_mode_recording=False, command_mode_active=False,
+        _capture_provenance=(object(), 'command_key' if command_key else 'dictation_hold'),
         recording=True, hotkey_pressed=False, _ace_dictation_active=True,
         _streaming_session=None, model_rate=16000, model=model, model_lock=threading.Lock(),
         _last_recording_earcon_ms=0, _tutorial_hooks={}, _ava_interpret_request=0,
