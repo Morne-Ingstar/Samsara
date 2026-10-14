@@ -1,7 +1,7 @@
 """Mouse-wheel scroll plugin.
 
 Sends WM_MOUSEWHEEL via SendInput at the current cursor position.
-Works universally — browsers, Electron apps, Discord, editors — unlike
+Works universally â€” browsers, Electron apps, Discord, editors â€” unlike
 PageUp/PageDown which many apps intercept or ignore.
 
 Config (optional, under config["scroll"]):
@@ -19,7 +19,7 @@ import ctypes.wintypes as wintypes
 
 from samsara.plugin_commands import command
 
-# ── Win32 constants ───────────────────────────────────────────────────────────
+# â”€â”€ Win32 constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 INPUT_MOUSE        = 0
 INPUT_KEYBOARD     = 1
@@ -36,7 +36,7 @@ VK_HOME    = 0x24
 user32 = ctypes.windll.user32
 
 
-# ── SendInput structures ──────────────────────────────────────────────────────
+# â”€â”€ SendInput structures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _MOUSEINPUT(ctypes.Structure):
     _fields_ = [
@@ -73,7 +73,7 @@ class INPUT(ctypes.Structure):
     ]
 
 
-# ── Core scroll helper ────────────────────────────────────────────────────────
+# â”€â”€ Core scroll helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _scroll(clicks: int, up: bool) -> bool:
     """Send a wheel event of `clicks` detents at the current cursor position.
@@ -94,7 +94,7 @@ def _scroll(clicks: int, up: bool) -> bool:
 
     sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
     if sent == 0:
-        print("[SCROLL] SendInput failed — check permissions")
+        print("[SCROLL] SendInput failed â€” check permissions")
         return False
     return True
 
@@ -105,7 +105,7 @@ def _clicks(app, key: str, default: int) -> int:
     return cfg.get("scroll", {}).get(key, default)
 
 
-# ── Commands ──────────────────────────────────────────────────────────────────
+# â”€â”€ Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @command("scroll up a little", pack="core", risk_class="ui")
 def scroll_up_slow(app, remainder):
@@ -178,7 +178,7 @@ def _hscroll(clicks: int, right: bool) -> bool:
 
     sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
     if sent == 0:
-        print("[SCROLL] SendInput failed — check permissions")
+        print("[SCROLL] SendInput failed â€” check permissions")
         return False
     return True
 
@@ -198,7 +198,7 @@ def _send_key_combo(*vkeys) -> bool:
 
     sent = user32.SendInput(n * 2, inputs, ctypes.sizeof(INPUT))
     if sent == 0:
-        print("[SCROLL] SendInput (keyboard) failed — check permissions")
+        print("[SCROLL] SendInput (keyboard) failed â€” check permissions")
         return False
     return True
 
@@ -210,6 +210,7 @@ def _send_key_combo(*vkeys) -> bool:
     risk_class="ui",
 )
 def scroll_to_top(app, remainder):
+    """Scrolls to the top of the page."""
     return _send_key_combo(VK_CONTROL, VK_HOME)
 
 
@@ -220,6 +221,7 @@ def scroll_to_top(app, remainder):
     risk_class="ui",
 )
 def scroll_to_bottom(app, remainder):
+    """Scrolls to the bottom of the page."""
     return _send_key_combo(VK_CONTROL, VK_END)
 
 

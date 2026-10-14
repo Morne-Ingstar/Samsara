@@ -221,9 +221,9 @@ def _do_capture(app, remainder):
     return False
 
 
-@command("new conversation", aliases=["reset conversation", "fresh start"], pack="smart-actions")
+@command("new conversation", aliases=["reset conversation", "fresh start"], pack="smart-actions", risk_class="safe")
 def handle_new_conversation(app, remainder):
-    """End the current Smart Actions session. 'Jarvis, new conversation.'"""
+    """Starts a new conversation in the chat app in front of you."""
     if hasattr(app, '_smart_actions_session'):
         app._smart_actions_session.reset()
     print("[SMART ACTIONS] Session reset")

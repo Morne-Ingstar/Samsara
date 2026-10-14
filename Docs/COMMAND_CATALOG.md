@@ -39,20 +39,20 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3302` |
-| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3354` |
-| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3340` |
-| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3381` |
-| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | ui | yes | yes | Asks Ava the question that follows, out loud. | `samsara/ava_turn_queue.py:2986` |
-| `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3143` |
-| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3321` |
-| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3197` |
+| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3301` |
+| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3353` |
+| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3339` |
+| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3380` |
+| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | ui | yes | yes | Asks Ava the question that follows, out loud. | `samsara/ava_turn_queue.py:2984` |
+| `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3142` |
+| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3320` |
+| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3196` |
 
 ## audio_switch (2)
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `audio_switch.switch_audio_to` | `switch audio to`, `use` | text:text | ui | yes |  | Switch audio output. | `plugins/commands/audio_switch.py:30` |
+| `audio_switch.switch_audio_to` | `switch audio to`, `use` | text:text | ui | yes |  | Switches sound output to the device you name. | `plugins/commands/audio_switch.py:30` |
 | `audio_switch.switch_mic_to` | `switch mic to`, `switch microphone to`, `use mic`, `use microphone` | text:text | ui | yes |  | Switches the microphone to the one you name. | `plugins/commands/audio_switch.py:40` |
 
 ## builtin (289)
@@ -454,7 +454,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `macros.clear_my_desk` | `clean desktop`, `clear my desk`, `hide everything` | - | ui | yes |  | Minimises every window. | `plugins/commands/macros.py:121` |
 | `macros.focus_mode` | `focus mode`, `lets work`, `time to work` | - | write | no |  | Turns the volume down, opens your editor and clears distractions. | `plugins/commands/macros.py:50` |
 | `macros.going_dark` | `end of day`, `going dark`, `goodnight`, `shut it down` | - | destructive | no |  | Mutes the sound, minimises everything and locks the screen. | `plugins/commands/macros.py:33` |
-| `macros.morning_routine` | `good morning`, `morning routine`, `start my day` | - | write | no |  | Open daily sites, set comfortable volume. | `plugins/commands/macros.py:81` |
+| `macros.morning_routine` | `good morning`, `morning routine`, `start my day` | - | write | no |  | Runs your morning routine. | `plugins/commands/macros.py:81` |
 | `macros.presentation_mode` | `demo mode`, `presentation mode` | - | write | no |  | Maximises the focused window and turns the volume up. | `plugins/commands/macros.py:105` |
 
 ## media_keys (5)
@@ -532,22 +532,22 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `scroll.bottom_of_page` | `bottom of page`, `go to bottom`, `jump to bottom` | - | ui | yes |  | bottom of page | `plugins/commands/scroll.py:216` |
-| `scroll.page_down` | `down one page`, `page down`, `scroll page down` | - | ui | yes |  | Presses Page Down, moving one screenful forward. | `plugins/commands/scroll.py:237` |
-| `scroll.page_up` | `page up`, `scroll page up`, `up one page` | - | ui | yes |  | Presses Page Up, moving one screenful back. | `plugins/commands/scroll.py:226` |
+| `scroll.bottom_of_page` | `bottom of page`, `go to bottom`, `jump to bottom` | - | ui | yes |  | Scrolls to the bottom of the page. | `plugins/commands/scroll.py:217` |
+| `scroll.page_down` | `down one page`, `page down`, `scroll page down` | - | ui | yes |  | Presses Page Down, moving one screenful forward. | `plugins/commands/scroll.py:239` |
+| `scroll.page_up` | `page up`, `scroll page up`, `up one page` | - | ui | yes |  | Presses Page Up, moving one screenful back. | `plugins/commands/scroll.py:228` |
 | `scroll.scroll_down` | `scroll down` | - | ui | yes |  | Scrolls down a page's worth wherever the pointer is. | `plugins/commands/scroll.py:128` |
 | `scroll.scroll_down_a_little` | `scroll down a little` | - | ui | yes |  | Scrolls down a few lines wherever the pointer is. | `plugins/commands/scroll.py:116` |
 | `scroll.scroll_down_fast` | `scroll down fast` | - | ui | yes |  | Scrolls down as far as one command goes, for very long pages. | `plugins/commands/scroll.py:164` |
 | `scroll.scroll_down_high` | `scroll down high` | - | ui | yes |  | Scrolls a long way down, for skimming forward through a page. | `plugins/commands/scroll.py:152` |
 | `scroll.scroll_down_medium` | `scroll down medium` | - | ui | yes |  | Scrolls down about twice as far as plain scroll down. | `plugins/commands/scroll.py:140` |
-| `scroll.scroll_left` | `scroll left`, `scroll left a little` | - | ui | yes |  | Scrolls sideways to the left, for wide tables and timelines. | `plugins/commands/scroll.py:248` |
-| `scroll.scroll_right` | `scroll right`, `scroll right a little` | - | ui | yes |  | Scrolls sideways to the right, for wide tables and timelines. | `plugins/commands/scroll.py:259` |
+| `scroll.scroll_left` | `scroll left`, `scroll left a little` | - | ui | yes |  | Scrolls sideways to the left, for wide tables and timelines. | `plugins/commands/scroll.py:250` |
+| `scroll.scroll_right` | `scroll right`, `scroll right a little` | - | ui | yes |  | Scrolls sideways to the right, for wide tables and timelines. | `plugins/commands/scroll.py:261` |
 | `scroll.scroll_up` | `scroll up` | - | ui | yes |  | Scrolls up a page's worth wherever the pointer is. | `plugins/commands/scroll.py:122` |
 | `scroll.scroll_up_a_little` | `scroll up a little` | - | ui | yes |  | Scrolls up a few lines wherever the pointer is. | `plugins/commands/scroll.py:110` |
 | `scroll.scroll_up_fast` | `scroll up fast` | - | ui | yes |  | Scrolls up as far as one command goes, for very long pages. | `plugins/commands/scroll.py:158` |
 | `scroll.scroll_up_high` | `scroll up high` | - | ui | yes |  | Scrolls a long way up, for skimming back through a page. | `plugins/commands/scroll.py:146` |
 | `scroll.scroll_up_medium` | `scroll up medium` | - | ui | yes |  | Scrolls up about twice as far as plain scroll up. | `plugins/commands/scroll.py:134` |
-| `scroll.top_of_page` | `go to top`, `jump to top`, `top of page` | - | ui | yes |  | top of page | `plugins/commands/scroll.py:206` |
+| `scroll.top_of_page` | `go to top`, `jump to top`, `top of page` | - | ui | yes |  | Scrolls to the top of the page. | `plugins/commands/scroll.py:206` |
 
 ## session_mode_commands (1)
 
@@ -560,16 +560,16 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
 | `show_numbers.click` | `click`, `press`, `tap` | label:int | write | no |  | Clicks the numbered thing you name, such as click seven. *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2126` |
-| `show_numbers.double_click` | `double click` | label:int | write | no |  | double click *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2279` |
+| `show_numbers.double_click` | `double click` | label:int | write | no |  | Double-clicks the numbered item you name. *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2279` |
 | `show_numbers.grid_back` | `grid back`, `grid up`, `undo grid` | - | read | yes |  | Steps the mouse grid back one refinement, after a misheard number. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:2000` |
 | `show_numbers.hide_grid` | `cancel grid`, `close grid`, `grid off`, `hide grid` | - | read | yes |  | Closes the mouse grid. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:1987` |
 | `show_numbers.hide_numbers` | `clear labels`, `dismiss numbers`, `hide`, `hide labels`, `hide numbers` | - | ui | yes |  | Clears the numbered labels from the screen. | `plugins/commands/show_numbers.py:2093` |
-| `show_numbers.left_click` | `left click` | label:int | write | no |  | left click *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2265` |
+| `show_numbers.left_click` | `left click` | label:int | write | no |  | Clicks the numbered item you name. *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2265` |
 | `show_numbers.mouse_grid` | `grid`, `mouse grid`, `mousegrid`, `show grid` | text:text | read | yes |  | Puts a numbered grid on the screen for pointing at anything. | `plugins/commands/show_numbers.py:1957` |
 | `show_numbers.move_here` | `just move`, `move here`, `move mouse here`, `park here` | - | read | yes |  | Moves the pointer to the current grid cell and closes the grid, without clicking. *(Live only while mouse_grid.visible.)* | `plugins/commands/show_numbers.py:2015` |
 | `show_numbers.overlay_grid` | `grid test`, `overlay grid`, `overlay grid test` | - | ui | yes |  | Draws five test labels across the screen, to check the overlay paints. | `plugins/commands/show_numbers.py:1667` |
 | `show_numbers.refresh_numbers` | `refresh`, `refresh numbers`, `update numbers` | - | ui | yes |  | Rescans the focused window and redraws the numbered labels. | `plugins/commands/show_numbers.py:2104` |
-| `show_numbers.right_click` | `right click` | label:int | write | no |  | right click *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2272` |
+| `show_numbers.right_click` | `right click` | label:int | write | no |  | Right-clicks the numbered item you name. *(Live only with an argument while show_numbers.visible.)* | `plugins/commands/show_numbers.py:2272` |
 | `show_numbers.show_numbers` | `label things`, `show`, `show clickable`, `show labels`, `show numbers` | - | read | yes |  | Numbers everything clickable in the focused window so you can name one. | `plugins/commands/show_numbers.py:2032` |
 | `show_numbers.show_overlay_test` | `overlay test`, `show numbers debug`, `show overlay test` | - | ui | yes |  | Draws four test labels, to check the overlay can paint on this screen. | `plugins/commands/show_numbers.py:1556` |
 
@@ -578,7 +578,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
 | `smart_actions.brain_dump` | `brain dump` | remainder:text | write | no |  | Captures what you say next as a note. | `plugins/commands/smart_actions.py:243` |
-| `smart_actions.new_conversation` | `fresh start`, `new conversation`, `reset conversation` | - | write | yes |  | End the current Smart Actions session. | `plugins/commands/smart_actions.py:224` |
+| `smart_actions.new_conversation` | `fresh start`, `new conversation`, `reset conversation` | - | ui | yes |  | Starts a new conversation in the chat app in front of you. | `plugins/commands/smart_actions.py:224` |
 | `smart_actions.note` | `note` | remainder:text | write | yes |  | Captures what you say next as a note. | `plugins/commands/smart_actions.py:233` |
 
 ## snippets (3)
@@ -607,8 +607,8 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
 | `tab_finder.find_tab` | `find my`, `find tab`, `find the tab`, `switch to tab`, `where is` | query:text | ui | yes |  | Finds the browser tab matching what you say and switches to it. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:80` |
-| `tab_finder.find_text` | `find`, `find text` | remainder:text* | ui | yes |  | Open the browser find bar and enter the requested page text. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:115` |
-| `tab_finder.tab_number` | `tab`, `tab number` | remainder:text* | ui | yes |  | Switch to browser tab 1 through 8; tab 9 means the last tab. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:130` |
+| `tab_finder.find_text` | `find`, `find text` | remainder:text* | ui | yes |  | Finds the browser tab that contains the words you say. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:115` |
+| `tab_finder.tab_number` | `tab`, `tab number` | remainder:text* | ui | yes |  | Switches to the browser tab with the number you say. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:130` |
 
 ## tasks (9)
 

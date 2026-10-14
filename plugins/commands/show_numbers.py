@@ -1,4 +1,4 @@
-"""Show Numbers overlay — semantic voice clicking via numbered labels.
+"""Show Numbers overlay â€” semantic voice clicking via numbered labels.
 
 Commands:
     "show numbers" / "show"   -- draw numbered labels on clickable UI elements.
@@ -1562,7 +1562,7 @@ def handle_show_overlay_test(app, remainder):
     """Draws four test labels, to check the overlay can paint on this screen.
 
     Logs Qt event-loop state so the root cause of a blank overlay is visible.
-    Keep this command in place — it costs nothing and confirms the renderer
+    Keep this command in place â€” it costs nothing and confirms the renderer
     works independently of element enumeration.
     """
     import threading
@@ -1591,14 +1591,14 @@ def handle_show_overlay_test(app, remainder):
             f"[OVERLAY-TEST] Python thread: {threading.current_thread().name!r}"
         )
         if on_qt_thread:
-            logger.info("[OVERLAY-TEST] Called from Qt thread — singleShot will fire")
+            logger.info("[OVERLAY-TEST] Called from Qt thread â€” singleShot will fire")
         else:
             logger.info(
-                "[OVERLAY-TEST] Called from worker thread — singleShot(0, qt_app, cb) "
+                "[OVERLAY-TEST] Called from worker thread â€” singleShot(0, qt_app, cb) "
                 "routes to Qt thread via running event loop"
             )
     else:
-        logger.info("[OVERLAY-TEST] WARNING: No QApplication — Qt event loop not running!")
+        logger.info("[OVERLAY-TEST] WARNING: No QApplication â€” Qt event loop not running!")
 
     # Hardcoded labels at fixed logical coordinates; bypasses UIA, placement,
     # DPI conversion, and the entire element enumeration stack.
@@ -1616,7 +1616,7 @@ def handle_show_overlay_test(app, remainder):
         fg_hwnd = 0
 
     qt_runtime.post(lambda: _show_overlay_qt(labels, fg_hwnd, app))
-    logger.info("[OVERLAY-TEST] Queued 4 test labels — watch for [OVERLAY] _show_overlay_qt called")
+    logger.info("[OVERLAY-TEST] Queued 4 test labels â€” watch for [OVERLAY] _show_overlay_qt called")
     return True
 
 
@@ -1684,7 +1684,7 @@ def handle_overlay_grid(app, remainder):
 
     qt_runtime.ensure_started()
     qt_runtime.post(lambda: _show_grid_qt(fg_hwnd, app))
-    logger.info("[OVERLAY-GRID] Grid test queued — check log for pill coordinates")
+    logger.info("[OVERLAY-GRID] Grid test queued â€” check log for pill coordinates")
     return True
 
 
@@ -2266,22 +2266,22 @@ def _numbered_click_handler(modifier: str):
          param_schema={"label": {"type": "int", "required": False}},
          scope={"argument_tags": [_NUMBERS_TAG]})
 def handle_left_click(app, remainder):
+    """Clicks the numbered item you name."""
     return _numbered_click_handler("single")(app, remainder)
-
 
 @command("right click", pack="accessibility", risk_class="write",
          param_schema={"label": {"type": "int", "required": False}},
          scope={"argument_tags": [_NUMBERS_TAG]})
 def handle_right_click(app, remainder):
+    """Right-clicks the numbered item you name."""
     return _numbered_click_handler("right")(app, remainder)
-
 
 @command("double click", pack="accessibility", risk_class="write",
          param_schema={"label": {"type": "int", "required": False}},
          scope={"argument_tags": [_NUMBERS_TAG]})
 def handle_double_click(app, remainder):
+    """Double-clicks the numbered item you name."""
     return _numbered_click_handler("double")(app, remainder)
-
 
 def enumerate_clickable_elements() -> list:
     """Public alias for _enumerate_foreground_clickables."""

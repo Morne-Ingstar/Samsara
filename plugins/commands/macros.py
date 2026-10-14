@@ -82,7 +82,7 @@ def break_time(app, remainder):
          risk_class='reversible', ai_composable=False,
          side_effects=['audio', 'network'])
 def morning_routine(app, remainder):
-    """Open daily sites, set comfortable volume."""
+    """Runs your morning routine."""
     print("[MACRO] Good morning...")
     _nircmd(["setsysvolume", "32768"])     # ~50% volume
     time.sleep(0.2)

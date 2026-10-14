@@ -117,7 +117,7 @@ def find_tab(app, remainder):
     param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}},
 )
 def find_text(app, remainder):
-    """Open the browser find bar and enter the requested page text."""
+    """Finds the browser tab that contains the words you say."""
     query = _clean(remainder)
     if not query:
         return False
@@ -132,7 +132,7 @@ def find_text(app, remainder):
     param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}},
 )
 def tab_number(app, remainder):
-    """Switch to browser tab 1 through 8; tab 9 means the last tab."""
+    """Switches to the browser tab with the number you say."""
     number = _browser_tab_number(remainder)
     if number is None:
         return False

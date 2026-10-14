@@ -29,7 +29,7 @@ def _resolve_device(app, spoken_name):
 
 @command("switch audio to", aliases=["use"], pack="audio")
 def switch_to(app, remainder):
-    """Switch audio output. 'switch to speakers', 'use headset', etc."""
+    """Switches sound output to the device you name."""
     if not remainder:
         print("[AUDIO] Switch to what? Say a device name.")
         return False
