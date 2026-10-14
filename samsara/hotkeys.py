@@ -347,7 +347,12 @@ class HotkeyCluster:
             logger.debug(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
             self.hotkey_pressed = True
             self.command_mode_recording = True
-            self.start_recording(streaming=False)
+            try:
+                self.start_recording(streaming=False)
+            finally:
+                if not self.recording:
+                    self.command_mode_recording = False
+                    self.hotkey_pressed = False
             return
 
         # Undo hotkey (works in any mode, edge-triggered)

@@ -11374,9 +11374,12 @@ class DictationApp:
             if (not self._running or self.recording
                     or getattr(self, '_streaming_session', None) is not None
                     or self._stop_in_flight or not self.model_loaded):
+                if not self.recording:
+                    self.command_mode_recording = False
                 return
             if (self._live_surface_hold_parking_enabled()
                     and getattr(self, '_hold_park_finalizing', False)):
+                self.command_mode_recording = False
                 self._park_hold_feedback('Still finishing the last hold')
                 return
             started = False
@@ -11384,6 +11387,7 @@ class DictationApp:
                 started = self._start_recording_impl(streaming, play_earcon)
             finally:
                 if not started:
+                    self.command_mode_recording = False
                     try:
                         self.cancel_recording()
                     finally:

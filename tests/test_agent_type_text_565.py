@@ -271,11 +271,24 @@ def test_unknown_client_name_falls_back(rig, name):
     assert rig.prompts[0][0].startswith('An AI app wants')
 
 
-def test_log_contains_only_closed_outcomes_and_length_bucket(rig, caplog):
+def test_log_contains_only_closed_outcomes_and_length_bucket(rig, caplog, monkeypatch):
+    # The HTTP body can reach the client before do_POST's finally logs the
+    # request outcome. Wait for each handler to finish while capture is active.
+    finished = threading.Event()
+    handle = agents._Handler.do_POST
+    def handle_and_signal(handler):
+        try:
+            handle(handler)
+        finally:
+            finished.set()
+    monkeypatch.setattr(agents._Handler, 'do_POST', handle_and_signal)
     with caplog.at_level(logging.INFO):
         call(rig.service, 'synthetic private payload')
+        assert finished.wait(2)
+        finished.clear()
         rig.answer = 'no'
         call(rig.service, 'other synthetic private payload')
+        assert finished.wait(2)
     records = [r.getMessage() for r in caplog.records if r.name == 'samsara.agent_server']
     assert records
     assert not any('synthetic' in r or 'Notepad' in r or 'private payload' in r for r in records)
@@ -674,6 +687,49 @@ def test_approval_style_default_persistence_and_disabled_state(rig, qapp):
         assert not controls.approval_style.isEnabled()
     finally:
         controls.close()
+
+
+@pytest.mark.parametrize('started', [False, True])
+def test_failed_command_hotkey_cannot_approve_next_dictation_hold(rig, started):
+    from samsara.hotkeys import HotkeyCluster
+    from samsara.commands import CommandExecutor
+    app = rig.app
+    app.config.update(hotkey='f8', command_hotkey='f9', mode='hold')
+    app.config['agent_server']['command_key_only'] = True
+    app.current_keys, app.key_press_times = set(), {}
+    app.snoozed = app.hotkey_pressed = app.recording = False
+    app._stop_in_flight = False
+    app.get_key_name = lambda key: key
+    app.parse_hotkey = lambda combo: {combo}
+    app._check_command_mode_key = lambda *a, **kw: None
+    app.check_hotkey_state = lambda combo: combo in app.current_keys
+    app.start_recording = lambda **kw: setattr(app, 'recording', started)
+    rig.answer = None
+    executor = CommandExecutor.__new__(CommandExecutor)
+    executor._app = app
+    answers, paths = [], []
+    def answer():
+        HotkeyCluster.on_key_press(app, 'f9')
+        assert app.command_mode_recording is started
+        if not started:
+            assert not app.hotkey_pressed
+            app.current_keys.clear()
+            app._hands_free_dictation_commit_available = lambda: False
+            app._hotkey_state_text = lambda: 'synthetic capture'
+            app.start_recording = lambda **kw: setattr(app, 'recording', True)
+            HotkeyCluster.on_key_press(app, 'f8')
+        app._hold_capture_start_ns = time.perf_counter_ns()
+        path = 'command_key' if app.command_mode_recording else 'dictation_hold'
+        paths.append(path)
+        # A stopped capture no longer owns the key when dispatch answers.
+        app.recording = app.hotkey_pressed = False
+        answers.append(executor.process_text('yes', capture_path=path))
+    rig.on_question = answer
+    assert call(rig.service)['reason'] == ('delivered' if started else 'timeout')
+    assert paths == ['command_key' if started else 'dictation_hold']
+    assert bool(rig.pastes) is started
+    if not started:
+        assert answers[0].detail['answer'] == 'refused:command key required'
 
 
 def test_command_key_capture_provenance_is_explicit():
