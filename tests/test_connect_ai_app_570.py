@@ -155,3 +155,45 @@ def test_connection_and_approval_controls_coexist(panel):
     assert controls.approval_style.isEnabled()
     assert controls.approval_style.currentIndex() == 1
     assert controls.code_copy.isEnabled()
+
+
+@pytest.mark.parametrize('frozen', [False, True])
+@pytest.mark.parametrize('port', [47832, 49123])
+@pytest.mark.parametrize('profile', [None, 'alternate home'])
+def test_desktop_entry_uses_port_and_only_explicit_home(monkeypatch, frozen, port, profile, tmp_path):
+    import sys
+    monkeypatch.setattr(sys, 'frozen', frozen, raising=False)
+    if profile is None:
+        monkeypatch.delenv('SAMSARA_HOME_DIR', raising=False)
+    else:
+        monkeypatch.setenv('SAMSARA_HOME_DIR', str(tmp_path / profile))
+    entry = json.loads(ui.claude_desktop_entry(port))['mcpServers']['samsara']
+    args = entry.get('args', [])
+    if port != 47832:
+        assert args[-2:] == ['--url', f'http://127.0.0.1:{port}/mcp']
+    else:
+        assert '--url' not in args
+    if profile is None:
+        assert 'env' not in entry
+    else:
+        assert entry['env'] == {'SAMSARA_HOME_DIR': str(tmp_path / profile)}
+    assert 'Authorization' not in json.dumps(entry)
+
+
+def test_desktop_copy_tracks_live_port_and_off_configuration(panel):
+    controls, state, clipboard, timers = panel
+    controls.desktop_copy.click()
+    assert json.loads(clipboard.text()) == json.loads(ui.claude_desktop_entry(state.port))
+    state.port = 49124
+    controls.desktop_copy.click()
+    assert json.loads(clipboard.text()) == json.loads(ui.claude_desktop_entry(state.port))
+    state.status = 'off'
+    controls.owner.app.config['agent_server'] = {'port': 49125}
+    controls.refresh()
+    controls.desktop_copy.click()
+    assert json.loads(clipboard.text()) == json.loads(ui.claude_desktop_entry(49125))
+
+
+@pytest.mark.parametrize('port', [True, None, '49123', 0, 65536])
+def test_invalid_desktop_port_never_generates_entry(port):
+    assert ui.claude_desktop_entry(port) is None

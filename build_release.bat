@@ -65,6 +65,16 @@ if not exist "dist\Samsara\Samsara.exe" (
     exit /b 1
 )
 
+if not exist "dist\Samsara\samsara-mcp.exe" (
+    echo Verified build output is missing: dist\Samsara\samsara-mcp.exe
+    exit /b 1
+)
+"dist\Samsara\samsara-mcp.exe" --help >nul
+if errorlevel 1 (
+    echo Samsara MCP relay help check FAILED. No release archive was created.
+    exit /b 1
+)
+
 echo.
 echo Build successful:
 dir dist\Samsara\Samsara.exe | findstr "Samsara"

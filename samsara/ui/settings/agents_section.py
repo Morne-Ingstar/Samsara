@@ -1,6 +1,7 @@
 """Connection controls below the agents pack's single switch."""
 from contextlib import nullcontext
 import json
+import os
 from pathlib import Path
 import secrets
 import re
@@ -16,13 +17,19 @@ _EXCLUDE_HISTORY = 'application/x-qt-windows-mime;value="ExcludeClipboardContent
 _CLIPBOARD_TIMEOUT_MS = 60_000
 
 
-def claude_desktop_entry():
+def claude_desktop_entry(port=47832):
     """No secret: frozen paths follow the installed or portable executable."""
     if getattr(sys, 'frozen', False):
         entry = {'command': str(Path(sys.executable).with_name('samsara-mcp.exe'))}
     else:
         relay = Path(__file__).resolve().parents[3] / 'tools' / 'mcp_relay.py'
         entry = {'command': sys.executable, 'args': ['-u', str(relay)]}
+    if type(port) is not int or not 1 <= port <= 65535:
+        return None
+    if port != 47832:
+        entry.setdefault('args', []).extend(['--url', f'http://127.0.0.1:{port}/mcp'])
+    if os.environ.get('SAMSARA_HOME_DIR'):
+        entry['env'] = {'SAMSARA_HOME_DIR': os.environ['SAMSARA_HOME_DIR']}
     return json.dumps({'mcpServers': {'samsara': entry}}, indent=2)
 
 
@@ -216,7 +223,10 @@ class AgentsControls(QWidget):
         self._copy_private(claude_code_command(self.server.connection_details()))
 
     def copy_desktop_entry(self, *_args):
-        self._copy_private(claude_desktop_entry())
+        # Use the live port when running, configured port while the pack is off.
+        port = (self.server.port if self.server.status == 'listening' else
+                (self.owner.app.config.get('agent_server') or {}).get('port', 47832))
+        self._copy_private(claude_desktop_entry(port))
 
     def _copy_private(self, details):
         if details is not None:

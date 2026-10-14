@@ -29,7 +29,10 @@ def run_child(home, messages=(), url=relay.DEFAULT_URL):
     env = os.environ.copy()
     env['SAMSARA_HOME_DIR'] = str(home)
     body = b''.join(json.dumps(m).encode('utf-8') + b'\n' for m in messages)
-    return subprocess.run([sys.executable, '-u', str(SCRIPT), '--url', url],
+    args = [sys.executable, '-u', str(SCRIPT)]
+    if url is not None:
+        args += ['--url', url]
+    return subprocess.run(args,
                           input=body, capture_output=True, env=env, timeout=50)
 
 
@@ -188,6 +191,7 @@ def test_no_proxy_redirect_retry_or_diagnostic_body(token_home, status, monkeypa
 
 
 def test_source_entry_and_installed_portable_paths(monkeypatch):
+    monkeypatch.delenv('SAMSARA_HOME_DIR', raising=False)
     source = json.loads(ui.claude_desktop_entry())['mcpServers']['samsara']
     assert source == {'command': sys.executable, 'args': ['-u', str(SCRIPT)]}
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
@@ -208,7 +212,7 @@ def test_desktop_copy_is_secret_free_copy_only_and_enabled_off(panel, key):
     controls.desktop_copy.setFocus()
     QTest.keyClick(controls.desktop_copy, key)
     entry = json.loads(clipboard.text())
-    assert entry == json.loads(ui.claude_desktop_entry())
+    assert entry == json.loads(ui.claude_desktop_entry(state.port))
     assert bool(state.token not in clipboard.text())
     assert 'Authorization' not in clipboard.text()
     assert controls.desktop_copy.minimumHeight() >= ui.theme.HIT_TARGET_MIN
@@ -216,7 +220,7 @@ def test_desktop_copy_is_secret_free_copy_only_and_enabled_off(panel, key):
     controls.refresh()
     clipboard.clear()
     controls.desktop_copy.click()
-    assert json.loads(clipboard.text()) == entry
+    assert json.loads(clipboard.text()) == json.loads(ui.claude_desktop_entry())
 
 
 def test_spec_wires_standalone_console_relay_into_shared_internal():
@@ -250,3 +254,114 @@ def test_spec_wires_standalone_console_relay_into_shared_internal():
     modules = [n.module for n in ast.walk(source) if isinstance(n, ast.ImportFrom)]
     modules += [alias.name for n in ast.walk(source) if isinstance(n, ast.Import) for alias in n.names]
     assert not any(m and (m.startswith('samsara') or m == 'dictation') for m in modules)
+
+
+@pytest.mark.parametrize('port', [1, 49123, 65535])
+def test_old_entry_reads_custom_port_without_url(server, port, monkeypatch):
+    # The actual listener chooses a free port; the edge ports are validated separately.
+    home = server._profile
+    (home / 'config.json').write_text(json.dumps({'agent_server': {'port': server.port}}))
+    result = run_child(home, [{'jsonrpc': '2.0', 'id': 7, 'method': 'ping'}], url=None)
+    assert result.returncode == 0 and result.stderr == b''
+    assert json.loads(result.stdout)['id'] == 7
+    monkeypatch.setenv('SAMSARA_HOME_DIR', str(home))
+    (home / 'config.json').write_text(json.dumps({'agent_server': {'port': port}}))
+    assert relay.configured_url() == f'http://127.0.0.1:{port}/mcp'
+
+
+@pytest.mark.parametrize('config', [[], None, {'agent_server': None},
+    {'agent_server': {'port': True}}, {'agent_server': {'port': '49123'}},
+    {'agent_server': {'port': 0}}, {'agent_server': {'port': 65536}}])
+def test_invalid_config_fails_before_token_read(tmp_path, monkeypatch, config):
+    monkeypatch.setenv('SAMSARA_HOME_DIR', str(tmp_path))
+    (tmp_path / 'config.json').write_text(json.dumps(config))
+    monkeypatch.setattr(relay, 'read_token', lambda: pytest.fail('Token read'))
+    with pytest.raises(relay.RelayError, match='configured port'):
+        relay.configured_url()
+    assert relay.main([]) == 1
+
+
+def test_malformed_config_and_absent_defaults(tmp_path, monkeypatch):
+    monkeypatch.setenv('SAMSARA_HOME_DIR', str(tmp_path))
+    assert relay.configured_url() == relay.DEFAULT_URL
+    for config in ({}, {'agent_server': {}}, {'unrelated': 49123}):
+        (tmp_path / 'config.json').write_text(json.dumps(config))
+        assert relay.configured_url() == relay.DEFAULT_URL
+    (tmp_path / 'config.json').write_text('{broken')
+    with pytest.raises(relay.RelayError, match='configured port'):
+        relay.configured_url()
+
+
+def test_explicit_url_overrides_bad_saved_config(server):
+    (server._profile / 'config.json').write_text('{broken')
+    result = run_child(server._profile, [{'jsonrpc': '2.0', 'id': 8, 'method': 'ping'}],
+                       f'http://127.0.0.1:{server.port}/mcp')
+    assert result.returncode == 0 and json.loads(result.stdout)['id'] == 8
+
+
+def test_notifications_with_error_replies_never_write_stdout(server):
+    messages = [{'jsonrpc': '2.0', 'method': 'notifications/roots/list_changed'},
+                {'jsonrpc': '2.0', 'id': None, 'method': 'ping'},
+                {'jsonrpc': '2.0', 'id': 0, 'method': 'ping'}]
+    result = run_child(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
+    assert result.returncode == 0 and result.stderr == b''
+    assert [json.loads(line)['id'] for line in result.stdout.splitlines()] == [None, 0]
+
+
+@pytest.mark.parametrize('status, expected', [(403, 'refused this connection'),
+    (404, 'endpoint was not found'), (415, 'message format'), (503, 'service is unavailable')])
+def test_plain_http_errors_are_accurate_body_free_and_notification_safe(status, expected, monkeypatch):
+    class Response:
+        def read(self, limit):
+            return b'private HTTP error body'
+    response = Response()
+    response.status = status
+    class Connection:
+        def request(self, *args):
+            pass
+        def getresponse(self):
+            return response
+        def close(self):
+            pass
+    monkeypatch.setattr(relay, 'HTTPConnection', lambda *a, **k: Connection())
+    service = relay.Relay(relay.DEFAULT_URL, '')
+    outgoing = io.BytesIO()
+    with pytest.raises(relay.RelayError, match=expected) as error:
+        relay.serve(service, io.BytesIO(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n'), outgoing)
+    assert str(status) in str(error.value)
+    assert 'private' not in str(error.value) and outgoing.getvalue() == b''
+
+
+def test_help_needs_no_token_config_or_network(tmp_path):
+    env = os.environ.copy()
+    env['SAMSARA_HOME_DIR'] = str(tmp_path)
+    (tmp_path / 'config.json').write_text('{broken')
+    result = subprocess.run([sys.executable, str(SCRIPT), '--help'], env=env,
+                            capture_output=True, timeout=10)
+    assert result.returncode == 0 and b'--url' in result.stdout and result.stderr == b''
+    assert not (tmp_path / 'agent_server').exists()
+
+
+def test_release_paths_require_relay_existence_and_help_success():
+    workflow = (ROOT / '.github' / 'workflows' / 'release-build.yml').read_text()
+    batch = (ROOT / 'build_release.bat').read_text()
+    block = workflow.split('- name: Verify build output', 1)[1].split('- name:', 1)[0]
+    assert 'Test-Path "dist\\Samsara\\samsara-mcp.exe"' in block
+    assert '& "dist\\Samsara\\samsara-mcp.exe" --help' in block
+    assert 'if ($LASTEXITCODE -ne 0)' in block
+    assert 'exit 1' in block.split('if ($LASTEXITCODE -ne 0)', 1)[1]
+    assert 'if not exist "dist\\Samsara\\samsara-mcp.exe"' in batch
+    after = batch.split('"dist\\Samsara\\samsara-mcp.exe" --help >nul', 1)[1]
+    assert after.lstrip().startswith('if errorlevel 1 (')
+    assert 'exit /b 1' in after.split('echo Build successful:', 1)[0]
+
+
+def test_desktop_docs_match_panel_and_explain_restart_and_errors():
+    doc = (ROOT / 'Docs' / 'agents' / 'samsara' / 'SKILL.md').read_text()
+    assert 'support is coming' not in doc
+    for text in ('Copy Claude Desktop JSON', 'Settings > Developer > Edit Config',
+                 'claude_desktop_config.json', 'mcpServers', 'restart Claude Desktop',
+                 'New token', 'restart the Claude Desktop connection',
+                 'SAMSARA_HOME_DIR', 'agent_server.port', '--url',
+                 'HTTP 403', 'HTTP 404', 'HTTP 415', 'HTTP 503'):
+        assert text in doc

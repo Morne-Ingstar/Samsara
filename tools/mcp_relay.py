@@ -42,9 +42,27 @@ def endpoint(url):
     return port
 
 
+def samsara_home():
+    return Path(os.environ['SAMSARA_HOME_DIR']) if os.environ.get('SAMSARA_HOME_DIR') else Path.home() / '.samsara'
+
+
+def configured_url():
+    """Old Desktop entries follow the saved port; malformed config fails closed."""
+    try:
+        config = json.loads((samsara_home() / 'config.json').read_text(encoding='utf-8'))
+        port = config.get('agent_server', {}).get('port', 47832)
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError
+    except FileNotFoundError:
+        return DEFAULT_URL
+    except (OSError, ValueError, AttributeError, UnicodeError, RecursionError):
+        raise RelayError('Samsara relay could not read a valid configured port.') from None
+    return f'http://127.0.0.1:{port}/mcp'
+
+
 def read_token():
     # Matches samsara.paths.samsara_home_dir; reads only, never repairs pairing.
-    home = Path(os.environ['SAMSARA_HOME_DIR']) if os.environ.get('SAMSARA_HOME_DIR') else Path.home() / '.samsara'
+    home = samsara_home()
     try:
         saved = json.loads((home / 'agent_server' / 'token.json').read_text(encoding='utf-8'))
         token = saved.get('token')
@@ -97,7 +115,17 @@ class Relay:
                 if not isinstance(reply, dict) or reply.get('jsonrpc') != '2.0':
                     raise ValueError
             except (ValueError, UnicodeError, RecursionError):
-                raise RelayError('Samsara did not return a valid MCP reply.') from None
+                # STAND-IN COPY (570c): status only, never echo the HTTP body.
+                errors = {
+                    403: 'Samsara refused this connection (HTTP 403).',
+                    404: 'Samsara MCP endpoint was not found (HTTP 404).',
+                    415: 'Samsara refused the message format (HTTP 415).',
+                    503: 'Samsara agent service is unavailable (HTTP 503).',
+                }
+                diagnostic = errors.get(response.status)
+                if diagnostic is None and response.status >= 400:
+                    diagnostic = f'Samsara refused the request (HTTP {response.status}).'
+                raise RelayError(diagnostic or 'Samsara did not return a valid MCP reply.') from None
             if request['method'] == 'initialize' and isinstance(reply.get('result'), dict):
                 negotiated = reply['result'].get('protocolVersion')
                 if negotiated in VERSIONS:
@@ -132,18 +160,19 @@ def serve(relay, incoming, outgoing):
         except (ValueError, UnicodeError, RecursionError):
             raise RelayError('Samsara relay received an invalid MCP message.') from None
         reply = relay.forward(request, raw)
-        if reply is not None:
+        if 'id' in request and reply is not None:
             outgoing.write(json.dumps(reply, ensure_ascii=True, separators=(',', ':')).encode('utf-8') + b'\n')
             outgoing.flush()
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--url', default=DEFAULT_URL)
+    parser.add_argument('--url', help='Override the configured loopback MCP URL.')
     options = parser.parse_args(argv)
     try:
-        endpoint(options.url)  # Refuse foreign targets before reading any token.
-        relay = Relay(options.url, read_token())
+        url = options.url if options.url is not None else configured_url()
+        endpoint(url)  # Refuse foreign targets before reading any token.
+        relay = Relay(url, read_token())
         return serve(relay, sys.stdin.buffer, sys.stdout.buffer)
     except RelayError as error:
         print(str(error), file=sys.stderr)

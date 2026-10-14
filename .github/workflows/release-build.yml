@@ -119,7 +119,16 @@ jobs:
             Write-Error "dist\Samsara\Samsara.exe was not produced -- see PyInstaller output above."
             exit 1
           }
-          Write-Host "Build OK: dist\Samsara\Samsara.exe"
+          if (-not (Test-Path "dist\Samsara\samsara-mcp.exe")) {
+            Write-Error "dist\Samsara\samsara-mcp.exe was not produced -- see PyInstaller output above."
+            exit 1
+          }
+          & "dist\Samsara\samsara-mcp.exe" --help
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Samsara MCP relay help check failed."
+            exit 1
+          }
+          Write-Host "Build OK: dist\Samsara\Samsara.exe and samsara-mcp.exe"
 
           # torch/torchaudio are excluded in the spec and are not runtime
           # dependencies; this is a defensive CI-only backstop in case a

@@ -33,7 +33,41 @@ The old token stops working immediately; update every other connected client too
 If you followed the earlier instructions without `--scope`, a local-scope entry
 overrides the user entry in that project. Run `claude mcp remove samsara` in that
 project to remove it, then use the user-scope setup above.
-Claude Desktop needs a small helper; support is coming.
+
+### Claude Desktop
+
+<!-- STAND-IN COPY (570c): Desktop setup and diagnostics await wording review. -->
+Under **Connect an AI app**, press **Copy Claude Desktop JSON**. In Claude
+Desktop, open Settings > Developer > Edit Config to open
+`%APPDATA%\Claude\claude_desktop_config.json`. Add the copied `samsara` entry
+under `mcpServers`, keeping other entries, then restart Claude Desktop.
+Keep Samsara open with **Let AI apps use Samsara** on.
+
+The installed and portable entry launches `samsara-mcp.exe` beside `Samsara.exe`.
+It contains no token: the relay reads Samsara's saved token at connection start.
+For a custom port the copied entry includes
+`"args": ["--url", "http://127.0.0.1:<port>/mcp"]`. An older entry without
+`--url` reads `agent_server.port` from Samsara's `config.json`, defaulting to
+47832 only when the config or port setting is absent. If Samsara uses
+`SAMSARA_HOME_DIR`, the copied entry includes that same directory in `env`;
+otherwise no `env` is added. The relay connects only to `127.0.0.1`.
+
+After **New token**, restart the Claude Desktop connection so its relay reads
+the new token. Restarting Claude Desktop also recreates the connection.
+Changing an explicitly copied custom port requires copying the JSON again.
+The relay's error lines go to stderr, never into MCP replies:
+
+- **not running or did not reply**: open Samsara and turn on the agents pack.
+- **token is unavailable**: turn on the pack and check the entry uses Samsara's home directory.
+- **token was rejected**: restart the connection after rotating the token.
+- **configured port**: the saved config could not be read or the port is invalid; correct the saved setting.
+- **HTTP 403**: the local service refused the connection.
+- **HTTP 404**: the MCP endpoint was not found on the selected port.
+- **HTTP 415**: the local service refused the message format.
+- **HTTP 503**: the agent service is unavailable; keep Samsara open with the pack on.
+- **valid MCP reply**: the service returned a malformed protocol reply.
+
+Never paste a token into Desktop's config or include error bodies in logs.
 
 ## Connect on this PC
 
