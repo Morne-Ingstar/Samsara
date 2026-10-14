@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title Building Samsara v0.30.0-beta.4
+title Building Samsara v0.30.0-beta.5
 cd /d "%~dp0"
 
-set VERSION=0.30.0-beta.4
+set VERSION=0.30.0-beta.5
 set INCLUDE_CUDA=0
 set ARCHIVE=dist\Samsara-Windows-v%VERSION%.7z
 set "PYTHON_ARGS="
@@ -76,6 +76,13 @@ if errorlevel 1 (
 )
 
 echo.
+for %%S in ("Docs\agents\samsara\SKILL.md" "Docs\hermes\samsara-voice\SKILL.md") do (
+    if not exist "dist\Samsara\%%~S" (
+        echo Verified build output is missing: dist\Samsara\%%~S
+        exit /b 1
+    )
+)
+
 echo Build successful:
 dir dist\Samsara\Samsara.exe | findstr "Samsara"
 

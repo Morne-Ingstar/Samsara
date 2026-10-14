@@ -2,6 +2,42 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.5] - Unreleased
+
+Fixes for everything the beta.4 check found, clearer Ava and OpenRouter messages, and AI apps that can work with Samsara.
+
+<!-- Stand-in release wording for the owner's review. -->
+
+### Fixes from the beta.4 audit
+
+- New portable copies understand the release folder layout when preparing future updates. Portable beta.4 users must use the installer once: [back up and upgrade safely](Docs/UPGRADING_TO_BETA5.md).
+- Headset recovery handles stalled sounds and failed audio starts more reliably. A stalled Windows voice may end its current sentence.
+- Music resumes when Windows reports Samsara's own pause late. One broken media session no longer prevents the others from pausing.
+- In-app installer updates preserve command edits, archive old plugins, and retain recovery copies if installation fails. A manual installer does not make that backup for you.
+
+### Ava & OpenRouter
+
+- Ava answers queued questions once, shows when it is loading, and responds to stop.
+- Cloud consent takes effect, and each provider keeps its own key.
+- OpenRouter has a searchable model list with prices and filters. Auto follows the default model, and Refresh recovers after a picker error.
+- Key and model checks distinguish setup from a successful reply. Ava explains credit, key, model and provider failures, with bounded retry delays.
+
+### AI apps
+
+- An optional agent server lets AI apps on this PC check Samsara's status and ask it to speak. The connection is off by default.
+- AI typing has its own switch, off by default, and asks for spoken approval for each paste. Choose ordinary yes or hold the Command key while saying yes. Old answers, cancelled captures and repeated key presses cannot approve a later request.
+- Connect an AI app copies setup for Claude Code and Claude Desktop. Desktop uses a bundled local relay; Samsara does not edit another app's settings.
+- Agent instructions are included beside Samsara.exe in `Docs/agents/samsara/SKILL.md` and `Docs/hermes/samsara-voice/SKILL.md`.
+
+### Commands
+
+- The command catalogue matches the shipped commands, and missing descriptions have been filled in.
+
+### Daily-use polish
+
+- Drag the Compact display at any time.
+- Quitting or updating asks about unsent words without stacking questions. Kept and live drafts are sent together.
+
 ## [0.30.0-beta.4] - 2026-10-12
 
 Fixes from a second computer: a microphone that arrives late, Pause, setup, and updates that respect how Samsara was installed.

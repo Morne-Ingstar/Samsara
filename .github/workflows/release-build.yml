@@ -128,6 +128,12 @@ jobs:
             Write-Error "Samsara MCP relay help check failed."
             exit 1
           }
+          foreach ($skill in @("Docs\agents\samsara\SKILL.md", "Docs\hermes\samsara-voice\SKILL.md")) {
+            if (-not (Test-Path "dist\Samsara\$skill" -PathType Leaf)) {
+              Write-Error "Agent instructions missing from build: $skill"
+              exit 1
+            }
+          }
           Write-Host "Build OK: dist\Samsara\Samsara.exe and samsara-mcp.exe"
 
           # torch/torchaudio are excluded in the spec and are not runtime

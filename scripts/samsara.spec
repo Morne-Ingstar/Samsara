@@ -5,6 +5,7 @@ Creates a standalone directory-based distribution
 """
 
 import os
+import shutil
 import sys
 import zipfile
 from importlib import metadata
@@ -51,6 +52,7 @@ _runtime_import_hook.write_text(r'''
 import importlib
 import importlib.util
 import os
+import shutil
 import pkgutil
 import tempfile
 import traceback
@@ -234,6 +236,13 @@ datas.append((str(app_dir / 'commands.json'), '.'))
 datas.append((str(app_dir / 'commands_catalog.json'), '.'))
 # Home's "What's new" note reads this at the data root (samsara/ui/home_qt.py CHANGELOG_PATH).
 datas.append((str(app_dir / 'CHANGELOG.md'), '.'))
+# Explicit documentation payload; also copied beside the executable below.
+AGENT_SKILL_PATHS = (
+    'Docs/agents/samsara/SKILL.md',
+    'Docs/hermes/samsara-voice/SKILL.md',
+)
+for relative in AGENT_SKILL_PATHS:
+    datas.append((str(app_dir / relative), str(Path(relative).parent)))
 # Plugins are runtime-loaded Python/data files, so preserve their relative
 # paths while applying the same tracked-file release manifest.
 datas += tracked_tree_datas(app_dir, 'plugins', 'plugins')
@@ -611,6 +620,14 @@ coll = COLLECT(
     upx_exclude=[],
     name='Samsara',
 )
+
+# PyInstaller puts datas under _internal. Give users a stable Docs folder
+# beside Samsara.exe as well; copying the staged payload keeps bytes identical.
+for relative in AGENT_SKILL_PATHS:
+    source = Path(coll.name) / '_internal' / relative
+    destination = Path(coll.name) / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
 
 
 # ---------------------------------------------------------------------------

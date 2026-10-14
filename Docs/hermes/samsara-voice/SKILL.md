@@ -3,6 +3,9 @@ name: samsara-voice
 description: Respond accessibly to a Hermes user speaking through Samsara voice dictation on Windows.
 ---
 
+<!-- Stand-in package-location wording for the owner's review. -->
+Packaged copy: `Docs/hermes/samsara-voice/SKILL.md` in the `Docs` folder beside `Samsara.exe`.
+
 # Samsara voice
 
 This is stand-in wording for the owner's review. This skill is optional: install it

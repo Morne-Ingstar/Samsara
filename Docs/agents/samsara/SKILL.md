@@ -4,6 +4,9 @@ description: Use Samsara's MCP tools to check public status, speak a short reply
 compatibility: Windows; Samsara running with the agents pack enabled; local HTTP MCP client.
 ---
 
+<!-- Stand-in package-location wording for the owner's review. -->
+Packaged copy: `Docs/agents/samsara/SKILL.md` in the `Docs` folder beside `Samsara.exe`.
+
 # Samsara
 
 Samsara is a Windows voice-control and dictation app for people who find typing
