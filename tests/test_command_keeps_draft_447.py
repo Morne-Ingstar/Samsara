@@ -227,7 +227,8 @@ def test_failed_field_paste_blocks_effect_and_keeps_draft(rig, live, command):
 @pytest.mark.parametrize('canonical', ['submit', 'switch window', 'synthetic user command'])
 def test_alias_uses_canonical_pending_policy(rig, live, canonical, monkeypatch):
     r = rig(live)
-    # A user alias still carries the field/window policy of its command.
+    # This policy unit test supplies synthetic admission; 415 tests real registry aliases.
+    monkeypatch.setattr(r.app.command_executor, 'accepts_dictation_command', lambda text, app: True)
     monkeypatch.setattr(r.app.command_executor, 'find_exact_command', lambda text: canonical)
     probe = r.app._probe_hands_free_command('synthetic alias')
     assert probe.phrase == canonical
