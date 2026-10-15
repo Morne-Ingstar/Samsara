@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QByteArray, QObject, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QActionGroup, QGuiApplication, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 

@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
 
 from samsara.log import get_logger
 

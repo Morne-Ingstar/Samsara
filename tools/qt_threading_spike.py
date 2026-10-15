@@ -16,7 +16,7 @@ import threading
 import time
 import tkinter as tk
 
-from PySide6.QtCore import Qt, QTimer, QThread
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,

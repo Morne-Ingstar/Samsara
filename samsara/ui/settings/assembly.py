@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 from samsara.ui import theme, qt_runtime
 from samsara.config_schema import SETTINGS_SCHEMA
-from .presentation import Page, SettingRow, Disclosure, CleanComboBox
+from .presentation import Page, SettingRow, CleanComboBox
 from .calm_controls import PercentSpinBox, short_choice, switch
 
 

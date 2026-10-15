@@ -19,7 +19,7 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QRadioButton, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QComboBox, QPushButton, QButtonGroup,
-    QFrame, QProgressBar, QScrollArea,
+    QFrame, QProgressBar,
 )
 
 from samsara import config_defaults, listening_display

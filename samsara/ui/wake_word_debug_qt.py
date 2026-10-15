@@ -17,11 +17,10 @@ from pathlib import Path
 import numpy as np
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFrame,
     QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QSlider,
+    QPushButton, QScrollArea, QSlider,
     QVBoxLayout, QWidget,
 )
 

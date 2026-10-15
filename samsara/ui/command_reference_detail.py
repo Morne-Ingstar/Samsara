@@ -1,5 +1,5 @@
 """Persistent, catalogue-backed command details inside the floating reference."""
-from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QPalette
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,

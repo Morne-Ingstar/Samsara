@@ -69,7 +69,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger("Samsara.execution_policy")
 

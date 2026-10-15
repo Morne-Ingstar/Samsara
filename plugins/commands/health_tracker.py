@@ -76,7 +76,7 @@ def _parse_medication(text):
 
 def _format_timestamp(ts):
     """Convert ISO timestamp to readable local time."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     try:
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         local = dt.astimezone()

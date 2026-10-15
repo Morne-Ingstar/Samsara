@@ -11,7 +11,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from . import command_scope as _command_scope
 from . import plugin_commands as _plugin_commands

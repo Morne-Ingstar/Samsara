@@ -2,7 +2,7 @@
 from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QSignalBlocker
 from PySide6.QtGui import QPainter, QPainterPath, QPen, QValidator
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout,
+    QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout,
     QRadioButton, QButtonGroup, QSizePolicy,
 )
 from samsara.ui import theme

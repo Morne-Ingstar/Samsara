@@ -54,7 +54,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import QEvent, QRectF, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QPushButton,
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 

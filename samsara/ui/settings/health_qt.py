@@ -204,7 +204,7 @@ class HealthPage:
         return scroll
 
     def _refresh_health_log(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
         try:
             from samsara import health_store
             entries = health_store.get_today()

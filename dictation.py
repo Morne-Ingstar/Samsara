@@ -1075,7 +1075,6 @@ def print(*args, **kwargs):
 # ── Global exception hooks — log to file before crashing ─────────────────────
 
 def _uncaught_exception_handler(exc_type, exc_value, exc_tb):
-    import traceback as _tb
     safe_exception(logging.getLogger("Samsara"),
         "Uncaught exception: %s", describe_text(exc_value),
         level=logging.CRITICAL, exc_info=(exc_type, exc_value, exc_tb)
@@ -1094,7 +1093,6 @@ def _patched_thread_init(self, *args, **kwargs):
         try:
             _original_run()
         except Exception:
-            import traceback as _tb
             safe_exception(logging.getLogger("Samsara"),
                 "Uncaught exception in thread %s: %s",
                 self.name, describe_text(sys.exception()), level=logging.CRITICAL
@@ -4654,7 +4652,6 @@ class DictationApp:
             from samsara.cuda_detect import (
                 cuda_status_message,
                 is_cuda_available,
-                resolve_device,
             )
             if device == "cuda" and not is_cuda_available():
                 logger.warning(
@@ -10889,7 +10886,6 @@ class DictationApp:
     def _setup_sounds(self):
         """Set up sound files - create defaults if needed"""
         import wave
-        import struct
 
         self.sounds_dir = Path(__file__).parent / 'sounds'
         self.sounds_dir.mkdir(exist_ok=True)

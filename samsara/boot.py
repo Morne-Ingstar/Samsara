@@ -228,7 +228,6 @@ def install_exception_hooks(log=None):
     """threading.excepthook + sys.unraisablehook -> the log (CRITICAL / ERROR),
     then the previous hooks. Never raises."""
     log = log or logging.getLogger("Samsara")
-    import traceback as _tb
     from samsara.log import describe_text, safe_exception
     previous_thread_hook = threading.excepthook
     previous_unraisable = sys.unraisablehook

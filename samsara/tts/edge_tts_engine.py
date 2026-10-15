@@ -22,7 +22,7 @@ import threading
 import time
 import uuid
 from typing import Callable, List, Optional
-from samsara.log import describe_text, safe_exception
+from samsara.log import safe_exception
 from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
 
@@ -588,6 +588,6 @@ class EdgeTTSEngine(TTSEngine):
                 (played_s / expected_s * 100.0) if expected_s else 0.0,
                 time.time() - t0,
             )
-        except Exception as exc:
+        except Exception:
             safe_exception(logger, '[EdgeTTS] playback error', level=logging.ERROR)
             raise

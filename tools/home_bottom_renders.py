@@ -72,9 +72,9 @@ def stub_app():
 
 
 def render(args):
-    from PySide6.QtCore import QEvent, QPoint, Qt
+    from PySide6.QtCore import QPoint, Qt
     from PySide6.QtGui import QFont, QFontDatabase, QFontInfo, QFontMetrics
-    from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QVBoxLayout, QWidget
     from samsara.ui import command_marquee as cm, home_qt as home, home_signals, main_window_qt as hub, theme
 
     qapp = QApplication.instance()

@@ -22,8 +22,8 @@ import shutil
 from pathlib import Path
 from typing import Callable, List
 
-from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QRect, QSignalBlocker, QEvent
-from PySide6.QtGui import QColor, QCursor, QPalette, QGuiApplication, QPainter
+from PySide6.QtCore import Qt, QTimer, QPoint, QRect, QSignalBlocker, QEvent
+from PySide6.QtGui import QCursor, QPalette, QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListView, QListWidget, QListWidgetItem, QLineEdit, QPushButton,

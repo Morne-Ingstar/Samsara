@@ -363,7 +363,6 @@ class AlarmsPage:
             self._populate_alarms_table(table)
 
     def _open_alarm_dialog(self, edit_id, table: QTableWidget) -> None:
-        from samsara.alarms import get_default_alarm_config
         am       = getattr(self.app, 'alarm_manager', None)
         existing = (am.get_alarm(edit_id) or {}) if (edit_id and am) else {}
 

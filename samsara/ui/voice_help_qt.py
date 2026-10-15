@@ -24,14 +24,14 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from samsara.log import get_logger
 from samsara.ui import home_signals, theme
 from samsara.ui.home_qt import (
     GRID, GRID_LG, CONTENT_MAX_W, _button, _card, _label, _label_css, _px, _section_label,
-    _subscribe_ava_readiness, listening_state_id, pause_hands_free, resume_hands_free,
+    _subscribe_ava_readiness, pause_hands_free, resume_hands_free,
 )
 
 logger = get_logger(__name__)

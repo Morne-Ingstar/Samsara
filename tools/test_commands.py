@@ -28,7 +28,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from pynput.keyboard import Key
 from samsara.command_registry import CommandMatcher
-from samsara.command_packs import get_enabled_packs, PACKS
+from samsara.command_packs import get_enabled_packs
 from samsara import plugin_commands
 from samsara.handlers import get_handler
 

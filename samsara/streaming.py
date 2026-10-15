@@ -495,7 +495,6 @@ class _StreamingWidget:
         from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication,
                                        QFrame, QPushButton, QScrollArea)
         from PySide6.QtCore import Qt, QTimer, QElapsedTimer, Signal, Slot
-        from PySide6.QtGui import QFont
 
         # Inline QWidget subclass so we can define Signals
         class _W(QWidget):

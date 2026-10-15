@@ -1,10 +1,10 @@
 """Shared Settings presentation. Copy is provisional per owner-approved 285."""
-from PySide6.QtCore import Qt, QPoint, QRectF, Signal
+from PySide6.QtCore import Qt, QPoint, QRectF
 from PySide6.QtGui import QPainter, QPainterPath, QPen, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QWidget, QFrame, QLabel, QPushButton, QComboBox, QCheckBox, QListView,
-    QLineEdit, QAbstractSpinBox, QHBoxLayout, QVBoxLayout, QGridLayout,
-    QScrollArea, QSizePolicy, QStylePainter, QStyleOptionComboBox, QStyle,
+    QWidget, QFrame, QLabel, QPushButton, QComboBox, QListView,
+    QHBoxLayout, QVBoxLayout, QGridLayout,
+    QScrollArea, QStylePainter, QStyleOptionComboBox, QStyle,
 )
 from samsara.ui import theme
 

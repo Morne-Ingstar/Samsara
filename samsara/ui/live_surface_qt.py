@@ -17,7 +17,7 @@ from PySide6.QtGui import (QCloseEvent, QColor, QFont, QImage, QKeyEvent, QMouse
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget, QSizePolicy
 
 from samsara.live_surface.model import (CaptureState, DocumentState, NoticeKind,
-                                        PresentationState, SurfaceView, VisibleForm)
+                                        SurfaceView, VisibleForm)
 from samsara.ui import theme
 from samsara.live_surface.feedback import (FILL_TOKENS, KIND_WORDS,
                                            FeedbackKind, FeedbackPurpose, paint_glyph)

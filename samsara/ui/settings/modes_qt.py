@@ -34,8 +34,6 @@ from samsara.ui import theme
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import (
-    _CMD_BUTTON_KEY_TO_LABEL,
-    _CMD_BUTTON_OPTIONS,
     _CONTENT_MAX_WIDTH,
     _HotkeyButton,
 )

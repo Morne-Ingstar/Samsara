@@ -1,6 +1,5 @@
 """Settings controller services, separate from window chrome."""
 from samsara.ui.settings.shared_qt import *
-from contextlib import nullcontext
 
 def apply_microphone_choice(app, updates):
     """Publish the deliberate name before the audio resolver sees the ID.

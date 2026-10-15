@@ -146,7 +146,6 @@ def render_partb(snapshot, output):
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication, QWidget
     from samsara.ui import theme, first_run_wizard_qt as wizard, tutorial_qt
-    from samsara.ui.widgets.indicator_demo import CAPTIONS
     app = QApplication.instance()
     wizard.thread_registry.spawn = lambda *a, **k: None
     # Native DPI evidence uses a representative desktop rather than Qt's tiny

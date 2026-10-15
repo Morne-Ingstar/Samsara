@@ -427,7 +427,7 @@ class _UpdateDialog(QDialog):
 
         try:
             launch_prepared_update(prepared, current_pid=os.getpid())
-        except Exception as exc:
+        except Exception:
             logger.exception("[UPDATE] Could not launch updater helper")
             self._phase = "available"
             self._progress.setVisible(False)

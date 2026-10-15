@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QComboBox, QCheckBox,
-    QLineEdit, QSpinBox, QAbstractSpinBox, QHBoxLayout, QVBoxLayout,
+    QSpinBox, QAbstractSpinBox, QHBoxLayout, QVBoxLayout,
     QScrollArea, QMenu, QListView,
 )
 from samsara.ui import theme

@@ -6,7 +6,7 @@ Handles speech recognition and text processing.
 
 import re
 import threading
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 
