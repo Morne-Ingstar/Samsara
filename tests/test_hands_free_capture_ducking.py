@@ -291,8 +291,7 @@ class TestCaptureDuckOpenClose:
         instance._tracked_by_id = {}
         app = _make_app(monkeypatch, mock_ducker_cls=mock_cls)
         owner = app._open_hands_free_capture_duck()
-        # 2026-07-24 amendment (docs/reviews/hands_free_path_review.md,
-        # "Medium/low -- duck ownership"): close with no owner_token is now
+        # The duck-ownership amendment: close with no owner_token is now
         # an intentional no-op, not a forwarded close -- pass the real
         # owner this open returned.
         app._close_hands_free_capture_duck(owner)

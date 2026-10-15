@@ -171,8 +171,7 @@ def _hotkey_app(mode, *, wake_word_enabled=False):
 class TestRecordingModes:
     """Tests for different recording modes, driven through dictation.py's
     real DictationApp.on_key_press/on_key_release -- not a local
-    reimplementation of the hold/toggle branching (see
-    docs/reviews/test_suite_audit.md fix-first #7)."""
+        reimplementation of the hold/toggle branching."""
 
     def test_hold_mode_flow(self, sample_config):
         """Hold mode: press -> record starts, release -> stop is scheduled."""

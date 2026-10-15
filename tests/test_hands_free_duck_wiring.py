@@ -48,8 +48,7 @@ class TestOpenHandsFreeDuckSafe:
 
 class TestCloseHandsFreeDuckSafe:
     def test_no_op_when_owner_token_is_none_even_if_method_present(self):
-        """2026-07-24 amendment (docs/reviews/hands_free_path_review.md,
-        'Medium/low -- duck ownership'): closing without an owner token is
+        """The duck-ownership amendment: closing without an owner token is
         an intentional no-op with a diagnostic log, not a forwarded call
         with None -- there is nothing to close."""
         app = Mock()

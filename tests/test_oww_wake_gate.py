@@ -39,8 +39,7 @@ def _sleeping_consumer(
 
 
 def test_oww_hit_dispatches_directly_to_process_wake_word_buffer(monkeypatch):
-    """docs/reviews/hands_free_path_review.md 'High -- wake dispatch / shared
-    transcription flag': process_wake_word_buffer now owns the async FIFO
+    """The wake-dispatch review found that process_wake_word_buffer now owns the async FIFO
     hand-off itself (samsara/audio_engine/wake_dispatch.py), so _flush calls
     it directly and synchronously instead of spawning a thread around it --
     and duck-token ownership transfers into that call rather than being
@@ -82,7 +81,7 @@ def test_oww_hit_dispatches_to_long_dictation_tracked_path_with_capture_duck(mon
     is retired (no longer referenced anywhere in production); long_dictation
     now just sets `tracked=True` on the same process_wake_word_buffer call,
     which routes it through the wake dispatch queue's tracked handling
-    internally. See docs/reviews/hands_free_path_review.md as above."""
+    internally, as described above."""
     owner_token = 203
     consumer, app, _detector = _sleeping_consumer(
         detected=True,
@@ -202,8 +201,7 @@ def test_unconfirmed_buffer_retains_existing_fixed_gate_behavior():
 
 
 def test_process_method_passes_oww_confirmation_to_gate():
-    """docs/reviews/hands_free_path_review.md 'High -- wake dispatch / shared
-    transcription flag': process_wake_word_buffer is now a thin enqueue onto
+    """The wake-dispatch review found that process_wake_word_buffer is now a thin enqueue onto
     the async wake FIFO (samsara/audio_engine/wake_dispatch.py) -- the gate
     call this test cares about moved into _decode_wake_word_buffer, which is
     what the queue's worker thread actually runs. Exercise that method

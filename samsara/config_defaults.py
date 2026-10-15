@@ -1,7 +1,7 @@
 """
 Single source of truth for config-key default values.
 
-docs/reviews/build_and_config_audit.md Part B3c found 12 config keys read
+An internal audit found 12 config keys read
 with two or more different literal defaults across the codebase (e.g.
 `wake_word_config.phrase` defaulting to 'jarvis' in one file and 'samsara'
 in another). Any new literal default for one of those keys -- or for any
@@ -21,8 +21,7 @@ from samsara.constants import DEFAULT_WAKE_PHRASE
 
 # Keys with no settings-UI widget (so absent from SETTINGS_SCHEMA) that were
 # nonetheless found with conflicting literal defaults in the audit. See
-# docs/reviews/build_and_config_audit.md Part B3c and the "keys unified"
-# section of this task's report for the reasoning behind each choice.
+# The audit and follow-up review explain the reasoning behind each choice.
 _EXTRA_DEFAULTS = {
     "updates.include_prerelease": False,
     # Matches samsara.constants.DEFAULT_WAKE_PHRASE and the live config

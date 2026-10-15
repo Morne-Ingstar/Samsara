@@ -6,7 +6,7 @@ Run:
 
 Background
 ----------
-docs/reviews/build_and_config_audit.md Part B3c found 12 config keys read
+An internal audit found 12 config keys read
 with conflicting literal defaults across the codebase (e.g.
 `wake_word_config.phrase` defaulting to 'jarvis' in one file and 'samsara'
 in another -- a fresh install would get a different wake word depending on

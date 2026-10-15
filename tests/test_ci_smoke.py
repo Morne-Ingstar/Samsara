@@ -18,8 +18,7 @@ raises, is caught, falls back to CPU) that still writes a "Traceback"
 block. Added as its own synthetic fixture below, same treatment as the
 mic-less case.
 
-docs/reviews/test_suite_audit.md NEVER RUNS #1 / fix-first #9: the
-regression test below used to `skipif` on the actual downloaded CI log at
+The original regression test below used to `skipif` on the actual downloaded CI log at
 an absolute path under one developer's `Documents\Claude` folder, which
 was never present on this machine (nor could be, on any other) --
 zero-coverage-forever. The real log is gone; this repo cannot recover it.

@@ -3,9 +3,8 @@
 Runs the static config-defaults checker in-process (no subprocess, no
 module-level `import dictation`) and fails the suite if it finds a config
 key read with two different literal defaults, or with a literal default
-that disagrees with samsara.config_defaults.DEFAULTS. See
-docs/reviews/build_and_config_audit.md Part B3c for the conflicts this
-was built to catch.
+that disagrees with samsara.config_defaults.DEFAULTS. The audit found
+conflicts that this gate is designed to prevent.
 """
 from tools import config_defaults_check
 

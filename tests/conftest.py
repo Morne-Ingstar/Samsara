@@ -25,8 +25,7 @@ def _speech_presence_unknown_for_decoder_fixtures(request, monkeypatch):
 
 
 # ============================================================================
-# Shared fake-app baseline (docs/reviews/test_suite_audit.md "bring the
-# suite to green" pass)
+# Shared fake-app baseline (suite stabilization pass)
 # ============================================================================
 #
 # Dozens of test files build their own lightweight `app` stand-in (a

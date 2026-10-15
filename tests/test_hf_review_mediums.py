@@ -1,5 +1,4 @@
-"""Regression tests for the MEDIUM findings closed against
-docs/reviews/hands_free_path_review.md (2026-09-10 follow-up pass).
+"""Regression tests for the MEDIUM findings closed in the 2026-09-10 follow-up.
 
 Each test targets exactly one finding and is written to fail against the
 pre-fix code shape. No dictation module is imported at module scope --

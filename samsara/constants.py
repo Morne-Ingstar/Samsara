@@ -24,8 +24,7 @@ DEFAULT_CONTINUOUS_MAX_BUFFER_S = 60.0  # safety cap: auto-commit an un-committe
 
 # Voice-activity / speech-gate thresholds shared across the hold and
 # hands-free capture paths. Centralized here so the two paths cannot
-# silently drift from each other -- see the "duplicated gate constants"
-# finding in docs/reviews/hands_free_path_review.md. Each value is still
+# silently drift from each other. Each value is still
 # tuned for its own gate; unifying the DECLARATION does not mean the
 # hold and hands-free gates share one threshold.
 LIVE_VAD_PROB_THRESHOLD = 0.5        # single-frame "is anyone talking" Silero gate

@@ -420,8 +420,8 @@ class TestSpeechRmsCoverage:
         """Ground truth from the incident's manual RMS audit: this WAV has
         continuous speech (varying -18 to -35 dBFS) through the ENTIRE
         35.3s, confirming the loss downstream was a decode/gating bug, not
-        mic dropout -- see docs/wake-word-implementation-handoff.md-style
-        investigation notes. This fixture's coverage must stay high so the
+        mic dropout -- according to the incident investigation notes. This
+        fixture's coverage must stay high so the
         sanity check below has real corroboration to work from."""
         audio, rate = _load_wav_float32(FIXTURES_DIR / "hotkey_incident_35s_first_window_loss.wav")
         coverage = dictation._speech_rms_coverage(audio, rate)
