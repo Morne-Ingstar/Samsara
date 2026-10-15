@@ -1,0 +1,47 @@
+name: Secret guard
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select incoming commits
+        id: range
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            log_opts="$PR_BASE..$PR_HEAD"
+          elif [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            # A new branch has no previous tip. Exclude default-branch history.
+            git rev-parse --verify "refs/remotes/origin/$DEFAULT_BRANCH"
+            log_opts="$PUSH_HEAD --not refs/remotes/origin/$DEFAULT_BRANCH"
+          else
+            log_opts="$BEFORE..$PUSH_HEAD"
+          fi
+          echo "log_opts=$log_opts" >> "$GITHUB_OUTPUT"
+      # Official CLI container action: explicit log-opts for every event.
+      # Version tag per offline brief; resolve a reviewed SHA in a networked task.
+      - name: Scan for secrets and private exports
+        uses: docker://ghcr.io/gitleaks/gitleaks:v8.24.2
+        with:
+          args: >-
+            git --config=.gitleaks.toml --redact
+            "--log-opts=${{ steps.range.outputs.log_opts }}"

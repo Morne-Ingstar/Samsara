@@ -1,0 +1,81 @@
+title = "Samsara secrets and private exports"
+
+[extend]
+useDefault = true
+
+# 578 current_hits.json: exact synthetic provider values, only in these two files.
+# AND prevents either a fixture filename or a sample value from exempting other data.
+[[allowlists]]
+description = "578 synthetic cloud-key fixtures only"
+condition = "AND"
+paths = ['''^tests/(test_cloud_gating|test_settings)\.py$''']
+regexTarget = "secret"
+regexes = ['''^sk-(real-key|test|test-key)$''']
+
+# 578 current_hits.json: browser_extension/bridge-auth-core.test.js:8.
+[[allowlists]]
+description = "578 synthetic browser pairing fixture only"
+condition = "AND"
+paths = ['''^browser_extension/bridge-auth-core\.test\.js$''']
+regexTarget = "secret"
+regexes = ['''^test-pairing-secret-0123456789-abcdefghijklmnopqrstuvwxyz$''']
+
+[[rules]]
+id = "printer-device-credential"
+description = "Literal printer check codes and serials in command plugins"
+path = '''^plugins/commands/[^/]+\.py$'''
+regex = '''(?i)["']?(?:flashforge[_-]?)?(?:check[_-]?code|serial(?:[_-]?number)?)["']?\s*[:=]\s*["']([a-z0-9_-]{6,})["']'''
+secretGroup = 1
+[[rules.allowlists]]
+# 578 section 2: replaced historical credentials with these exact setup examples.
+description = "578 printer setup examples at flashforge_printer.py:17-18"
+condition = "AND"
+paths = ['''^plugins/commands/flashforge_printer\.py$''']
+regexTarget = "secret"
+regexes = ['''^EXAMPLE_(CODE|SERIAL)$''']
+
+[[rules]]
+id = "private-chat-export"
+description = "Telegram and chat export filenames (all nonempty contents)"
+path = '''(?i)(?:^|/)(?:messages\.(?:html|json)|(?:telegram|chat)[_-]?export[^/]*\.(?:html|json|txt)|chat\.txt|result\.json)$'''
+regex = '''(?s).+'''
+
+[[rules]]
+id = "telegram-export-content"
+description = "Telegram HTML/JSON export structure even after renaming"
+regex = '''(?i)(?:class\s*=\s*["'](?:page_wrap|message default clearfix|from_name)["']|"type"\s*:\s*"personal_chat")'''
+
+[[rules]]
+id = "private-history"
+description = "Dictation history files"
+path = '''(?i)(?:^|/)history\.json$'''
+regex = '''(?s).+'''
+
+[[rules]]
+id = "private-training-data"
+description = "Personal correction training data"
+path = '''(?i)(?:^|/)training_data\.json$'''
+regex = '''(?s).+'''
+
+[[rules]]
+id = "private-vocabulary"
+description = "Personal vocabulary JSON exports"
+path = '''(?i)(?:^|/)[^/]*vocabulary[^/]*\.json$'''
+regex = '''(?s).+'''
+
+[[rules]]
+id = "private-config"
+description = "User configuration and its backup variants"
+path = '''(?i)(?:^|/)config\.json[^/]*$'''
+regex = '''(?s).+'''
+
+[[rules]]
+id = "private-log"
+description = "Runtime log files"
+path = '''(?i)\.log$'''
+regex = '''(?s).+'''
+
+[[rules]]
+id = "personal-windows-path"
+description = "Absolute Windows user-profile paths, including escaped JSON strings"
+regex = '''(?i)C:(?:\\+|/)Users(?:\\+|/)[^\s"'<>]+'''

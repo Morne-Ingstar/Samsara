@@ -18,6 +18,22 @@ env/
 config.json
 training_data.json
 history.json
+config.json*
+*vocabulary*.json
+messages.html
+messages.json
+telegram_export*.html
+telegram_export*.json
+telegram-export*.html
+telegram-export*.json
+chat_export*.html
+chat_export*.json
+chat_export*.txt
+chat-export*.html
+chat-export*.json
+chat-export*.txt
+chat.txt
+result.json
 
 # Build artifacts
 build/
