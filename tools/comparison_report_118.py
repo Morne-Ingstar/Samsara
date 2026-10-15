@@ -311,7 +311,8 @@ def main() -> int:
             c = cell(cells, corpus="libri-long", model=model, params=params, language="en")
             if not c:
                 continue
-            ratio = sum(len(r["hyp"].split()) for r in c["records"]) / max(
+            ratio = sum(r["hyp_words"] if "hyp_words" in r else len(r["hyp"].split())
+                        for r in c["records"]) / max(
                 1, sum(r["refwords_norm"] for r in c["records"]))
             add(f"| {model} | {params} | {pc(c['wer_norm'])} | {ratio * 100:.0f}% | "
                 f"{ms(c['decode_ms_median'])} |")

@@ -1,0 +1,1036 @@
+{
+ "params": {
+  "language": "en",
+  "beam_size": 5,
+  "vad_filter": false,
+  "condition_on_previous_text": true,
+  "without_timestamps": false,
+  "no_speech_threshold": 0.6,
+  "log_prob_threshold": -1.0
+ },
+ "load_ms": {
+  "medium": 1684.035699989181,
+  "small": 1444.1916000214405
+ },
+ "labelled": [
+  {
+   "wav": "<owner-clip-001>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 186.8,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 92.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-002>",
+   "seconds": 2.9,
+   "medium": {
+    "ms": 202.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 108.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-003>",
+   "seconds": 3.5,
+   "medium": {
+    "ms": 194.9,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 88.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-004>",
+   "seconds": 3.1,
+   "medium": {
+    "ms": 258.0,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 98.4,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-005>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 182.6,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 88.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-006>",
+   "seconds": 1.6,
+   "medium": {
+    "ms": 136.7,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 70.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-007>",
+   "seconds": 3.1,
+   "medium": {
+    "ms": 196.5,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 97.0,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-008>",
+   "seconds": 2.3,
+   "medium": {
+    "ms": 161.2,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 86.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-009>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 163.9,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 101.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-010>",
+   "seconds": 2.0,
+   "medium": {
+    "ms": 167.6,
+    "exact": false,
+    "wer": 0.25
+   },
+   "small": {
+    "ms": 90.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-011>",
+   "seconds": 3.5,
+   "medium": {
+    "ms": 180.0,
+    "exact": false,
+    "wer": 0.5
+   },
+   "small": {
+    "ms": 90.3,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-012>",
+   "seconds": 1.4,
+   "medium": {
+    "ms": 141.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 72.2,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-013>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 177.7,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 91.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-014>",
+   "seconds": 1.5,
+   "medium": {
+    "ms": 156.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 77.7,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-015>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 199.8,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "ms": 101.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-016>",
+   "seconds": 1.2,
+   "medium": {
+    "ms": 140.6,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 79.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-017>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 180.5,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 99.9,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "<owner-clip-018>",
+   "seconds": 1.7,
+   "medium": {
+    "ms": 145.6,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 74.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-019>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 168.3,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 89.6,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-020>",
+   "seconds": 1.6,
+   "medium": {
+    "ms": 149.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 88.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-021>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 179.8,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 101.1,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-022>",
+   "seconds": 1.4,
+   "medium": {
+    "ms": 154.5,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 72.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-023>",
+   "seconds": 3.2,
+   "medium": {
+    "ms": 188.5,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 87.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-024>",
+   "seconds": 1.4,
+   "medium": {
+    "ms": 142.3,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 77.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-025>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 164.0,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 90.7,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-026>",
+   "seconds": 1.5,
+   "medium": {
+    "ms": 166.2,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 85.2,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-027>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 176.8,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 86.5,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-028>",
+   "seconds": 1.2,
+   "medium": {
+    "ms": 139.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 75.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-029>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 174.3,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 96.2,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-030>",
+   "seconds": 1.2,
+   "medium": {
+    "ms": 139.4,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 70.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-031>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 172.3,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "ms": 102.7,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-032>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 175.5,
+    "exact": false,
+    "wer": 2.5
+   },
+   "small": {
+    "ms": 85.3,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-033>",
+   "seconds": 1.2,
+   "medium": {
+    "ms": 136.9,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 70.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-034>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 183.3,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 101.7,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-035>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 173.0,
+    "exact": false,
+    "wer": 0.5
+   },
+   "small": {
+    "ms": 94.0,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "<owner-clip-036>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 198.2,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "ms": 95.2,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "<owner-clip-037>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 183.7,
+    "exact": false,
+    "wer": 1.0
+   },
+   "small": {
+    "ms": 93.1,
+    "exact": false,
+    "wer": 1.0
+   }
+  },
+  {
+   "wav": "<owner-clip-038>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 184.0,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 101.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-039>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 216.4,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 128.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-040>",
+   "seconds": 3.3,
+   "medium": {
+    "ms": 163.1,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 94.8,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-041>",
+   "seconds": 3.4,
+   "medium": {
+    "ms": 221.0,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 139.8,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  },
+  {
+   "wav": "<owner-clip-042>",
+   "seconds": 4.1,
+   "medium": {
+    "ms": 162.6,
+    "exact": true,
+    "wer": 0.0
+   },
+   "small": {
+    "ms": 93.4,
+    "exact": true,
+    "wer": 0.0
+   }
+  },
+  {
+   "wav": "<owner-clip-043>",
+   "seconds": 1.2,
+   "medium": {
+    "ms": 136.7,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   },
+   "small": {
+    "ms": 75.1,
+    "exact": true,
+    "wer": 0.0,
+    "control_ok": true
+   }
+  }
+ ],
+ "unlabelled": [
+  {
+   "wav": "<owner-clip-044>",
+   "seconds": 3.6,
+   "medium": {
+    "ms": 204.6
+   },
+   "small": {
+    "ms": 117.0
+   },
+   "small_vs_medium_wer": 0.333
+  },
+  {
+   "wav": "<owner-clip-045>",
+   "seconds": 3.0,
+   "medium": {
+    "ms": 189.5
+   },
+   "small": {
+    "ms": 86.6
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-046>",
+   "seconds": 4.1,
+   "medium": {
+    "ms": 232.2
+   },
+   "small": {
+    "ms": 121.8
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-047>",
+   "seconds": 4.4,
+   "medium": {
+    "ms": 200.2
+   },
+   "small": {
+    "ms": 107.7
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-048>",
+   "seconds": 4.8,
+   "medium": {
+    "ms": 207.1
+   },
+   "small": {
+    "ms": 111.3
+   },
+   "small_vs_medium_wer": 0.1
+  },
+  {
+   "wav": "<owner-clip-049>",
+   "seconds": 2.0,
+   "medium": {
+    "ms": 178.2
+   },
+   "small": {
+    "ms": 98.5
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-050>",
+   "seconds": 4.9,
+   "medium": {
+    "ms": 164.7
+   },
+   "small": {
+    "ms": 95.4
+   },
+   "small_vs_medium_wer": 1.0
+  },
+  {
+   "wav": "<owner-clip-051>",
+   "seconds": 3.6,
+   "medium": {
+    "ms": 207.6
+   },
+   "small": {
+    "ms": 110.0
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-052>",
+   "seconds": 4.8,
+   "medium": {
+    "ms": 273.0
+   },
+   "small": {
+    "ms": 152.1
+   },
+   "small_vs_medium_wer": 0.25
+  },
+  {
+   "wav": "<owner-clip-053>",
+   "seconds": 2.4,
+   "medium": {
+    "ms": 162.3
+   },
+   "small": {
+    "ms": 82.9
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-054>",
+   "seconds": 12.3,
+   "medium": {
+    "ms": 283.0
+   },
+   "small": {
+    "ms": 144.0
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-055>",
+   "seconds": 5.2,
+   "medium": {
+    "ms": 254.7
+   },
+   "small": {
+    "ms": 133.9
+   },
+   "small_vs_medium_wer": 0.083
+  },
+  {
+   "wav": "<owner-clip-056>",
+   "seconds": 8.1,
+   "medium": {
+    "ms": 333.3
+   },
+   "small": {
+    "ms": 174.3
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-057>",
+   "seconds": 6.5,
+   "medium": {
+    "ms": 269.4
+   },
+   "small": {
+    "ms": 154.1
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-058>",
+   "seconds": 14.4,
+   "medium": {
+    "ms": 462.9
+   },
+   "small": {
+    "ms": 292.6
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-059>",
+   "seconds": 9.0,
+   "medium": {
+    "ms": 159.5
+   },
+   "small": {
+    "ms": 99.0
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-060>",
+   "seconds": 7.6,
+   "medium": {
+    "ms": 359.1
+   },
+   "small": {
+    "ms": 196.9
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-061>",
+   "seconds": 12.4,
+   "medium": {
+    "ms": 452.8
+   },
+   "small": {
+    "ms": 265.5
+   },
+   "small_vs_medium_wer": 0.04
+  },
+  {
+   "wav": "<owner-clip-062>",
+   "seconds": 13.0,
+   "medium": {
+    "ms": 402.8
+   },
+   "small": {
+    "ms": 215.4
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-063>",
+   "seconds": 9.5,
+   "medium": {
+    "ms": 264.1
+   },
+   "small": {
+    "ms": 131.8
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-064>",
+   "seconds": 15.8,
+   "medium": {
+    "ms": 366.6
+   },
+   "small": {
+    "ms": 250.4
+   },
+   "small_vs_medium_wer": 0.045
+  },
+  {
+   "wav": "<owner-clip-065>",
+   "seconds": 15.9,
+   "medium": {
+    "ms": 325.4
+   },
+   "small": {
+    "ms": 183.2
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-066>",
+   "seconds": 17.8,
+   "medium": {
+    "ms": 347.2
+   },
+   "small": {
+    "ms": 196.5
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-067>",
+   "seconds": 15.6,
+   "medium": {
+    "ms": 248.7
+   },
+   "small": {
+    "ms": 113.8
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-068>",
+   "seconds": 15.7,
+   "medium": {
+    "ms": 407.7
+   },
+   "small": {
+    "ms": 226.3
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-069>",
+   "seconds": 18.0,
+   "medium": {
+    "ms": 316.4
+   },
+   "small": {
+    "ms": 168.4
+   },
+   "small_vs_medium_wer": 0.067
+  },
+  {
+   "wav": "<owner-clip-070>",
+   "seconds": 20.2,
+   "medium": {
+    "ms": 758.8
+   },
+   "small": {
+    "ms": 217.4
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-071>",
+   "seconds": 18.6,
+   "medium": {
+    "ms": 310.2
+   },
+   "small": {
+    "ms": 143.4
+   },
+   "small_vs_medium_wer": 0.0
+  },
+  {
+   "wav": "<owner-clip-072>",
+   "seconds": 15.2,
+   "medium": {
+    "ms": 659.0
+   },
+   "small": {
+    "ms": 254.3
+   },
+   "small_vs_medium_wer": 0.179
+  },
+  {
+   "wav": "<owner-clip-073>",
+   "seconds": 27.8,
+   "medium": {
+    "ms": 716.3
+   },
+   "small": {
+    "ms": 328.0
+   },
+   "small_vs_medium_wer": 0.222
+  }
+ ],
+ "summary": {
+  "medium": {
+   "labelled_n": 43,
+   "labelled_exact": 35,
+   "labelled_mean_wer": 0.18,
+   "control_word_n": 17,
+   "control_word_ok": 17,
+   "labelled_ms_median": 173.0,
+   "labelled_ms_p95": 215.0,
+   "short_<=3s": {
+    "n": 19,
+    "median_ms": 149.8,
+    "p95_ms": 190.8
+   },
+   "mid_3-10s": {
+    "n": 40,
+    "median_ms": 185.4,
+    "p95_ms": 276.0
+   },
+   "long_>10s": {
+    "n": 14,
+    "median_ms": 384.7,
+    "p95_ms": 731.2
+   }
+  },
+  "small": {
+   "labelled_n": 43,
+   "labelled_exact": 39,
+   "labelled_mean_wer": 0.093,
+   "control_word_n": 17,
+   "control_word_ok": 17,
+   "labelled_ms_median": 90.6,
+   "labelled_ms_p95": 108.2,
+   "short_<=3s": {
+    "n": 19,
+    "median_ms": 77.8,
+    "p95_ms": 99.5
+   },
+   "mid_3-10s": {
+    "n": 40,
+    "median_ms": 99.5,
+    "p95_ms": 155.1
+   },
+   "long_>10s": {
+    "n": 14,
+    "median_ms": 216.4,
+    "p95_ms": 305.0
+   }
+  },
+  "small_vs_medium_disagreement_wer_mean": 0.077
+ }
+}

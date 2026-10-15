@@ -151,14 +151,23 @@ def load_owner43() -> list:
     """Queue 80's labelled clips, with their heuristic truth (see docstring)."""
     src = REPO / "perf_artifacts" / "model_size_bench.json"
     if not src.exists():
+        print("[SKIP] owner43: requires the owner's private corpus")
         return []
     data = json.loads(src.read_text(encoding="utf-8"))
+    if not data.get("labelled") or any(
+        not row.get("truth") or str(row.get("wav", "")).startswith("<owner-clip-")
+        for row in data["labelled"]
+    ):
+        print("[SKIP] owner43: requires the owner's private corpus")
+        return []
     out = []
     for row in data.get("labelled", []):
         wav = row.get("wav")
         if wav and Path(wav).exists():
             out.append({"id": Path(wav).name, "audio": wav, "ref": row["truth"],
                         "seconds": row.get("seconds")})
+    if not out:
+        print("[SKIP] owner43: requires the owner's private corpus")
     return out
 
 
@@ -336,7 +345,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default=str(OUT_JSON))
     args = ap.parse_args(argv)
 
-    normalizer = _normalizer()
+    normalizer = None
     libri_root = Path(args.libri_root)
     cache = libri_root.parent / "longform"
 
@@ -401,6 +410,8 @@ def main(argv=None) -> int:
         if not clips:
             print(f"[SKIP] {corpus_name}: no clips")
             continue
+        if normalizer is None:
+            normalizer = _normalizer()
         label = f"{corpus_name} {model}/{device}/{params_name}/lang={language}"
         print(f"[RUN ] {label} ({len(clips)} clips)", flush=True)
         t0 = time.perf_counter()
