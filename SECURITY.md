@@ -8,10 +8,9 @@ The source version is defined in [samsara/__init__.py](samsara/__init__.py).
 
 ## Report a vulnerability privately
 
-**STAND-IN destination: <owner to choose: email or GitHub private advisory>.**
-The private reporting route is pending; do not post vulnerabilities, credentials,
-recordings or transcripts in public issues. Once the route is chosen, send the
-affected version, impact and minimal reproduction with synthetic data.
+Report vulnerabilities to [me@morneis.com](mailto:me@morneis.com). Do not post vulnerabilities, credentials,
+recordings or transcripts in public issues. Include the affected version, impact and
+a minimal reproduction with synthetic data.
 
 ## Local data and network boundaries
 
