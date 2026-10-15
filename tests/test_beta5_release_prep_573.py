@@ -57,6 +57,25 @@ def test_spec_stages_both_skills_and_copies_exact_bytes_beside_exe(tmp_path):
         assert (tmp_path / relative).read_bytes() == (ROOT / relative).read_bytes()
 
 
+def test_frozen_import_hook_has_no_duplicate_shutil_import():
+    spec = (ROOT / 'scripts/samsara.spec').read_text(encoding='utf-8')
+    hook_start = spec.index("_runtime_import_hook.write_text(r'''\n") + len(
+        "_runtime_import_hook.write_text(r'''\n")
+    hook_end = spec.index("\n'''", hook_start)
+    hook = spec[hook_start:hook_end]
+    assert hook.splitlines().count('import shutil') == 0
+    assert spec.splitlines().count('import shutil') == 1
+
+
+def test_upgrade_guide_separates_closed_file_copies_from_in_app_imports():
+    guide = (ROOT / 'Docs/UPGRADING_TO_BETA5.md').read_text(encoding='utf-8')
+    assert 'Before the first start' in guide
+    assert 'with Samsara closed — file copies' in guide
+    assert 'After first launch — in-app Imports' in guide
+    assert 'Settings > Commands' in guide
+    assert 'choose **Import…**' in guide
+
+
 def test_missing_staged_skill_fails_packaging(tmp_path):
     assignment, loops = _documentation_nodes()
     scope = {'Path': Path, 'shutil': shutil, 'coll': SimpleNamespace(name=str(tmp_path))}

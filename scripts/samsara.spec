@@ -52,7 +52,6 @@ _runtime_import_hook.write_text(r'''
 import importlib
 import importlib.util
 import os
-import shutil
 import pkgutil
 import tempfile
 import traceback
