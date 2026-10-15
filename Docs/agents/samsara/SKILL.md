@@ -170,10 +170,12 @@ absent from `tools/list` and calls to it are refused.
   refused. Missing, failed or timed-out UIA verification returns
   `refused_unverified`; a provider incorrectly reporting a password as ordinary
   text still cannot be identified. UIA is checked on a worker with a 350 ms limit. Unknown integrity/desktop state is refused too.
-  The result contains `status` (`delivered` or `refused`) and a closed reason:
+  The result contains `status` (`delivered`, `refused` or `unknown`) and a closed reason:
   `delivered`, `refused_terminal`, `refused_elevated`, `refused_own_window`,
   `refused_password`, `refused_unverified`, `refused_delivery`, `user_declined`, `timeout`, `window_changed`, `too_long`,
-  `invalid_text`, `disabled`, or `busy`. `delivered` means injection accepted;
+  `invalid_text`, `disabled`, `busy`, or `unknown`. If both status and reason are
+  `unknown`, delivery may have started before the UI callback timed out; do not
+  retry automatically. `delivered` means injection accepted;
   it does not prove the editor displayed the text. Logs contain only the tool,
   outcome, reason and length bucket, never the text or window title.
 

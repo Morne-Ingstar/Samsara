@@ -17,7 +17,7 @@ Fixes for everything the beta.4 check found, clearer Ava and OpenRouter messages
 
 ### Ava & OpenRouter
 
-- Ava answers queued questions once, shows when it is loading, and responds to stop.
+- Ava queues questions, shows when it is loading, and responds to stop.
 - Cloud consent takes effect, and each provider keeps its own key.
 - OpenRouter has a searchable model list with prices and filters. Auto follows the default model, and Refresh recovers after a picker error.
 - Key and model checks distinguish setup from a successful reply. Ava explains credit, key, model and provider failures, with bounded retry delays.
@@ -35,7 +35,7 @@ Fixes for everything the beta.4 check found, clearer Ava and OpenRouter messages
 
 ### Daily-use polish
 
-- Drag the Compact display at any time.
+- Drag the Compact display to move it.
 - Quitting or updating asks about unsent words without stacking questions. Kept and live drafts are sent together.
 
 ## [0.30.0-beta.4] - 2026-10-12
@@ -95,7 +95,7 @@ Expanded media integrations, Ava intelligence, a calmer Settings and a new setup
 - **Choose when hands-free types** - Settings > Dictation > "Hands-free sends": "When I say send" keeps your words in the display until you send them, as before; "As I speak" types each sentence when you pause.
 - **Click a command to see what it does** - In the Command Reference a click opens a short card that explains the command; "Run it" runs it.
 - **Try your settings, one step at a time** - The tutorial now walks you through it: how much Samsara talks, which voice, and your own pace. Each step plays at once, and nothing is saved until you choose "Keep this".
-- **Ask your Hermes agent by voice** - If you use Hermes Agent, turn on the Hermes pack in Settings > Command library and say "ask Hermes ..." or "tell Hermes ..."; the answer comes back on screen and by voice. "New session with Hermes" and "stop Hermes" work too. Off by default, and nothing is sent until you accept.
+- **Ask your Hermes agent by voice** - If you use Hermes Agent, turn on the Hermes pack in Settings > Command library and say "ask Hermes ..." or "tell Hermes ..."; feedback follows your voice feedback level: Silent shows a short on-screen reply, Brief adds a sound, and Full reads the first part aloud when capture is idle. "New Hermes session" and "stop Hermes" work too. Off by default, and nothing is sent until you accept.
 
 ### Changed
 
@@ -116,7 +116,7 @@ Expanded media integrations, Ava intelligence, a calmer Settings and a new setup
 - **A quieter listening display** - Short messages appear as a small chip in the display's header, and the display no longer changes size when they come and go.
 - **"Where it sits" shows one desktop** - The position you choose carries the animation.
 - **The CapsLock streaming mode is retired** - Its setting and its tray entry are gone; a saved "on" no longer starts it.
-- **A shorter Tools menu** - "Move listening indicator..." appears only with the Compact display, which needs it; the Full display can be dragged at any time.
+- **A shorter Tools menu** - "Move listening indicator..." appears only with the Compact display, which needs it; the Full display can be dragged at any time. This menu action was later removed; both displays can now be dragged directly.
 - **Settings scrolls softly** - Thin lines between rows, and a fade at the edge instead of text cut off mid-line.
 - **One clean keyboard outline** - When you move with the keyboard, each control shows one outline that fits its shape; the second, square outline inside it is gone.
 
@@ -261,6 +261,7 @@ set of "do the real thing" commands for windows, music and the Claude app.
   their own, end the hands-free session from any lane. Anything you had
   dictated but not yet sent with "end" is kept and comes back the next time
   hands-free opens. A sentence that merely contains the words is dictated.
+  The current default send word is "finish".
 - **Wake word can open hands-free** — with `wake_word_config.opens_session`
   (config file, off by default) the wake phrase opens the same latched
   hands-free session the toggle key does, instead of a one-command window.

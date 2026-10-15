@@ -102,8 +102,6 @@ A few things to expect:
   [optional extension](browser_extension/README.md).
 - Command coverage and confirmation behavior vary by action and setup.
   Universal command undo is not available.
-- Streaming and experimental echo reduction have limitations. Start with
-  ordinary dictation, then enable additional features as you need them.
 
 ## From the developer
 
