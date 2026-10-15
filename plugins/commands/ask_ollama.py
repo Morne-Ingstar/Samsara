@@ -3014,7 +3014,8 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         return
 
     if remainder and (_handle_persona_intent(app, remainder) or
-                      _handle_working_context_intent(app, remainder)):
+                      _handle_working_context_intent(app, remainder) or
+                      ava_local_context.handle_clock_intent(app, remainder, speak)):
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
         _log_turn(app, remainder, outcome="local_fast_path")
         _done()
