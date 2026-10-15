@@ -62,7 +62,13 @@ jobs:
 
       - name: Test Show Numbers browser extension
         shell: pwsh
-        run: node --test browser_extension/content-core.test.js
+        run: node --test browser_extension/content-core.test.js browser_extension/bridge-auth-core.test.js
+
+      - name: Check Qt discipline
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/check_qt_discipline.py
 
       - name: Resolve version string
         id: version
