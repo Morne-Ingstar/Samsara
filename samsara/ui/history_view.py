@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
 
 from samsara import history_export
 from samsara import outcome_ring
+from samsara.message_durations import ReceiptDwell, message_duration_ms, restore_receipt_text as _safe_set_text
 from samsara.ui import theme
 from samsara.runtime import thread_registry
 
@@ -80,7 +81,7 @@ _HEADER_HEIGHT = 38
 _LOAD_OLDER_HEIGHT = 48
 _TIME_COL_WIDTH = 48
 _COPY_BTN_WIDTH = 72
-_TOAST_MS = 1800          # transient "Copied" confirmation
+_TOAST_MS = message_duration_ms('Copied', 'success')
 _DETAIL_TEXT_MAX_LINES = 6
 _APP_CONTEXT_MAX = 48
 _EMPTY_HEIGHT = 160
@@ -1141,6 +1142,7 @@ class HistoryView(QWidget):
         self._toast_timer = QTimer(self)
         self._toast_timer.setSingleShot(True)
         self._toast_timer.timeout.connect(self._restore_status)
+        self._toast = ReceiptDwell(self._set_status, self._toast_timer.start)
         self._settings = QSettings("Samsara", "Samsara")
 
         self.setObjectName("historyView")
@@ -1577,7 +1579,11 @@ class HistoryView(QWidget):
     def _copy_row_widget(self, widget):
         if self._set_clipboard(copy_text(widget.row)):
             widget.copy_button.setText("Copied")
-            QTimer.singleShot(_TOAST_MS, lambda: _safe_set_text(widget.copy_button, "Copy"))
+            if not hasattr(widget, '_copy_receipt_timer'):
+                widget._copy_receipt_timer = QTimer(widget)
+                widget._copy_receipt_timer.setSingleShot(True)
+                widget._copy_receipt_timer.timeout.connect(lambda: _safe_set_text(widget.copy_button, "Copy"))
+            widget._copy_receipt_timer.start(_TOAST_MS)
 
     def _on_item_activated(self, item):
         self._copy_row_item(item)
@@ -1765,17 +1771,11 @@ class HistoryView(QWidget):
 
     def _show_toast(self, msg: str, success: bool = True):
         """Transient confirmation in the footer -- no popup."""
-        self._set_status(msg, toast=success)
-        self._toast_timer.start(_TOAST_MS)
+        self._toast.show(msg, success)
 
     def _restore_status(self):
+        if self._toast.restore():
+            return
         query, _filter, scope, _show = self._current_query()
         n = len(self._rows_by_item_id)
         self._set_status(summary_text(n, scope, query, self._has_more), toast=False)
-
-
-def _safe_set_text(button: QPushButton, text: str) -> None:
-    try:
-        button.setText(text)
-    except RuntimeError:
-        pass   # the row was rebuilt by a reload before the timer fired

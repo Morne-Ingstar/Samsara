@@ -74,7 +74,7 @@ from samsara.ui.indicator_drag import IndicatorDrag
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
-from samsara.message_durations import message_duration_ms, message_protected, routine_receipt, routine_progress
+from samsara.message_durations import message_duration_ms, message_protected, message_should_wait
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +333,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._chip_only = False
         self._chip_deadline = None
         self._chip_feedback = None
+        self._waiting_outcome = None
         self._chip_timer = QTimer(self)
         self._chip_timer.setSingleShot(True)
         self._chip_timer.timeout.connect(self._clear_outcome)
@@ -415,6 +416,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._cancel_idle()
         self._flash_timer.stop()
         self._chip_timer.stop()
+        self._waiting_outcome = None
         self._chip_label = None
         self._chip_kind = None
         self._chip_only = False
@@ -922,11 +924,11 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
     # Outcome chip
     # ------------------------------------------------------------------
 
-    def show_outcome(self, label: str, kind: str, ttl_ms: "int | None" = _CHIP_DEFAULT_TTL_MS):
+    def show_outcome(self, label: str, kind: str, ttl_ms: "int | None" = _CHIP_DEFAULT_TTL_MS, *, _feedback=None):
         """Show a short chip saying what just happened.
 
-        A new message replaces the chip; routine capture/delivery updates wait
-        behind a timed result. Numeric TTLs use the shared reading-time rule.
+        Equal/lower priority messages coalesce behind a timed result.
+        Numeric TTLs use the shared reading-time rule.
         Explicit persistent messages keep their producer-owned lifetime.
 
         Renders even when the indicator is hidden by config
@@ -939,12 +941,19 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             self.clear_outcome()
             return
         kind = kind if kind in _chip_fill() else "warning"
-        if self._protected_outcome() and (kind == "live" or routine_receipt(label, kind)):
+        if self._waiting_outcome is not None and self._chip_deadline is not None and not self._protected_outcome():
+            self._clear_outcome()
+        if message_should_wait(self._chip_kind, kind, protected=self._protected_outcome(),
+                               current_purpose=getattr(self._chip_feedback, 'purpose', 'result'),
+                               current_owner=getattr(self._chip_feedback, 'owner', ''),
+                               incoming_purpose=getattr(_feedback, 'purpose', 'result'),
+                               incoming_owner=getattr(_feedback, 'owner', '')):
+            self._waiting_outcome = (label, kind, ttl_ms, _feedback)
             return False
         ttl_ms = message_duration_ms(label, kind, ttl_ms)
         self._chip_label = str(label)
         self._chip_kind = kind
-        self._chip_feedback = None
+        self._chip_feedback = _feedback
         self._chip_deadline = None if ttl_ms is None else self._now_ms() / 1000 + ttl_ms / 1000
         self._chip_timer.stop()
         self._state_changed()   # e.g. the "live" (recording) chip stops idle motion
@@ -960,6 +969,8 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
 
         if kind not in _NO_TTL_KINDS and ttl_ms:
             self._chip_timer.start(int(ttl_ms))
+        if _feedback is not None and _feedback.alive is not None:
+            self._chip_timer.start(100)
         return True
 
     def show_feedback(self, label, kind, ttl_ms, feedback):
@@ -970,11 +981,9 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
                 self._chip_feedback = None
             else:
                 return
-        if self._protected_outcome() and routine_progress(feedback.purpose, feedback.owner):
-            return
         if feedback.purpose.value != "result":
             ttl_ms = None
-        if self.show_outcome(label, kind, ttl_ms):
+        if self.show_outcome(label, kind, ttl_ms, _feedback=feedback):
             self._chip_feedback = feedback
             if feedback.alive is not None:
                 self._chip_timer.start(100)
@@ -989,6 +998,10 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
                                  self._chip_deadline, self._now_ms() / 1000)
 
     def clear_feedback(self, owner):
+        if self._waiting_outcome is not None:
+            feedback = self._waiting_outcome[3]
+            if not owner or feedback and feedback.owner == owner:
+                self._waiting_outcome = None
         if not owner or self._chip_feedback and self._chip_feedback.owner == owner:
             self.clear_outcome()
 
@@ -1051,6 +1064,12 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._chip_label = None
         self._chip_kind = None
         self._chip_deadline = self._chip_feedback = None
+        waiting, self._waiting_outcome = self._waiting_outcome, None
+        if waiting is not None:
+            label, kind, ttl_ms, feedback = waiting
+            if feedback is None or feedback.alive is None or feedback.alive():
+                self.show_outcome(label, kind, ttl_ms, _feedback=feedback)
+                return
         self._state_changed()
         if self._chip_only and not self._device_lost:
             # The chip was the only reason this widget was on screen.

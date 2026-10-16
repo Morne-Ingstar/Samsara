@@ -7,7 +7,7 @@ from time import monotonic
 from typing import Callable, Optional
 
 from samsara.live_surface.feedback import FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS
-from samsara.message_durations import message_duration_ms, message_protected, routine_receipt, routine_progress
+from samsara.message_durations import message_duration_ms, message_protected, message_should_wait
 
 # Geometry/timing are design constants, never per-user tuning knobs.
 MARK_TARGET_DIP = 44
@@ -19,7 +19,7 @@ REVIEW_SIZE_DIP = (500, 360)
 DRAFT_BADGE_SIZE_DIP = (120, 44)
 ATTACHMENT_GAP_DIP = 4
 IDLE_DELAY_S = 5.0
-RESULT_RECEIPT_S = 1.0
+RESULT_RECEIPT_S = message_duration_ms('typed', 'success') / 1000
 ORDINARY_NOTICE_S = DEFAULT_TTL_MS / 1000
 AVA_CAPTION_LINGER_S = 6.0
 
@@ -196,6 +196,7 @@ class LiveSurfaceModel:
         self._sequence: dict[str, int] = {}
         self._cleared_documents: set[str] = set()
         self._notice = Notice(NoticeKind.NONE, "", None)
+        self._waiting_notice: SurfaceEvent | None = None
         self._question: Notice | None = None
         self._feedback_event: Notice | None = None
         self._feedback_revision = 0
@@ -207,6 +208,7 @@ class LiveSurfaceModel:
         if not self._accept_event(event):
             return False
         now = self._clock()
+        self._advance_notice(now)
         correcting = self.presentation is PresentationState.CORRECTION
         self._last_activity = now
         kind = event.kind
@@ -214,6 +216,7 @@ class LiveSurfaceModel:
             if self.document is DocumentState.DELIVERED:
                 self.text = ""
                 self.document = DocumentState.EMPTY
+                self._delivered_at = None
             if self._notice.expires_at is not None and not self._message_protected(now):
                 self._notice = Notice(NoticeKind.NONE, "", None)
             self._active_capture = event.capture_id
@@ -277,6 +280,10 @@ class LiveSurfaceModel:
         elif kind is EventKind.NOTICE:
             self._receive_notice(event, now)
         elif kind is EventKind.NOTICE_CLEARED:
+            if self._waiting_notice is not None and (event.owner == self._waiting_notice.owner if event.owner
+                    else self._waiting_notice.purpose in (FeedbackPurpose.RUNNING, FeedbackPurpose.QUESTION)):
+                if event.notice in (NoticeKind.NONE, self._waiting_notice.notice):
+                    self._waiting_notice = None
             if self._question is not None and (not event.owner or event.owner == self._question.owner):
                 if event.notice in (NoticeKind.NONE, self._question.kind):
                     self._question = None
@@ -307,8 +314,7 @@ class LiveSurfaceModel:
     def view(self) -> SurfaceView:
         """Return the visible projection, expiring only elapsed notices."""
         now = self._clock()
-        if self._notice.expires_at is not None and now >= self._notice.expires_at:
-            self._notice = Notice(NoticeKind.NONE, "", None)
+        self._advance_notice(now)
         if self._delivered_at is not None and now >= self._delivered_at + RESULT_RECEIPT_S:
             self._clear_receipt()
         can_collapse = self._can_collapse(now)
@@ -323,7 +329,7 @@ class LiveSurfaceModel:
             feedback_event=self._feedback_event, feedback_revision=self._feedback_revision,
         )
 
-    def _receive_notice(self, event: SurfaceEvent, now: float) -> None:
+    def _receive_notice(self, event: SurfaceEvent, now: float, *, publish_feedback: bool = True) -> None:
         if event.resolves and self._question is not None and event.resolves == self._question.owner:
             self._question = None
         purpose = event.purpose or (FeedbackPurpose.QUESTION if event.notice in
@@ -334,16 +340,22 @@ class LiveSurfaceModel:
             FeedbackKind.ERROR if event.notice is NoticeKind.ERROR else
             FeedbackKind.WARNING if event.notice is NoticeKind.WARNING else
             FeedbackKind.SUCCESS if event.notice is NoticeKind.SUCCESS else FeedbackKind.INFORMATION)
-        if self._message_protected(now) and (routine_progress(purpose, event.owner) or routine_receipt(event.message, feedback)):
-            return  # Capture/lane state remains visible beside the result band.
         ttl = None if event.persistent or purpose is not FeedbackPurpose.RESULT else (
             event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice))
         duration = message_duration_ms(event.message, feedback, None if ttl is None else ttl * 1000, purpose=purpose)
         ttl = None if duration is None else duration / 1000
         candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
                            event.lane or self.lane, feedback, purpose, event.owner)
-        self._feedback_revision += 1
-        self._feedback_event = candidate
+        if publish_feedback:
+            # Receipt delivery/History/accessibility happen once on arrival;
+            # only its visible text may wait behind the current message.
+            self._feedback_revision += 1
+            self._feedback_event = candidate
+        if message_should_wait(self._notice.feedback, feedback, protected=self._message_protected(now),
+                               current_purpose=self._notice.purpose, current_owner=self._notice.owner,
+                               incoming_purpose=purpose, incoming_owner=event.owner):
+            self._waiting_notice = event
+            return
         if purpose is FeedbackPurpose.QUESTION:
             self._question = candidate
             if self._notice.expires_at is not None or self._notice.purpose is FeedbackPurpose.RUNNING:
@@ -355,12 +367,21 @@ class LiveSurfaceModel:
               or self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind)):
             self._notice = candidate
 
+    def _advance_notice(self, now: float) -> None:
+        if self._notice.expires_at is not None and now >= self._notice.expires_at:
+            self._notice = Notice(NoticeKind.NONE, "", None)
+        if self._waiting_notice is not None and self._notice.kind is NoticeKind.NONE and self._question is None:
+            event, self._waiting_notice = self._waiting_notice, None
+            self._receive_notice(event, now, publish_feedback=False)
+
     def _message_protected(self, now: float) -> bool:
         return message_protected(self._notice.message, self._notice.feedback,
                                  self._notice.expires_at, now, purpose=self._notice.purpose)
 
     def _clear_receipt(self) -> None:
         """An expired delivery is history, never the next idle/lane status."""
+        if self._delivered_at is not None and self._clock() < self._delivered_at + RESULT_RECEIPT_S:
+            return
         if self.document is DocumentState.DELIVERED:
             self.document = DocumentState.EMPTY
             self.text = ""

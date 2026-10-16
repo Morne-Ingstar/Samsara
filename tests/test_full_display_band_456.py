@@ -82,7 +82,7 @@ def test_producer_severity_and_exact_lifetime(surface, kind, expected, ttl):
 def test_default_and_explicit_no_timer(surface):
     c, i, clock = surface
     i.show_outcome('Captured', 'success'); c.drain()
-    assert c.view().notice.expires_at == DEFAULT_TTL_MS/1000
+    assert c.view().notice.expires_at == 1.5
     i.show_outcome('Persistent result', 'warning', None); c.drain()
     clock[0] = 3600; assert c.view().notice.message == 'Persistent result'
 
@@ -314,7 +314,7 @@ def test_exact_dictation_handoff_forwards_source_detail_duration_and_hold_purpos
     c.app._show_hold_pending_chip(); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.RUNNING
     c.app._show_outcome_chip('Synthetic result', 'warning', 7000); c.drain()
-    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 4
+    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 1.5
     c.app._show_dispatch_outcome_chip(SimpleNamespace(kind='command_awaiting_confirmation', detail={'phrase': 'synthetic action'})); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.QUESTION
     c.app._show_outcome_chip('Ordinary result', 'success', 1800); c.drain()

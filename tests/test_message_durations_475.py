@@ -49,9 +49,7 @@ def display(request, qapp, monkeypatch):
 @pytest.mark.parametrize('length', [1, 50, 160])
 def test_each_kind_stays_its_computed_reading_time(display, kind, length):
     d, label = display, 'x' * length
-    expected = min(8000, 2500 + 55 * length)
-    if kind in ('warning', 'error'):
-        expected = max(4000, expected)
+    expected = max(1500, min(5000, 350 + 60 * length))
     d.i.show_outcome(label, kind, 500); d.flush()
     assert d.deadline() == expected / 1000
     d.clock[0] = expected / 1000 - .001
@@ -81,6 +79,9 @@ def test_routine_state_clear_hide_and_typed_cannot_wipe_a_result(display, kind):
     assert d.deadline() == original_deadline
     d.clock[0] = original_deadline
     d.expire()
+    # Only the latest waiting update survives; hold progress owns its lifetime.
+    assert d.text() == '...' and d.deadline() is None
+    d.i.clear_feedback('hold'); d.flush(); d.expire()
     assert d.text() == ''
     if d.c:
         assert d.c.view().form is VisibleForm.MARK
@@ -90,11 +91,16 @@ def test_routine_state_clear_hide_and_typed_cannot_wipe_a_result(display, kind):
 
 
 def test_newer_result_replaces_and_gets_its_own_deadline(display):
+    # Preserve the original node IDs; replacement now happens after reading time.
     d = display
     d.i.show_outcome('First refusal', 'warning'); d.flush()
+    first_deadline = d.deadline()
     d.clock[0] = 1.0
     d.i.show_outcome('New result', 'success'); d.flush()
-    deadline = 1 + (2500 + 55 * len('New result')) / 1000
+    assert d.text() == 'First refusal' and d.deadline() == first_deadline
+    d.clock[0] = first_deadline
+    d.expire()
+    deadline = first_deadline + 1.5
     assert d.text() == 'New result' and d.deadline() == deadline
     d.clock[0] = deadline
     d.expire()
@@ -102,12 +108,17 @@ def test_newer_result_replaces_and_gets_its_own_deadline(display):
 
 
 def test_new_queued_action_notice_replaces_old_feedback(display):
+    # A queued action replaces protected feedback when that feedback expires.
     d = display
     d.i.show_outcome('Previous refusal', 'warning'); d.flush()
+    first_deadline = d.deadline()
     d.clock[0] = .5
     d.i.show_feedback('Synthetic action queued', 'pending', None,
                       Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, 'command'))
     d.flush()
+    assert d.text() == 'Previous refusal' and d.deadline() == first_deadline
+    d.clock[0] = first_deadline
+    d.expire()
     assert d.text() == 'Synthetic action queued' and d.deadline() is None
 
 
@@ -147,6 +158,9 @@ def test_full_delivery_and_lane_events_preserve_result_until_expiry():
         assert model.view().notice.expires_at == deadline
     clock[0] = deadline
     assert model.view().notice.kind is NoticeKind.NONE
+    # Delivery has its own dwell, beginning .25 seconds after the notice.
+    assert model.view().form is VisibleForm.STATUS
+    clock[0] = .25 + 1.5
     assert model.view().form is VisibleForm.MARK
 
 
@@ -188,11 +202,11 @@ def test_unrelated_result_does_not_answer_a_question(display, owner):
 
 
 def test_routine_receipts_and_persistent_status_contracts():
-    assert message_duration_ms('typed', 'success', 900) == 900
-    assert message_duration_ms('Captured', 'success', 1000) == 1000
+    assert message_duration_ms('typed', 'success', 900) == 1500
+    assert message_duration_ms('Captured', 'success', 1000) == 1500
     assert message_duration_ms('Persistent fault', 'error', None) is None
     assert message_duration_ms('Question', 'warning', 8000, purpose='question') is None
-    assert message_duration_ms('Short result', 'success', 0) == 3160
+    assert message_duration_ms('Short result', 'success', 0) == 1500
 
 
 def test_result_and_refusal_remain_searchable_in_history_after_expiry(display, tmp_path):
