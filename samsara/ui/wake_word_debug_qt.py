@@ -9,6 +9,8 @@ Public API matches WakeWordDebugWindow exactly:
     show() / close() / on_app_trace(event)
 """
 
+from samsara.dictionary_store import get_dictionary_store
+
 import threading
 import time
 from datetime import datetime
@@ -1003,7 +1005,7 @@ class _DebugWindow(QMainWindow):
             model_rate   = getattr(self._app, 'model_rate',   16000)
             audio        = _resample_audio(audio, capture_rate, model_rate)
 
-            vt = getattr(self._app, 'voice_training_window', None)
+            vt = get_dictionary_store(self._app)
             initial_prompt = vt.get_initial_prompt() if vt else None
             segments, _ = self._app.model.transcribe(
                 audio,

@@ -4,7 +4,7 @@ Drop-in Qt replacement for samsara.ui.dictionary_frame.DictionaryFrame.
 
 Three sub-tabs:
   Vocabulary   — words injected into Whisper's initial_prompt
-  Corrections  — deterministic dictated-text corrections (VoiceTrainingQt)
+  Corrections  — deterministic dictated-text corrections (DictionaryStore)
   Wake Words   — wake-phrase misrecognition map (samsara.wake_corrections)
 
 Data is read/written through the same service layer as the CTk version;
@@ -13,6 +13,8 @@ no file or DB access happens directly here.
 Saves are asynchronous (background thread) with a Signal-based status
 label update so the Qt event loop is never blocked.
 """
+
+from samsara.dictionary_store import get_dictionary_store
 
 import logging
 
@@ -120,7 +122,7 @@ class DictionaryPanelQt(QWidget):
 
     @property
     def _vt(self):
-        return getattr(self._app, 'voice_training_window', None)
+        return get_dictionary_store(self._app)
 
     @property
     def _custom_vocab(self):
@@ -393,7 +395,7 @@ class DictionaryPanelQt(QWidget):
     def _build_kv_tab(self, mode: str, title: str) -> QWidget:
         """Build a two-column key-value editor tab.
 
-        mode='corrections' -> VoiceTrainingQt training_data.json
+        mode='corrections' -> DictionaryStore training_data.json
         mode='wake'        -> wake_corrections
         """
         page = QWidget()

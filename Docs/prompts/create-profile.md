@@ -1,4 +1,4 @@
-# Create Voice Training Profiles
+# Create Dictionary Profiles
 
 Use this prompt to generate domain-specific profiles for Samsara's voice recognition.
 
@@ -10,7 +10,7 @@ Copy everything below the line and paste it into your AI chat:
 
 ---
 
-I need help creating a voice training profile for Samsara, a voice dictation app. Generate a valid JSON profile.
+I need help creating a dictionary profile for Samsara, a voice dictation app. Generate a valid JSON profile.
 
 ### Profile Structure
 
@@ -96,8 +96,8 @@ Examples:
 
 1. Copy the JSON the AI generates
 2. Save as `YourProfile.json` in `profiles/dictionaries/`
-3. Open Samsara Settings → Voice Training
-4. Click "Manage Profiles" → Import
+3. Open Settings → Help → Choose guide → Manage profiles
+4. Click Import
 5. Select your profile to activate it
 
 ## Tips

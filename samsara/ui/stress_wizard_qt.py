@@ -6,7 +6,7 @@ trials, captures the samsara.diagnostics.DiagRecord produced by each attempt
 (reusing samsara.diagnostics -- never duplicating signal capture), and
 produces a plain-text findings report.
 
-Close-and-destroy window lifecycle (same family as voice_training_qt.py,
+Close-and-destroy window lifecycle (same family as the other guide windows,
 NOT the persistent hide-don't-destroy family used by history_qt.py/
 diagnostics_qt.py): closing the window resets wizard state so reopening it
 always starts a fresh run from step 1.
@@ -41,6 +41,8 @@ leaving the hook armed: _disarm_capture() runs at the top of _show_step
 diagnostics.remove_one_shot_hook() is idempotent, so calling it defensively
 in all of these is safe.
 """
+
+from samsara.dictionary_store import get_dictionary_store
 
 from datetime import datetime
 
@@ -78,7 +80,7 @@ _CAPTURE_TIMEOUT_S = 30.0
 # ---------------------------------------------------------------------------
 
 class StressWizardQt:
-    """Close-and-destroy window wrapper (voice_training_qt.py's pattern)."""
+    """Close-and-destroy guide window wrapper."""
 
     def __init__(self, app):
         self.app = app
@@ -123,7 +125,7 @@ class _StressWizardWindow(QMainWindow):
         self.setMinimumSize(560, 480)
         self.setStyleSheet(theme.build_stylesheet())
 
-        self._battery = build_battery(getattr(app, 'voice_training_window', None))
+        self._battery = build_battery(get_dictionary_store(app))
         self._step_idx = 0
         self._results = []             # [{'step','passed','reason','verdicts'}]
         self._step_start_ts = None

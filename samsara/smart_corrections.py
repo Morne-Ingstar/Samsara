@@ -16,6 +16,8 @@ Ollama, the model) in its log line -- see _backend_tag(). Provider-bound
 consent selects exactly one backend; local failure never falls back to cloud.
 """
 
+from samsara.dictionary_store import get_dictionary_store
+
 import re
 import time
 
@@ -276,7 +278,7 @@ def _maybe_notify(app, backend, used_fallback, skip_reason) -> None:
 # ---------------------------------------------------------------------------
 
 def _vocab_context(app) -> str:
-    vt = getattr(app, "voice_training_window", None)
+    vt = get_dictionary_store(app)
     if vt is None:
         return ""
     parts = []

@@ -4,7 +4,7 @@ preview (queue 85: click a word, say the replacement).
 Nothing in this module ever writes to the corrections dictionary. A captured
 pair lands here as "pending" and stays there until a human accepts it in the
 correction-capture window; accepting is what writes
-`voice_training_window.corrections_dict` (see samsara/ui/correction_capture_qt
+`DictionaryStore.corrections_dict` (see samsara/ui/correction_capture_qt
 _on_always_fix), exactly as correction capture v1 already does. A corrupt
 queue file therefore cannot damage the dictionary: they are separate files,
 and this one is rebuilt from scratch if it will not parse.
@@ -29,6 +29,8 @@ Pure storage plus classification: no Qt, no audio decoding, no dictionary
 writes. Audio is referenced by path only; the caller writes the file.
 """
 from __future__ import annotations
+
+from samsara.dictionary_store import get_dictionary_store
 
 import json
 import os
@@ -462,7 +464,7 @@ def undo_last_correction(app=None) -> dict:
             return {"undone": False, "wrong": "", "right": "", "where": "nothing"}
     wrong, right = entry.get("wrong", ""), entry.get("right", "")
     if where == "dictionary" and app is not None:
-        vt = getattr(app, "voice_training_window", None)
+        vt = get_dictionary_store(app)
         corrections = getattr(vt, "corrections_dict", None)
         if isinstance(corrections, dict) and wrong in corrections:
             try:

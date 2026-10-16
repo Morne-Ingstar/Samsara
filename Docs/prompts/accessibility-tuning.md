@@ -137,6 +137,6 @@ Consider using longer, distinct wake phrases to avoid false triggers.
 ## Tips
 
 - Make one change at a time and test
-- Use Voice Training → Calibration to optimize for your voice
+- Use the microphone setup guide to check your input level
 - Add corrections for words you're consistently misheard on
 - The pause word ("hold on", "thinking") resets the silence timer

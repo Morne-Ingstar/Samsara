@@ -33,7 +33,6 @@ import re
 import sys
 import threading
 import time
-
 import numpy as np
 import pyautogui
 
@@ -44,6 +43,7 @@ except ImportError:
 
 from samsara import kept_session_draft, listening_display, tutorial_capture
 from samsara.cleanup import clean_text
+from samsara.dictionary_store import get_dictionary_store
 from samsara.log import describe_text, get_logger
 from samsara.runtime import thread_registry
 from samsara.session_modes import (
@@ -1743,7 +1743,7 @@ class StreamingWorker(threading.Thread):
             diag_corr_start = time.perf_counter()
 
             try:
-                text = app.voice_training_window.apply_corrections(text)
+                text = get_dictionary_store(app).apply_corrections(text)
             except Exception as e:
                 logger.debug(f"[STREAM] apply_corrections failed: {e}")
 
@@ -1830,7 +1830,7 @@ class StreamingWorker(threading.Thread):
     def _partial_params(self):
         app = self._session.app
         try:
-            prompt = app.voice_training_window.get_initial_prompt()
+            prompt = get_dictionary_store(app).get_initial_prompt()
         except Exception as e:
             logger.debug(f"[STREAM] get_initial_prompt failed: {e}")
             prompt = None
@@ -2732,7 +2732,7 @@ class DictatePreviewSession:
         try:
             from samsara.correction_queue import get_queue, phonetic_neighbours  # noqa: PLC0415
             from samsara.phonetic_wash import get_user_corrections  # noqa: PLC0415
-            training = getattr(self.app, "voice_training_window", None)
+            training = get_dictionary_store(self.app)
             terms = list(getattr(training, "custom_vocab", None) or [])
             corrections = getattr(training, "corrections_dict", None) or {}
             if isinstance(corrections, dict):

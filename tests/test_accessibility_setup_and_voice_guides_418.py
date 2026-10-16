@@ -16,7 +16,7 @@ def guides(qapp, monkeypatch, tmp_path):
     from samsara.runtime import thread_registry
     from samsara.ui import ava_guide_qt as ava, first_run_wizard_qt as first
     from samsara.ui import mic_setup_wizard_qt as mic, stress_wizard_qt as stress
-    from samsara.ui import voice_training_qt as voice, wake_word_debug_qt as wake
+    from samsara.ui import wake_word_debug_qt as wake
 
     monkeypatch.setattr(thread_registry, "spawn", lambda *a, **kw: None)
     monkeypatch.setattr(first._WizardWindow, "_start_meter", lambda self: None)
@@ -24,14 +24,11 @@ def guides(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(stress._StressWizardWindow, "_arm_capture", lambda self: None)
     app = SimpleNamespace(config={}, voice_training_window=None,
         get_available_microphones=lambda: [{"id": 1, "name": "Synthetic microphone"}])
-    training = SimpleNamespace(app=app, custom_vocab=["Synthetic vocabulary"],
-        corrections_dict={"synthetic mistake": "synthetic correction"}, _monitoring=False)
     windows = {
         "first": first._WizardWindow(tmp_path / "config.json"),
         "ava": ava._WizardWindow(app),
         "mic": mic._WizardWindow(app),
         "stress": stress._StressWizardWindow(app),
-        "voice": voice._TrainingWindow(training),
         "wake": wake._DebugWindow(app),
     }
     try:
@@ -51,14 +48,6 @@ ROWS = [
     ("F040", "ava", "_model_combo", "ComboBox", "Model:"),
     ("F060", "mic", "_device_combo", "ComboBox", "Microphone:"),
     ("F061", "stress", "_results_table", "Table", "Stress Test Results"),
-    ("F062", "voice", "_lang_combo", "ComboBox", "Transcription language:"),
-    ("F063", "voice", "_prompt_edit", "EditableText",
-     "Custom context passed to Whisper (combined with vocabulary and command phrases):"),
-    ("F064", "voice", "_wrong_input", "EditableText", "Whisper says..."),
-    ("F065", "voice", "_correct_input", "EditableText", "You meant..."),
-    ("F066", "voice", "_corr_table", "Table", "Corrections Dictionary"),
-    ("F067", "voice", "_vocab_input", "EditableText", "Word or phrase to add..."),
-    ("F068", "voice", "_vocab_list", "List", "Custom Vocabulary"),
     ("F069", "wake", "slider:0", "Slider", "Speech threshold:"),
     ("F070", "wake", "_thresh_spin", "SpinBox", "Speech threshold:"),
     ("F071", "wake", "slider:1", "Slider", "Min speech (s):"),

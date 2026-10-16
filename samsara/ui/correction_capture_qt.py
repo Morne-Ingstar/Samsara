@@ -4,7 +4,7 @@ Hotkey-triggered (config `hotkeys.capture_correction`, default ctrl+alt+x):
 pre-fills the last dictation, lets the user fix it by hand, and offers each
 detected atomic word/phrase substitution (samsara/correction_capture.py) as
 a REVIEW-GATED candidate for the corrections dictionary. Nothing is ever
-auto-added -- a pair only reaches VoiceTrainingQt.corrections_dict when the
+auto-added -- a pair only reaches DictionaryStore.corrections_dict when the
 user explicitly clicks [Always fix] on that specific row.
 
 Close-and-destroy lifecycle (unlike the hide-don't-destroy windows such as
@@ -12,6 +12,8 @@ diagnostics_qt.py/benchmark_review_qt.py): each hotkey press is a fresh
 "fix what I just said" moment tied to whatever the most recent dictation
 was at trigger time, so there is no persistent window to reuse.
 """
+
+from samsara.dictionary_store import get_dictionary_store
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
@@ -317,14 +319,8 @@ class CorrectionCaptureWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_always_fix(self, wrong: str, right: str):
-        """Append via the exact same mutation path
-        _TrainingWindow._add_correction() uses (samsara/ui/voice_training_qt.py):
-        corrections_dict[wrong] = right, then _rebuild_corrections_pattern()
-        (recompiles the single-pass lookup regex), then save_training_data()
-        (persists to training_data.json). Our review-queue row isn't the
-        Vocabulary tab's QTableWidget, so we drive VoiceTrainingQt directly
-        rather than calling the window method itself."""
-        vt = getattr(self.app, 'voice_training_window', None)
+        """Update the shared dictionary, rebuild its lookup, then persist it."""
+        vt = get_dictionary_store(self.app)
         if vt is None:
             self._set_status("Could not save -- dictionary is unavailable.")
             return

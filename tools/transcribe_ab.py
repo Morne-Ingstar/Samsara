@@ -5,7 +5,7 @@ address this -- the WAV dumps prove the assembled buffer reaches Whisper
 untouched, so any remaining loss must live in DECODE PARAMETERS, not
 capture). Standalone tool -- no samsara app import beyond what's needed to
 reconstruct the real, live initial_prompt (samsara.commands.CommandExecutor
-+ samsara.ui.voice_training_qt.VoiceTrainingQt), so the experiment uses the
++ samsara.dictionary_store.DictionaryStore), so the experiment uses the
 EXACT prompt content the app actually sends, not an approximation.
 
 2026-07-10 POST-MORTEM: an earlier run of this tool against Whisper "base"
@@ -86,13 +86,12 @@ def _load_wav_16k_mono_float32(path: Path) -> np.ndarray:
 
 def _get_live_initial_prompt() -> str:
     """Reconstruct the EXACT live initial_prompt both the hotkey and wake
-    paths currently send -- same call (VoiceTrainingQt.get_initial_prompt())
+    paths currently send -- same call (DictionaryStore.get_initial_prompt())
     against the real config.json / training_data.json in this repo, via a
-    minimal fake app (matches the pattern in tests/test_voice_training.py's
-    create_test_voice_training helper)."""
+    minimal fake app with the same configuration and command registry."""
     from unittest.mock import Mock
     from samsara.commands import CommandExecutor
-    from samsara.ui.voice_training_qt import VoiceTrainingQt
+    from samsara.dictionary_store import DictionaryStore
 
     config_path = _REPO_ROOT / "config.json"
     with open(config_path, encoding='utf-8') as f:
@@ -103,7 +102,7 @@ def _get_live_initial_prompt() -> str:
     app.config_path = config_path
     app.command_executor = CommandExecutor(app=app)
 
-    vt = VoiceTrainingQt(app)
+    vt = DictionaryStore(app)
     return vt.get_initial_prompt() or ""
 
 

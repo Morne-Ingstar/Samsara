@@ -3,7 +3,7 @@ empty-overwrite guards, corrupt-file quarantine, and lazy path resolution.
 
 Root cause fixed (2026-07-09 correction-store loss): all four writers
 logged only on FAILURE, so a successful-looking save that actually lost
-data left no trail; voice_training_qt.load_training_data caught a JSON
+data left no trail; dictionary_store.load_training_data caught a JSON
 parse error, fell back to empty in-memory state, and the next
 save_training_data() wrote that empty state straight over the file --
 a read-fail -> silent-empty -> overwrite loop. Every test here targets
@@ -215,7 +215,7 @@ class TestCorruptFileQuarantinePhoneticWash:
 class TestCorruptFileQuarantineVoiceTraining:
     def test_corrupt_training_data_is_quarantined_and_flagged(self, monkeypatch, tmp_path, caplog):
         from unittest.mock import Mock
-        from samsara.ui.voice_training_qt import VoiceTrainingQt
+        from samsara.dictionary_store import DictionaryStore
 
         config_path = tmp_path / "config.json"
         training_path = tmp_path / "training_data.json"
@@ -225,7 +225,7 @@ class TestCorruptFileQuarantineVoiceTraining:
         app.config_path = str(config_path)
 
         with caplog.at_level(logging.ERROR):
-            vt = VoiceTrainingQt(app)
+            vt = DictionaryStore(app)
 
         assert vt.custom_vocab == []
         assert vt.corrections_dict == {}
@@ -238,7 +238,7 @@ class TestCorruptFileQuarantineVoiceTraining:
 
     def test_first_save_after_quarantine_logs_warning_once(self, monkeypatch, tmp_path, caplog):
         from unittest.mock import Mock
-        from samsara.ui.voice_training_qt import VoiceTrainingQt
+        from samsara.dictionary_store import DictionaryStore
 
         config_path = tmp_path / "config.json"
         training_path = tmp_path / "training_data.json"
@@ -246,7 +246,7 @@ class TestCorruptFileQuarantineVoiceTraining:
 
         app = Mock()
         app.config_path = str(config_path)
-        vt = VoiceTrainingQt(app)
+        vt = DictionaryStore(app)
         assert vt._load_failed is True
 
         with caplog.at_level(logging.WARNING):
@@ -305,11 +305,11 @@ class TestSuccessLogEmission:
 
     def test_voice_training_logs_vocab_and_correction_counts_on_save(self, monkeypatch, tmp_path, caplog):
         from unittest.mock import Mock
-        from samsara.ui.voice_training_qt import VoiceTrainingQt
+        from samsara.dictionary_store import DictionaryStore
 
         app = Mock()
         app.config_path = str(tmp_path / "config.json")
-        vt = VoiceTrainingQt(app)
+        vt = DictionaryStore(app)
         vt.custom_vocab = ["alpha", "beta"]
         vt.corrections_dict = {"flat": "hat"}
 

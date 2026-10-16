@@ -1,6 +1,8 @@
 """Qt-thread owner for the live-surface model and its one widget."""
 from __future__ import annotations
 
+from samsara.dictionary_store import get_dictionary_store
+
 from collections import deque
 import threading
 from typing import Any, Callable
@@ -502,12 +504,12 @@ class LiveSurfaceController:
             self.widget.correction_refused("Finish or clear the current draft first")
 
     def _approved_corrections(self):
-        training = getattr(self.app, "voice_training_window", None)
+        training = get_dictionary_store(self.app)
         values = getattr(training, "corrections_dict", None) if training is not None else None
         return values if isinstance(values, dict) else ()
 
     def _taught_vocabulary(self):
-        training = getattr(self.app, "voice_training_window", None)
+        training = get_dictionary_store(self.app)
         values = getattr(training, "custom_vocab", None) if training is not None else ()
         return values if isinstance(values, (tuple, list, set)) else ()
 

@@ -10,12 +10,12 @@ Layers:
   1b. grab_selection_text / grab_clipboard_text -- mocked clipboard/
      pyautogui (samsara.clipboard and pyautogui are monkeypatched; no real
      clipboard touched).
-  2. Dispatch + hot-reload integration -- a REAL VoiceTrainingQt instance
+  2. Dispatch + hot-reload integration -- a REAL DictionaryStore instance
      (not a stub) pointed at an isolated tmp_path config dir, so
      add_vocab_word()/add_correction() and the hot-reload assertions
      (get_initial_prompt()/apply_corrections() reflecting the add with no
      restart) exercise the actual production code path, not a mock of it.
-     No Qt event loop / QApplication needed -- VoiceTrainingQt's __init__
+     No Qt event loop / QApplication needed -- DictionaryStore's __init__
      only calls load_training_data(), no widget construction (same
      pattern already used by tools/transcribe_ab.py).
 """
@@ -29,7 +29,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from samsara import teach_patterns as tp
-from samsara.ui.voice_training_qt import VoiceTrainingQt
+from samsara.dictionary_store import DictionaryStore
 import plugins.commands.ask_ollama as ao
 
 
@@ -535,12 +535,12 @@ class TestAvaAliasPatternsUnshadowed:
 
 
 # ============================================================================
-# Layer 2: dispatch + hot-reload integration (real VoiceTrainingQt)
+# Layer 2: dispatch + hot-reload integration (real DictionaryStore)
 # ============================================================================
 
 class _FakeApp:
     """Minimal app stub: real config_path (isolated tmp dir) so
-    VoiceTrainingQt's load/save hit real files, everything else mocked."""
+    DictionaryStore's load/save hit real files, everything else mocked."""
 
     def __init__(self, tmp_path):
         self.config_path = str(tmp_path / "config.json")
@@ -551,7 +551,7 @@ class _FakeApp:
 @pytest.fixture
 def app_with_vt(tmp_path):
     app = _FakeApp(tmp_path)
-    app.voice_training_window = VoiceTrainingQt(app)
+    app.voice_training_window = DictionaryStore(app)
     app.play_sound = MagicMock()
     return app
 

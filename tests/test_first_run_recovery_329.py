@@ -11,7 +11,7 @@ from samsara.ui.command_cheatsheet_qt import _CheatSheetWindow
 from samsara.ui import dictionary_panel_qt, first_run_qt
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.first_run_qt import ComponentsPage
-from samsara.ui.voice_training_qt import VoiceTrainingQt
+from samsara.dictionary_store import DictionaryStore
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ def test_dictionary_save_failure_is_visible_and_callback_guards_children(
         '{"vocabulary": [], "corrections": {}}', encoding="utf-8")
     app = SimpleNamespace(config_path=tmp_path / "config.json",
                           config={"initial_prompt": ""})
-    app.voice_training_window = VoiceTrainingQt(app)
+    app.voice_training_window = DictionaryStore(app)
     panel = DictionaryPanelQt(app)
     panel._vt.add_correction = lambda *_args: (_ for _ in ()).throw(OSError("denied"))
     monkeypatch.setattr(dictionary_panel_qt.thread_registry, "spawn",
@@ -117,7 +117,7 @@ def test_dictionary_save_error_ignores_deleted_child(qapp, tmp_path, monkeypatch
         '{"vocabulary": [], "corrections": {}}', encoding="utf-8")
     app = SimpleNamespace(config_path=tmp_path / "config.json",
                           config={"initial_prompt": ""})
-    app.voice_training_window = VoiceTrainingQt(app)
+    app.voice_training_window = DictionaryStore(app)
     panel = DictionaryPanelQt(app)
     panel._vt.add_correction = lambda *_args: (_ for _ in ()).throw(OSError("denied"))
     monkeypatch.setattr(dictionary_panel_qt.thread_registry, "spawn",

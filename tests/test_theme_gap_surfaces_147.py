@@ -11,7 +11,7 @@ def test_queue_129_gap_surfaces_are_shared_by_the_switch_test_and_proof_tool():
     """The switch test and proof tool both consume this exact shared table."""
     from tests import test_theme_switch
 
-    expected = {"profile_manager", "voice_training", "ava_guide"}
+    expected = {"profile_manager", "ava_guide"}
     assert expected <= SURFACES.keys()
     assert expected <= set(test_theme_switch.SURFACES)
 

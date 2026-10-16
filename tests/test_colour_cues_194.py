@@ -5,28 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from samsara.ui import theme, tray_qt, voice_training_qt, wake_word_debug_qt
+from samsara.ui import theme, tray_qt, wake_word_debug_qt
 
 
-
-
-def _voice_training_window():
-    app = SimpleNamespace(
-        config={
-            "model_size": "base",
-            "language": "en",
-            "initial_prompt": "",
-        }
-    )
-    training = SimpleNamespace(
-        app=app,
-        _monitoring=False,
-        custom_vocab=[],
-        corrections_dict={},
-        _rebuild_corrections_pattern=lambda: None,
-        save_training_data=lambda: True,
-    )
-    return voice_training_qt._TrainingWindow(training)
 
 
 def _wake_debug_window():
@@ -68,23 +49,6 @@ def _restore_theme():
     theme.set_theme(original, refresh=False)
 
 
-def test_voice_training_volume_zone_has_text_and_shape_cues(qapp):
-    window = _voice_training_window()
-    try:
-        labels = []
-        heights = []
-        for level in (10, 50, 90):
-            window._on_level(level)
-            qapp.processEvents()
-            labels.append(window._level_state_label.text())
-            heights.append(window._level_bar.height())
-
-        assert labels == ["Quiet", "Good", "Loud"]
-        assert len(set(heights)) == 3
-    finally:
-        window.close()
-
-
 def test_wake_debug_countdown_has_a_low_time_word(qapp):
     window = _wake_debug_window()
     try:
@@ -117,16 +81,12 @@ def test_light_and_dark_surface_grabs_are_saved(qapp, tmp_path):
     for palette in ("light", "dark"):
         theme.set_theme(palette, refresh=False)
 
-        voice = _voice_training_window()
         wake = _wake_debug_window()
         try:
-            voice._on_level(90)
             wake._set_timer("0.4s", theme.ERROR)
             qapp.processEvents()
-            _save_grab(voice, tmp_path / f"voice_training_{palette}.png")
             _save_grab(wake, tmp_path / f"wake_word_debug_{palette}.png")
             tray = tray_qt.render_mark("ava", "off", 64)
             assert tray.save(str(tmp_path / f"tray_ava_{palette}.png"))
         finally:
-            voice.close()
             wake.close()

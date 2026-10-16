@@ -84,8 +84,8 @@ class TestTranscriptionPipeline:
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
 
-        from samsara.ui.voice_training_qt import VoiceTrainingQt
-        vt = VoiceTrainingQt(mock_app)
+        from samsara.dictionary_store import DictionaryStore
+        vt = DictionaryStore(mock_app)
 
         transcribed = "teh quick brown fox adn teh lazy dog"
         corrected = vt.apply_corrections(transcribed)

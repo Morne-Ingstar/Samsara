@@ -100,7 +100,7 @@ def word_error_rate(reference: str, hypothesis: str) -> dict:
 
     Both strings are split on whitespace as-is -- callers normalize
     (lowercase/strip punctuation) beforehand if that's the comparison they
-    want; see samsara.ui.voice_training_qt._normalize_phrase, the same
+    want; see samsara.dictionary_store._normalize_phrase, the same
     normalization the stress-test wizard uses.
 
     Returns {'wer', 'substitutions', 'deletions', 'insertions', 'ref_words'}.
@@ -151,16 +151,15 @@ def _load_app_config() -> dict:
         return {}
 
 
-def _voice_training(config: dict):
-    """A VoiceTrainingQt instance (custom_vocab / corrections_dict /
-    apply_corrections() / get_initial_prompt()) with no Qt window --
-    its constructor only loads training_data.json from disk, it never
-    builds a widget (that's deferred to .show(), never called here)."""
-    from samsara.ui.voice_training_qt import VoiceTrainingQt
+def _dictionary_store(config: dict):
+    """A DictionaryStore instance (custom_vocab / corrections_dict /
+    apply_corrections() / get_initial_prompt()) with no Qt dependency.
+    Its constructor loads the existing training_data.json beside config."""
+    from samsara.dictionary_store import DictionaryStore
     app_stub = types.SimpleNamespace(
         config_path=str(_config_path()), config=config, command_executor=None,
     )
-    return VoiceTrainingQt(app_stub)
+    return DictionaryStore(app_stub)
 
 
 def _build_base_params(config: dict) -> dict:
@@ -369,11 +368,11 @@ def main(argv=None) -> int:
         return 1
 
     from samsara import languages as _languages
-    from samsara.ui.voice_training_qt import _normalize_phrase
+    from samsara.dictionary_store import _normalize_phrase
     from faster_whisper import WhisperModel
 
     config = _load_app_config()
-    vt = _voice_training(config)
+    vt = _dictionary_store(config)
     hotwords_text = ", ".join(vt.custom_vocab) if vt.custom_vocab else ""
     device = config.get('device', 'cpu')
     compute_type = config.get('compute_type', 'float16' if device == 'cuda' else 'int8')

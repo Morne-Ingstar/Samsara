@@ -1,4 +1,6 @@
 import re
+
+from samsara.dictionary_store import get_dictionary_store
 import os
 import json
 import threading
@@ -2759,8 +2761,8 @@ def _check_teaching_intent(app, text):
         return True
 
     # Vocabulary/corrections voice-teaching (2026-07-11) -- siblings to the
-    # ava_corrections block below, but targeting samsara/ui/voice_training_qt.py's
-    # VoiceTrainingQt.custom_vocab / corrections_dict instead of
+    # ava_corrections block below, but targeting samsara/dictionary_store.py's
+    # DictionaryStore.custom_vocab / corrections_dict instead of
     # ava_corrections.json. See samsara/teach_patterns.py for every
     # supported phrasing and the full linguistic-split rationale.
     #
@@ -2775,7 +2777,7 @@ def _check_teaching_intent(app, text):
     # every ava_corrections/ava_profile pattern), so their position here
     # is just as safe -- this block is placed as a single unit rather than
     # interleaved with ava_corrections' checks below for readability.
-    vt = getattr(app, 'voice_training_window', None)
+    vt = get_dictionary_store(app)
 
     # VOCABULARY -- see samsara/teach_patterns.py's module docstring for
     # the three spelling-truth channels this routes through. Every path
@@ -2787,7 +2789,7 @@ def _check_teaching_intent(app, text):
     vocab_parsed = teach_patterns.parse_vocab_add(text)
     if vocab_parsed is not None:
         if vt is None:
-            speak(app, "Voice training is not available.")
+            speak(app, "Dictionary is not available.")
             return True
 
         if vocab_parsed['kind'] == 'source':
@@ -2828,7 +2830,7 @@ def _check_teaching_intent(app, text):
     correction_parsed = teach_patterns.parse_correction_add(text)
     if correction_parsed is not None:
         if vt is None:
-            speak(app, "Voice training is not available.")
+            speak(app, "Dictionary is not available.")
             return True
 
         recent_segments = teach_patterns.get_recent_dictated_segments(app)
@@ -2889,7 +2891,7 @@ def _check_teaching_intent(app, text):
             speak(app, "Nothing to undo.")
             return True
         if vt is None:
-            speak(app, "Voice training is not available.")
+            speak(app, "Dictionary is not available.")
             return True
         if action['kind'] == 'vocab':
             vt.remove_vocab_word(action['word'])
@@ -2904,7 +2906,7 @@ def _check_teaching_intent(app, text):
     if forget_target is not None:
         kind, phrase = forget_target
         if vt is None:
-            speak(app, "Voice training is not available.")
+            speak(app, "Dictionary is not available.")
             return True
         if kind == 'word':
             if vt.remove_vocab_word(phrase):
@@ -3276,18 +3278,18 @@ def handle_ava_confirm(app, remainder="", **kwargs):
     elif action["type"] == "vocab_confirm":
         with _pending_action_lock:
             _pending_action = None
-        vt = getattr(app, 'voice_training_window', None)
+        vt = get_dictionary_store(app)
         if vt is None:
-            speak(app, "Voice training is not available.")
+            speak(app, "Dictionary is not available.")
         else:
             _persist_vocab_word(app, vt, action["word"])
 
     elif action["type"] == "correction_confirm":
         with _pending_action_lock:
             _pending_action = None
-        vt = getattr(app, 'voice_training_window', None)
+        vt = get_dictionary_store(app)
         if vt is None:
-            speak(app, "Voice training is not available.")
+            speak(app, "Dictionary is not available.")
         else:
             _persist_correction(app, vt, action["wrong"], action["right"])
 

@@ -1,7 +1,7 @@
 """Regression coverage for the Dictionary panel's dictated-text store.
 
 The app is deliberately not imported: these tests exercise the shared
-VoiceTrainingQt instance used by both normal dictated-text pipelines.
+DictionaryStore instance used by both normal dictated-text pipelines.
 """
 
 import json
@@ -11,7 +11,7 @@ import pytest
 from PySide6.QtWidgets import QLabel, QLineEdit, QTableWidget
 
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
-from samsara.ui.voice_training_qt import VoiceTrainingQt
+from samsara.dictionary_store import DictionaryStore
 from samsara.smart_corrections import smart_correct
 
 
@@ -22,7 +22,7 @@ def _app(tmp_path):
         encoding="utf-8",
     )
     app = SimpleNamespace(config_path=config_path, config={"initial_prompt": ""})
-    app.voice_training_window = VoiceTrainingQt(app)
+    app.voice_training_window = DictionaryStore(app)
     return app
 
 
@@ -69,7 +69,7 @@ def test_panel_correction_rewrites_dictated_text_and_not_phonetic_wash(panel_app
 def test_deleted_bundled_correction_stays_deleted_after_restart(tmp_path, monkeypatch, qapp):
     monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path))
     app = SimpleNamespace(config_path=tmp_path / "config.json", config={"initial_prompt": ""})
-    first = VoiceTrainingQt(app)
+    first = DictionaryStore(app)
     app.voice_training_window = first
     assert "claud" in first.corrections_dict
 
@@ -91,7 +91,7 @@ def test_deleted_bundled_correction_stays_deleted_after_restart(tmp_path, monkey
     panel._kv_remove(table, "corrections", QLabel())
     qapp.processEvents()
 
-    second = VoiceTrainingQt(app)
+    second = DictionaryStore(app)
 
     assert "claud" not in second.corrections_dict
     assert second.custom_vocab == first.custom_vocab

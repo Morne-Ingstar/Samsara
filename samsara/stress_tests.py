@@ -15,7 +15,7 @@ access to (and must not assume) any particular config value.
 
 Reuses, never duplicates:
   - samsara.diagnostics (DiagRecord, classify()) for signal capture.
-  - samsara.ui.voice_training_qt._normalize_phrase for text comparison --
+  - samsara.dictionary_store._normalize_phrase for text comparison --
     the same lowercase/strip-punctuation/collapse-whitespace normalization
     the Calibration tab's test phrases already use.
 """
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from samsara.diagnostics import DiagRecord
-from samsara.ui.voice_training_qt import _normalize_phrase
+from samsara.dictionary_store import _normalize_phrase
 
 # (passed, reason) -- reason is always a short human-readable string, shown
 # to the user regardless of pass/fail so failures are diagnosable at a glance.
@@ -297,20 +297,20 @@ STEP_FAST_SPEECH = StressTestStep(
 _JARGON_MAX_TERMS = 5
 
 
-def build_jargon_step(voice_training_window) -> "StressTestStep | None":
+def build_jargon_step(dictionary_store) -> "StressTestStep | None":
     """Build the jargon step from the user's custom vocabulary + corrections
-    dict (VoiceTrainingQt data). Returns None when there's no vocabulary to
+    dict (DictionaryStore data). Returns None when there's no vocabulary to
     test -- the wizard omits the step entirely in that case.
 
-    `voice_training_window` is duck-typed: anything with `.custom_vocab`
+    `dictionary_store` is duck-typed: anything with `.custom_vocab`
     (list[str]) and `.corrections_dict` (dict[str, str]) attributes works,
-    so this is testable without a real VoiceTrainingQt/Qt dependency.
+    so this is testable without a real DictionaryStore/Qt dependency.
     """
-    if voice_training_window is None:
+    if dictionary_store is None:
         return None
 
-    vocab = list(getattr(voice_training_window, 'custom_vocab', None) or [])
-    corrections = getattr(voice_training_window, 'corrections_dict', None) or {}
+    vocab = list(getattr(dictionary_store, 'custom_vocab', None) or [])
+    corrections = getattr(dictionary_store, 'corrections_dict', None) or {}
 
     terms = []
     seen = set()
@@ -346,7 +346,7 @@ def build_jargon_step(voice_training_window) -> "StressTestStep | None":
 # Battery assembly
 # ---------------------------------------------------------------------------
 
-def build_battery(voice_training_window=None) -> list:
+def build_battery(dictionary_store=None) -> list:
     """Build the full ordered battery. The jargon step is inserted between
     'homophones' and 'numbers_punct' only when the user has trained
     vocabulary/corrections to test; omitted entirely otherwise."""
@@ -358,7 +358,7 @@ def build_battery(voice_training_window=None) -> list:
         STEP_LONG_MONOLOGUE,
         STEP_HOMOPHONES,
     ]
-    jargon_step = build_jargon_step(voice_training_window)
+    jargon_step = build_jargon_step(dictionary_store)
     if jargon_step is not None:
         steps.append(jargon_step)
     steps.extend([

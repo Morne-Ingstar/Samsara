@@ -4,7 +4,7 @@ import json
 import logging
 from types import SimpleNamespace
 
-from samsara.ui.voice_training_qt import VoiceTrainingQt
+from samsara.dictionary_store import DictionaryStore
 
 
 def test_legacy_corrections_migrate_once_and_authoritative_entries_win(tmp_path, caplog):
@@ -24,7 +24,7 @@ def test_legacy_corrections_migrate_once_and_authoritative_entries_win(tmp_path,
     app = SimpleNamespace(config_path=tmp_path / "config.json", config={"initial_prompt": ""})
 
     with caplog.at_level(logging.INFO):
-        first = VoiceTrainingQt(app)
+        first = DictionaryStore(app)
 
     assert first.corrections_dict == {
         "conflict": "authoritative",
@@ -41,7 +41,7 @@ def test_legacy_corrections_migrate_once_and_authoritative_entries_win(tmp_path,
     assert "Migrated 1 legacy user corrections" in caplog.text
 
     caplog.clear()
-    second = VoiceTrainingQt(app)
+    second = DictionaryStore(app)
 
     assert second.corrections_dict == first.corrections_dict
     assert len(list(tmp_path.glob("user_corrections.json.migrated-*"))) == 1

@@ -146,7 +146,7 @@ def _luminance(pixel: int) -> float:
 #: shared proof table.
 SURFACES = [
     "home", "settings_general", "quick_reference", "command_reference", "tutorial",
-    "profile_manager", "voice_training", "ava_guide",
+    "profile_manager", "ava_guide",
 ]
 
 

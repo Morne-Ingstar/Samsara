@@ -72,7 +72,7 @@ def _make_app(performance_mode='balanced', initial_prompt='', command_mode_recor
     (not just invoked as DictationApp.get_transcription_params(app) directly).
 
     The fake get_initial_prompt mirrors the REAL method's include_vocabulary
-    contract (samsara/ui/voice_training_qt.py, widened 2026-07-18 from the
+    contract (samsara/dictionary_store.py, widened 2026-07-18 from the
     narrower include_commands): include_vocabulary=False (the default here,
     matching command_mode_recording=False) returns `initial_prompt`
     unchanged (Priority 1 only); include_vocabulary=True appends BOTH a
@@ -179,7 +179,7 @@ def test_hotkey_params_force_clean_slate_all_modes(mode):
 # destabilizer, not command phrases specifically. Free-form paths now drop
 # BOTH Priority 2 and 3, keeping only Priority 1 (explicit custom prompt,
 # a user-set override rather than auto-derived vocabulary) -- see
-# samsara/ui/voice_training_qt.py's get_initial_prompt(include_vocabulary=...).
+# samsara/dictionary_store.py's get_initial_prompt(include_vocabulary=...).
 # ============================================================================
 
 @pytest.mark.parametrize('mode', ['fast', 'balanced', 'accurate'])

@@ -30,7 +30,7 @@ when enabled; the existing server disclosure remains alongside the opt-in.
 Cloud routing and Ava permissions retain their existing consent flow.
 **Shortcuts → Corrections → Open** opens correction capture with a report action inside.
 The direct report shortcut remains reachable under Shortcuts → Advanced.
-Setup/practice includes tutorials, microphone/Ava guides, voice training and profiles.
+Setup/practice includes tutorials, microphone/Ava guides, dictionary profiles.
 Private configuration backups remain separate from shareable support diagnostics.
 
 No configuration migration, default changes, new dependencies or engine changes are

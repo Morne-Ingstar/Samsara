@@ -109,12 +109,6 @@ def _profile_manager():
     return _ProfileManagerWindow(StubProfileManager())
 
 
-def _voice_training():
-    from samsara.ui.voice_training_qt import VoiceTrainingQt, _TrainingWindow
-    app = StubApp()
-    return _TrainingWindow(VoiceTrainingQt(app))
-
-
 def _ava_guide():
     from samsara.ui.ava_guide_qt import _WizardWindow
     return _WizardWindow(StubApp())
@@ -161,7 +155,6 @@ SURFACES = {
     "status_overlay": _status_overlay,
     "streaming_preview": _streaming_preview,
     "profile_manager": _profile_manager,
-    "voice_training": _voice_training,
     "ava_guide": _ava_guide,
     "ava_captions": _ava_captions,
 }

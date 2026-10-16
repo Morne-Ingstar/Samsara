@@ -1,10 +1,7 @@
 """Guide windows must not fight the AudioCaptureEngine for the microphone.
 
-2026-09-13 live log: voice training opened its own 16 kHz PortAudio stream
-on a Focusrite that ACE already held -> PortAudioError -9997, a silent 0%
-meter. These tests pin the ring-read path (samsara.audio_engine.guide_capture),
-voice training's use of it, visible errors, real buttons, and faulthandler
-being armed at boot (checked from dictation.py's source, never imported).
+These tests pin the shared ring-read path (samsara.audio_engine.guide_capture)
+and faulthandler being armed at boot (dictation.py source, never imported).
 """
 import ast
 import os
@@ -111,130 +108,6 @@ class TestGuideCapture:
                             Mock(side_effect=RuntimeError("gone")))
         from samsara.constants import DEFAULT_CAPTURE_RATE
         assert audio_devices.detect_capture_rate(5) == DEFAULT_CAPTURE_RATE
-
-
-# ---------------------------------------------------------------------------
-# Voice training
-# ---------------------------------------------------------------------------
-
-def _vt_stub(engine=None, monitoring=True):
-    from samsara.ui import voice_training_qt as vt
-
-    stub = types.SimpleNamespace()
-    stub._tr = types.SimpleNamespace(
-        app=types.SimpleNamespace(config={"microphone": 7}, _ace_engine=engine),
-        _monitoring=monitoring,
-    )
-    stub._level_sig = Mock()
-    stub._monitor_error_sig = Mock()
-    for name in ("_monitor_worker", "_record_test_audio"):
-        setattr(stub, name, getattr(vt._TrainingWindow, name).__get__(stub))
-    return vt, stub
-
-
-class TestVoiceTrainingAudio:
-    def test_monitor_reads_the_ace_ring_and_never_opens_a_stream(self, monkeypatch):
-        engine = _FakeEngine()
-        vt, stub = _vt_stub(engine)
-        monkeypatch.setattr(vt.sd, "InputStream", Mock(side_effect=AssertionError("second stream")))
-        # A reader starts at the write head, so audio must arrive after the
-        # monitor registers -- as it does live.
-        register = engine.register_consumer
-
-        def register_then_capture(name):
-            reader = register(name)
-            engine.write_frames(3, value=3276)
-            return reader
-        engine.register_consumer = register_then_capture
-
-        def emit(level):
-            stub._tr._monitoring = False                      # one tick is enough
-        stub._level_sig.emit.side_effect = emit
-        monkeypatch.setattr(vt.time, "sleep", lambda _s: None)
-
-        stub._monitor_worker()
-
-        assert stub._level_sig.emit.call_count == 1
-        assert stub._level_sig.emit.call_args.args[0] > 0
-        stub._monitor_error_sig.emit.assert_not_called()
-        assert engine.registered == ["voice-training-monitor"]
-        assert len(engine.unregistered) == 1
-
-    def test_without_ace_the_fallback_stream_uses_the_device_rate(self, monkeypatch):
-        vt, stub = _vt_stub(engine=None)
-        opened = []
-
-        def fake_stream(**kwargs):
-            opened.append(kwargs)
-            raise vt.sd.PortAudioError("Invalid sample rate [-9997]")
-
-        monkeypatch.setattr(vt, "detect_capture_rate", lambda device: 48000)
-        monkeypatch.setattr(vt.sd, "InputStream", fake_stream)
-
-        stub._monitor_worker()
-
-        assert opened and opened[0]["samplerate"] == 48000 and opened[0]["device"] == 7
-        stub._monitor_error_sig.emit.assert_called_once()
-        assert "-9997" in stub._monitor_error_sig.emit.call_args.args[0]
-
-    def test_stream_error_is_shown_in_the_window_not_a_silent_zero(self, qapp):
-        from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
-        from samsara.ui import voice_training_qt as vt
-
-        stub = types.SimpleNamespace(
-            _tr=types.SimpleNamespace(_monitoring=True),
-            _monitor_btn=QPushButton("Stop Monitoring"),
-            _level_bar=QProgressBar(),
-            _level_label=QLabel("Volume: 0%"),
-        )
-        vt._TrainingWindow._on_monitor_error(stub, "Invalid sample rate [-9997]")
-        assert "Invalid sample rate" in stub._level_label.text()
-        assert vt._ERROR in stub._level_label.styleSheet()
-        assert stub._tr._monitoring is False
-        assert stub._monitor_btn.text() == "Start Monitoring"
-
-    def test_test_phrase_records_five_seconds_from_the_ring(self, monkeypatch):
-        engine = _FakeEngine()
-        vt, stub = _vt_stub(engine)
-        monkeypatch.setattr(vt.sd, "rec", Mock(side_effect=AssertionError("sd.rec with ACE running")))
-        calls = []
-
-        def fake_record(eng, seconds, name, **kw):
-            calls.append((eng, seconds, name))
-            return np.zeros(int(seconds * SAMPLE_RATE), dtype=np.float32)
-
-        monkeypatch.setattr(vt.guide_capture, "record_from_ring", fake_record)
-        audio = stub._record_test_audio(5.0)
-        assert calls == [(engine, 5.0, "voice-training-test")]
-        assert audio.size == 5 * SAMPLE_RATE
-
-    def test_test_phrase_fallback_records_at_device_rate_and_resamples(self, monkeypatch):
-        vt, stub = _vt_stub(engine=None)
-        monkeypatch.setattr(vt, "detect_capture_rate", lambda device: 48000)
-        rec = Mock(return_value=np.zeros((5 * 48000, 1), dtype=np.float32))
-        monkeypatch.setattr(vt.sd, "rec", rec)
-        monkeypatch.setattr(vt.sd, "wait", lambda: None)
-        audio = stub._record_test_audio(5.0)
-        assert rec.call_args.kwargs["samplerate"] == 48000
-        assert audio.size == 5 * SAMPLE_RATE
-
-    def test_monitor_and_test_buttons_are_real_secondary_buttons(self, qapp):
-        from PySide6.QtWidgets import QPushButton, QTabWidget
-        from samsara.ui import voice_training_qt as vt
-
-        stub = types.SimpleNamespace(
-            _tabs=QTabWidget(),
-            _section=vt._TrainingWindow._section,
-            _toggle_monitoring=lambda: None,
-            _test_phrase=lambda phrase, idx: None,
-        )
-        vt._TrainingWindow._build_calibration_tab(stub)
-        assert stub._monitor_btn.property("class") == "secondary"
-        tests = [b for b in stub._tabs.widget(0).findChildren(QPushButton) if b.text() == "Test"]
-        assert len(tests) == 5
-        assert all(b.property("class") == "secondary" for b in tests)
-        from samsara.ui import theme
-        assert all(b.styleSheet() == theme._SECONDARY_BUTTON_QSS for b in tests + [stub._monitor_btn])
 
 
 # ---------------------------------------------------------------------------

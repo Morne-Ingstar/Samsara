@@ -35,6 +35,7 @@ Fixes for everything the beta.4 check found, clearer Ava and OpenRouter messages
 
 ### Daily-use polish
 
+- Removed the old Voice training window. <!-- Stand-in wording. -->
 - Drag the Compact display to move it.
 - Quitting or updating asks about unsent words without stacking questions. Kept and live drafts are sent together.
 

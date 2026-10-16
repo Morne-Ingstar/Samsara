@@ -375,11 +375,7 @@ for _name in ("torio", "torio._extension", "torchaudio",
               "httpcore", "httpx",
               "comtypes", "comtypes.client"):
     logging.getLogger(_name).setLevel(logging.WARNING)
-try:
-    from samsara.ui.voice_training_qt import VoiceTrainingQt as _VoiceTrainingQt
-except Exception as _vt_err:
-    _VoiceTrainingQt = None
-    print(f"[INIT] VoiceTrainingQt unavailable: {_vt_err}")
+from samsara.dictionary_store import DictionaryStore, get_dictionary_store
 try:
     from samsara.ui.mic_setup_wizard_qt import MicSetupWizardQt as _MicSetupWizardQt
 except Exception as _msw_err:
@@ -1864,16 +1860,9 @@ class DictationApp:
 
         logger.info("[INIT] Building UI...")
 
-        # Voice Training window — create on Qt thread
-        self.voice_training_window = None
-        if _VoiceTrainingQt is not None:
-            def _init_vt():
-                try:
-                    self.voice_training_window = _VoiceTrainingQt(self)
-                except Exception as _e:
-                    logger.debug(f"[INIT] VoiceTrainingQt unavailable: {_e}")
-            self._schedule_ui(_init_vt)
-            logger.info("[INIT] Using VoiceTrainingQt")
+        # Shared dictionary service is ready before any decode or editor can use it.
+        self.dictionary_store = DictionaryStore(self)
+        self.voice_training_window = self.dictionary_store  # Legacy plugin/test alias.
 
         # Mic setup wizard — create on Qt thread
         self.mic_setup_wizard = None
@@ -2698,7 +2687,7 @@ class DictationApp:
 
         Every OTHER per-user store in this app already has this exact
         safety net (samsara/paths.py's quarantine_corrupt_file(), used by
-        phonetic_wash/wake_corrections/ava_corrections/voice_training since
+        phonetic_wash/wake_corrections/ava_corrections/dictionary_store since
         a 2026-07-09 correction-store loss: a parse failure fell back to
         empty in-memory state, and the next save wrote that empty state
         straight over the original file). config.json itself never had
@@ -3703,7 +3692,7 @@ class DictationApp:
         include_vocabulary=False builds initial_prompt from ONLY the
         explicit user-set config['initial_prompt'] override (Priority 1),
         omitting genuine trained vocabulary and auto-derived command
-        phrases (Priorities 2/3) -- see voice_training_qt.get_initial_prompt
+        phrases (Priorities 2/3) -- see dictionary_store.get_initial_prompt
         for the full history. Free-form dictation paths (hold-to-dictate,
         toggle-session DICTATE/AVA, transcribe_continuous_buffer,
         process_wake_word_buffer) pass False; command-matched paths keep
@@ -3724,7 +3713,7 @@ class DictationApp:
             # "auto" resolves to None (faster-whisper auto-detect); every
             # other value passes through as-is. See samsara/languages.py.
             'language': _languages.resolve_transcribe_language(self),
-            'initial_prompt': self.voice_training_window.get_initial_prompt(
+            'initial_prompt': get_dictionary_store(self).get_initial_prompt(
                 include_vocabulary=include_vocabulary,
             ),
             # Native faster-whisper silence suppression (primary hallucination
@@ -5214,7 +5203,7 @@ class DictationApp:
             segments, info = self.model.transcribe(concatenated_audio, **params)
         segments = list(segments)
         text = ''.join(getattr(seg, 'text', '') for seg in segments).strip()
-        text = self.voice_training_window.apply_corrections(text)
+        text = get_dictionary_store(self).apply_corrections(text)
         if not text:
             return None
         kept_segments = _drop_trailing_garbage_segments(segments)
@@ -5958,7 +5947,7 @@ class DictationApp:
             with self.model_lock:
                 segments, _ = self.model.transcribe(audio, **transcribe_params)
                 text = ''.join(s.text for s in segments).strip()
-            text = self.voice_training_window.apply_corrections(text)
+            text = get_dictionary_store(self).apply_corrections(text)
             if not text:
                 return
             logger.info(f'[AVA-CMD-UTT] "{describe_text(text)}"')
@@ -6462,7 +6451,7 @@ class DictationApp:
                 ), app=self)
             except Exception as _diag_exc:
                 logger.debug(f"[DIAG] hands-free record failed: {describe_text(_diag_exc)}")
-            text = self.voice_training_window.apply_corrections(text)
+            text = get_dictionary_store(self).apply_corrections(text)
 
             _dropped, _reason = is_signoff_hallucination(
                 text,
@@ -7246,7 +7235,7 @@ class DictationApp:
             # include_vocabulary=False: free-form dictation, decode-matrix-
             # established (SPARK 2026-07-17/18, N=10/cell) to be destabilized
             # by vocabulary content in initial_prompt -- see
-            # voice_training_qt.get_initial_prompt.
+            # dictionary_store.get_initial_prompt.
             transcribe_params = self.get_transcription_params(include_vocabulary=False)
             # DISABLE faster-whisper's VAD for hold-to-dictate. The user
             # explicitly pressed the hotkey — all captured audio is intentional
@@ -7278,7 +7267,7 @@ class DictationApp:
                   f"RTF: {rtf:.2f}x | Mode: {perf_mode} | Device: {device_info}")
             
             # Apply corrections dictionary
-            text = self.voice_training_window.apply_corrections(text)
+            text = get_dictionary_store(self).apply_corrections(text)
             
             if text:
                 # Check for command mode toggle OR regular commands
@@ -9071,7 +9060,7 @@ class DictationApp:
             # include_vocabulary=False: free-form dictation, decode-matrix-
             # established (SPARK 2026-07-17/18, N=10/cell) to be destabilized
             # by vocabulary content in initial_prompt -- see
-            # voice_training_qt.get_initial_prompt.
+            # dictionary_store.get_initial_prompt.
             transcribe_params = self.get_transcription_params(include_vocabulary=False)
             # When Silero is unavailable we relied on RMS to gate speech into
             # the buffer. Whisper's own vad_filter then strips quiet audio a
@@ -9160,7 +9149,7 @@ class DictationApp:
             
             # Apply corrections dictionary
             text = self._filter_dictation_language(text, info)
-            text = self.voice_training_window.apply_corrections(text)
+            text = get_dictionary_store(self).apply_corrections(text)
             text_lower = text.lower()
             
             if not text:
@@ -10211,7 +10200,7 @@ class DictationApp:
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
-                vt = getattr(self, 'voice_training_window', None)
+                vt = get_dictionary_store(self)
                 if vt is not None:
                     vt.corrections_dict[original] = corrected
                     vt.save_training_data()
@@ -11543,7 +11532,7 @@ class DictationApp:
                 
                 # Apply corrections dictionary
                 _bench_raw_transcript = text
-                text = self.voice_training_window.apply_corrections(text)
+                text = get_dictionary_store(self).apply_corrections(text)
 
                 is_command_mode = ownership.is_command
                 is_ava_mode = ownership.is_ava

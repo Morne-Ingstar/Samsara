@@ -1,5 +1,5 @@
 """
-Tests for VoiceTrainingWindow class.
+Tests for the shared dictionary store.
 Tests corrections, vocabulary, and initial prompt building.
 """
 import pytest
@@ -12,11 +12,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ============================================================================
-# Helper to create VoiceTrainingWindow for testing
+# Helper to create a dictionary store for testing
 # ============================================================================
 
 def create_test_voice_training(tmp_path, custom_vocab=None, corrections=None):
-    """Create a VoiceTrainingQt instance with test data pre-loaded."""
+    """Create a DictionaryStore instance with test data pre-loaded."""
     training_data = {
         'vocabulary': custom_vocab or [],
         'corrections': corrections or {}
@@ -29,8 +29,8 @@ def create_test_voice_training(tmp_path, custom_vocab=None, corrections=None):
     mock_app.config_path = tmp_path / 'config.json'
     mock_app.config = {'initial_prompt': ''}
 
-    from samsara.ui.voice_training_qt import VoiceTrainingQt
-    return VoiceTrainingQt(mock_app)
+    from samsara.dictionary_store import DictionaryStore
+    return DictionaryStore(mock_app)
 
 
 # ============================================================================
@@ -242,7 +242,7 @@ class TestInitialPrompt:
         Supersedes the narrower 2026-07-16 contract (commit 02e00b9), which
         gated only Priority 3 under the name include_commands -- that
         parameter is renamed to include_vocabulary and now gates Priority 2
-        as well; see samsara/ui/voice_training_qt.get_initial_prompt."""
+        as well; see samsara/dictionary_store.get_initial_prompt."""
         vt = create_test_voice_training(tmp_path, custom_vocab=['AlphaTerm', 'BetaTerm'])
         vt.app.command_executor = None
         vt.app.config['initial_prompt'] = 'Custom context for this dictation session.'
@@ -362,8 +362,8 @@ class TestTrainingDataPersistence:
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
 
-        from samsara.ui.voice_training_qt import VoiceTrainingQt
-        vt = VoiceTrainingQt(mock_app)
+        from samsara.dictionary_store import DictionaryStore
+        vt = DictionaryStore(mock_app)
 
         assert vt.custom_vocab == []
         assert vt.corrections_dict
@@ -393,8 +393,8 @@ class TestTrainingDataPersistence:
         mock_app.config_path = tmp_path / 'config.json'
         mock_app.config = {'initial_prompt': ''}
 
-        from samsara.ui.voice_training_qt import VoiceTrainingQt
-        vt = VoiceTrainingQt(mock_app)
+        from samsara.dictionary_store import DictionaryStore
+        vt = DictionaryStore(mock_app)
 
         # Should fall back to empty defaults
         assert vt.custom_vocab == []

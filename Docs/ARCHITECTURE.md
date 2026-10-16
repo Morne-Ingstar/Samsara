@@ -67,7 +67,7 @@ delivery rules:
 |------|---------|
 | `dictation.py` | DictationApp orchestration and entry-point coordination |
 | `commands.json` | Built-in JSON voice command definitions |
-| `voice_training.py` | Mic calibration, vocabulary, corrections |
+| `samsara/dictionary_store.py` | Vocabulary, corrections, decoder prompts |
 
 ### Command System
 | File | Purpose |

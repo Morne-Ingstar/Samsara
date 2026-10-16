@@ -7,6 +7,8 @@ Shared names are imported back from samsara.ui.settings_qt; see
 samsara/ui/settings/__init__.py for why that import is cycle-safe.
 """
 
+from samsara.dictionary_store import get_dictionary_store
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -330,7 +332,7 @@ class HealthPage:
                 self._med_dict_label.setText("Dictionary is empty.")
                 return
 
-            vt = getattr(self.app, 'voice_training_window', None)
+            vt = get_dictionary_store(self.app)
             if vt is None:
                 self._med_dict_label.setText("Dictionary not available.")
                 return
