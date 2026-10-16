@@ -29,6 +29,7 @@ that: returning False is NOT the same as the phrase never matching.
 """
 
 import threading
+import time
 
 from samsara.plugin_commands import command
 
@@ -52,6 +53,8 @@ _slots: list = []        # ordered [{number, hwnd, app, title, closed}]
 _pinned = False
 _page = 1
 _app_ref = None
+_selection_active = False
+_selection_deadline = 0.0
 
 _NUMBER_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -309,7 +312,7 @@ def _numbers_active(app) -> bool:
 # Commands
 # ---------------------------------------------------------------------------
 
-@command("show cube", aliases=["pin windows", "pin cube"],
+@command("show cube", aliases=["pin windows", "pin cube", "switch"],
          pack="window-management",
          risk_class="ui",
 )
@@ -331,9 +334,10 @@ def handle_show_cube(app, remainder):
 )
 def handle_hide_cube(app, remainder):
     """Takes the numbered window grid off the screen."""
-    global _pinned
+    global _pinned, _selection_active
     _remember_position(app)
     _pinned = False
+    _selection_active = False
     try:
         from samsara.ui.window_cube_qt import get_panel
         get_panel().hide()
@@ -398,6 +402,47 @@ def _number_from(phrase: str, remainder: str):
         if token in _NUMBER_WORDS:
             return _NUMBER_WORDS[token]
     return None
+
+
+def read_numbered_windows(app):
+    """Read a fresh snapshot using the cube's existing frozen numbering."""
+    global _selection_active, _selection_deadline, _app_ref
+    _app_ref = app
+    slots = _rebuild(app)
+    _selection_active = bool(slots)
+    _selection_deadline = time.monotonic() + 30.0
+    if _pinned:
+        _render(app, slots)
+    _speak(app, ". ".join(
+        f"{s['number']}: {s['app']}, {s['title'][:60]}" for s in slots
+    ) + "." if slots else "No windows found.")
+    return True
+
+
+@command("choose", pack="window-management", risk_class="ui",
+         scope={"tags": ["window_cube.selection"]},
+         param_schema={"number": {"type": "int", "required": False}})
+def handle_choose(app, remainder):
+    """Switches to a number from the last window list or pinned grid."""
+    if app is not _app_ref or not _selection_available():
+        return False
+    text = (remainder or "").strip().lower()
+    number = int(text) if text.isascii() and text.isdigit() else _NUMBER_WORDS.get(text)
+    if number is None or number < 1:
+        _speak(app, "Choose a window number from the list.")
+        return True
+    slot = _slot_for_number(number)
+    # Revalidate the saved HWND/title against the SAME enumerator. Never
+    # silently bind a vanished number to the next window in a fresh list.
+    live = {h: t for h, _a, t in _build_rows(app)}
+    if slot is None or slot['closed'] or live.get(slot['hwnd']) != slot['title']:
+        _speak(app, "That window changed. List all windows again.")
+        return True
+    return _switch_to_number(app, number)
+
+
+def _selection_available():
+    return bool(_pinned or (_selection_active and time.monotonic() < _selection_deadline))
 
 
 def _make_bare_number_handler(word: str, value: int):
@@ -521,12 +566,13 @@ def _state_for_tests():
 
 
 def _reset_for_tests():
-    global _slots, _pinned, _page, _app_ref
+    global _slots, _pinned, _page, _app_ref, _selection_active
     with _lock:
         _slots = []
     _pinned = False
     _page = 1
     _app_ref = None
+    _selection_active = False
 
 
 # Queue 68: the bare numbers above are scoped to this tag, so they are not even
@@ -535,3 +581,4 @@ def _reset_for_tests():
 # Registered at the end of the file so no decorator line number moves.
 from samsara import command_scope as _command_scope  # noqa: E402
 _command_scope.register_tag_source("window_cube.visible", lambda: bool(_pinned))
+_command_scope.register_tag_source("window_cube.selection", _selection_available)

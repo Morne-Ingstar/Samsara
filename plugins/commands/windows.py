@@ -1279,6 +1279,8 @@ def _snap_rect(monitor, direction):
     hh = h // 2
 
     table = {
+        'left third':   (l,      t,      w // 3, h),
+        'full':         (l,      t,      w,      h),
         'left':         (l,      t,      hw,     h),
         'right':        (l + hw, t,      w - hw, h),
         'top':          (l,      t,      w,      hh),
@@ -1291,9 +1293,9 @@ def _snap_rect(monitor, direction):
     return table.get(direction)
 
 
-def snap_window(hwnd, direction, *, preflight=None) -> bool:
+def snap_window(hwnd, direction, *, preflight=None, target_monitor=None) -> bool:
     """Snap an exact HWND; a bound caller rechecks identity at each substep."""
-    if direction not in _SNAP_DIRECTIONS:
+    if direction not in _SNAP_DIRECTIONS and direction not in {'left third', 'full'}:
         return False
     ready = lambda: preflight is None or preflight()
     if not hwnd or not ready():
@@ -1320,6 +1322,10 @@ def snap_window(hwnd, direction, *, preflight=None) -> bool:
                             and m['rect'][1] <= cy < m['rect'][3]), None)
         if not monitor:
             return False
+        if target_monitor is not None:
+            monitor = next((m for m in monitors if m == target_monitor), None)
+            if monitor is None:
+                return False
         x, y, w, h = _snap_rect(monitor, direction)
         if not ready():
             return False
@@ -1334,17 +1340,11 @@ def snap_window(hwnd, direction, *, preflight=None) -> bool:
 
 
 @command("snap", aliases=["dock"], pack="window-management",
-         risk_class="ui", param_schema={"side": {"type": "side", "required": False}})
+         risk_class="ui", param_schema={"side": {"type": "str", "required": False}, "app_name": {"type": "app_name", "required": False}})
 def handle_snap(app, remainder):
     """Snaps the focused window to the side you name, such as left or right.
 
     Legacy foreground snap delegates to the exact-HWND helper.
     """
-    direction = remainder.strip().lower()
-    if direction not in _SNAP_DIRECTIONS:
-        print(f"[SNAP] Unknown direction '{direction}'.")
-        return True
-    hwnd = win32gui.GetForegroundWindow()
-    if not hwnd or not snap_window(hwnd, direction):
-        print("[SNAP] Window could not be snapped")
-    return True
+    from plugins.commands.app_verbs import snap_named_window
+    return snap_named_window(app, remainder, windows_module=sys.modules[__name__])

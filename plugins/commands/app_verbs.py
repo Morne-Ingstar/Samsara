@@ -32,12 +32,14 @@ before app_index resolution -- see do_open().
 
 import os
 import subprocess
+import time
 import winreg
 from enum import Enum
 
 import psutil
 import win32con
 import win32gui
+import win32process
 
 from samsara.app_index import get_app_index, launch_app, log_top3, normalize_name, rank_candidates
 from samsara.plugin_commands import command
@@ -319,6 +321,7 @@ def handle_focus(app, remainder):
 
 @command(
     "open",
+    aliases=["start"],
     pack="window-management",
     risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}},
 )
@@ -358,3 +361,129 @@ def handle_close(app, remainder):
     speakable = _name_for_speech(name)
     _speak(app, _MISS_PHRASE if speakable is None else f"No app called {speakable}.")
     return True
+
+
+def snap_named_window(app, remainder, *, windows_module):
+    """Extend the existing snap handler; bind names before any window effect."""
+    w = windows_module
+    text = " ".join((remainder or "").lower().replace("-", " ").split())
+    directions = w._SNAP_DIRECTIONS | {'left third', 'full', 'next screen'}
+    direction, name = text, ""
+    if text not in directions:
+        for side in sorted(directions, key=len, reverse=True):
+            if text.endswith(" " + side):
+                name, direction = text[:-len(side)].strip(), side
+                break
+    if direction not in directions:
+        return _window_control_failure(app)
+    preflight = None
+    if name:
+        match = resolve_window(name)
+        if match is None:
+            return _window_control_failure(app)
+        hwnd, title, _proc = match
+        identity = win32process.GetWindowThreadProcessId(hwnd)
+
+        def preflight():
+            try:
+                return bool(win32gui.IsWindow(hwnd) and
+                            win32gui.GetWindowText(hwnd) == title and
+                            win32process.GetWindowThreadProcessId(hwnd) == identity)
+            except Exception:
+                return False
+    else:
+        hwnd = win32gui.GetForegroundWindow()
+    if not hwnd:
+        return _window_control_failure(app)
+    kwargs = {'preflight': preflight} if preflight is not None else {}
+    if direction == 'next screen':
+        monitors = sorted(w.get_monitors(), key=lambda m: m['index'])
+        current = w._get_monitor_for_window(hwnd, monitors)
+        if len(monitors) < 2 or current not in monitors:
+            return _window_control_failure(app)
+        target = monitors[(monitors.index(current) + 1) % len(monitors)]
+        rect = win32gui.GetWindowRect(hwnd)
+        for side in sorted(directions - {'next screen'}):
+            x, y, width, height = w._snap_rect(current, side)
+            if rect == (x, y, x + width, y + height):
+                ok = w.snap_window(hwnd, side, target_monitor=target, **kwargs)
+                break
+        else:
+            ok = w.move_window_to_monitor(hwnd, target, **kwargs)
+    else:
+        ok = w.snap_window(hwnd, direction, **kwargs)
+    return True if ok else _window_control_failure(app)
+
+
+def _window_control_failure(app):
+    from samsara.command_registry import DispatchResult, DispatchState
+    _speak(app, "The window could not be moved.")
+    return DispatchResult(DispatchState.FAILED, 'snap', 'snap',
+                          {'reason': 'window_target_unavailable'})
+
+
+def _desktop_state():
+    """Read Explorer's ordered IDs; never invent a current desktop number."""
+    import win32ts
+    root = r"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops"
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, root) as key:
+        ids = winreg.QueryValueEx(key, 'VirtualDesktopIDs')[0]
+        try:
+            current = winreg.QueryValueEx(key, 'CurrentVirtualDesktop')[0]
+        except OSError:
+            session = win32ts.ProcessIdToSessionId(os.getpid())
+            path = (r"Software\Microsoft\Windows\CurrentVersion\Explorer\SessionInfo"
+                    + f"\\{session}\\VirtualDesktops")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as session_key:
+                current = winreg.QueryValueEx(session_key, 'CurrentVirtualDesktop')[0]
+    if not isinstance(ids, bytes) or not ids or len(ids) % 16 or not isinstance(current, bytes):
+        raise ValueError('unavailable desktop state')
+    ordered = [ids[i:i + 16] for i in range(0, len(ids), 16)]
+    if len(set(ordered)) != len(ordered) or current not in ordered:
+        raise ValueError('inconsistent desktop state')
+    return ordered, ordered.index(current)
+
+
+def _switch_desktop(number):
+    """Use supported shortcuts, observing each transition before the next."""
+    import pyautogui
+    ordered, current = _desktop_state()
+    if number < 1 or number > len(ordered):
+        return False
+    target = number - 1
+    while current != target:
+        expected = current + (1 if target > current else -1)
+        # A changed desktop list or manual switch invalidates this plan.
+        if _desktop_state() != (ordered, current):
+            return False
+        pyautogui.hotkey('win', 'ctrl', 'right' if target > current else 'left')
+        deadline = time.monotonic() + 1.5
+        while True:
+            observed, index = _desktop_state()
+            if observed != ordered or index not in (current, expected):
+                return False
+            if index == expected:
+                current = index
+                break
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+    return True
+
+
+@command('desk', pack='window-management', risk_class='ui',
+         param_schema={'number': {'type': 'int', 'required': False}})
+def handle_desk(app, remainder):
+    """Switches to an existing virtual desktop by its Task View number."""
+    from plugins.commands.window_cube import _NUMBER_WORDS
+    from samsara.command_registry import DispatchResult, DispatchState
+    text = (remainder or '').strip().lower()
+    number = int(text) if text.isascii() and text.isdigit() else _NUMBER_WORDS.get(text)
+    try:
+        if number is not None and _switch_desktop(number):
+            return True
+    except (OSError, ValueError):
+        pass
+    _speak(app, 'That desktop is not available.')
+    return DispatchResult(DispatchState.FAILED, 'desk', 'desk',
+                          {'reason': 'desktop_unavailable'})

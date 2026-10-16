@@ -1014,12 +1014,18 @@ def handle_hide_windows(app, remainder):
 # ---------------------------------------------------------------------------
 
 @command("read windows",
-         aliases=["list windows", "what windows"],
+         aliases=["list windows", "what windows", "list all windows"],
          pack="window-management",
          risk_class="read",
 )
 def handle_read_windows(app, remainder):
-    """Reads out the open windows and their letters."""
+    """Reads numbered open windows; choose a number to switch to it."""
+    from plugins.commands.window_cube import read_numbered_windows
+    return read_numbered_windows(app)
+
+
+def _read_lettered_windows(app):
+    """Legacy letter readback retained for callers needing letter labels."""
     global _app_ref
     _app_ref = app
 
