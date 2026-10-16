@@ -23,7 +23,7 @@ Architecture:
     Physical mouse clicks pass through. Does not steal focus.
 
     Threading model:
-      - UIA enumeration runs on the command-dispatch thread (COM, not Qt) and
+      - UIA enumeration runs on the dedicated shared UIA thread and
         returns PHYSICAL rectangles only
       - Monitor mapping, active-screen choice, label placement, _elements
         numbering and the Qt window create/update all run on the Qt thread
@@ -63,6 +63,15 @@ from samsara.log import describe_text
 from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtWidgets import QApplication
 
+# UIA discovery is owned by the shared service. These aliases preserve the
+# existing filter/provider seams for consumers and synthetic-tree tests.
+from samsara.uia import get_service
+from samsara.uia.backend import (
+    _CLICKABLE_TYPES, _ENUM_CAP, _ENUM_MAX_DEPTH, _ENUM_NODE_BUDGET,
+    _ENUM_TIME_BUDGET_S, _CachedNode, _cached_root, _get_foreground_control,
+    _is_useful_clickable, _load_uia, _apply_cap, _rect_intersects,
+)
+
 from samsara import browser_bridge
 from samsara.command_registry import DispatchState
 from samsara.plugin_commands import command
@@ -76,8 +85,6 @@ from samsara.ui.numbers_overlay_qt import (
 
 logger = logging.getLogger(__name__)
 
-_uia_mod = None
-_UIA_AVAILABLE = None  # None = not yet attempted; True/False = result
 
 # ---------------------------------------------------------------------------
 # Module-level state  (one overlay at a time)
@@ -92,8 +99,7 @@ _fg_hwnd_at_show: int = 0                               # HWND of target window
 _overlay_hwnd:    int = 0                               # HWND of overlay itself
 _overlay_screen_name: str = ''                          # Qt thread only
 
-_enum_cache: "dict | None" = None   # {'hwnd': int, 't': float, 'elements': list}
-_CACHE_TTL      = 10.0   # seconds
+_enum_cache = None  # Legacy fixture seam; the shared service owns the cache.
 _AUTO_DISMISS_S = 30
 _FG_POLL_MS     = 2000
 _NUMBERS_TAG     = "show_numbers.visible"
@@ -236,98 +242,6 @@ def _report_nothing(app, fg: dict, where: str = "window") -> None:
         "the app exposes no controls to UI Automation" if opaque else "no clickable controls found",
     )
 
-# ---------------------------------------------------------------------------
-# Clickable types accepted by the filter
-# ---------------------------------------------------------------------------
-
-_CLICKABLE_TYPES = frozenset({
-    'ButtonControl',
-    'HyperlinkControl',
-    'MenuItemControl',
-    'TabItemControl',
-    'CheckBoxControl',
-    'RadioButtonControl',
-    'ListItemControl',
-    'ComboBoxControl',
-    'EditControl',
-    'SplitButtonControl',
-    'TreeItemControl',
-    # Queue 72: the one focusable, selectable role Chromium exposed live that
-    # the list lacked (grid rows / cells; Brave, 2026-09-15). Group, Text and
-    # Image stay out: Chromium gives them Invoke when any ANCESTOR has a click
-    # handler (Obsidian: 336 invokable, 1 without an invokable parent, none
-    # focusable), so they would number the same target many times over.
-    'DataItemControl',
-})
-
-# ---------------------------------------------------------------------------
-# UIA helpers
-# ---------------------------------------------------------------------------
-
-def _rect_intersects(uia_rect, screen_rect) -> bool:
-    """True if uia_rect overlaps the (l, t, r, b) screen_rect tuple."""
-    l2, t2, r2, b2 = screen_rect
-    return not (
-        uia_rect.right <= l2
-        or uia_rect.left >= r2
-        or uia_rect.bottom <= t2
-        or uia_rect.top >= b2
-    )
-
-
-def _is_useful_clickable(control, parent_rect_screen) -> bool:
-    """True if control deserves a numbered label."""
-    if control.ControlTypeName not in _CLICKABLE_TYPES:
-        return False
-
-    rect = control.BoundingRectangle
-    w, h = rect.width(), rect.height()
-
-    if w < 8 or h < 8:
-        return False
-    if w > 1500 or h > 1000:
-        return False
-    if not _rect_intersects(rect, parent_rect_screen):
-        return False
-    try:
-        if not control.IsEnabled:
-            return False
-    except Exception as e:
-        logger.debug(f"_is_useful_clickable: {e}")
-    try:
-        # Scrolled out of view or clipped away: its rectangle can still fall
-        # inside the window, which would put a label on nothing (queue 72).
-        if getattr(control, 'IsOffscreen', False) is True:
-            return False
-    except Exception as e:
-        logger.debug(f"_is_useful_clickable offscreen: {e}")
-    return True
-
-
-def _get_foreground_control(auto):
-    """Return the foreground UIA control across uiautomation API versions."""
-    getter = getattr(auto, 'GetForegroundControl', None)
-    if callable(getter):
-        return getter()
-
-    hwnd_getter = getattr(auto, 'GetForegroundWindow', None)
-    hwnd = hwnd_getter() if callable(hwnd_getter) else 0
-    if not hwnd:
-        try:
-            import win32gui
-            hwnd = win32gui.GetForegroundWindow()
-        except (ImportError, AttributeError):
-            hwnd = 0
-
-    from_handle = getattr(auto, 'ControlFromHandle', None)
-    if hwnd and callable(from_handle):
-        return from_handle(hwnd)
-    logger.warning(
-        "[OVERLAY] uiautomation has no foreground-control API; "
-        "falling back to Win32 enumeration"
-    )
-    return None
-
 
 # ---------------------------------------------------------------------------
 # DOM (browser-extension) Show Numbers path
@@ -436,242 +350,29 @@ def _try_show_dom_numbers(app):
     return True, None
 
 
-# Labels are spoken 1-99 (_parse_spoken_number), so at most 99 are shown.
-_ENUM_CAP = 99
-# Queue 72. The walk used to stop at depth 12 and at the 99th match. Measured
-# live 2026-09-15: Claude desktop's page content sits at UIA depth 16-37 (569
-# nodes, max depth 38), so the depth-12 walk saw 30 nodes and 4 title-bar
-# buttons while the same filter accepts 92 elements over the whole tree; Brave
-# had 46 page controls past depth 12. The walk now covers the whole subtree,
-# bounded only by these budgets, and the cap is applied AFTER collection
-# (_apply_cap) so content deep in the tree is never starved by chrome found
-# first. The depth bound is a runaway guard, not a filter.
-_ENUM_MAX_DEPTH = 64
-_ENUM_NODE_BUDGET = 8000
-_ENUM_TIME_BUDGET_S = 3.0
-
-# UIA property ids fetched in the one cached subtree request.
-_UIA_PROPERTY_IDS = (
-    30003,  # ControlType
-    30001,  # BoundingRectangle
-    30010,  # IsEnabled
-    30022,  # IsOffscreen
-    30005,  # Name
-)
-_TREE_SCOPE_SUBTREE = 7
-_AUTOMATION_ELEMENT_MODE_FULL = 1
-
-
-def _load_uia():
-    """The uiautomation module, or None (logged once) when not installed."""
-    global _uia_mod, _UIA_AVAILABLE
-    if _UIA_AVAILABLE is None:
-        try:
-            import uiautomation as _m
-            _uia_mod = _m
-            _UIA_AVAILABLE = True
-        except ImportError:
-            _UIA_AVAILABLE = False
-            logger.warning("[SHOW_NUMBERS] uiautomation not available -- win32 fallback active")
-    return _uia_mod if _UIA_AVAILABLE else None
-
-
-class _CachedNode:
-    """One element of a cached UIA subtree, answering the attributes the walk
-    reads (ControlTypeName, BoundingRectangle, IsEnabled, IsOffscreen, Name,
-    GetChildren) from the cache, with no cross-process call per node. The
-    element is fetched in Full mode, so control() returns a live uiautomation
-    Control for clicking."""
-
-    __slots__ = ("_el", "_auto")
-
-    def __init__(self, element, auto):
-        self._el = element
-        self._auto = auto
-
-    @property
-    def ControlTypeName(self) -> str:
-        from uiautomation import uiautomation as _uu  # noqa: PLC0415
-        return _uu.ControlTypeNames.get(self._el.CachedControlType, "")
-
-    @property
-    def BoundingRectangle(self):
-        r = self._el.CachedBoundingRectangle
-        return self._auto.Rect(r.left, r.top, r.right, r.bottom)
-
-    @property
-    def IsEnabled(self) -> bool:
-        return bool(self._el.CachedIsEnabled)
-
-    @property
-    def IsOffscreen(self) -> bool:
-        return bool(self._el.CachedIsOffscreen)
-
-    @property
-    def Name(self) -> str:
-        return self._el.CachedName or ""
-
-    def GetChildren(self) -> list:
-        kids = self._el.GetCachedChildren()
-        if not kids:
-            return []
-        return [_CachedNode(kids.GetElement(i), self._auto) for i in range(kids.Length)]
-
-    def control(self):
-        return self._auto.Control.CreateControlFromElement(self._el)
-
-
-def _cached_root(auto, hwnd: int):
-    """The window's whole raw-view subtree in ONE cross-process request
-    (ElementFromHandleBuildCache, TreeScope_Subtree) -- what UIA clients use
-    instead of a walker call per node. Measured 2026-09-15: Claude desktop
-    0.08 s against 0.54 s for the per-node walk, Obsidian 0.25 s against
-    1.63 s, the same nodes."""
-    from uiautomation import uiautomation as _uu  # noqa: PLC0415
-    uia = _uu._AutomationClient.instance().IUIAutomation
-    cache = uia.CreateCacheRequest()
-    for pid in _UIA_PROPERTY_IDS:
-        cache.AddProperty(pid)
-    cache.TreeScope = _TREE_SCOPE_SUBTREE
-    cache.TreeFilter = uia.RawViewCondition
-    cache.AutomationElementMode = _AUTOMATION_ELEMENT_MODE_FULL
-    element = uia.ElementFromHandleBuildCache(hwnd, cache)
-    if not element:
-        return None
-    return _CachedNode(element, auto)
-
-
-def _collect_clickables(root, fg_screen) -> tuple:
-    """Pre-order walk of `root`'s whole subtree (any object with the
-    uiautomation Control attributes). Returns (candidates, stats). Nothing
-    stops at a match count; the walk ends only at the node/time budgets or
-    the runaway depth guard. Each candidate records whether it lies inside a
-    DocumentControl (web/app content, as opposed to window chrome)."""
-    started = time.perf_counter()
-    candidates = []
-    nodes = 0
-    max_depth = 0
-    budget_hit = None
-    stack = [(root, 0, False)]
-    while stack:
-        if nodes >= _ENUM_NODE_BUDGET:
-            budget_hit = "nodes"
-            break
-        if time.perf_counter() - started > _ENUM_TIME_BUDGET_S:
-            budget_hit = "time"
-            break
-        ctrl, depth, in_document = stack.pop()
-        nodes += 1
-        max_depth = max(max_depth, depth)
-        ctype = ""
-        try:
-            ctype = ctrl.ControlTypeName
-            if _is_useful_clickable(ctrl, fg_screen):
-                r = ctrl.BoundingRectangle
-                if _COORD_DEBUG and len(candidates) < 5:
-                    logger.debug(
-                        "[DPI-COORD] elem %d raw UIA: left=%d top=%d right=%d bottom=%d (%s '%s')",
-                        len(candidates) + 1, r.left, r.top, r.right, r.bottom,
-                        ctype, (ctrl.Name or '')[:30],
-                    )
-                prect = (r.left, r.top, r.right, r.bottom)
-                candidates.append({
-                    'control': ctrl,
-                    'prect': prect,
-                    'rect': prect,
-                    'name': ctrl.Name or '',
-                    'type': ctype,
-                    'in_document': in_document,
-                })
-        except Exception as e:
-            logger.debug(f"_collect_clickables: {e}")
-        if depth >= _ENUM_MAX_DEPTH:
-            continue
-        try:
-            children = ctrl.GetChildren()
-        except Exception as e:
-            logger.debug(f"_collect_clickables children: {e}")
-            children = []
-        child_in_document = in_document or ctype == 'DocumentControl'
-        for child in reversed(children):
-            stack.append((child, depth + 1, child_in_document))
-    stats = {
-        "nodes": nodes, "max_depth": max_depth, "candidates": len(candidates),
-        "in_document": sum(1 for c in candidates if c['in_document']),
-        "budget_hit": budget_hit,
-        "ms": int((time.perf_counter() - started) * 1000),
-    }
-    return candidates, stats
-
-
-def _apply_cap(candidates: list, cap: int = _ENUM_CAP) -> list:
-    """At most `cap` candidates, in their original (tree) order. When there
-    are more, content inside a document is kept before window chrome, so a
-    browser's tabs and toolbars cannot use up the labels before the page."""
-    if len(candidates) <= cap:
-        return list(candidates)
-    content = [c for c in candidates if c.get('in_document')]
-    chrome = [c for c in candidates if not c.get('in_document')]
-    keep = {id(c) for c in (content + chrome)[:cap]}
-    return [c for c in candidates if id(c) in keep]
-
-
 def _enumerate_foreground_clickables() -> list:
-    """Walk the foreground window's UIA subtree; return useful clickables.
-
-    Safe to call from a worker thread -- UIA is COM, not Qt. Rectangles are
-    returned in UIA's PHYSICAL pixels ('prect'); conversion to Qt logical
-    coordinates happens on the Qt thread in plan_overlay (queue 56: the
-    conversion used to query QApplication.screens() from this worker thread).
-    Records _last_enum_stats for the trace log.
-
-    The subtree comes from one cached request (_cached_root); if that is
-    unavailable the same walk runs over live controls (GetChildren).
-    """
     global _last_enum_stats
-    auto = _load_uia()
-    if auto is None:
+    try:
+        elements, _last_enum_stats = get_service().overlay_elements(
+            loader=_load_uia, foreground=_get_foreground_control,
+            cached_root=_cached_root, node_budget=_ENUM_NODE_BUDGET,
+            max_depth=_ENUM_MAX_DEPTH, time_budget=_ENUM_TIME_BUDGET_S,
+        )
+        return elements
+    except Exception as exc:
+        logger.info("[SHOW_NUMBERS] UIA unavailable (%s); using Win32", type(exc).__name__)
         return _enumerate_win32_fallback()
 
-    fg = _get_foreground_control(auto)
-    if fg is None:
-        return _enumerate_win32_fallback()
 
-    started = time.perf_counter()
-    fg_rect = fg.BoundingRectangle
-    fg_screen = (fg_rect.left, fg_rect.top, fg_rect.right, fg_rect.bottom)
+def _cached_enumerate() -> list:
+    return _enumerate_foreground_clickables()
 
-    root, source, fetch_ms = None, "uia-walk", 0
-    hwnd = getattr(fg, 'NativeWindowHandle', 0)
-    if isinstance(hwnd, int) and hwnd:
-        try:
-            t0 = time.perf_counter()
-            root = _cached_root(auto, hwnd)
-            fetch_ms = int((time.perf_counter() - t0) * 1000)
-            source = "uia-cache"
-        except Exception as e:
-            logger.info("[SHOW_NUMBERS] cached UIA subtree unavailable (%s) -- walking live controls", e)
-            root = None
-    if root is None:
-        root, source = fg, "uia-walk"
 
-    candidates, walk = _collect_clickables(root, fg_screen)
-    results = _apply_cap(candidates)
-    for e in results:
-        if isinstance(e['control'], _CachedNode):
-            try:
-                e['control'] = e['control'].control()
-            except Exception as exc:
-                logger.debug(f"_enumerate_foreground_clickables control: {exc}")
-    results = [e for e in results if e['control'] is not None]
-    _last_enum_stats = {
-        "source": source, "count": len(results), "nodes": walk["nodes"],
-        "max_depth": walk["max_depth"], "candidates": walk["candidates"],
-        "in_document": walk["in_document"], "capped": walk["candidates"] > _ENUM_CAP,
-        "budget_hit": walk["budget_hit"], "fetch_ms": fetch_ms,
-        "ms": int((time.perf_counter() - started) * 1000),
-    }
-    return results
+def _invalidate_cache() -> None:
+    global _enum_cache
+    _enum_cache = None  # compatibility state; all caching belongs to the service
+    get_service().invalidate()
+
 
 # ---------------------------------------------------------------------------
 # Win32 fallback (when uiautomation not installed)
@@ -771,38 +472,6 @@ def _enumerate_win32_fallback() -> list:
                         "capped": False, "ms": 0}
     return results
 
-# ---------------------------------------------------------------------------
-# Element enumeration cache
-# ---------------------------------------------------------------------------
-
-def _cached_enumerate() -> list:
-    global _enum_cache, _last_enum_stats
-    try:
-        import win32gui
-        hwnd = win32gui.GetForegroundWindow()
-    except Exception:
-        hwnd = 0
-
-    now = time.time()
-    if (
-        _enum_cache is not None
-        and _enum_cache['hwnd'] == hwnd
-        and now - _enum_cache['t'] < _CACHE_TTL
-    ):
-        _last_enum_stats = dict(_enum_cache.get('stats') or {}, source="cache")
-        logger.info("[SHOW_NUMBERS] using cached element list (%d, %.1f s old)",
-                    len(_enum_cache['elements']), now - _enum_cache['t'])
-        return list(_enum_cache['elements'])
-
-    elements = _enumerate_foreground_clickables()
-    if hwnd and elements:
-        _enum_cache = {'hwnd': hwnd, 't': now, 'elements': elements, 'stats': dict(_last_enum_stats)}
-    return elements
-
-
-def _invalidate_cache() -> None:
-    global _enum_cache
-    _enum_cache = None
 
 # ---------------------------------------------------------------------------
 # Collision avoidance
