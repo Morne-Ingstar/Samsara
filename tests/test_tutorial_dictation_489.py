@@ -206,8 +206,7 @@ def test_streaming_partial_never_types_into_waiting_tutorial(window):
 def legacy_app(tmp_path, monkeypatch, h, *, command=False, text='hello world'):
     from tests import test_commands_only_key_391 as proof
     # Reuse its synthetic decoder/registry hands, but compile the exact methods
-    # against the maintained adapter namespace. Its old default-config eval
-    # uses dictation's filename, which the current bootstrap guard forbids.
+    # against the maintained adapter namespace and the pure config factory.
     namespace = dict(h.app._show_outcome_chip.__func__.__globals__)
     namespace['thread_registry'] = SimpleNamespace(spawn=lambda name, fn, **kw: fn())
     names = ('_stop_recording_impl', '_take_recording_ownership', 'get_transcription_params',
@@ -216,10 +215,10 @@ def legacy_app(tmp_path, monkeypatch, h, *, command=False, text='hello world'):
         '_show_outcome_chip', '_show_hold_pending_chip', '_resolve_hold_chip')
     nodes = [method('dictation.py', name) for name in names]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(ROOT / 'dictation.py'), 'exec'), namespace)
-    defaults = next(node.value for node in method('dictation.py', 'load_config').body
-        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
-            and target.id == 'default_config' for target in node.targets))
-    config = eval(compile(ast.Expression(defaults), '<tutorial-default-config>', 'eval'), namespace)
+    from samsara.config_seed import build_default_config
+    config = build_default_config(
+        home=Path("synthetic-home"), macro_defaults={}, notification_defaults={},
+    )
     monkeypatch.setattr(proof, '_production', lambda: (namespace, config))
     app, spies = proof._app(tmp_path, monkeypatch, text, command_key=command)
     app.listening_indicator = h.app.listening_indicator

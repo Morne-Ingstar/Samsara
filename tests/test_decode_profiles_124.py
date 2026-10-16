@@ -95,22 +95,12 @@ def shipped_profiles() -> dict:
 
 
 def app_config_default(key: str):
-    """One value from dictation.py's own default-config dict."""
-    source = DICTATION.read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(source)
-    found = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Dict):
-            continue
-        for k, v in zip(node.keys, node.values):
-            if (isinstance(k, ast.Constant) and k.value == key
-                    and isinstance(v, ast.Constant)
-                    # the defaults dict also carries model_size/microphone
-                    and any(isinstance(other, ast.Constant) and other.value == "model_size"
-                            for other in node.keys)):
-                found.append(v.value)
-    assert found, f"no default-config entry for {key!r} in dictation.py"
-    return found[0]
+    """One value from the production fresh-config factory."""
+    from samsara.config_seed import build_default_config
+
+    return build_default_config(
+        home=Path("synthetic-home"), macro_defaults={}, notification_defaults={},
+    )[key]
 
 
 PROFILES = shipped_profiles()

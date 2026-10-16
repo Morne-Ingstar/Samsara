@@ -70,12 +70,10 @@ def _production():
     nodes = [ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0),
              *assignments, *helpers, *methods]
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(source), 'exec'), namespace)
-    load = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'load_config')
-    defaults = next(n.value for n in load.body if isinstance(n, ast.Assign) and any(
-        isinstance(t, ast.Name) and t.id == 'default_config' for t in n.targets))
-    default_ns = dict(vars(constants), Path=Path, get_default_macro_config=get_default_macro_config,
-                      get_default_notification_config=get_default_notification_config)
-    config = eval(compile(ast.Expression(defaults), str(source), 'eval'), default_ns)
+    from samsara.config_seed import build_default_config
+    config = build_default_config(
+        home=Path("synthetic-home"), macro_defaults={}, notification_defaults={},
+    )
     return namespace, copy.deepcopy(config)
 
 

@@ -124,12 +124,11 @@ def test_all_default_places_and_quick_reference_follow_live_config():
                     and any(isinstance(t, ast.Name) and t.id == '_OTHER_HOTKEY_KEYS' for t in n.targets))
     assert ('task_hotkey', 'ctrl+alt+t') in ast.literal_eval(defaults)
     assert ('task_hotkey', 'ctrl+alt+t') in hotkeys._OTHER_HOTKEY_KEYS
-    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DictationApp')
-    load = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'load_config')
-    config = next(n.value for n in load.body if isinstance(n, ast.Assign)
-                  and any(isinstance(t, ast.Name) and t.id == 'default_config' for t in n.targets))
-    assert next(ast.literal_eval(value) for key, value in zip(config.keys, config.values)
-                if isinstance(key, ast.Constant) and key.value == 'task_hotkey') == 'ctrl+alt+t'
+    from samsara.config_seed import build_default_config
+    config = build_default_config(
+        home=Path("synthetic-home"), macro_defaults={}, notification_defaults={},
+    )
+    assert config['task_hotkey'] == 'ctrl+alt+t'
     from samsara.ui import quick_reference_qt as qr
     from samsara.config_schema import SETTINGS_SCHEMA
     app = SimpleNamespace(config={})
