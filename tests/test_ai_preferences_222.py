@@ -29,7 +29,8 @@ def test_fresh_defaults_only_requested_changes():
     for key in ("ava_command_session.enabled", "ava_command_session.keep_warm", "ava_edit.enabled"):
         assert DEFAULTS[key] is False
     assert DEFAULTS["ava.provider_policy"] == "off"
-    assert DEFAULTS["tts.engine"] == "edge" and DEFAULTS["tts.enabled"] is False
+    # Speech defaults were subsequently changed to enabled, local Windows TTS.
+    assert DEFAULTS["tts.engine"] == "winrt" and DEFAULTS["tts.enabled"] is True
     assert ai.effective_state({}, "ava").status == "off-by-choice"
     assert ai.migrate_ai_preferences({}) == {
         "ava": {"provider_policy": "off"}, "ava_mode_enabled": False,

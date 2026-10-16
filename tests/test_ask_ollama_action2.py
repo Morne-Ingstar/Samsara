@@ -146,7 +146,11 @@ class TestUnsafeAction2ConfirmFlow:
         assert pending["verb"] == "close"
         assert pending["argument"] == "notepad"
 
-    def test_confirm_yes_executes_close_and_speaks_done_only_on_success(self):
+    def test_confirm_yes_executes_close_and_speaks_done_only_on_success(self, monkeypatch):
+        # Confirmation revalidates the named window. Keep its identity stable
+        # without depending on a real Notepad window on the runner.
+        target = MagicMock(return_value={"hwnd": 111, "process": "notepad.exe"})
+        monkeypatch.setattr(ask_ollama.execution_policy, "resolve_target", target)
         app = _app()
         response = "CONFIRM Close Notepad.\nACTION2 close | notepad"
         with patch("plugins.commands.app_verbs.do_close", return_value=ActionResult.DONE):
@@ -154,6 +158,7 @@ class TestUnsafeAction2ConfirmFlow:
         with patch("plugins.commands.app_verbs.do_close", return_value=ActionResult.DONE) as mock_close:
             ask_ollama.handle_ava_confirm(app, remainder="")
         mock_close.assert_called_once_with("notepad")
+        assert target.call_count >= 2
         assert app.audio_coordinator.speak.call_args.args[0] == "Done."
 
     def test_confirm_yes_stays_silent_on_success_wording_when_not_found(self):

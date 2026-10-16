@@ -70,6 +70,8 @@ jobs:
 
       - name: Run tests with coverage
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: python -m pytest --cov=. --cov-report=xml --cov-report=term-missing -v
 
       - name: Upload coverage report

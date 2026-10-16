@@ -184,12 +184,13 @@ class TestDoOpen:
 
 class TestDoClose:
     def test_closes_running_window_gracefully(self):
-        with patch.object(av, "resolve_window", return_value=(111, "Notepad", "notepad.exe")):
+        with patch.object(av, "resolve_window", return_value=(111, "Notepad", "notepad.exe")), \
+             patch.object(av.win32gui, "PostMessage") as post_message:
             result = av.do_close("notepad")
         assert result is av.ActionResult.DONE
         # WM_CLOSE via PostMessage, never TerminateProcess.
-        sys.modules['win32gui'].PostMessage.assert_called_once()
-        args = sys.modules['win32gui'].PostMessage.call_args.args
+        post_message.assert_called_once()
+        args = post_message.call_args.args
         assert args[0] == 111
         assert args[1] == sys.modules['win32con'].WM_CLOSE
 

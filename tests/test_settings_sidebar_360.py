@@ -6,8 +6,9 @@ on stylesheet strings. The look itself is judged from ui_proof/360 renders.
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from shiboken6 import isValid
 
 from samsara.ui import theme
 from samsara.ui.settings import sidebar
@@ -32,7 +33,9 @@ def window(qapp, dark_again):
     yield win
     win.hide()
     win.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
+    assert not isValid(win), "Settings fixture retained a window after teardown"
 
 
 def _panel(win) -> QWidget:

@@ -106,7 +106,11 @@ def test_schema_defaults_and_audio_page_exclude_retired_rows():
         assert SETTINGS_SCHEMA[key]["ui_less_reason"]
         assert SETTINGS_SCHEMA[key]["help"]["why"] == (
             "This option is inactive because echo cancellation was retired.")
-    owner = SimpleNamespace(make_page=Mock())
+    # This checks the row specifications, so return an empty layout-shaped
+    # page for the grouping pass rather than an unconstrained Mock count().
+    empty_layout = SimpleNamespace(count=lambda: 0)
+    page = SimpleNamespace(base=empty_layout, advanced=SimpleNamespace(rows=empty_layout))
+    owner = SimpleNamespace(make_page=Mock(return_value=page))
     audio_page.build(owner)
     _, _, base, advanced = owner.make_page.call_args.args
     assert all(not row[3].startswith("echo_cancellation.") for row in base + advanced)

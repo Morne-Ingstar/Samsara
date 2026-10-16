@@ -24,23 +24,61 @@ jobs:
           PUSH_HEAD: ${{ github.sha }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PUSH_COMMITS: ${{ toJSON(github.event.commits.*.id) }}
         run: |
-          set -euo pipefail
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            log_opts="$PR_BASE..$PR_HEAD"
-          elif [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
-            # A new branch has no previous tip. Exclude default-branch history.
-            git rev-parse --verify "refs/remotes/origin/$DEFAULT_BRANCH"
-            log_opts="$PUSH_HEAD --not refs/remotes/origin/$DEFAULT_BRANCH"
-          else
-            log_opts="$BEFORE..$PUSH_HEAD"
-          fi
-          echo "log_opts=$log_opts" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          def select_log_opts(event, before, head, pr_base, pr_head, pushed, has_commit):
+              def checked(sha):
+                  if not re.fullmatch(r"[0-9a-f]{40}", sha or "") or not has_commit(sha):
+                      raise ValueError("Incoming commit is unavailable or invalid")
+                  return sha
+
+              if event == "pull_request":
+                  return f"{checked(pr_base)}..{checked(pr_head)}"
+              if event != "push":
+                  raise ValueError("Unsupported secret-guard event")
+              checked(head)
+              if re.fullmatch(r"[0-9a-f]{40}", before or "") and has_commit(before):
+                  return f"{before}..{head}"
+              # A new branch or rewritten history may have no usable previous
+              # tip. Scan every commit listed in the push, plus the tip, rather
+              # than walking unrelated old history or silently scanning nothing.
+              if not isinstance(pushed, list) or len(pushed) >= 2048:
+                  raise ValueError("Cannot safely bound an incomplete push commit list")
+              commits = dict.fromkeys([*(checked(sha) for sha in pushed), head])
+              return "--no-walk " + " ".join(commits)
+
+          def has_commit(sha):
+              return subprocess.run(
+                  ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              ).returncode == 0
+
+          log_opts = select_log_opts(
+              os.environ["EVENT_NAME"], os.environ.get("BEFORE", ""),
+              os.environ["PUSH_HEAD"], os.environ.get("PR_BASE", ""),
+              os.environ.get("PR_HEAD", ""),
+              json.loads(os.environ.get("PUSH_COMMITS", "null")) or [], has_commit,
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"log_opts={log_opts}\n")
+          PY
       # Official CLI container action: explicit log-opts for every event.
       # Version tag per offline brief; resolve a reviewed SHA in a networked task.
       - name: Scan for secrets and private exports
         uses: docker://ghcr.io/gitleaks/gitleaks:v8.24.2
+        env:
+          # Allow Git to inspect the runner-owned mount from the CLI container.
+          # Trust only its mounted workspace, without writing Git config.
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: >-
+            safe.directory
+          GIT_CONFIG_VALUE_0: /github/workspace
         with:
           args: >-
             git --config=.gitleaks.toml --redact
