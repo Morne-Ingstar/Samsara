@@ -11,6 +11,7 @@ Samsara is free. No word limits, subscriptions, or paid feature tiers—and no e
 **[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
 · [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.6)
 · [Website](https://morneis.com/samsara)
+· [Discord](https://discord.gg/tPYvf369hQ)
 
 ![Samsara Home window.](assets/screenshots/samsara-home-beta.png)
 
@@ -134,6 +135,12 @@ A few things to expect:
   [Architecture](Docs/ARCHITECTURE.md)
 - **Following development:** [Release history](CHANGELOG.md) ·
   [Issues](https://github.com/Morne-Ingstar/Samsara/issues)
+
+### Help and community
+
+Ask questions, report bugs, and share ideas on [Discord](https://discord.gg/tPYvf369hQ).
+Open a GitHub issue for a reproducible bug.
+For anything private, email [me@morneis.com](mailto:me@morneis.com).
 
 You do not need to code to help. Tell us what you tried to do by voice, what
 happened, and where you still had to reach for the keyboard or mouse.

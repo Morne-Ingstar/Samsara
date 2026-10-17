@@ -1,6 +1,7 @@
 """Help Settings destination, including opt-in local diagnostics."""
 
 from PySide6.QtWidgets import QLabel
+from samsara.ui.community_links import community_actions
 
 TITLE = "Help"
 SUBTITLE = "Set up, practise and recover when you need to."
@@ -9,6 +10,12 @@ BASE = [
         "Documentation",
         "Find commands and usage guidance.",
         "openDocumentationButton",
+        ""
+    ],
+    [
+        "Help and community",
+        "Ask questions, report bugs, share ideas, or contact me privately.",
+        "communityActions",
         ""
     ],
     [
@@ -58,6 +65,7 @@ ADVANCED = [
 ]
 
 def build(owner):
+    owner._widgets["communityActions"] = community_actions()
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
     heading = QLabel('Diagnostics')
     heading.setProperty('role', 'label')

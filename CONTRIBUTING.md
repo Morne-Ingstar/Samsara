@@ -19,6 +19,7 @@ py -3.11 -m venv .venv
 Optional integrations may need additional services or credentials; they are not
 needed for every contribution. Never add personal configuration or credentials
 to a change.
+For help building integrations, packs, or plugins, ask in [#integrations on Discord](https://discord.gg/tPYvf369hQ).
 
 ## Run focused tests
 
