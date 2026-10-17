@@ -76,7 +76,13 @@ ADVANCED = [
 ]
 
 def build(owner):
+    from PySide6.QtWidgets import QLabel
+    from samsara import __version__
     from samsara.ui.listening_display_page import bind_settings_description
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    version = QLabel(f"v{__version__}")
+    version.setObjectName("runningVersion")
+    version.setProperty("role", "description")
+    page.column.insertWidget(1, version)
     bind_settings_description(owner)
     return page

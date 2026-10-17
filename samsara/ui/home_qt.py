@@ -18,11 +18,8 @@ that obvious at a glance, top to bottom:
     3. WHAT YOU CAN DO six cards from the live command catalog, each with a
                       one-line description and a label naming its
                       destination (CARD_ROUTES, 74).
-    4. IDENTITY STRIP words today, the infinity card and the creed --
-                      the owner's own elements, cut by 86 and restored
-                      by 89 -- plus the small text links (website &
-                      docs, GitHub) in the same row as the creed, and
-                      the Ko-fi line beneath it.
+    4. IDENTITY STRIP words today, the infinity card, creed, website and
+                      docs, GitHub and Ko-fi links (restored by 89).
 
 Every text size comes from theme.HOME_TYPE_SCALE; spoken phrases are always
 shown in double quotes (quoted()).
@@ -1670,16 +1667,19 @@ class HomePage(QWidget):
             f" border: none; max-height: 1px; min-height: 1px; }}"
             f"QScrollArea {{ border: none; background: transparent; }}"
         )
-        outer = QVBoxLayout(self)
+        outer = QGridLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+        version = _label(f"v{__version__}", role="note", color=theme.TEXT_SECONDARY)
+        version.setObjectName("runningVersion")
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.viewport().installEventFilter(self)
-        outer.addWidget(self._scroll)
+        outer.addWidget(self._scroll, 0, 0)
+        outer.addWidget(version, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
         host = QWidget()
         host.setStyleSheet("background: transparent;")

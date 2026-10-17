@@ -881,7 +881,13 @@ def _archive_helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
     tag = _ps_literal(prepared.tag)
     workspace_prefix = _ps_literal(f".{prepared.install_dir.name}-update-")
     rollback_prefix = _ps_literal(f".{prepared.install_dir.name}-rollback-")
-    return f"""$ErrorActionPreference = 'Stop'
+    from samsara.update_installer import helper_log_path
+    return f"""$helperLog = {_ps_literal(helper_log_path(prepared))}
+[IO.File]::AppendAllText($helperLog, ([DateTime]::UtcNow.ToString('o') + ' start' + [Environment]::NewLine))
+$ErrorActionPreference = 'Stop'
+function Write-HelperLog([string]$message) {{
+    try {{ [IO.File]::AppendAllText($helperLog, ([DateTime]::UtcNow.ToString('o') + ' ' + $message + [Environment]::NewLine)) }} catch {{ }}
+}}
 $install = {install}
 $staged = {staged}
 $rollback = {rollback}
@@ -895,10 +901,11 @@ $installParent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($install))
 $pathsValidated = $false
 
 function Write-UpdateStatus([string]$state, [string]$message) {{
+    Write-HelperLog "$state $message"
     $data = @{{
         state=$state; message=$message; tag=$tag;
         install_dir=$install; staged_dir=$staged; rollback_dir=$rollback;
-        workspace_dir=$workspace; helper_path=$PSCommandPath;
+        workspace_dir=$workspace; helper_path=$PSCommandPath; helper_pid=$PID; helper_started_filetime=([Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToFileTimeUtc().ToString());
         updated_at=(Get-Date).ToUniversalTime().ToString('o')
     }}
     $temporary = "$status.tmp"
@@ -977,6 +984,7 @@ function Complete-PreSwapFailure([string]$message) {{
 
 try {{
     Assert-SafeUpdatePaths
+    Write-HelperLog 'paths ok'
 }} catch {{
     Complete-PreSwapFailure "Update path validation failed: $($_.Exception.Message)"
     Show-UpdateFailure "The update was cancelled because its files or paths changed unexpectedly.`n`n$($_.Exception.Message)"
@@ -1161,41 +1169,8 @@ def launch_prepared_update(
                 pass
         raise
     try:
-        powershell = _system_powershell_path()
-        prepared.helper_path.parent.mkdir(parents=True, exist_ok=True)
-        prepared.helper_path.write_text(
-            _helper_script(prepared, current_pid), encoding="utf-8-sig"
-        )
-        _write_status(
-            prepared.status_path,
-            "ready",
-            "The verified update is ready; Samsara will close and relaunch.",
-            prepared.tag,
-            prepared,
-        )
-        creationflags = 0
-        for flag_name in (
-            "DETACHED_PROCESS",
-            "CREATE_NEW_PROCESS_GROUP",
-            "CREATE_NO_WINDOW",
-        ):
-            creationflags |= int(getattr(subprocess, flag_name, 0))
-        process_runner(
-            [
-                str(powershell),
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-WindowStyle",
-                "Hidden",
-                "-File",
-                str(prepared.helper_path),
-            ],
-            cwd=str(prepared.helper_path.parent),
-            close_fds=True,
-            creationflags=creationflags,
-        )
+        from samsara.update_installer import launch_helper
+        launch_helper(prepared, current_pid, process_runner)
     except Exception as exc:
         message = f"Could not launch the update installer: {exc}"
         try:
@@ -1434,6 +1409,13 @@ def reconcile_update_on_startup(
         return _quarantine_status(status_path, f"Unknown update status {state!r}.")
     if now is None:
         now = time.time()
+    from samsara.update_installer import stale_launch_notice
+    from samsara.update_installer_customizations import _helper_owns_update
+    if state in {"ready", "waiting"} and _helper_owns_update(payload):
+        return status
+    if notice := stale_launch_notice(payload, now):
+        _write_status(status_path, "reported", notice.message, notice.tag)
+        return notice
     if state in {"ready", "waiting", "staging_health", "awaiting_confirmation"} and _status_is_stale(
         payload, now
     ):

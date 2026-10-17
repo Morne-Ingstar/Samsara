@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import uuid
 import stat
+import time
 from samsara import updater
 
 logger = logging.getLogger('Samsara')
@@ -265,6 +266,88 @@ def download(release,path,expected,opener,timeout,progress):
         raise updater.UpdateIntegrityError('The installer failed size or SHA-256 verification.')
 
 
+def helper_log_path(prepared):
+    return prepared.helper_path.with_name('helper-'+prepared.helper_path.stem.removeprefix('install-')+'.log')
+
+
+def launch_log_path(prepared):
+    return helper_log_path(prepared).with_suffix('.launch.log')
+
+
+def launch_helper(prepared, current_pid, process_runner):
+    """Detach with owned standard handles and acknowledge script startup before quit."""
+    subprocess = updater.subprocess
+    powershell = updater._system_powershell_path()
+    prepared.helper_path.parent.mkdir(parents=True, exist_ok=True)
+    prepared.helper_path.write_text(updater._helper_script(prepared, current_pid), encoding='utf-8-sig')
+    updater._write_status(prepared.status_path, 'ready',
+                         'The verified update is ready; Samsara will close and relaunch.', prepared.tag, prepared)
+    # Windows PowerShell exits 0 before -File with DETACHED_PROCESS, even
+    # when its standard handles are valid. CREATE_NO_WINDOW hides it safely.
+    flags = sum(int(getattr(subprocess, name, 0)) for name in
+                ('CREATE_NEW_PROCESS_GROUP', 'CREATE_NO_WINDOW'))
+    breakaway = int(getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0))
+    command = [str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
+               'Bypass', '-WindowStyle', 'Hidden', '-File', str(prepared.helper_path)]
+    # A frozen/windowed parent may have absent or unusable stdio. PowerShell
+    # can exit before executing -File when it inherits those handles.
+    with launch_log_path(prepared).open('ab', buffering=0) as output:
+        def note(message):
+            output.write((time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())+' '+message+'\n').encode('utf-8'))
+            logger.info('[UPDATE] %s', message)
+        options = dict(cwd=str(prepared.helper_path.parent), close_fds=True,
+                       stdin=subprocess.DEVNULL, stdout=output, stderr=output)
+        note('launch requesting job breakaway')
+        try:
+            try:
+                process = process_runner(command, creationflags=flags | breakaway, **options)
+            except OSError as exc:
+                if not breakaway or getattr(exc, 'winerror', None) != 5:
+                    raise
+                note('job breakaway denied; launching without breakaway')
+                process = process_runner(command, creationflags=flags, **options)
+            # Injection-only runners used by callers may record a command and
+            # return None. A real Popen always supplies a process identity.
+            if process is None:
+                return
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    raise updater.UpdateError(f'Update helper exited before startup (code {process.returncode}). See {output.name}')
+                try:
+                    payload = json.loads(prepared.status_path.read_text(encoding='utf-8-sig'))
+                    if payload.get('state') == 'waiting' and payload.get('helper_pid') == process.pid:
+                        note('helper startup acknowledged; safe to request quit')
+                        return
+                except (OSError, ValueError):
+                    pass
+                time.sleep(0.05)
+            raise updater.UpdateError(f'Update helper did not acknowledge startup. See {output.name}')
+        except Exception as exc:
+            note(f'launch failed: {exc}')
+            raise
+
+
+def stale_launch_notice(payload, now):
+    """Consume an abandoned launch once, retaining files for diagnosis/retry."""
+    if payload.get('state') not in ('ready', 'waiting'):
+        return None
+    from datetime import datetime, timezone
+    try:
+        stamp = datetime.fromisoformat(payload['updated_at'].replace('Z', '+00:00'))
+        age = now - stamp.replace(tzinfo=stamp.tzinfo or timezone.utc).timestamp()
+    except (KeyError, TypeError, ValueError, OverflowError):
+        age = 181
+    if age <= 180:
+        return None
+    if Path(str(payload.get('install_dir', ''))).resolve() != updater._frozen_install_dir():
+        return None
+    tag = str(payload.get('tag', 'unknown'))
+    # STAND-IN COPY (649): the owner can replace this in the review inbox.
+    message = f"The update to {tag} didn't install. Try again from Updates."
+    return updater.UpdateStatus('failed', message, tag)
+
+
 def helper(prepared,current_pid):
     """Reuse confined paths/quit wait; installer transaction owns new metadata."""
     info = installation(prepared.install_dir)
@@ -280,13 +363,6 @@ def helper(prepared,current_pid):
         raise updater.UpdateIntegrityError('The prepared installer checksum changed.')
     base = updater._archive_helper_script(prepared,current_pid)
     prefix = base[:base.index('$oldMoved = $false')]
-    # The new app can distinguish a live rollback owner from an orphan after reboot.
-    prefix = prefix.replace(
-        "workspace_dir=$workspace; helper_path=$PSCommandPath;",
-        "workspace_dir=$workspace; helper_path=$PSCommandPath; "
-        "helper_pid=$PID; helper_started_filetime="
-        "([Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToFileTimeUtc().ToString());",
-    )
     prefix = prefix.replace(
         "helper_pid=$PID;", "migration_pid=$migrationPid; migration_started_filetime=$migrationStarted; helper_pid=$PID;"
     )
@@ -300,12 +376,15 @@ def helper(prepared,current_pid):
 
 
 INSTALLER_TRANSACTION = r'''
+function Get-InstallFolder([string]$path) {
+    return [IO.Path]::GetFullPath($path).TrimEnd([char[]]'\/')
+}
 function Read-InstallRegistry {
     $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,$registryView)
     $key = $baseKey.OpenSubKey($registryName)
     if ($null -eq $key) { throw 'The installer registration disappeared.' }
     try {
-        if (-not [string]::Equals([IO.Path]::GetFullPath([string]$key.GetValue('InstallLocation')), [IO.Path]::GetFullPath($install), [StringComparison]::OrdinalIgnoreCase)) { throw 'The installer registration belongs to another folder.' }
+        if (-not [string]::Equals((Get-InstallFolder ([string]$key.GetValue('InstallLocation'))), (Get-InstallFolder $install), [StringComparison]::OrdinalIgnoreCase)) { throw 'The installer registration belongs to another folder.' }
         $saved = @{}
         foreach ($name in $key.GetValueNames()) { $saved[$name] = @{ value=$key.GetValue($name); kind=$key.GetValueKind($name) } }
         return $saved
@@ -325,11 +404,12 @@ function Assert-InstalledMetadata {
     if ($null -eq $key) { throw 'The installer registration is missing.' }
     try {
         if ([string]$key.GetValue('DisplayVersion') -ne $tag.TrimStart('v')) { throw 'The installer registered the wrong version.' }
-        if (-not [string]::Equals([IO.Path]::GetFullPath([string]$key.GetValue('InstallLocation')), [IO.Path]::GetFullPath($install), [StringComparison]::OrdinalIgnoreCase)) { throw 'The installer registered another folder.' }
+        if (-not [string]::Equals((Get-InstallFolder ([string]$key.GetValue('InstallLocation'))), (Get-InstallFolder $install), [StringComparison]::OrdinalIgnoreCase)) { throw 'The installer registered another folder.' }
     } finally { $key.Close(); $baseKey.Close() }
 }
 # Recovery metadata and dialogs are best effort: neither may prevent relaunch.
 function Write-RecoveryStatus($state, $message) {
+    Write-HelperLog "$state $message"
     try { Write-UpdateStatus $state $message } catch { }
 }
 function Show-RecoveryFailure($message) {
@@ -342,6 +422,7 @@ function Start-RecoveryCopy($copies) {
             $copyExe = Join-Path $copy $executable
             Assert-NotReparsePoint $copyExe $installParent
             if (Test-Path -LiteralPath $copyExe -PathType Leaf) {
+                Write-HelperLog 'relaunch recovery copy'
                 Start-Process -FilePath $copyExe -WorkingDirectory $copy -WindowStyle Hidden
                 return
             }
@@ -350,6 +431,7 @@ function Start-RecoveryCopy($copies) {
 }
 # STAND-IN COPY (560): customization maintenance failure details.
 function Invoke-CustomizationMigration {
+    Write-HelperLog 'migration started'
     $receipt = Join-Path $workspace 'customizations-migrated.json'
     Assert-NotReparsePoint $install $installParent
     Assert-NotReparsePoint $rollback $installParent
@@ -365,6 +447,7 @@ function Invoke-CustomizationMigration {
     if ([IO.Path]::GetDirectoryName($backup) -ine [IO.Path]::GetFullPath($customizationBackups)) { throw 'Customization backup is outside its persistent folder.' }
     Assert-NotReparsePoint $backup $customizationBackups
     if (-not (Test-Path -LiteralPath (Join-Path $backup 'manifest.json') -PathType Leaf)) { throw 'The customization backup is missing.' }
+    Write-HelperLog 'migration completed'
 }
 $installerProcess = $null
 $migrationProcess = $null
@@ -395,18 +478,22 @@ try {
     Copy-Item -LiteralPath $install -Destination $staged -Recurse -Force
     Move-Item -LiteralPath $staged -Destination $rollback
     $backupReady = $true
+    Write-HelperLog 'installer started'
     $installerProcess = Start-Process -FilePath $installer -ArgumentList $installerArgs -WindowStyle Hidden -PassThru
     if (-not $installerProcess.WaitForExit(300000)) { throw 'The installer did not finish within five minutes.' }
+    Write-HelperLog "installer exit code $($installerProcess.ExitCode)"
     if ($installerProcess.ExitCode -ne 0) { throw "The installer returned code $($installerProcess.ExitCode)." }
     if (-not (Test-Path -LiteralPath (Join-Path $install 'unins000.exe') -PathType Leaf) -or -not (Test-Path -LiteralPath (Join-Path $install 'unins000.dat') -PathType Leaf)) { throw 'The installer did not preserve its uninstaller.' }
     Assert-InstalledMetadata
     Invoke-CustomizationMigration
     Write-UpdateStatus 'awaiting_confirmation' 'The installer completed; waiting for Samsara to start.'
+    Write-HelperLog 'relaunch updated copy'
     $newProcess = Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install -WindowStyle Hidden -PassThru
     $healthDeadline = (Get-Date).AddSeconds(180)
     while ((Get-Date) -lt $healthDeadline) {
         $current = Get-Content -LiteralPath $status -Raw | ConvertFrom-Json
         if (($current.state -eq 'installed') -or ($current.state -eq 'reported')) {
+            Write-HelperLog 'health confirmed'
             try {
                 Assert-NotReparsePoint $rollback $installParent
                 Remove-Item -LiteralPath $rollback -Recurse -Force
@@ -422,6 +509,7 @@ try {
     throw 'Samsara did not confirm startup.'
 } catch {
     $problem = $_.Exception.Message
+    Write-HelperLog "failure $problem"
     if (($null -ne $migrationProcess) -and (-not $migrationProcess.HasExited)) {
         $migrationTimedOut = $true
         # This handle belongs only to the maintenance subprocess we launched;
@@ -466,12 +554,14 @@ try {
     }
     try {
         if ($backupReady) {
+            Write-HelperLog 'rollback started'
             if (-not (Test-Path -LiteralPath $rollback -PathType Container)) { throw 'The previous version backup is missing.' }
             Assert-NotReparsePoint $rollback $installParent
             Assert-NotReparsePoint $install $installParent
             if (Test-Path -LiteralPath $install) { Remove-Item -LiteralPath $install -Recurse -Force }
             Move-Item -LiteralPath $rollback -Destination $install
             Restore-InstallRegistry $snapshot
+            Write-HelperLog 'rollback completed'
         }
         Write-RecoveryStatus 'rolled_back' "The installer update failed; the previous installation was restored. $problem"
         Start-RecoveryCopy @($install, $rollback)
@@ -483,6 +573,7 @@ try {
         }
         exit 2
     } catch {
+        Write-HelperLog "rollback failure $($_.Exception.Message)"
         if ($migrationTimedOut) {
             # Leave the next shortcut launch eligible for the early-boot bridge,
             # rather than recording "failed" over a half-migrated installation.
