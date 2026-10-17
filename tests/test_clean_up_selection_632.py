@@ -62,8 +62,10 @@ def rig(monkeypatch):
     monkeypatch.setattr(cb, "_paste_target", lambda: state.target)
     monkeypatch.setattr(cb, "message_paste_to_focused_control", lambda: cb.DeliveryOutcome.SENT)
     monkeypatch.setattr(cb, "wait_for_clipboard_ready", lambda *_: "ready")
-    monkeypatch.setattr(tp.time, "sleep", sleep)
-    monkeypatch.setattr(tp.time, "monotonic", lambda: state.clock)
+    # Keep fake time local: other test-owned workers use the real time module.
+    clock = SimpleNamespace(sleep=sleep, monotonic=lambda: state.clock)
+    monkeypatch.setattr(tp, "time", clock)
+    monkeypatch.setattr(cb, "time", clock)
     monkeypatch.setattr(session.thread_registry, "spawn", lambda _name, fn, **_: fn())
     monkeypatch.setattr(session, "enabled", lambda _: False)
     monkeypatch.setattr(model, "rewrite", lambda *_: pytest.fail("unexpected model call"))

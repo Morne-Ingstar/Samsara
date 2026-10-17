@@ -1,6 +1,9 @@
 """Queue 244: Ava / Cloud explains web-search limits and exposes Ava Edit."""
 
+from copy import deepcopy
 from types import SimpleNamespace
+
+from samsara import ai_preferences
 
 from tests.test_settings import _StubApp
 
@@ -9,14 +12,19 @@ def _window(config, qapp):
     from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
 
     app = _StubApp()
+    config = deepcopy(config)
+    if config.get("cloud_llm", {}).get("enabled"):
+        provider = ai_preferences.provider_for(config, "cloud")
+        config.setdefault("ava", {}).update(
+            provider_policy="cloud",
+            consent=ai_preferences.accept_consent(
+                config, features=("ava",), provider=provider, cloud=True,
+                accepted_at="2026-10-17T00:00:00Z"))
     app.config = config
     window = _SettingsWindow(app)
-    window._stack.setCurrentIndex(_TAB_NAMES.index("Ava / Cloud"))
+    window._stack.setCurrentIndex(_TAB_NAMES.index("Ava"))
     qapp.processEvents()
-    save = next(
-        fn for fn in window._save_fns
-        if "_build_ava_cloud_tab" in fn.__qualname__
-    )
+    save = window._source_saves["ava"][0]
     return app, window, save
 
 
@@ -63,12 +71,15 @@ def test_supporter_widgets_are_gone_and_saved_key_survives(qapp):
 def test_ava_master_is_the_first_control_on_the_page(qapp):
     _app, window, _save = _window({}, qapp)
     try:
-        master = window._widgets["ava_enabled"]
-        cloud = window._widgets["cloud_enabled"]
-        assert master.accessibleName() == "Turn Ava on or off"
-        assert master.mapTo(window, master.rect().topLeft()).y() < (
-            cloud.mapTo(window, cloud.rect().topLeft()).y()
-        )
+        # The single route selector replaced the separate master/cloud switches.
+        from samsara.ui.settings.presentation import SettingRow
+        master = window._widgets["providerRoute"]
+        assert master.accessibleName() == "Ava runs"
+        base = window._pages["Ava"].base
+        rows = [base.itemAt(i).widget() for i in range(base.count())
+                if isinstance(base.itemAt(i).widget(), SettingRow)]
+        assert rows[0] is window._rows_by_widget["providerRoute"]
+        assert rows[1] is window._rows_by_widget["cloud_provider"]
     finally:
         window.deleteLater()
 
@@ -79,15 +90,16 @@ def test_ava_edit_controls_round_trip_and_depend_on_checkbox(qapp):
     }, qapp)
     try:
         enabled = window._widgets["ava_edit_enabled"]
-        options = window._widgets["ava_edit_timeout"].parentWidget()
+        keys = ("ava_edit_timeout", "ava_edit_model", "ava_edit_demo_pacing")
+        options = [window._rows_by_widget[key] for key in keys]
         assert not enabled.isChecked()
-        assert options.isHidden()
+        assert all(row.isHidden() for row in options)
 
         enabled.setChecked(True)
         timeout = window._widgets["ava_edit_timeout"]
         model = window._widgets["ava_edit_model"]
         pacing = window._widgets["ava_edit_demo_pacing"]
-        assert not options.isHidden()
+        assert all(not row.isHidden() for row in options)
         assert not timeout.isHidden()
         assert not model.isHidden()
         assert not pacing.isHidden()
@@ -98,7 +110,7 @@ def test_ava_edit_controls_round_trip_and_depend_on_checkbox(qapp):
         updates = save({})
         assert updates["ava_edit"] == {
             "enabled": True,
-            "timeout_s": 24.5,
+            "timeout_seconds": 24.5,
             "model": model.currentData(),
             "demo_pacing": "cinematic",
         }
@@ -111,7 +123,7 @@ def test_ava_edit_save_does_not_create_untouched_keys(qapp):
     _app, window, save = _window({
         "ava_edit": {
             "enabled": False,
-            "timeout_s": 19.0,
+            "timeout_seconds": 19.0,
             "model": "existing-model",
             "demo_pacing": "cinematic",
         },

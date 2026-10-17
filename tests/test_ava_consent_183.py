@@ -58,6 +58,15 @@ def test_consent_copy_is_announced_before_buttons(qapp, read_only):
         dialog.deleteLater()
 
 
+def test_voice_notice_hide_tolerates_retired_settings_owner(qapp):
+    """Qt can retain the native QWidget after its Settings Python state goes."""
+    from samsara.ui.settings.tts_qt import _VoiceNoticeArea
+
+    retired_owner = QWidget()
+    notice = _VoiceNoticeArea(retired_owner)
+    assert notice.eventFilter(retired_owner, QEvent(QEvent.Type.Hide)) is False
+
+
 class _AcceptedDialog:
     shown = 0
 

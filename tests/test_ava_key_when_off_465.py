@@ -134,10 +134,11 @@ def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch):
     consent_request.assert_called_once()
     window._widgets['providerRoute'].setCurrentIndex(0)
     assert not note.isHidden()
-    theme.set_theme('light')
+    # Exercise this window's repaint without restyling other tests' windows.
+    theme.set_theme('light', refresh=False)
     window.apply_theme()
     assert not note.isHidden() and note.text() == NOTE
-    theme.set_theme('dark')
+    theme.set_theme('dark', refresh=False)
     window.hide()
     window.deleteLater()
 

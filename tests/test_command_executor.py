@@ -158,12 +158,16 @@ class TestCommandExecution:
         assert result is True
         mock_subprocess.assert_called_once()
 
-    def test_execute_text_command(self, temp_commands_file, mock_pyperclip, mock_pyautogui):
-        """Test executing a text insertion command"""
-        with patch('time.sleep'):
+    def test_execute_text_command(self, temp_commands_file):
+        """Text dispatch hands the payload to the preserved-clipboard boundary."""
+        from samsara.constants import CLIPBOARD_POST_PASTE_SETTLE
+
+        # Global fake sleep makes unrelated polling workers spin during this unit test.
+        with patch('samsara.clipboard.paste_with_preservation', return_value=True) as paste:
             executor = CommandExecutor(temp_commands_file)
             result = executor.execute_command("period")
             assert result is True
+            paste.assert_called_once_with(".", restore_delay=CLIPBOARD_POST_PASTE_SETTLE)
 
     def test_execute_mouse_double_click(self, temp_commands_file):
         """Test executing a mouse double-click command"""
@@ -243,15 +247,16 @@ class TestProcessText:
         import threading
         executor = CommandExecutor(temp_commands_file)
 
-        mock_app = Mock()
-        mock_app.command_matching_enabled = False
-        mock_app._config_lock = threading.Lock()
-        mock_app.config = {}
+        from types import SimpleNamespace
+        mock_app = SimpleNamespace(command_matching_enabled=False,
+                                   _config_lock=threading.Lock(), config={}, save_config=Mock())
 
         result, was_command = executor.process_text("enable command mode", mock_app)
 
         assert was_command is True
         assert mock_app.command_matching_enabled is True
+        assert mock_app.config['command_mode']['command_matching_enabled'] is True
+        mock_app.save_config.assert_called_once_with()
 
 
 class TestPluginCommands:

@@ -13,6 +13,9 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+# Every router made by this shared helper owns polling/grace workers.
+from tests.test_tts_feedback_level_372 import _shutdown_test_coordinators
+
 from samsara.tts.coordinator import (
     IDLE, LISTENING, SPEAKING, THINKING, AudioCoordinator
 )

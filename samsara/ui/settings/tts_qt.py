@@ -58,7 +58,7 @@ class _VoiceNoticeArea(QWidget):
             if self.legacy_panel.parentWidget() is self:
                 owner._pages['Audio'].base.insertWidget(0, self.legacy_panel)
                 owner._pages['Audio'].base.insertSpacing(1, theme.SPACE_4)
-        if event.type() == QEvent.Type.Hide:
+        if event.type() == QEvent.Type.Hide and hasattr(owner, 'app'):
             cfg = owner.app.config.get('tts', {}) or {}
             owner._network_voice_accepted = bool(cfg.get('network_voice_accepted', False))
             with QSignalBlocker(owner._widgets['tts_engine']):
