@@ -33,7 +33,12 @@ class StatusRow(QWidget):
                     if inner.direction() != direction:
                         inner.setDirection(direction)
                     for i in (0, 1):
-                        inner.setAlignment(inner.itemAt(i).widget(), Qt.AlignmentFlag.AlignLeft if stacked else Qt.AlignmentFlag(0))
+                        item = inner.itemAt(i)
+                        alignment = Qt.AlignmentFlag.AlignLeft if stacked else Qt.AlignmentFlag(0)
+                        # Even an unchanged setAlignment invalidates the layout
+                        # and queues another LayoutRequest after _fitting clears.
+                        if item.alignment() != alignment:
+                            inner.setAlignment(item.widget(), alignment)
                 self._bar.setMinimumWidth(self.minimumSizeHint().width() + 2)
                 self._window.setMinimumWidth(max(self._minimum, self.minimumSizeHint().width() + 2))
             finally:
@@ -48,6 +53,7 @@ class StatusLabel(QLabel):
 
     def __init__(self, text):
         super().__init__(text)
+        self._icon_ink = None
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     def event(self, event):
@@ -70,7 +76,10 @@ class StatusLabel(QLabel):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(theme.qcolor(theme.TEXT_SECONDARY))
+        ink = theme.TEXT_SECONDARY
+        if self._icon_ink is None or self._icon_ink[0] != ink:
+            self._icon_ink = (ink, theme.qcolor(ink))
+        painter.setPen(self._icon_ink[1])
         painter.setFont(theme.qfont(size, family))
         painter.drawText(QRect(0, (self.height()-size)//2, size, size), Qt.AlignmentFlag.AlignCenter,
                          PAGE_GLYPHS[self._pages[self.text()]])
