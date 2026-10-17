@@ -27,7 +27,7 @@ FIELD_ROWS = (
 
 
 @pytest.fixture(scope="module")
-def tools_window(qapp):
+def tools_window(qapp, qt_deferred_delete):
     from tests.test_settings_pages import _StubApp
     from samsara import health_store
     from samsara.ui.settings_qt import _SettingsWindow
@@ -54,7 +54,7 @@ def tools_window(qapp):
         yield window
         window.hide()
         window.deleteLater()
-        qapp.processEvents()
+        qt_deferred_delete()
 
 
 @pytest.mark.parametrize("row,tool,key,name,role", FIELD_ROWS, ids=[r[0] for r in FIELD_ROWS])

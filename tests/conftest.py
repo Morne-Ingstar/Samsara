@@ -693,3 +693,14 @@ def qapp():
     if app is None:
         app = QApplication([])
     yield app
+
+
+@pytest.fixture(scope="session")
+def qt_deferred_delete(qapp):
+    """Drain queued widget deletion before a fixture removes its patches."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    def drain():
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
+    return drain

@@ -1,11 +1,13 @@
 """Keyboard-only QSS focus rings; real Qt focus and accessibility stay intact."""
 import re
+from functools import lru_cache
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
 from shiboken6 import isValid
 
 
+@lru_cache(maxsize=4096)
 def keyboard_stylesheet(sheet):
     def selector(match):
         text = match[1]
@@ -63,11 +65,16 @@ class FocusRings(QObject):
         if widget is None or not isValid(widget):
             return
         QWidget.window(widget).setAttribute(Qt.WidgetAttribute.WA_KeyboardFocusChange, visible)
-        if widget.property('settingsKeyboardFocus') is not None:
+        changed = False
+        settings_focus = widget.property('settingsKeyboardFocus')
+        if settings_focus is not None and settings_focus != visible:
             widget.setProperty('settingsKeyboardFocus', visible)
-        if bool(widget.property('keyboardFocus')) == visible:
+            changed = True
+        if bool(widget.property('keyboardFocus')) != visible:
+            widget.setProperty('keyboardFocus', visible)
+            changed = True
+        if not changed:
             return
-        widget.setProperty('keyboardFocus', visible)
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()

@@ -21,7 +21,7 @@ from samsara.message_durations import message_duration_ms
 
 
 @pytest.fixture
-def surface(qapp, monkeypatch):
+def surface(qapp, monkeypatch, qt_deferred_delete):
     previous = theme.active_theme()
     monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
     clock = [0.0]
@@ -34,7 +34,9 @@ def surface(qapp, monkeypatch):
     c._screens = lambda: [Screen('test', Rect(0, 0, 1600, 1200), True)]
     c.start()
     yield c, indicator, clock
-    c.close(); qapp.processEvents(); theme.set_theme(previous)
+    c.close()
+    qt_deferred_delete()
+    theme.set_theme(previous)
 
 
 def question(indicator, owner='q1'):

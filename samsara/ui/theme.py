@@ -455,7 +455,6 @@ def refresh_all() -> int:
     app = QApplication.instance()
     if app is None:
         return 0
-    app.setStyleSheet((app.styleSheet() or "").split(_SCROLLBAR_MARKER)[0])
     install_app_scrollbars(app)
 
     restyled = 0
@@ -487,7 +486,7 @@ def refresh_all() -> int:
         try:
             inline = widget.styleSheet()
             if inline:
-                widget.setStyleSheet(retheme_stylesheet(inline))
+                _set_stylesheet_if_changed(widget, retheme_stylesheet(inline))
         except RuntimeError:
             continue
         hook = getattr(widget, "apply_theme", None)
@@ -759,6 +758,26 @@ def ghost_button_qss() -> str:
     )
 
 
+def _set_stylesheet_if_changed(widget, sheet):
+    from PySide6.QtWidgets import QApplication
+    from samsara.ui.focus_ring import keyboard_stylesheet
+    if hasattr(QApplication.instance(), "_samsara_focus_rings"):
+        sheet = keyboard_stylesheet(sheet)
+    if widget.styleSheet() != sheet:
+        widget.setStyleSheet(sheet)
+
+
+def _style_class(widget, name, sheet=None):
+    changed = widget.property("class") != name
+    if changed:
+        widget.setProperty("class", name)
+    if sheet is not None:
+        _set_stylesheet_if_changed(widget, sheet)
+    if changed:
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+
 def make_primary(btn: QPushButton) -> None:
     """Style btn as the primary (accent-filled) action. Sets the `class`
     property for any QSS selectors that key off it AND applies a complete
@@ -766,27 +785,18 @@ def make_primary(btn: QPushButton) -> None:
     style override -- see module docstring), then repolishes in the
     property-set -> unpolish -> polish order Qt requires to pick up a
     property change that affects style selectors."""
-    btn.setProperty("class", "primary")
-    btn.setStyleSheet(primary_button_qss())
-    btn.style().unpolish(btn)
-    btn.style().polish(btn)
+    _style_class(btn, "primary", primary_button_qss())
 
 
 def make_secondary(btn: QPushButton) -> None:
     """Style btn as the secondary (outlined) action. See make_primary()."""
-    btn.setProperty("class", "secondary")
-    btn.setStyleSheet(secondary_button_qss())
-    btn.style().unpolish(btn)
-    btn.style().polish(btn)
+    _style_class(btn, "secondary", secondary_button_qss())
 
 
 def make_ghost(btn: QPushButton) -> None:
     """Style btn as a low-emphasis, borderless action (e.g. "Skip"). See
     make_primary()."""
-    btn.setProperty("class", "ghost")
-    btn.setStyleSheet(ghost_button_qss())
-    btn.style().unpolish(btn)
-    btn.style().polish(btn)
+    _style_class(btn, "ghost", ghost_button_qss())
 
 
 class _SettingsInputLayout(QObject):
@@ -1006,7 +1016,7 @@ def footer_qss() -> str:
 def style_footer(widget: QWidget) -> None:
     """Apply the footer/nav-bar treatment: BG1 fill + a 1px top border so it
     visually separates from the body above it."""
-    widget.setStyleSheet(footer_qss())
+    _set_stylesheet_if_changed(widget, footer_qss())
 
 
 # ---------------------------------------------------------------------------
@@ -1029,37 +1039,27 @@ def style_footer(widget: QWidget) -> None:
 
 def style_card(widget: QWidget) -> None:
     """Apply the content-card treatment: BG1 fill + full BORDER outline."""
-    widget.setProperty("class", "card")
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
+    _style_class(widget, "card")
 
 
 def style_instruction_box(widget: QWidget) -> None:
     """Tinted instruction callout (interactive tutorial steps)."""
-    widget.setProperty("class", "instructionBox")
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
+    _style_class(widget, "instructionBox")
 
 
 def style_success_banner(widget: QWidget) -> None:
     """Accent-tinted success confirmation banner."""
-    widget.setProperty("class", "successBanner")
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
+    _style_class(widget, "successBanner")
 
 
 def style_guide_card(widget: QWidget) -> None:
     """Hoverable "go deeper" link card (tutorial done page)."""
-    widget.setProperty("class", "guideCard")
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
+    _style_class(widget, "guideCard")
 
 
 def style_tip_frame(widget: QWidget) -> None:
     """Use-case tip callout (first-run wizard's complete page)."""
-    widget.setProperty("class", "tipFrame")
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
+    _style_class(widget, "tipFrame")
 
 
 # ---------------------------------------------------------------------------
@@ -1153,8 +1153,8 @@ _SCROLLBAR_MARKER = "/* samsara-scrollbars */"
 
 
 def install_app_scrollbars(app=None) -> None:
-    """Add SCROLLBAR_QSS to the QApplication stylesheet once (idempotent), so
-    windows without a sheet of their own inherit the same scrollbars."""
+    """Replace the scrollbar suffix in one assignment, preserving the prefix.
+    Equal sheets are left alone; all windows inherit the current palette."""
     if app is None:
         from PySide6.QtWidgets import QApplication  # noqa: PLC0415
         app = QApplication.instance()
@@ -1164,8 +1164,9 @@ def install_app_scrollbars(app=None) -> None:
     install(app)
     _ensure_system_theme_monitor(app)
     current = app.styleSheet() or ""
-    if _SCROLLBAR_MARKER not in current:
-        app.setStyleSheet(current + _SCROLLBAR_MARKER + SCROLLBAR_QSS)
+    revised = current.split(_SCROLLBAR_MARKER, 1)[0] + _SCROLLBAR_MARKER + SCROLLBAR_QSS
+    if revised != current:
+        app.setStyleSheet(revised)
 
 
 # ---------------------------------------------------------------------------
