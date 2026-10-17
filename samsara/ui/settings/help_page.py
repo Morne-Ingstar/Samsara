@@ -14,7 +14,7 @@ BASE = [
     ],
     [
         "Help and community",
-        "Ask questions, report bugs, share ideas, or contact me privately.",
+        "Ask questions, report bugs, share ideas, or email me.",
         "communityActions",
         ""
     ],

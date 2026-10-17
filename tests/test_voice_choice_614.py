@@ -210,7 +210,8 @@ def test_local_failed_sample_is_visible(settings_window, build, entry, delayed):
         handle._state = 'failed'
         page.poll()
         status = page.result
-    assert status.text() == 'The voice sample could not be spoken.'
+    expected = "Couldn't play the voice sample." if entry == 'settings' else 'The voice sample could not be spoken.'
+    assert status.text() == expected
 
 
 @pytest.mark.parametrize('entry', ['settings', 'tutorial'])

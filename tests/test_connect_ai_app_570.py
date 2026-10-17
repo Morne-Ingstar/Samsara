@@ -128,7 +128,7 @@ def test_rotation_hint_explains_replacement_and_local_shadow(panel):
     controls, state, clipboard, timers = panel
     labels = [label.text() for label in controls.findChildren(QLabel)]
     assert any('claude mcp remove samsara --scope user' in text for text in labels)
-    assert any('earlier local setup' in text and 'project folder' in text for text in labels)
+    assert any('one project before' in text and "project's folder" in text for text in labels)
     assert any(text == 'claude mcp remove samsara' for text in labels)
     assert ui.theme.TEXT_PRIMARY in controls.desktop.styleSheet()
 

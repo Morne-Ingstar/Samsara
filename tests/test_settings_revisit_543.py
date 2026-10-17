@@ -391,9 +391,13 @@ def test_cloud_completion_after_revisit_does_not_update_new_status(window, monke
 
 
 @pytest.mark.parametrize('result, expected', (
-    ('windows', 'Spoken with the Windows voice'),
-    ('failed', 'could not be spoken'),
+    ('windows', "The Network voice didn't answer, so the Windows voice spoke instead."),
+    ('failed', "Couldn't play the voice sample."),
     ('cancelled', 'cancelled'),
+), ids=(  # Preserve the HEAD node IDs while updating the expected wording.
+    'windows-Spoken with the Windows voice',
+    'failed-could not be spoken',
+    'cancelled-cancelled',
 ))
 def test_sample_outcome_is_polled_on_qt_thread(window, result, expected):
     handle = SimpleNamespace(voice_result='pending', network_failed=False)

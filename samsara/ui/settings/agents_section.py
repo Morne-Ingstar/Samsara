@@ -128,7 +128,7 @@ class AgentsControls(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        # STAND-IN COPY (595): keep the reviewed prose; proposed edits are asks.
+        # 663: delegated copy; external-client setup still awaits owner review.
         heading = QLabel("Connect an AI app")
         heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(heading)
@@ -159,7 +159,7 @@ class AgentsControls(QWidget):
             return label
 
         self._note = note
-        note("Before you start: you need to be logged in to the AI app you want to connect.")
+        note("Sign in to the app you choose below.")
         note("Keep Samsara open and turn on " + self._setting_link("Let AI apps use Samsara", "agents") + ".")
         self.app_selector = QComboBox()
         self.app_selector.setAccessibleName("AI app to connect")
@@ -187,11 +187,9 @@ class AgentsControls(QWidget):
         note("2. Copy this short command. Right-click inside PowerShell to paste it, then press Enter. "
              "Follow Claude Code's sign-in instructions.", code)
         code.addWidget(CodeSnippet("claude", name="Claude Code sign-in command"))
-        # Repeat the existing PowerShell instruction after sign-in as a separate
-        # handoff; replacement wording is explicitly left for the owner.
-        note("3. Open the Windows Start menu. Type PowerShell, then open Windows PowerShell.", code)
-        note("Once you are signed in, copy the connection command below. Right-click in PowerShell "
-             "to paste it, then press Enter. This connects Claude Code across your projects.", code)
+        note("3. After signing in, open a new PowerShell window.", code)
+        note("Select Copy beside the connection command below. Right-click in PowerShell "
+             "to paste it, then press Enter. This connection works across your Claude Code projects.", code)
         self.command_preview = CodeSnippet(name="Claude Code connection command, token hidden", copy_action=self.copy_code_command)
         code.addWidget(self.command_preview)
         self.code_copy = self.command_preview.copy_button
@@ -216,19 +214,20 @@ class AgentsControls(QWidget):
         note("Existing settings — after", desktop)
         self.merge_example = CodeSnippet(name="Desktop settings with Samsara added, highlighted comma and entry")
         desktop.addWidget(self.merge_example)
-        note("3. Quit and reopen Claude Desktop so it reads the saved file. Keep Samsara open.", desktop)
+        note("3. Quit and reopen Claude Desktop to load the connection. Keep Samsara open.", desktop)
         layout.addWidget(QLabel("Optional typing"))
         self.typing = QCheckBox("Let AI apps type for me")
         self.typing.setObjectName("agent_server.allow_typing")
         self.typing.setMinimumHeight(theme.HIT_TARGET_MIN)
         self.typing.setChecked(self._typing_enabled())
         layout.addWidget(self.typing)
+        note("Samsara asks before typing. Say yes after it finishes asking.")
         self.approval_label = QLabel("How I approve typing")
         layout.addWidget(self.approval_label)
         self.approval_style = QComboBox()
         self.approval_style.setObjectName("agent_server.command_key_only")
         self.approval_style.setAccessibleName("How I approve typing")
-        self.approval_style.addItem("Just say yes", False)
+        self.approval_style.addItem("Say yes after Samsara asks", False)
         self.approval_style.addItem("Hold the Command key and say yes", True)
         self.approval_style.setMinimumHeight(theme.HIT_TARGET_MIN)
         layout.addWidget(self.approval_style)
@@ -243,12 +242,12 @@ class AgentsControls(QWidget):
             column.setContentsMargins(0, 0, 0, 0)
         self.help_routes.addWidget(code_help)
         self.help_routes.addWidget(desktop_help)
-        note("After " + self._setting_link("New token", "agent_token") + ": remove the old Claude Code connection with this command, then copy and run "
-             "the new connection command above.", code_repairs)
+        note("After choosing " + self._setting_link("New token", "agent_token") + ", run this removal command in PowerShell. "
+             "Then copy and run the connection command again.", code_repairs)
         code_repairs.addWidget(CodeSnippet("claude mcp remove samsara --scope user", name="Remove old Claude Code connection"))
-        note("If you used the earlier local setup, open PowerShell in that project folder and run this command first.", code_repairs)
+        note("If you connected Samsara for one project before, open PowerShell in that project's folder and run this command first.", code_repairs)
         code_repairs.addWidget(CodeSnippet("claude mcp remove samsara", name="Remove earlier project connection"))
-        note("After " + self._setting_link("New token", "agent_token") + ", quit and reopen Claude Desktop again to reconnect.", desktop_repairs)
+        note("After choosing " + self._setting_link("New token", "agent_token") + ", quit and reopen Claude Desktop.", desktop_repairs)
         buttons = QHBoxLayout()
         self.copy, self.rotate = QPushButton("Copy connection details"), QPushButton("New token")
         for button in (self.copy, self.rotate):
@@ -296,7 +295,7 @@ class AgentsControls(QWidget):
 
     def refresh(self, token_failed=False):
         # STAND-IN COPY (564)
-        labels = {"off": "Off.", "listening": "Ready for apps on this PC.",
+        labels = {"off": "Off.", "listening": "Ready for an AI app to connect.",
                   "unavailable": "Could not start. The port or saved token may be unavailable."}
         self.status.setText("Could not save a new token." if token_failed else labels[self.server.status])
         self.copy.setEnabled(self.server.status == "listening")

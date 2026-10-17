@@ -668,7 +668,7 @@ def test_approval_style_default_persistence_and_disabled_state(rig, qapp):
     enabled = QCheckBox(); enabled.setChecked(True)
     controls = AgentsControls(SimpleNamespace(app=rig.app), enabled)
     try:
-        assert controls.approval_style.currentText() == 'Just say yes'
+        assert controls.approval_style.currentText() == 'Say yes after Samsara asks'
         controls.approval_style.setCurrentIndex(1)
         assert saved[-1]['agent_server']['command_key_only'] is True
         rig.app.config = json.loads(json.dumps(saved[-1]))

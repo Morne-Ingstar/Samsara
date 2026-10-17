@@ -382,7 +382,7 @@ class TTSPage:
         labels = {}
         with QSignalBlocker(combo):
             combo.clear()
-            combo.addItem('Default voice', None)  # Stand-in copy (543).
+            combo.addItem('Default voice', None)  # Delegated copy (543/663).
             for voice in voices:
                 label = f'{voice.display_name} ({voice.language})'
                 combo.addItem(label, voice.voice_id)
@@ -404,7 +404,7 @@ class TTSPage:
         status = self._widgets.get('tts_test_status')
         if provider != live_provider:
             if status is not None:
-                status.setText('Apply the engine change, then reopen Settings to test this voice.')  # Stand-in copy (543).
+                status.setText('Apply the engine change first, then test the voice.')
             return
         if provider == 'edge' and not self._ensure_network_voice_accepted():
             return
@@ -413,7 +413,7 @@ class TTSPage:
         # An unapplied default must not silently test that previous voice.
         if voice_id is None and live_cfg.get('voice_id'):
             if status is not None:
-                status.setText('Apply the voice change, then reopen Settings to test this voice.')  # Stand-in copy (543).
+                status.setText('Apply the voice change first, then test it.')
             return
         coordinator = getattr(self.app, 'audio_coordinator', None)
         if coordinator is None or coordinator.engine is None:
@@ -459,13 +459,13 @@ class TTSPage:
                 return
             result = outcome()
             if result == 'windows':
-                status.setText('Spoken with the Windows voice because the Network voice did not answer.')
+                status.setText("The Network voice didn't answer, so the Windows voice spoke instead.")
             elif result == 'failed':
-                status.setText('The voice sample could not be spoken.')
+                status.setText("Couldn't play the voice sample.")
             elif result == 'cancelled':
                 status.setText('Voice sample cancelled.')
             elif result == 'pending' and getattr(handle, 'network_failed', False):
-                status.setText('The Network voice did not answer. Trying the Windows voice.')
+                status.setText("The Network voice didn't answer. Trying the Windows voice...")
             if result not in active:
                 timer.stop()
 
