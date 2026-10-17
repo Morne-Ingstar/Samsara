@@ -962,6 +962,8 @@ class SamsaraTrayQt(QObject):
 
         self._startup_health_done = True
         self._startup_health_timer.stop()
+        from samsara.previous_version import mark_healthy
+        mark_healthy()
 
         # 2026-07-20 incident: logging can silently freeze forever (see
         # dictation.py's _SafeRotatingFileHandler / _verify_logging_self_
@@ -1217,14 +1219,10 @@ class SamsaraTrayQt(QObject):
         getattr(self._app, self._GUIDE_OPENERS[attr])()
 
     def _update_entry_enabled(self) -> bool:
-        """updates.tray_menu_entry, default OFF.
-
-        Its label still comes from updater availability, so source and
-        isolated runs do not promise a GitHub check they cannot make.
-        """
+        """Keep Updates above recovery; otherwise use the existing opt-in flag."""
+        from samsara.previous_version import previous_info
         settings = self._app.config.get('updates', {})
-        return isinstance(settings, dict) and settings.get('tray_menu_entry', False) is True
-
+        return previous_info() is not None or (isinstance(settings, dict) and settings.get('tray_menu_entry', False) is True)
     def _reset_preview_position(self):
         from samsara.streaming import reset_preview_placement  # noqa: PLC0415
         if not reset_preview_placement(self._app):
@@ -1432,9 +1430,11 @@ class SamsaraTrayQt(QObject):
             add(tools_sub, "Stress Test Wizard", lambda: app.open_stress_test_wizard())
             tools_sub.addSeparator()
             add(tools_sub, "Recalibrate Mic", lambda: app.recalibrate_mic())
-            if self._update_entry_enabled() and self._available_update is None:
+            from samsara.ui.update_qt import add_previous_tray_item, previous_entry
+            if self._update_entry_enabled() and (self._available_update is None or previous_entry()[0] is not None):
                 add(tools_sub, update_check_menu_label(), self._open_update_dialog,
                     report_as="Updates")
+            add_previous_tray_item(tools_sub, app)
             tools_sub.addSeparator()
             cleanup_sub = QMenu("Cleanup")
             cleanup_group = QActionGroup(cleanup_sub)

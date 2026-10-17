@@ -475,6 +475,7 @@ try {
         }
     }
     Remove-Item -LiteralPath $staged -Recurse -Force
+    Mark-CurrentCapability
     Copy-Item -LiteralPath $install -Destination $staged -Recurse -Force
     Move-Item -LiteralPath $staged -Destination $rollback
     $backupReady = $true
@@ -495,8 +496,7 @@ try {
         if (($current.state -eq 'installed') -or ($current.state -eq 'reported')) {
             Write-HelperLog 'health confirmed'
             try {
-                Assert-NotReparsePoint $rollback $installParent
-                Remove-Item -LiteralPath $rollback -Recurse -Force
+                Keep-PreviousVersion
                 Assert-NotReparsePoint $workspace $installParent
                 Remove-Item -LiteralPath $workspace -Recurse -Force
             } catch { Write-UpdateStatus 'cleanup_pending' 'The installer update succeeded; old backup cleanup will retry.' }

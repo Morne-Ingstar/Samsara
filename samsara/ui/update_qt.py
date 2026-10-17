@@ -11,7 +11,7 @@ import os
 import time
 from typing import Any
 
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -116,6 +116,9 @@ class _UpdateDialog(QDialog):
         title = QLabel("Samsara Updates")
         title.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_TITLE}px; font-weight: 700;")
         body.addWidget(title)
+        body.addWidget(QLabel(f"Current version: v{__version__}"))
+        self._previous_row = _PreviousVersionRow(app)
+        body.addWidget(self._previous_row)
         from samsara.update_installer import dialog_notice, RELEASES_URL
         installer_notice = dialog_notice()
         self._installer_note = None
@@ -190,6 +193,7 @@ class _UpdateDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._previous_row.refresh()
         self._grow_to_fit()
         QTimer.singleShot(0, self._grow_to_fit)   # again once the width has settled
 
@@ -240,7 +244,7 @@ class _UpdateDialog(QDialog):
         self._status.setText("Update choice saved. Check Now when you are ready.")
 
     def start_check(self) -> None:
-        if self._phase in {"checking", "preparing"}:
+        if self._phase in {"checking", "preparing"} or previous_request_pending():
             return
         reason = update_unavailable_reason()
         if reason:
@@ -338,6 +342,8 @@ class _UpdateDialog(QDialog):
         self._installer_note.setText(f'{message} <a href="{RELEASES_URL}" style="text-decoration:none;color:{theme.ACCENT}">Get the installer</a>')
 
     def _start_install(self) -> None:
+        if previous_request_pending():
+            return
         release = self._release
         if release is None:
             return
@@ -446,6 +452,193 @@ class _UpdateDialog(QDialog):
         def quit_after_install():
             self.app.quit_app(_restart_draft_resolved=True)
         QTimer.singleShot(0, quit_after_install)
+
+
+def previous_entry():
+    """Shared row/menu availability; full verification happens after confirmation."""
+    from samsara.previous_version import previous_info
+    previous = previous_info()
+    reason = update_unavailable_reason()
+    if previous is None:
+        # STAND-IN COPY (651): includes retained builds without the capability.
+        return None, "No previous version is available to go back to."
+    if reason:
+        return previous, reason
+    if previous_request_pending():
+        return previous, "Preparing the previous version…"
+    return previous, ""
+
+
+class _PreviousVersionRow(QWidget):
+    def __init__(self, app):
+        super().__init__()
+        self._app = app
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.detail = QLabel()
+        self.detail.setObjectName('previousVersionDetails')
+        self.detail.setTextFormat(Qt.TextFormat.PlainText)
+        self.detail.setWordWrap(True)
+        self.button = QPushButton('Go back to the previous version')
+        self.button.setObjectName('previousVersionButton')
+        self.button.setMinimumHeight(40)
+        theme.make_secondary(self.button)
+        self.button.clicked.connect(lambda: request_previous_version(app, self.window()))
+        layout.addWidget(self.detail)
+        layout.addWidget(self.button)
+        self.refresh()
+
+    def refresh(self):
+        previous, reason = previous_entry()
+        if previous:
+            date = str(previous['kept_at'])[:10]
+            size = previous.get('size_bytes', 0)
+            cost = f' · uses ~{_format_bytes(size)}' if isinstance(size, (int, float)) and size > 0 else ''
+            self.detail.setText(f"Previous version: v{previous['version']} · kept {date}{cost}" + (f'\n{reason}' if reason else ''))
+        else:
+            self.detail.setText(reason)
+        self.button.setEnabled(not reason)
+        self.button.setToolTip(reason)
+
+
+def previous_dialog(previous, *, failed_version=None, parent=None):
+    """Owner-provided confirmation/offer copy, shared with the render proof."""
+    dialog = QMessageBox(parent)
+    dialog.setWindowTitle('Samsara')
+    dialog.setStyleSheet(theme.build_stylesheet())
+    dialog.setTextFormat(Qt.TextFormat.PlainText)
+    version = previous['version']
+    dialog.setText(
+        f"Samsara v{failed_version} didn't start twice. Go back to v{version}?"
+        if failed_version else f"Go back to v{version}? Samsara will restart."
+    )
+    go_back = dialog.addButton('Go back', QMessageBox.ButtonRole.AcceptRole)
+    keep = dialog.addButton('Keep trying' if failed_version else 'Cancel', QMessageBox.ButtonRole.RejectRole)
+    dialog.setDefaultButton(keep)
+    dialog.setEscapeButton(keep)
+    for button in (go_back, keep):
+        button.setMinimumHeight(40)
+    return dialog, go_back
+
+
+_previous_request = None
+
+
+def previous_request_pending():
+    return _previous_request is not None
+
+
+class _PreviousRequest(QObject):
+    finished = Signal(object, str)
+
+    def __init__(self, app, parent, previous):
+        super().__init__()
+        self.app, self.parent_widget = app, parent
+        self.previous = previous
+        self.armed = False
+        self.finished.connect(self.complete)
+
+    def prepare(self):
+        from samsara.previous_version import prepare_revert
+        try:
+            self.finished.emit(prepare_revert(expected=self.previous), '')
+        except Exception as exc:
+            self.finished.emit(None, str(exc))
+
+    def complete(self, prepared, error):
+        global _previous_request
+        try:
+            if error:
+                raise RuntimeError(error)
+            if not self.app._resolve_parked_draft_before_quit():
+                from pathlib import Path
+                Path(prepared.workspace_dir).rmdir()  # Empty preparation only.
+                return
+            from samsara.previous_version import launch_revert, mark_healthy
+            launch_revert(prepared)
+            self.armed = True
+            mark_healthy()
+            QTimer.singleShot(0, lambda: self.app.quit_app(_restart_draft_resolved=True))
+        except Exception as exc:
+            logger.exception('[UPDATE] Could not go back to previous version')
+            # STAND-IN COPY (651): failure detail remains editable by the owner.
+            QMessageBox.warning(self.parent_widget, 'Samsara', f'Could not go back. Samsara is still open.\n{exc}')
+        finally:
+            if not self.armed:
+                _previous_request = None
+                if _dialog is not None:
+                    _dialog._previous_row.refresh()
+                self.deleteLater()
+
+
+def request_previous_version(app, parent=None):
+    """Called on the Qt thread by either Updates or the tray."""
+    global _previous_request
+    if previous_request_pending() or (_dialog is not None and _dialog._phase in {'checking', 'preparing'}):
+        return
+    previous, reason = previous_entry()
+    if reason:
+        return
+    dialog, go_back = previous_dialog(previous, parent=parent)
+    dialog.exec()
+    accepted = dialog.clickedButton() is go_back
+    dialog.hide()
+    if not accepted:
+        return
+    _previous_request = _PreviousRequest(app, parent, previous)
+    if _dialog is not None:
+        _dialog._previous_row.refresh()
+    thread_registry.spawn('previous-version-prepare', _previous_request.prepare, daemon=True)
+
+
+def add_previous_tray_item(menu, app):
+    previous, reason = previous_entry()
+    if previous is None:
+        return None
+    action = menu.addAction('Go back to the previous version')
+    action.setEnabled(not reason)
+    action.setToolTip(reason)
+    action.triggered.connect(lambda: request_previous_version(app))
+    return action
+
+
+def startup_previous_offer(previous, version):
+    """Only the recovery offer starts Qt early; normal startup stays lightweight."""
+    import threading
+    from samsara.previous_version import launch_revert, prepare_revert
+    finished, answer = threading.Event(), []
+
+    def ask():
+        try:
+            dialog, go_back = previous_dialog(previous, failed_version=version)
+            dialog.exec()
+            answer.append(dialog.clickedButton() is go_back)
+            dialog.hide()
+        finally:
+            finished.set()
+
+    qt_runtime.ensure_started()
+    qt_runtime.post(ask)
+    finished.wait()
+    if not answer or not answer[0]:
+        return False
+    try:
+        launch_revert(prepare_revert(expected=previous))  # Main boot thread, never the Qt thread.
+    except Exception as exc:
+        finished.clear()
+        detail = str(exc)
+
+        def show_failure():
+            try:
+                QMessageBox.warning(None, 'Samsara', f'Could not go back. Samsara will keep trying.\n{detail}')
+            finally:
+                finished.set()
+
+        qt_runtime.post(show_failure)
+        finished.wait()
+        return False
+    qt_runtime.shutdown()
+    return True
 
 
 def _clear_dialog() -> None:

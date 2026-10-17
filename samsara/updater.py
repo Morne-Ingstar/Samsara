@@ -863,6 +863,9 @@ _ASSERT_NOT_REPARSE_POINT_PS = """function Assert-NotReparsePoint([string]$path,
 
 
 def _helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
+    from samsara.previous_version import reverse_helper
+    if getattr(prepared, "reverse", False):
+        return reverse_helper(prepared, current_pid)
     from samsara.update_installer import archive_guard, PreparedInstaller, helper
     if isinstance(prepared,PreparedInstaller):
         return helper(prepared,current_pid)
@@ -882,7 +885,8 @@ def _archive_helper_script(prepared: PreparedUpdate, current_pid: int) -> str:
     workspace_prefix = _ps_literal(f".{prepared.install_dir.name}-update-")
     rollback_prefix = _ps_literal(f".{prepared.install_dir.name}-rollback-")
     from samsara.update_installer import helper_log_path
-    return f"""$helperLog = {_ps_literal(helper_log_path(prepared))}
+    from samsara.previous_version import decorate_helper
+    return decorate_helper(f"""$helperLog = {_ps_literal(helper_log_path(prepared))}
 [IO.File]::AppendAllText($helperLog, ([DateTime]::UtcNow.ToString('o') + ' start' + [Environment]::NewLine))
 $ErrorActionPreference = 'Stop'
 function Write-HelperLog([string]$message) {{
@@ -1114,7 +1118,7 @@ try {{
     Show-UpdateFailure "The update could not replace Samsara. The existing installation was left in place.`n`n$problem"
     exit 4
 }}
-"""
+""", prepared)
 
 
 def _write_status(
@@ -1143,6 +1147,8 @@ def _write_status(
                 "helper_path": str(prepared.helper_path),
             }
         )
+    from samsara.previous_version import preserve_status
+    preserve_status(path, payload)
     if extra_fields is not None:
         payload.update(extra_fields)
     temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
@@ -1195,21 +1201,7 @@ _LEFTOVER_PATH_KEYS = ("install_dir", "rollback_dir", "workspace_dir")
 
 
 def _leftover_update_dirs(payload: dict) -> tuple[Path, Path, Path] | None:
-    """Extract a validated (workspace, rollback, install) triple from an
-    ``installed``-state status payload, if the payload carries one.
-
-    Returns ``None`` only when the payload predates path persistence --
-    i.e. *none* of install_dir/rollback_dir/workspace_dir are present.
-    Callers must treat that, and only that, as "nothing to check, this is a
-    legacy status" rather than an error.
-
-    If *any* of those fields are present, all three are required and must
-    resolve to safe, validated paths beside this installation; this raises
-    :class:`UpdateError` on a malformed, incomplete, tampered, or unsafe
-    subset instead of silently swallowing it -- callers must not treat that
-    case the same as "nothing to check", or a corrupted status could hide
-    orphaned update directories forever.
-    """
+    """Validate persisted cleanup paths; reject incomplete or unsafe metadata."""
     present = [key for key in _LEFTOVER_PATH_KEYS if payload.get(key)]
     if not present:
         return None
@@ -1272,7 +1264,8 @@ def _cleanup_retry_script(
     status: Path,
     tag: str,
 ) -> str:
-    return f"""$ErrorActionPreference = 'Stop'
+    from samsara.previous_version import decorate_cleanup
+    return decorate_cleanup(f"""$ErrorActionPreference = 'Stop'
 $workspace = {_ps_literal(workspace)}
 $rollback = {_ps_literal(rollback)}
 $install = {_ps_literal(install)}
@@ -1317,7 +1310,7 @@ try {{
 }} catch {{
     Write-CleanupStatus 'cleanup_pending' "Leftover update cleanup will be retried: $($_.Exception.Message)"
 }}
-"""
+""")
 
 
 def _launch_cleanup_retry(
@@ -1336,24 +1329,27 @@ def _launch_cleanup_retry(
         encoding="utf-8-sig",
     )
     creationflags = 0
-    for flag_name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
+    for flag_name in ("CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
         creationflags |= int(getattr(subprocess, flag_name, 0))
-    process_runner(
-        [
-            str(_system_powershell_path()),
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-WindowStyle",
-            "Hidden",
-            "-File",
-            str(helper),
-        ],
-        cwd=str(updates),
-        close_fds=True,
-        creationflags=creationflags,
-    )
+    with helper.with_suffix('.launch.log').open('ab') as output:
+        process_runner(
+            [
+                str(_system_powershell_path()),
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+                str(helper),
+            ],
+            cwd=str(updates),
+            close_fds=True,
+            creationflags=creationflags,
+            stdin=subprocess.DEVNULL,
+            stdout=output, stderr=output,
+        )
 
 
 def reconcile_update_on_startup(
@@ -1423,6 +1419,7 @@ def reconcile_update_on_startup(
             status_path, f"A stale {state!r} update status was quarantined."
         )
     if state == "reported":
+        if payload.get("previous"): return None  # Retained metadata outlives the notice.
         try:
             status_path.unlink()
         except OSError:
@@ -1532,6 +1529,7 @@ def reconcile_update_on_startup(
         # active installation must never surface it as an installed update.
         return status
     if state == "installed":
+        if _helper_owns_update(payload): return None  # Helper is still keeping the old copy.
         # Preserve orphan cleanup validation after a successful health handshake.
         try:
             leftover = _leftover_update_dirs(payload)
@@ -1543,7 +1541,9 @@ def reconcile_update_on_startup(
             )
         if leftover is not None:
             workspace, rollback, install = leftover
-            if workspace.exists() or rollback.exists():
+            previous = payload.get("previous")
+            retained = previous.get("path") if isinstance(previous, dict) else None
+            if workspace.exists() or (rollback.exists() and str(rollback) != retained):
                 pending_message = (
                     f"{message} Leftover update files from a previous "
                     "session still need cleanup."

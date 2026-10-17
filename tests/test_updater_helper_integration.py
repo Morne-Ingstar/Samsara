@@ -184,6 +184,7 @@ def test_failed_staged_preflight_leaves_current_install_untouched(tmp_path):
     assert completed.returncode == 4, completed.stdout
     assert (install / "old-version.txt").read_text(encoding="utf-8") == "old"
     assert not (install / "new-version.txt").exists()
+    assert not (install / ".samsara-previous-version-651").exists()
     assert not rollback.exists()
     assert json.loads(status.read_text(encoding="utf-8-sig"))["state"] == "failed"
 
@@ -316,7 +317,16 @@ def test_generated_helper_swaps_waits_for_health_and_cleans_staging(tmp_path):
     assert payload["message"] == "healthy test startup"
     assert (install / "new-version.txt").read_text(encoding="utf-8") == "new"
     assert not (install / "old-version.txt").exists()
-    assert not rollback.exists()
+    # 651 retains the outgoing copy after health success (formerly deleted).
+    assert (rollback / "old-version.txt").read_text(encoding="utf-8") == "old"
+    assert not (rollback / "new-version.txt").exists()
+    previous = payload["previous"]
+    assert Path(previous["path"]) == rollback
+    assert previous["sha256"] == hashlib.sha256(b"old executable placeholder").hexdigest()
+    assert (rollback / ".samsara-previous-version-651").read_text() == previous["sha256"]
+    assert previous["size_bytes"] == sum(p.stat().st_size for p in rollback.rglob("*") if p.is_file())
+    assert previous["tag"] == "v" + previous["version"]
+    assert previous["kept_at"]
     assert not workspace.exists()
 
 
@@ -497,6 +507,12 @@ function Start-Process {{
     completed=run_helper(prepared.helper_path)
     assert completed.returncode==(0 if installer_exit==0 and health else 2),completed.stdout
     outcome=json.loads(status.read_text(encoding='utf-8-sig'))
+    if installer_exit == 0 and health:
+        previous = outcome['previous']
+        retained = Path(previous['path'])
+        assert retained == prepared.rollback_dir
+        assert previous['sha256'] == hashlib.sha256(b'old').hexdigest()
+        assert (retained / '.samsara-previous-version-651').read_text() == previous['sha256']
     if installer_exit:
         assert 'code 4' in outcome['message']
     elif not health:

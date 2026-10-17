@@ -48,7 +48,6 @@ if len(sys.argv) > 1 and sys.argv[1] == "--restart-helper":
     from samsara.app_restart import main as _restart_helper_main
     sys.exit(_restart_helper_main())
 
-
 #: Startup argument dispatch (108/F9). CLI modes that are NOT "run the app"
 #: are routed here and exit, for the same reason the ducking host above does:
 #: they must never build a second app, and -- the part that was actually
@@ -63,7 +62,6 @@ if len(sys.argv) > 1 and sys.argv[1] == "--restart-helper":
 #: ~14,700 lines below; this runs first, so a fetch during an active session
 #: still fetches, which is exactly what post-install needs.
 _ARGUMENT_MODES = ("--fetch-components",)
-
 
 def _dispatch_startup_argument(argv):
     """Return an exit code for a non-app CLI mode, or None to start the app.
@@ -96,7 +94,8 @@ from samsara.stage_timing import (
 )
 import samsara.boot as _samsara_boot
 _FAULTHANDLER_FILE = _samsara_boot._enable_faulthandler(_fh_home_dir() / "logs")
-
+from samsara.previous_version import early_startup as _previous_early_startup
+_previous_early_startup()
 # Platform-specific imports
 if sys.platform == 'win32':
     try:
