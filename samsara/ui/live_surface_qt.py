@@ -161,7 +161,7 @@ class _FeedbackBand(QWidget):
             self.label.setAccessibleName(message or "Live surface feedback")
             self.setToolTip(message); self.label.setToolTip(message)
             self.label.setTextFormat(Qt.TextFormat.PlainText)
-            self.label.setText(self.label.fontMetrics().elidedText(message, Qt.TextElideMode.ElideMiddle, max(1, self.width()-42)))
+            self.label.setText(self.label.fontMetrics().elidedText(message, Qt.TextElideMode.ElideRight, max(1, self.width()-42)))
         else:
             if notice and notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING, FeedbackKind.LIVE):
                 message = KIND_WORDS[notice.feedback] + ": " + message

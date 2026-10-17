@@ -101,7 +101,7 @@ def test_chip_elides_between_title_and_real_buttons_at_narrow_width(widgets, qap
         if button.isVisible():
             assert not chip.geometry().intersects(button.geometry())
     assert chip.label.text() == chip.label.fontMetrics().elidedText(message,
-        Qt.TextElideMode.ElideMiddle, chip.label.width())
+        Qt.TextElideMode.ElideRight, chip.label.width())
     assert '…' in chip.label.text()
     assert chip.toolTip() == message and chip.label.toolTip() == message
     assert chip.accessibleName() == message and chip.label.accessibleName() == message
