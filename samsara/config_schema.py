@@ -497,6 +497,16 @@ SETTINGS_SCHEMA = {
         "default": 300,
         "tab": "commands",
     },
+    "command_mode.utterance_silence_s": {
+        "type": "float", "min": 0.3, "max": 3.0, "step": 0.05,
+        "default": 1.0, "tab": "commands",
+        "help": {"why": "Wait this long after speech before completing a command. Shorter pauses respond sooner but can split commands. This does not change the dictation pause.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.utterance_silence_s"},
+    },
+    "command_mode.short_decode_enabled": {
+        "type": "bool", "default": False, "tab": "commands",
+        "ui_less": True,
+        "ui_less_reason": "Experimental command-only short decode; opt in after recorded-audio accuracy and latency checks.",
+    },
     "command_mode.dictate_utterance_silence_s": {
         "type": "float",
         "min": 0.3,

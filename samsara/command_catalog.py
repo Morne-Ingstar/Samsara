@@ -160,6 +160,35 @@ def normalize_phrase(phrase: str) -> str:
     return " ".join(tok for tok, _s, _e in view_tokens(phrase or ""))
 
 
+def matches_short_command(text: str, executor, *, allow_chain: bool = True) -> bool:
+    """Accept only whole, live catalogue literals from a short final decode.
+
+    This is a recognition filter, never a dispatch route. The caller must
+    still run the usual hallucination gates, session controls and policy.
+    Arguments, fuzzy/prefix matches and partially understood chains fall
+    back to the ordinary decoder. Resolve a complete alias before splitting
+    on ``then`` so a registered phrase containing that word stays intact.
+    """
+    phrase = normalize_phrase(text)
+    if not phrase or len(phrase.split()) > 16:
+        return False
+    matcher = executor._matcher
+    context = matcher.current_context()
+
+    def literal(candidate):
+        entry, remainder = matcher.match(candidate, context)
+        return bool(
+            entry is not None and not remainder
+            and candidate in {normalize_phrase(p) for p in [entry.phrase, *entry.aliases]}
+            and not executor._takes_argument(entry)
+        )
+
+    if literal(phrase):
+        return True
+    parts = phrase.split(' then ')
+    return bool(allow_chain and 2 <= len(parts) <= 3 and all(literal(p) for p in parts))
+
+
 def user_aliases_path(home_dir: Optional[Path] = None) -> Path:
     """The per-user alias store, beside training_data.json and config.json."""
     if home_dir is None:

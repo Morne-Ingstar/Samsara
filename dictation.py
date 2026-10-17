@@ -86,6 +86,7 @@ if _STARTUP_ARGUMENT_CODE is not None:
 # Before every heavy/native import below (torch guard, sounddevice, scipy,
 # faster-whisper, Qt) so a crash during boot also leaves a dump.
 from samsara.paths import samsara_home_dir as _fh_home_dir
+from samsara.command_fast_path import CommandFastPathMixin
 from samsara.stage_timing import (
     StageTiming,
     current_stage_timing,
@@ -1356,7 +1357,7 @@ def _reap_old_preview_profiles() -> None:
             logger.debug(f"[PREVIEW] Could not reap {path_str}: {e}")
 
 
-class DictationApp:
+class DictationApp(CommandFastPathMixin):
     # Config-backup safeguard (2026-07-2x "config wiped to defaults"
     # incident). See save_config()'s rolling-backup step,
     # _write_last_known_good(), and _quarantine_corrupt_config().
@@ -5809,6 +5810,7 @@ class DictationApp:
         time.sleep(0.1)
         if self.command_mode_active and not self.recording:
             self.start_recording(streaming=False, play_earcon=False, capture_path='command_key')
+
     def _handle_command_mode_utterance(
         self, buffer: list, src_rate: int, *,
         last_voice_ns: int | None = None, speech_end_ns: int | None = None,
@@ -5978,9 +5980,7 @@ class DictationApp:
                 beam=transcribe_params.get("beam_size"),
             )
             transcribe_start = time.time()
-            with self.model_lock:
-                segments, info = self.model.transcribe(audio, **transcribe_params)
-                seg_list = list(segments)
+            seg_list, info = self._decode_session_audio(audio, transcribe_params, command_lane=_is_command_lane)
             text = ''.join(s.text for s in seg_list).strip()
             stage_timing.mark("transcribe_end", words=len(text.split()))
             transcribe_time = time.time() - transcribe_start
