@@ -146,6 +146,7 @@ def test_model_keeps_grant_address_requires_accept(make_window, monkeypatch):
     cfg = _config()
     cfg['ava']['consent'] = grant(cfg)
     win = make_window(cfg)
+    win._stack.setCurrentIndex(settings_qt._TAB_NAMES.index("Ava"))
     win._widgets['ava_cmd_model'].setText('another-model')
     assert not consent.consent_required(win._ava_staged_config())
     win.app.config['ollama']['host'] = 'http://127.0.0.1:11435'

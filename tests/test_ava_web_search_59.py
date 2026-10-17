@@ -100,6 +100,7 @@ def _isolation(monkeypatch):
 
 def _app(*, web_search=True, provider="deepseek", cloud=True):
     app = MagicMock()
+    app._ava_question = None  # A fresh conversation has no pending answer slot.
     policy = 'cloud' if cloud else 'local'
     app.config = {
         "ollama": {"enabled": not cloud, "host": "http://localhost:11434"},
@@ -534,14 +535,24 @@ def test_panel_renders_plain_text_and_refuses_unsafe_links(qapp, monkeypatch):
 # Settings: one labelled control, off by default, absent-and-explained for local
 # ---------------------------------------------------------------------------
 
-def _settings_window(config):
-    from samsara.ui.settings_qt import _SettingsWindow
+def _settings_window(config, request):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
     sys.path.insert(0, str(ROOT / "tests"))
     from test_settings import _StubApp as SettingsStub
     stub = SettingsStub()
     config.setdefault('ava', {'provider_policy': 'cloud' if config.get('cloud_llm', {}).get('enabled') else 'local'})
     stub.config = config
-    return _SettingsWindow(stub)
+    window = _SettingsWindow(stub)
+
+    def cleanup():
+        window.hide()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
+
+    request.addfinalizer(cleanup)
+    window._stack.setCurrentIndex(_TAB_NAMES.index("Ava"))
+    return window
 
 
 def _ava_save(win):
@@ -551,13 +562,17 @@ def _ava_save(win):
 @pytest.mark.parametrize("cloud, provider, available", [
     (True, "deepseek", True), (False, "deepseek", False), (True, "openai", False),
 ])
-def test_settings_control_availability(qapp, cloud, provider, available):
+def test_settings_control_availability(qapp, request, cloud, provider, available):
     from samsara.ui.settings import ava_cloud_qt
     win = _settings_window({"cloud_llm": {"enabled": cloud, "provider": provider,
-                                          "api_key": "k", "web_search": True}})
+                                          "api_key": "k", "web_search": True}}, request)
     cb = win._widgets['cloud_web_search']
     assert win._rows_by_widget['cloud_web_search'].title == "Web search"
-    assert cb.text() == ("On" if available else "Off")
+    from PySide6.QtGui import QAccessible
+    interface = QAccessible.queryAccessibleInterface(cb)
+    assert interface.role() == QAccessible.Role.CheckBox
+    assert interface.text(QAccessible.Text.Name) == "Web search"
+    assert bool(interface.state().checked) is available
     assert cb.isEnabled() is available
     assert cb.isChecked() is available
     # isHidden(): the page may sit in a non-current stack, so ancestors are hidden
@@ -567,7 +582,7 @@ def test_settings_control_availability(qapp, cloud, provider, available):
     assert _ava_save(win)['cloud_llm']['web_search'] is available
 
 
-def test_settings_default_is_off_and_switching_provider_disarms(qapp, monkeypatch):
+def test_settings_default_is_off_and_switching_provider_disarms(qapp, monkeypatch, request):
     from samsara.ui.settings import ava_cloud_qt
 
     def accept_provider_change(_win, effective, cloud_enabled):
@@ -577,7 +592,7 @@ def test_settings_default_is_off_and_switching_provider_disarms(qapp, monkeypatc
             accepted_at='2026-01-01T00:00:00+00:00')
 
     monkeypatch.setattr(ava_cloud_qt.ava_consent_qt, 'request_consent', accept_provider_change)
-    win = _settings_window({"cloud_llm": {"enabled": True, "provider": "deepseek", "api_key": "k"}})
+    win = _settings_window({"cloud_llm": {"enabled": True, "provider": "deepseek", "api_key": "k"}}, request)
     cb = win._widgets['cloud_web_search']
     assert cb.isEnabled() and not cb.isChecked()
     cb.setChecked(True)

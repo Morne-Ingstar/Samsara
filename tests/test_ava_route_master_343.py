@@ -182,6 +182,7 @@ def test_legacy_cloud_consent_shows_confirmation_without_switch(qapp, monkeypatc
         accepted_at="2026-09-27T00:00:00+00:00")
     win = settings_qt._SettingsWindow(_StubApp(cfg))
     try:
+        win._stack.setCurrentIndex(settings_qt._TAB_NAMES.index("Ava"))
         assert ai.cloud_route_confirmation_needed(cfg)
         assert win._ava_route_confirmation_pending
         assert win._widgets["providerRoute"].currentData() == "local"

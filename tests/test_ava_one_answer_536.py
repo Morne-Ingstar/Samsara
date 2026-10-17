@@ -359,7 +359,11 @@ def test_both_displays_keep_loading_until_resolution(harness, monkeypatch, qapp,
         else:
             assert not indicator._thinking and not indicator._chip_label
     finally:
-        widget.hide()
+        if display == "Compact":
+            # Retire the native pill and timers before deferred QWidget deletion.
+            widget.destroy()
+        else:
+            widget.hide()
         widget.deleteLater()
 
 
@@ -503,6 +507,7 @@ def test_compact_wait_updates_label_when_another_producer_takes_over(qapp):
         indicator.set_thinking(True, label="Ava")
         assert indicator._resolve_colors()[2] == "Ava"
     finally:
+        indicator.destroy()
         indicator.deleteLater()
 
 
@@ -854,6 +859,7 @@ def test_agent_wait_survives_ava_turn_completion_and_generation_bump(harness, mo
         assert before == ("Vision" if display == "Compact" else "Ava thinking") if agent == "generic" else "Hermes" in before
     finally:
         if display == "Compact":
+            indicator.destroy()
             indicator.deleteLater()
 
 
@@ -1022,6 +1028,7 @@ def test_agent_takes_over_ava_wait_and_keeps_it_after_ava_finishes(
             assert controller.view().notice.message == ""
     finally:
         if display == "Compact":
+            indicator.destroy()
             indicator.deleteLater()
 
 
@@ -1089,4 +1096,5 @@ def test_next_ava_turn_shows_its_sign_after_an_agent_took_it_over(harness, monke
         assert not indicator._thinking
     finally:
         if display == "Compact":
+            indicator.destroy()
             indicator.deleteLater()

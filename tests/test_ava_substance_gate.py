@@ -29,6 +29,7 @@ def _make_stub():
             self._session_recovery_pause = False
             self._sounds = []
             self.reset_calls = []
+            self._notify_tutorial = Mock()
 
         def play_sound(self, name, **_kwargs):
             self._sounds.append(name)

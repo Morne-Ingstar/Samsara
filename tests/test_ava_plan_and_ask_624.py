@@ -398,5 +398,9 @@ def test_waiting_question_is_visible_on_both_displays(rig, monkeypatch, qapp, tm
             assert "waiting for your answer" in indicator._chip_label
         assert widget.grab().save(str(tmp_path / f"624_{display}_waiting.png"))
     finally:
-        widget.hide()
+        if display == "Compact":
+            # Retire the native pill and its timers while its Python owner lives.
+            widget.destroy()
+        else:
+            widget.hide()
         widget.deleteLater()

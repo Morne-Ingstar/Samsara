@@ -5,13 +5,20 @@ import types
 
 from PySide6.QtCore import QEvent, QEventLoop, QObject, Qt, QTimer, Signal
 
-from samsara import ava_readiness
+from samsara import ai_preferences, ava_readiness
 from samsara.ui import home_signals, qt_runtime, voice_help_qt
 
 
 def _app():
+    config = {"ollama": {"enabled": True, "host": "http://127.0.0.1:11434"}}
+    provider = ai_preferences.provider_for(config, "local")
+    consent = ai_preferences.accept_consent(
+        config, features=("ava",), provider=provider, cloud=False,
+        accepted_at="2026-10-17T00:00:00Z")
+    config = ai_preferences.apply_preferences(
+        config, policy="local", ava=True, consent=consent, local_model="fixture-model")
     return types.SimpleNamespace(
-        config={"ollama": {"enabled": True}},
+        config=config,
         available_mics=[],
         snoozed=False,
     )

@@ -209,6 +209,7 @@ def test_button_tests_unsaved_field(qapp, monkeypatch, status, text):
 def test_ava_rows_grouping_and_search(qapp, route):
     from samsara.ui.settings_qt import _SettingsWindow
     from tests.test_settings_pages import _StubApp
+    from samsara.ui.settings.presentation import SettingRow
     config = config_for('local' if route == 'off' else route)
     if route == 'off':
         config['ava']['provider_policy'] = 'off'
@@ -220,6 +221,7 @@ def test_ava_rows_grouping_and_search(qapp, route):
     try:
         page = window._pages['Ava']
         rows = [page.base.itemAt(i).widget() for i in range(page.base.count())]
+        rows = [row for row in rows if isinstance(row, SettingRow)]
         assert [r.widget_keys[0] for r in rows[:4]] == ['providerRoute', 'cloud_provider', 'ava_cmd_model', 'ava_mode_key']
         assert window._rows_by_widget['cloud_provider'].isVisible() == (route == 'cloud')
         assert window._rows_by_widget['ava_cmd_model'].isVisible() == (route == 'local')

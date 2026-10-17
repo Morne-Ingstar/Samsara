@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from samsara import ava_readiness, config_schema
+from samsara import ai_preferences, ai_transport, ava_readiness, config_schema
 from samsara.ui import home_qt, home_signals
 
 
@@ -23,11 +23,19 @@ def _fresh_tracker(monkeypatch):
 
 def _app(*, warm_on_boot=True, cloud_enabled=False):
     config = {
-        "ollama": {"enabled": True, "host": "http://ollama.test", "model": "test", "timeout_seconds": 1},
-        "cloud_llm": {"enabled": cloud_enabled, "api_key": "test-key" if cloud_enabled else ""},
+        "ollama": {"enabled": True, "host": "http://127.0.0.1:11434", "model": "test", "timeout_seconds": 1},
+        "cloud_llm": {"provider": "deepseek", "enabled": cloud_enabled, "api_key": "test-key" if cloud_enabled else ""},
     }
+    route = "cloud" if cloud_enabled else "local"
+    provider = ai_preferences.provider_for(config, route)
+    consent = ai_preferences.accept_consent(
+        config, features=("ava",), provider=provider, cloud=cloud_enabled,
+        accepted_at="2026-10-17T00:00:00Z")
+    config = ai_preferences.apply_preferences(config, policy=route, ava=True, consent=consent, local_model="test")
     if warm_on_boot is not None:
-        config["ava"] = {"warm_on_boot": warm_on_boot}
+        config["ava"]["warm_on_boot"] = warm_on_boot
+    else:
+        config["ava"].pop("warm_on_boot", None)
     return SimpleNamespace(config=config)
 
 
@@ -79,14 +87,15 @@ def test_warm_completion_holds_warming_until_the_worker_returns(monkeypatch):
         assert release.wait(2)
         return _Response()
 
-    import requests
-    monkeypatch.setattr(requests, "post", _post)
+    monkeypatch.setattr(ai_transport, "post_local", _post)
     worker = threading.Thread(target=ava_readiness.warm_configured_provider, args=(_app(),))
     worker.start()
-    assert entered.wait(1)
-    assert ava_readiness.tracker.snapshot().warming
-    release.set()
-    worker.join(2)
+    try:
+        assert entered.wait(1)
+        assert ava_readiness.tracker.snapshot().warming
+    finally:
+        release.set()
+        worker.join(2)
     assert not worker.is_alive()
     assert ava_readiness.tracker.snapshot().ready
 
@@ -99,20 +108,24 @@ def test_warm_ollama_empty_completion_records_provider_error(monkeypatch):
         def json(self):
             return {}
 
-    import requests
-    monkeypatch.setattr(requests, "post", lambda *_args, **_kwargs: _Response())
+    sent = []
+    monkeypatch.setattr(ai_transport, "post_local",
+                        lambda url, **kwargs: sent.append((url, kwargs["json"])) or _Response())
 
     result = ava_readiness.warm_configured_provider(_app())
 
-    assert result.offline
+    # 536 changed local warming to load-only; an empty completion body is valid.
+    assert result.ready
     assert result.provider == "ollama"
-    assert result.failure_kind == ava_readiness.PROVIDER_ERROR
+    assert result.failure_kind is None
+    assert sent == [("http://127.0.0.1:11434/api/generate", {"model": "test", "stream": False})]
 
 
 def test_schedule_warm_on_boot_runs_completion_in_the_spawned_worker(monkeypatch):
     boot_thread = threading.get_ident()
     ran = threading.Event()
     worker_thread = []
+    workers = []
 
     def _warm(_app):
         worker_thread.append(threading.get_ident())
@@ -120,12 +133,19 @@ def test_schedule_warm_on_boot_runs_completion_in_the_spawned_worker(monkeypatch
 
     def _spawn(_name, fn):
         thread = threading.Thread(target=fn)
+        workers.append(thread)
         thread.start()
         return thread
 
-    monkeypatch.setattr(ava_readiness, "warm_configured_provider", _warm)
+    from samsara import ava_local_warmup
+    monkeypatch.setattr(ava_local_warmup, "load", _warm)
     assert ava_readiness.schedule_warm_on_boot(_app(), _spawn)
-    assert ran.wait(1)
+    try:
+        assert ran.wait(1)
+    finally:
+        for thread in workers:
+            thread.join(2)
+    assert all(not thread.is_alive() for thread in workers)
     assert worker_thread == [worker_thread[0]]
     assert worker_thread[0] != boot_thread
 
@@ -137,7 +157,8 @@ def test_warm_on_boot_is_not_scheduled_when_disabled():
 
 
 def test_warm_on_boot_defaults_local_on_and_cloud_off():
-    assert ava_readiness.warm_on_boot_enabled(_app(warm_on_boot=None))
+    # Historical test id retained: 536 changed the local default to off too.
+    assert not ava_readiness.warm_on_boot_enabled(_app(warm_on_boot=None))
     assert not ava_readiness.warm_on_boot_enabled(
         _app(warm_on_boot=None, cloud_enabled=True))
 
@@ -171,7 +192,8 @@ def test_header_pill_has_a_visible_label_for_every_ava_state(qapp, monkeypatch, 
     control = home_qt.AvaHeaderControl(_app())
     control.show()
     qapp.processEvents()
-    assert control.visible_text == f"Ava {home_qt.EM_DASH} {word}"
+    assert control.visible_text == f"Ava: on this PC - test {home_qt.EM_DASH} {word}"
     assert control.accessibleName() == control.visible_text
     assert control.sizeHint().width() >= control.layout().sizeHint().width()
     control.close()
+    control.deleteLater()

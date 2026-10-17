@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from plugins.commands import ask_ollama  # noqa: E402
-from samsara import ava_profile, ava_readiness, cloud_llm  # noqa: E402
+from samsara import ai_preferences, ava_profile, ava_readiness, cloud_llm  # noqa: E402
 from samsara.tts.coordinator import (  # noqa: E402
     AudioCoordinator, TTS_CHAR_LIMIT_EXEMPT_CATEGORIES, command_mode_char_limit,
 )
@@ -86,13 +86,21 @@ def _engine():
 
 def _app(*, cloud=True, command_mode_active=True, tts_char_limit=50):
     app = MagicMock()
+    app._ava_question = None
+    app._ava_ai_off_notice_given = False
     app.config = {
-        "ollama": {"enabled": True, "host": "http://localhost:11434"},
+        "ollama": {"enabled": True, "host": "http://127.0.0.1:11434"},
         "cloud_llm": {"enabled": cloud, "provider": "deepseek", "api_key": "test-not-a-key" if cloud else ""},
         "command_mode": {"tts_char_limit": tts_char_limit},
         "tts": {"speed": 1.0, "volume": 0.8, "voice_id": None},
         "language": "en",
     }
+    route = "cloud" if cloud else "local"
+    provider = ai_preferences.provider_for(app.config, route, resolved_addresses=("127.0.0.1", "::1") if not cloud else ())
+    consent = ai_preferences.accept_consent(
+        app.config, features=("ava",), provider=provider, cloud=cloud,
+        accepted_at="2026-10-17T00:00:00Z")
+    app.config = ai_preferences.apply_preferences(app.config, policy=route, ava=True, consent=consent, local_model="test-model")
     app.command_mode_active = command_mode_active
     app.engine = _engine()
     app.audio_coordinator = AudioCoordinator(app, app.engine)
@@ -311,9 +319,9 @@ def test_local_ollama_down_names_ollama(monkeypatch, inline_worker):
 
 def test_disabled_plugin_says_so(inline_worker):
     app = _session_done_harness(_app())
-    app.config["ollama"]["enabled"] = False
+    app.config = ai_preferences.apply_preferences(app.config, policy="off", ava=False)
     ask_ollama.handle_ask_ava(app, "hello", on_done=app._on_ava_session_request_done)
-    assert _spoken(app) == ["Ava is turned off in Settings."]
+    assert _spoken(app) == ["Ava is off. Say open Settings or tap Settings, then choose Ava."]
     assert app._show_outcome_chip.call_args.args[1] == "error"
 
 
@@ -341,7 +349,8 @@ class TestProbe:
     def test_cloud_status(self, status, kind):
         seen = {}
 
-        def get(url, timeout, headers=None):
+        def get(url, timeout, headers=None, **kwargs):
+            assert kwargs == {"allow_redirects": False}
             seen.update(url=url, timeout=timeout, auth=bool(headers))
             return _Resp(status)
 
@@ -363,14 +372,15 @@ class TestProbe:
         urls = []
         get = lambda url, timeout, **k: urls.append(url) or _Resp(200)  # noqa: E731
         assert ava_readiness.probe_configured_provider(_app(cloud=False), http_get=get) == ("ollama", None)
-        assert urls == ["http://localhost:11434/api/tags"]
+        assert urls == ["http://127.0.0.1:11434/api/tags"]
 
 
 def test_readiness_ready_offline_ready_without_restart():
     app = _app()
     script = iter([200, "down", 200])
 
-    def get(url, timeout, headers=None):
+    def get(url, timeout, headers=None, **kwargs):
+        assert kwargs == {"allow_redirects": False}
         step = next(script)
         if step == "down":
             raise requests.exceptions.ConnectionError()
@@ -483,7 +493,7 @@ def test_name_set_by_voice_and_reversed_by_voice(profile_store, set_phrase, undo
     assert _teach(app, undo_phrase) is True
     assert ava_profile.get("name") is None
     assert "Morne" not in profile_store.read_text(encoding="utf-8")
-    assert _spoken(app)[-1] == "Forgotten your name."
+    assert _spoken(app)[-1] == "I removed your preferred name: Morne."
 
 
 @pytest.mark.parametrize("utterance", ["I'm lonely.", "I'm tired", "I'm not sure"])

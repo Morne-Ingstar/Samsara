@@ -24,7 +24,7 @@ import dictation
 import samsara.boot as samsara_boot
 
 
-# ── Fix 8: per-thread stage timers ───────────────────────────────────────────
+# â”€â”€ Fix 8: per-thread stage timers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _Clock:
     def __init__(self):
@@ -69,7 +69,7 @@ def test_boot_timer_steps_are_per_thread(monkeypatch):
     assert "total 3000ms" in lines[2] and "thread=model-thread" in lines[2]
 
 
-# ── Fix 2: ACE before the model thread; Fix 3: no TTS on the boot thread ─────
+# â”€â”€ Fix 2: ACE before the model thread; Fix 3: no TTS on the boot thread â”€â”€â”€â”€â”€
 
 def _init_source():
     src = textwrap.dedent(inspect.getsource(dictation.DictationApp.__init__))
@@ -102,7 +102,7 @@ def test_init_does_not_record_calibration_without_cache_check():
     assert "_run_calibration_if_auto(use_cache=True)" in src
 
 
-# ── Fix 1: model worker never loads OpenWakeWord ─────────────────────────────
+# â”€â”€ Fix 1: model worker never loads OpenWakeWord â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _worker_app(wake_enabled):
     app = dictation.DictationApp.__new__(dictation.DictationApp)
@@ -142,7 +142,7 @@ def test_model_worker_never_loads_openwakeword(monkeypatch, wake_enabled):
     assert app.start_wake_word_mode.call_count == (1 if wake_enabled else 0)
 
 
-# ── Queue 46: the Smart Corrections warm-up never blocks "Startup complete" ───
+# â”€â”€ Queue 46: the Smart Corrections warm-up never blocks "Startup complete" â”€â”€â”€
 
 @pytest.mark.parametrize("sc_enabled", [False, True])
 def test_smart_corrections_warm_up_is_off_the_startup_lane(monkeypatch, sc_enabled):
@@ -202,7 +202,7 @@ def test_tray_startup_applies_hidden_window_policy(monkeypatch, config, expected
     assert app._startup_shell_ready.is_set()
 
 
-# ── Fix 1: lazy wake load, pending start, wake_ready ─────────────────────────
+# â”€â”€ Fix 1: lazy wake load, pending start, wake_ready â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _wake_app(monkeypatch):
     app = dictation.DictationApp.__new__(dictation.DictationApp)
@@ -316,12 +316,13 @@ def test_update_config_does_not_load_openwakeword_before_wake_is_requested(monke
     assert app.config["wake_word_config"]["phrase"] == "alexa"
 
 
-# ── Fix 3: TTS worker ────────────────────────────────────────────────────────
+# â”€â”€ Fix 3: TTS worker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_tts_worker_waits_for_shell_then_publishes_and_announces(monkeypatch):
     import samsara.tts as tts_pkg
 
     app = dictation.DictationApp.__new__(dictation.DictationApp)
+    app._config_lock = threading.Lock()
     app.config = {"tts": {"enabled": True, "engine": "edge"}, "audio_coordinator": {}}
     app.output_device = None
     app.tts_engine = None
@@ -331,16 +332,17 @@ def test_tts_worker_waits_for_shell_then_publishes_and_announces(monkeypatch):
     order = []
 
     class _Engine:
-        def __init__(self, output_device=None):
+        def __init__(self, output_device_resolver=None):
             order.append("engine")
 
     class _Coordinator:
         def __init__(self, app_, engine, config):
-            order.append("coordinator")
-            assert app_.audio_coordinator is None, "coordinator published before construction"
+            order.append("caption-router" if engine is None else "coordinator")
+            assert app_.tts_engine is None, "engine published before its coordinator"
 
     monkeypatch.setattr(tts_pkg, "EdgeTTSEngine", _Engine)
-    monkeypatch.setattr(tts_pkg, "AudioCoordinator", _Coordinator)
+    from samsara.tts import runtime
+    monkeypatch.setattr(runtime, "AudioCoordinator", _Coordinator)
     app._maybe_announce_ava_command_session_migration = lambda: order.append(
         ("announce", app.audio_coordinator is not None))
 
@@ -352,7 +354,7 @@ def test_tts_worker_waits_for_shell_then_publishes_and_announces(monkeypatch):
     app._startup_shell_ready.set()
     t.join(timeout=5)
     assert not t.is_alive()
-    assert order == ["engine", "coordinator", ("announce", True)]
+    assert order == ["caption-router", "engine", "coordinator", ("announce", True)]
     assert app.tts_ready.is_set()
     assert isinstance(app.tts_engine, _Engine)
 
@@ -361,6 +363,7 @@ def test_tts_worker_failure_leaves_guards_none_and_ready_set(monkeypatch):
     import samsara.tts as tts_pkg
 
     app = dictation.DictationApp.__new__(dictation.DictationApp)
+    app._config_lock = threading.Lock()
     app.config = {"tts": {"enabled": True, "engine": "winrt"}}
     app.output_device = None
     app.tts_engine = None
@@ -371,12 +374,14 @@ def test_tts_worker_failure_leaves_guards_none_and_ready_set(monkeypatch):
 
     app._tts_init_worker()
 
-    assert app.tts_engine is None and app.audio_coordinator is None
+    assert app.tts_engine is None
+    assert app.audio_coordinator is not None and app.audio_coordinator.engine is None
+    app.audio_coordinator.shutdown()
     assert app.tts_ready.is_set()
     app._maybe_announce_ava_command_session_migration.assert_called_once_with()
 
 
-# ── Fix 4: persisted calibration ─────────────────────────────────────────────
+# â”€â”€ Fix 4: persisted calibration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _cal_app(tmp_path, monkeypatch, measured=0.02, samples=10):
     # Calibration resolves the saved name before measuring or looking up a cache.
@@ -528,7 +533,7 @@ def test_background_refresh_updates_threshold_and_cache(tmp_path, monkeypatch):
     assert stored["threshold"] == pytest.approx(_threshold(app))
 
 
-# ── Queue 276: per-user startup command and hidden-start policy ──────────────
+# â”€â”€ Queue 276: per-user startup command and hidden-start policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_autostart_command_is_quoted_for_frozen_and_source_runs():
     from samsara.autostart import compose_run_command

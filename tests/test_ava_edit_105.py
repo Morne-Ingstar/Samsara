@@ -144,6 +144,17 @@ def _build(chunk=SRC, *, exe=EXE, hwnd=HWND, config=None):
             timestamp=1000.0,
             extra={"target_process": exe, "hwnd": hwnd},
         ))
+    if config is None:
+        # Operational fixtures opt in; explicit {} still tests the disabled default.
+        from samsara import ai_preferences
+        config = {"ollama": {"host": "http://127.0.0.1:11434", "model": "fixture-model"}}
+        provider = ai_preferences.provider_for(config, "local")
+        consent = ai_preferences.accept_consent(
+            config, features=("editing",), provider=provider, cloud=False,
+            accepted_at="2026-10-17T00:00:00Z")
+        config = ai_preferences.apply_preferences(
+            config, policy="local", ava=False, editing=True, consent=consent,
+            local_model="fixture-model")
     app = _App(manager, window, config=config)
     app.inject_calls = inject_calls
     return app, manager, window
@@ -524,7 +535,7 @@ class TestTheConfigToggle:
 
     def test_both_keys_are_in_the_settings_schema(self):
         from samsara.config_schema import SETTINGS_SCHEMA
-        assert SETTINGS_SCHEMA["ava_edit.enabled"]["default"] is True
+        assert SETTINGS_SCHEMA["ava_edit.enabled"]["default"] is False
         pacing_entry = SETTINGS_SCHEMA["ava_edit.demo_pacing"]
         assert pacing_entry["default"] == "instant"
         assert set(pacing_entry["options"]) == set(pacing.names())
@@ -544,7 +555,8 @@ class TestTheConfigToggle:
 
     def test_on_by_default_when_the_section_is_missing_entirely(self):
         app, _manager, _window = _build(config={})
-        assert session.enabled(app) is True
+        # Historical id retained: editing now requires explicit enable and consent.
+        assert session.enabled(app) is False
 
 
 class TestApplyIsOneUndo:

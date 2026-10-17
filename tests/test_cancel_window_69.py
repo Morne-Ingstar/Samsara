@@ -420,7 +420,7 @@ class TestWindowLifecycle:
         op.targets, op._target_probe = {"hwnd": 1}, lambda: dict(target)
         target["hwnd"] = 2
         timers[0].fire()
-        assert calls == [] and op.cancel_reason == "target changed"
+        assert calls == [] and op.cancel_reason == "target changed: a different window is in front now"
 
     def test_cancel_word_with_nothing_open_is_not_consumed(self):
         assert ep.answer_cancel_window(_app(), "no") is None
