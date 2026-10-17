@@ -2,10 +2,16 @@
 
 from types import SimpleNamespace
 from unittest.mock import Mock
+import pytest
 
 from PySide6.QtGui import QDesktopServices
 
 from samsara.ui import ava_guide_qt as ag
+
+
+@pytest.fixture(autouse=True)
+def no_real_ollama(monkeypatch):
+    monkeypatch.setattr(ag, "_ping_ollama", lambda **_kwargs: (False, []))
 
 
 def _window(qapp):

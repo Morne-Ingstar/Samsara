@@ -89,3 +89,35 @@ def test_cli_in_plain_folder_and_lower_never_raises(tmp_path, capsys):
     output = capsys.readouterr().out
     assert ratchet.GROWTH_GUIDANCE in output
     assert "new.py" in output
+
+
+def test_generated_model_module_round_trips_snapshot(tmp_path):
+    import runpy
+
+    from tools.gen_ai_models import render_module, build_snapshot
+
+    catalogue = {"data": [
+        {"id": "openai/gpt-6-luna", "name": "GPT Luna", "created": 10,
+         "pricing": {"prompt": "0.1", "completion": "0.2"},
+         "supported_parameters": ["tools"], "context_length": 8192,
+         "architecture": {"output_modalities": ["text"]}},
+        {"id": "deepseek/deepseek-v4.1-flash", "name": "DeepSeek Flash", "created": 10,
+         "pricing": {"prompt": "0", "completion": "0"},
+         "supported_parameters": ["tools"], "context_length": 8192,
+         "architecture": {"output_modalities": ["text"]}},
+        {"id": "anthropic/claude-haiku-5-5", "name": "Claude Haiku", "created": 10,
+         "pricing": {"prompt": "0.1", "completion": "0.2"},
+         "supported_parameters": ["tools"], "context_length": 8192,
+         "architecture": {"output_modalities": ["text"]}},
+        {"id": "openrouter/openai/gpt-6-luna", "name": "GPT Luna", "created": 10,
+         "pricing": {"prompt": "0.1", "completion": "0.2"},
+         "supported_parameters": ["tools"], "context_length": 8192,
+         "architecture": {"output_modalities": ["text"]}},
+    ]}
+    target = tmp_path / "generated.py"
+    target.write_text(render_module(catalogue, "fixture.json", "fixture-hash"), encoding="utf-8")
+    namespace = runpy.run_path(str(target))
+    assert namespace["SNAPSHOT"] == build_snapshot(catalogue)
+    generated = target.read_text(encoding="utf-8").splitlines()
+    model_lines = [line for line in generated if line.startswith("            {")]
+    assert model_lines and all(line.rstrip().endswith(",") for line in model_lines)

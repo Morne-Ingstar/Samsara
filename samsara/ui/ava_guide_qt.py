@@ -1,10 +1,4 @@
-"""Guided setup wizard for Ava, Samsara's local AI assistant.
-
-A 4-step wizard that walks users through:
-  1. What Ava does (value prop + concrete examples)
-  2. Installing Ollama
-  3. Choosing and pulling a model
-  4. Finishing up (enables the AI pack, confirms everything works)
+"""Ava setup: optional PC check, local/cloud choice, setup and a real test.
 
 No audio required — background threads handle HTTP checks and subprocess pulls.
 
@@ -13,6 +7,8 @@ Public API (same wrapper pattern as MicSetupWizardQt):
 """
 
 import weakref
+from copy import deepcopy
+from types import SimpleNamespace
 
 import json
 import re
@@ -21,16 +17,16 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QUrl, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QUrl, Qt, QTimer, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QHBoxLayout,
-    QLabel, QPushButton, QSizePolicy, QStackedWidget,
+    QLabel, QPushButton, QRadioButton, QSizePolicy, QStackedWidget,
     QVBoxLayout, QWidget, QScrollArea,
 )
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
-from samsara import ai_preferences
+from samsara import ai_preferences, hardware_check
 from samsara.runtime import thread_registry
 from samsara.ui import ava_consent_qt, qt_runtime
 
@@ -216,570 +212,975 @@ class AvaGuideQt:
 # Wizard window
 # ---------------------------------------------------------------------------
 
-class _AvaStepIndicator(StepIndicator):
-    """Keep the painted step labels clear of Ava's divider at every refresh."""
 
-    def _refresh(self):
-        super()._refresh()
-        self.setFixedHeight(self.height() + round(theme.SPACE_1 * self.ui_scale))
-        self._size_items()
+from PySide6.QtWidgets import QCheckBox, QLineEdit, QGridLayout, QSpinBox, QDoubleSpinBox
+from samsara import cloud_llm
+from samsara.ui.settings.presentation import style as presentation_style, CleanComboBox
+from samsara import ai_models, ai_transport, openrouter_catalog
+from samsara.paths import samsara_home_dir
+import time
+from urllib.parse import urlencode
+
+
+def _model_cache_path(provider):
+    if provider not in ai_models.SNAPSHOT:
+        raise ValueError('unsupported provider')
+    return samsara_home_dir() / ('ai_models_' + provider + '.json')
+
+
+def _merge_models(earlier, later):
+    """Refresh sparse endpoint rows without losing bundled friendly metadata."""
+    rows = {row['id']: dict(row) for row in earlier}
+    for row in later:
+        prior = rows.get(row['id'], {})
+        merged = dict(prior)
+        for key, value in row.items():
+            if value is None or value == [] or value == {'prompt': None, 'completion': None}:
+                if key not in merged:
+                    merged[key] = value
+            elif key == 'name' and value == row['id'] and prior.get('name'):
+                continue
+            else:
+                merged[key] = value
+        rows[row['id']] = merged
+    return tuple(rows.values())[:openrouter_catalog.MAX_ENTRIES]
+
+
+def _load_models(provider, *, refresh=False, api_key=''):
+    """Offline first; only explicit consent/key-check code may request a refresh.
+
+    Reuse the Settings catalogue parser and atomic metadata-only cache writer.
+    Keys, raw responses and error bodies never enter the cache or the UI.
+    """
+    path = _model_cache_path(provider)
+    now = time.time()
+    bundled = []
+    for row in ai_models.SNAPSHOT[provider]['models']:
+        bundled.append({'id': row['id'], 'name': row['display_name'],
+                        'context_length': row['context'],
+                        'pricing': row.get('pricing', {}),
+                        'supported_parameters': (['tools'] if row['tools'] else []) +
+                                                (['response_format'] if row['json'] else [])})
+    cached = openrouter_catalog.read_cache(path, now)
+    models = _merge_models(openrouter_catalog.parse_models({'data': bundled}), cached.models)
+    fallback = openrouter_catalog.Catalogue(models, cached.fetched_at, cached.attempted_at, cached.reason)
+    if not refresh or not api_key.strip():
+        return fallback
+    headers = ({'x-api-key': api_key, 'anthropic-version': '2023-06-01'} if provider == 'anthropic'
+               else {'Authorization': 'Bearer ' + api_key})
+    endpoint = cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + '/models'
+    url, response, incoming = endpoint, None, ()
+    try:
+        for _page in range(20):
+            response = ai_transport.get_cloud(url, timeout=8, headers=headers)
+            response.raise_for_status()
+            if len(response.content) > openrouter_catalog.MAX_BYTES:
+                raise ValueError('oversize catalogue')
+            payload = response.json()
+            # Anthropic supplies display_name; OpenAI/DeepSeek may supply ids only.
+            if isinstance(payload, dict) and isinstance(payload.get('data'), list):
+                names = {row['id']: row['name'] for row in models}
+                payload = dict(payload, data=[dict(row, name=row.get('display_name') or row.get('name') or
+                    names.get(row.get('id')) or row.get('id', '').replace('/', ' / ').replace('-', ' '))
+                    if isinstance(row, dict) and isinstance(row.get('id'), str) else row
+                    for row in payload['data']])
+            incoming = _merge_models(incoming, openrouter_catalog.parse_models(payload))
+            response.close()
+            response = None
+            if provider != 'anthropic' or not payload.get('has_more'):
+                break
+            cursor = payload.get('last_id')
+            if not isinstance(cursor, str) or not cursor or len(cursor) > 256:
+                raise ValueError('invalid cursor')
+            url = endpoint + '?' + urlencode({'after_id': cursor, 'limit': 100})
+        else:
+            raise ValueError('catalogue page limit')
+        if not incoming:
+            raise ValueError('empty catalogue')
+        result = openrouter_catalog.Catalogue(_merge_models(models, incoming), now, now)
+    except (ValueError, TypeError, RecursionError):
+        return openrouter_catalog.Catalogue(models, cached.fetched_at, now, 'invalid')
+    except Exception:
+        return openrouter_catalog.Catalogue(models, cached.fetched_at, now, 'offline')
+    finally:
+        if response is not None:
+            response.close()
+    try:
+        openrouter_catalog._write_cache(path, result)
+    except (OSError, ValueError):
+        return openrouter_catalog.Catalogue(result.models, now, now, 'cache')
+    return result
+
+
+def _make_provider_picker(entry, provider, active, catalogue, refresh_action, custom_action, choose_action):
+    # Reuse 568's widget, keyboard activation, search/filter signals and selection.
+    # Lazy import avoids the Settings module's initialization cycle.
+    from samsara.ui.settings.ava_cloud_qt import _OpenRouterPicker
+    from PySide6.QtWidgets import QListWidgetItem
+
+    class ProviderPicker(_OpenRouterPicker):
+        def __init__(self):
+            self.provider = provider
+            super().__init__(entry, active)
+            self.setAccessibleName('Cloud model picker')
+            self.search.setAccessibleName('Search models by name or id')
+            self.models.setAccessibleName('Models with names and ids')
+            self.status.setAccessibleName('Model list status')
+            self.refresh.setText('Check key and refresh')
+            self.refresh.setAccessibleName(self.refresh.text())
+            self.receive(catalogue)
+
+        @staticmethod
+        def row_text(model):
+            text = model['name'] + '\n' + model['id']
+            if model['context_length']:
+                text += f"\nContext: {model['context_length']:,}"
+            return text
+
+        def populate(self, *_args):
+            selected = self.models.currentItem()
+            selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else self.entry.text().strip()
+            self.models.clear()
+            default = ai_models.SNAPSHOT[self.provider]['default']
+            for model in self.catalogue.models:
+                if not openrouter_catalog.matches(model, self.search.text(), self.free.isChecked(), self.capabilities.isChecked()):
+                    continue
+                text = self.row_text(model)
+                if model['id'] == default:
+                    text = text.replace('\n', ' · Recommended\n', 1)
+                item = QListWidgetItem(text, self.models)
+                item.setData(Qt.ItemDataRole.UserRole, model['id'])
+                item.setData(Qt.ItemDataRole.AccessibleTextRole, text)
+                if model['id'] == selected_id:
+                    self.models.setCurrentItem(item)
+            item = QListWidgetItem('Custom model id', self.models)
+            item.setData(Qt.ItemDataRole.UserRole, None)
+            if self.models.currentRow() < 0:
+                self.models.setCurrentRow(0)
+
+        def select_model(self):
+            item = self.models.currentItem()
+            if self.active() and item is not None:
+                if item.data(Qt.ItemDataRole.UserRole) is None:
+                    custom_action()
+                else:
+                    choose_action()
+                    super().select_model()
+
+        def load(self, *, refresh=False):
+            if refresh and self.active():
+                refresh_action()
+
+        def receive(self, result):
+            self.catalogue = result
+            # Never imply unsupported/paid when metadata is merely absent.
+            free_known = any(any(v is not None for v in m['pricing'].values()) or m['id'].endswith(':free') for m in result.models)
+            tools_known = any(m['supported_parameters'] for m in result.models)
+            for control, label, known in ((self.free, self.free_label, free_known),
+                                           (self.capabilities, self.capabilities_label, tools_known)):
+                if not known:
+                    control.setChecked(False)
+                control.setVisible(known)
+                label.setVisible(known)
+            self.populate()
+            note = ('Saved model list.' if result.fetched_at else 'Bundled model list. No connection needed.')
+            if result.reason in ('offline', 'invalid'):
+                note += ' Could not refresh. You can still choose a model.'
+            elif result.reason == 'cache':
+                note += ' The updated list could not be saved on this PC.'
+            self.status.setText(note)
+
+    return ProviderPicker()
+
+# Stand-in copy throughout; owner review inventory is in report 630/ASK.json.
+COPY = {
+    'intro': 'Choose where Ava thinks, set it up, then test the connection.',
+    'intro_note': 'Ava is optional. You can leave this guide and come back later.',
+    'local_desc': 'Uses a model on your computer. Your requests stay here.',
+    'cloud_desc': 'Uses your account with an AI provider. Needs an internet connection.',
+    'details': 'Enter what you know, or let Samsara fill in these same fields.',
+    'permission': 'Check my graphics card, memory and processor. Nothing leaves this computer.',
+    'check_failed': 'The PC check could not finish. Your entries are still here. Enter what you know, or continue without a recommendation.',
+    'check_done': 'The check filled in your details. You can correct them before continuing.',
+    'unknown': 'There is not enough information to recommend a choice. Both choices are available.',
+    'manual_cpu': 'Your processor has not been checked. The speed test will help you decide.',
+    'choose': 'This is a suggestion. You can use either choice and change it later.',
+    'local_setup': 'Ollama runs the model on your PC. Check it, then choose a model.',
+    'ollama_missing': 'Cannot connect to Ollama. If it is missing, download and install it. If it is installed, open it and check again.',
+    'model_missing': 'This model is not on your PC yet. Download it to continue.',
+    'download_failed': 'The download did not finish. Check your connection and try again.',
+    'cloud_setup': 'Use your own provider account. Your key stays hidden in this form.',
+    'key_good': 'The key check passed. A test reply is still needed.',
+    'bad_key': 'The provider rejected this key. Replace it, then check again.',
+    'no_credit': 'The account balance or key spending limit is exhausted. Check it with your provider, then retry.',
+    'network': 'The connection failed. Check your internet connection, then retry.',
+    'model_unavailable': 'This model is unavailable. Choose another model, then retry.',
+    'provider_error': 'The provider could not complete the request. Try again shortly, or choose another provider.',
+    'rate_limited': 'The provider is limiting requests. Wait a moment, then retry.',
+    'blocked': 'The provider blocked this request. Check your account restrictions or choose another provider.',
+    'local_test': 'Run a short speed test, usually about 10 seconds. It checks this model on this PC.',
+    'cloud_test': 'Send one short setup message to your selected model. No speech or remembered facts are included.',
+    'local_timeout': 'No speed result yet. The model may still be loading. Wait a moment, then retry.',
+    'cloud_success': 'The model answered the setup message. Your connection works.',
+    'local_success': 'The model replied comfortably in this test. Longer replies can take more time.',
+    'local_slow': 'The model replied, but slowly. You can keep this choice or try the cloud.',
+    'ready': 'The connection test passed. Save this choice to use Ava.',
+    'ready_note': 'You can change this choice in Settings > Ava.',
+    'consent_common': 'Ava can run commands on your computer, including opening apps, typing and changing settings. She can make mistakes. Some actions cannot be undone.',
+    'consent_local': 'This choice sends Ava requests to a model on this PC. Your requests stay on this computer.',
+    'consent_cloud': 'Your requests go to the provider you choose, using your account and key. If assistant memory is enabled, saved facts and recent summaries also go with requests. Samsara is free.',
+    'consent_memory': 'You can read or erase Ava’s local memory file and turn Ava off in Settings.',
+    'save_failed': 'The choice could not be saved. Try again before closing the guide.',
+    'changed': 'Settings changed. Review your choice and test again.',
+}
+
+
+def _text(value, role='description'):
+    label = QLabel(value)
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setWordWrap(True)
+    label.setProperty('role', role)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    return label
 
 
 class _WizardWindow(QDialog):
+    """630 design candidate. Reuses 617 hardware, downloads and local measurement.
 
-    _ollama_status_sig = Signal(bool, list)   # (is_running, model_names)
-    _pull_line_sig     = Signal(str)           # one line of pull output
-    _pull_done_sig     = Signal(bool)          # success flag
-
-    _STEP_INTRO  = 0
-    _STEP_OLLAMA = 1
-    _STEP_MODEL  = 2
-    _STEP_DONE   = 3
-
-    _STEP_TITLES = [
-        "Meet Ava",
-        "Install Ollama",
-        "Choose a model",
-        "Setup status",
-    ]
+    Stages settings until a real test succeeds and the user chooses Use Ava.
+    Preview fixtures live outside production; there are no simulated successes here.
+    """
+    _result = Signal(int, str, object)
+    _pull_line_sig = Signal(str)
+    _pull_done_sig = Signal(bool)
+    _STEP_INTRO, _STEP_CHECK, _STEP_CHOOSE, _STEP_CONSENT = range(4)
+    _STEP_OLLAMA, _STEP_CLOUD, _STEP_TEST, _STEP_DONE = range(4, 8)
+    _STEP_MODEL = _STEP_OLLAMA
 
     def __init__(self, app):
         super().__init__()
         self._app = app
-        self._pull_proc: "subprocess.Popen | None" = None
+        self._opened_config = deepcopy(app.config)
+        self._route = 'local'
+        self._generation = 0
+        self._closed = False
+        self._busy = False
+        self._facts = None
+        self._filling = False
+        self._accepted = None
+        self._tested = None
+        self._ollama_running = False
+        self._installed_models = []
+        self._selected_model_name = (app.config.get('ollama') or {}).get('model') or 'qwen2.5:3b'
         self._pulling = False
-        self._installed_models: list[str] = []
-        self._ollama_running: bool | None = None
-        self._skipped_steps: set[int] = set()
-        configured_model = (app.config.get("ollama") or {}).get("model")
-        self._selected_model_name = (
-            configured_model if configured_model in {name for name, _, _ in _MODELS}
-            else _MODELS[0][0]
-        )
+        self._pull_proc = None
         self._ollama_recheck_attempts = 0
         self._ollama_recheck_timer = QTimer(self)
         self._ollama_recheck_timer.setInterval(_OLLAMA_RECHECK_INTERVAL_MS)
         self._ollama_recheck_timer.timeout.connect(self._auto_recheck_ollama)
-
-        self.setWindowTitle("Ava Setup Guide")
-        self.setFixedWidth(580)
-        self.setStyleSheet(_ss())
-        self.setWindowFlags(
-            Qt.WindowType.Dialog |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.MSWindowsFixedSizeDialogHint
-        )
-
-        self._build_ui()
-        theme.apply_design_scale(self)
-        self._ollama_status_sig.connect(self._on_ollama_status)
+        self._result.connect(self._receive)
         self._pull_line_sig.connect(self._on_pull_line)
         self._pull_done_sig.connect(self._on_pull_done)
-        self._go_to(self._STEP_INTRO)
-        self._size_for_pages()
-
-    # ----------------------------------------------------------------
-    # UI construction
-    # ----------------------------------------------------------------
-
-    def _build_ui(self):
+        self.setWindowTitle('Set up Ava')
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self.setStyleSheet(presentation_style() + f'''
+          QRadioButton {{ background: {theme.BG1}; padding: 16px; border: 1px solid {theme.BORDER}; border-radius: 8px; spacing: 12px; }}
+          QRadioButton:checked {{ border: 2px solid {theme.ACCENT}; background: {theme.BG2}; }}
+          QRadioButton::indicator {{ width: 22px; height: 22px; border: 2px solid {theme.TEXT_SECONDARY}; border-radius: 12px; background: {theme.BG0}; }}
+          QRadioButton::indicator:checked {{ background: {theme.ACCENT}; border: 3px solid {theme.BG1}; }}
+          QRadioButton:focus {{ border: 2px solid {theme.ACCENT}; }}
+          QLineEdit:focus {{ border: 2px solid {theme.ACCENT}; }}
+          QDoubleSpinBox {{ background:{theme.BG2}; border:1px solid {theme.BORDER}; border-radius:6px; padding:0 12px; }}
+          QScrollArea {{ border: none; }}
+        ''' + theme.SCROLLBAR_QSS)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-
-        # Header
-        hdr = QWidget()
-        hdr.setFixedHeight(60)
-        hdr.setObjectName('avaHeader')
-        hdr.setStyleSheet(f"QWidget#avaHeader{{background:{theme.BG0};border-bottom:1px solid {theme.BORDER_FAINT};}}")
-        hdr_lay = QHBoxLayout(hdr)
-        hdr_lay.setContentsMargins(24, 0, 24, 0)
-        self._title_lbl = QLabel()
-        self._title_lbl.setStyleSheet(
-            f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_EMPHASIS}px;font-weight:bold;"
-        )
-        hdr_lay.addWidget(self._title_lbl, stretch=1)
-        self._step_lbl = QLabel()
-        self._step_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        hdr_lay.addWidget(self._step_lbl)
-        root.addWidget(hdr)
-
-        self._step_strip = QWidget()
-        self._step_strip.setObjectName('avaStepContainer')
-        self._step_strip.setStyleSheet(f'QWidget#avaStepContainer{{border-bottom:1px solid {theme.BORDER_FAINT};}}')
-        step_layout = QVBoxLayout(self._step_strip)
-        step_layout.setContentsMargins(0, 0, 0, theme.SPACE_2)
-        self._step_indicator = _AvaStepIndicator(["Intro", "Ollama", "Model", "Done"])
-        self._step_indicator.setObjectName("avaGuideStepStrip")
-        step_layout.addWidget(self._step_indicator)
-        root.addWidget(self._step_strip)
-
-        # Page stack
+        body = QHBoxLayout()
+        body.setSpacing(0)
+        sidebar = QFrame()
+        sidebar.setObjectName('sidebar')
+        sidebar.setFixedWidth(158)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(18, 24, 12, 24)
+        side.addWidget(_text('Samsara', 'label'))
+        side.addSpacing(24)
+        side.addWidget(_text('SET UP AVA', 'description'))
+        self._steps = []
+        for name in ('Welcome', 'Your PC', 'Choose', 'Set up', 'Test'):
+            item = _text(name)
+            item.setMinimumHeight(44)
+            side.addWidget(item)
+            self._steps.append(item)
+        side.addStretch()
+        body.addWidget(sidebar)
         self._stack = QStackedWidget()
-        self._stack.addWidget(self._build_intro_page())
-        self._stack.addWidget(self._build_ollama_page())
-        self._stack.addWidget(self._build_model_page())
-        self._stack.addWidget(self._build_done_page())
-        root.addWidget(self._stack, stretch=1)
+        self._pages = []
+        self._build_intro()
+        self._build_details()
+        self._build_choose()
+        self._build_consent()
+        self._build_local()
+        self._build_cloud()
+        self._build_test()
+        self._build_ready()
+        body.addWidget(self._stack, 1)
+        root.addLayout(body, 1)
+        footer = QFrame()
+        footer.setObjectName('footer')
+        nav = QHBoxLayout(footer)
+        self._nav_layout = nav
+        nav.setContentsMargins(24, 12, 24, 12)
+        self._back_btn = self._button('Back', self._go_back)
+        self._skip_btn = self._button('Set up later', self.close)
+        self._next_btn = self._button('Get started', self._go_next)
+        theme.make_primary(self._next_btn)
+        nav.addWidget(self._back_btn)
+        nav.addStretch()
+        nav.addWidget(self._skip_btn)
+        nav.addWidget(self._next_btn)
+        root.addWidget(footer)
+        available = self.screen().availableGeometry()
+        self.resize(min(960, available.width()-40), min(660, available.height()-60))
+        self.setMinimumSize(720, 420)
+        self._current_step = self._STEP_INTRO
+        self._go_to(self._STEP_INTRO)
 
-        # Nav bar
-        nav = QWidget()
-        nav.setFixedHeight(64)
-        nav.setObjectName('avaNavigation')
-        nav.setStyleSheet(f"QWidget#avaNavigation{{background:{theme.BG1};border-top:1px solid {theme.BORDER};}}")
-        nav_lay = QHBoxLayout(nav)
-        nav_lay.setContentsMargins(24, 0, 24, 0)
-        nav_lay.setSpacing(10)
+    def _button(self, text, action):
+        button = QPushButton(text)
+        button.setAccessibleName(text)
+        button.setMinimumHeight(theme.HIT_TARGET_MIN)
+        button.setAutoDefault(False)
+        button.clicked.connect(action)
+        return button
 
-        self._back_btn = QPushButton("Back")
-        self._back_btn.clicked.connect(self._go_back)
-        nav_lay.addWidget(self._back_btn)
-
-        self._skip_btn = QPushButton("Skip")
-        self._skip_btn.setObjectName("ghost")
-        self._skip_btn.clicked.connect(self._skip_step)
-        nav_lay.addWidget(self._skip_btn)
-
-        nav_lay.addStretch()
-
-        self._next_btn = QPushButton("Next  ->")
-        self._next_btn.setStyleSheet(_primary_ss())
-        self._next_btn.clicked.connect(self._go_next)
-        nav_lay.addWidget(self._next_btn)
-
-        root.addWidget(nav)
-
-    def _available_height(self):
-        return self.screen().availableGeometry().height() - 40
-
-    def _size_for_pages(self):
-        """Reserve the tallest page once; scrolling is only a short-screen fallback."""
-        self.ensurePolished()
-        for widget in self.findChildren(QWidget):
-            widget.ensurePolished()
-        for button, labels in ((self._back_btn, ('Back',)),
-                               (self._skip_btn, ('Skip', 'Set up later')),
-                               (self._next_btn, ('Next  ->', 'Finish', 'Set up later', 'Enable Ava'))):
-            original = button.text()
-            widths = []
-            for label in labels:
-                button.setText(label)
-                button.ensurePolished()
-                widths.append(button.sizeHint().width())
-            button.setText(original)
-            button.setFixedWidth(max(widths) + theme.SPACE_1)
-        dynamic = (self._install_instructions, self._pull_progress, self._installed_note,
-                   self._key_combo.reason_label())
-        hidden = [widget.isHidden() for widget in dynamic]
-        for widget in dynamic:
-            widget.show()
-        summary = self._done_summary.text()
-        self._done_summary.setText(
-            f'Ollama: not reachable\nModel: {self._selected_model_name} (not installed)\n{_AVA_CLOUD_GUIDE_NOTE}')
-        heights = []
-        for index in range(self._stack.count()):
-            page = self._stack.widget(index).widget()
-            page.ensurePolished()
-            page.resize(568, self._available_height())
-            layout = page.layout()
-            layout.activate()
-            layout.invalidate()
-            # Reserve the scrollbar width too, so an initial narrow viewport
-            # cannot keep a needless scrollbar alive through word wrapping.
-            heights.append(max(layout.minimumSize().height(), layout.totalHeightForWidth(568)))
-        for widget, was_hidden in zip(dynamic, hidden):
-            widget.setHidden(was_hidden)
-        self._done_summary.setText(summary)
-        strip_height = max(self._step_strip.sizeHint().height(), self._step_strip.minimumSizeHint().height())
-        chrome = self.layout().itemAt(0).widget().height() + strip_height + 64
-        self.setFixedHeight(min(max(heights) + chrome + theme.SPACE_2, self._available_height()))
-
-    # ---- Page builders ----
-
-    def _build_intro_page(self) -> QWidget:
+    def _page(self, title, description):
         page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, theme.SPACE_2, 32, theme.SPACE_1)
-        lay.setSpacing(theme.SPACE_1)
+        column = QVBoxLayout(page)
+        column.setContentsMargins(28, 24, 28, 20)
+        column.setSpacing(12)
+        column.addWidget(_text(title, 'title'))
+        if description:
+            column.addWidget(_text(description))
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        self._stack.addWidget(scroll)
+        self._pages.append(page)
+        return column
 
-        lay.addWidget(_body(_ava_intro_text(self._app.config)))
-        lay.addWidget(_body(
-            "The main thing Ava does: <b>you don't have to memorise command phrases.</b> "
-            "Say what you mean in plain language, and Ava figures out the right action."
-        ))
-        lay.addWidget(_body(_confirmation_text()))
+    def _row(self, column, name, *controls):
+        row = QHBoxLayout()
+        label = _text(name, 'label')
+        label.setFixedWidth(120)
+        row.addWidget(label)
+        for control in controls:
+            control.setMinimumHeight(theme.HIT_TARGET_MIN)
+            row.addWidget(control, 1 if not isinstance(control, QPushButton) else 0)
+        label.setBuddy(controls[0])
+        controls[0].setAccessibleName(name)
+        column.addLayout(row)
 
-        # Example table
-        examples_frame = QWidget()
-        examples_frame.setObjectName('avaExamples')
-        examples_frame.setStyleSheet(
-            f"QWidget#avaExamples{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
-        )
-        ex_lay = QVBoxLayout(examples_frame)
-        ex_lay.setContentsMargins(16, 12, 16, 12)
-        ex_lay.setSpacing(theme.SPACE_1 // 2)
+    def _status(self, text=''):
+        result = _text(text)
+        result.setStyleSheet(f'color:{theme.ACCENT}; padding:8px 0;')
+        return result
 
-        ex_hdr = QHBoxLayout()
-        ex_hdr.addWidget(_small_bold("Instead of remembering...", theme.TEXT_SECONDARY), stretch=1)
-        ex_hdr.addWidget(_small_bold("You can say...", theme.ACCENT), stretch=1)
-        ex_lay.addLayout(ex_hdr)
+    def _build_intro(self):
+        col = self._page('Ava, set up your way', COPY['intro'])
+        col.addSpacing(16)
+        for heading, detail in [('1   Choose where Ava thinks', 'On this PC or in the cloud.'),
+                                ('2   Set up your choice', 'We will walk through what it needs.'),
+                                ('3   Test the connection', 'Make sure the selected model can reply.')]:
+            col.addWidget(_text(heading, 'label'))
+            col.addWidget(_text(detail))
+            col.addSpacing(8)
+        col.addStretch()
+        col.addWidget(_text(COPY['intro_note']))
 
-        div = QFrame()
-        div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet(f"color:{theme.BORDER};")
-        ex_lay.addWidget(div)
+    def _build_details(self):
+        col = self._page('Tell us about your PC', COPY['details'])
+        self._permission = QCheckBox('Allow the PC check')
+        self._permission.setMinimumHeight(44)
+        permission_row = QHBoxLayout()
+        permission_row.addWidget(self._permission)
+        permission_row.addStretch()
+        self._check_btn = self._button('Fill in my details', self._check_pc)
+        self._check_btn.setEnabled(False)
+        self._permission.toggled.connect(self._check_btn.setEnabled)
+        permission_row.addWidget(self._check_btn)
+        col.addWidget(_text(COPY['permission']))
+        col.addLayout(permission_row)
+        fields = QGridLayout()
+        self._gpu = QLineEdit()
+        self._gpu.setPlaceholderText('For example, NVIDIA RTX 3060')
+        self._vram = QDoubleSpinBox()
+        self._ram = QDoubleSpinBox()
+        for spin in (self._vram, self._ram):
+            spin.setRange(0, 1024)
+            spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+            spin.setDecimals(1)
+            spin.setSuffix(' GB')
+            spin.setSpecialValueText('Not sure')
+        self._cpu = QLineEdit()
+        self._cpu.setPlaceholderText('Optional')
+        self._cores = QSpinBox()
+        self._cores.setRange(0, 512)
+        self._cores.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self._cores.setSpecialValueText('Not sure')
+        for i, (label, control) in enumerate([('Graphics card', self._gpu), ('Graphics memory', self._vram),
+                                             ('System memory', self._ram), ('Processor', self._cpu), ('Processor cores', self._cores)]):
+            group = QVBoxLayout()
+            caption = _text(label, 'label')
+            caption.setBuddy(control)
+            control.setAccessibleName(label)
+            control.setMinimumHeight(44)
+            group.addWidget(caption)
+            group.addWidget(control)
+            fields.addLayout(group, i//3, i%3)
+            signal = control.textEdited if isinstance(control, QLineEdit) else control.valueChanged
+            signal.connect(self._manual_changed)
+        col.addLayout(fields)
+        self._hardware_status = self._status()
+        col.addWidget(self._hardware_status)
+        col.addStretch()
 
-        _EXAMPLES = [
-            ('"scroll down a little"',          '"scroll just a tiny bit"'),
-            ('"pain level 6"',                  '"my pain is about a 6 today"'),
-            ('"took ibuprofen 400mg"',           '"I just took my ibuprofen"'),
-            ('"complete alarm"',                 '"I finished my stretch"'),
-            ('"read alarms"',                    '"what alarms do I have set?"'),
-        ]
-        for exact, natural in _EXAMPLES:
-            row = QHBoxLayout()
-            row.setSpacing(12)
-            lft = QLabel(exact)
-            lft.setStyleSheet(
-                f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-family:'Consolas',monospace;"
-            )
-            rgt = QLabel(natural)
-            rgt.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;font-style:italic;")
-            row.addWidget(lft, stretch=1)
-            row.addWidget(rgt, stretch=1)
-            ex_lay.addLayout(row)
+    def _build_choose(self):
+        col = self._page('Where should Ava think?', COPY['choose'])
+        self._hardware_verdict = self._status(COPY['unknown'])
+        col.addWidget(self._hardware_verdict)
+        self._local_choice = QRadioButton('On this PC')
+        self._cloud_choice = QRadioButton('In the cloud')
+        saved_route = (self._app.config.get('ava') or {}).get('provider_policy')
+        self._local_choice.setChecked(saved_route == 'local')
+        self._cloud_choice.setChecked(saved_route == 'cloud')
+        for choice, desc in [(self._local_choice, COPY['local_desc']), (self._cloud_choice, COPY['cloud_desc'])]:
+            choice.setMinimumHeight(58)
+            choice.setAccessibleName(choice.text())
+            choice.toggled.connect(lambda _: self._nav())
+            col.addWidget(choice)
+            col.addWidget(_text(desc))
+        col.addStretch()
 
-        lay.addWidget(examples_frame)
+    def _build_consent(self):
+        col = self._page('Before you turn Ava on', COPY['consent_common'])
+        self._consent_selection = _text('', 'label')
+        col.addWidget(self._consent_selection)
+        self._consent_route = _text('')
+        col.addWidget(self._consent_route)
+        col.addWidget(_text(COPY['consent_memory']))
+        self._consent_check = QCheckBox('I understand and agree')
+        self._consent_check.setMinimumHeight(44)
+        self._consent_check.toggled.connect(lambda _: self._nav())
+        col.addWidget(self._consent_check)
+        col.addStretch()
 
-        lay.addWidget(_body(
-            "Ava uses a small AI model that runs locally via Ollama. "
-            "The next steps get that set up."
-        ))
+    def _build_local(self):
+        col = self._page('Set up Ava on this PC', COPY['local_setup'])
+        self._ollama_status_lbl = self._status('Ollama has not been checked yet.')
+        col.addWidget(self._ollama_status_lbl)
+        row = QHBoxLayout()
+        self._ollama_check_btn = self._button('Check Ollama', self._check_ollama)
+        self._download_ollama_btn = self._button('Download Ollama', self._open_ollama_download)
+        row.addWidget(self._ollama_check_btn)
+        row.addWidget(self._download_ollama_btn)
+        row.addStretch()
+        col.addLayout(row)
+        self._model_combo = CleanComboBox()
+        for model in dict.fromkeys([self._selected_model_name, 'qwen2.5:3b', 'qwen2.5:7b', 'llama3.2', 'mistral']):
+            self._model_combo.addItem(model)
+        self._model_combo.currentTextChanged.connect(self._model_changed)
+        self._row(col, 'Model', self._model_combo)
+        self._model_status_lbl = self._status(COPY['model_missing'])
+        col.addWidget(self._model_status_lbl)
+        self._pull_btn = self._button('Download model', self._pull_model)
+        self._pull_btn.setEnabled(False)
+        col.addWidget(self._pull_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        self._pull_progress = _text('')
+        col.addWidget(self._pull_progress)
+        col.addStretch()
+        # 617 download mechanics use these nonvisual status seams.
+        self._model_status_dot = QLabel()
 
-        lay.addStretch()
-        return _scroll_page(page)
+    def _build_cloud(self):
+        col = self._page('Set up Ava in the cloud', COPY['cloud_setup'])
+        self._provider = CleanComboBox()
+        for code, label in [('deepseek', 'DeepSeek'), ('openai', 'OpenAI'), ('anthropic', 'Anthropic'), ('openrouter', 'OpenRouter')]:
+            self._provider.addItem(label, code)
+        saved = self._app.config.get('cloud_llm', {}) or {}
+        self._provider.setCurrentIndex(max(0, self._provider.findData(saved.get('provider', 'deepseek'))))
+        self._row(col, 'Provider', self._provider)
+        self._api_key = QLineEdit(saved.get('api_key', ''))
+        self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._show_key = self._button('Show', self._toggle_key)
+        self._row(col, 'API key', self._api_key, self._show_key)
+        # Keep one value source for the inherited picker and the existing save path.
+        # The line edit is visible only after choosing the explicit Custom option.
+        self._cloud_model = QLineEdit(saved.get('model') or ai_models.SNAPSHOT[self._provider.currentData()]['default'])
+        self._cloud_models = CleanComboBox()
+        self._row(col, 'Model', self._cloud_models)
+        self._model_id = _text('', 'description')
+        self._model_id.setTextFormat(Qt.TextFormat.PlainText)
+        col.addWidget(self._model_id)
+        self._cloud_model.setAccessibleName('Custom model id')
+        self._cloud_model.setPlaceholderText('Enter a custom model id')
+        self._cloud_model.setMinimumHeight(theme.HIT_TARGET_MIN)
+        col.addWidget(self._cloud_model)
+        self._custom_mode = False
+        self._cloud_catalogue = _load_models(self._provider.currentData())
+        self._fill_model_choices()
+        actions = QHBoxLayout()
+        self._key_btn = self._button('Check key', self._check_key)
+        self._picker_btn = self._button('Choose model', self._open_picker)
+        actions.addWidget(self._key_btn)
+        actions.addWidget(self._picker_btn)
+        actions.addStretch()
+        col.addLayout(actions)
+        self._cloud_status = self._status('Your key and model will be tested before you finish.')
+        col.addWidget(self._cloud_status)
+        col.addStretch()
+        self._provider.currentIndexChanged.connect(self._provider_changed)
+        self._api_key.textChanged.connect(self._cloud_changed)
+        self._cloud_model.textChanged.connect(self._cloud_changed)
+        self._cloud_model.textChanged.connect(self._sync_model_choice)
+        self._cloud_models.currentIndexChanged.connect(self._choose_cloud_model)
+        self._picker = None
 
-    def _build_ollama_page(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, 24, 32, 16)
-        lay.setSpacing(14)
+    def _fill_model_choices(self):
+        self._cloud_models.blockSignals(True)
+        self._cloud_models.clear()
+        default = ai_models.SNAPSHOT[self._provider.currentData()]['default']
+        for model in self._cloud_catalogue.models:
+            label = model['name'] + (' · Recommended' if model['id'] == default else '')
+            self._cloud_models.addItem(label, model['id'])
+            index = self._cloud_models.count() - 1
+            self._cloud_models.setItemData(index, model['id'], Qt.ItemDataRole.ToolTipRole)
+        self._cloud_models.addItem('Custom model id', None)
+        self._cloud_models.blockSignals(False)
+        self._sync_model_choice()
 
-        lay.addWidget(_body(
-            # OWNER COPY: explain local runtime setup without promising automatic service startup.
-            "Ollama runs local AI models. This guide checks whether Samsara can reach it."
-        ))
+    def _sync_model_choice(self, *_args):
+        model_id = self._cloud_model.text().strip()
+        index = self._cloud_models.findData(model_id)
+        custom = self._custom_mode or index < 0
+        self._cloud_models.blockSignals(True)
+        self._cloud_models.setCurrentIndex(self._cloud_models.count() - 1 if custom else index)
+        self._cloud_models.blockSignals(False)
+        self._cloud_model.setVisible(custom)
+        self._model_id.setVisible(not custom)
+        self._model_id.setText(model_id)
 
-        # Status card
-        status_card = QWidget()
-        status_card.setObjectName('avaOllamaStatus')
-        status_card.setStyleSheet(
-            f"QWidget#avaOllamaStatus{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
-        )
-        sc_lay = QHBoxLayout(status_card)
-        sc_lay.setContentsMargins(16, 14, 16, 14)
-        sc_lay.setSpacing(12)
+    def _choose_cloud_model(self, *_args):
+        model_id = self._cloud_models.currentData()
+        self._custom_mode = model_id is None
+        self._cloud_model.setText(model_id or '')
+        self._sync_model_choice()
+        if self._custom_mode:
+            self._cloud_model.setFocus()
 
-        self._ollama_dot = QLabel("●")
-        self._ollama_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_HEADING}px;")
-        sc_lay.addWidget(self._ollama_dot)
+    def _custom_model(self):
+        self._picker.hide()
+        self._cloud_models.setCurrentIndex(self._cloud_models.count() - 1)
 
-        self._ollama_status_lbl = QLabel("Checking...")
-        self._ollama_status_lbl.setWordWrap(True)
-        self._ollama_status_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        sc_lay.addWidget(self._ollama_status_lbl, stretch=1)
+    def _picker_model_chosen(self):
+        self._custom_mode = False
+        self._sync_model_choice()
 
-        self._ollama_check_btn = QPushButton("Check again")
-        self._ollama_check_btn.setFixedWidth(110)
-        self._ollama_check_btn.clicked.connect(self._check_ollama)
-        sc_lay.addWidget(self._ollama_check_btn)
+    def _picker_refresh(self):
+        self._picker.hide()
+        self._check_key()
 
-        lay.addWidget(status_card)
+    def _build_test(self):
+        col = self._page('Test your connection', '')
+        self._test_route_label = _text('', 'label')
+        self._test_description = _text('')
+        self._test_status = self._status('')
+        col.addWidget(self._test_route_label)
+        col.addWidget(self._test_description)
+        col.addWidget(self._test_status)
+        self._test_btn = self._button('Run test', self._test_route)
+        col.addWidget(self._test_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        col.addStretch()
+        col.addWidget(_text('A successful test checks the connection, not the quality of every answer.'))
 
-        # Download instructions (shown when Ollama not found)
-        self._install_instructions = QWidget()
-        inst_lay = QVBoxLayout(self._install_instructions)
-        inst_lay.setContentsMargins(0, 0, 0, 0)
-        inst_lay.setSpacing(8)
+    def _build_ready(self):
+        col = self._page('Your connection is ready', COPY['ready'])
+        self._ready_summary = self._status()
+        col.addWidget(self._ready_summary)
+        col.addWidget(_text('Once saved, hold the Ava key to speak to Ava.', 'label'))
+        self._key_summary = _text('')
+        col.addWidget(self._key_summary)
+        col.addWidget(_text(COPY['ready_note']))
+        col.addStretch()
+        self._save_status = self._status()
+        col.addWidget(self._save_status)
 
-        inst_lay.addWidget(_body(
-            # OWNER COPY: a failed HTTP check cannot prove Ollama is absent.
-            "Samsara cannot connect to Ollama. To check its installation:"
-        ))
+    def _manual_changed(self, *_args):
+        if not self._filling:
+            self._facts = None
+            self._hardware_status.setText('')
 
-        self._download_ollama_btn = QPushButton("Download Ollama")
-        self._download_ollama_btn.setObjectName("primary")
-        self._download_ollama_btn.setFixedWidth(170)
-        self._download_ollama_btn.clicked.connect(self._open_ollama_download)
-        inst_lay.addWidget(self._download_ollama_btn)
+    def _check_pc(self):
+        if not self._permission.isChecked() or self._busy:
+            return
+        self._hardware_status.setText('Checking this PC…')
+        self._work('hardware', lambda: hardware_check.check_hardware(consent=True))
 
-        steps = [
-            ("1.", "Click Download Ollama above."),
-            ("2.", "Run the installer."),
-            ("3.", "Come back. This page checks automatically."),
-        ]
-        for num, text in steps:
-            step_row = QHBoxLayout()
-            step_row.setSpacing(8)
-            num_lbl = QLabel(num)
-            num_lbl.setFixedWidth(20)
-            num_lbl.setStyleSheet(f"color:{theme.ACCENT};font-weight:bold;font-size:{theme.TYPE_BODY}px;")
-            step_row.addWidget(num_lbl)
-            txt_lbl = QLabel(text)
-            txt_lbl.setWordWrap(True)
-            txt_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
-            step_row.addWidget(txt_lbl, stretch=1)
-            inst_lay.addLayout(step_row)
+    def _fill_hardware(self, facts):
+        self._facts = facts
+        self._filling = True
+        gpu = max(facts.gpus, key=lambda g: ('nvidia' in g.name.lower(), g.dedicated_bytes), default=None)
+        self._gpu.setText(gpu.name if gpu else '')
+        self._vram.setValue(gpu.dedicated_bytes / hardware_check.GIB if gpu else 0)
+        self._ram.setValue(facts.ram_bytes / hardware_check.GIB)
+        self._cpu.setText(facts.processor)
+        self._cores.setValue(facts.cores)
+        self._filling = False
+        self._hardware_status.setText(COPY['check_done'])
 
-        note = QLabel(_keep_warm_note(self._app.config))
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;")
-        inst_lay.addWidget(note)
+    def _recommend(self):
+        facts = self._facts
+        if facts is None and self._gpu.text().strip() and self._ram.value() and self._vram.value():
+            facts = hardware_check.Hardware((hardware_check.GPU(self._gpu.text(), int(self._vram.value()*hardware_check.GIB)),),
+                       int(self._ram.value()*hardware_check.GIB), self._cpu.text(), self._cores.value(), None)
+        if facts is None:
+            self._hardware_verdict.setText(COPY['unknown'])
+            return
+        verdict = hardware_check.recommend(facts)
+        self._hardware_verdict.setText(verdict.reason + (' ' + COPY['manual_cpu'] if self._facts is None else ''))
+        (self._local_choice if verdict.route == 'local' else self._cloud_choice).setChecked(True)
+        self._model_combo.setCurrentText(verdict.model)
 
-        lay.addWidget(self._install_instructions)
-        lay.addStretch()
-        return _scroll_page(page)
-
-    def _build_model_page(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, 24, 32, 16)
-        lay.setSpacing(14)
-
-        lay.addWidget(_body(
-            # OWNER COPY: qualify local model availability and route selection.
-            "Choose a local model below. Pull downloads it for use when the local Ava route is enabled."
-        ))
-
-        # Model selector
-        model_row = QHBoxLayout()
-        model_row.setSpacing(10)
-        model_label = _label("Model:")
-        model_row.addWidget(model_label)
-
-        self._model_combo = QComboBox()
-        model_label.setBuddy(self._model_combo)
-        self._model_combo.setSizePolicy(
-            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
-        )
-        for name, size, desc in _MODELS:
-            self._model_combo.addItem(f"{name}  ({size})", userData=name)
-        selected_index = self._model_combo.findData(self._selected_model_name)
-        self._model_combo.setCurrentIndex(selected_index)
-        self._model_combo.currentIndexChanged.connect(self._on_model_selected)
-        model_row.addWidget(self._model_combo)
-        model_row.addStretch()
-        lay.addLayout(model_row)
-
-        # Description label
-        self._model_desc = QLabel(_MODELS[selected_index][2])
-        self._model_desc.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;"
-        )
-        lay.addWidget(self._model_desc)
-
-        # Pull controls
-        pull_row = QHBoxLayout()
-        pull_row.setSpacing(10)
-
-        self._model_status_dot = QLabel("●")
-        self._model_status_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_BODY}px;")
-        pull_row.addWidget(self._model_status_dot)
-
-        self._model_status_lbl = QLabel("Not checked yet")
-        self._model_status_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        pull_row.addWidget(self._model_status_lbl, stretch=1)
-
-        self._pull_btn = QPushButton("Pull model")
-        self._pull_btn.setFixedWidth(110)
-        self._pull_btn.clicked.connect(self._pull_model)
-        pull_row.addWidget(self._pull_btn)
-
-        lay.addLayout(pull_row)
-
-        # Pull progress readout
-        self._pull_progress = QLabel("")
-        self._pull_progress.setWordWrap(True)
-        self._pull_progress.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;"
-            f"font-family:'Consolas',monospace;"
-            f"background:{theme.BG1};border-radius:4px;padding:6px 8px;"
-        )
-        self._pull_progress.setVisible(False)
-        lay.addWidget(self._pull_progress)
-
-        # Already have a model note
-        self._installed_note = QLabel("")
-        self._installed_note.setWordWrap(True)
-        self._installed_note.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;"
-        )
-        lay.addWidget(self._installed_note)
-
-        lay.addStretch()
-        return _scroll_page(page)
-
-    def _build_done_page(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(32, theme.SPACE_2, 32, theme.SPACE_1)
-        lay.setSpacing(theme.SPACE_1)
-
-        # OWNER COPY: review the incomplete setup heading.
-        title = QLabel("Ava is not ready.")
-        self._done_title = title
-        title.setStyleSheet(
-            f"color:{theme.SUCCESS};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
-        )
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(title)
-
-        self._done_summary = QLabel("")
-        self._done_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._done_summary.setWordWrap(True)
-        self._done_summary.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        lay.addWidget(self._done_summary)
-
-        # ---- Activation key selector ----
-        key_frame = QWidget()
-        key_frame.setObjectName('avaKeyGroup')
-        key_frame.setStyleSheet(
-            f"QWidget#avaKeyGroup{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
-        )
-        kf_lay = QVBoxLayout(key_frame)
-        kf_lay.setContentsMargins(16, 12, 16, 12)
-        kf_lay.setSpacing(8)
-
-        key_row = QHBoxLayout()
-        key_row.setSpacing(theme.SPACE_2)
-        key_text = QVBoxLayout()
-        key_text.setSpacing(theme.SPACE_1)
-        key_text.addWidget(_small_bold("Activation key", theme.TEXT_PRIMARY))
-        key_text.addWidget(_body(
-            "Hold this key and speak — Ava listens while you hold it, "
-            "then responds when you release."
-        ))
-
-        key_row.addLayout(key_text, stretch=1)
-
-        from samsara.ui.settings.shared_qt import _HotkeyButton
-        owner_ref = weakref.ref(self)
-        def key_changed():
-            owner = owner_ref()
-            if owner is not None:
-                owner._on_ava_key_changed()
-        def key_config():
-            owner = owner_ref()
-            return owner._app.config if owner is not None else {}
-        self._key_combo = _HotkeyButton(self._app.config.get("ava_mode_key", "right_alt"),
-                                       on_change=key_changed)
-        self._key_combo.configure_hold('ava_mode_key', key_config)
-        self._key_combo.setAccessibleName('Activation key')  # 418: the name shares its source with the visible label
-        self._key_combo.setMinimumWidth(0)
-        self._key_combo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-        key_row.addWidget(self._key_combo, alignment=Qt.AlignmentFlag.AlignVCenter)
-        kf_lay.addLayout(key_row)
-        kf_lay.addWidget(self._key_combo.reason_label())
-
-        lay.addWidget(key_frame)
-
-        # ---- How to use ----
-        usage_frame = QWidget()
-        usage_frame.setObjectName('avaUsage')
-        usage_frame.setStyleSheet(
-            f"QWidget#avaUsage{{background:{theme.BG1};border-radius:6px;border:1px solid {theme.BORDER};}}"
-        )
-        uf_lay = QVBoxLayout(usage_frame)
-        uf_lay.setContentsMargins(16, 12, 16, 12)
-        uf_lay.setSpacing(6)
-
-        uf_lay.addWidget(_small_bold("How to use Ava", theme.ACCENT))
-
-        wake = self._app.config.get("wake_word_config", {}).get("phrase", DEFAULT_WAKE_PHRASE)
-        usage_lines = _usage_lines(self._app.config, wake)
-        for line in usage_lines:
-            row = QHBoxLayout()
-            row.setSpacing(8)
-            bullet = QLabel("·")
-            bullet.setFixedWidth(12)
-            bullet.setStyleSheet(f"color:{theme.ACCENT};font-size:{theme.TYPE_HEADING}px;")
-            row.addWidget(bullet)
-            lbl = QLabel(line)
-            lbl.setWordWrap(True)
-            lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_MIN}px;")
-            row.addWidget(lbl, stretch=1)
-            uf_lay.addLayout(row)
-
-        lay.addWidget(usage_frame)
-
-        lay.addStretch()
-        return _scroll_page(page)
-
-    # ----------------------------------------------------------------
-    # Step navigation
-    # ----------------------------------------------------------------
-
-    def _go_to(self, step: int):
+    def _go_to(self, step):
         self._current_step = step
         self._stack.setCurrentIndex(step)
-
-        self._title_lbl.setText(self._STEP_TITLES[step])
-        self._step_lbl.setText(f"Step {step + 1} of 4")
-
-        self._step_indicator.set_progress(step, self._skipped_steps)
-
-        self._back_btn.setVisible(step > 0)
-
+        self._stack.currentWidget().verticalScrollBar().setValue(0)
+        position = [0, 1, 2, 3, 3, 3, 4, 4][step]
+        for i, label in enumerate(self._steps):
+            label.setText(('✓  ' if i < position else '●  ' if i == position else '    ') + ('Welcome', 'Your PC', 'Choose', 'Set up', 'Test')[i])
+            label.setStyleSheet(f'color:{theme.TEXT_PRIMARY if i == position else theme.TEXT_SECONDARY};font-weight:{600 if i == position else 400};')
+        if step == self._STEP_CONSENT:
+            self._consent_selection.setText(self._selection_text())
+            self._consent_route.setText(COPY['consent_cloud' if self._route == 'cloud' else 'consent_local'])
+        if step == self._STEP_TEST:
+            self._test_route_label.setText(self._selection_text())
+            self._test_description.setText(COPY[self._route + '_test'])
         if step == self._STEP_DONE:
-            self._skip_btn.hide()
-            self._ollama_running = None
-            self._installed_models = []
-            self._next_btn.setText("Set up later")
-            self._next_btn.setEnabled(True)
-        else:
-            self._skip_btn.show()
-            self._skip_btn.setText('Skip')
-            self._next_btn.setText("Next  ->")
+            self._ready_summary.setText(self._selection_text())
+            key = self._app.config.get('ava_mode_key', 'right_alt')
+            self._key_summary.setText('Ava key: ' + {'right_alt': 'Right Alt', 'rctrl': 'Right Ctrl'}.get(key, str(key)))
+        self._nav()
 
-        if step == self._STEP_INTRO:
-            self._next_btn.setEnabled(True)
-
+    def _nav(self):
+        if not hasattr(self, '_next_btn'):
+            return
+        step = self._current_step
+        self._back_btn.setVisible(step != self._STEP_INTRO)
+        self._back_btn.setEnabled(not self._busy)
+        labels = ['Get started', 'Continue', 'Continue', 'Continue', 'Continue', 'Continue', 'Continue', 'Use Ava']
+        self._next_btn.setText(labels[step])
+        ready = True
+        if step == self._STEP_CHOOSE:
+            ready = self._local_choice.isChecked() or self._cloud_choice.isChecked()
+        elif step == self._STEP_CONSENT:
+            ready = self._consent_check.isChecked()
         elif step == self._STEP_OLLAMA:
-            self._next_btn.setEnabled(True)  # always skippable
-            self._check_ollama()
-
-        elif step == self._STEP_MODEL:
-            self._check_installed_models()
-
-        elif step == self._STEP_DONE:
-            self._build_done_summary()
-            self._check_ollama()
+            ready = self._ollama_running and self._selected_model_name in self._installed_models
+        elif step == self._STEP_CLOUD:
+            ready = bool(self._api_key.text().strip() and self._cloud_model.text().strip())
+        elif step in (self._STEP_TEST, self._STEP_DONE):
+            ready = self._tested is not None and self._tested == self._signature()
+        self._next_btn.setEnabled(ready and not self._busy)
+        self._check_btn.setEnabled(self._permission.isChecked() and not self._busy)
+        self._key_btn.setEnabled(bool(self._api_key.text().strip()) and not self._busy)
+        self._test_btn.setEnabled(not self._busy)
 
     def _go_next(self):
-        if self._current_step == self._STEP_DONE:
-            if self._consent_only_missing:
-                self._enable_ai_pack()
-            else:
-                self._finish()
+        if not self._next_btn.isEnabled():
             return
-        if self._current_step < self._STEP_DONE:
-            self._skipped_steps.discard(self._current_step)
-            self._go_to(self._current_step + 1)
+        step = self._current_step
+        if step == self._STEP_CHECK:
+            self._recommend()
+        if step == self._STEP_CHOOSE:
+            self._route = 'cloud' if self._cloud_choice.isChecked() else 'local'
+            self._accepted = None
+            self._consent_check.setChecked(False)
+            self._tested = None
+        if step == self._STEP_CHOOSE:
+            self._go_to(self._STEP_CLOUD if self._route == 'cloud' else self._STEP_OLLAMA)
+        elif step == self._STEP_CONSENT:
+            self._accepted = (self._route, self._provider.currentData())
+            self._go_to(getattr(self, '_consent_return', self._STEP_TEST))
+        elif step in (self._STEP_OLLAMA, self._STEP_CLOUD):
+            self._consent_return = self._STEP_TEST
+            if self._ensure_consent():
+                self._go_to(self._STEP_TEST)
+        elif step == self._STEP_DONE:
+            self._finish()
+        else:
+            self._go_to(step+1)
 
     def _go_back(self):
-        if self._current_step > 0:
-            self._go_to(self._current_step - 1)
+        step = self._current_step
+        target = {self._STEP_CONSENT: self._STEP_CLOUD if self._route == 'cloud' else self._STEP_OLLAMA, self._STEP_OLLAMA: self._STEP_CHOOSE, self._STEP_CLOUD: self._STEP_CHOOSE,
+                  self._STEP_TEST: self._STEP_CLOUD if self._route == 'cloud' else self._STEP_OLLAMA}.get(step, max(0, step-1))
+        self._go_to(target)
 
-    def _skip_step(self):
-        if self._current_step == self._STEP_DONE:
-            self.close()
-        elif self._current_step < self._STEP_DONE:
-            self._skipped_steps.add(self._current_step)
-            self._go_to(self._current_step + 1)
+    def _signature(self):
+        return (self._route, self._provider.currentData(), self._api_key.text(), self._cloud_model.text(), self._selected_model_name)
 
-    # ----------------------------------------------------------------
-    # Ollama step
-    # ----------------------------------------------------------------
+    def _selection_text(self):
+        return ('On this PC · ' + self._selected_model_name if self._route == 'local' else
+                'In the cloud · ' + self._provider.currentText() + ' · ' + self._cloud_model.text())
+
+    def _model_changed(self, name):
+        self._selected_model_name = name
+        self._tested = None
+        self._refresh_model_status()
+
+    def _refresh_model_status(self):
+        installed = self._ollama_running and self._selected_model_name in self._installed_models
+        self._model_status_lbl.setText('Model installed. Ready for a speed test.' if installed else COPY['model_missing'])
+        self._pull_btn.setVisible(not installed)
+        self._pull_btn.setEnabled(self._ollama_running and not self._pulling)
+        self._nav()
+
+    def _check_ollama(self):
+        if self._busy:
+            return
+        self._ollama_status_lbl.setText('Checking Ollama…')
+        self._work('ollama', lambda: _ping_ollama(host=(self._app.config.get('ollama') or {}).get('host') or _OLLAMA_URL))
+
+    def _on_ollama_status(self, running, models):
+        self._ollama_running = running
+        self._installed_models = models if running else []
+        self._ollama_status_lbl.setText('Ollama is running. Choose a model below.' if running else COPY['ollama_missing'])
+        self._download_ollama_btn.setVisible(not running)
+        if running:
+            self._ollama_recheck_timer.stop()
+            for model in models:
+                if self._model_combo.findText(model) < 0:
+                    self._model_combo.addItem(model)
+        self._refresh_model_status()
+
+    def _on_pull_line(self, line):
+        if not self._closed:
+            self._pull_progress.setText(line)
+
+    def _on_pull_done(self, success):
+        if self._closed:
+            return
+        self._pulling = False
+        self._pull_btn.setText('Download model')
+        self._pull_progress.setText('Download complete. Checking the model…' if success else COPY['download_failed'])
+        if success:
+            self._check_ollama()
+        self._refresh_model_status()
+
+    def _toggle_key(self):
+        visible = self._api_key.echoMode() == QLineEdit.EchoMode.Password
+        self._api_key.setEchoMode(QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password)
+        self._show_key.setText('Hide' if visible else 'Show')
+
+    def _provider_changed(self, *_args):
+        self._api_key.clear()
+        self._custom_mode = False
+        self._cloud_catalogue = _load_models(self._provider.currentData())
+        self._cloud_model.setText(ai_models.SNAPSHOT[self._provider.currentData()]['default'])
+        self._fill_model_choices()
+        if self._picker:
+            self._picker.hide()
+            self._picker.deleteLater()
+            self._picker = None
+        # Consent names the selected destination; changing it requires review again.
+        self._accepted = None
+        self._cloud_changed()
+
+    def _cloud_changed(self, *_args):
+        self._tested = None
+        self._cloud_status.setText('Review permission for this provider before testing.' if self._accepted is None else 'Test this key and model before you finish.')
+        self._nav()
+
+    def _open_picker(self):
+        if self._picker is None:
+            provider = self._provider.currentData()
+            self._picker = QDialog(self)
+            self._picker.setWindowTitle('Choose a ' + self._provider.currentText() + ' model')
+            layout = QVBoxLayout(self._picker)
+            self._catalogue = _make_provider_picker(self._cloud_model, provider,
+                lambda: self._provider.currentData() == provider and not self._closed,
+                self._cloud_catalogue, self._picker_refresh, self._custom_model, self._picker_model_chosen)
+            self._catalogue.choose.clicked.connect(self._picker.hide)
+            self._catalogue.models.itemActivated.connect(lambda _item: self._picker.hide())
+            self._catalogue.search.setMinimumHeight(theme.HIT_TARGET_MIN)
+            self._catalogue.models.setMinimumHeight(120)
+            layout.addWidget(self._catalogue)
+            layout.addWidget(self._button('Done', self._picker.hide))
+            self._picker.resize(680, 520)
+        self._picker.show()
+        self._catalogue.receive(self._cloud_catalogue)
+
+    def _draft(self):
+        if self._accepted != (self._route, self._provider.currentData()):
+            return None
+        cfg = deepcopy(self._app.config)
+        cfg.setdefault('ollama', {}).update(model=self._selected_model_name)
+        cfg.setdefault('ava_command_session', {}).update(model=self._selected_model_name)
+        cfg.setdefault('cloud_llm', {}).update(provider=self._provider.currentData(), api_key=self._api_key.text().strip(), model=self._cloud_model.text().strip())
+        record = ava_consent_qt.accepted_consent(cfg, cloud_enabled=self._route == 'cloud')
+        return ava_consent_qt.apply_accepted_ava(self._app, record, policy=self._route, config=cfg, persist=False)
+
+    def _ensure_consent(self):
+        if self._accepted != (self._route, self._provider.currentData()):
+            self._consent_check.setChecked(False)
+            self._go_to(self._STEP_CONSENT)
+            return False
+        return True
+
+    def _check_key(self):
+        self._consent_return = self._STEP_CLOUD
+        if self._busy or not self._api_key.text().strip() or not self._ensure_consent():
+            return
+        cfg = self._draft()
+        self._cloud_status.setText('Checking key…')
+        def run():
+            app = SimpleNamespace(config=cfg)
+            if cfg['cloud_llm']['provider'] == 'openrouter':
+                result = cloud_llm.check_openrouter(app)
+                failure = None if result.failure is None else result.failure.kind
+            else:
+                ok, info = cloud_llm.check_available(app)
+                reasons = {'The key was rejected.': 'bad_key', 'The account is out of balance.': 'out_of_credit',
+                           'Could not be reached.': 'unreachable', 'Did not answer in time.': 'timeout',
+                           'The model or provider route is unavailable.': 'model_unavailable'}
+                failure = None if ok else reasons.get(info, 'provider_error')
+            if failure is not None:
+                return failure
+            return _load_models(cfg['cloud_llm']['provider'], refresh=True, api_key=cfg['cloud_llm']['api_key'])
+        self._work('key', run)
+
+    def _test_route(self):
+        self._consent_return = self._STEP_TEST
+        if self._busy or not self._ensure_consent():
+            return
+        self._tested = None
+        cfg = self._draft()
+        self._trial_config = cfg
+        self._test_status.setText('Waiting for the selected model…')
+        def run():
+            if self._route == 'local':
+                return hardware_check.measure_local(cfg)
+            cfg['cloud_llm'].update(timeout_seconds=10, max_tokens=32)
+            reply = cloud_llm.send('Reply only with the word ready.', 'Setup test.', SimpleNamespace(config=cfg), timeout=10)
+            if isinstance(reply, cloud_llm.CloudError):
+                return reply.failure.kind
+            return True if isinstance(reply, str) and reply.strip() and not reply.startswith('Error:') else 'provider_error'
+        self._work('test', run)
+
+    def _work(self, kind, action):
+        self._generation += 1
+        token = self._generation
+        self._job_signature = self._signature()
+        self._job_config = deepcopy(self._app.config)
+        self._busy = True
+        self._pages[self._current_step].setEnabled(False)
+        self._nav()
+        def run():
+            try:
+                result = action()
+            except Exception:
+                result = 'exception'
+            self._result.emit(token, kind, result)
+        thread_registry.spawn('ava-guide-' + kind, run, daemon=True)
+
+    def _receive(self, token, kind, value):
+        if token != self._generation or self._closed:
+            return
+        self._busy = False
+        for page in self._pages:
+            page.setEnabled(True)
+        if self._job_signature != self._signature() or self._job_config != self._app.config:
+            self._test_status.setText(COPY['changed'])
+            self._tested = None
+            self._nav()
+            return
+        errors = {'bad_key': 'bad_key', 'out_of_credit': 'no_credit', 'unreachable': 'network',
+                  'timeout': 'network', 'model_unavailable': 'model_unavailable', 'provider_down': 'provider_error',
+                  'rate_limited': 'rate_limited', 'blocked': 'blocked', 'error': 'provider_error'}
+        if kind == 'hardware':
+            if isinstance(value, hardware_check.Hardware):
+                self._fill_hardware(value)
+            else:
+                self._hardware_status.setText(COPY['check_failed'])
+        elif kind == 'ollama':
+            self._on_ollama_status(*(value if isinstance(value, tuple) else (False, [])))
+        elif kind == 'key':
+            if isinstance(value, openrouter_catalog.Catalogue):
+                self._cloud_catalogue = value
+                self._fill_model_choices()
+                if self._picker:
+                    self._catalogue.receive(value)
+                value = None
+            self._cloud_status.setText(COPY['key_good'] if value is None else COPY[errors.get(value, 'provider_error')])
+        elif kind == 'test':
+            if value is True or type(value) in (float, int):
+                self._tested = self._signature()
+                message = COPY['cloud_success'] if value is True else COPY['local_success' if value >= 10 else 'local_slow'] + f' ({value:.1f} tokens/second.)'
+            else:
+                message = COPY['local_timeout'] if self._route == 'local' else COPY[errors.get(value, 'provider_error')]
+            self._test_status.setText(message)
+            self._test_btn.setText('Run again' if self._tested else 'Retry test')
+        self._nav()
+
+    def _finish(self):
+        if self._tested != self._signature() or self._app.config != self._job_config:
+            self._tested = None
+            self._save_status.setText(COPY['changed'])
+            self._nav()
+            return
+        try:
+            cfg = self._draft()
+            ava_consent_qt.apply_accepted_ava(self._app, cfg['ava']['consent'], policy=self._route, config=cfg)
+        except Exception:
+            self._save_status.setText(COPY['save_failed'])
+            return
+        self.close()
+
+    def resizeEvent(self, event):
+        if hasattr(self, '_nav_layout'):
+            compact = self.height() < 540
+            for page in self._pages:
+                page.layout().setContentsMargins(24 if compact else 28, 16 if compact else 24,
+                                                24 if compact else 28, 12 if compact else 20)
+                page.layout().setSpacing(6 if compact else 12)
+            self._nav_layout.setContentsMargins(24, 6 if compact else 12, 24, 6 if compact else 12)
+        super().resizeEvent(event)
+
+    def showEvent(self, event):
+        self._closed = False
+        super().showEvent(event)
+
+    def reject(self):
+        self.close()
+
+    def closeEvent(self, event):
+        self._closed = True
+        self._generation += 1
+        self._busy = False
+        self._tested = None
+        self._accepted = None
+        self._consent_check.setChecked(False)
+        self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._show_key.setText('Show')
+        self._ollama_recheck_timer.stop()
+        for page in self._pages:
+            page.setEnabled(True)
+        if self._picker:
+            self._picker.hide()
+        self.hide()
+        event.ignore()
+
 
     def _open_ollama_download(self):
         QDesktopServices.openUrl(QUrl(_OLLAMA_DOWNLOAD))
@@ -794,110 +1195,6 @@ class _WizardWindow(QDialog):
         self._check_ollama()
         if self._ollama_recheck_attempts >= _OLLAMA_RECHECK_LIMIT:
             self._ollama_recheck_timer.stop()
-
-    def _check_ollama(self):
-        self._ollama_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_HEADING}px;")
-        self._ollama_status_lbl.setText("Checking...")
-        self._ollama_check_btn.setEnabled(False)
-
-        def _run():
-            host = self._app.config.get("ollama", {}).get("host") or _OLLAMA_URL
-            running, models = _ping_ollama(host=host)
-            self._ollama_status_sig.emit(running, models)
-
-        thread_registry.spawn("ava-ping", _run, daemon=True)
-
-    def _on_ollama_status(self, running: bool, models: list):
-        self._ollama_check_btn.setEnabled(True)
-        self._ollama_running = running
-        self._installed_models = models if running else []
-
-        if running:
-            self._ollama_recheck_timer.stop()
-            self._ollama_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_HEADING}px;")
-            if models:
-                self._ollama_status_lbl.setText(
-                    f"Ollama is running  |  {len(models)} model"
-                    f"{'s' if len(models) != 1 else ''} installed"
-                )
-            else:
-                self._ollama_status_lbl.setText(
-                    "Ollama is running — no models yet (pull one on the next step)"
-                )
-            self._install_instructions.setVisible(False)
-        else:
-            self._ollama_dot.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_HEADING}px;")
-            self._ollama_status_lbl.setText("Cannot connect to Ollama")
-            self._install_instructions.setVisible(True)
-        if self._current_step == self._STEP_DONE:
-            self._build_done_summary()
-
-    # ----------------------------------------------------------------
-    # Model step
-    # ----------------------------------------------------------------
-
-    def _on_model_selected(self, index: int):
-        if 0 <= index < len(_MODELS):
-            self._selected_model_name = _MODELS[index][0]
-            self._model_desc.setText(_MODELS[index][2])
-        self._refresh_model_status()
-
-    def _check_installed_models(self):
-        self._model_status_dot.setStyleSheet(f"color:{theme.TEXT_DISABLED};font-size:{theme.TYPE_BODY}px;")
-        self._model_status_lbl.setText("Checking Ollama...")
-        self._pull_btn.setEnabled(False)
-        self._next_btn.setEnabled(False)
-
-        def _run():
-            host = self._app.config.get("ollama", {}).get("host") or _OLLAMA_URL
-            running, models = _ping_ollama(host=host)
-            self._ollama_status_sig.emit(running, models)   # reuse signal
-            # also fire model refresh via same signal path
-            self._pull_line_sig.emit("")  # sentinel to trigger _refresh_model_status
-
-        thread_registry.spawn(
-            "ava-model-check", _run, daemon=True
-        )
-
-    def _refresh_model_status(self):
-        sel = self._selected_model_name
-        matched = sel in self._installed_models and self._ollama_running is True
-
-        if matched:
-            self._model_status_dot.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_BODY}px;")
-            self._model_status_lbl.setText(f"Installed: {sel}")
-            self._pull_btn.setEnabled(True)
-            self._pull_btn.setText("Re-pull")
-            self._next_btn.setEnabled(True)
-            self._next_btn.setText("Next  ->")
-        else:
-            self._model_status_dot.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
-            self._model_status_lbl.setText(
-                "Not installed — click Pull to download" if self._ollama_running
-                else "Cannot connect to Ollama"
-            )
-            self._pull_btn.setEnabled(self._ollama_running is True)
-            self._pull_btn.setText("Pull model")
-            self._next_btn.setEnabled(True)
-            self._next_btn.setText("Set up later")
-
-        # Show any installed models as a note
-        if self._installed_models and not matched:
-            others = ", ".join(self._installed_models[:4])
-            if len(self._installed_models) > 4:
-                others += f" +{len(self._installed_models) - 4} more"
-            self._installed_note.setText(f"You already have: {others}")
-        elif not self._installed_models:
-            self._installed_note.setText("")
-
-    def _on_pull_line(self, line: str):
-        # Sentinel from _check_installed_models
-        if line == "" and self._current_step == self._STEP_MODEL:
-            self._refresh_model_status()
-            return
-        if line:
-            self._pull_progress.setVisible(True)
-            self._pull_progress.setText(line.strip())
 
     def _pull_model(self):
         if self._pulling:
@@ -950,150 +1247,11 @@ class _WizardWindow(QDialog):
 
         thread_registry.spawn("ava-pull", _run, daemon=True)
 
-    def _on_pull_done(self, success: bool):
-        self._pull_btn.setEnabled(True)
-        self._pull_btn.setText("Pull model")
-        if success:
-            self._pull_progress.setText("Download complete.")
-            self._check_installed_models()
-            self._save_model_choice(self._selected_model_name)
-        else:
-            self._model_status_dot.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_BODY}px;")
-            self._model_status_lbl.setText("Download failed — see above for details")
-
-    def _save_model_choice(self, model_name: str):
-        try:
-            cfg = dict(self._app.config.get("ollama", {}))
-            cfg["model"] = model_name
-            self._app.update_config({"ollama": cfg}, save=True)
-        except Exception as e:
-            logger.debug(f"_save_model_choice: {e}")
-
-    # ----------------------------------------------------------------
-    # Done step
-    # ----------------------------------------------------------------
-
-    def _build_done_summary(self):
-        selected = self._selected_model_name
-        installed = self._ollama_running is True and selected in self._installed_models
-        configured_model = self._app.config.get("ollama", {}).get("model")
-        configured_and_installed = installed and selected == configured_model
-        host = self._app.config.get("ollama", {}).get("host") or _OLLAMA_URL
-        try:
-            resolved_addresses = ("127.0.0.1", "::1") if urlsplit(host).hostname == "localhost" else ()
-        except (TypeError, ValueError):
-            resolved_addresses = ()
-        state = ai_preferences.effective_state(
-            self._app.config, "ava", provider_route="local", ready=configured_and_installed,
-            resolved_addresses=resolved_addresses,
-        )
-        ready = configured_and_installed and state.allowed
-        policy = (self._app.config.get('ava') or {}).get('provider_policy', 'off')
-        self._consent_only_missing = (policy == 'local' and configured_and_installed
-                                     and (self._app.config.get('ollama') or {}).get('enabled') is True
-                                     and not state.allowed and 'consent' in state.reason.lower())
-        # PLACEHOLDER COPY (462): exact missing prerequisite, never a generic setup label.
-        if policy == 'cloud':
-            missing = _AVA_CLOUD_GUIDE_NOTE
-        elif policy == 'off' or state.status == 'off-by-choice':
-            missing = 'Ava is set to Off in Settings > Ava.'
-        elif self._ollama_running is None:
-            missing = 'Ollama has not been checked yet.'
-        elif not self._ollama_running:
-            missing = 'Ollama is not reachable.'
-        elif not installed:
-            missing = 'The selected model is not installed.'
-        elif not configured_and_installed:
-            missing = 'The selected model is not configured in Settings > Ava.'
-        elif self._consent_only_missing:
-            missing = 'Ava needs your OK.'
-        else:
-            missing = state.reason
-        self._done_title.setText("Ava is ready." if ready else "Ava is not ready.")
-        self._done_title.setStyleSheet(
-            f"color:{theme.SUCCESS if ready else theme.WARNING};"
-            f"font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
-        )
-        parts = [
-            "Ollama: " + ("reachable" if self._ollama_running is True else
-                          "not reachable" if self._ollama_running is False else "not checked yet"),
-            f"Model: {selected} ({'installed' if installed else 'not installed'})",
-            'Ava: enabled' if ready else missing,
-        ]
-        self._done_summary.setText("\n".join(parts))
-        self._skip_btn.setText('Set up later')
-        self._skip_btn.setVisible(self._consent_only_missing)
-        self._next_btn.setText('Finish' if ready else
-                               'Enable Ava' if self._consent_only_missing else 'Set up later')
-
-    def _on_ava_key_changed(self):
-        try:
-            self._app.update_config({"ava_mode_key": self._key_combo.combo}, save=True)
-        except Exception as e:
-            logger.debug(f"_on_ava_key_changed: {e}")
-
-    def _enable_ai_pack(self):
-        self._build_done_summary()
-        if not self._consent_only_missing:
-            return
-        try:
-            policy = 'local'
-            consent = ava_consent_qt.request_consent(
-                self, self._app.config, cloud_enabled=policy == "cloud"
-            )
-            if consent is None:
-                return
-            self._build_done_summary()
-            if not self._consent_only_missing:
-                return
-            ava_consent_qt.apply_accepted_ava(
-                self._app, consent, policy=policy
-            )
-            self._build_done_summary()
-        except Exception:
-            logger.exception("Could not activate Ava after consent")
-
-    def _finish(self):
-        # Save model choice from combo if not already saved by a pull
-        model_name = self._model_combo.currentData()
-        if model_name:
-            self._save_model_choice(model_name)
-        self.close()
-
-    # ----------------------------------------------------------------
-    # Cleanup
-    # ----------------------------------------------------------------
-
-    def closeEvent(self, e):
-        self._ollama_recheck_timer.stop()
-        if self._pull_proc is not None:
-            try:
-                from samsara.process_exit import trace_exit
-                trace_exit("model-pull-child-terminate", target_pid=self._pull_proc.pid)
-                self._pull_proc.terminate()
-            except Exception as e:
-                logger.debug(f"closeEvent: {e}")
-        e.accept()
-
-
-# ---------------------------------------------------------------------------
-# Small reusable widgets
-# ---------------------------------------------------------------------------
-
-def _scroll_page(page: QWidget) -> QScrollArea:
-    page.setObjectName('avaPage')
-    scroll = QScrollArea()
-    scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setWidgetResizable(True)
-    scroll.setWidget(page)
-    return scroll
-
-
 def _ava_intro_text(config: dict) -> str:
     """Describe authoritative Ava policy without guessing provider readiness."""
     state = ai_preferences.effective_state(config, "ava", ready=None)
     # OWNER COPY: replace this state-derived provider explanation.
-    return f"Ava is optional. {state.reason} Check Settings > Ava for the current provider route."
+    return f"Ava is optional. {state.reason} Check Settings > Ava for the current choice."
 
 
 def _confirmation_text() -> str:
