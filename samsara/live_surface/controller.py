@@ -484,6 +484,8 @@ class LiveSurfaceController:
         if self.widget is not None:
             self.widget.refresh(self.model.view(), animate=False)
             self.widget.correction_refused("Correction applied")
+        from samsara.ui.correction_picker_qt import offer_correction_learning
+        offer_correction_learning(self.app, selection.get("word", ""), replacement)
 
     def _cancel_correction(self) -> None:
         self.post(SurfaceEvent(EventKind.CORRECTION_CLOSED))

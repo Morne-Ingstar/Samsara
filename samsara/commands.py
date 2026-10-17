@@ -732,6 +732,9 @@ class CommandExecutor:
             return DispatchResult.miss(None)
 
         effective_app = app_instance if app_instance is not None else self._app
+        spelling = getattr(effective_app, "_draft_spelling_input", None)
+        if spelling is not None and spelling.consume(text):
+            return DispatchResult(DispatchState.QUEUED, "draft spelling", "draft spelling")
         payload = command_payload(text, effective_app)
         if payload is not None:
             text, force_commands = payload, True
@@ -806,7 +809,9 @@ class CommandExecutor:
             return self.execute_canonical(
                 "click", effective_app, route=route, generation=generation,
                 args={"remainder": str(number)}, source_text=text)
-        match_text = apply_phonetic_wash(text)
+        from .phonetic_wash import repair_command_near_miss
+        near = repair_command_near_miss(text, self) if command_lane(effective_app, force_commands) else None
+        match_text = near or apply_phonetic_wash(text)
         # One scope context for the whole utterance (queue 68): every match
         # below sees the same foreground app and tags.
         context = self._matcher.current_context()

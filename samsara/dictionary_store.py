@@ -198,6 +198,26 @@ class DictionaryStore:
         self._rebuild_corrections_pattern()
         return self.save_training_data()
 
+    def learn_draft_correction(self, wrong: str, right: str, *, vocabulary=False) -> bool:
+        """Explicit post-edit approval; a failed save must not teach in memory."""
+        wrong, right = wrong.strip(), right.strip()
+        if not right or (not vocabulary and (not wrong or wrong.casefold() == right.casefold())):
+            return False
+        corrections, words = dict(self.corrections_dict), list(self.custom_vocab)
+        if vocabulary:
+            if any(word.casefold() == right.casefold() for word in words):
+                return True
+            ok = self.add_vocab_word(right)
+        else:
+            key = next((key for key in corrections if key.casefold() == wrong.casefold()), wrong)
+            ok = self.add_correction(key, right)
+        if not ok:
+            self.corrections_dict.clear()
+            self.corrections_dict.update(corrections)
+            self.custom_vocab[:] = words
+            self._rebuild_corrections_pattern()
+        return ok
+
     def remove_correction(self, wrong: str) -> bool:
         wrong = wrong.strip()
         for existing in list(self.corrections_dict):

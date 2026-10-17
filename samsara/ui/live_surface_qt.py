@@ -329,7 +329,7 @@ class LiveSurfaceWidget(QWidget):
         self._apply = self._button("Apply replacement", "Apply", self._apply_editor)
         self._cancel = self._button("Cancel replacement", "Cancel", self._cancel_editor)
         self._editor = QLineEdit(self); self._editor.setAccessibleName("Replacement text")
-        self._editor.setPlaceholderText("Say letters, or type a replacement")
+        self._editor.setPlaceholderText("Type or paste a replacement")
         self._editor.setMaxLength(120)
         self._editor.textChanged.connect(self._sanitize_spelling)
         self._apply_view(self._view, animate=False)
@@ -443,6 +443,7 @@ class LiveSurfaceWidget(QWidget):
         self._update_mark()
 
     def hideEvent(self, event) -> None:
+        self._close_spelling()
         self._spin_timer.stop()
         self._motion_timer.stop()
         self._last_mark_time = None
@@ -508,16 +509,19 @@ class LiveSurfaceWidget(QWidget):
                 self._announce("word-missing", "That word number is not in the draft")
 
     def show_word_picker(self) -> None:
+        self._close_spelling()
         self._editor_mode = ""
         self._selection = None; self._picker_active = True; self._picker_page = 0; self._candidates = []
         self._apply_view(self._view, animate=False); self._announce("picker", "Choose a word to correct")
 
     def show_candidates(self, selection: dict[str, object], candidates: list[object]) -> None:
+        self._close_spelling()
         self._editor_mode = ""
         self._selection, self._picker_active, self._candidates, self._candidate_page = dict(selection), False, list(candidates)[:12], 0
         self._apply_view(self._view, animate=False); self._announce(("correction", selection.get("revision")), "Correction choices ready")
 
     def correction_refused(self, message: str = "That word changed. Select it again.") -> None:
+        self._close_spelling()
         self._editor_mode = ""
         self._selection = None; self._picker_active = False; self._candidates = []
         self._restore_passive()
@@ -545,6 +549,7 @@ class LiveSurfaceWidget(QWidget):
             self._follow_latest, self._unread_segments = True, 0
         if self._selection is not None and (view.document_id != self._selection.get("document_id")
                 or view.revision != self._selection.get("revision")):
+            self._close_spelling()
             self._selection = None; self._candidates = []; self._editor_mode = ""
             self._restore_passive()
             self.correction_cancel_requested.emit()
@@ -819,10 +824,11 @@ class LiveSurfaceWidget(QWidget):
             button.setGeometry(content.x()+(index%2)*(content.width()//2+REGION_GAP//2), y+(index//2)*(MARK_SIZE+REGION_GAP), self._button_width(button, content.width()//2-REGION_GAP//2), MARK_SIZE); button.show()
         y += (MARK_SIZE+REGION_GAP) * ceil(min(4, max(0, len(source)-start))/2)
         if self._selection is not None:
-            self._layout_row((self._keep,self._spell,self._edit,self._more), content.x(), y, content.width())
+            controls = (self._keep,self._spell,self._edit) + ((self._more,) if len(source) > 4 else ())
+            self._layout_row(controls, content.x(), y, content.width())
         else:
             self._cancel.setText("Cancel")
-            self._layout_row((self._cancel,self._more), content.x(), y, content.width())
+            self._layout_row((self._cancel,) + ((self._more,) if len(source) > 4 else ()), content.x(), y, content.width())
         self._more.setEnabled(len(source)>4)
 
     def _update_mask(self) -> None:
@@ -975,9 +981,20 @@ class LiveSurfaceWidget(QWidget):
         else:
             bar.setValue(self._scroll_position)
     def _open_editor(self,mode:str)->None:
+        self._close_spelling()
         self._editor_mode=mode; self._editor.clear(); self._editor.setAccessibleName("Spelled replacement" if mode=="spell" else "Edit replacement")
+        self._editor.setPlaceholderText("Use the Command-only key to say letters; Apply to finish." if mode == "spell" else "Type or paste a replacement")
+
         self._apply_view(self._view, animate=False)
         self.focus_review(); self._editor.setFocus(); self._announce("editor", "Enter a replacement, then apply")
+        if mode == "spell" and getattr(self._controller, "app", None) is not None:
+            from samsara.ui.correction_picker_qt import SpellingInput
+            self._spelling_input = SpellingInput(self, self._controller.app)
+    def _close_spelling(self) -> None:
+        spelling = getattr(self, "_spelling_input", None)
+        if spelling is not None:
+            spelling.close()
+            self._spelling_input = None
     def _sanitize_spelling(self,value:str)->None:
         if self._editor_mode=="spell":
             cleaned="".join(ch for ch in value if ch.isalpha() or ch in " '-")
@@ -987,8 +1004,10 @@ class LiveSurfaceWidget(QWidget):
         if text and self._selection is not None:self.correction_apply_requested.emit(dict(self._selection),text)
     def _cancel_editor(self)->None:
         if not self._editor_mode:self._cancel_correction(); return
+        self._close_spelling()
         self._editor_mode=""; self._apply_view(self._view,animate=False)
     def _cancel_correction(self)->None:
+        self._close_spelling()
         self._selection=None; self._picker_active=False; self._candidates=[]; self._editor_mode=""
         self._restore_passive()
         self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)

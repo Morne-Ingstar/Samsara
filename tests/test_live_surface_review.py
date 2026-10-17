@@ -161,7 +161,9 @@ def test_candidate_and_empty_panes_remain_visible_in_every_source_form(qapp):
         for candidates in ([], [SimpleNamespace(replacement=f'choice {n}') for n in range(6)]):
             w = LiveSurfaceWidget(replace(review(), form=form))
             w.show(); w.show_candidates(selection, candidates); qapp.processEvents()
-            for control in (w._keep, w._spell, w._edit, w._more):
+            assert w._more.isVisible() is (len(candidates) > 4)
+            controls = (w._keep, w._spell, w._edit) + ((w._more,) if len(candidates) > 4 else ())
+            for control in controls:
                 assert control.isVisible() and w.rect().contains(control.geometry())
                 assert control.width() >= 44 and control.height() >= 44
             if candidates:

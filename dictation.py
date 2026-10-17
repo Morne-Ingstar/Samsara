@@ -4146,15 +4146,10 @@ class DictationApp(CommandFastPathMixin):
 
     def _probe_hands_free_command(self, text: str):
         """Read-only command probe; None retains the utterance as dictation."""
-        from samsara.dictation_commands import command_payload
-        payload = command_payload(text, self)
-        if payload is not None:
-            return HandsFreeCommandMatch(dispatch_text=text,
-                phrase=self.command_executor.find_command(payload) or payload,
-                pending_policy=PendingTextPolicy.PRESERVE, reserved=True)
-        check = getattr(self.command_executor, 'accepts_dictation_command', None)
-        if check is not None and not check(text, self):
-            return None
+        from samsara.phonetic_wash import prepare_hands_free_command
+        text, early = prepare_hands_free_command(text, self)
+        if text is None:
+            return early
         media_match = self._probe_media_transport(text)
         if media_match is not None:
             return media_match

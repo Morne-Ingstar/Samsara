@@ -2861,10 +2861,10 @@ class DictatePreviewSession:
             logger.debug(f"[DICTATE-PREVIEW] prompt unavailable: {exc}")
 
     def _capture_correction(self, wrong: str, right: str, context: str = "", audio=None):
-        """Queue an applied correction FOR REVIEW. Never writes the
-        dictionary: a wrong entry there would silently rewrite that word in
-        every future dictation, so a human accepts it in the correction
-        window first (samsara/correction_queue.py explains the classes)."""
+        """Queue an applied correction for review and offer explicit teaching.
+        Only tapping the learning offer writes the dictionary."""
+        from samsara.ui.correction_picker_qt import offer_correction_learning
+        offer_correction_learning(self.app, wrong, right)
         try:
             from samsara.correction_queue import get_queue, save_audio  # noqa: PLC0415
             # The clip is the utterance Whisper got wrong -- saved only when

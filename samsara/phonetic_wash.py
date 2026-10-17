@@ -305,6 +305,59 @@ _PUNCT_SCRUB_RE = re.compile(r'[.,?!;:]+')
 _MULTISPACE_RE = re.compile(r'\s+')
 
 
+def prepare_hands_free_command(text, app):
+    """Read-only probe gate shared by the literal and bounded-repair paths.
+
+    A None text means stop probing and return the accompanying result.
+    """
+    from samsara.dictation_commands import command_payload
+    from samsara.session_modes import HandsFreeCommandMatch, PendingTextPolicy
+    spelling = getattr(app, "_draft_spelling_input", None)
+    if spelling is not None and spelling.active:
+        return None, HandsFreeCommandMatch(dispatch_text=text, phrase="draft spelling",
+            pending_policy=PendingTextPolicy.PRESERVE, reserved=True)
+    payload = command_payload(text, app)
+    if payload is not None:
+        return None, HandsFreeCommandMatch(dispatch_text=text,
+            phrase=app.command_executor.find_command(payload) or payload,
+            pending_policy=PendingTextPolicy.PRESERVE, reserved=True)
+    if (app.config.get('hands_free') or {}).get('exact_commands', True):
+        text = repair_command_near_miss(text, app.command_executor) or text
+    check = getattr(app.command_executor, 'accepts_dictation_command', None)
+    if check is not None and not check(text, app):
+        return None, None
+    return text, None
+
+
+def repair_command_near_miss(text, executor):
+    """One observed phonetic step, whole active command, no argument capture.
+
+    Scrawl/scroll differ by one vowel sound. Keep this wash bounded to that
+    observed confusion; generic spelling distance would turn unrelated prose
+    into commands. The live matcher supplies catalogue, pack and scope checks.
+    No pronunciation-dictionary load or catalogue scan on the CPU command path.
+    Callers must opt in from a command lane or the hands-free command probe.
+    """
+    if not isinstance(text, str) or executor is None:
+        return None
+    words = text.lower().strip().rstrip(".!?,;:").split()
+    if len(words) < 2 or words[0] != "scrawl":
+        return None
+    matcher = getattr(executor, "_matcher", None)
+    if matcher is None:
+        return None
+    context = matcher.current_context()
+    # An actual literal command always wins over the repair.
+    original, remainder = matcher.match(" ".join(words), context)
+    if original is not None and not remainder:
+        return None
+    candidate = " ".join(["scroll"] + words[1:])
+    entry, remainder = matcher.match(candidate, context)
+    if entry is None or remainder or executor._takes_argument(entry):
+        return None
+    return candidate
+
+
 def apply_phonetic_wash(text):
     """Clean Whisper's known phonetic hallucinations from command text.
 
