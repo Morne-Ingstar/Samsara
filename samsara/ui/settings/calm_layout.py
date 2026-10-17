@@ -264,8 +264,11 @@ class RowDividers(QObject):
     def collect(self):
         groups = []
         current = []
+        if not isValid(self.layout):
+            return groups
         for index in range(self.layout.count()):
-            widget = self.layout.itemAt(index).widget()
+            item = self.layout.itemAt(index)
+            widget = item.widget() if item is not None else None
             if widget and widget.property('settingsRowDivider'):
                 continue
             if widget and widget.isHidden() and widget.property('role') not in ('row', 'settingsGroup') and not widget.property('settingsToolRow'):
@@ -285,7 +288,7 @@ class RowDividers(QObject):
         return False
 
     def refresh(self):
-        if self.busy:
+        if self.busy or not isValid(self.layout):
             return
         self.busy = True
         try:
@@ -306,7 +309,9 @@ class RowDividers(QObject):
                 if groups:
                     self.layout.setSpacing(0)
             for group, row, divider, line in self.dividers:
-                visible = [member for member in group if not member.isHidden()]
+                if not all(isValid(obj) for obj in (row, divider, line)):
+                    continue
+                visible = [member for member in group if isValid(member) and not member.isHidden()]
                 divider.setVisible(row in visible and row is not visible[-1])
                 qss = f'background:{theme.BORDER_FAINT};border:none;'
                 if line.styleSheet() != qss:
@@ -365,6 +370,8 @@ class ComponentRows(QObject):
             detail.deleteLater()
             actions.deleteLater()
         layout = components._rows_layout
+        if not isValid(layout):
+            return
         if not hasattr(layout, '_settings_dividers'):
             layout._settings_dividers = RowDividers(layout)
         layout._settings_dividers.refresh()

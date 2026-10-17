@@ -9166,8 +9166,6 @@ class DictationApp(CommandFastPathMixin):
             return
 
         if intent["type"] == "command_text":
-            # The wake window shares the command lane's dispatcher, outcome
-            # chip and pending suggestion reply. It never creates an executor.
             timing = current_stage_timing()
             if timing is not None:
                 timing.mark("dispatch_start", words=len(text.split()))
@@ -9178,9 +9176,11 @@ class DictationApp(CommandFastPathMixin):
             self._handle_session_dispatch_outcome(outcome, text)
             if outcome.kind == "command_suggestion_pending":
                 # Keep this wake window open solely for its eight-second
-                # yes/no reply; a different utterance returns to normal dispatch.
                 self.wake_word_triggered = True
                 self._start_wake_timeout(8.0)
+                return
+            from samsara.numbers_followup import keep_numbers_window
+            if keep_numbers_window(self):
                 return
             self.wake_word_triggered = False
             self.app_state = 'asleep'

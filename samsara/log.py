@@ -56,6 +56,9 @@ _NAMES = rf"'{_NAME}'(?:, '{_NAME}')*(?:,? and '{_NAME}')?"
 # its own exception class: a code identifier is not speech, but any other text
 # (a value, a path, a dictated word in a KeyError or ValueError) never matches.
 _CODE_MESSAGES = (
+    (RuntimeError, re.compile(
+        rf"(?:Internal C\+\+ object \({_DOTTED}\) already deleted\.|"
+        rf"wrapped C/C\+\+ object of type {_DOTTED} has been deleted)")),
     (AttributeError, re.compile("|".join((
         rf"'{_DOTTED}' object has no attribute '{_NAME}'",
         rf"(?:partially initialized )?module '{_DOTTED}' has no attribute '{_NAME}'(?: \(most likely due to a circular import\))?",

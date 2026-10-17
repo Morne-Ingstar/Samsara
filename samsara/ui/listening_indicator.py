@@ -269,6 +269,8 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             | Qt.WindowType.WindowDoesNotAcceptFocus
             | Qt.WindowType.NoDropShadowWindowHint,
         )
+        from samsara.ui.passive_topmost import PassiveTopmost
+        self._topmost_guard = PassiveTopmost(self)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents)

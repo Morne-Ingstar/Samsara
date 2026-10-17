@@ -439,6 +439,7 @@ def _handle_working_context_intent(app, utterance):
 
 def _finish_ava_session(app, *, wait=False):
     """Summarize completed turns through Ollama only, after Ava exits."""
+    from samsara.ava_summary_policy import summary_available, defer_summary
     if _memory_mode(app) != "assistant" or not hasattr(app, "_ava_memory"):
         return
     history = app._ava_memory.take_session()
@@ -453,16 +454,15 @@ def _finish_ava_session(app, *, wait=False):
             app._ava_legacy_history = []
         if history:
             memory.enqueue_session(history)
-    if not memory.pending_sessions():
+    if not memory.pending_sessions() or not summary_available(app):
         return
-
     def _summarize():
         with app._ava_summary_worker_lock:
             while True:
                 with app._ava_summary_lock:
                     pending = memory.pending_sessions()
                     generation = getattr(app, "_ava_memory_generation", 0)
-                if not pending:
+                if not pending or not summary_available(app):
                     return
                 batch = pending[0]
                 try:
@@ -490,9 +490,9 @@ def _finish_ava_session(app, *, wait=False):
                         else:
                             return
                 except Exception as exc:
-                    logger.warning("[AVA MEMORY] local summary unavailable: %s", type(exc).__name__)
+                    defer_summary(app)
+                    logger.debug("[AVA MEMORY] local summary deferred: %s", type(exc).__name__)
                     return
-
     if wait:
         _summarize()
     else:

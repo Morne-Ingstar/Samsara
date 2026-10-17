@@ -237,6 +237,8 @@ class LiveSurfaceWidget(QWidget):
         flags = (Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
                  Qt.WindowType.WindowDoesNotAcceptFocus | Qt.WindowType.WindowStaysOnTopHint)
         super().__init__(None, flags)
+        from samsara.ui.passive_topmost import PassiveTopmost
+        self._topmost_guard = PassiveTopmost(self)
         self._controller, self._view = controller, _view_from(controller)
         self._motion_override = reduced_motion
         self._reduced_motion = system_reduced_motion() if reduced_motion is None else reduced_motion
