@@ -1,5 +1,6 @@
 """Connection controls below the agents pack's single switch."""
 from contextlib import nullcontext
+import base64
 import json
 import os
 from pathlib import Path
@@ -7,14 +8,79 @@ import secrets
 import re
 import sys
 
-from PySide6.QtCore import QMimeData, QTimer
-from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QBuffer, QIODevice, QMimeData, Qt, QTimer
+from PySide6.QtGui import QMovie
+from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from samsara.agent_server import for_app
 from samsara.ui import theme
+from .presentation import Disclosure
+from samsara.ui.widgets.code_snippet import CodeSnippet
+from assets.anim.connect_ai import GIF_DATA
 
 _EXCLUDE_HISTORY = 'application/x-qt-windows-mime;value="ExcludeClipboardContentFromMonitorProcessing"'
 _CLIPBOARD_TIMEOUT_MS = 60_000
+
+
+class _RouteStack(QWidget):
+    """Only the selected route participates in layout or keyboard traversal."""
+    def __init__(self):
+        super().__init__()
+        self.column = QVBoxLayout(self)
+        self.column.setContentsMargins(0, 0, 0, 0)
+        self.panels = []
+
+    def addWidget(self, panel):
+        self.panels.append(panel)
+        self.column.addWidget(panel)
+        panel.setVisible(len(self.panels) == 1)
+
+    def setCurrentIndex(self, index):
+        for i, panel in enumerate(self.panels):
+            panel.setVisible(i == index)
+        self.updateGeometry()
+
+
+class SetupIllustration(QWidget):
+    """Three stills from the illustrated asset; stack on narrow layouts."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAccessibleName("Open Start, open PowerShell, paste then press Enter")
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.cards = []
+        data = QBuffer(self)
+        data.setData(base64.b64decode(GIF_DATA))
+        data.open(QIODevice.OpenModeFlag.ReadOnly)
+        movie = QMovie(data, b"gif", self)
+        movie.setCacheMode(QMovie.CacheMode.CacheAll)
+        for index, caption in zip((0, 8, 19), ("Open Start", "Open PowerShell", "Paste, then press Enter")):
+            movie.jumpToFrame(index)
+            card = QWidget()
+            column = QVBoxLayout(card)
+            column.setContentsMargins(0, 0, 0, 0)
+            picture = QLabel()
+            picture.setPixmap(movie.currentPixmap().scaledToWidth(200, Qt.TransformationMode.SmoothTransformation))
+            picture.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            column.addWidget(picture)
+            label = QLabel(caption)
+            label.setWordWrap(True)
+            column.addWidget(label)
+            self.cards.append(card)
+        self._narrow = None
+        self._arrange(False)
+
+    def _arrange(self, narrow):
+        if narrow == self._narrow:
+            return
+        self._narrow = narrow
+        for index, card in enumerate(self.cards):
+            self.grid.removeWidget(card)
+            self.grid.addWidget(card, index if narrow else 0, 0 if narrow else index)
+
+    def resizeEvent(self, event):
+        self._arrange(self.width() < 660)
+        super().resizeEvent(event)
 
 
 def claude_desktop_entry(port=47832):
@@ -56,69 +122,107 @@ class AgentsControls(QWidget):
     def __init__(self, owner, enabled):
         super().__init__()
         self.setObjectName("agentsConnectionControls")
+        self.setStyleSheet(f"QWidget#agentsConnectionControls {{ background: {theme.BG0}; }}")
         self.owner, self.enabled = owner, enabled
         self.server = for_app(owner.app)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.status = QLabel()
-        self.status.setWordWrap(True)
-        self.status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self.status)
-        # STAND-IN COPY (570): wording awaits the owner's review.
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        # STAND-IN COPY (595): keep the reviewed prose; proposed edits are asks.
         heading = QLabel("Connect an AI app")
         heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(heading)
-        self.command_preview = QLabel()
-        self.command_preview.setWordWrap(True)
-        self.command_preview.setAccessibleName("Claude Code connection command, token hidden")
-        self.command_preview.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self.command_preview)
-        self.code_copy = QPushButton("Copy Claude Code command")
-        self.code_copy.setAccessibleName("Copy Claude Code connection command")
-        self.code_copy.setMinimumHeight(theme.HIT_TARGET_MIN)
-        self.code_copy.setAutoDefault(True)
-        self.code_copy.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self.code_copy)
-        for text in ("Show me where it goes: paste into PowerShell. User scope connects Claude Code across your projects.",
-                     "After New token: run claude mcp remove samsara --scope user, then copy and run the new command.",
-                     "If you used the earlier local setup, run claude mcp remove samsara in that project first."):
-            label = QLabel(text)
+        self.enable_row = QHBoxLayout()
+        self.enable_row.addWidget(QLabel("Let AI apps use Samsara"))
+        self.enable_row.addStretch()
+        self.enable_row.addWidget(enabled)
+        layout.addLayout(self.enable_row)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+        def note(text, target=layout):
+            label = QLabel()
             label.setWordWrap(True)
-            label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-            layout.addWidget(label)
-        # STAND-IN COPY (570b): wording awaits the owner's review.
+            label.setMinimumWidth(0)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            label.setStyleSheet(
+                f"QLabel {{ color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; border: 1px solid transparent; text-decoration: none; }}"
+                f"QLabel:focus {{ border-color: {theme.ACCENT}; text-decoration: none; }}")
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse | Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+            label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setText(text)
+            label.linkActivated.connect(getattr(owner, "_visit_callback", lambda fn, *widgets: fn)(self._follow_setting, label))
+            label.linkHovered.connect(lambda url: label.setCursor(Qt.CursorShape.PointingHandCursor if url else Qt.CursorShape.ArrowCursor))
+            target.addWidget(label)
+            return label
+
+        self._note = note
+        note("Before you start: you need to be logged in to the AI app you want to connect.")
+        note("Keep Samsara open and turn on " + self._setting_link("Let AI apps use Samsara", "agents") + ".")
+        self.app_selector = QComboBox()
+        self.app_selector.setAccessibleName("AI app to connect")
+        self.app_selector.addItems(["Claude Code", "Claude Desktop"])
+        self.app_selector.setMinimumHeight(theme.HIT_TARGET_MIN)
+        layout.addWidget(self.app_selector)
+        self.routes = _RouteStack()
+        self.routes.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        layout.addWidget(self.routes)
+        self.code_panel, self.desktop_panel = QWidget(), QWidget()
+        code, desktop = QVBoxLayout(self.code_panel), QVBoxLayout(self.desktop_panel)
+        for column in (code, desktop):
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(10)
+            column.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.routes.addWidget(self.code_panel)
+        self.routes.addWidget(self.desktop_panel)
+        # Keep installation advice before the first command, without inventing
+        # a destination for an external client we have not verified.
+        note("If the command is not recognised, install Claude Code first.", code)
+        note("Claude Code — sign in first", code)
+        note("1. Open the Windows Start menu. Type PowerShell, then open Windows PowerShell.", code)
+        self.illustration = SetupIllustration()
+        code.addWidget(self.illustration)
+        note("2. Copy this short command. Right-click inside PowerShell to paste it, then press Enter. "
+             "Follow Claude Code's sign-in instructions.", code)
+        code.addWidget(CodeSnippet("claude", name="Claude Code sign-in command"))
+        # Repeat the existing PowerShell instruction after sign-in as a separate
+        # handoff; replacement wording is explicitly left for the owner.
+        note("3. Open the Windows Start menu. Type PowerShell, then open Windows PowerShell.", code)
+        note("Once you are signed in, copy the connection command below. Right-click in PowerShell "
+             "to paste it, then press Enter. This connects Claude Code across your projects.", code)
+        self.command_preview = CodeSnippet(name="Claude Code connection command, token hidden", copy_action=self.copy_code_command)
+        code.addWidget(self.command_preview)
+        self.code_copy = self.command_preview.copy_button
+        self.code_copy.setAccessibleName("Copy Claude Code connection command")
+        self.connection_hint = note("", code)
         self.desktop = QLabel("Claude Desktop")
         self.desktop.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self.desktop)
-        self.desktop_copy = QPushButton("Copy Claude Desktop JSON")
+        desktop.addWidget(self.desktop)
+        note("Sign in to Claude Desktop first. Its setup uses a configuration file, with different steps from Claude Code.", desktop)
+        note("1. In Claude Desktop, open Settings, then Developer, then Edit Config. "
+             "This opens the file named claude_desktop_config.json in your Claude app-data folder.", desktop)
+        note("2. Copy the configuration below. In that file, add the samsara entry under mcpServers, "
+             "keeping any other entries. If the file is empty, paste the whole block. Save the file.", desktop)
+        note("Empty file / {}", desktop)
+        self.desktop_preview = CodeSnippet(name="Claude Desktop connection JSON", copy_action=self.copy_desktop_entry)
+        desktop.addWidget(self.desktop_preview)
+        self.desktop_copy = self.desktop_preview.copy_button
         self.desktop_copy.setAccessibleName("Copy Claude Desktop connection JSON")
-        self.desktop_copy.setMinimumHeight(theme.HIT_TARGET_MIN)
-        self.desktop_copy.setAutoDefault(True)
-        self.desktop_copy.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self.desktop_copy)
-        desktop_help = QLabel("Show me where it goes: Claude Desktop > Settings > Developer > Edit Config opens "
-                              "%APPDATA%\\Claude\\claude_desktop_config.json. Add the samsara entry under "
-                              "mcpServers, keeping your other entries, then restart Claude Desktop. "
-                              "Keep Samsara open with Let AI apps use Samsara on. After New token, reconnect Claude Desktop.")
-        desktop_help.setWordWrap(True)
-        desktop_help.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(desktop_help)
-        buttons = QHBoxLayout()
-        self.copy = QPushButton("Copy connection details")  # STAND-IN COPY (564)
-        self.rotate = QPushButton("New token")  # STAND-IN COPY (564)
-        for button in (self.copy, self.rotate):
-            button.setMinimumHeight(theme.HIT_TARGET_MIN)
-            button.setAutoDefault(True)
-            button.setAccessibleName(button.text())
-            buttons.addWidget(button)
-        buttons.addStretch()
-        layout.addLayout(buttons)
-        self.typing = QCheckBox("Let AI apps type for me")  # STAND-IN COPY (565)
+        note("If the file is empty, paste the whole block.", desktop)
+        note("Existing settings — before", desktop)
+        desktop.addWidget(CodeSnippet('{\n  "mcpServers": {\n    "other-app": {"command": "other-app"}\n  },\n  "preferences": {}\n}', name="Existing Desktop settings example"))
+        note("Existing settings — after", desktop)
+        self.merge_example = CodeSnippet(name="Desktop settings with Samsara added, highlighted comma and entry")
+        desktop.addWidget(self.merge_example)
+        note("3. Quit and reopen Claude Desktop so it reads the saved file. Keep Samsara open.", desktop)
+        layout.addWidget(QLabel("Optional typing"))
+        self.typing = QCheckBox("Let AI apps type for me")
         self.typing.setObjectName("agent_server.allow_typing")
         self.typing.setMinimumHeight(theme.HIT_TARGET_MIN)
         self.typing.setChecked(self._typing_enabled())
         layout.addWidget(self.typing)
-        # STAND-IN COPY (565c): wording awaits the owner's review.
         self.approval_label = QLabel("How I approve typing")
         layout.addWidget(self.approval_label)
         self.approval_style = QComboBox()
@@ -127,17 +231,68 @@ class AgentsControls(QWidget):
         self.approval_style.addItem("Just say yes", False)
         self.approval_style.addItem("Hold the Command key and say yes", True)
         self.approval_style.setMinimumHeight(theme.HIT_TARGET_MIN)
-        self.approval_style.setStyleSheet(f"font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(self.approval_style)
+        note(self._setting_link("Command key", "command_hotkey"))
+        self.help = Disclosure("Connection help")
+        layout.addWidget(self.help)
+        self.help_routes = _RouteStack()
+        self.help.rows.addWidget(self.help_routes)
+        code_help, desktop_help = QWidget(), QWidget()
+        code_repairs, desktop_repairs = QVBoxLayout(code_help), QVBoxLayout(desktop_help)
+        for column in (code_repairs, desktop_repairs):
+            column.setContentsMargins(0, 0, 0, 0)
+        self.help_routes.addWidget(code_help)
+        self.help_routes.addWidget(desktop_help)
+        note("After " + self._setting_link("New token", "agent_token") + ": remove the old Claude Code connection with this command, then copy and run "
+             "the new connection command above.", code_repairs)
+        code_repairs.addWidget(CodeSnippet("claude mcp remove samsara --scope user", name="Remove old Claude Code connection"))
+        note("If you used the earlier local setup, open PowerShell in that project folder and run this command first.", code_repairs)
+        code_repairs.addWidget(CodeSnippet("claude mcp remove samsara", name="Remove earlier project connection"))
+        note("After " + self._setting_link("New token", "agent_token") + ", quit and reopen Claude Desktop again to reconnect.", desktop_repairs)
+        buttons = QHBoxLayout()
+        self.copy, self.rotate = QPushButton("Copy connection details"), QPushButton("New token")
+        for button in (self.copy, self.rotate):
+            button.setMinimumHeight(theme.HIT_TARGET_MIN)
+            button.setAutoDefault(True)
+            button.setAccessibleName(button.text())
+            buttons.addWidget(button)
+        buttons.addStretch()
+        self.help.rows.addLayout(buttons)
+        self.app_selector.currentIndexChanged.connect(self._select_route)
+        self._select_route(0)
         guard = getattr(owner, "_visit_callback", lambda fn, *widgets: fn)
         enabled.toggled.connect(guard(self.toggle, self))
         self.copy.clicked.connect(guard(self.copy_details, self))
-        self.code_copy.clicked.connect(guard(self.copy_code_command, self))
-        self.desktop_copy.clicked.connect(guard(self.copy_desktop_entry, self))
+        self.command_preview.copy_action = guard(self.copy_code_command, self)
+        self.desktop_preview.copy_action = guard(self.copy_desktop_entry, self)
         self.rotate.clicked.connect(guard(self.new_token, self))
         self.typing.toggled.connect(guard(self.toggle_typing, self))
         self.approval_style.currentIndexChanged.connect(guard(self.toggle_approval_style, self))
         self.refresh()
+
+    @staticmethod
+    def _setting_link(text, key):
+        return f'<a href="{key}" style="color: {theme.ACCENT}; text-decoration: none;">{text}</a>'
+
+    def _follow_setting(self, key):
+        navigate = getattr(self.owner, "focus_setting", None)
+        if navigate is not None:
+            navigate(key)
+
+    def _select_route(self, index):
+        self.routes.setCurrentIndex(index)
+        self.help_routes.setCurrentIndex(index)
+        self.routes.adjustSize()
+        self.routes.updateGeometry()
+
+    def showEvent(self, event):
+        # The source pack factory appends this SAME checkbox after constructing
+        # us. Move it back from that row only when the lazy tool is exposed.
+        if self.enabled.parentWidget() is not self:
+            self.enable_row.addWidget(self.enabled)
+            self.enabled.setAccessibleName("Let AI apps use Samsara")
+            self.enabled.show()
+        super().showEvent(event)
 
     def refresh(self, token_failed=False):
         # STAND-IN COPY (564)
@@ -149,8 +304,27 @@ class AgentsControls(QWidget):
         preview = claude_code_command(self.server.connection_details(), masked=True)
         unavailable = ("Turn on Let AI apps use Samsara to connect." if self.server.status == "off"
                        else "The server is not running. Connection details are unavailable.")
-        self.command_preview.setText("Claude Code: " + (preview or unavailable))
+        self.command_preview.setText(preview or "")
+        self.connection_hint.setText(unavailable.replace("Let AI apps use Samsara", self._setting_link("Let AI apps use Samsara", "agents")))
+        self.connection_hint.setVisible(preview is None)
         self.code_copy.setEnabled(self.server.status == "listening" and preview is not None)
+        port = (self.server.port if self.server.status == 'listening' else
+                (self.owner.app.config.get('agent_server') or {}).get('port', 47832))
+        entry = claude_desktop_entry(port)
+        self.desktop_preview.setText(entry or "Connection configuration is unavailable.")
+        self.desktop_copy.setEnabled(entry is not None)
+        merged = json.loads(entry) if entry else {"mcpServers": {}}
+        merged["mcpServers"] = {"other-app": {"command": "other-app"}, **merged["mcpServers"]}
+        merged["preferences"] = {}
+        merged_text = json.dumps(merged, indent=2)
+        lines = merged_text.splitlines()
+        if entry:
+            start = next(i for i, line in enumerate(lines) if line.startswith('    "samsara":'))
+            end = next(i for i, line in enumerate(lines) if i > start and line == '    }')
+            self.merge_example.setText(merged_text, highlight_lines=range(start - 1, end + 1))
+        else:
+            self.merge_example.setText(merged_text)
+        self.merge_example.copy_button.setEnabled(entry is not None)
         self.typing.setEnabled((self.owner.app.config.get("command_packs") or {}).get("agents") is True)
         self.typing.blockSignals(True)
         self.typing.setChecked(self._typing_enabled())
@@ -220,13 +394,13 @@ class AgentsControls(QWidget):
         self._copy_private(self.server.connection_details())
 
     def copy_code_command(self, *_args):
-        self._copy_private(claude_code_command(self.server.connection_details()))
+        return self._copy_private(claude_code_command(self.server.connection_details()))
 
     def copy_desktop_entry(self, *_args):
         # Use the live port when running, configured port while the pack is off.
         port = (self.server.port if self.server.status == 'listening' else
                 (self.owner.app.config.get('agent_server') or {}).get('port', 47832))
-        self._copy_private(claude_desktop_entry(port))
+        return self._copy_private(claude_desktop_entry(port))
 
     def _copy_private(self, details):
         if details is not None:
@@ -240,6 +414,8 @@ class AgentsControls(QWidget):
             # Keep cleanup independent of this Settings visit's widget lifetime.
             QTimer.singleShot(_CLIPBOARD_TIMEOUT_MS,
                               lambda: _clear_connection_details(clipboard, details, marker))
+            return True
+        return False
 
     def new_token(self, *_args):
         self.refresh(token_failed=not self.server.new_token())

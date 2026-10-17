@@ -128,7 +128,8 @@ def test_rotation_hint_explains_replacement_and_local_shadow(panel):
     controls, state, clipboard, timers = panel
     labels = [label.text() for label in controls.findChildren(QLabel)]
     assert any('claude mcp remove samsara --scope user' in text for text in labels)
-    assert any('claude mcp remove samsara in that project' in text for text in labels)
+    assert any('earlier local setup' in text and 'project folder' in text for text in labels)
+    assert any(text == 'claude mcp remove samsara' for text in labels)
     assert ui.theme.TEXT_PRIMARY in controls.desktop.styleSheet()
 
 
@@ -136,12 +137,15 @@ def test_unavailable_preview_does_not_ask_to_enable_again(panel):
     controls, state, clipboard, timers = panel
     state.status = 'unavailable'
     controls.refresh()
-    assert 'server is not running' in controls.command_preview.text()
-    assert 'Turn on' not in controls.command_preview.text()
+    assert 'server is not running' in controls.connection_hint.text()
+    assert 'Turn on' not in controls.connection_hint.text()
+    assert controls.command_preview.text() == ''
     assert not controls.code_copy.isEnabled()
     state.status = 'off'
     controls.refresh()
-    assert 'Turn on Let AI apps use Samsara' in controls.command_preview.text()
+    assert 'Turn on ' in controls.connection_hint.text()
+    assert '>Let AI apps use Samsara</a>' in controls.connection_hint.text()
+    assert controls.command_preview.text() == ''
 
 
 def test_connection_and_approval_controls_coexist(panel):

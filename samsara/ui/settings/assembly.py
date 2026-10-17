@@ -4,10 +4,10 @@ The source factories retain validation, consent and save callbacks. Controls
 are reparented once into declared destinations; source scaffolding stays hidden.
 """
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QComboBox, QCheckBox, QAbstractSpinBox,
-    QLineEdit, QMenu, QVBoxLayout, QHBoxLayout, QSizePolicy, QDialog,
+    QLineEdit, QMenu, QVBoxLayout, QHBoxLayout, QSizePolicy, QDialog, QScrollArea,
 )
 from samsara.ui import theme, qt_runtime
 from samsara.config_schema import SETTINGS_SCHEMA
@@ -17,6 +17,12 @@ from .lazy_access import assembling, source_config
 
 
 class PageAssembly:
+    def _apply_metric_minimum_widths(self):
+        super()._apply_metric_minimum_widths()
+        from samsara.ui.widgets.beta_notice import BetaNotice
+        for notice in self.findChildren(BetaNotice):
+            notice.fit_to_text()
+
     @assembling
     def _apply_visible_design_scale(self):
         # Keep the real Settings owner: its theme hook installs row dividers,
@@ -116,6 +122,7 @@ class PageAssembly:
             self._rows_by_widget['adv_device'].grid.addWidget(self._widgets['cuda_status'], 2, 0, 1, 3)
         if name == 'Help':
             page.column.insertWidget(2, self._source_store.findChild(QLabel, 'feedbackStatusLabel'))
+        self._add_beta_notice(page)
         self._connect_conditions()
         self._build_search_registry()
         self._apply_metric_minimum_widths()
@@ -136,9 +143,62 @@ class PageAssembly:
             pages = tools_page.build(self, name)
         self._tool_pages.update(pages)
         for title, page in pages.items():
+            if title == 'Command library':
+                from .agents_section import AgentsControls
+                controls = page.findChild(AgentsControls)
+                pack_row = controls.parentWidget()
+                page.widget().layout().insertWidget(0, controls)
+                controls.enable_row.addWidget(controls.enabled)
+                controls.enabled.setAccessibleName('Let AI apps use Samsara')
+                # Setup uses the destination's scroll area, not the small pack
+                # inventory viewport. The original row no longer has an editor.
+                pack_row.hide()
+            self._add_beta_notice(page)
             self._stack.addWidget(page)
             self._style_materialized_page(title, page)
         self._connect_conditions()
+
+    def _add_beta_notice(self, page):
+        """One insertion point for preferences and tools, only when built."""
+        from samsara.ui.widgets.beta_notice import BetaNotice, _Session
+        host = self.centralWidget()  # Replaced on each Settings open, not Apply.
+        if not hasattr(host, '_beta_notice_session'):
+            host._beta_notice_session = _Session(host)
+        container = page.widget()
+        if container.findChild(BetaNotice) is None:
+            container.layout().insertWidget(0, BetaNotice(container, session=host._beta_notice_session))
+
+    def focus_setting(self, key):
+        """Use the existing lazy row lookup and destination navigation."""
+        from .presentation import Disclosure
+        from .agents_section import AgentsControls
+        if key in ('agents', 'agent_token'):
+            self._select_tool('Command library')
+            controls = self._tool_pages['Command library'].findChild(AgentsControls)
+            target = controls.enabled if key == 'agents' else controls.rotate
+        else:
+            row = self._rows_by_widget[key]  # 619 materializes this destination.
+            if self._search_edit.text():
+                self._search_edit.clear()
+                self._apply_search_filter()
+            self.show_tab(row.page_name)
+            if row.disclosure:
+                row.disclosure.reveal()
+            target = self._widgets[key]
+        ancestor = target.parentWidget()
+        scrolls = []
+        while ancestor is not None and ancestor is not self:
+            if isinstance(ancestor, Disclosure):
+                ancestor.reveal()
+            if isinstance(ancestor, QScrollArea):
+                scrolls.append(ancestor)
+            ancestor = ancestor.parentWidget()
+        def land():
+            for scroll in scrolls:
+                scroll.widget().layout().activate()
+                scroll.ensureWidgetVisible(target, 12, 12)
+            target.setFocus(Qt.FocusReason.OtherFocusReason)
+        QTimer.singleShot(0, self._visit_callback(land, target))
 
     def _ensure_preferences(self):
         from samsara.ui.settings_qt import PAGE_MODULES

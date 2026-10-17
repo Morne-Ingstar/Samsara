@@ -591,7 +591,7 @@ def test_settings_switch_copy_rotation_and_status(qapp, monkeypatch, memory_clip
     from PySide6.QtWidgets import QCheckBox
     from samsara.ui.settings import agents_section
     calls = []
-    state = SimpleNamespace(status="off", sync=lambda: calls.append("sync"),
+    state = SimpleNamespace(status="off", port=47832, sync=lambda: calls.append("sync"),
                             connection_details=lambda: "local endpoint details",
                             new_token=lambda: calls.append("rotate") or True)
     monkeypatch.setattr(agents_section, "for_app", lambda app: state)
@@ -621,7 +621,7 @@ def test_connection_clipboard_excludes_history_and_expires_without_clobbering(qa
     from samsara.ui.settings import agents_section
     timers = []
     monkeypatch.setattr(agents_section.QTimer, "singleShot", lambda delay, callback: timers.append((delay, callback)))
-    state = SimpleNamespace(status="listening", connection_details=lambda: "local endpoint details")
+    state = SimpleNamespace(status="listening", port=47832, connection_details=lambda: "local endpoint details")
     monkeypatch.setattr(agents_section, "for_app", lambda app: state)
     controls = agents_section.AgentsControls(SimpleNamespace(app=fake_app()), QCheckBox())
     clipboard = memory_clipboard
