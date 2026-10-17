@@ -2,6 +2,47 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.6] - 2026-10-17
+
+Clearer Ava setup, more reliable held dictation, and more ways to control apps by voice.
+
+<!-- Stand-in release wording for the owner's review. -->
+
+### Ava
+
+- Ava setup has one guide for Ollama on this PC or a cloud provider, an optional PC check, and searchable model lists with filters.
+- Ava can run up to four available commands in order, stops if a step fails, and asks before a step that could lose work. You can answer her follow-up questions by voice.
+- Say "clean up selection" to review a cleaned-up version of selected text, then "apply" or "discard". Apply checks that the original selection is still there.
+
+### Dictation and hold-to-talk
+
+- Held dictation keeps unread audio when you release the key, retries a rejected result once, and keeps audio for retry when it cannot make out the words.
+- Dictation starts sooner by bounding the wait for microphone opening and audio ducking, and skipping the sound delay when no start sound plays.
+- After a correction, "Always fix this" and "Add to my words" let you save it to the dictionary with a tap. Spell and Edit do different jobs, and More appears only when more alternatives are available.
+- The Relaxed speaking pace now accepts pauses between Standard and Unhurried, and its test explains the pace it heard.
+
+### Settings and setup
+
+- Settings builds pages as you visit them and checks compute support and voices in the background, so it opens sooner. Reopening Settings no longer crashes on a deleted widget.
+- Setup asks whether you want hands-free. New installations use a toggle to start and stop a hands-free session; existing choices stay as they are.
+- The tutorial fits the screen work area, shows its trial result inline, and brings a guide to the front when you open it.
+- The chosen Windows voice is used in speech, Settings tests and the tutorial. A voice that cannot be used is reported instead of silently replaced.
+
+### Commands
+
+- Say "click <name>", "toggle <name>", "expand <name>", "collapse <name>" or "focus control <name>" for a matching control. Several matches get numbers so you can choose.
+- "Show numbers on taskbar" numbers buttons on the primary taskbar. While numbers are showing, you can say a number without the wake word.
+- Use "switch", "list all windows" then "choose <number>", "start <Start-menu item>", "snap <app> <side>" and "desk <number>" to control apps and windows.
+- "Scratch that" removes the last typed utterance as one unit in supported native Edit controls, with grouped undo and redo. It refuses if you have typed or moved the caret since.
+- "What can I say" shows help for the app in front and its clickable controls; "help <topic>" narrows it. With AI enabled, a missed command may get one available-command suggestion that waits for "yes".
+- An optional command fast path tries exact short commands first; anything else stays dictation. It is off by default.
+
+### Daily-use polish
+
+- Status messages stay long enough to read in both listening displays and the History footer; urgent feedback can still replace them immediately.
+- Add-ons skip identical files already supplied by Samsara and stage changed locked files for the next start, with a plain restart message.
+- The installed app uses the Samsara taskbar icon.
+
 ## [0.30.0-beta.5] - Unreleased
 
 Fixes for everything the beta.4 check found, clearer Ava and OpenRouter messages, and AI apps that can work with Samsara.

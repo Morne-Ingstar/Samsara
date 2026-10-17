@@ -13,7 +13,7 @@ SKILLS = ('Docs/agents/samsara/SKILL.md', 'Docs/hermes/samsara-voice/SKILL.md')
 
 def test_release_stamps_and_derived_consumers_agree():
     from tools.check_release_version import check_versions
-    version = check_versions(ROOT, 'v0.30.0-beta.5')
+    version = check_versions(ROOT, 'v0.30.0-beta.6')
     batch = (ROOT / 'build_release.bat').read_text(encoding='utf-8')
     assert re.search(r'^set VERSION=(.*)$', batch, re.M).group(1) == version
     assert f'title Building Samsara v{version}\n' in batch
