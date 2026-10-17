@@ -32,6 +32,8 @@ class _TryPage(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setWidgetResizable(True)
         content, layout = window._padded()
+        layout.setContentsMargins(28, 8, 28, 8)
+        layout.setSpacing(8)
         self.cards, self.states, self.actions, self.keeps = {}, {}, {}, {}
         build_steps(self, layout)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
@@ -113,7 +115,8 @@ class _TryPage(QScrollArea):
         for index, key in enumerate(('level', 'voice', 'pace')):
             self.visible(self.cards[key], self.stage == index and not (key == 'voice' and self.voice_skipped()))
         self.voice_skip.setVisible(self.stage == 1 and self.voice_skipped())
-        self.result.setVisible(bool(self.result.text()) and not self.result.text().startswith(('Speaking:', 'Example complete.', 'Suggested pace:')))
+        self.result.setWordWrap(self.result.text() != 'Example complete.')
+        self.result.setVisible(bool(self.result.text()) and not self.result.text().startswith(('Speaking:', 'Suggested pace:')))
         if not self.states['level'].text():
             self.states['level'].setText('In use: ' + str(cfg.get('feedback_level', 'brief')).capitalize())
         self.states['pace'].setText(self.result.text() if self.stage == 2 and self.result.text().startswith('Suggested pace:')

@@ -349,11 +349,6 @@ class TutorialWindow(QMainWindow):
         self.setMinimumSize(620, 480)
         self.resize(620, self._default_window_height)
         self.setStyleSheet(theme.build_stylesheet())
-        # Stay on top so the user can still use the tutorial while interacting
-        # with other windows; WindowStaysOnTopHint avoids stealing focus.
-        self.setWindowFlags(
-            self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
-        )
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -564,10 +559,12 @@ class TutorialWindow(QMainWindow):
         if content is None or layout is None:
             return
         layout.activate()
-        if self._steps[self._step][0] in ('ways', 'try'):
-            if self._steps[self._step][0] == 'try':
-                # The voice trial needs two usable columns at large text sizes.
-                self.resize(min(self.maximumWidth(), max(self.width(), 900)), self.height())
+        if self._steps[self._step][0] in ('ways', 'try', 'done'):
+            if (self._steps[self._step][0] == 'try' or
+                    (self._steps[self._step][0] == 'done' and self.maximumWidth() >= 1000)):
+                # Widen Done where two cards fit comfortably; smaller screens
+                # retain the user's pre-Try width and can scroll internally.
+                self.resize(min(self.maximumWidth(), max(self.width(), 1000)), self.height())
                 self._fit_available_screen()
                 content.resize(page.viewport().width(), content.height())
                 layout.activate()
@@ -884,6 +881,8 @@ class TutorialWindow(QMainWindow):
 
     def _build_done(self) -> QWidget:
         content, lay = self._padded()
+        lay.setContentsMargins(28, 8, 28, 8)
+        lay.setSpacing(6)
 
         checklist_items = [
             (1, "✓  Dictated text — talk, it types"),
@@ -893,8 +892,8 @@ class TutorialWindow(QMainWindow):
         card = QFrame()
         theme.style_card(card)
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(18, 14, 18, 14)
-        cl.setSpacing(8)
+        cl.setContentsMargins(14, 8, 14, 8)
+        cl.setSpacing(4)
 
         self._done_checks = {}
         for step_idx, text in checklist_items:
@@ -908,7 +907,7 @@ class TutorialWindow(QMainWindow):
                 f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
             )
             icon_lbl.setMinimumWidth(24)
-            icon_lbl.setMinimumHeight(theme.HIT_TARGET_MIN)
+            icon_lbl.setMinimumHeight(24)
             row.addWidget(icon_lbl)
             text_lbl = QLabel(text[2:] if text.startswith("✓  ") else text)
             text_lbl.setWordWrap(True)
@@ -916,17 +915,20 @@ class TutorialWindow(QMainWindow):
                 f"color:{theme.TEXT_PRIMARY if completed else theme.TEXT_DISABLED};"
                 f"font-size:{theme.TYPE_BODY}px;"
             )
-            text_lbl.setMinimumHeight(theme.HIT_TARGET_MIN)
+            text_lbl.setMinimumHeight(24)
             row.addWidget(text_lbl, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
             cl.addLayout(row)
             self._done_checks[step_idx] = (icon_lbl, text_lbl)
 
-        lay.addWidget(card)
+        recap = QHBoxLayout()
+        recap.setSpacing(12)
+        recap.addWidget(card, stretch=1)
         self._try_summary = QLabel('')
         self._try_summary.setTextFormat(Qt.TextFormat.PlainText)
         self._try_summary.setWordWrap(True)
         self._try_summary.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
-        lay.addWidget(self._try_summary)
+        recap.addWidget(self._try_summary, stretch=1)
+        lay.addLayout(recap)
 
         records = getattr(self, '_catalog', None)
         if records is None:
@@ -946,7 +948,6 @@ class TutorialWindow(QMainWindow):
         hf_lbl.setWordWrap(True)
         hf_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(hf_lbl)
-        lay.addSpacing(12)
 
         # --- Advanced guides ---
         next_lbl = QLabel("Go deeper when you're ready:")
@@ -955,8 +956,7 @@ class TutorialWindow(QMainWindow):
         # Shares the header row: the window is fixed-height and a row of its
         # own squeezes the checklist card above.
         next_row = QHBoxLayout()
-        next_row.addWidget(next_lbl)
-        next_row.addStretch()
+        next_row.addWidget(next_lbl, stretch=1)
         self._support_btn = QPushButton("Something wrong? Tell me")
         self._support_btn.setObjectName("tutorialSupportButton")
         theme.make_secondary(self._support_btn)
@@ -977,9 +977,13 @@ class TutorialWindow(QMainWindow):
              "open_ava_guide"),
         ]
 
+        guides = QHBoxLayout()
+        guides.setSpacing(12)
+        lay.addLayout(guides)
         for title, desc, method in _GUIDES:
             guide_card = QFrame()
             theme.style_guide_card(guide_card)
+            guide_card.setObjectName(method)
             gc_lay = QHBoxLayout(guide_card)
             gc_lay.setContentsMargins(14, 10, 12, 10)
             gc_lay.setSpacing(10)
@@ -1001,14 +1005,14 @@ class TutorialWindow(QMainWindow):
             open_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
             _m = method  # capture for lambda
             open_btn.clicked.connect(
-                lambda checked=False, m=_m: getattr(self._app, m, lambda: None)()
+                lambda checked=False, m=_m: self._open_guide(m)
             )
             gc_lay.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
             # Measured after addWidget() parents the button -- see nav bar
             # buttons above for why this ordering matters.
             open_btn.setMinimumWidth(self._button_min_width(open_btn, ["Open →"]))
 
-            lay.addWidget(guide_card)
+            guides.addWidget(guide_card, stretch=1)
 
         lay.addStretch()
         lay.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
@@ -1097,8 +1101,13 @@ class TutorialWindow(QMainWindow):
         else:
             self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
 
+    def _open_guide(self, method):
+        from samsara.ui.tutorial_guides import open_guide
+        open_guide(self, method)
+
     def _refresh_done_checks(self):
         self._try_summary.setText('\n'.join(getattr(getattr(self, '_try_page', None), 'kept', {}).values()))
+        self._try_summary.setVisible(bool(self._try_summary.text()))
         for step_idx, (icon, label) in self._done_checks.items():
             completed = step_idx in self._completed
             icon.setText("✓" if completed else "—")
