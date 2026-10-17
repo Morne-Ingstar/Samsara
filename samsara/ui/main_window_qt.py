@@ -25,7 +25,7 @@ import math
 import sys
 
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QIcon, QPainter
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow,
     QPushButton, QSizePolicy, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from samsara import config_defaults
 from samsara.ui import qt_runtime, theme, window_activation, window_geometry
-from samsara.ui.tray_qt import MarkFrame, paint_mark
+from samsara.ui.tray_qt import MarkFrame, idle_brand_icon_path, paint_mark
 from samsara.ui.command_marquee import build_example_strip
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
@@ -324,6 +324,7 @@ class _MainWindow(QMainWindow):
         self._geom_timer.timeout.connect(self._save_geometry)
 
         self.setWindowTitle("Samsara")
+        self.setWindowIcon(QIcon(str(idle_brand_icon_path())))
         theme.install_app_scrollbars()
         # This constructor runs on qt_runtime's QApplication thread. The
         # accessor refuses earlier/wrong-thread creation, so this is the one
