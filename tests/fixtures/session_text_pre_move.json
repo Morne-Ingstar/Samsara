@@ -1,0 +1,4097 @@
+{
+  "base_head": "d52e99b323a0d2114994f311347aa588203101c2",
+  "source_sha256_lf": "d1f025dc02d2e905f6468bf1e5e2b5dc1eff471c59d798fa98a2d32033d1cba6",
+  "facade_names": [
+    "EllipsisSeam",
+    "REDECODE_MIN_STAGED_MARKS",
+    "REDECODE_RUN_ON_WORDS_PER_MARK",
+    "REDECODE_STAGED_ADVANTAGE",
+    "TERMINAL_PUNCTUATION",
+    "_CANNOT_FOLLOW_DETERMINER",
+    "_DENSITY_WORD_RE",
+    "_HESITATION_SOUNDS",
+    "_LEADING_ELLIPSIS",
+    "_LEADING_FILLERS",
+    "_OPEN_CLAUSE_CONJUNCTIONS",
+    "_PRONOUN_I",
+    "_SENTENCE_CANNOT_END_WORDS",
+    "_SENTENCE_MARK_RE",
+    "_TRAILING_ELLIPSIS",
+    "_is_continuation_chunk",
+    "chunk_ends_terminal",
+    "decide_ellipsis_seam",
+    "redecode_is_poorer",
+    "seam_join",
+    "sentence_mark_density"
+  ],
+  "seam_join": [
+    {
+      "id": "False-0",
+      "args": [
+        false,
+        null
+      ],
+      "expected": ""
+    },
+    {
+      "id": "False-1",
+      "args": [
+        false,
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "id": "False-2",
+      "args": [
+        false,
+        " \t "
+      ],
+      "expected": ""
+    },
+    {
+      "id": "False-3",
+      "args": [
+        false,
+        "Synthetic fragment"
+      ],
+      "expected": "synthetic fragment"
+    },
+    {
+      "id": "False-4",
+      "args": [
+        false,
+        "synthetic fragment"
+      ],
+      "expected": "synthetic fragment"
+    },
+    {
+      "id": "False-5",
+      "args": [
+        false,
+        "um SyntheticName"
+      ],
+      "expected": "um SyntheticName"
+    },
+    {
+      "id": "False-6",
+      "args": [
+        false,
+        "Um, synthetic fragment"
+      ],
+      "expected": "Um, synthetic fragment"
+    },
+    {
+      "id": "False-7",
+      "args": [
+        false,
+        "so, SyntheticName works"
+      ],
+      "expected": "so, SyntheticName works"
+    },
+    {
+      "id": "False-8",
+      "args": [
+        false,
+        "okay"
+      ],
+      "expected": "okay"
+    },
+    {
+      "id": "False-9",
+      "args": [
+        false,
+        "um uh"
+      ],
+      "expected": "um uh"
+    },
+    {
+      "id": "False-10",
+      "args": [
+        false,
+        "42 Synthetic"
+      ],
+      "expected": "42 Synthetic"
+    },
+    {
+      "id": "False-11",
+      "args": [
+        false,
+        "\"Synthetic fragment\""
+      ],
+      "expected": "\"Synthetic fragment\""
+    },
+    {
+      "id": "False-12",
+      "args": [
+        false,
+        "I agree"
+      ],
+      "expected": "i agree"
+    },
+    {
+      "id": "False-13",
+      "args": [
+        false,
+        "I'm ready"
+      ],
+      "expected": "i'm ready"
+    },
+    {
+      "id": "False-14",
+      "args": [
+        false,
+        "Synthetic\t  fragment"
+      ],
+      "expected": "synthetic fragment"
+    },
+    {
+      "id": "True-0",
+      "args": [
+        true,
+        null
+      ],
+      "expected": ""
+    },
+    {
+      "id": "True-1",
+      "args": [
+        true,
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "id": "True-2",
+      "args": [
+        true,
+        " \t "
+      ],
+      "expected": ""
+    },
+    {
+      "id": "True-3",
+      "args": [
+        true,
+        "Synthetic fragment"
+      ],
+      "expected": "Synthetic fragment"
+    },
+    {
+      "id": "True-4",
+      "args": [
+        true,
+        "synthetic fragment"
+      ],
+      "expected": "synthetic fragment"
+    },
+    {
+      "id": "True-5",
+      "args": [
+        true,
+        "um SyntheticName"
+      ],
+      "expected": "um SyntheticName"
+    },
+    {
+      "id": "True-6",
+      "args": [
+        true,
+        "Um, synthetic fragment"
+      ],
+      "expected": "Um, synthetic fragment"
+    },
+    {
+      "id": "True-7",
+      "args": [
+        true,
+        "so, SyntheticName works"
+      ],
+      "expected": "so, SyntheticName works"
+    },
+    {
+      "id": "True-8",
+      "args": [
+        true,
+        "okay"
+      ],
+      "expected": "okay"
+    },
+    {
+      "id": "True-9",
+      "args": [
+        true,
+        "um uh"
+      ],
+      "expected": "um uh"
+    },
+    {
+      "id": "True-10",
+      "args": [
+        true,
+        "42 Synthetic"
+      ],
+      "expected": "42 Synthetic"
+    },
+    {
+      "id": "True-11",
+      "args": [
+        true,
+        "\"Synthetic fragment\""
+      ],
+      "expected": "\"Synthetic fragment\""
+    },
+    {
+      "id": "True-12",
+      "args": [
+        true,
+        "I agree"
+      ],
+      "expected": "I agree"
+    },
+    {
+      "id": "True-13",
+      "args": [
+        true,
+        "I'm ready"
+      ],
+      "expected": "I'm ready"
+    },
+    {
+      "id": "True-14",
+      "args": [
+        true,
+        "Synthetic\t  fragment"
+      ],
+      "expected": "Synthetic\t  fragment"
+    }
+  ],
+  "continuation": [
+    {
+      "id": "0",
+      "args": [
+        null
+      ],
+      "expected": false
+    },
+    {
+      "id": "1",
+      "args": [
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "id": "2",
+      "args": [
+        " \t "
+      ],
+      "expected": false
+    },
+    {
+      "id": "3",
+      "args": [
+        "Synthetic fragment"
+      ],
+      "expected": false
+    },
+    {
+      "id": "4",
+      "args": [
+        "synthetic fragment"
+      ],
+      "expected": true
+    },
+    {
+      "id": "5",
+      "args": [
+        "um SyntheticName"
+      ],
+      "expected": false
+    },
+    {
+      "id": "6",
+      "args": [
+        "Um, synthetic fragment"
+      ],
+      "expected": false
+    },
+    {
+      "id": "7",
+      "args": [
+        "so, SyntheticName works"
+      ],
+      "expected": false
+    },
+    {
+      "id": "8",
+      "args": [
+        "okay"
+      ],
+      "expected": false
+    },
+    {
+      "id": "9",
+      "args": [
+        "um uh"
+      ],
+      "expected": false
+    },
+    {
+      "id": "10",
+      "args": [
+        "42 Synthetic"
+      ],
+      "expected": false
+    },
+    {
+      "id": "11",
+      "args": [
+        "\"Synthetic fragment\""
+      ],
+      "expected": false
+    },
+    {
+      "id": "12",
+      "args": [
+        "I agree"
+      ],
+      "expected": false
+    },
+    {
+      "id": "13",
+      "args": [
+        "I'm ready"
+      ],
+      "expected": false
+    },
+    {
+      "id": "14",
+      "args": [
+        "Synthetic\t  fragment"
+      ],
+      "expected": false
+    }
+  ],
+  "ellipsis": [
+    {
+      "id": "no-ellipsis",
+      "args": [
+        "Synthetic sentence.",
+        "Another sentence.",
+        null
+      ],
+      "expected": null
+    },
+    {
+      "id": "empty-previous",
+      "args": [
+        "",
+        "Synthetic",
+        null
+      ],
+      "expected": null
+    },
+    {
+      "id": "none-previous",
+      "args": [
+        null,
+        null,
+        null
+      ],
+      "expected": null
+    },
+    {
+      "id": "empty-new",
+      "args": [
+        "Synthetic...",
+        "",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "empty",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "none-new",
+      "args": [
+        "Synthetic...",
+        null,
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "empty",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "only-leading",
+      "args": [
+        "Synthetic...",
+        "  ... \t ",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "empty",
+        "stripped": "",
+        "lead_stripped": "  ... \t "
+      }
+    },
+    {
+      "id": "only-trailing",
+      "args": [
+        "... ",
+        "Synthetic",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_only",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "ascii",
+      "args": [
+        "Synthetic thought...",
+        "...continues.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_lowercase",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "two-dots",
+      "args": [
+        "Synthetic thought..",
+        "..continues.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_lowercase",
+        "stripped": "..",
+        "lead_stripped": ".."
+      }
+    },
+    {
+      "id": "unicode",
+      "args": [
+        "Synthetic thought…",
+        "…continues.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_lowercase",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "exact-spaces",
+      "args": [
+        "Synthetic thought \t....  \t",
+        " \t... \tcontinues.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_lowercase",
+        "stripped": " \t....  \t",
+        "lead_stripped": " \t... \t"
+      }
+    },
+    {
+      "id": "new-sentence",
+      "args": [
+        "Synthetic thought...",
+        "...Another sentence.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "quoted-lowercase",
+      "args": [
+        "Synthetic thought...",
+        "\"continues\"",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "digits",
+      "args": [
+        "Synthetic thought...",
+        "42 values",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "hesitation",
+      "args": [
+        "Synthetic sentence. Um...",
+        "...Another thought.",
+        " Um..."
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_hesitation_only",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "hesitations",
+      "args": [
+        "Synthetic sentence. Uh erm…",
+        "SyntheticName",
+        " Uh erm…"
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_hesitation_only",
+        "stripped": "…",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "mixed-hesitation",
+      "args": [
+        "Synthetic sentence. Um words...",
+        "Another thought.",
+        "Um words..."
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "missing-fragment",
+      "args": [
+        "Synthetic sentence. Um...",
+        "Another thought.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": ""
+      }
+    },
+    {
+      "id": "a-SyntheticName",
+      "args": [
+        "Synthetic a...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-There's",
+      "args": [
+        "Synthetic a...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-There’s",
+      "args": [
+        "Synthetic a...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-The",
+      "args": [
+        "Synthetic a...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-I",
+      "args": [
+        "Synthetic a...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-Is",
+      "args": [
+        "Synthetic a...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-42",
+      "args": [
+        "Synthetic a...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "a-\"Name\"",
+      "args": [
+        "Synthetic a...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-SyntheticName",
+      "args": [
+        "Synthetic an...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-There's",
+      "args": [
+        "Synthetic an...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-There’s",
+      "args": [
+        "Synthetic an...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-The",
+      "args": [
+        "Synthetic an...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-I",
+      "args": [
+        "Synthetic an...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-Is",
+      "args": [
+        "Synthetic an...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-42",
+      "args": [
+        "Synthetic an...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "an-\"Name\"",
+      "args": [
+        "Synthetic an...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-SyntheticName",
+      "args": [
+        "Synthetic the...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-There's",
+      "args": [
+        "Synthetic the...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-There’s",
+      "args": [
+        "Synthetic the...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-The",
+      "args": [
+        "Synthetic the...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-I",
+      "args": [
+        "Synthetic the...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-Is",
+      "args": [
+        "Synthetic the...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-42",
+      "args": [
+        "Synthetic the...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "the-\"Name\"",
+      "args": [
+        "Synthetic the...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-SyntheticName",
+      "args": [
+        "Synthetic my...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-There's",
+      "args": [
+        "Synthetic my...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-There’s",
+      "args": [
+        "Synthetic my...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-The",
+      "args": [
+        "Synthetic my...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-I",
+      "args": [
+        "Synthetic my...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-Is",
+      "args": [
+        "Synthetic my...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-42",
+      "args": [
+        "Synthetic my...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "my-\"Name\"",
+      "args": [
+        "Synthetic my...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-SyntheticName",
+      "args": [
+        "Synthetic your...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-There's",
+      "args": [
+        "Synthetic your...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-There’s",
+      "args": [
+        "Synthetic your...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-The",
+      "args": [
+        "Synthetic your...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-I",
+      "args": [
+        "Synthetic your...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-Is",
+      "args": [
+        "Synthetic your...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-42",
+      "args": [
+        "Synthetic your...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "your-\"Name\"",
+      "args": [
+        "Synthetic your...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-SyntheticName",
+      "args": [
+        "Synthetic our...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-There's",
+      "args": [
+        "Synthetic our...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-There’s",
+      "args": [
+        "Synthetic our...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-The",
+      "args": [
+        "Synthetic our...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-I",
+      "args": [
+        "Synthetic our...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-Is",
+      "args": [
+        "Synthetic our...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-42",
+      "args": [
+        "Synthetic our...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "our-\"Name\"",
+      "args": [
+        "Synthetic our...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-SyntheticName",
+      "args": [
+        "Synthetic their...",
+        "...SyntheticName example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-There's",
+      "args": [
+        "Synthetic their...",
+        "...There's example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-There’s",
+      "args": [
+        "Synthetic their...",
+        "...There’s example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-The",
+      "args": [
+        "Synthetic their...",
+        "...The example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-I",
+      "args": [
+        "Synthetic their...",
+        "...I example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-Is",
+      "args": [
+        "Synthetic their...",
+        "...Is example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-42",
+      "args": [
+        "Synthetic their...",
+        "...42 example.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_determiner",
+        "stripped": "...",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "their-\"Name\"",
+      "args": [
+        "Synthetic their...",
+        "...\"Name\" example.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "..."
+      }
+    },
+    {
+      "id": "and-I",
+      "args": [
+        "Synthetic and…",
+        "…I agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-I'm",
+      "args": [
+        "Synthetic and…",
+        "…I'm agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-I'll",
+      "args": [
+        "Synthetic and…",
+        "…I'll agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-I've",
+      "args": [
+        "Synthetic and…",
+        "…I've agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-I'd",
+      "args": [
+        "Synthetic and…",
+        "…I'd agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-I’m",
+      "args": [
+        "Synthetic and…",
+        "…I’m agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-It",
+      "args": [
+        "Synthetic and…",
+        "…It agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "and-SyntheticName",
+      "args": [
+        "Synthetic and…",
+        "…SyntheticName agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-I",
+      "args": [
+        "Synthetic but…",
+        "…I agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-I'm",
+      "args": [
+        "Synthetic but…",
+        "…I'm agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-I'll",
+      "args": [
+        "Synthetic but…",
+        "…I'll agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-I've",
+      "args": [
+        "Synthetic but…",
+        "…I've agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-I'd",
+      "args": [
+        "Synthetic but…",
+        "…I'd agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-I’m",
+      "args": [
+        "Synthetic but…",
+        "…I’m agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-It",
+      "args": [
+        "Synthetic but…",
+        "…It agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "but-SyntheticName",
+      "args": [
+        "Synthetic but…",
+        "…SyntheticName agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-I",
+      "args": [
+        "Synthetic or…",
+        "…I agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-I'm",
+      "args": [
+        "Synthetic or…",
+        "…I'm agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-I'll",
+      "args": [
+        "Synthetic or…",
+        "…I'll agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-I've",
+      "args": [
+        "Synthetic or…",
+        "…I've agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-I'd",
+      "args": [
+        "Synthetic or…",
+        "…I'd agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-I’m",
+      "args": [
+        "Synthetic or…",
+        "…I’m agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-It",
+      "args": [
+        "Synthetic or…",
+        "…It agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "or-SyntheticName",
+      "args": [
+        "Synthetic or…",
+        "…SyntheticName agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-I",
+      "args": [
+        "Synthetic because…",
+        "…I agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-I'm",
+      "args": [
+        "Synthetic because…",
+        "…I'm agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-I'll",
+      "args": [
+        "Synthetic because…",
+        "…I'll agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-I've",
+      "args": [
+        "Synthetic because…",
+        "…I've agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-I'd",
+      "args": [
+        "Synthetic because…",
+        "…I'd agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-I’m",
+      "args": [
+        "Synthetic because…",
+        "…I’m agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-It",
+      "args": [
+        "Synthetic because…",
+        "…It agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "because-SyntheticName",
+      "args": [
+        "Synthetic because…",
+        "…SyntheticName agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-I",
+      "args": [
+        "Synthetic cause…",
+        "…I agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-I'm",
+      "args": [
+        "Synthetic cause…",
+        "…I'm agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-I'll",
+      "args": [
+        "Synthetic cause…",
+        "…I'll agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-I've",
+      "args": [
+        "Synthetic cause…",
+        "…I've agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-I'd",
+      "args": [
+        "Synthetic cause…",
+        "…I'd agree.",
+        null
+      ],
+      "expected": {
+        "join": true,
+        "clause": "ellipsis_conjunction_i",
+        "stripped": "…",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-I’m",
+      "args": [
+        "Synthetic cause…",
+        "…I’m agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-It",
+      "args": [
+        "Synthetic cause…",
+        "…It agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    },
+    {
+      "id": "cause-SyntheticName",
+      "args": [
+        "Synthetic cause…",
+        "…SyntheticName agree.",
+        null
+      ],
+      "expected": {
+        "join": false,
+        "clause": "ellipsis_new_sentence",
+        "stripped": "",
+        "lead_stripped": "…"
+      }
+    }
+  ],
+  "terminal": [
+    {
+      "id": "0",
+      "args": [
+        null
+      ],
+      "expected": false
+    },
+    {
+      "id": "1",
+      "args": [
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "id": "2",
+      "args": [
+        " \t"
+      ],
+      "expected": false
+    },
+    {
+      "id": "3",
+      "args": [
+        "synthetic"
+      ],
+      "expected": false
+    },
+    {
+      "id": "4",
+      "args": [
+        "Synthetic. \t"
+      ],
+      "expected": true
+    },
+    {
+      "id": "5",
+      "args": [
+        "Synthetic! \t"
+      ],
+      "expected": true
+    },
+    {
+      "id": "6",
+      "args": [
+        "Synthetic? \t"
+      ],
+      "expected": true
+    },
+    {
+      "id": "7",
+      "args": [
+        "Synthetic: \t"
+      ],
+      "expected": true
+    },
+    {
+      "id": "8",
+      "args": [
+        "Synthetic; \t"
+      ],
+      "expected": true
+    },
+    {
+      "id": "9",
+      "args": [
+        "Synthetic, \t"
+      ],
+      "expected": false
+    },
+    {
+      "id": "10",
+      "args": [
+        "Synthetic… \t"
+      ],
+      "expected": false
+    }
+  ],
+  "density": [
+    {
+      "id": "0",
+      "args": [
+        null
+      ],
+      "expected": 0.0
+    },
+    {
+      "id": "1",
+      "args": [
+        ""
+      ],
+      "expected": 0.0
+    },
+    {
+      "id": "2",
+      "args": [
+        "..."
+      ],
+      "expected": 0.0
+    },
+    {
+      "id": "3",
+      "args": [
+        "Synthetic."
+      ],
+      "expected": 1.0
+    },
+    {
+      "id": "4",
+      "args": [
+        "Synthetic! Another?"
+      ],
+      "expected": 1.0
+    },
+    {
+      "id": "5",
+      "args": [
+        "Synthetic… example"
+      ],
+      "expected": 0.5
+    },
+    {
+      "id": "6",
+      "args": [
+        "can't 42 don’t."
+      ],
+      "expected": 0.3333333333333333
+    },
+    {
+      "id": "7",
+      "args": [
+        "ééé."
+      ],
+      "expected": 0.0
+    },
+    {
+      "id": "8",
+      "args": [
+        "Synthetic..."
+      ],
+      "expected": 3.0
+    }
+  ],
+  "quality": [
+    {
+      "id": "empty-staged",
+      "args": [
+        "",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": false
+    },
+    {
+      "id": "empty-redecoded",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "id": "none",
+      "args": [
+        null,
+        null
+      ],
+      "expected": false
+    },
+    {
+      "id": "whitespace",
+      "args": [
+        " \t",
+        "synthetic"
+      ],
+      "expected": false
+    },
+    {
+      "id": "40-words-per-mark",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": false
+    },
+    {
+      "id": "41-words-per-mark",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": true
+    },
+    {
+      "id": "39-words-per-mark",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": false
+    },
+    {
+      "id": "advantage-equal",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": true
+    },
+    {
+      "id": "advantage-below",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": false
+    },
+    {
+      "id": "advantage-above",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": true
+    },
+    {
+      "id": "one-staged-mark",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic.",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": false
+    },
+    {
+      "id": "two-staged-marks",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic!?",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic."
+      ],
+      "expected": true
+    },
+    {
+      "id": "no-marks",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic"
+      ],
+      "expected": false
+    },
+    {
+      "id": "redecoded-no-marks",
+      "args": [
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic..",
+        "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic"
+      ],
+      "expected": true
+    }
+  ],
+  "manager": [
+    {
+      "id": "ascii-scratch-exact-suffix",
+      "recipe": {
+        "operations": [
+          [
+            "say",
+            "Synthetic thought..."
+          ],
+          [
+            "suffix",
+            " \t"
+          ],
+          [
+            "say",
+            " \t... \tcontinues."
+          ],
+          [
+            "scratch"
+          ],
+          [
+            "say",
+            "...continues."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic thought...",
+                "pending_chars": 20
+              }
+            },
+            "pending": "Synthetic thought...",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": null,
+            "pending": "Synthetic thought... \t",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " continues.",
+                "pending_chars": 28
+              }
+            },
+            "pending": "Synthetic thought continues.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "... \t"
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-2"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": true,
+            "pending": "Synthetic thought... \t",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " continues.",
+                "pending_chars": 28
+              }
+            },
+            "pending": "Synthetic thought continues.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "... \t"
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-4"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic thought continues.",
+                "chars": 28,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "... \t"
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic thought continues.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic thought continues."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic thought continues.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "unicode-name",
+      "recipe": {
+        "operations": [
+          [
+            "say",
+            "Synthetic the…"
+          ],
+          [
+            "say",
+            "…SyntheticName arrived."
+          ],
+          [
+            "scratch"
+          ],
+          [
+            "say",
+            "…SyntheticName arrived."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic the…",
+                "pending_chars": 14
+              }
+            },
+            "pending": "Synthetic the…",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic the…",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": false,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " SyntheticName arrived.",
+                "pending_chars": 36
+              }
+            },
+            "pending": "Synthetic the SyntheticName arrived.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic the…",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " SyntheticName arrived.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "…"
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": true,
+            "pending": "Synthetic the…",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic the…",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": false,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " SyntheticName arrived.",
+                "pending_chars": 36
+              }
+            },
+            "pending": "Synthetic the SyntheticName arrived.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic the…",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " SyntheticName arrived.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "…"
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-3"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic the SyntheticName arrived.",
+                "chars": 36,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic the…",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " SyntheticName arrived.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "…"
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic the SyntheticName arrived.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic the SyntheticName arrived."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic the SyntheticName arrived.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "hesitation",
+      "recipe": {
+        "operations": [
+          [
+            "say",
+            "Synthetic sentence."
+          ],
+          [
+            "say",
+            "Um..."
+          ],
+          [
+            "say",
+            "...Another sentence."
+          ],
+          [
+            "scratch"
+          ],
+          [
+            "say",
+            "...Another sentence."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic sentence.",
+                "pending_chars": 19
+              }
+            },
+            "pending": "Synthetic sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Um...",
+                "pending_chars": 25
+              }
+            },
+            "pending": "Synthetic sentence. Um...",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Another sentence.",
+                "pending_chars": 40
+              }
+            },
+            "pending": "Synthetic sentence. Um Another sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "..."
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1",
+              "audio-2"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": true,
+            "pending": "Synthetic sentence. Um...",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Another sentence.",
+                "pending_chars": 40
+              }
+            },
+            "pending": "Synthetic sentence. Um Another sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "..."
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1",
+              "audio-4"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic sentence. Um Another sentence.",
+                "chars": 40,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": "..."
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic sentence. Um Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic sentence. Um Another sentence."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic sentence. Um Another sentence.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "conjunction",
+      "recipe": {
+        "operations": [
+          [
+            "say",
+            "Synthetic and.."
+          ],
+          [
+            "say",
+            "..I'll agree."
+          ],
+          [
+            "scratch"
+          ],
+          [
+            "say",
+            "..I'll agree."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic and..",
+                "pending_chars": 15
+              }
+            },
+            "pending": "Synthetic and..",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic and..",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " I'll agree.",
+                "pending_chars": 25
+              }
+            },
+            "pending": "Synthetic and I'll agree.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic and..",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " I'll agree.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ".."
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": true,
+            "pending": "Synthetic and..",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic and..",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " I'll agree.",
+                "pending_chars": 25
+              }
+            },
+            "pending": "Synthetic and I'll agree.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic and..",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " I'll agree.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ".."
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-3"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic and I'll agree.",
+                "chars": 25,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic and..",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " I'll agree.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ".."
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic and I'll agree.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic and I'll agree."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic and I'll agree.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "separate",
+      "recipe": {
+        "operations": [
+          [
+            "say",
+            "Synthetic thought..."
+          ],
+          [
+            "say",
+            "...Another sentence."
+          ],
+          [
+            "scratch"
+          ],
+          [
+            "say",
+            "...Another sentence."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic thought...",
+                "pending_chars": 20
+              }
+            },
+            "pending": "Synthetic thought...",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Another sentence.",
+                "pending_chars": 38
+              }
+            },
+            "pending": "Synthetic thought... Another sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": true,
+            "pending": "Synthetic thought...",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Another sentence.",
+                "pending_chars": 38
+              }
+            },
+            "pending": "Synthetic thought... Another sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-3"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic thought... Another sentence.",
+                "chars": 38,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic thought...",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic thought... Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic thought... Another sentence."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic thought... Another sentence.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "continuation",
+      "recipe": {
+        "operations": [
+          [
+            "say",
+            "Synthetic fragment."
+          ],
+          [
+            "say",
+            "continues here."
+          ],
+          [
+            "scratch"
+          ],
+          [
+            "say",
+            "continues here."
+          ],
+          [
+            "say",
+            "Um, SyntheticName works."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic fragment.",
+                "pending_chars": 19
+              }
+            },
+            "pending": "Synthetic fragment.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " continues here.",
+                "pending_chars": 34
+              }
+            },
+            "pending": "Synthetic fragment continues here.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues here.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": true,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": true,
+            "pending": "Synthetic fragment.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " continues here.",
+                "pending_chars": 34
+              }
+            },
+            "pending": "Synthetic fragment continues here.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues here.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": true,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-3"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Um, SyntheticName works.",
+                "pending_chars": 59
+              }
+            },
+            "pending": "Synthetic fragment continues here. Um, SyntheticName works.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues here.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": true,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um, SyntheticName works.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-3",
+              "audio-4"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic fragment continues here. Um, SyntheticName works.",
+                "chars": 59,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues here.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": true,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Um, SyntheticName works.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic fragment continues here. Um, SyntheticName works.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic fragment continues here. Um, SyntheticName works."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic fragment continues here. Um, SyntheticName works.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "immediate",
+      "recipe": {
+        "buffered": false,
+        "operations": [
+          [
+            "say",
+            "Synthetic fragment"
+          ],
+          [
+            "say",
+            "Another fragment."
+          ],
+          [
+            "scratch"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_suppressed_focus_lock",
+              "detail": {
+                "target_process": null,
+                "foreground": "synthetic.exe",
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic fragment",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "suppressed": true,
+                  "target_process": null,
+                  "foreground": "synthetic.exe",
+                  "hwnd": 653
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_suppressed_focus_lock",
+              "detail": {
+                "target_process": null,
+                "foreground": "synthetic.exe",
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic fragment",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "suppressed": true,
+                  "target_process": null,
+                  "foreground": "synthetic.exe",
+                  "hwnd": 653
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Another fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "suppressed": true,
+                  "target_process": null,
+                  "foreground": "synthetic.exe",
+                  "hwnd": 653
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": ""
+          },
+          {
+            "result": false,
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic fragment",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "suppressed": true,
+                  "target_process": null,
+                  "foreground": "synthetic.exe",
+                  "hwnd": 653
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Another fragment.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "suppressed": true,
+                  "target_process": null,
+                  "foreground": "synthetic.exe",
+                  "hwnd": 653
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": ""
+          }
+        ],
+        "injections": [],
+        "formatting": [
+          "Synthetic fragment",
+          "Another fragment."
+        ],
+        "redecodes": [],
+        "removals": []
+      }
+    },
+    {
+      "id": "poor-redecode",
+      "recipe": {
+        "redecoded": "synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic synthetic.",
+        "operations": [
+          [
+            "say",
+            "Synthetic sentence."
+          ],
+          [
+            "say",
+            "Another sentence."
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic sentence.",
+                "pending_chars": 19
+              }
+            },
+            "pending": "Synthetic sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " Another sentence.",
+                "pending_chars": 37
+              }
+            },
+            "pending": "Synthetic sentence. Another sentence.",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": true,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic sentence. Another sentence.",
+                "chars": 37,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic sentence. Another sentence.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic sentence. Another sentence."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic sentence. Another sentence.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [
+          {
+            "text": "Synthetic sentence. Another sentence.",
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ]
+          }
+        ],
+        "removals": []
+      }
+    },
+    {
+      "id": "good-redecode",
+      "recipe": {
+        "redecoded": "Synthetic combined thought.",
+        "operations": [
+          [
+            "say",
+            "Synthetic fragment"
+          ],
+          [
+            "say",
+            "continues here"
+          ],
+          [
+            "commit"
+          ]
+        ]
+      },
+      "expected": {
+        "snapshots": [
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": "Synthetic fragment",
+                "pending_chars": 18
+              }
+            },
+            "pending": "Synthetic fragment",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0"
+            ],
+            "terminal": false,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_staged",
+              "detail": {
+                "text": " continues here",
+                "pending_chars": 33
+              }
+            },
+            "pending": "Synthetic fragment continues here",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues here",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              }
+            ],
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ],
+            "terminal": false,
+            "stage": ""
+          },
+          {
+            "result": {
+              "kind": "dictate_committed",
+              "detail": {
+                "text": "Synthetic combined thought.",
+                "chars": 27,
+                "mode_retained": "dictate"
+              }
+            },
+            "pending": "",
+            "stack": [
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": "Synthetic fragment",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_staged_chunk",
+                "payload": " continues here",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "stripped_terminal_period": false,
+                  "stripped_suffix": ""
+                }
+              },
+              {
+                "kind": "dictation_chunk",
+                "payload": "Synthetic combined thought.",
+                "mode": "dictate",
+                "timestamp": 100.0,
+                "extra": {
+                  "target_process": "synthetic.exe",
+                  "hwnd": 653,
+                  "undo_unit": null
+                }
+              }
+            ],
+            "audio": [],
+            "terminal": null,
+            "stage": "Synthetic combined thought."
+          }
+        ],
+        "injections": [
+          {
+            "text": "Synthetic combined thought.",
+            "guards": [
+              true
+            ]
+          }
+        ],
+        "formatting": [],
+        "redecodes": [
+          {
+            "text": "Synthetic fragment continues here",
+            "audio": [
+              "audio-0",
+              "audio-1"
+            ]
+          }
+        ],
+        "removals": []
+      }
+    }
+  ]
+}
