@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from concurrent.futures import Future, TimeoutError
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 import queue
 import threading
@@ -45,6 +45,7 @@ class Node:
     offscreen: bool
     in_document: bool
     depth: int
+    foreground_hwnd: int = 0  # Non-foreground targets remain bound to their owner.
 
 
 @dataclass(frozen=True)
@@ -217,8 +218,9 @@ class UIAService:
     def snapshot(self, *, refresh=False):
         return self._call(self._snapshot, refresh)
 
-    def _snapshot(self, refresh=False):
-        hwnd = self._window()
+    def _snapshot(self, refresh=False, target_hwnd=None):
+        owner = self._window()
+        hwnd = target_hwnd or owner
         now = self._clock()
         existing = self._cache.get(hwnd)
         if existing and not refresh and now - existing[0] < self._ttl:
@@ -231,6 +233,8 @@ class UIAService:
         fetched = time.perf_counter()
         self._generation += 1
         nodes, controls, stats = self._walk(root, hwnd, self._generation)
+        if hwnd != owner:
+            nodes = [replace(n, foreground_hwnd=owner) for n in nodes]
         stats.update(fetch_ms=int((fetched - started) * 1000),
                      ms=int((time.perf_counter() - started) * 1000))
         snapshot = Snapshot(hwnd, self._generation, tuple(nodes), tuple(dict(stats, source=source).items()))
@@ -281,7 +285,7 @@ class UIAService:
                                        if n.enabled and not n.offscreen and query in normalize_name(n.name)))
 
     def _target(self, node):
-        if self._window() != node.hwnd:
+        if self._window() != (node.foreground_hwnd or node.hwnd):
             raise StaleTarget('foreground changed')
         cached = self._cache.get(node.hwnd)
         if (not cached or cached[1].generation != node.generation or
@@ -299,7 +303,7 @@ class UIAService:
             raise StaleTarget('target unavailable')
         if rect != node.rect:
             raise StaleTarget('target moved')
-        if self._window() != node.hwnd:
+        if self._window() != (node.foreground_hwnd or node.hwnd):
             raise StaleTarget('foreground changed during validation')
         self._check_deadline()
         return ctrl, rect
@@ -398,7 +402,8 @@ class UIAService:
         return self._call(read)
 
     def overlay_elements(self, *, loader=b._load_uia, foreground=b._get_foreground_control,
-                         cached_root=b._cached_root, node_budget=8000, max_depth=64, time_budget=3.0):
+                         cached_root=b._cached_root, node_budget=8000, max_depth=64, time_budget=3.0,
+                         target_hwnd=None):
         def enumerate_elements():
             # Compatibility hooks accept pure in-memory trees, never native COM.
             # Existing test/consumer fixtures can keep using the old provider seam.
@@ -422,7 +427,7 @@ class UIAService:
                 nodes, controls, stats = self._walk(root, hwnd, 0, node_budget=node_budget,
                                                    max_depth=max_depth, time_budget=time_budget)
             else:
-                snap = self._snapshot()
+                snap = self._snapshot(bool(target_hwnd), target_hwnd)
                 nodes, stats = snap.nodes, dict(snap.stats)
                 controls, source = None, stats['source']
             bounds = nodes[0].rect if nodes else (0, 0, 0, 0)

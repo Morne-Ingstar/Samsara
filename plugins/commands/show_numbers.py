@@ -59,6 +59,7 @@ import re
 import sys
 import threading
 import time
+from plugins.commands import show_numbers_targets as _targets
 from samsara.log import describe_text
 from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtWidgets import QApplication
@@ -103,6 +104,7 @@ _enum_cache = None  # Legacy fixture seam; the shared service owns the cache.
 _AUTO_DISMISS_S = 30
 _FG_POLL_MS     = 2000
 _NUMBERS_TAG     = "show_numbers.visible"
+_taskbar_mode = False
 
 # ---------------------------------------------------------------------------
 # DOM (browser-extension) session state -- deliberately a SEPARATE lock and
@@ -172,29 +174,7 @@ _last_enum_stats: dict = {}
 
 
 def _foreground_info(hwnd: int) -> dict:
-    """exe, window class, kind ('chromium' for Chrome_WidgetWin_* -- Chromium
-    browsers and Electron apps -- else 'native'), physical rect, topmost."""
-    info = {"hwnd": hwnd, "exe": "?", "cls": "?", "kind": "native", "rect": None, "topmost": None}
-    if not hwnd:
-        return info
-    try:
-        import win32gui
-        info["cls"] = win32gui.GetClassName(hwnd)
-        info["rect"] = tuple(win32gui.GetWindowRect(hwnd))
-        GWL_EXSTYLE, WS_EX_TOPMOST = -20, 0x8
-        info["topmost"] = bool(win32gui.GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST)
-    except Exception as e:
-        logger.debug(f"_foreground_info: {e}")
-    try:
-        import psutil
-        import win32process
-        _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        info["exe"] = psutil.Process(pid).name().lower()
-    except Exception as e:
-        logger.debug(f"_foreground_info exe: {e}")
-    if str(info["cls"]).startswith("Chrome_WidgetWin"):
-        info["kind"] = "chromium"
-    return info
+    return _targets.foreground_info(hwnd, logger)
 
 
 def _looks_opaque(kind: str, count: int, nodes: "int | None") -> bool:
@@ -988,6 +968,8 @@ def _destroy_overlay(app=None) -> None:
     """Thread-safe dismiss: cancel timers, clear whichever session (UIA or
     DOM) is active. Always safe to call both halves -- clearing an
     inactive session is a no-op."""
+    global _taskbar_mode
+    _taskbar_mode = False
     _cancel_dismiss_timer()
     _clear_dom_session()
     qt_runtime.ensure_started()
@@ -1694,6 +1676,16 @@ except Exception as _exc:  # pragma: no cover
     logger.debug("[GRID] could not register the scope tag: %s", _exc)
 
 
+def selection_number(text):
+    return _targets.selection_number(text, sys.modules[__name__])
+
+
+@command("show numbers on taskbar", pack="accessibility", risk_class="read")
+def handle_taskbar_numbers(app, remainder):
+    """Numbers clickable controls on the primary taskbar."""
+    return _targets.show_taskbar_numbers(app, sys.modules[__name__])
+
+
 @command("show numbers",
          aliases=["show clickable", "show labels", "label things", "show"],
          pack="accessibility", risk_class="read")
@@ -1715,6 +1707,10 @@ def handle_show_numbers(app, remainder):
     not "show me the exact same labels again." This is the primary show ->
     observe -> click loop the short "show" alias is meant to serve.
     """
+    global _taskbar_mode
+    _taskbar_mode = False
+    from plugins.commands import click_by_name
+    click_by_name.cancel()
     try:
         import win32gui
         fg_hwnd = win32gui.GetForegroundWindow()
@@ -1762,6 +1758,8 @@ def handle_show_numbers(app, remainder):
 )
 def handle_hide_numbers(app, remainder):
     """Clears the numbered labels from the screen."""
+    from plugins.commands import click_by_name
+    click_by_name.cancel()
     _destroy_overlay(app)
     return True
 
@@ -1773,6 +1771,8 @@ def handle_hide_numbers(app, remainder):
 )
 def handle_refresh_numbers(app, remainder):
     """Rescans the focused window and redraws the numbered labels."""
+    if _taskbar_mode:
+        return handle_taskbar_numbers(app, remainder)
     _invalidate_cache()
     elements = _enumerate_foreground_clickables()
     logger.info("[SHOW_NUMBERS] refresh enumerated %d %s", len(elements), _last_enum_stats)

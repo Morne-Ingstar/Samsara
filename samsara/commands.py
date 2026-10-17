@@ -800,6 +800,12 @@ class CommandExecutor:
             return self.execute_canonical(
                 "choose control", effective_app, route=route,
                 generation=generation, args={"remainder": str(number)}, source_text=text)
+        from plugins.commands.show_numbers import selection_number as overlay_number
+        number = overlay_number(text)
+        if number is not None and not literals_only:
+            return self.execute_canonical(
+                "click", effective_app, route=route, generation=generation,
+                args={"remainder": str(number)}, source_text=text)
         match_text = apply_phonetic_wash(text)
         # One scope context for the whole utterance (queue 68): every match
         # below sees the same foreground app and tags.
