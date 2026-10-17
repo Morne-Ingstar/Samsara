@@ -275,6 +275,8 @@ class TTSPage:
                 # An unavailable catalog cannot establish that a saved ID is bad.
                 if self._tts_catalog_ids:
                     tts_cfg['voice_id'] = voice_id
+                elif getattr(self, '_tts_voices_pending', False) and tts_cfg['engine'] != (self.app.config.get('tts', {}) or {}).get('engine', 'winrt'):
+                    tts_cfg['voice_id'] = None
                 tts_cfg['speed']  = self._widgets['tts_speed'].value()
                 tts_cfg['volume'] = self._widgets['tts_volume_slider'].value() / 100.0
                 updates['tts'] = tts_cfg
@@ -329,8 +331,19 @@ class TTSPage:
                 combo = self._widgets['tts_voice_combo']
                 known = [combo.itemData(i) for i in range(combo.count())]
             else:
-                known = [v.voice_id for v in self._tts_voices_for(
-                    provider, requested.get('network_voice_accepted', False))]
+                known = getattr(self, '_tts_provider_catalogs', {}).get(provider, ())
+                if not known:
+                    # An outside engine change cannot inherit this dialog's
+                    # old-provider voice. Trust a complete outside pair only
+                    # when its voice also changed since this visit opened.
+                    live = self.app.config.get('tts', {}) or {}
+                    opened = getattr(self, '_config_at_open', {}).get('tts', {}) or {}
+                    outside_pair = (live.get('engine') == provider
+                                    and live.get('voice_id') == voice_id
+                                    and voice_id != opened.get('voice_id'))
+                    if not outside_pair:
+                        requested['voice_id'] = None
+                    return requested
             if any(known) and voice_id not in known:
                 requested['voice_id'] = None
         return requested
@@ -339,7 +352,32 @@ class TTSPage:
         """Show the selected provider's voices and its explicit default."""
         provider = self._widgets['tts_engine'].currentText()
         combo = self._widgets['tts_voice_combo']
-        voices = self._tts_voices_for(provider, self._network_voice_accepted)
+        from samsara.runtime import thread_registry
+        self._tts_voice_request = getattr(self, '_tts_voice_request', 0) + 1
+        request = self._tts_voice_request
+        self._tts_catalog_ids = set()
+        self._tts_voices_pending = True
+        with QSignalBlocker(combo):
+            combo.clear()
+            combo.addItem('checking...', preferred_id)  # Stand-in copy (619).
+        combo.setEnabled(False)
+        self._widgets['tts_voice_label_to_id'] = {}
+        accepted = self._network_voice_accepted
+        def ready(voices):
+            if request != self._tts_voice_request:
+                return
+            self._tts_voices_pending = False
+            if not hasattr(self, '_tts_provider_catalogs'):
+                self._tts_provider_catalogs = {}
+            self._tts_provider_catalogs[provider] = {voice.voice_id for voice in voices}
+            self._populate_tts_voices(combo, voices, preferred_id)
+        deliver = self._visit_callback(ready, combo)
+        def load():
+            voices = self._tts_voices_for(provider, accepted)
+            self._post_visit_result(deliver, (voices,))
+        thread_registry.spawn('settings-voice-catalog', load, daemon=True)
+
+    def _populate_tts_voices(self, combo, voices, preferred_id):
         self._tts_catalog_ids = {voice.voice_id for voice in voices}
         labels = {}
         with QSignalBlocker(combo):
@@ -354,6 +392,7 @@ class TTSPage:
         self._widgets['tts_voice_label_to_id'] = labels
         # An explicit default remains available when enumeration fails.
         combo.setEnabled(True)
+        self._fit_catalog_combo(combo)
         adapter = combo.parentWidget()
         if getattr(adapter, '_canonical_control', None) is combo:
             adapter.refresh()

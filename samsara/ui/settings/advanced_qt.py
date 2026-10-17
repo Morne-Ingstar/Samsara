@@ -31,14 +31,6 @@ class AdvancedPage:
     """Methods of the Advanced settings page (moved from _SettingsWindow)."""
 
     def _build_advanced_tab(self):
-        try:
-            from samsara.cuda_detect import is_cuda_available, cuda_status_message
-            _cuda_ok  = is_cuda_available()
-            _cuda_msg = cuda_status_message()
-        except Exception:
-            _cuda_ok  = False
-            _cuda_msg = "CUDA detection unavailable."
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -83,13 +75,11 @@ class AdvancedPage:
         layout.addSpacing(4)
 
         device_display_to_value = {'CPU': 'cpu'}
-        if _cuda_ok:
+        if cfg.get('device') == 'cuda':
             device_display_to_value['CUDA (NVIDIA GPU)'] = 'cuda'
         device_value_to_display = {v: k for k, v in device_display_to_value.items()}
 
         current_device = cfg.get('device', 'cpu')
-        if current_device == 'cuda' and not _cuda_ok:
-            current_device = 'cpu'
         current_device_display = device_value_to_display.get(current_device, 'CPU')
 
         device_combo = QComboBox()
@@ -99,9 +89,35 @@ class AdvancedPage:
         self._widgets['adv_device_map'] = device_display_to_value
         layout.addLayout(self._setting_row(
             "Compute device",
-            _cuda_msg + "  Device changes require restart.",
+            "Device changes require restart.",
             device_combo,
         ))
+        cuda_status = QLabel("checking...")  # Stand-in copy (619).
+        cuda_status.setWordWrap(True)
+        self._widgets['cuda_status'] = cuda_status
+        layout.addWidget(cuda_status)
+        device_combo.setEnabled(False)
+        from samsara.cuda_detect import request_cuda_status
+        def cuda_ready(available, message):
+            selected = device_display_to_value.get(device_combo.currentText(), current_device)
+            device_display_to_value.clear()
+            device_display_to_value['CPU'] = 'cpu'
+            if available:
+                device_display_to_value['CUDA (NVIDIA GPU)'] = 'cuda'
+            blocked = device_combo.blockSignals(True)
+            device_combo.clear()
+            device_combo.addItems(list(device_display_to_value))
+            device_combo.setCurrentText(next((label for label, value in device_display_to_value.items()
+                                              if value == selected), 'CPU'))
+            device_combo.blockSignals(blocked)
+            device_combo.setEnabled(True)
+            self._fit_catalog_combo(device_combo)
+            adapter = device_combo.parentWidget()
+            if getattr(adapter, '_canonical_control', None) is device_combo:
+                adapter.refresh()
+            cuda_status.setText(message)
+        deliver_cuda = self._visit_callback(cuda_ready, device_combo, cuda_status)
+        request_cuda_status(lambda *result: self._post_visit_result(deliver_cuda, result))
         layout.addSpacing(8)
 
         compute_options = ['float16', 'int8', 'float32']

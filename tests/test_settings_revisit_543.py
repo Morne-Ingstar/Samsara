@@ -2,6 +2,8 @@
 from copy import deepcopy
 from types import SimpleNamespace
 from threading import RLock
+from time import perf_counter
+from PySide6.QtTest import QTest
 from unittest.mock import Mock
 
 import pytest
@@ -10,6 +12,14 @@ from PySide6.QtWidgets import QDialog
 
 from samsara.ui import settings_qt, tutorial_try_preview, ava_consent_qt
 from tests.test_settings_pages import _StubApp, _schema_defaults
+
+
+def _wait_catalog(window):
+    """619: enumeration is asynchronous; retain every catalog assertion."""
+    deadline = perf_counter() + 5
+    while getattr(window, '_tts_voices_pending', False) and perf_counter() < deadline:
+        QTest.qWait(10)
+    assert not window._tts_voices_pending, 'voice catalog worker did not finish'
 
 
 @pytest.fixture
@@ -50,6 +60,7 @@ def window(qapp, monkeypatch):
     win = settings_qt._SettingsWindow(app)
     win._test_made = made
     win.show_tab('Audio')
+    _wait_catalog(win)
     qapp.processEvents()
     yield win
     win.hide()
@@ -60,6 +71,7 @@ def window(qapp, monkeypatch):
 
 def reopen(win, qapp, page='Audio'):
     win.show_tab(page)
+    _wait_catalog(win)
     qapp.processEvents()
 
 
@@ -93,6 +105,7 @@ def test_one_window_local_cloud_local_applies_privacy_choice(window, qapp):
 def test_one_window_engine_round_trip_and_lists(window, qapp):
     live = window.app.tts_engine
     window._widgets['tts_engine'].setCurrentText('edge')
+    _wait_catalog(window)
     combo = window._widgets['tts_voice_combo']
     assert combo.currentText() == 'Default voice'
     assert combo.currentData() is None
@@ -106,6 +119,7 @@ def test_one_window_engine_round_trip_and_lists(window, qapp):
     reopen(window, qapp)
     assert window._widgets['tts_voice_combo'].currentData() == 'network-2'
     window._widgets['tts_engine'].setCurrentText('winrt')
+    _wait_catalog(window)
     assert set(window._widgets['tts_voice_label_to_id'].values()) == {'local-1', 'local-2'}
     assert window._widgets['tts_voice_combo'].currentData() is None
     window._apply_and_close()
@@ -119,6 +133,7 @@ def test_one_window_engine_round_trip_and_lists(window, qapp):
 def test_close_discards_unapplied_edits_on_every_page(window, qapp):
     window._widgets['auto_capitalize'].setChecked(False)
     window._widgets['tts_engine'].setCurrentText('edge')
+    _wait_catalog(window)
     window._widgets['tts_speed'].setValue(1.8)
     window.close()
     window.app.config['sound_volume'] = .65
@@ -182,10 +197,12 @@ def test_mismatched_pair_opens_default_and_never_saves_bad_id(window, qapp):
 
 def test_test_voice_refuses_pending_engine_and_uses_each_selected_voice(window):
     window._widgets['tts_engine'].setCurrentText('edge')
+    _wait_catalog(window)
     window._test_tts()
     window.app.audio_coordinator.speak.assert_not_called()
     assert 'Apply' in window._widgets['tts_test_status'].text()
     window._widgets['tts_engine'].setCurrentText('winrt')
+    _wait_catalog(window)
     combo = window._widgets['tts_voice_combo']
     for voice_id in ('local-1', 'local-2'):
         combo.setCurrentIndex(combo.findData(voice_id))
@@ -212,6 +229,7 @@ def test_network_catalog_visible_before_consent_but_speech_gated(window, monkeyp
     window.app.audio_coordinator.speak.assert_not_called()
     live.list_voices.assert_called_once()
     window._resolve_existing_voice(False)
+    _wait_catalog(window)
     assert live.list_voices.call_count == 2
     assert window._widgets['tts_voice_combo'].currentData() == 'network-2'
     live.shutdown.assert_not_called()
@@ -221,6 +239,7 @@ def test_private_engine_disposed_on_list_failure(window, monkeypatch):
     failing = SimpleNamespace(list_voices=Mock(side_effect=RuntimeError()), shutdown=Mock())
     monkeypatch.setattr(tutorial_try_preview, 'make_engine', lambda *a: failing)
     window._widgets['tts_engine'].setCurrentText('edge')
+    _wait_catalog(window)
     failing.shutdown.assert_called_once()
     assert window._source_saves['tts'][0]({})['tts']['voice_id'] == 'local-1'
 
@@ -241,6 +260,7 @@ def test_voice_identity_is_not_its_display_label(window):
               for n in (1, 2)]
     window.app.tts_engine.list_voices.return_value = voices
     window._refresh_tts_voices('local-1')
+    _wait_catalog(window)
     window._test_tts()
     assert window.app.audio_coordinator.speak.call_args.kwargs['voice_id'] == 'local-1'
     window._apply_and_close()
@@ -252,6 +272,7 @@ def test_private_disposal_failure_still_shows_default(window, monkeypatch):
                               shutdown=Mock(side_effect=RuntimeError()))
     monkeypatch.setattr(tutorial_try_preview, 'make_engine', lambda *a: failing)
     window._widgets['tts_engine'].setCurrentText('edge')
+    _wait_catalog(window)
     failing.shutdown.assert_called_once()
     assert window._widgets['tts_voice_combo'].currentData() is None
 
@@ -282,6 +303,7 @@ def test_unavailable_catalog_preserves_saved_voice_on_unrelated_apply(window, fa
     else:
         window.app.tts_engine.list_voices.return_value = []
     window._refresh_tts_voices('local-1')
+    _wait_catalog(window)
     assert window._widgets['tts_voice_combo'].currentData() is None
     window._widgets['auto_capitalize'].setChecked(False)
     window._apply_and_close()
@@ -291,7 +313,9 @@ def test_unavailable_catalog_preserves_saved_voice_on_unrelated_apply(window, fa
 
 def test_switch_away_and_back_before_apply_keeps_saved_voice(window):
     window._widgets['tts_engine'].setCurrentText('edge')
+    _wait_catalog(window)
     window._widgets['tts_engine'].setCurrentText('winrt')
+    _wait_catalog(window)
     assert window._widgets['tts_voice_combo'].currentData() == 'local-1'
     window._apply_and_close()
     assert window.app.config['tts']['voice_id'] == 'local-1'
@@ -316,6 +340,7 @@ def test_builtin_network_catalog_needs_no_network_or_consent(window, monkeypatch
     window._widgets['tts_engine'].setCurrentText('edge')
     window._widgets['tts_engine'].blockSignals(False)
     window._refresh_tts_voices('en-US-JennyNeural')
+    _wait_catalog(window)
     assert window._widgets['tts_voice_combo'].currentData() == 'en-US-JennyNeural'
     assert window._tts_catalog_ids == {v.voice_id for v in edge_tts_engine._BUILTIN_VOICES}
     network.assert_not_called()
@@ -328,7 +353,9 @@ def test_todoist_completion_after_rebuild_does_not_touch_retired_label(window, m
     from PySide6.QtWidgets import QPushButton, QLabel
     from shiboken6 import isValid
     workers, posted = [], []
-    monkeypatch.setattr(commands_qt.thread_registry, 'spawn', lambda name, fn, **kw: workers.append(fn))
+    spawn = commands_qt.thread_registry.spawn
+    monkeypatch.setattr(commands_qt.thread_registry, 'spawn',
+                        lambda name, fn, **kw: workers.append(fn) if name == 'settings-todoist-test' else spawn(name, fn, **kw))
     monkeypatch.setattr(commands_qt.qt_runtime, 'post', posted.append)
     monkeypatch.setattr(todoist_client, 'today', lambda token: [])
     window._widgets['todoist_token'].setText('synthetic-test-value')
@@ -348,7 +375,9 @@ def test_cloud_completion_after_revisit_does_not_update_new_status(window, monke
     from samsara.ui.settings import ava_cloud_qt
     from samsara import cloud_llm
     workers = []
-    monkeypatch.setattr(ava_cloud_qt.thread_registry, 'spawn', lambda name, fn, **kw: workers.append(fn))
+    spawn = ava_cloud_qt.thread_registry.spawn
+    monkeypatch.setattr(ava_cloud_qt.thread_registry, 'spawn',
+                        lambda name, fn, **kw: workers.append(fn) if name == 'settings_qt._do' else spawn(name, fn, **kw))
     monkeypatch.setattr(cloud_llm, 'check_available', lambda app: (True, 'ok'))
     window._widgets['cloud_api_key'].setText('synthetic-test-value')
     window._run_test_connection()

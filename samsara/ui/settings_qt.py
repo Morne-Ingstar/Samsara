@@ -20,6 +20,7 @@ from samsara.ui.settings.music_qt import MusicPage
 from PySide6.QtWidgets import QMenu
 from pathlib import Path
 from shiboken6 import isValid
+from samsara.ui.settings.lazy_access import LookupMap, LookupRows, assembling
 
 PAGE_MODULES = (general_page, dictation_page, audio_page, ava_page, shortcuts_page, help_page)
 _TAB_NAMES = [module.TITLE for module in PAGE_MODULES]
@@ -58,6 +59,7 @@ class _SettingsWindow(
 ):
     _test_result = Signal(str, str)
     _visit_test_result = Signal(object, str, str)
+    _background_result = Signal(object)
 
     def __init__(self, app, tool=None):
         super().__init__()
@@ -67,21 +69,26 @@ class _SettingsWindow(
         self._config_at_open = copy.deepcopy(self.app.config)
         self._test_result.connect(self._on_test_result)
         self._visit_test_result.connect(self._deliver_visit_test_result)
+        self._background_result.connect(lambda callback: callback(), Qt.ConnectionType.QueuedConnection)
         self._build_contents(tool)
 
     def _build_contents(self, tool=None):
         # Ava assembly wraps this method per tree; never nest old wrappers.
+        self._building_contents = True
+        self._assembly_depth = 0
+        self._controls_at_open = copy.deepcopy(self.app.config)
         self.__dict__.pop('_refresh_conditions', None)
+        self.__dict__.pop('_component_rows', None)
         self._tool_name = tool
         self._ava_consent_staged = None
-        self._widgets = {}
+        self._widgets = LookupMap(self, self._lookup_control)
         self._save_fns = []
         self._source_rows = []
         self._source_pages = {}
-        self._destination_rows = []
-        self._rows_by_widget = {}
+        self._destination_rows = LookupRows(self, self._ensure_preferences)
+        self._rows_by_widget = LookupMap(self, self._lookup_control)
         self._placed_controls = set()
-        self._pages = {}
+        self._pages = LookupMap(self, self._lookup_page)
         self._cloud_reachable = None
         self._advanced_stack_index = None
         self._source_store = QWidget(self)
@@ -91,41 +98,14 @@ class _SettingsWindow(
         available = self.screen().availableGeometry()
         self.resize(min(1160, max(720, available.width() - 40)), min(920, max(480, available.height() - 40)))
         self.setStyleSheet(presentation_style())
-        self._source_saves = {}
-        # Preserve the established callback order for shared nested config.
-        for name, builder in (
-            ('general', self._build_general_tab), ('modes', self._build_modes_tab),
-            ('commands', self._build_commands_tab), ('sounds', self._build_sounds_tab),
-            ('tts', self._build_tts_tab), ('ava', self._build_ava_cloud_tab),
-            ('alarms', self._build_alarms_tab), ('health', self._build_health_tab),
-            ('advanced', self._build_advanced_tab), ('help', self._build_support_tab),
-            ('music', self._build_music_tab),
-        ):
-            before = len(self._save_fns)
-            page = builder()
-            page.setParent(self._source_store)
-            self._source_pages[name] = page
-            self._source_saves[name] = self._save_fns[before:]
-        self._prepare_actions()
+        self._source_saves = LookupMap(self, self._lookup_source_saves, self._ensure_all_source_saves)
+        self._condition_connections = set()
+        self._tool_pages = LookupMap(self, self._lookup_tool)
         self._stack = QStackedWidget()
+        # Stable navigation indices without constructing unvisited destinations.
         for module in PAGE_MODULES:
-            self._stack.addWidget(module.build(self))
-        self._tool_pages = tools_page.build(self)
-        for page in self._tool_pages.values():
-            self._stack.addWidget(page)
-        self._connect_conditions()
-        # Status labels retain their original callbacks and move beside the
-        # feature that owns them rather than remaining in hidden scaffolding.
-        for name, key in [('Shortcuts', 'modes_collision_warn'), ('Audio', 'tts_test_status')]:
-            widget = self._widgets.get(key)
-            if widget is not None:
-                self._pages[name].column.insertWidget(2, widget)
-        for key, row_key in [('cloud_test_status', 'cloud_api_key'), ('cloud_info_label', 'cloud_provider')]:
-            row = self._rows_by_widget[row_key]
-            row.grid.addWidget(self._widgets[key], row.grid.rowCount(), 0, 1, 3)
-        self._pages['Ava'].smart_corrections.layout().insertWidget(1, self._widgets['sc_status_label'])
-        support_status = self._source_store.findChild(QLabel, "feedbackStatusLabel")
-        self._pages['Help'].column.insertWidget(2, support_status)
+            self._stack.addWidget(QWidget())
+        self._stack.currentChanged.connect(self._on_stack_changed)
         central = QWidget()
         root = QVBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
@@ -182,7 +162,8 @@ class _SettingsWindow(
         self._search_edit.textChanged.connect(lambda _: self._search_debounce.start())
         self._build_search_registry()
         self._apply_metric_minimum_widths()
-        theme.apply_design_scale(self)
+        self._building_contents = False
+        self._apply_visible_design_scale()
         self._save_fns = [self._collect_destination_updates]
         if tool:
             self._select_tool(tool)
@@ -194,7 +175,8 @@ class _SettingsWindow(
         tool = self._tool_name
         page = _TAB_NAMES[self._stack.currentIndex()] if not tool else None
         self._search_debounce.stop()
-        self.removeEventFilter(self._widgets['tts_engine_warn'])
+        if dict.__contains__(self._widgets, 'tts_engine_warn'):
+            self.removeEventFilter(self._widgets['tts_engine_warn'])
         input_layout = self.__dict__.pop('_settings_input_layout', None)
         if input_layout is not None:
             self.removeEventFilter(input_layout)
@@ -252,14 +234,29 @@ class _SettingsWindow(
             timer.stop()
         self._tts_sample_timer = None
 
+    @assembling
     def _build_search_registry(self):
-        self._search_rows = [
+        rows = [
             (row.title, row.full_help, _TAB_NAMES.index(row.page_name), row.heading, row.detail, row.value)
             for row in self._destination_rows if row.page_name in _TAB_NAMES
         ]
+        # Keep the same list object when an inventory walk builds more pages.
+        if not hasattr(self, '_search_rows'):
+            self._search_rows = LookupRows(self, self._ensure_preferences)
+        self._search_rows[:] = rows
+
+    def _on_stack_changed(self, index):
+        if 0 <= index < len(PAGE_MODULES) and not self._assembly_depth:
+            page = self._ensure_destination(index)
+            self._stack.setCurrentWidget(page)
 
     def _apply_search_filter(self):
         query = self._search_edit.text().strip().casefold()
+        if query:
+            # Search is an explicit request across destinations, including those
+            # that have not yet been opened. Empty search never builds pages.
+            for index in range(len(PAGE_MODULES)):
+                self._ensure_destination(index)
         self._refresh_conditions()
         matched = set()
         name_matches = {}
@@ -291,6 +288,7 @@ class _SettingsWindow(
             self.setWindowTitle("Samsara — Settings")
             if hasattr(self, '_close_button'):
                 self._close_button.setText('Cancel')
+            self._ensure_destination(row)
             self._stack.setCurrentIndex(row)
             if _TAB_NAMES[row] == 'Ava':
                 self._refresh_sc_status()
@@ -304,8 +302,9 @@ class _SettingsWindow(
         window_activation.surface_requested(self)
 
     def _select_tool(self, name):
-        if name not in self._tool_pages:
+        if name not in tools_page.TOOLS:
             raise ValueError(name)
+        self._ensure_tool(name)
         self._sidebar.setCurrentRow(-1)
         self._tool_name = name
         self._stack.setCurrentWidget(self._tool_pages[name])
@@ -330,7 +329,7 @@ class _SettingsWindow(
         for widget in self.findChildren(QWidget):
             if widget.styleSheet():
                 widget.setStyleSheet(theme.retheme_stylesheet(widget.styleSheet()))
-        theme.apply_design_scale(self)
+        self._apply_visible_design_scale()
 
     def _collect_destination_updates(self, _acc):
         updates = {}
@@ -343,7 +342,7 @@ class _SettingsWindow(
                 'Components': ('advanced', {'gesture'}),
                 'Health': ('health', set()),
             }[self._tool_name]
-            for save in self._source_saves[source]:
+            for save in self._source_saves.get(source, []):
                 updates.update({k: v for k, v in save(updates).items() if k in allowed})
             if 'alarms' in updates:
                 current = self.app.config.get('alarms', {}) or {}
@@ -355,13 +354,16 @@ class _SettingsWindow(
                 if 'ai' in current:
                     updates['command_packs']['ai'] = current['ai']
             return updates
+        self._ensure_preferences()
         for source in ('general', 'modes', 'sounds', 'tts', 'ava', 'advanced', 'help'):
-            for save in self._source_saves[source]:
+            for save in self._source_saves.get(source, []):
                 part = save(updates)
                 part.pop('gesture', None)
                 updates.update(part)
         if 'wake_profile_controls' in self._widgets:
             updates['wake_profiles'] = self._edited_wake_profiles()
+        if 'alarms_complete_key' not in self._widgets:
+            return updates
         alarms = dict(self.app.config.get('alarms', {}) or {})
         alarms['complete_hotkey'] = self._widgets['alarms_complete_key'].combo
         alarms['dismiss_hotkey'] = self._widgets['alarms_dismiss_key'].combo

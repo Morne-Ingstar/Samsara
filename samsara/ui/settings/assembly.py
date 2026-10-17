@@ -13,9 +13,173 @@ from samsara.ui import theme, qt_runtime
 from samsara.config_schema import SETTINGS_SCHEMA
 from .presentation import Page, SettingRow, CleanComboBox
 from .calm_controls import PercentSpinBox, short_choice, switch
+from .lazy_access import assembling, source_config
 
 
 class PageAssembly:
+    @assembling
+    def _apply_visible_design_scale(self):
+        # Keep the real Settings owner: its theme hook installs row dividers,
+        # input geometry and component-row observers. Hidden source scaffolding
+        # must not receive that expensive widget-by-widget style pass.
+        store = self._source_store
+        store.setParent(None)
+        try:
+            inputs = getattr(self, '_settings_input_layout', None)
+            if inputs is not None:
+                inputs.window = self.centralWidget()
+                inputs.refresh()
+            theme.apply_design_scale(self)
+            inputs = getattr(self, '_settings_input_layout', None)
+            if inputs is not None:
+                inputs.window = self.centralWidget()
+        finally:
+            store.setParent(self)
+            store.hide()
+
+    @assembling
+    def _style_materialized_page(self, name, page):
+        # Give the shared theme hook the same Settings context, scoped to this
+        # page. Earlier destinations retain their styled controls and observers.
+        page._destination_rows = [row for row in self._destination_rows if page.isAncestorOf(row)]
+        page._pages = {name: page} if hasattr(page, 'column') else {}
+        page._tool_pages = {name: page}
+        page._components_page = self._components_page
+        page._component_rows = self._component_rows
+        theme.apply_design_scale(page)
+
+    _SOURCE_BUILDERS = {
+        'general': '_build_general_tab', 'modes': '_build_modes_tab',
+        'commands': '_build_commands_tab', 'sounds': '_build_sounds_tab',
+        'tts': '_build_tts_tab', 'ava': '_build_ava_cloud_tab',
+        'alarms': '_build_alarms_tab', 'health': '_build_health_tab',
+        'advanced': '_build_advanced_tab', 'help': '_build_support_tab',
+        'music': '_build_music_tab',
+    }
+    _DESTINATION_SOURCES = {
+        'General': ('general', 'modes', 'advanced'),
+        'Dictation': ('general', 'modes', 'advanced'),
+        'Audio': ('general', 'modes', 'advanced', 'sounds', 'tts'),
+        'Ava': ('general', 'modes', 'advanced', 'ava'),
+        'Shortcuts': ('modes', 'alarms'),
+        'Help': ('general', 'advanced', 'help'),
+    }
+
+    @assembling
+    def _ensure_source(self, name):
+        if name in self._source_pages:
+            return
+        previous = self._save_fns
+        self._save_fns = []
+        try:
+            with source_config(self):
+                page = getattr(self, self._SOURCE_BUILDERS[name])()
+            self._source_saves[name] = self._save_fns
+        finally:
+            self._save_fns = previous
+        page.setParent(self._source_store)
+        self._source_pages[name] = page
+        if name == 'commands':
+            # Integration controls must stay out of Command library even before
+            # their own destination has been visited.
+            section = page.findChild(QWidget, 'todoistSection')
+            self._widgets['_todoist_section'] = section
+            section.setParent(self._source_store)
+            section.hide()
+
+    @assembling
+    def _ensure_destination(self, index):
+        from samsara.ui.settings_qt import PAGE_MODULES
+        module = PAGE_MODULES[index]
+        name = module.TITLE
+        if name in self._pages:
+            return self._pages[name]
+        for source in self._DESTINATION_SOURCES[name]:
+            self._ensure_source(source)
+        with source_config(self):
+            self._prepare_actions(name)
+            page = module.build(self)
+        placeholder = self._stack.widget(index)
+        self._stack.removeWidget(placeholder)
+        self._stack.insertWidget(index, page)
+        placeholder.deleteLater()
+        if name in ('Shortcuts', 'Audio'):
+            key = 'modes_collision_warn' if name == 'Shortcuts' else 'tts_test_status'
+            page.column.insertWidget(2, self._widgets[key])
+        if name == 'Ava':
+            for key, row_key in [('cloud_test_status', 'cloud_api_key'), ('cloud_info_label', 'cloud_provider')]:
+                row = self._rows_by_widget[row_key]
+                row.grid.addWidget(self._widgets[key], row.grid.rowCount(), 0, 1, 3)
+            page.smart_corrections.layout().insertWidget(1, self._widgets['sc_status_label'])
+            self._sync_openrouter_picker()
+        if name == 'Dictation':
+            self._rows_by_widget['adv_device'].grid.addWidget(self._widgets['cuda_status'], 2, 0, 1, 3)
+        if name == 'Help':
+            page.column.insertWidget(2, self._source_store.findChild(QLabel, 'feedbackStatusLabel'))
+        self._connect_conditions()
+        self._build_search_registry()
+        self._apply_metric_minimum_widths()
+        if not self._building_contents:
+            self._style_materialized_page(name, page)
+        return page
+
+    @assembling
+    def _ensure_tool(self, name):
+        from . import tools_page
+        if name in self._tool_pages:
+            return
+        source = {'Command library': 'commands', 'Integrations': 'commands',
+                  'Alarms': 'alarms', 'Health': 'health', 'Music': 'music',
+                  'Components': 'advanced'}[name]
+        self._ensure_source(source)
+        with source_config(self):
+            pages = tools_page.build(self, name)
+        self._tool_pages.update(pages)
+        for title, page in pages.items():
+            self._stack.addWidget(page)
+            self._style_materialized_page(title, page)
+        self._connect_conditions()
+
+    def _ensure_preferences(self):
+        from samsara.ui.settings_qt import PAGE_MODULES
+        for index in range(len(PAGE_MODULES)):
+            self._ensure_destination(index)
+
+    def _lookup_page(self, name):
+        from samsara.ui.settings_qt import _TAB_NAMES
+        if name in _TAB_NAMES:
+            self._ensure_destination(_TAB_NAMES.index(name))
+
+    def _lookup_tool(self, name):
+        from .tools_page import TOOLS
+        if name in TOOLS:
+            self._ensure_tool(name)
+
+    def _lookup_control(self, key):
+        from samsara.ui.settings_qt import PAGE_MODULES
+        for index, module in enumerate(PAGE_MODULES):
+            if any(key in spec[2].split(',') for spec in module.BASE + module.ADVANCED):
+                self._ensure_destination(index)
+                return
+        if key == 'wake_profiles':
+            self._lookup_page('Dictation')
+        elif key.startswith(('cloud_', 'ava_', 'sc_')):
+            self._lookup_page('Ava')
+        elif key.startswith(('tts_', 'sound_')):
+            self._lookup_page('Audio')
+        elif key.startswith('todoist_'):
+            self._lookup_tool('Integrations')
+        elif key == 'cmd_table':
+            self._lookup_tool('Command library')
+
+    def _lookup_source_saves(self, name):
+        if name in self._SOURCE_BUILDERS:
+            self._ensure_source(name)
+
+    def _ensure_all_source_saves(self):
+        for name in self._SOURCE_BUILDERS:
+            self._ensure_source(name)
+
     def _setting_row(self, label, description, widget, control_width=260):
         row = super()._setting_row(label, description, widget, control_width)
         self._source_rows.append((label, description, widget, row))
@@ -72,7 +236,8 @@ class PageAssembly:
         elif isinstance(widget, QLineEdit):
             widget.setMinimumWidth(160)
             widget.setMaximumWidth(320)
-        return short_choice(widget, key)
+        # CUDA options arrive after construction; keep its model-backed picker.
+        return widget if key == 'adv_device' else short_choice(widget, key)
 
     def make_page(self, title, subtitle, base, advanced):
         page = Page(title, subtitle)
@@ -125,48 +290,55 @@ class PageAssembly:
         button.setMenu(menu)
         return button
 
-    def _prepare_actions(self):
-        precision = QLabel(self._widgets['adv_compute_type'].currentText())
-        precision.setAccessibleName('Stored diagnostic precision')
-        precision.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByKeyboard | Qt.TextInteractionFlag.TextSelectableByMouse)
-        self._widgets['computePrecisionStatus'] = precision
-        self._widgets['floatingWindowActions'] = self._choice_button('Recover window', [
-            ('Reset both floating windows', 'reset_floating_window_positions'),
-            ('Reset preview position', 'reset_preview_position'),
-            ('Reset indicator position', 'reset_indicator_position'),
-        ])
-        self._widgets['profilesAction'] = self._source_button('Manage Profiles…', 'general')
-        self._widgets['setupGuides'] = self._choice_button('Choose guide', [
-            ('Interactive tutorial', 'replayTutorialButton'),
-            ('Microphone setup', 'openMicSetupGuideButton'),
-            ('Ava setup', 'openAvaSetupGuideButton'),
-            ('Manage profiles', 'profilesAction'),
-        ])
-        self._widgets['supportChoices'] = self._choice_button('Get help', [
-            ('Email the developer', 'betaFeedbackButton'),
-            ('Create support bundle', 'createSupportBundleButton'),
-            ('Open bundle folder', 'openSupportBundleFolderButton'),
-            ('Copy safe diagnostics', 'copyDiagnosticButton'),
-            ('Public GitHub report', 'reportBugButton'),
-            ('Open live log', 'openLiveLogButton'),
-        ])
-        self._widgets['backupChoices'] = self._choice_button('Manage backup', [
-            ('Export private configuration', 'exportConfigurationButton'),
-            ('Import private configuration', 'importConfigurationButton'),
-            ('Restore automatic backup', 'restoreConfigBackupButton'),
-        ])
-        route = CleanComboBox()
-        self._widgets['providerRoute'] = route
-        self._configure_ava_route_master(route)
-        corrections = QPushButton('Open')
-        corrections.clicked.connect(self._open_corrections)
-        self._widgets['openCorrections'] = corrections
-        preview = QPushButton('Preview')
-        sounds = QMenu(preview)
-        for key, text in [('start', 'Recording start'), ('stop', 'Recording stop'), ('success', 'Success'), ('error', 'Error'), ('capture_started', 'Capture started'), ('capture_saved', 'Capture saved'), ('agent_routing', 'Agent routing'), ('agent_response', 'Agent response'), ('confirm_required', 'Confirmation'), ('action_complete', 'Action complete'), ('thinking_pulse', 'Thinking')]:
-            sounds.addAction(text).triggered.connect(lambda checked=False, k=key: self._preview_sound(k))
-        preview.setMenu(sounds)
-        self._widgets['soundPreview'] = preview
+    def _prepare_actions(self, destination):
+        if destination == 'Dictation':
+            precision = QLabel(self._widgets['adv_compute_type'].currentText())
+            precision.setAccessibleName('Stored diagnostic precision')
+            precision.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByKeyboard | Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._widgets['computePrecisionStatus'] = precision
+        if destination == 'General':
+            self._widgets['floatingWindowActions'] = self._choice_button('Recover window', [
+                ('Reset both floating windows', 'reset_floating_window_positions'),
+                ('Reset preview position', 'reset_preview_position'),
+                ('Reset indicator position', 'reset_indicator_position'),
+            ])
+        if destination == 'Help':
+            self._widgets['profilesAction'] = self._source_button('Manage Profiles…', 'general')
+            self._widgets['setupGuides'] = self._choice_button('Choose guide', [
+                ('Interactive tutorial', 'replayTutorialButton'),
+                ('Microphone setup', 'openMicSetupGuideButton'),
+                ('Ava setup', 'openAvaSetupGuideButton'),
+                ('Manage profiles', 'profilesAction'),
+            ])
+            self._widgets['supportChoices'] = self._choice_button('Get help', [
+                ('Email the developer', 'betaFeedbackButton'),
+                ('Create support bundle', 'createSupportBundleButton'),
+                ('Open bundle folder', 'openSupportBundleFolderButton'),
+                ('Copy safe diagnostics', 'copyDiagnosticButton'),
+                ('Public GitHub report', 'reportBugButton'),
+                ('Open live log', 'openLiveLogButton'),
+            ])
+            self._widgets['backupChoices'] = self._choice_button('Manage backup', [
+                ('Export private configuration', 'exportConfigurationButton'),
+                ('Import private configuration', 'importConfigurationButton'),
+                ('Restore automatic backup', 'restoreConfigBackupButton'),
+            ])
+        if destination == 'Ava':
+            route = CleanComboBox()
+            self._widgets['providerRoute'] = route
+            self._configure_ava_route_master(route)
+        if destination == 'Shortcuts':
+            corrections = QPushButton('Open')
+            corrections.clicked.connect(self._open_corrections)
+            self._widgets['openCorrections'] = corrections
+        if destination == 'Audio':
+            preview = QPushButton('Preview')
+            sounds = QMenu(preview)
+            for key, text in [('start', 'Recording start'), ('stop', 'Recording stop'), ('success', 'Success'), ('error', 'Error'), ('capture_started', 'Capture started'), ('capture_saved', 'Capture saved'), ('agent_routing', 'Agent routing'), ('agent_response', 'Agent response'), ('confirm_required', 'Confirmation'), ('action_complete', 'Action complete'), ('thinking_pulse', 'Thinking')]:
+                sounds.addAction(text).triggered.connect(lambda checked=False, k=key: self._preview_sound(k))
+            preview.setMenu(sounds)
+            self._widgets['soundPreview'] = preview
+
 
     def _preview_sound(self, key):
         root = Path(getattr(self.app, 'sounds_dir', None) or Path(__file__).resolve().parents[3] / 'sounds')
@@ -194,13 +366,14 @@ class PageAssembly:
             qt_runtime.post(show)
         thread_registry.spawn('settings-corrections', load, daemon=True)
 
+    @assembling
     def _refresh_conditions(self):
         if not hasattr(self, '_rows_by_widget'):
             return
         w = self._widgets
-        cloud = w['cloud_enabled'].isChecked()
-        editing = w['ava_edit_enabled'].isChecked()
-        speech = w['tts_enabled'].isChecked()
+        cloud = 'cloud_enabled' in w and w['cloud_enabled'].isChecked()
+        editing = 'ava_edit_enabled' in w and w['ava_edit_enabled'].isChecked()
+        speech = 'tts_enabled' in w and w['tts_enabled'].isChecked()
         for key, row in self._rows_by_widget.items():
             if row.widget_keys[0] != key:
                 continue
@@ -232,12 +405,21 @@ class PageAssembly:
             row.setProperty('conditionVisible', visible)
             row.setVisible(visible)
 
+    @assembling
     def _connect_conditions(self):
+        if not hasattr(self, '_condition_connections'):
+            self._condition_connections = set()
         for key in ('cloud_enabled', 'ava_edit_enabled', 'sc_enabled', 'tts_enabled', 'wake_word_enabled', 'adv_aec_enabled'):
-            self._widgets[key].toggled.connect(lambda _value: self._refresh_conditions())
+            if key in self._widgets and key not in self._condition_connections:
+                self._widgets[key].toggled.connect(lambda _value: self._refresh_conditions())
+                self._condition_connections.add(key)
         for key in ('cloud_provider', 'adv_threshold_mode', 'adv_ducking_recording_mode'):
-            self._widgets[key].currentIndexChanged.connect(lambda _value: self._refresh_conditions())
-        self._widgets['cmd_tab_button'].bindingChanged.connect(lambda _value: self._refresh_conditions())
+            if key in self._widgets and key not in self._condition_connections:
+                self._widgets[key].currentIndexChanged.connect(lambda _value: self._refresh_conditions())
+                self._condition_connections.add(key)
+        if 'cmd_tab_button' in self._widgets and 'cmd_tab_button' not in self._condition_connections:
+            self._widgets['cmd_tab_button'].bindingChanged.connect(lambda _value: self._refresh_conditions())
+            self._condition_connections.add('cmd_tab_button')
         self._refresh_conditions()
 
     def config_row_inventory(self):
@@ -246,6 +428,13 @@ class PageAssembly:
         Record fields belong to their manager/editor, not global preferences.
         Repeated sound previews and provider status labels are not editors.
         """
+        # An explicit inventory request covers every editor, including tools.
+        from samsara.ui.settings_qt import PAGE_MODULES
+        from .tools_page import TOOLS
+        for index in range(len(PAGE_MODULES)):
+            self._ensure_destination(index)
+        for tool in TOOLS:
+            self._ensure_tool(tool)
         bindings = []
         for row in self._destination_rows:
             for key in row.config_keys:

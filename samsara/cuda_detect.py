@@ -17,10 +17,17 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+from importlib.util import find_spec
 from pathlib import Path
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
+_probe_lock = threading.RLock()
+_request_lock = threading.Lock()
+_pending_callbacks = []
+_probe_running = False
+_session_status = None
 
 
 # Keep this aligned with the CUDA pack assembled in scripts/samsara.spec.
@@ -50,11 +57,14 @@ def _probable_search_paths() -> list[Path]:
         paths.append(exe_dir / "ctranslate2")  # older PyInstaller layout
         paths.append(exe_dir)                   # CUDA pack drops them next to exe
 
-    # When running from source, ctranslate2 site-package layout
+    # Resolve the package location without importing its native backend. That
+    # import can take tens of seconds and may retain the GIL during DLL loads.
     try:
-        import ctranslate2  # noqa: F401
-        ct2_path = Path(ctranslate2.__file__).parent
-        paths.append(ct2_path)
+        loaded = getattr(sys.modules.get('ctranslate2'), '__file__', None)
+        spec = None if loaded else find_spec('ctranslate2')
+        origin = loaded or (spec.origin if spec else None)
+        if origin:
+            paths.append(Path(origin).parent)
     except Exception as e:
         logger.debug(f"_probable_search_paths: {e}")
 
@@ -87,15 +97,15 @@ def is_cuda_available() -> bool:
     Cheap to call (just stat checks). Cached on first call to avoid hitting
     the filesystem on every dropdown rebuild.
     """
-    cached = getattr(is_cuda_available, "_cache", None)
-    if cached is not None:
-        return cached
-
-    missing = _missing_cuda_dlls()
-    available = not missing
-    is_cuda_available._missing_dlls = missing  # type: ignore[attr-defined]
-    is_cuda_available._cache = available  # type: ignore[attr-defined]
-    return available
+    with _probe_lock:
+        cached = getattr(is_cuda_available, "_cache", None)
+        if cached is not None:
+            return cached
+        missing = _missing_cuda_dlls()
+        available = not missing
+        is_cuda_available._missing_dlls = missing
+        is_cuda_available._cache = available
+        return available
 
 
 def cuda_status_message() -> str:
@@ -107,6 +117,51 @@ def cuda_status_message() -> str:
         f"CUDA pack incomplete. Missing DLLs: {', '.join(missing)}. "
         "Extract the complete Samsara-CUDA-Pack into the ctranslate2 folder."
     )
+
+
+def request_cuda_status(callback) -> None:
+    """One session-wide worker; callback receives (available, message).
+
+    Delivery runs on the worker. UI callers must queue it onto their Qt
+    object and guard against a retired Settings visit. No driver subprocess
+    or persistent cache is needed to keep Settings responsive.
+    """
+    from samsara.runtime import thread_registry
+    global _probe_running
+    with _request_lock:
+        result = _session_status
+        if result is None:
+            _pending_callbacks.append(callback)
+            if _probe_running:
+                return
+            _probe_running = True
+    if result is not None:
+        callback(*result)
+        return
+
+    def probe():
+        global _probe_running, _session_status
+        try:
+            result = (is_cuda_available(), cuda_status_message())
+        except Exception:
+            result = (False, "CUDA detection unavailable.")
+        with _request_lock:
+            _session_status = result
+            callbacks = list(_pending_callbacks)
+            _pending_callbacks.clear()
+            _probe_running = False
+        for deliver in callbacks:
+            try:
+                deliver(*result)
+            except Exception:
+                logger.debug('Retired CUDA status callback', exc_info=True)
+    try:
+        thread_registry.spawn('settings-cuda-probe', probe, daemon=True)
+    except Exception:
+        with _request_lock:
+            _probe_running = False
+            _pending_callbacks.clear()
+        raise
 
 
 def resolve_device(configured: str) -> str:
@@ -123,6 +178,8 @@ def resolve_device(configured: str) -> str:
 
 def _reset_cache_for_test() -> None:
     """Clear the is_cuda_available cache. Test-only."""
+    global _session_status
+    _session_status = None
     for attribute in ("_cache", "_missing_dlls"):
         if hasattr(is_cuda_available, attribute):
             delattr(is_cuda_available, attribute)

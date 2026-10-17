@@ -39,6 +39,19 @@ def apply_microphone_choice(app, updates):
 
 
 class SettingsServices:
+    @staticmethod
+    def _fit_catalog_combo(combo):
+        text_width = max((combo.fontMetrics().horizontalAdvance(combo.itemText(i))
+                          for i in range(combo.count())), default=80)
+        combo.setFixedWidth(min(320, max(116, text_width + 54)))
+
+    def _post_visit_result(self, callback, args):
+        # Callers capture their visit guard before starting the worker.
+        try:
+            self._background_result.emit(callback if not args else lambda: callback(*args))
+        except RuntimeError:
+            pass  # The window was deleted before delivery.
+
     def _refresh_sc_status(self) -> None:
         """Refresh the Smart Corrections status line --
         called on tab build and every time the Advanced tab is shown, since
@@ -46,13 +59,25 @@ class SettingsServices:
         label = self._widgets.get('sc_status_label')
         if label is None:
             return
-        try:
-            enabled = self.app.config.get('smart_corrections', {}).get('enabled')
-            status = smart_corrections.describe_backend_status(self.app) if enabled else "off"
-        except Exception as e:
-            logger.debug(f"[SETTINGS] Smart Corrections status refresh failed: {e}")
-            status = "unknown"
-        label.setText(f"Smart Corrections: {status}")  # PLACEHOLDER COPY (472)
+        if not self.app.config.get('smart_corrections', {}).get('enabled'):
+            label.setText("Smart Corrections: off")
+            return
+        if getattr(self, '_sc_status_pending', None) == self._visit_generation:
+            return
+        from samsara.runtime import thread_registry
+        self._sc_status_pending = self._visit_generation
+        def ready(status):
+            self._sc_status_pending = None
+            label.setText(f"Smart Corrections: {status}")
+        deliver = self._visit_callback(ready, label)
+        def load():
+            try:
+                status = smart_corrections.describe_backend_status(self.app)
+            except Exception as exc:
+                logger.debug('[SETTINGS] Smart Corrections status refresh failed: %s', type(exc).__name__)
+                status = 'unknown'
+            self._post_visit_result(deliver, (status,))
+        thread_registry.spawn('settings-corrections-status', load, daemon=True)
 
     def _refresh_sc_cloud_hint(self) -> None:
         """Keep the Cloud-backend warning aligned with the status line."""

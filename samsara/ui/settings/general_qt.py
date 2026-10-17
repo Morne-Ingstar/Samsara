@@ -681,9 +681,11 @@ class GeneralPage:
                 'start_hidden':       self._widgets['start_hidden'].isChecked(),
                 'updates': {
                     **stored_updates,
-                    'automatic_checks': self._widgets[
-                        'automatic_update_checks'
-                    ].isChecked(),
+                    'automatic_checks': (
+                        self._widgets['automatic_update_checks'].isChecked()
+                        if 'automatic_update_checks' in self._widgets else
+                        bool(stored_updates.get('automatic_checks', False))
+                    ),
                 },
             }
             # Sync hints enabled/disabled state on the live HintManager.
