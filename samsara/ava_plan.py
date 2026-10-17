@@ -61,6 +61,15 @@ class Step:
         return (self.command_id + " " + self.app_name).strip()
 
 
+def grounded_app_name(name, utterance):
+    """A plan target must be a complete, contiguous span of the user's tokens."""
+    from plugins.commands import ask_ollama as ava
+    target = ava._WORD_RE.findall(name.lower())
+    said = ava._WORD_RE.findall((utterance or "").lower())
+    return bool(target) and any(said[i:i + len(target)] == target
+                               for i in range(len(said) - len(target) + 1))
+
+
 def validate_plan(plan, menu, utterance, *, empty=False):
     from plugins.commands import ask_ollama as ava
     if not isinstance(plan, list) or not (0 if empty else 1) <= len(plan) <= 4:
@@ -74,7 +83,7 @@ def validate_plan(plan, menu, utterance, *, empty=False):
               and isinstance(item["args"], dict) and set(item["args"]) == {"app_name"}):
             name = item["args"]["app_name"]
             if (not isinstance(name, str) or not 1 <= len(name.strip()) <= 120
-                    or any(ord(c) < 32 for c in name) or not ava.grounded_in_utterance(name, utterance)):
+                    or any(ord(c) < 32 for c in name) or not grounded_app_name(name, utterance)):
                 raise ValueError("ungrounded app")
             step = Step(item["id"], name)
         else:
@@ -155,28 +164,43 @@ class Plan:
         from plugins.commands import ask_ollama as ava
         return ava._ai_state(self.app).allowed and policy.is_current(self.app, self.generation)
 
-    def failure(self, reason):
+    def failure(self, reason, *, index=None):
         from plugins.commands import ask_ollama as ava
-        # Stand-in copy (624); only a locally validated command name is used.
-        ava.speak(self.app, f"Step {self.index + 1} failed: {self.steps[self.index].label}. I stopped the plan.")
-        return ava.TurnOutcome("plan", "failed", reason=reason, name=str(self.index + 1))
+        index = self.index if index is None else index
+        completed = "; ".join(f"step {i + 1}: {s.label}" for i, s in enumerate(self.steps[:self.index]))
+        progress = f"Already ran: {completed}." if completed else "Nothing was run."
+        # Stand-in copy (640); names come only from the validated plan.
+        ava.speak(self.app, f"Step {index + 1} failed: {self.steps[index].label}. "
+                  f"Reason: {reason.replace('_', ' ')}. I stopped the plan. {progress}")
+        return ava.TurnOutcome("plan", "failed", reason=reason, name=str(index + 1))
+
+    def invocation(self, step):
+        # Named apps use the same APP choke point for preflight and execution.
+        return Invocation(f"action2:{step.command_id}" if step.app_name else step.command_id,
+            {"target": step.app_name} if step.app_name else {},
+            route=Route.MODEL, generation=self.generation, source_text=self.utterance)
 
     def run(self, *, approved=False):
         from plugins.commands import ask_ollama as ava
         from samsara import ava_pending
         from samsara.ava_turn_queue import ownership_lock
         with ownership_lock(self.app):
+            if not self.eligible():
+                return ava.TurnOutcome("plan", "stale", reason="stale")
+            if self.index == 0:
+                for i, step in enumerate(self.steps):
+                    decision = policy.authorize(self.invocation(step), app=self.app,
+                        executor=self.app.command_executor, quiet=True)
+                    if isinstance(decision, policy.Denied):
+                        return self.failure(decision.reason, index=i)
+                # NeedsConfirmation is only a preview; each step still asks locally.
             while self.index < len(self.steps):
                 if not self.eligible():
                     return ava.TurnOutcome("plan", "stale", reason="stale")
                 step = self.steps[self.index]
                 cid = step.command_id
                 executor = self.app.command_executor
-                # The existing APP choke point governs named app effects; it
-                # maps back to the same catalogued verb for pack/scope checks.
-                inv = Invocation(f"action2:{cid}" if step.app_name else cid,
-                    {"target": step.app_name} if step.app_name else {},
-                    route=Route.MODEL, generation=self.generation, source_text=self.utterance)
+                inv = self.invocation(step)
                 decision = policy.authorize(inv, app=self.app, executor=executor, confirmed=approved)
                 if isinstance(decision, policy.Denied):
                     return self.failure(decision.reason)

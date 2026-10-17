@@ -69,15 +69,21 @@ def _live(app, q):
             and (q.operation is not None or policy.pending_operation() is None))
 
 
+def _expire(app, q):
+    _clear(app, q, "Ava question expired.")  # Quiet: no speech on silence.
+    if q.operation is not None:
+        # Release by identity, including if clearing capture installed a successor.
+        policy._release_slot(q.operation)
+        q.operation.cancel(app, "expired", chip=False)
+
+
 def _tick(app, q):
     with ownership_lock(app):
         if not _live(app, q):
             _clear(app, q, "Ava question closed.")  # Stand-in copy (624).
             return
         if time.monotonic() >= q.deadline:
-            _clear(app, q, "Ava question expired.")  # Quiet: no speech on silence.
-            if q.operation is not None:
-                policy.answer_pending(app, "no")
+            _expire(app, q)
             return
         q.timer = thread_registry.timer("ava.question.expiry", 0.1, lambda: _tick(app, q), daemon=True)
 
@@ -147,7 +153,7 @@ def consume(app, text, *, capture_path=None):
             return True
         # Never fall through to the global yes command for a retired question.
         if not _live(app, q) or (q.opened and time.monotonic() >= q.deadline):
-            _clear(app, q, "Ava question expired.")
+            _expire(app, q)
             return True
         if not q.opened:
             return True  # The question itself is still being spoken.

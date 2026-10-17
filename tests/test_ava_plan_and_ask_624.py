@@ -239,7 +239,7 @@ def test_failure_stops_and_names_the_step(rig):
 def test_every_step_reauthorizes_and_stops_after_policy_changes(rig, monkeypatch):
     real = policy.authorize
     def authorize(inv, **kw):
-        return policy.Denied("pack_disabled") if inv.command_id == "scroll down" else real(inv, **kw)
+        return policy.Denied("pack_disabled") if inv.command_id == "scroll down" and rig.effects else real(inv, **kw)
     monkeypatch.setattr(policy, "authorize", authorize)
     assert deliver(rig, {"type": "plan", "plan": ["open chrome", "scroll down"]}).state == "failed"
     assert len(rig.effects) == 1 and "Step 2 failed" in rig.spoken[-1]
