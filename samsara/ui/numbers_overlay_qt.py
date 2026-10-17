@@ -9,7 +9,7 @@ import ctypes.wintypes as _wt
 import logging
 import sys
 
-from PySide6.QtCore import Qt, QPoint, QRect, QRectF
+from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QTimer
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -328,6 +328,58 @@ def screen_for_hwnd(hwnd: int) -> "QScreen":
 # ---------------------------------------------------------------------------
 # Overlay window
 # ---------------------------------------------------------------------------
+
+class MatchNumbersOverlay:
+    """Match-only labels using the ordinary renderer, one window per screen.
+
+    Construct/show/hide on qt_runtime's thread. The owner supplies freshness
+    and cancellation callbacks so a hidden or expired selection never acts.
+    """
+
+    def __init__(self, nodes, is_live, cancel):
+        self._windows = []
+        self._hidden = False
+        self._is_live, self._cancel = is_live, cancel
+        groups = {}
+        for number, node in enumerate(nodes, 1):
+            x, y = phys_to_logical(node.rect[0], node.rect[1])
+            screen = QApplication.screenAt(QPoint(x, y))
+            if screen is None:
+                continue
+            labels = groups.setdefault(screen.name(), (screen, []))[1]
+            text = str(number)
+            labels.append([x, y, max(28, 12 + len(text) * 10), 22, text])
+        for screen, labels in groups.values():
+            self._windows.append(NumbersOverlayWindow(labels, screen))
+        self._timer = QTimer()
+        self._timer.setInterval(100)
+        self._timer.timeout.connect(self._poll)
+
+    def _poll(self):
+        if not self._is_live():
+            self.hide()
+            self._cancel()
+
+    def show(self):
+        if not self._is_live():
+            self._cancel()
+            return
+        for window in self._windows:
+            window.show()
+            window.raise_()
+        self._timer.start()
+
+    def hide(self):
+        if self._hidden:
+            return
+        self._hidden = True
+        self._timer.stop()
+        for window in self._windows:
+            window.hide()
+            window.deleteLater()
+        self._windows.clear()
+        self._timer.deleteLater()
+
 
 class NumbersOverlayWindow(QWidget):
     """Click-through overlay covering ONE monitor with numbered pill labels.

@@ -794,6 +794,12 @@ class CommandExecutor:
 
         # Phonetic wash for matching only; original text is returned on fallthrough
         # so free-form dictation output is never silently rewritten.
+        from plugins.commands.click_by_name import selection_number
+        number = selection_number(text, effective_app)
+        if number is not None and not literals_only:
+            return self.execute_canonical(
+                "choose control", effective_app, route=route,
+                generation=generation, args={"remainder": str(number)}, source_text=text)
         match_text = apply_phonetic_wash(text)
         # One scope context for the whole utterance (queue 68): every match
         # below sees the same foreground app and tags.

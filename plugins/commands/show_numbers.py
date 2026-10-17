@@ -1157,14 +1157,11 @@ class _OcrTarget:
 
 def _click_text(app, query: str, modifier: str, keys: frozenset):
     """click <text>: read the foreground window, match, then act, label or report."""
+    from plugins.commands import click_by_name
     from samsara import screen_ocr  # noqa: PLC0415
-
-    fg_hwnd = screen_ocr.foreground_hwnd()
-    fg = _foreground_info(fg_hwnd)
-    if is_overlay_active():
-        # Our own numbered pills must not be read as the app's text.
-        _destroy_overlay(app)
-        time.sleep(_OVERLAY_HIDE_WAIT_S)
+    fg_hwnd, fg, handled = click_by_name.prepare_text_click(app, query, modifier, keys)
+    if handled is not None:
+        return handled
     try:
         snap = screen_ocr.read_foreground(fg_hwnd)
     except Exception as e:
@@ -1181,8 +1178,7 @@ def _click_text(app, query: str, modifier: str, keys: frozenset):
         len(matches), sum(m.exact for m in matches), len(found) - len(matches))
 
     if not matches:
-        _speak(app, TEXT_NO_MATCH_SPOKEN)
-        _report_chip(app, TEXT_NO_MATCH_CHIP, "error")
+        click_by_name._miss(app, query)
         return DispatchState.FAILED
 
     def target(m):
@@ -1796,7 +1792,6 @@ def handle_refresh_numbers(app, remainder):
          aliases=["tap", "press"],
          pack="accessibility",
          risk_class="write", param_schema={"label": {"type": "int", "required": False}},
-         scope={"argument_tags": [_NUMBERS_TAG]},
 )
 def handle_click(app, remainder):
     """Clicks the numbered thing you name, such as click seven.
@@ -1812,6 +1807,10 @@ def handle_click(app, remainder):
             return handled
     if not remainder or not remainder.strip():
         return _click_at_cursor("single")
+
+    from plugins.commands import click_by_name
+    if click_by_name.selection_number(remainder, app) is not None:
+        return click_by_name.choose_control(app, remainder)
 
     text = remainder.strip().lower()
 
