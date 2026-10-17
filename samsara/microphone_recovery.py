@@ -499,13 +499,15 @@ def watch(app, get_render_id):
                 comtypes.CoUninitialize()
 
 
-def _bounded_open_owned(app, token, audio_ducking, opener, timeout=0.2):
+def _bounded_open_owned(app, token, audio_ducking, opener, timeout=0.2, *, deadline=None, clock=time):
     """A slow ducking host must not hold the key listener hostage.
 
     Late completion only releases its own token; it cannot authorize pre-roll
     or take ownership from a newer hold. The worker performs no capture work.
     """
     from samsara.runtime import thread_registry
+    if deadline is None:
+        deadline = clock.perf_counter() + timeout
     done, abandoned = threading.Event(), threading.Event()
     result = []
 
@@ -524,7 +526,7 @@ def _bounded_open_owned(app, token, audio_ducking, opener, timeout=0.2):
                     log.warning('[DUCK] Late duck cleanup failed', exc_info=True)
 
     thread_registry.spawn('hold-duck-open', work, daemon=True)
-    if not done.wait(timeout):
+    if not done.wait(max(0.0, deadline - clock.perf_counter())):
         abandoned.set()
         # Cover the race in which work completed immediately before abandonment.
         if done.is_set():
@@ -534,7 +536,9 @@ def _bounded_open_owned(app, token, audio_ducking, opener, timeout=0.2):
 
 
 def _open_hold_duck(app, audio_ducking, flight_recorder, clock):
-    """Reuse capture ownership; wait for synchronous volume acknowledgements."""
+    """Share one request deadline across duck setup and reused confirmation."""
+    started = clock.perf_counter()
+    deadline = started + 0.2
     from samsara import hold_capture_onset
     app._hold_capture_duck_confirmed_at = None
     app._hold_capture_onset = hold_capture_onset.HoldOnset(None, None, None, False, flight_recorder.record)
@@ -555,13 +559,13 @@ def _open_hold_duck(app, audio_ducking, flight_recorder, clock):
     token = -app._hold_capture_duck_seq
     app._hold_capture_duck_token = token
     app._hold_capture_onset.token = token
-    started = clock.perf_counter()
     confirmed = False
     try:
-        owner, fresh = _bounded_open_owned(app, token, audio_ducking, hold_capture_onset.open_owned_duck)
+        owner, fresh = _bounded_open_owned(
+            app, token, audio_ducking, hold_capture_onset.open_owned_duck,
+            deadline=deadline, clock=clock)
         if owner != token:
             raise RuntimeError('Hold capture duck could not engage')
-        deadline = clock.perf_counter() + 2.0
         while True:
             with app._hands_free_duck_lock:
                 ducker = app._hands_free_capture_ducker
@@ -569,13 +573,16 @@ def _open_hold_duck(app, audio_ducking, flight_recorder, clock):
                 owned = token in app._hands_free_capture_duck_owners
             if not owned or not app._running:
                 raise RuntimeError('Hold capture duck lost ownership')
+            remaining = deadline - clock.perf_counter()
+            if remaining <= 0:
+                raise TimeoutError('Optional ducking exceeded hold budget')
             if ducker is not None and not starting:
                 if ducker.sessions_failed or ducker.last_error:
                     raise RuntimeError('Hold capture duck volume update failed')
                 break
-            if not starting or clock.perf_counter() >= deadline:
+            if not starting:
                 raise RuntimeError('Hold capture duck did not confirm')
-            clock.sleep(0.005)
+            clock.sleep(min(0.005, remaining))
         app._hold_capture_duck_confirmed_at = clock.perf_counter()
         app._hold_capture_onset = hold_capture_onset.HoldOnset(
             token, started, app._hold_capture_duck_confirmed_at,

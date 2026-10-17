@@ -345,7 +345,11 @@ def test_start_playback_timing_includes_duck_delay_and_resets_per_hold(monkeypat
     fake = app()
     fake._sound_cache = {'start': np.zeros(1920)}
     fake._sound_stream_sr = 16000
-    fake.play_sound = Mock(side_effect=lambda *a, **kw: clock.__setitem__(0, 10.13))
+    fake._hotkey_recording = True
+    def queue_start(*args, **kwargs):
+        clock[0] = 10.13
+        presence.note_hold_earcon(fake, 'start', fake._sound_cache['start'])
+    fake.play_sound = Mock(side_effect=queue_start)
     presence.begin_hold(fake)
     context = presence.capture_context(fake)
     context.observe(9.75)

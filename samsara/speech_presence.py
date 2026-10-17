@@ -125,29 +125,31 @@ def note_hold_earcon(app, sound_type, sound):
     """
     if sound_type != 'start' or not getattr(app, '_hotkey_recording', False):
         return
+    app._hold_start_cue_queued = True
     context = capture_context(app)
     if context is not None:
         context.earcon_end_at = perf_counter() + len(sound) / app._sound_stream_sr
 
 
 def play_hold_start(app, play_earcon):
-    """Keep the existing start sound/wait and mark when it was queued.
+    """Keep acoustic grace only for a start sound actually queued for playback.
 
     Taking the time after play_sound returns includes output setup/duck delay.
     The shared click pad also supplies the speaker-to-mic decay tail.
     """
     app._last_recording_earcon_ms = 0.0
+    app._hold_start_cue_queued = False
     context = capture_context(app)
     if play_earcon:
         app.play_sound('start', use_winsound=True)
         queued_at = perf_counter()
         sound = app._sound_cache.get('start')
-        if (sound is not None and app.config.get('audio_feedback', True)
+        if (app._hold_start_cue_queued and sound is not None and app.config.get('audio_feedback', True)
                 and app.config.get('sound_volume', 0.5) > 0):
             app._last_recording_earcon_ms = len(sound) / app._sound_stream_sr * 1000
             if context is not None:
                 context.earcon_end_at = queued_at + app._last_recording_earcon_ms / 1000
-        sleep(0.15)
+            sleep(0.15)
 
 
 def finish_streaming_if_empty(worker, audio):
