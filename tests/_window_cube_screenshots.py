@@ -11,9 +11,9 @@ Renders the panel composited over a DARK and a LIGHT desktop region at the
 configured opacity, so the owner can judge legibility on both.
 
 Usage:
-    F:\\envs\\sami\\python.exe tests\\_window_cube_screenshots.py
+    python tests\\_window_cube_screenshots.py
 
-Output: C:\\Users\\Morne\\Documents\\Claude\\ui_proof\\window_cube\\*.png
+Output: ui_proof/window_cube/*.png
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from PySide6.QtWidgets import QApplication
 
 from samsara.ui.window_cube_qt import CubeRow, _CubeWindow
 
-OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\window_cube")
+OUT_DIR = Path(__file__).resolve().parents[1] / "ui_proof" / "window_cube"
 
 OPACITY = 0.6
 

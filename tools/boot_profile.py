@@ -18,13 +18,13 @@ Experiments (each in its own subprocess unless noted):
   calibrate   samsara.calibration.measure_ambient_rms (the 1.5 s recording)
   config      3x save_config-equivalent write (tmp + backup copy + replace)
 
-Usage:  F:\\envs\\sami\\python.exe tools\\boot_profile.py [--gpu-load]
+Usage:  python tools\\boot_profile.py [--gpu-load]
         --gpu-load actually constructs WhisperModel on CUDA (allocates ~1.5 GB
         VRAM next to the live app); without it the worker stops after imports.
 Output: one JSON document on stdout (last line) -- perf_artifacts/boot_profile.md carries the tables.
 
 Full-boot mode (queue 46):
-        F:\\envs\\sami\\python.exe tools\\boot_profile.py --full-boot N --label NAME [--no-cal-cache]
+        python tools\\boot_profile.py --full-boot N --label NAME [--no-cal-cache]
             [--settle-s N] [--importtime] [--set dotted.key=<json> ...]
         Boots the real dictation.py N times, each in a fresh temp SAMSARA_HOME_DIR holding copies
         of config.json, hints_shown.json, app_index.json, .source-config-migrated, the polyphase

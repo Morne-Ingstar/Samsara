@@ -1,6 +1,6 @@
 """Session audio ducking engine for WASAPI session control.
 
-ARCHITECTURE (tribunal arc_20260803_163412, tier-2): the ducking ALGORITHM
+ARCHITECTURE: the ducking ALGORITHM
 lives here -- lease composition, generations, owner tokens, conditional
 restore -- but not one line of COM. Every Core Audio call happens in a
 child process (samsara/ducking_host.py) reached through

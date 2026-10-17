@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$SshHost = "the-arcana",
-    [string]$RemoteRoot = "/home/morne/projects/arcana",
-    [string]$RemoteOwner = "morne:morne"
+    [Parameter(Mandatory = $true)][string]$SshHost,
+    [Parameter(Mandatory = $true)][string]$RemoteRoot,
+    [Parameter(Mandatory = $true)][string]$RemoteOwner
 )
 
 $ErrorActionPreference = "Stop"

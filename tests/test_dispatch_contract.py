@@ -1,7 +1,6 @@
 """Dispatch contract: what process_text says happened, and what callers do.
 
-Astra's 2026-09-12 review, section 1 items 7 and 8, ported as tests in the
-inverted direction:
+Regression cases assert the dispatch result and observed effects:
 
   PLUGIN_NONE_RETURN     {"effects": ["worker scheduled"], "result": ["ask ava", false]}
       -> a None-returning async handler is QUEUED and claimed, never a miss,
@@ -234,7 +233,7 @@ class TestProcessTextStates:
 
 
 # ---------------------------------------------------------------------------
-# The REAL ask_ollama registrations (Astra's PLUGIN_NONE_RETURN, inverted)
+# The REAL ask_ollama registrations (regression coverage, inverted)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture

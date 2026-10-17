@@ -148,8 +148,7 @@ happened, and where you still had to reach for the keyboard or mouse.
 You do not need to disclose a diagnosis or disability.
 
 Code contributions are welcome too. Describe the problem and include focused
-verification for the change. Read [AGENTS.md](AGENTS.md) before using a coding
-agent in this repository.
+verification for the change. Read [CONTRIBUTING.md](CONTRIBUTING.md) for contributor guidance.
 
 ## Support and license
 

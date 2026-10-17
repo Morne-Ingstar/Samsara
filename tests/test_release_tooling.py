@@ -170,4 +170,4 @@ def test_release_scripts_are_fail_closed_and_manifest_based():
     assert "tools\\check_release_version.py" in batch
     assert "set INCLUDE_CUDA=0" in batch
     assert "SAMSARA_PYTHON" in batch
-    assert "set PYTHON=F:\\envs\\sami\\python.exe" not in batch
+    assert "set PYTHON=C:\\test-env\\samsara\\python.exe" not in batch

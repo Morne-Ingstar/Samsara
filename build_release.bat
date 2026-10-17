@@ -9,8 +9,8 @@ set ARCHIVE=dist\Samsara-Windows-v%VERSION%.7z
 set "PYTHON_ARGS="
 if defined SAMSARA_PYTHON (
     set "PYTHON_EXE=%SAMSARA_PYTHON:"=%"
-) else if exist "F:\envs\sami\python.exe" (
-    set "PYTHON_EXE=F:\envs\sami\python.exe"
+) else if exist "%~dp0.venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
 ) else (
     where py >nul 2>nul
     if not errorlevel 1 (

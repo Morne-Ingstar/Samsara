@@ -8,7 +8,7 @@ evidence for Samsara's delivery paths; the gate calls the real
 Run from the repository root:
 
 ```powershell
-F:\envs\sami\python.exe tools\probes\inject_matrix.py --gate
+python tools\probes\inject_matrix.py --gate
 ```
 
 The gate runs only the production clipboard path against all four targets and

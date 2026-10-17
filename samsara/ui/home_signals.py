@@ -227,7 +227,7 @@ def wake_consumer_running(app) -> Optional[bool]:
 
     None is UNKNOWN, never health -- Home used to derive "ready" from config
     and a microphone, which stayed "ready" through a consumer that had died
-    (queue 109, Astra F12).
+    (queue 109, regression coverage).
     """
     consumer = getattr(app, "_wake_consumer", None)
     if consumer is None:
@@ -430,7 +430,7 @@ def recent_misses(app) -> tuple:
     """(misses, COMMAND outcomes examined) from the app's own outcome ring.
 
     Both halves come from ``samsara.outcome_ring``, the schema the writer
-    (``DictationApp._show_outcome_chip``) uses -- the whole of Astra F11 was
+    (``DictationApp._show_outcome_chip``) uses -- the whole of regression coverage was
     that this reader invented its own. The denominator is command outcomes
     only, so "3 of your last 4 commands were not recognised" counts four
     commands and not four assorted chips, three of which were dictations.

@@ -12,9 +12,9 @@ The indicator paints with a translucent background, so each capture is
 composited onto a dark desktop-like region to be legible.
 
 Usage:
-    F:\\envs\\sami\\python.exe tests\\_outcome_chip_screenshots.py
+    python tests\\_outcome_chip_screenshots.py
 
-Output: C:\\Users\\Morne\\Documents\\Claude\\ui_proof\\outcome_chip\\*.png
+Output: ui_proof/outcome_chip/*.png
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ if str(_REPO_ROOT) not in sys.path:
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication
 
-OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\outcome_chip")
+OUT_DIR = Path(__file__).resolve().parents[1] / "ui_proof" / "outcome_chip"
 BACKDROP = QColor("#1c1f26")
 PAD = 40
 

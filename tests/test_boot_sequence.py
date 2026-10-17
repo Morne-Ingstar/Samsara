@@ -545,23 +545,23 @@ def test_autostart_command_is_quoted_for_frozen_and_source_runs():
     frozen_with_home = compose_run_command(
         frozen=True,
         executable=r"C:\Program Files\Samsara\Samsara.exe",
-        home_dir=r"C:\Users\Morne\.samsara-daily",
+        home_dir=r"C:\TestUsers\Example\.samsara-daily",
         comspec=r"C:\Windows\System32\cmd.exe",
     )
     assert frozen_with_home.startswith(r'"C:\Windows\System32\cmd.exe" /d /s /c ')
-    assert 'SAMSARA_HOME_DIR=C:\\Users\\Morne\\.samsara-daily' in frozen_with_home
+    assert 'SAMSARA_HOME_DIR=C:\\TestUsers\\Example\\.samsara-daily' in frozen_with_home
     assert 'start "" /b' in frozen_with_home
     assert 'C:\\Program Files\\Samsara\\Samsara.exe' in frozen_with_home
 
     source = compose_run_command(
         frozen=False,
-        executable=r"F:\envs\sami\python.exe",
-        pythonw_executable=r"F:\envs\sami\pythonw.exe",
-        script_path=r"C:\Users\Morne\Projects\Samsara-dev\dictation.py",
+        executable=r"C:\test-env\samsara\python.exe",
+        pythonw_executable=r"C:\test-env\samsara\pythonw.exe",
+        script_path=r"C:\TestUsers\Example\Projects\Samsara-dev\dictation.py",
     )
     assert source == (
-        r'"F:\envs\sami\pythonw.exe" '
-        r'"C:\Users\Morne\Projects\Samsara-dev\dictation.py"'
+        r'"C:\test-env\samsara\pythonw.exe" '
+        r'"C:\TestUsers\Example\Projects\Samsara-dev\dictation.py"'
     )
 
 

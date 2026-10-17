@@ -1,4 +1,4 @@
-"""PROMPT 252 -- provider policy is enforced before every model route.
+"""Provider routing -- provider policy is enforced before every model route.
 
 No test imports dictation or contacts a provider.  Each network surface is a
 fail-on-call fake so an accidental fallback is immediately visible.

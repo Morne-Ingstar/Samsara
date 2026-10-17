@@ -1,4 +1,7 @@
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.CurrentDirectory = "C:\Users\Morne\Projects\Samsara-dev"
-WshShell.Run """C:\Users\Morne\miniconda3\envs\sami\pythonw.exe"" ""C:\Users\Morne\Projects\Samsara-dev\dictation.py""", 0, False
+Set Fso = CreateObject("Scripting.FileSystemObject")
+ProjectDir = Fso.GetParentFolderName(Fso.GetParentFolderName(WScript.ScriptFullName))
+WshShell.CurrentDirectory = ProjectDir
+WshShell.Run "cmd /c """ & ProjectDir & "\run_samsara.bat""", 0, False
+Set Fso = Nothing
 Set WshShell = Nothing

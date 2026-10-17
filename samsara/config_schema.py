@@ -135,7 +135,7 @@ SETTINGS_SCHEMA = {
         "ui_less_reason": "Seconds between Agora dispatch feed checks.",
     },
     "agent_channel.cwd": {
-        "type": "str", "default": r"C:\Users\Morne\Documents\Claude",
+        "type": "str", "default": "",
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Working directory for subscription CLI agents.",
     },

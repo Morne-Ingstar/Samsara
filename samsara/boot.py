@@ -13,7 +13,7 @@ library at load time (samsara.* and Qt are imported inside the functions
 that need them, as they were inline), and it must NEVER import dictation --
 boot must not drag the app in. tests/test_boot.py asserts both.
 
-What deliberately stayed in dictation.py (see reports/27_code.md):
+What deliberately stayed in dictation.py:
   * the None-stdout guard and the ducking-host divert -- they must run
     before ANY samsara import (samsara/__init__.py imports .commands/.ui);
   * the logging bootstrap -- its handler, self-check and rollover code call

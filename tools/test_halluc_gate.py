@@ -18,7 +18,7 @@ a false failure rather than a real one. Instead this reuses an existing TTS
 speech asset already in the repo (assets/sounds/ava_cues/ready_01.wav) --
 genuine speech audio, no new binary fixture added.
 
-Run with: F:\\envs\\sami\\python.exe tools\\test_halluc_gate.py
+Run with: python tools\\test_halluc_gate.py
 """
 
 import sys

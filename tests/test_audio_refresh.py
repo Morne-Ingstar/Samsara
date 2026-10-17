@@ -1,6 +1,6 @@
 """Public refresh admission and the unchanged device-list helper.
 
-FINISH IT 1 supersedes the old hold-only guard and always-rescan contract.
+Refresh admission accounts for active capture and cached device enumeration.
 Fake PortAudio only; production app methods are AST-extracted, never imported.
 """
 import types

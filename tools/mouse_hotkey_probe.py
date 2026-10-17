@@ -9,8 +9,8 @@ if nothing prints here, the hook is not receiving the button on this machine
 (vendor mouse software remapping it, another hook consuming it, or the
 hook failing to install -- the install result is printed too).
 
-    F:\\envs\\sami\\python.exe tools\\mouse_hotkey_probe.py --button mouse4
-    F:\\envs\\sami\\python.exe tools\\mouse_hotkey_probe.py --button mouse4 --inject 2 --seconds 3
+    python tools\\mouse_hotkey_probe.py --button mouse4
+    python tools\\mouse_hotkey_probe.py --button mouse4 --inject 2 --seconds 3
 
 --inject N sends N synthetic Mouse 4/5 clicks through SendInput as a
 self-test of the hook code path; they arrive flagged injected=True. A
@@ -22,7 +22,7 @@ MouseHook._hook_callback) and prints press/release durations at exit.
 start_recording(): since 32 the callback duration must stay in microseconds
 however slow the handler is (the handler runs on the dispatcher thread).
 
-    F:\\envs\\sami\\python.exe tools\\mouse_hotkey_probe.py --inject 3 --seconds 4 --measure --handler-ms 500
+    python tools\\mouse_hotkey_probe.py --inject 3 --seconds 4 --measure --handler-ms 500
 
 Logging is configured to stdout BEFORE samsara is imported, so samsara.log
 reuses it and never attaches the app's rotating file handler (a second

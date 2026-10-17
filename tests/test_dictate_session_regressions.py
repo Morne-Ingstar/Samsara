@@ -55,7 +55,7 @@ def test_hard_cap_still_protects_toggle_command():
 
 
 def test_each_toggle_speech_onset_touches_the_inactivity_timer():
-    """2026-09-10 session policy (docs/HANDS_FREE_GATES_FINDINGS.md
+    """2026-09-10 session policy (Docs/ARCHITECTURE.md
     "Session policy" #2): _touch_toggle_speech_activity no longer takes a
     timestamp or throttles by elapsed time -- the caller (wake_consumer's
     _process_frame) already gates this to a genuine Silero non-speech ->

@@ -16,9 +16,9 @@ exec() -- events are pumped manually via processEvents() so layout/paint
 settles before each grab.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\settings_screenshots.py
+    python tools\\settings_screenshots.py
 
-Output: C:\\Users\\Morne\\Documents\\Claude\\ui_proof\\settings\\*.png
+Output: ui_proof/settings/*.png
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from PySide6.QtWidgets import QApplication, QScrollArea
 
-OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\ui_proof\settings")
+OUT_DIR = Path(__file__).resolve().parents[1] / "ui_proof" / "settings"
 
 # (stack index, display name, filename slug) -- must match _TAB_NAMES /
 # self._stack.addWidget(...) order in samsara/ui/settings_qt.py exactly.

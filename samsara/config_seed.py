@@ -256,7 +256,7 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
         # note_relpath/attachments_relpath are all relative-to-vault
         # except vault_dir itself, which is an absolute path.
         "voice_memo": {
-            "vault_dir": "C:\\Users\\Morne\\Documents\\Obsidian Vault",
+            "vault_dir": "",
             "note_relpath": "Voice Memos.md",
             "attachments_relpath": "Attachments/Memos",
             "arm_timeout_s": 120,

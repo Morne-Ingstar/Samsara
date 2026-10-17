@@ -198,7 +198,7 @@ def window_integrity(hwnd: Optional[int] = None) -> IntegrityVerdict:
 # ---------------------------------------------------------------------------
 
 #: Backspaces sent per SendInput batch, and the pause after each batch.
-#: See delete_backwards() and reports/50 for the measurements behind them.
+#: See delete_backwards() for how these measured timings are applied.
 #:
 #: Queue 99 asked whether a counted scratch ("scratch that three times") needs
 #: different pacing. It does not, and the reason is that this pacing is per
@@ -206,7 +206,7 @@ def window_integrity(hwnd: Optional[int] = None) -> IntegrityVerdict:
 #: batching its own characters at DELETE_BATCH with DELETE_BATCH_PAUSE_S
 #: between batches, so the keystroke rate inside a run is the same rate a
 #: single long deletion already runs at and was measured at (40 characters in
-#: 0.14 s on three targets, reports/50). The only place the pattern differs is
+#: 0.14 s on three targets). The only place the pattern differs is
 #: the seam between two chunks, where one call's last partial batch is not
 #: followed by a pause -- and that seam is not bare: session_modes re-runs the
 #: focus-lock and HWND checks per chunk and dictation.py's _remove_chars_fn

@@ -3,12 +3,12 @@ command registry (samsara/command_catalog.py). Deterministic: re-running on
 an unchanged tree is byte-identical.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\gen_command_catalog.py                # write both files
-    F:\\envs\\sami\\python.exe tools\\gen_command_catalog.py --check        # exit 1 if files are stale
-    F:\\envs\\sami\\python.exe tools\\gen_command_catalog.py --write-collisions
+    python tools\\gen_command_catalog.py                # write both files
+    python tools\\gen_command_catalog.py --check        # exit 1 if files are stale
+    python tools\\gen_command_catalog.py --write-collisions
         # (re)freeze tests/command_catalog_known_collisions.txt -- only after
         # you have looked at the new collision and accepted it
-    F:\\envs\\sami\\python.exe tools\\gen_command_catalog.py --report       # counts, collisions, near-collisions
+    python tools\\gen_command_catalog.py --report       # counts, collisions, near-collisions
 """
 from __future__ import annotations
 

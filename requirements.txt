@@ -66,7 +66,7 @@ openwakeword>=0.6.0
 # absent from CI's clean `pip install -r requirements.txt`, which shipped a
 # broken frozen app -- PySide6 was the first ModuleNotFoundError to surface,
 # not the only one. Each pinned to the exact version installed in the dev
-# env (F:\envs\sami) at audit time; see tools/ci_smoke.py and the clean-venv
+# development environment at audit time; see tools/ci_smoke.py and the clean-venv
 # import check for how this is verified going forward. ---
 
 # Qt UI framework (samsara/ui/*_qt.py, ~48 files) -- PySide6-Addons and

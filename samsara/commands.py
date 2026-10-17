@@ -95,7 +95,7 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# The menu Ava is offered (queue 107 / Astra F1)
+# The menu Ava is offered (model command menu)
 #
 # One executable set, one menu source: ava_menu() below returns canonical ids
 # that execute_canonical() will accept right now -- builtin AND plugin, in an
@@ -436,7 +436,7 @@ class CommandExecutor:
         """None when `command_id` may run HERE, else (reason, detail).
 
         Pack membership and scope are matcher filters, which only the SPOKEN
-        path passes through (Astra F2): a model proposal, a scheduled repeat
+        path passes through (regression coverage): a model proposal, a scheduled repeat
         and a confirmed callback reach the effect without ever being matched.
         execution_policy.authorize() calls this so every route meets the same
         restriction, and the refusal is emitted like any other Denied.
@@ -533,7 +533,7 @@ class CommandExecutor:
 
         The single entry every route uses -- spoken match, model ACTION,
         scheduled repeat, confirmed callback -- so no caller can report a hit
-        the executor refused (Astra F1). An alias resolves to its canonical
+        the executor refused (regression coverage). An alias resolves to its canonical
         phrase. Returns a DispatchResult:
 
             COMPLETED  the effect ran

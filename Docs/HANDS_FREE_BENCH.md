@@ -12,17 +12,17 @@ device, running app state, or `config.json` is touched.
 
 By default, configuration is resolved in this order:
 DEFAULT_CONFIG fallback values, then the live values in
-C:\Users\Morne\.samsara\config.json, then the values in the --config JSON.
+~/.samsara/config.json, then the values in the --config JSON.
 An unreadable --config file silently falls back to DEFAULT_CONFIG.
 --stock-config skips the live file and uses the stock defaults. The
 --no-post-gates flag forces apply_post_gates to false, even if another
 configuration layer enables it.
 
 ```powershell
-F:\envs\sami\python.exe tools\hf_bench.py --corpus C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus --out bench\hf_current
+python tools\hf_bench.py --corpus path/to/hf_corpus --out bench\hf_current
 ```
 
-The default corpus is `C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus`.
+The default corpus is `path/to/hf_corpus`.
 The command writes Markdown and JSON beside the requested `--out` stem.
 If the manifest is absent, it reports that the real corpus is not present and
 does not load a model.
@@ -56,18 +56,18 @@ The requested live-config runs are:
 
 ~~~powershell
 # Run A: gates ON
-F:\envs\sami\python.exe tools\hf_bench.py --corpus C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus --out C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_live
+python tools\hf_bench.py --corpus path/to/hf_corpus --out bench/hf_bench_live
 
 # Run B: gates OFF
-F:\envs\sami\python.exe tools\hf_bench.py --corpus C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus --no-post-gates --out C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_nogates
+python tools\hf_bench.py --corpus path/to/hf_corpus --no-post-gates --out bench/hf_bench_nogates
 ~~~
 
 Both commands use the live configuration because neither passes
 --stock-config. Run A writes
-C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_live.md and
-C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_live.json. Run B writes
-C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_nogates.md and
-C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_nogates.json.
+bench/hf_bench_live.md and
+bench/hf_bench_live.json. Run B writes
+bench/hf_bench_nogates.md and
+bench/hf_bench_nogates.json.
 
 ## Media gain sweep
 
@@ -90,7 +90,7 @@ and the largest tested gain with zero false accepts, compared with the capture
 duck (`ducking.hands_free_level`, read from live config; fallback 0.15).
 
 ```powershell
-F:\envs\sami\python.exe tools\hf_bench.py --out perf_artifacts\hf_bench_media_gain_floor_silence --floor-label silence --media-gain 1.0 --media-gain 0.30 --media-gain 0.15 --media-gain 0.08 --media-gain 0.04 --media-gain 0.02 --media-gain 0.0
+python tools\hf_bench.py --out perf_artifacts\hf_bench_media_gain_floor_silence --floor-label silence --media-gain 1.0 --media-gain 0.30 --media-gain 0.15 --media-gain 0.08 --media-gain 0.04 --media-gain 0.02 --media-gain 0.0
 ```
 
 `tools\probes\hf_owner_gain_probe.py --gain 0.15` is the companion sanity
@@ -101,12 +101,12 @@ stream). Results of the 2026-09-10 sweep: `perf_artifacts/hf_bench_media_gain.md
 For A/B comparison:
 
 ```powershell
-F:\envs\sami\python.exe tools\hf_bench.py --corpus C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus --ab baseline.json candidate.json
+python tools\hf_bench.py --corpus path/to/hf_corpus --ab baseline.json candidate.json
 ```
 
 For the two requested runs, use:
-C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_live.json and
-C:\Users\Morne\Documents\Claude\hf_bench\hf_bench_nogates.json.
+bench/hf_bench_live.json and
+bench/hf_bench_nogates.json.
 The --ab arguments are the two JSON artifacts above. The printed delta is
 candidate minus baseline; negative false-accept and WER deltas are
 improvements.
@@ -143,10 +143,10 @@ not rise.
 
 ## Record and measure pre-roll contamination
 
-From `C:\Users\Morne\Projects\Samsara-dev`, record just the four new items:
+From `path/to/Samsara`, record just the four new items:
 
 ```powershell
-F:\envs\sami\python.exe tools\probes\hf_corpus_record.py --only speech_owner_over_media_leadin --lead-in 3
+python tools\probes\hf_corpus_record.py --only speech_owner_over_media_leadin --lead-in 3
 ```
 
 The recorder keeps the mic stream open and retains the last three seconds

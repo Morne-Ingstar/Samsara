@@ -1,4 +1,4 @@
-"""638 FINISH IT 1: end truncation preserves the fixed Full header."""
+"""Full display feedback: end truncation preserves the fixed Full header."""
 
 import pytest
 from PySide6.QtCore import Qt

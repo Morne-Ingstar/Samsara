@@ -1,10 +1,9 @@
-# Execution policy (queue 02c)
+# Execution policy
 
 `samsara/execution_policy.py` is the ONE choke point between "something
-decided to act" and an actual side effect. It answers Astra review
-2026-09-12 section 1 items 1 and 3 (a model could execute before any
-confirmation; no owner for cancellation) and section 5 item 3 (a stop path
-that does not wait on understanding).
+decided to act" and an actual side effect. It requires authorization before
+model effects, gives cancellation a request owner, and provides a stop path
+that does not wait on understanding.
 
 ## The decision
 
@@ -44,7 +43,7 @@ Inputs, in the order they are checked:
 may use its explicit read/ui classification with an unknown-metadata hint.
 An explicit model allow-list still denies excluded commands on every model route.
 
-### Owner decision (Morne, 2026-09-12)
+### Command classifications
 
 | spoken command | classification | exact | model | reason |
 |----------------|----------------|-------|-------|--------|
@@ -123,7 +122,7 @@ forwards a model's `CONFIRM <text>`, and a model SCHEDULE is asked as
   falls back to the registry's historical flat safe default.
 
 This replaced the `_UNSAFE_COMMANDS` name denylist in `ask_ollama.py`, which
-missed the real `enter` / `delete selection` commands (Astra MODEL_BYPASS).
+missed the real `enter` / `delete selection` commands (model authorization bypass).
 
 ### Model allow-list
 

@@ -1,6 +1,6 @@
 """CPU-only, torch-free speaker-verification experiment; no Samsara integration.
 
-Run with F:\\envs\\sami\\python.exe tools/probes/sv_feasibility.py --download-model.
+Run with python tools/probes/sv_feasibility.py --download-model.
 Only model/results files are written; the corpus is read-only.
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ MODEL_URL = ('https://github.com/k2-fsa/sherpa-onnx/releases/download/'
              'speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B.onnx')
 MODEL_BYTES = 29292684
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CORPUS = Path(r'C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus')
+DEFAULT_CORPUS = Path.home() / "Samsara-bench" / "hf_corpus"
 EXPECTED_LABELS = {'speech_owner': 6, 'speech_owner_over_media': 3,
                    'wake_over_media': 2, 'media_only': 3, 'nonspeech_body': 5,
                    'nonspeech_room': 4, 'silence': 3}

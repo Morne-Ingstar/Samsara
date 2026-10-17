@@ -17,7 +17,7 @@ the text level. Signature D now only fires when acoustically corroborated:
 every segment's no_speech_prob > 0.5 (near-silence). See dictation.py's
 Signature D comment block for the full rationale.
 
-Run with: F:\\envs\\sami\\python.exe tools\\test_hallucination_guard.py
+Run with: python tools\\test_hallucination_guard.py
 """
 
 import sys

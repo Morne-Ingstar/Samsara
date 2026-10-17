@@ -22,9 +22,9 @@ Reads ~/.samsara/shadow/intent-*.jsonl (or --dir / explicit files) and prints:
 Read-only: never modifies or uploads the log.
 
 Usage:
-  F:\\envs\\sami\\python.exe tools\\shadow_report.py
-  F:\\envs\\sami\\python.exe tools\\shadow_report.py --dir D:\\elsewhere --days 7
-  F:\\envs\\sami\\python.exe tools\\shadow_report.py C:\\Users\\me\\.samsara\\shadow\\intent-2026-09-14.jsonl
+  python tools\\shadow_report.py
+  python tools\\shadow_report.py --dir D:\\elsewhere --days 7
+  python tools\\shadow_report.py C:\\Users\\me\\.samsara\\shadow\\intent-2026-09-14.jsonl
 """
 from __future__ import annotations
 

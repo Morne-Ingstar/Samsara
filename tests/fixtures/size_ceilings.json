@@ -5,7 +5,7 @@
     "plugins/commands/show_numbers.py": 1982,
     "samsara/audio_ducking.py": 1545,
     "samsara/audio_engine/wake_consumer.py": 1688,
-    "samsara/execution_policy.py": 2026,
+    "samsara/execution_policy.py": 2025,
     "samsara/session_modes.py": 3372,
     "samsara/streaming.py": 3284,
     "samsara/ui/history_view.py": 1781,

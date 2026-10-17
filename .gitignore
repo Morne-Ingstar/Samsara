@@ -66,6 +66,17 @@ nul
 # Claude Code
 .claude/
 
+# Private agent instructions and investigation notes
+/AGENTS.md
+/CLAUDE.md
+/Docs/HANDS_FREE_GATES_FINDINGS.md
+/tools/ai_config_probe_findings.md
+/tools/archive/gen_review.py
+/tools/archive/home_bottom_renders.py
+/tools/archive/auto_accept_claude.ahk
+/tools/archive/linecount.py
+/tools/archive/patch_aec4.py
+
 # Internal dev notes
 SATURN_HANDOFF.md
 

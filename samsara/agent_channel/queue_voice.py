@@ -7,6 +7,7 @@ import io
 import json
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,9 +18,9 @@ from samsara.intent.normalize import parse_number
 from samsara.paths import samsara_home_dir
 
 
-DEFAULT_QUEUE = Path(r"C:\Users\Morne\Documents\Claude\queue")
-DEFAULT_REPORTS = Path(r"C:\Users\Morne\Documents\Claude\reports")
-DEFAULT_PYTHON = Path(r"F:\envs\sami\python.exe")
+DEFAULT_QUEUE = samsara_home_dir() / "agent_workspace" / "queue"
+DEFAULT_REPORTS = samsara_home_dir() / "agent_workspace" / "reports"
+DEFAULT_PYTHON = Path(sys.executable)
 _ID = re.compile(r"\d{2,3}[a-z]?", re.I)
 _PROMPT = re.compile(r"^(\d+[a-z]?)_.*\.md$", re.I)
 _CODE_BLOCK = re.compile(r"```.*?```", re.S)

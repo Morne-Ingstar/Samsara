@@ -1,15 +1,17 @@
 import json
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+
 # Load built-in commands
-with open(r'C:\Users\Morne\Projects\Samsara-dev\commands.json') as f:
+with (ROOT / "commands.json").open(encoding="utf-8") as f:
     cmds = json.load(f)['commands']
 
 # Load plugin commands
 import importlib.util, sys
-sys.path.insert(0, r'C:\Users\Morne\Projects\Samsara-dev')
+sys.path.insert(0, str(ROOT))
 
-plugin_dir = Path(r'C:\Users\Morne\Projects\Samsara-dev\plugins\commands')
+plugin_dir = ROOT / "plugins" / "commands"
 plugin_phrases = []
 for py in plugin_dir.glob('*.py'):
     if py.name.startswith('_'):

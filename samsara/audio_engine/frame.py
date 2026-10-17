@@ -1,8 +1,8 @@
 """Frame definition and FrameBus constants for the AudioCaptureEngine.
 
 All values marked [LOCKED] are binding per the frozen spec at
-C:\\Users\\Morne\\Documents\\Claude\\audiocaptureengine_01_spec_v2_FROZEN.md
-and must not be changed without reopening the ARC review process.
+Docs/ARCHITECTURE.md (audio engine)
+and must not be changed without reviewing the audio engine contract.
 
 Constants are the single source of truth for the entire audio_engine
 package. Nothing in consumers should hard-code these values.

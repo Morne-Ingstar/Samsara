@@ -49,7 +49,7 @@ def test_alive_unrelated_process_is_not_samsara():
 def test_alive_dev_mode_python_running_dictation_is_samsara():
     proc = MagicMock()
     proc.name.return_value = "python.exe"
-    proc.cmdline.return_value = ["F:\\envs\\sami\\python.exe", "dictation.py"]
+    proc.cmdline.return_value = ["C:\\test-env\\samsara\\python.exe", "dictation.py"]
     with patch("psutil.Process", return_value=proc):
         assert boot._is_samsara_process(5678) is True
 

@@ -17,11 +17,11 @@ Every generated asset is taskbar-facing, so 16-32 px use the heavy drawing
 (#small, tray_qt.TASKBAR_SMALL_MAX); 48 px and up use #regular.
 
 Usage:
-  F:\\envs\\sami\\python.exe tools\\gen_icons.py              regenerate assets
-  F:\\envs\\sami\\python.exe tools\\gen_icons.py --check      exit 1 if assets are stale
-  F:\\envs\\sami\\python.exe tools\\gen_icons.py --montage PATH
+  python tools\\gen_icons.py              regenerate assets
+  python tools\\gen_icons.py --check      exit 1 if assets are stale
+  python tools\\gen_icons.py --montage PATH
       16/24/32/48 px state sheet on dark and light taskbar backgrounds
-  F:\\envs\\sami\\python.exe tools\\gen_icons.py --recording-spin PATH
+  python tools\\gen_icons.py --recording-spin PATH
       the band-weight (recording) mark at eight rotations, 26/44/60/128 px,
       dark and light, to judge the nose and the 12 o'clock gap (42)
 """

@@ -5,7 +5,7 @@ synthetic data only, drives it from outside with Windows UI Automation plus
 one F19 toggle (cancelled with F20, so nothing is ever transcribed
 or pasted), and grabs each window by its exact DWM frame bounds.
 
-    F:\\envs\\sami\\python.exe tools\\capture_site_shots.py --out <dir>
+    python tools\\capture_site_shots.py --out <dir>
 
 Fence and privacy rules (queue 43):
   * Refuses to run if THIS checkout's dictation.py is already running or

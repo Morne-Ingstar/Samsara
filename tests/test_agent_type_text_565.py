@@ -437,7 +437,7 @@ def test_agent_name_cannot_supply_confirmation_instructions(rig, name):
 @pytest.mark.parametrize('name', ['Notion', 'Notebook', 'Nothing', 'Nobot', 'Noway',
     'Nonono', 'Claude Code'])
 def test_client_name_word_check_preserves_names_containing_short_words(name):
-    # FINISH IT 3 deliberately permits Nobot/Noway/Nonono: only whole-word no
+    # Confirmation deliberately permits Nobot/Noway/Nonono: only whole-word no
     # is blocked, since a no in the question pushes toward declining.
     assert agents._safe_name(name) == name
 

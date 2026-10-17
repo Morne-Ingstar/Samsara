@@ -8,7 +8,7 @@ daemon thread (same as production), so assertions that expect a call use a
 short poll-with-timeout rather than checking immediately after the
 triggering _process_frame() call.
 
-Run with: F:\\envs\\sami\\python.exe tools\\test_continuous_commit.py
+Run with: python tools\\test_continuous_commit.py
 """
 
 import sys

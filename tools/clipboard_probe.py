@@ -18,7 +18,7 @@ places on the clipboard among other formats), then:
    match the original.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\clipboard_probe.py
+    python tools\\clipboard_probe.py
 """
 from __future__ import annotations
 

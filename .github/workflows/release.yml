@@ -188,7 +188,7 @@ jobs:
       #
       # v0.20.0's Samsara-CUDA-Pack.zip (~1.05GB) was built locally by copying
       # cuDNN/cuBLAS/cuDART DLLs out of the LOCAL torch install at
-      # F:\envs\sami\...\torch\lib (see scripts\samsara.spec's INCLUDE_CUDA=1
+      # <python-env>\Lib\site-packages\torch\lib (see scripts\samsara.spec's INCLUDE_CUDA=1
       # branch, which reads those DLLs from site-packages\torch\lib). A
       # GitHub-hosted windows-latest runner has no GPU and no reason to carry
       # a CUDA-enabled torch install, so that source directory does not exist

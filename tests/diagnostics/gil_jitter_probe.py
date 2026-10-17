@@ -5,7 +5,7 @@ Silero VAD, and OpenWakeWord run concurrently — reproducing the real
 GIL pressure the AudioCaptureEngine will face in Model A.
 
 Usage:
-    F:\\envs\\sami\\python.exe tests/diagnostics/gil_jitter_probe.py
+    python tests/diagnostics/gil_jitter_probe.py
 
 Run 3 times in different audio environments and paste all outputs.
 This is a THROWAWAY diagnostic. It is not imported by anything and

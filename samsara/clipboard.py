@@ -442,7 +442,7 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
         # IsHungAppWindow only trips after ~5 s of unresponsiveness, so the
         # owner must also answer a WM_NULL ping within _OWNER_PING_TIMEOUT_MS.
         # Neither can interrupt a render that has already STARTED:
-        # GetClipboardData has no timeout (see reports/49).
+        # GetClipboardData has no timeout; isolate it from the caller.
         owner = _user32.GetClipboardOwner()
         if owner and (_user32.IsHungAppWindow(owner) or not _owner_answers_ping(owner)):
             logger.info("[CLIP] clipboard owner hung, skipping snapshot")

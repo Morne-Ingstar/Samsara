@@ -92,7 +92,7 @@ def _make_touch_stub(mode='toggle', active=True):
 
 class TestTouchSessionActivity:
     def test_resets_timer_on_fresh_speech_onset_when_active_and_toggle(self):
-        """2026-09-10 session policy (docs/HANDS_FREE_GATES_FINDINGS.md
+        """2026-09-10 session policy (Docs/ARCHITECTURE.md
         "Session policy" #2): only a fresh Silero speech onset extends
         toggle-session inactivity -- callers signal that explicitly via the
         speech_onset kwarg."""

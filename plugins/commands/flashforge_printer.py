@@ -15,7 +15,7 @@ Setup in samsara_config.json:
   "flashforge_ip": "192.168.1.50",
   "flashforge_serial": "EXAMPLE_SERIAL",
   "flashforge_check_code": "EXAMPLE_CODE",
-  "flashforge_print_file": "toy_gun.gcode"
+  "flashforge_print_file": "sample_cube.gcode"
 
 Protocol: FlashForge TCP M-code on port 8899.
 Tested on AD5X firmware v1.2.3.

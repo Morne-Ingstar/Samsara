@@ -5,7 +5,7 @@ tools/qt_threading_spike.py -- THROWAWAY architecture harness.
 Tests: Tk-main + Qt-background-thread viability on this machine.
 Does NOT import Samsara modules.
 
-Run: F:\envs\sami\python.exe tools\qt_threading_spike.py
+Run: python tools\qt_threading_spike.py
 
 Self-driving: after the Tk window appears the harness automatically steps
 through all seven test scenarios and then shuts down cleanly, printing a

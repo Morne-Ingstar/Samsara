@@ -10,7 +10,7 @@ the candidates for those three roles. It never invokes, focuses, types or
 clicks anything.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\probe_claude_window.py [--depth 14] [--max-nodes 4000]
+    python tools\\probe_claude_window.py [--depth 14] [--max-nodes 4000]
                                                      [--title Claude] [--out perf_artifacts/claude_uia.txt]
 """
 from __future__ import annotations

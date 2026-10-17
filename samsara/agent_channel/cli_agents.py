@@ -16,7 +16,7 @@ from samsara.agent_channel.claude_reply import spoken_form
 from samsara.paths import samsara_home_dir
 from samsara.runtime import thread_registry
 
-DEFAULT_CWD = Path(r"C:\Users\Morne\Documents\Claude")
+DEFAULT_CWD = Path.home()
 DEFAULT_PREAMBLE = ("This message was spoken aloud and your reply will be read aloud. "
                     "Answer in plain spoken sentences first; put any code, paths or lists after that.")
 _active: set[subprocess.Popen] = set()

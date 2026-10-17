@@ -12,7 +12,7 @@ This harness NEVER touches the real ~/.samsara -- every launch gets its own
 temp profile directory.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\frozen_smoke.py dist\\Samsara
+    python tools\\frozen_smoke.py dist\\Samsara
 
 Exit code 0 if every check passes, 1 otherwise. Prints one PASS/FAIL line
 per check.

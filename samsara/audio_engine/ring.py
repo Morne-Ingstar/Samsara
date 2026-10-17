@@ -2,14 +2,14 @@
 
 This is the transport core of the AudioCaptureEngine. All design decisions
 are frozen per the spec at:
-C:\\Users\\Morne\\Documents\\Claude\\audiocaptureengine_01_spec_v2_FROZEN.md
+Docs/ARCHITECTURE.md (audio engine)
 
 == Concurrency model (ACE-00 cleared, Model A) ==
 
 A single writer (the PortAudio capture thread, added in ACE-02) and many
 reader threads (WakeDetector, VAD, DictationSession, etc.) access the ring
 concurrently. NO locks exist on the read/write path. Locks on the critical
-audio path were identified by ARC as the mechanism by which a slow consumer
+audio path were identified during audio engine design as the mechanism by which a slow consumer
 could transitively stall capture — the lossy design exists precisely to
 break that dependency chain.
 

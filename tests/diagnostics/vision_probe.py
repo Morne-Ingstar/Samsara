@@ -3,7 +3,7 @@ Hemispheres vision probe — time Qwen2.5-VL on a real screenshot.
 Same pattern as ACE-00: a throwaway diagnostic that answers the
 gating question with a number.
 
-Run: F:\envs\sami\python.exe tests\diagnostics\vision_probe.py
+Run: python tests\diagnostics\vision_probe.py
 """
 
 import time

@@ -10476,7 +10476,7 @@
 {"accept": ["builtin.start_captions"], "id": "builtin.start_captions", "kind": "filler", "polarity": "positive", "text": "Can you start captions right now."}
 {"accept": ["builtin.start_captions"], "id": "builtin.start_captions", "kind": "filler", "polarity": "positive", "text": "can you start captions for me please"}
 {"id": "builtin.start_captions", "kind": "sentence", "polarity": "negative", "reject": "builtin.start_captions", "text": "our manager keeps asking whether anyone remembered to start captions last week"}
-{"id": "builtin.start_captions", "kind": "other_command", "polarity": "negative", "reject": "builtin.start_captions", "text": "start sigil"}
+{"id": "builtin.start_captions", "kind": "other_command", "polarity": "negative", "reject": "builtin.start_captions", "text": "start example"}
 {"id": "builtin.start_captions", "kind": "nonsense", "polarity": "negative", "reject": "builtin.start_captions", "text": "cobalt noodle captions lantern pickle"}
 {"accept": ["builtin.start_listening"], "id": "builtin.start_listening", "kind": "alias", "polarity": "positive", "text": "start listening"}
 {"accept": ["builtin.start_listening"], "id": "builtin.start_listening", "kind": "determiner", "polarity": "positive", "text": "start the listening"}
@@ -10516,7 +10516,7 @@
 {"accept": ["builtin.start_listening"], "id": "builtin.start_listening", "kind": "filler", "polarity": "positive", "text": "Can you start listening right now."}
 {"accept": ["builtin.start_listening"], "id": "builtin.start_listening", "kind": "filler", "polarity": "positive", "text": "can you start listening for me please"}
 {"id": "builtin.start_listening", "kind": "sentence", "polarity": "negative", "reject": "builtin.start_listening", "text": "honestly the whole point of the meeting was to start listening and nobody did"}
-{"id": "builtin.start_listening", "kind": "other_command", "polarity": "negative", "reject": "builtin.start_listening", "text": "start sigil"}
+{"id": "builtin.start_listening", "kind": "other_command", "polarity": "negative", "reject": "builtin.start_listening", "text": "start example"}
 {"id": "builtin.start_listening", "kind": "nonsense", "polarity": "negative", "reject": "builtin.start_listening", "text": "glimmer purple listening noodle pickle"}
 {"accept": ["builtin.start_narrator"], "id": "builtin.start_narrator", "kind": "alias", "polarity": "positive", "text": "start narrator"}
 {"accept": ["builtin.start_narrator"], "id": "builtin.start_narrator", "kind": "determiner", "polarity": "positive", "text": "start the narrator"}
@@ -10556,7 +10556,7 @@
 {"accept": ["builtin.start_narrator"], "id": "builtin.start_narrator", "kind": "filler", "polarity": "positive", "text": "Can you start narrator right now."}
 {"accept": ["builtin.start_narrator"], "id": "builtin.start_narrator", "kind": "filler", "polarity": "positive", "text": "can you start narrator for me please"}
 {"id": "builtin.start_narrator", "kind": "sentence", "polarity": "negative", "reject": "builtin.start_narrator", "text": "during the lecture she explained how to start narrator without breaking anything"}
-{"id": "builtin.start_narrator", "kind": "other_command", "polarity": "negative", "reject": "builtin.start_narrator", "text": "start sigil"}
+{"id": "builtin.start_narrator", "kind": "other_command", "polarity": "negative", "reject": "builtin.start_narrator", "text": "start example"}
 {"id": "builtin.start_narrator", "kind": "nonsense", "polarity": "negative", "reject": "builtin.start_narrator", "text": "thunderous quartz narrator pickle zeppelin"}
 {"accept": ["builtin.steam_downloads"], "id": "builtin.steam_downloads", "kind": "alias", "polarity": "positive", "text": "steam downloads"}
 {"accept": ["builtin.steam_downloads"], "id": "builtin.steam_downloads", "kind": "determiner", "polarity": "positive", "text": "steam the downloads"}

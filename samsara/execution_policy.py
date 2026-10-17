@@ -51,8 +51,7 @@ monotonic deadline. A new proposal supersedes and visibly cancels the old
 one; "yes" is accepted only as a complete utterance while the record is live
 (:func:`classify_reply` / :func:`answer_pending`); "wait" extends it once.
 
-Astra review 2026-09-12, section 1 items 1 and 3, and section 5 item 3;
-02_conversational_architecture.md sections 1, 5 and 7 step 1.
+See Docs/EXECUTION_POLICY.md for the authorization and cancellation contract.
 """
 from __future__ import annotations
 from samsara.log import describe_text
@@ -722,7 +721,7 @@ def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True)
 
 
 def _stop_all(app, reason, *, chip, bump):
-    """The stop path that does not wait on understanding (Astra section 5.3).
+    """The stop path that does not wait on understanding (regression coverage).
 
     Bumps the generation FIRST (so any worker that is mid-model-call or
     mid-resolution is stale before we touch anything else), then clears every
@@ -919,7 +918,7 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
     ex = executor if executor is not None else getattr(app, "command_executor", None)
 
     # 2b. Availability: an enabled pack, and a scope that is live HERE (queue
-    # 107 / Astra F2). The matcher applies both, but only the spoken path goes
+    # 107 / regression coverage). The matcher applies both, but only the spoken path goes
     # through the matcher -- a model proposal, a scheduled repeat and a
     # confirmed callback reach the effect without ever being matched, and used
     # to run past a restriction that blocked the same words spoken aloud. The
@@ -956,7 +955,7 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
     # makes the tool unavailable to a model.
     err = validate_args(schema, inv.args, route=inv.route, app=app)
     if (err and err[0] == "unvalidated" and not inv.args and risk in (RISK_READ, RISK_UI)):
-        # Queue 107 / Astra F1, narrowly: a proposal carrying NO arguments has
+        # Model command menu, narrowly: a proposal carrying NO arguments has
         # nothing to validate -- an ACTION line is the whole instruction (the
         # system prompt gives it no argument slot). Denying these made almost
         # every plugin offerable but unrunnable: "volume up" is declared safe
@@ -1638,7 +1637,7 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE, capture_path: 
 # (queue 63) and unknown-risk ones keep the NeedsConfirmation path. Only the
 # dictation lane opens windows; ordinary dictation never touches this code.
 #
-# Default 3.0 s, from the measurement in reports/69: a short utterance takes a
+# Default 3.0 s: a short utterance takes a
 # median 1.78 s (p90 2.41 s) from speech onset to dispatch, so a window cannot
 # wait for a cancel to be DECIDED; it only has to see it START (the hold), and
 # 3.0 s leaves room to notice the chip and begin speaking.

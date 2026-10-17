@@ -63,7 +63,7 @@ DELETED = "Deleted."
 MIN_TARGET = 44
 GRID = 12
 #: Three list rows (a name line plus a preview line each) at the 900x650
-#: default, with the editor open. Measured, not guessed -- see ui_proof/121.
+#: default, with the editor open. Measured with the editor open.
 _LIST_MIN_H = 150
 #: The editor is bounded so it cannot starve the list. A longer snippet
 #: scrolls inside the box; the PAGE still never scrolls.

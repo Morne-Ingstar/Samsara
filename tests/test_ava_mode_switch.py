@@ -1,6 +1,6 @@
 """Hands-free entry into AVA mode (2026-09-11 live-log incident).
 
-Three defects, all reproduced from C:\\Users\\Morne\\.samsara\\logs\\samsara.log:
+Three defects, all reproduced from C:\\TestUsers\\Example\\.samsara\\logs\\samsara.log:
 
   19:59:44  mode=command  "ava mode"  -> command_miss (beep, nothing happened)
   20:00:21  mode=dictate  "Ava mode." -> dictate_staged (typed as literal text)

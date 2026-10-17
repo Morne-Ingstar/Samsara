@@ -11,7 +11,7 @@ thread to settle, and saves a PNG. Same pattern as
 tools/wizard_screenshots.py.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\history_screenshots.py
+    python tools\\history_screenshots.py
 
 Output: C:\\Temp\\samsara_ui_proof\\*.png (same directory
 wizard_screenshots.py uses, so every UI screenshot lands in one place for

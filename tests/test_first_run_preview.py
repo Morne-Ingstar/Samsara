@@ -25,7 +25,7 @@ class _Process:
 @pytest.mark.parametrize(
     "args,cwd",
     [
-        ([r"F:\envs\sami\python.exe", r"C:\repo\dictation.py"], r"C:\repo"),
+        ([r"C:\test-env\samsara\python.exe", r"C:\repo\dictation.py"], r"C:\repo"),
         ([r"C:\Program Files\Samsara\Samsara.exe"], r"C:\Program Files\Samsara"),
     ],
     ids=["source", "frozen"],

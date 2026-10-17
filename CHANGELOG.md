@@ -450,8 +450,9 @@ From the 2026-09-13 hot-path reliability review; none are fixed in this beta.
 - **Lotus-wheel app icon** on the window, taskbar, and EXE, plus a taskbar
   AUMID for correct taskbar grouping. The tray icon keeps its animated status
   wheel by design — it is a live status indicator, not the static app icon.
-- **App lifecycle voice commands** — 9 new commands to start, stop, and
-  restart Strata, Ariadne, and the Sigil server by voice.
+<!-- Wording is a stand-in. -->
+- **App lifecycle voice commands** — commands to start, stop, and restart
+  configured applications by voice.
 - **In-app feedback workflow** — structured bug and beta-feedback reporting
   from Settings and always-on voice commands, with user-triggered safe
   diagnostics and Live Log access; logs, secrets, paths, devices, and
@@ -827,7 +828,7 @@ Focused on accessibility, voice-control surface area, and reliability. Adds a fl
 
 - **Config save no longer wipes external edits.** `save_config()` now deep-merges in-memory config over the on-disk file before writing. Previously, editing `config.json` externally while Samsara was running would silently lose those changes when Samsara exited and overwrote the file with its in-memory state. This was the root cause of the recurring "command packs disappear after restart" pattern.
 - **CUDA detection works correctly.** The Settings dropdown previously hid the CUDA option when `cublas64_12.dll` wasn't findable, which made it look like CUDA support was missing. Added README documentation and detection guidance. Samsara also no longer silently falls back to CPU at model load when the user explicitly selected CUDA — a clear log line surfaces what happened.
-- **Command mode (Right Ctrl)** now actually executes commands. A wrong-object `hasattr` guard in `CommandExecutor.process_text` was blocking every execution path. ARC tribunal review identified the root cause.
+- **Command mode (Right Ctrl)** now actually executes commands. A wrong-object `hasattr` guard in `CommandExecutor.process_text` was blocking every execution path.
 - **Click-to-execute in cheat sheet** uses the same code path as wake-word command mode (`force_commands=True`). Previously called a non-existent keyword argument and silently no-op'd.
 - **VAD/Silero error spam** — TorchScript exceptions from Silero VAD are now rate-limited (one log per 30s), the model state is reset on error to attempt recovery, and after 50 consecutive failures Samsara disables VAD for the session and runs on RMS-only speech detection. Previously dumped a 30-line traceback on every audio chunk during a state-corruption episode.
 - **Continuous mode** now reads from `continuous_speech_threshold` instead of `wake_word_config.audio.speech_threshold`. The wake threshold (typically 0.15) was too high for normal-volume speech, so continuous mode captured nothing.

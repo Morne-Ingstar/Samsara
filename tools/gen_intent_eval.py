@@ -19,8 +19,8 @@ entries (GENERATOR_ONLY_*) are absent from samsara/intent, so the coverage
 number includes phrasings the grammar was not told about.
 
 Usage:
-  F:\\envs\\sami\\python.exe tools\\gen_intent_eval.py            write the fixture
-  F:\\envs\\sami\\python.exe tools\\gen_intent_eval.py --check    exit 1 if stale
+  python tools\\gen_intent_eval.py            write the fixture
+  python tools\\gen_intent_eval.py --check    exit 1 if stale
 """
 from __future__ import annotations
 

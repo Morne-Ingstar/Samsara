@@ -7,8 +7,8 @@ tools/gen_command_catalog.py) stays the one machine-readable table. This tool
 only renders the queue-45 views of it as Markdown, deterministically.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\command_canonical_report.py               # Markdown to stdout
-    F:\\envs\\sami\\python.exe tools\\command_canonical_report.py --out FILE    # write FILE
+    python tools\\command_canonical_report.py               # Markdown to stdout
+    python tools\\command_canonical_report.py --out FILE    # write FILE
 
 Run with SAMSARA_HOME_DIR pointed at a scratch directory when a Samsara
 instance is running, so tooling never attaches a handler to its live log.

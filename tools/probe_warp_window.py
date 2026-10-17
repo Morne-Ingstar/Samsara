@@ -7,7 +7,7 @@ the probe then checks whether reply-like TextControl/DocumentControl nodes,
 an editable composer, or a Stop/streaming marker appear.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\probe_warp_window.py --watch-seconds 150
+    python tools\\probe_warp_window.py --watch-seconds 150
 """
 from __future__ import annotations
 
@@ -189,7 +189,7 @@ def main(argv=None) -> int:
     parser.add_argument("--interval", type=float, default=0.5)
     parser.add_argument("--depth", type=int, default=35)
     parser.add_argument("--max-nodes", type=int, default=3000)
-    parser.add_argument("--out", default=r"C:\Users\Morne\Documents\Claude\reports\318\artifacts\warp_uia_structure.txt")
+    parser.add_argument("--out", default="warp_uia_structure.txt")
     args = parser.parse_args(argv)
 
     try:

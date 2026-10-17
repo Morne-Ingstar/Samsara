@@ -13,7 +13,7 @@ Checks per command:
 Exit code: 0 if all commands are OK, 1 if any [BROKEN] entries exist.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools/test_commands.py
+    python tools/test_commands.py
 """
 
 import contextlib

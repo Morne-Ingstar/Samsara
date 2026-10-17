@@ -56,7 +56,7 @@ version of the workarounds, for a human doing the take by hand:
 Dry run (default; nothing is executed, Samsara may stay running):
 
 ```
-F:\envs\sami\python.exe tools\demo_rehearsal.py
+python tools\demo_rehearsal.py
 ```
 
 Writes `perf_artifacts/demo_rehearsal.md` and prints it. Every line of the
@@ -87,7 +87,7 @@ samsara". The report lists any override it used.
 Live run (owner only):
 
 ```
-F:\envs\sami\python.exe tools\demo_rehearsal.py --live
+python tools\demo_rehearsal.py --live
 ```
 
 Refuses unless Samsara is running and the console is interactive. Then, one

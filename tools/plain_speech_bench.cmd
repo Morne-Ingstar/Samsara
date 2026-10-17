@@ -3,15 +3,27 @@ setlocal
 cd /d "%~dp0.."
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONDONTWRITEBYTECODE=1"
-set "BENCH_PYTHON=F:\envs\sami\python.exe"
-if not exist "%BENCH_PYTHON%" set "BENCH_PYTHON=%~dp0..\.venv\Scripts\python.exe"
-if not exist "%BENCH_PYTHON%" (
-  echo This benchmark needs the development Python environment and Samsara source.
-  echo The packaged laptop build needs a benchmark entry point in a later build.
-  pause
-  exit /b 2
+set "PROJECT_DIR=%~dp0.."
+set "PYTHON_ARGS=%SAMSARA_PYTHON_ARGS%"
+if defined SAMSARA_PYTHON (
+    set "PYTHON_EXE=%SAMSARA_PYTHON:"=%"
+) else if exist "%PROJECT_DIR%\.venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%PROJECT_DIR%\.venv\Scripts\python.exe"
+) else (
+    where py >nul 2>nul
+    if not errorlevel 1 (
+        set "PYTHON_EXE=py"
+        set "PYTHON_ARGS=-3.11"
+    ) else (
+        where python >nul 2>nul
+        if not errorlevel 1 set "PYTHON_EXE=python"
+    )
 )
-"%BENCH_PYTHON%" "%~dp0plain_speech_bench.py" --output-dir "%USERPROFILE%\Documents\Samsara-bench"
+if not defined PYTHON_EXE (
+    echo Python was not found. Set SAMSARA_PYTHON to a Python 3.11 executable.
+    exit /b 1
+)
+"%PYTHON_EXE%" %PYTHON_ARGS% "%~dp0plain_speech_bench.py" --output-dir "%USERPROFILE%\Documents\Samsara-bench"
 set "BENCH_EXIT=%ERRORLEVEL%"
 if exist "%USERPROFILE%\Documents\Samsara-bench" start "" explorer.exe "%USERPROFILE%\Documents\Samsara-bench"
 if not "%BENCH_EXIT%"=="0" pause

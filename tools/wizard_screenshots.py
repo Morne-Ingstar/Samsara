@@ -6,9 +6,9 @@ since this runs standalone outside the app), shows it, waits ~500ms for
 layout/paint to settle, and saves a PNG.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\wizard_screenshots.py
+    python tools\\wizard_screenshots.py
 
-Output: C:\\Users\\Morne\\Documents\\Claude\\ui_proof\\*.png
+Output: ui_proof//*.png
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtCore import Qt
 
-OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\ui_proof")
+OUT_DIR = Path(__file__).resolve().parents[1] / "ui_proof"
 
 
 class _FakeApp:

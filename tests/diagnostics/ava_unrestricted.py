@@ -14,7 +14,7 @@ diagnostic.
 Multi-turn: unlike cloud_llm.send() (single-shot), this keeps full
 conversation history so it behaves like a normal chat with DeepSeek.
 
-Run:  F:\envs\sami\python.exe tests\diagnostics\ava_unrestricted.py
+Run:  python tests\diagnostics\ava_unrestricted.py
 Quit: type  /quit   (or Ctrl+C)
 Reset conversation:  /reset
 Show the active system prompt:  /system
@@ -32,7 +32,6 @@ def _find_config():
     candidates = [
         Path(os.environ.get("APPDATA", "")) / "DictationApp" / "config.json",
         Path.home() / "AppData" / "Local" / "DictationApp" / "config.json",
-        Path(r"C:\Users\Morne\AppData\Local\DictationApp\config.json"),
     ]
     for c in candidates:
         if c and c.is_file():

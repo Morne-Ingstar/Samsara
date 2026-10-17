@@ -48,7 +48,7 @@ class TestHandleSessionDispatchOutcome:
         assert "scratch_refuse" in stub._sounds
 
     def test_rejected_utterance_does_not_touch_inactivity_timer(self):
-        """2026-09-10 session policy (docs/HANDS_FREE_GATES_FINDINGS.md
+        """2026-09-10 session policy (Docs/ARCHITECTURE.md
         "Session policy" #2): _touch_session_activity only extends the
         timer on a fresh Silero speech onset. _handle_session_dispatch_
         outcome calls it bare (no speech_onset=True) for every outcome, so

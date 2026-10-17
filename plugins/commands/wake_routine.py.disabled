@@ -24,9 +24,7 @@ _overlay_process = None
 
 OVERLAY_SCRIPT = str(Path(__file__).parent.parent / "assets" / "sleep_overlay.py")
 
-DEFAULT_APPS = [
-    r"C:\Users\Morne\AppData\Local\Programs\Obsidian\Obsidian.exe",
-]
+DEFAULT_APPS = []  # Set wake_routine.apps explicitly for this machine.
 
 DEFAULT_TABS = [
     "https://claude.ai",
@@ -67,7 +65,7 @@ def _run_routine(app):
     time.sleep(0.3)
 
     # Step 1: Greeting popup (auto-dismisses after 4 seconds)
-    name = app.config.get('user_name', 'Morne')
+    name = app.config.get('user_name', 'there')
     try:
         greeting_ps = f'''
 Add-Type -AssemblyName PresentationFramework

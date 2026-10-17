@@ -11,7 +11,7 @@ this). It is the prerequisite for Move A's intent-gate shadow inside DICTATE.
 
 ## Source of truth
 
-The catalog is built **live** through the queue-15 path:
+The catalog is built **live** from the command registry:
 `command_catalog.catalog_from_registry_rows(CommandMatcher.list_commands())`
 (`samsara.intent.resolve.load_records`). The rows path skips the
 "handler reads `remainder`" argument inference, so `load_records` re-applies
@@ -201,6 +201,6 @@ It asserts:
 * tier 1+2 p99 and max are under budget.
 
 ```
-F:\envs\sami\python.exe tools\gen_intent_eval.py
-F:\envs\sami\python.exe -m pytest tests/test_intent_grammar.py tests/test_intent_grammar_eval.py -q -p no:cacheprovider
+python tools\gen_intent_eval.py
+python -m pytest tests/test_intent_grammar.py tests/test_intent_grammar_eval.py -q -p no:cacheprovider
 ```

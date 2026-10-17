@@ -12,7 +12,7 @@ two things a palette switch is most likely to break:
     nobody has to remember to look.
 
 Usage:
-    F:\\envs\\sami\\python.exe tools\\theme_proof.py
+    python tools\\theme_proof.py
 
 Output: ui_proof/147/<surface>_<theme>.png plus proof.json with the table.
 """

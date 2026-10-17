@@ -2,7 +2,7 @@
 
 ## CPU build: CI-built and CI-verifiable
 
-- Before tagging, run `F:\envs\sami\python.exe tools\probes\inject_matrix.py --gate` on the machine that will produce the build.
+- Before tagging, run `python tools\probes\inject_matrix.py --gate` on the machine that will produce the build.
 
 Pushing a version tag (`v*`) triggers `.github/workflows/release.yml` on a
 `windows-latest` GitHub-hosted runner:

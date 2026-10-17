@@ -23,7 +23,7 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
         r"^\| `([^`]+)` \| (KEEP|DROP) \| ([^|]+) \|$",
         DECISIONS.read_text(encoding="utf-8"), re.MULTILINE,
     )
-    # The saved 359 audit predates 372's rename and later config-only keys.
+    # The fixed fixture retains the legacy speech key for migration coverage.
     decisions = [item for item in decisions if item[0] != "feedback.spoken_notices"]
     decisions.append(("tts.feedback_level", "DROP",
                       "The Voice feedback row and its choices explain the speech levels."))
@@ -33,7 +33,7 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
     }.items():
         if key in SETTINGS_SCHEMA:
             decisions.append((key, "DROP", reason))
-    # 397 restores the distinct debugging guidance that 359 dropped.
+    # Timing diagnostics require their own explanation.
     decisions = [
         (key, "KEEP", "Timing logs are for debugging and contain no dictated text.")
         if key == "diagnostics.stage_timing" else (key, decision, reason)
@@ -54,7 +54,7 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
             assert help_data["docs"] == f"https://morneis.com/samsara/docs/settings/#{key}"
             assert key in anchors, key
 
-    # Section D calls these out as having no ordinary Settings page row.
+    # Config-only entries still need a documented home or an explicit reason.
     no_home = set(re.findall(r"^\| `([^`]+)` \| config\.json only \|", audit, re.MULTILINE))
     no_home |= {
         "tasks.todoist.enabled", "tasks.todoist.api_token", "alarms.enabled",

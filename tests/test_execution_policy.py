@@ -6,7 +6,7 @@ Covers, in order:
   * the risk classifier (built-in type + keys, ACTION2 verbs, Smart Actions
     tiers, plugin metadata -- unknown is never safe)
   * the policy table (route x risk -> Allowed / NeedsConfirmation / Denied)
-  * Astra 2026-09-12 MODEL_BYPASS payloads (+ canonical synonyms): no effect
+  * regression coverage payloads (+ canonical synonyms): no effect
   * CANCEL_THEN_LATE_RESPONSE: a model answer after "ava cancel" does nothing
   * exit / re-enter with a queued item: nothing runs
   * unlisted tool id and out-of-range argument -> Denied
@@ -249,7 +249,7 @@ class TestPolicyTable:
 
 
 # ---------------------------------------------------------------------------
-# 3. Astra MODEL_BYPASS payloads: nothing runs before a confirmation
+# 3. regression coverage payloads: nothing runs before a confirmation
 # ---------------------------------------------------------------------------
 
 # (payload, expected outcome): "confirm" = staged in the pending slot for a
@@ -448,7 +448,7 @@ class TestPluginPolicy:
         only): a read/ui command called with NO arguments has nothing to
         validate, and an ACTION line has no argument slot at all. Denying it
         made almost every plugin -- "volume up" included -- offerable to Ava
-        but impossible for her to run, which is Astra F1. Arguments without a
+        but impossible for her to run, which is regression coverage. Arguments without a
         schema are still refused, and write/destructive/unclassified commands
         are still "unvalidated" (the tests below)."""
         assert isinstance(
@@ -477,7 +477,7 @@ class TestPluginPolicy:
 
 
 # ---------------------------------------------------------------------------
-# 6. CANCEL_THEN_LATE_RESPONSE (Astra probe): the generation is the owner
+# 6. CANCEL_THEN_LATE_RESPONSE (regression coverage): the generation is the owner
 # ---------------------------------------------------------------------------
 
 def _capture_spawn(monkeypatch):
@@ -545,7 +545,7 @@ class TestCancelThenLateResponse:
 
 
 # ---------------------------------------------------------------------------
-# 7. Stop path independent of understanding (Astra section 5.3)
+# 7. Stop path independent of understanding (regression coverage)
 # ---------------------------------------------------------------------------
 
 def _dictation_app(executor):

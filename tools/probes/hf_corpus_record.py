@@ -21,7 +21,7 @@ from pathlib import Path
 SAMPLE_RATE = 16000
 CHANNELS = 1
 SAMPLE_WIDTH = 2
-DEFAULT_OUT_DIR = Path(r"C:\Users\Morne\Documents\Claude\voice_samples")
+DEFAULT_OUT_DIR = Path.home() / "Samsara-bench"
 
 READ_SENTENCES = [
     "The quick brown fox crossed the quiet bridge before sunrise.",

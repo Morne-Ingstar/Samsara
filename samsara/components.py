@@ -79,7 +79,7 @@ class ComponentNotInstalled(RuntimeError):
     """A user-selected optional feature has not been installed yet."""
 
 
-# Stand-in owner wording; tracked in reports/612/ASK.json.
+# Stand-in owner wording; pending wording review.
 RESTART_INSTALL_MESSAGE = "Restart Samsara to finish installing."
 INSTALL_FAILED_MESSAGE = "Could not install. Please try again."
 PENDING_FAILED_MESSAGE = "Could not finish installing. Close other Samsara windows, then restart Samsara."

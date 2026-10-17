@@ -28,8 +28,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-DEFAULT_CORPUS = Path(r"C:\Users\Morne\Documents\Claude\voice_samples\hf_corpus")
-LIVE_CONFIG_PATH = Path(r"C:\Users\Morne\.samsara\config.json")
+DEFAULT_CORPUS = Path.home() / "Samsara-bench" / "hf_corpus"
+LIVE_CONFIG_PATH = Path.home() / ".samsara" / "config.json"
 DEFAULT_CONFIG = {
     "model_size": "base",
     "language": "en",

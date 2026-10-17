@@ -1,6 +1,6 @@
 """Mic-loss recovery when the device name is ambiguous (2026-09-12 incident).
 
-Live evidence, C:\\Users\\Morne\\.samsara\\logs\\samsara.log 18:57:39-18:58:39:
+Live evidence, C:\\TestUsers\\Example\\.samsara\\logs\\samsara.log 18:57:39-18:58:39:
 
     [ACE] Input stream died unexpectedly -- entering recovery
     [ACE] Opening stream: device='Analogue 1 + 2 (Focusrite USB Audio)' ...

@@ -520,7 +520,7 @@ _pending_action = None
 _pending_action_lock = threading.Lock()
 _ollama_up = False
 
-# Queue 110 / Astra F7. Every live schedule owns its OWN stop event, held by
+# Queue 110 / regression coverage. Every live schedule owns its OWN stop event, held by
 # its own loop closure and never touched by anyone else's start. The single
 # shared threading.Event this replaced was signalled by _stop_schedule() and
 # then immediately cleared by the replacement's _start_schedule(), so an old
@@ -1074,7 +1074,7 @@ _CHIP_CROSS = chr(0x2717)
 
 @dataclass(frozen=True)
 class TurnOutcome:
-    """What one model response actually DID (queue 107 / Astra F1).
+    """What one model response actually DID (model command menu).
 
     handle_response() returns this instead of None, so no caller can call a
     refused action a hit: the chip, the spoken refusal and the command
@@ -1595,7 +1595,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
     # Build fully-resolved system prompt
     global _system_prompt_logged
     if system and "{COMMAND_LIST}" in system:
-        # ONE menu source (queue 107 / Astra F1): every name here is one the
+        # ONE menu source (model command menu): every name here is one the
         # executor will accept, builtin AND plugin, ranked by relevance to
         # this very prompt and bounded by a character budget. The old
         # `sorted(names)[:100]` was builtin-only and cut the alphabet at
@@ -2034,7 +2034,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
     if structured is not None: return structured
 
     # The legacy executable protocol ("EXECUTE <free text>") is gone
-    # (Astra 2026-09-12 section 1 item 1): it ran before any confirmation.
+    # (regression coverage item 1): it ran before any confirmation.
     # A model still emitting it gets a refusal, not an effect.
     if response.startswith("EXECUTE "):
         execution_policy._emit(app, Invocation(response[8:].strip().lower(), route=Route.MODEL,
@@ -2292,7 +2292,7 @@ def _execute_safe(app, action):
             except Exception as e:
                 print(f"[AVA SCHEDULER] Command error: {e}")
                 return
-            # Queue 107 / Astra F2: a repeat that is now refused (its pack was
+            # Model command menu: a repeat that is now refused (its pack was
             # switched off, it is not live here, the policy says no) is
             # reported, not silently retried on a timer. A scope that may come
             # back only skips this tick; everything else stops the schedule.
@@ -3047,7 +3047,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     # 3 s on the Ollama path and never checked the cloud path at all): the
     # request itself is the check, and ask_model() records its failure.
 
-    # Request identity (Astra 2026-09-12 section 1 item 3): captured NOW.
+    # Request identity (regression coverage item 3): captured NOW.
     # "ava cancel", session exit, sleep and the stop path bump it; a model
     # response that lands afterwards is dropped here and, if it somehow
     # reaches an executor anyway, Denied(stale) at the choke point.
