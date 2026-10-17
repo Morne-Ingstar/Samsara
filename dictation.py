@@ -4660,30 +4660,13 @@ class DictationApp:
                     entry_type="dictation",
                 )
                 self._notify_main_window(display)
-            return InjectionDelivery(formatted, confirmed=delivery_confirmed)
+            return InjectionDelivery(formatted, confirmed=delivery_confirmed,
+                                     undo_unit=getattr(self, '_undo_unit', None))
 
-        def _remove_chars_fn(n: int) -> bool:
-            # Queue 50 (ARC audit5b): was n x pyautogui.hotkey('shift','left')
-            # + press('delete'). Measured (reports/50): pyautogui sends arrows
-            # with scan code 0 and no extended-key flag and sleeps PAUSE=0.1 s
-            # after every call, so 40 characters took 4.1 s and -- on a plain
-            # text control and on a target that samples Shift late -- selected
-            # nothing or deleted the wrong character. Paced Backspace carries
-            # no modifier state and re-checks the target window between
-            # batches: 40 characters in 0.14 s, exact on all three targets.
-            verdict = injection_safety.window_integrity()
-            if verdict.blocked:
-                logger.warning('[SESSION] scratch-that refused: foreground window is elevated (%s)',
-                               verdict.describe())
-                return False
-            start_hwnd = _get_foreground_hwnd()
-            deleted, why = injection_safety.delete_backwards(
-                n, still_target=lambda: start_hwnd is not None and _get_foreground_hwnd() == start_hwnd)
-            if why != 'done':
-                logger.warning('[SESSION] scratch-that stopped after %d of %d characters: %s',
-                               deleted, n, why)
-                return False
-            return True
+        from functools import partial
+        from samsara.utterance_undo import remove_legacy_chars
+        _remove_chars_fn = partial(remove_legacy_chars, injection_safety=injection_safety,
+                                   foreground_hwnd=_get_foreground_hwnd, logger=logger)
 
         _MODE_EARCONS = {
             SessionMode.COMMAND: 'mode_command',
@@ -4859,6 +4842,7 @@ class DictationApp:
             live_surface_enabled=listening_display.run_display(self).full,
         )
         tutorial_capture.install(self._session_mode_manager)
+        self._session_mode_manager._require_unit_undo = True
         from samsara.hands_free_delivery import HandsFreeDelivery
         self._session_mode_manager._hands_free_delivery = HandsFreeDelivery(self)
         from samsara.config_schema import spoken_notices_for_level
@@ -9973,6 +9957,9 @@ class DictationApp:
             self,
             get_foreground_hwnd_fn=_get_foreground_hwnd,
         )
+
+    def redo_last_dictation(self):
+        return _paste.redo_last_dictation(self)
 
     def _report_correction_dialog(self):
         """Show the correction-reporting dialog (must be called on the Qt thread)."""

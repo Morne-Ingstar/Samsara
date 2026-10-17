@@ -27,6 +27,131 @@ _WAKE_PRIMER_DELAY = 0.12
 UNVERIFIED_DELIVERY = "Sent, but not confirmed. Your words are in History."
 
 
+def _editor_snapshot():
+    """Bounded, fail-closed proof for native Edit controls; never log contents.
+
+    Unknown/custom/password controls have no proof. Input time also catches a
+    caret moved away and back, which comparing the final selection would miss.
+    Indices and payloads use UTF-16 units, as EM_GETSEL does.
+    """
+    try:
+        from ctypes import wintypes as w
+        from samsara.clipboard import _GUIThreadInfo, _user32 as u
+        u.GetWindowLongW.argtypes = [w.HWND, ctypes.c_int]
+        u.GetWindowLongW.restype = w.LONG
+        class LastInput(ctypes.Structure):
+            _fields_ = [('size', w.UINT), ('tick', w.DWORD)]
+        tick = LastInput(ctypes.sizeof(LastInput), 0)
+        if not u.GetLastInputInfo(ctypes.byref(tick)):
+            return None
+        window = u.GetForegroundWindow()
+        thread = u.GetWindowThreadProcessId(window, None)
+        info = _GUIThreadInfo(cbSize=ctypes.sizeof(_GUIThreadInfo))
+        if not thread or not u.GetGUIThreadInfo(thread, ctypes.byref(info)):
+            return None
+        control = info.hwndFocus
+        name = ctypes.create_unicode_buffer(256)
+        if not control or not u.GetClassNameW(control, name, len(name)):
+            return None
+        if name.value.lower() != 'edit' or u.GetWindowLongW(control, -16) & 0x20:
+            return None
+        if not injection_safety.window_integrity(control).confirmed_ok:
+            return None
+        def send(message, wp=0, lp=0):
+            result = ctypes.c_size_t()
+            if not u.SendMessageTimeoutW(control, message, wp, lp, 0x23, 200,
+                                         ctypes.byref(result)):
+                raise RuntimeError('editor unavailable')
+            return result.value
+        length = send(0x000E)  # WM_GETTEXTLENGTH
+        if length > 1_000_000:
+            return None
+        text = ctypes.create_unicode_buffer(length + 1)
+        send(0x000D, length + 1, ctypes.addressof(text))
+        start, end = w.DWORD(), w.DWORD()
+        send(0x00B0, ctypes.addressof(start), ctypes.addressof(end))
+        final_tick = LastInput(ctypes.sizeof(LastInput), 0)
+        if not u.GetLastInputInfo(ctypes.byref(final_tick)) or final_tick.tick != tick.tick:
+            return None
+        current = _GUIThreadInfo(cbSize=ctypes.sizeof(_GUIThreadInfo))
+        if (u.GetForegroundWindow() != window
+                or not u.GetGUIThreadInfo(thread, ctypes.byref(current))
+                or current.hwndFocus != control):
+            return None
+        return (window, control, text.value.encode('utf-16-le'), start.value, end.value, tick.tick)
+    except Exception:
+        return None
+
+
+class DictationUnit:
+    """One verified insertion, removed/restored with one native replacement.
+
+    No Ctrl+Z guess, global keystroke or character-at-a-time deletion. A
+    selection replacement is deliberately ineligible: it may have displaced
+    user text. Receipts are memory-only and expire with their owning stack.
+    """
+    def __init__(self, before, after, text):
+        self.before, self.after = before, after
+        self.text = text
+        self.expected = after
+        self.removed = False
+
+    @classmethod
+    def capture(cls, before, after, text):
+        if before is None or after is None or before[:2] != after[:2]:
+            return None
+        payload = text.encode('utf-16-le')
+        offset = before[3] * 2
+        if (before[3] != before[4] or not payload
+                or after[2] != before[2][:offset] + payload + before[2][offset:]
+                or after[3] != after[4] or after[3] != before[3] + len(payload) // 2):
+            return None
+        return cls(before, after, text)
+
+    def change(self, *, redo=False):
+        try:
+            return self._change(redo=redo)
+        except Exception:
+            self.expected = None
+            return False
+
+    def _change(self, *, redo=False):
+        if self.removed != redo or self.expected is None:
+            return False
+        if _editor_snapshot() != self.expected:
+            return False
+        initial = self.expected
+        from samsara.clipboard import _user32 as u
+        offset = self.before[3]
+        end = offset if redo else offset + len(self.text.encode('utf-16-le')) // 2
+        control = self.expected[1]
+        def send(message, wp, lp):
+            result = ctypes.c_size_t()
+            return bool(u.SendMessageTimeoutW(control, message, wp, lp, 0x23, 200,
+                                              ctypes.byref(result)))
+        if not send(0x00B1, offset, end):  # EM_SETSEL
+            return False
+        selected = _editor_snapshot()
+        if (selected is None or selected[:3] != self.expected[:3]
+                or selected[3:5] != (offset, end) or selected[5] != self.expected[5]):
+            self.expected = None
+            return False
+        replacement = ctypes.create_unicode_buffer(self.text if redo else '')
+        if not send(0x00C2, 1, ctypes.addressof(replacement)):  # EM_REPLACESEL
+            self.expected = None  # uncertain dispatch must never be retried
+            return False
+        actual = _editor_snapshot()
+        wanted = self.after if redo else self.before
+        self.expected = actual
+        if actual is None or actual[:5] != wanted[:5] or actual[5] != selected[5]:
+            self.expected = None
+            return False
+        self.removed = not redo
+        if redo:
+            self.before, self.after = initial, actual
+        return True
+
+
 def foreground_process_name() -> str:
     """Return the lowercase image name of the focused window's process."""
     try:
@@ -91,6 +216,9 @@ def paste_preserving_clipboard(
     get_foreground_hwnd_fn=_get_foreground_hwnd,
 ):
     """Paste text through the app's guarded clipboard/type delivery seam."""
+    app._unit_before = None
+    app._undo_unit = None
+    app._redo_unit = None
     # Queue 50: the single delivery chokepoint (hold, wake, session commit)
     # refuses a window Windows will not let us type into. Callers with
     # their own announcement (session outcome, hold path) check earlier;
@@ -130,6 +258,7 @@ def paste_preserving_clipboard(
             )
             return _result(False, False)
         typed_hwnd = get_foreground_hwnd_fn()
+        app._unit_before = _editor_snapshot()
         if type_text_unicode_fn(text):
             app._record_undoable_paste(text, target_hwnd=typed_hwnd)
             app.adaptive_learner.record_transcription(text)
@@ -163,6 +292,7 @@ def paste_preserving_clipboard(
         if before_paste is not None and not before_paste():
             return False
         paste_target['hwnd'] = get_foreground_hwnd_fn()
+        app._unit_before = _editor_snapshot()
         return True
 
     typed_fallback_used = {"value": False}
@@ -288,6 +418,10 @@ def record_undoable_paste(
 ):
     """Remember a paste and the exact window eligible for native undo."""
     app._last_dictation_text = text
+    app._undo_unit = DictationUnit.capture(
+        getattr(app, '_unit_before', None), _editor_snapshot(), text)
+    app._unit_before = None
+    app._redo_unit = None
     app._last_dictation_length = len(text)
     app._last_dictation_hwnd = (
         get_foreground_hwnd_fn()
@@ -310,6 +444,8 @@ def clear_undo(app):
     app._last_dictation_text = None
     app._last_dictation_length = 0
     app._last_dictation_hwnd = None
+    app._undo_unit = None
+    app._redo_unit = None
     if app._undo_timer is not None:
         app._undo_timer.cancel()
         app._undo_timer = None
@@ -339,6 +475,23 @@ def undo_last_dictation(app, *, get_foreground_hwnd_fn=_get_foreground_hwnd):
             app._show_outcome_chip('Undo: go back to where it was typed', 'error')
         return False
 
+    # Real delivery always installs this field, including a failed proof.
+    # Legacy embedders without receipts retain their native-undo interface.
+    if hasattr(app, '_undo_unit'):
+        unit = app._undo_unit
+        if unit is None or not unit.change():
+            app.play_sound('error')
+            if callable(getattr(app, '_show_outcome_chip', None)):
+                app._show_outcome_chip('Cannot undo safely here', 'error')
+            return False
+        app._clear_undo()
+        app._redo_unit = unit
+        app._arm_undo_timer()
+        app.play_sound('success')
+        if callable(getattr(app, '_show_outcome_chip', None)):
+            app._show_outcome_chip('Undone', 'success')
+        return True
+
     text = app._last_dictation_text
     try:
         pyautogui.hotkey('ctrl', 'z')
@@ -352,4 +505,22 @@ def undo_last_dictation(app, *, get_foreground_hwnd_fn=_get_foreground_hwnd):
     app._clear_undo()
     if callable(getattr(app, '_show_outcome_chip', None)):
         app._show_outcome_chip(f'Undid: {text[:40]}', 'success')
+    return True
+
+
+def redo_last_dictation(app):
+    """Restore only Samsara's last verified removed unit, never Ctrl+Y."""
+    unit = getattr(app, '_redo_unit', None)
+    if unit is None or not unit.change(redo=True):
+        app.play_sound('error')
+        app._show_outcome_chip('Cannot redo safely here', 'error')
+        return False
+    app._redo_unit = None
+    app._undo_unit = unit
+    app._last_dictation_text = unit.text
+    app._last_dictation_length = len(unit.text)
+    app._last_dictation_hwnd = unit.after[0]
+    app._arm_undo_timer()
+    app.play_sound('success')
+    app._show_outcome_chip('Redone', 'success')
     return True

@@ -314,6 +314,12 @@
       "description": "Redoes last action.",
       "pack": "core"
     },
+    "redo that": {
+      "type": "method",
+      "method": "redo_last_dictation",
+      "description": "Restores the last dictated unit removed by Samsara.",
+      "pack": "core"
+    },
     "save": {
       "type": "hotkey",
       "keys": [

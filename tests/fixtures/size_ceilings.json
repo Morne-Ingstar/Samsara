@@ -1,12 +1,12 @@
 {
   "ceilings": {
-    "dictation.py": 13104,
+    "dictation.py": 13091,
     "plugins/commands/ask_ollama.py": 3499,
     "plugins/commands/show_numbers.py": 1983,
     "samsara/audio_ducking.py": 1545,
     "samsara/audio_engine/wake_consumer.py": 1688,
     "samsara/execution_policy.py": 2026,
-    "samsara/session_modes.py": 4315,
+    "samsara/session_modes.py": 4291,
     "samsara/streaming.py": 3284,
     "samsara/ui/history_view.py": 1781,
     "samsara/ui/home_qt.py": 2482,

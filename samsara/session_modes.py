@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Callable, Optional, Union
 
 from samsara.draft_document import DraftDocument
+from samsara.utterance_undo import UtteranceUndoMixin
 from samsara.draft_clear_undo import ClearDraftUndo
 from samsara.stage_timing import current_stage_timing as _current_stage_timing
 
@@ -1399,6 +1400,7 @@ class InjectionDelivery:
     """Text sent by an injector, plus whether the target accepted it."""
     text: str
     confirmed: bool
+    undo_unit: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -1741,7 +1743,7 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind == "dictate_commit_unavailable":
         return ("refused: nothing staged", "warning")
     if kind == "scratch_refuse":
-        return ("refused: undo", "warning")
+        return (detail.get('message', "refused: undo"), "warning")
     # Queue 80: clear the whole staged draft.
     if kind == "dictate_draft_cleared":
         if detail.get("voice_clear"):
@@ -1786,6 +1788,8 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind in ("dictate_staged", "dictation_staged_chunk"):
         return ("staged", "pending")
     if kind == "scratch_success":
+        if detail.get('message'):
+            return (detail['message'], 'success')
         # Queue 99: one chip for however many chunks came off, and it never
         # claims a count it did not reach. "scratch that ten times" against a
         # stack of five says five, and says why there is no more.
@@ -1886,7 +1890,7 @@ FormatDictateFn = Callable[[str], str]
 # SessionModeManager
 # ---------------------------------------------------------------------------
 
-class SessionModeManager:
+class SessionModeManager(UtteranceUndoMixin):
     """Owns current mode, the unit-of-work stack, and per-mode config for
     one toggle voice-control session. Construct once per DictationApp; call
     reset() on every session entry/end. The caller chooses the entry lane;
@@ -2133,6 +2137,7 @@ class SessionModeManager:
         self._pending_command_suggestion = None
         # Queue 99: a new session never inherits an armed "again".
         self._last_scratch_at = None
+        self._scratch_redo = None
         self._last_dictate_dispatch_at = None
         if (self._retained_draft is not None
                 and initial_mode is SessionMode.DICTATE
@@ -2476,6 +2481,8 @@ class SessionModeManager:
         text = (raw_text or "").strip()
         if not text:
             return DispatchOutcome(kind="empty")
+        if normalize_utterance(text) not in ('redo that',):
+            self._scratch_redo = None
         # Queue 99: "again" means "scratch once more" only when the PREVIOUS
         # resolved action was a scratch. Disarm here and let the scratch paths
         # re-arm, so any other utterance -- dictated, command, switch, refused
@@ -2666,6 +2673,9 @@ class SessionModeManager:
         # go through the same anti-hallucination gate every control word uses;
         # on a gate failure they fall through and are dictated, exactly as
         # "scratch that" does.
+        if normalize_utterance(text) == 'redo that':
+            if passes_switch_anti_hallucination_gate(signals):
+                return self._redo_scratch_outcome()
         counted = match_scratch_count(text)
         if counted is None and is_scratch_again(text):
             self._last_scratch_at = was_scratching      # read the PREVIOUS turn
@@ -2678,7 +2688,7 @@ class SessionModeManager:
             log.info("[SESSION] counted-scratch phrase refused by the anti-hallucination gate "
                      "for %r; treating as ordinary dictation", describe_text(text))
 
-        scratch = is_scratch_that(text)
+        scratch = is_scratch_that(text) or normalize_utterance(text) == 'undo that'
         commit = (
             self._buffer_dictate_until_commit
             and self.mode is SessionMode.DICTATE
@@ -2726,7 +2736,8 @@ class SessionModeManager:
                         if self._pending_action_scratch_fn is not None
                         else None
                     )
-                    ok = pending_result if pending_result is not None else self._do_scratch_that()
+                    ok = (pending_result if pending_result is not None else
+                          bool(self._do_scratch_that_n(1)['scratched']))
                     if self._on_scratch_result:
                         self._on_scratch_result(ok)
                     if ok:
@@ -3924,7 +3935,8 @@ class SessionModeManager:
                 kind="dictation_chunk", payload=final_text, mode=SessionMode.DICTATE,
                 timestamp=self._clock(),
                 extra={"target_process": self._dictate_target_process,
-                       "hwnd": current_hwnd},
+                       "hwnd": current_hwnd,
+                       "undo_unit": delivered.undo_unit if isinstance(delivered, InjectionDelivery) else None},
             ))
         # Release the completed thought's focus lock, retaining DICTATE.
         self._dictate_target_process = None
@@ -3982,8 +3994,9 @@ class SessionModeManager:
     # -- scratch that / retype that ------------------------------------------
 
     def _do_scratch_that(self) -> bool:
-        """Pops the most recent unit of work and, for a dictation chunk,
-        sends destructive backspace/select+delete keystrokes to undo it.
+        """Pop a staged unit or remove a verified external insertion.
+        Production requires an owned-range receipt; legacy injected callbacks
+        remain available to embedders. No receipt means no external deletion.
         Guarded by TWO independent focus checks before any keystroke is
         sent, both fail-closed:
           1. exe-name check_focus_lock (existing) -- catches switching to a
@@ -4031,6 +4044,8 @@ class SessionModeManager:
             )
             self._stack.pop()
             return True
+        if item.kind == "edit_apply" and getattr(self, '_require_unit_undo', False):
+            return False  # No verified replacement receipt for legacy edits.
         if item.kind == "edit_apply":
             return self._undo_edit_apply(item)
         if item.kind != "dictation_chunk":
@@ -4052,10 +4067,22 @@ class SessionModeManager:
         # remove_chars_fn may report the deletion did not complete (False):
         # focus changed mid-way, the window is elevated, or input was
         # refused. None (legacy callables) keeps meaning "done".
-        removed = self._remove_chars_fn(len(item.payload))
+        unit = item.extra.get('undo_unit')
+        if unit is not None:
+            removed = unit.change()
+        elif getattr(self, '_require_unit_undo', False):
+            return False
+        else:
+            removed = self._remove_chars_fn(len(item.payload))
         if removed is False:
             return False
         self._stack.pop()
+        # A preceding owned insertion can now become newest again, only if
+        # there was no user input between the two original deliveries.
+        previous = self._stack.peek()
+        previous = previous.extra.get('undo_unit') if previous is not None else None
+        if unit is not None and previous is not None:
+            previous.expected = unit.expected if previous.expected == unit.before else None
         return True
 
     # -- edit apply (queue 102) ----------------------------------------------
@@ -4194,57 +4221,6 @@ class SessionModeManager:
         self._stage_buffer = original
         log.info("[AVA-EDIT] edit undone: %d chars restored", len(original))
         return True
-
-    def _do_scratch_that_n(self, count: int) -> dict:
-        """N scratches as ONE action. Returns
-        {"requested", "scratched", "reason"} with reason in
-        "done" | "empty" | "failed".
-
-        Every pop is _do_scratch_that() -- the same focus checks, the same
-        paced deletion, the same buffer arithmetic. What this adds is counting,
-        and two things a repeated single scratch cannot give you:
-
-          * ATOMICITY. The whole count is ONE dispatch: one DispatchOutcome,
-            one chip, one earcon. Nothing downstream sees N events, and the
-            run either reaches the count or stops and says where it stopped.
-          * HONESTY ABOUT THE SHORTFALL. The stack holds
-            UnitOfWorkStack.MAX_SIZE, so "scratch that ten times" cannot do
-            ten. It pops what exists and says so; it never claims the count.
-
-        NOT done, deliberately: routing the run through queue 84's recoverable
-        draft so "bring back my draft" would undo the whole count. That slot
-        PREPENDS on recovery (recover_draft returns "prepended"), which is
-        right when the buffer is empty -- an abort, a cleared draft -- and
-        wrong here, where the chunks the user kept are still staged: the
-        pre-scratch draft would be pasted in front of them and the surviving
-        text would appear twice. Making it replace-style is queue 84's design
-        to change, not this one's. A counted scratch is therefore exactly as
-        recoverable as the single scratch it repeats: not.
-
-        PARTIAL FAILURE stops the run at the first refusal rather than
-        pressing on. _do_scratch_that() returns False for a reason -- the
-        focus moved, the window is not the one that received the text, the
-        buffer no longer ends with the chunk -- and every one of those reasons
-        applies just as much to the next pop. Stopping leaves a draft the user
-        can see, under a chip that says how far it got, instead of pressing on
-        into a window that is no longer theirs.
-        """
-        requested = max(1, int(count))
-        scratched = 0
-        reason = "done"
-        for _ in range(requested):
-            if not self._stack:
-                reason = "empty"
-                break
-            if not self._do_scratch_that():
-                reason = "failed"
-                break
-            scratched += 1
-        if scratched:
-            self._last_scratch_at = self._clock()
-        log.info("[SESSION] counted scratch: asked for %d, scratched %d (%s)",
-                 requested, scratched, reason)
-        return {"requested": requested, "scratched": scratched, "reason": reason}
 
     def _scratch_again_armed(self) -> bool:
         """True when a bare "again" means "scratch once more": a scratch was
