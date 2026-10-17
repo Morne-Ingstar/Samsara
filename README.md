@@ -2,14 +2,13 @@
 
 **Use your Windows computer by voice.**
 
-Dictate a message, move between windows, scroll a page, or click a numbered
-control. Samsara is built for people who need to do more with their voice
-and less with a keyboard or mouse.
+An evolving, open-source accessibility platform you shape to your situation.
+Free dictation and voice control for Windows - all in one place.
 
 **Free · Open source · Accessibility first**
 
-No word limits, subscriptions, or paid feature tiers. Optional third-party
-services may have their own charges.
+Samsara is free. No word limits, no subscriptions, no paid tiers, and no
+email address or account needed.
 
 **[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
 · [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.5)

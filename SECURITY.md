@@ -8,7 +8,8 @@ The source version is defined in [samsara/__init__.py](samsara/__init__.py).
 
 ## Report a vulnerability privately
 
-Report vulnerabilities to [me@morneis.com](mailto:me@morneis.com). Do not post vulnerabilities, credentials,
+Report vulnerabilities privately through GitHub: open the repository's **Security** tab and choose
+**Report a vulnerability**. If you cannot use GitHub, email [me@morneis.com](mailto:me@morneis.com). Do not post vulnerabilities, credentials,
 recordings or transcripts in public issues. Include the affected version, impact and
 a minimal reproduction with synthetic data.
 
