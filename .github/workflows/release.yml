@@ -90,16 +90,21 @@ jobs:
       # 33: the wake-word models component and the release manifest come
       # from the same release-build run (docs/RELEASE_MANIFEST.md); they are
       # never regenerated here.
-      - name: Download the wake-word models component and the manifest
+      - name: Download the wake-word models component
         uses: actions/download-artifact@v6
         with:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          pattern: |
-            Samsara-WakeWord-Models-${{ steps.version.outputs.version }}.zip
-            manifest-${{ steps.version.outputs.version }}
+          name: Samsara-WakeWord-Models-${{ steps.version.outputs.version }}.zip
           path: release_asset
-          merge-multiple: true
+
+      - name: Download the release manifest
+        uses: actions/download-artifact@v6
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: manifest-${{ steps.version.outputs.version }}
+          path: release_asset
 
       - name: Gate -- re-verify the artifact before attaching
         id: gate

@@ -1,12 +1,6 @@
 """Tests for window snap geometry (_snap_rect, _get_monitor_for_window)."""
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / 'plugins' / 'commands'))
-
-from windows import _snap_rect, _get_monitor_for_window, _SNAP_DIRECTIONS
-import windows as win
+from plugins.commands import windows as win
+from plugins.commands.windows import _snap_rect, _get_monitor_for_window, _SNAP_DIRECTIONS
 
 
 # ---------------------------------------------------------------------------

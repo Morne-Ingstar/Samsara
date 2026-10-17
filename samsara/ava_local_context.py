@@ -1,6 +1,19 @@
 """Transient PC clock facts for Ava; never retained in conversation memory."""
 
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
+from zoneinfo import ZoneInfoNotFoundError
+
+
+logger = logging.getLogger(__name__)
+
+
+def _local_now(clock=None):
+    try:
+        return datetime.now().astimezone() if clock is None else clock()
+    except ZoneInfoNotFoundError:
+        logger.warning("Local time zone unavailable; using UTC for clock facts")
+        return datetime.now(timezone.utc)
 
 
 _CLOCK_QUESTIONS = {
@@ -21,7 +34,7 @@ def clock_answer(utterance, clock=None):
         return None
     from PySide6.QtCore import QDate, QLocale, QTime
 
-    now = datetime.now().astimezone() if clock is None else clock()
+    now = _local_now(clock)
     locale = QLocale.system()
     value = (locale.toString(QTime(now.hour, now.minute), QLocale.ShortFormat) if kind == "time"
              else locale.toString(QDate(now.year, now.month, now.day), QLocale.LongFormat))
@@ -39,7 +52,7 @@ def handle_clock_intent(app, utterance, speak):
 
 def local_clock_line(clock=None):
     """Read local time for this send; tests may inject an aware local clock."""
-    now = datetime.now().astimezone() if clock is None else clock()
+    now = _local_now(clock)
     offset = now.strftime("%z")
     offset = offset[:3] + ":" + offset[3:]
     return (f"Local clock facts (PC, not user text): {now:%A}, {now:%Y-%m-%d}; "

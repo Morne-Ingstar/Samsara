@@ -2,10 +2,10 @@
 
 import ast
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
@@ -55,6 +55,34 @@ def test_default_clock_reads_now_and_local_zone_each_call(monkeypatch):
     moment = datetime(2026, 11, 1, 1, 0, tzinfo=LA, fold=1)
     assert "01:00; PST (UTC-08:00)" in ava_local_context.local_clock_line()
     assert calls == ["now", "local zone", "now", "local zone"]
+
+
+@pytest.mark.parametrize("output", ["context", "spoken"])
+def test_missing_local_zone_falls_back_to_utc_with_warning(output, monkeypatch, caplog):
+    from PySide6.QtCore import QLocale
+
+    moment = datetime(2026, 10, 10, 7, 0, tzinfo=timezone.utc)
+    calls = []
+
+    class MissingZone:
+        def astimezone(self):
+            raise ZoneInfoNotFoundError("synthetic missing zone")
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            calls.append(tz)
+            return MissingZone() if tz is None else moment
+
+    monkeypatch.setattr(ava_local_context, "datetime", Clock)
+    monkeypatch.setattr(QLocale, "system", lambda: QLocale("en_GB"))
+    if output == "context":
+        assert "Saturday, 2026-10-10; 07:00; UTC (UTC+00:00)" in (
+            ava_local_context.local_clock_line())
+    else:
+        assert ava_local_context.clock_answer("what time is it") == "It's 07:00."
+    assert calls == [None, timezone.utc]
+    assert "Local time zone unavailable; using UTC" in caplog.text
 
 
 @pytest.mark.parametrize("route", ["ollama", "deepseek", "anthropic", "search"])
