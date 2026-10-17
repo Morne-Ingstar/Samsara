@@ -5856,6 +5856,126 @@
     },
     {
       "aliases": [
+        "choose control"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "click_by_name.choose_control",
+      "description": "Acts on a numbered match from the last control-name request.",
+      "kind": "plugin",
+      "object": "control",
+      "pack": "accessibility",
+      "plugin": "click_by_name",
+      "risk": "write",
+      "scope": {
+        "tags": [
+          "click_by_name.pending"
+        ]
+      },
+      "source": "plugins/commands/click_by_name.py:202",
+      "undoable": false,
+      "verb": "choose",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "collapse"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "click_by_name.collapse",
+      "description": "Collapses the control whose name contains the words you give.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "accessibility",
+      "plugin": "click_by_name",
+      "risk": "write",
+      "source": "plugins/commands/click_by_name.py:233",
+      "undoable": false,
+      "verb": "collapse",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "expand"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "click_by_name.expand",
+      "description": "Expands the control whose name contains the words you give.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "accessibility",
+      "plugin": "click_by_name",
+      "risk": "write",
+      "source": "plugins/commands/click_by_name.py:226",
+      "undoable": false,
+      "verb": "expand",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "focus control"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "click_by_name.focus_control",
+      "description": "Focuses a named control in the current window.",
+      "kind": "plugin",
+      "object": "control",
+      "pack": "accessibility",
+      "plugin": "click_by_name",
+      "risk": "write",
+      "source": "plugins/commands/click_by_name.py:240",
+      "undoable": false,
+      "verb": "focus",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "toggle"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "click_by_name.toggle",
+      "description": "Toggles the control whose name contains the words you give.",
+      "kind": "plugin",
+      "object": "",
+      "pack": "accessibility",
+      "plugin": "click_by_name",
+      "risk": "write",
+      "source": "plugins/commands/click_by_name.py:219",
+      "undoable": false,
+      "verb": "toggle",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "cancel the image"
       ],
       "args": [],
@@ -8201,12 +8321,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "write",
-      "scope": {
-        "argument_tags": [
-          "show_numbers.visible"
-        ]
-      },
-      "source": "plugins/commands/show_numbers.py:1795",
+      "source": "plugins/commands/show_numbers.py:1791",
       "undoable": false,
       "verb": "click",
       "whole_utterance": false
@@ -8234,7 +8349,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1948",
+      "source": "plugins/commands/show_numbers.py:1947",
       "undoable": false,
       "verb": "double",
       "whole_utterance": false
@@ -8258,7 +8373,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1669",
+      "source": "plugins/commands/show_numbers.py:1665",
       "undoable": true,
       "verb": "grid",
       "whole_utterance": false
@@ -8283,7 +8398,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1656",
+      "source": "plugins/commands/show_numbers.py:1652",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -8304,7 +8419,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1762",
+      "source": "plugins/commands/show_numbers.py:1758",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -8332,7 +8447,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1934",
+      "source": "plugins/commands/show_numbers.py:1933",
       "undoable": false,
       "verb": "left",
       "whole_utterance": false
@@ -8358,7 +8473,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1626",
+      "source": "plugins/commands/show_numbers.py:1622",
       "undoable": true,
       "verb": "mouse",
       "whole_utterance": false
@@ -8383,7 +8498,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1684",
+      "source": "plugins/commands/show_numbers.py:1680",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -8402,7 +8517,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1336",
+      "source": "plugins/commands/show_numbers.py:1332",
       "undoable": true,
       "verb": "overlay",
       "whole_utterance": false
@@ -8421,7 +8536,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1773",
+      "source": "plugins/commands/show_numbers.py:1769",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -8449,7 +8564,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1941",
+      "source": "plugins/commands/show_numbers.py:1940",
       "undoable": false,
       "verb": "right",
       "whole_utterance": false
@@ -8470,7 +8585,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1701",
+      "source": "plugins/commands/show_numbers.py:1697",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -8489,7 +8604,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1225",
+      "source": "plugins/commands/show_numbers.py:1221",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
