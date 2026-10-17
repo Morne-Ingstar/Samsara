@@ -2,6 +2,32 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.7] - 2026-10-17
+
+More reliable installed updates, friendlier AI app setup, and more ways to use selected text.
+
+<!-- Stand-in release wording for the owner's review. -->
+
+### Updates
+
+- In-app updates work again on installed copies whose install path ends in a backslash. If the update helper does not start, Samsara reports it with a retry; the helper keeps a log, and a stuck "ready" update is noticed.
+- Anyone on beta.6 must install beta.7 once by hand from the [download page](https://github.com/Morne-Ingstar/Samsara/releases/latest), because beta.6's updater has this bug.
+- Home and Settings > General show Samsara's version.
+
+### Setup and help
+
+- Connect an AI app has copy buttons for commands, a short animation, and links to the settings its instructions mention. Its one-line beta notice links to Discord and email.
+- Settings > Help and the docs include Discord and email links for questions and reports.
+
+### Ava and selected text
+
+- Say "read that back" to hear selected text, or "translate selection" or "summarize selection" to get a result through Ava's question-and-reply window.
+- Ava's multi-step plans use app names from the words you said and check every step for a refusal before starting. Expired questions cannot leave a plan waiting for a later "yes"; if a step fails, Ava names the steps already done.
+
+### Listening display
+
+- The Full listening display ends a long Ava message with an ellipsis instead of cutting words out of the middle. The whole sentence is available in the tooltip and accessible name.
+
 ## [0.30.0-beta.6] - 2026-10-17
 
 Clearer Ava setup, more reliable held dictation, and more ways to control apps by voice.
