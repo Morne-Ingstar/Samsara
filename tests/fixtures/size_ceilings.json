@@ -6,7 +6,7 @@
     "samsara/audio_ducking.py": 1545,
     "samsara/audio_engine/wake_consumer.py": 1688,
     "samsara/execution_policy.py": 2026,
-    "samsara/session_modes.py": 3614,
+    "samsara/session_modes.py": 3372,
     "samsara/streaming.py": 3284,
     "samsara/ui/history_view.py": 1781,
     "samsara/ui/home_qt.py": 2482,

@@ -1,0 +1,1738 @@
+{
+  "base_head": "17a55f4e9a7121c2aabdcaaa3bd57e1b6eebf266",
+  "source_sha256_lf": "196dbe09ef8922f84f0dc1c89ebb03d097aabccd2f3e87e4ee42efc02bf637cc",
+  "traces": {
+    "click": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": "queued"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture",
+          0,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "spoken": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": "queued"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "acquire",
+          2
+        ],
+        [
+          "release",
+          2
+        ],
+        [
+          "capture",
+          1,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "gate": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_correction_refused",
+          "detail": {
+            "word": "cobalt"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": {
+        "word": "cobalt",
+        "occurrence": 0,
+        "expected_count": 0,
+        "expires": 145.0,
+        "source": "synthetic_click"
+      },
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "expiry_equal": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "word": "cobalt",
+          "occurrence": 0,
+          "expected_count": 0,
+          "expires": 145.0,
+          "source": "synthetic_click"
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": "queued"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture",
+          0,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "expiry_after": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        null,
+        {
+          "kind": "dictate_correction_unavailable",
+          "detail": {}
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "cancel": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_correction_cancelled",
+          "detail": {
+            "word": "cobalt"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "speak",
+          1,
+          "Correction cancelled.",
+          "acknowledgement"
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "control": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        null
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "failed_capture": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": null
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture_error",
+          0,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "missing": {
+      "results": [
+        {
+          "ok": true,
+          "word": "absent",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_correction_failed",
+          "detail": {
+            "word": "absent",
+            "reason": "not_found"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"absent\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "I could not find that word any more.",
+          "acknowledgement"
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "duplicates": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 1,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 21,
+            "captured": "queued"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture",
+          0,
+          "cobalt",
+          "silver",
+          "Cobalt cobalt silver.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "Cobalt cobalt silver."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "Cobalt cobalt cobalt."
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "Cobalt cobalt silver."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "count_changed": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_correction_failed",
+          "detail": {
+            "word": "cobalt",
+            "reason": "draft_changed"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "I could not find that word any more.",
+          "acknowledgement"
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "Cobalt cobalt cobalt."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "Cobalt cobalt cobalt."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "case_first": {
+      "results": [
+        {
+          "ok": true,
+          "replacement": "silver",
+          "before": "Cobalt cobalt cobalt.",
+          "after": "Cobalt silver cobalt.",
+          "context": "Cobalt silver cobalt.",
+          "audio": "audio-0"
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "Cobalt silver cobalt."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "Cobalt cobalt cobalt."
+        ]
+      ],
+      "parked": false,
+      "manual": false,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "Cobalt silver cobalt."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "case_fallback": {
+      "results": [
+        {
+          "ok": true,
+          "replacement": "silver",
+          "before": "COBALT panel.",
+          "after": "silver panel.",
+          "context": "silver panel.",
+          "audio": null
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "COBALT panel."
+        ]
+      ],
+      "parked": false,
+      "manual": false,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "ambiguous_audio": {
+      "results": [
+        {
+          "ok": true,
+          "replacement": "silver",
+          "before": "cobalt cobalt panel.",
+          "after": "silver cobalt panel.",
+          "context": "silver cobalt panel.",
+          "audio": null
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver "
+        ],
+        [
+          "segment-2",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "append",
+          "segment-2",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt "
+        ]
+      ],
+      "parked": false,
+      "manual": false,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt "
+        ],
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0",
+        "audio-1"
+      ],
+      "seam": true
+    },
+    "segment_fallback": {
+      "results": [
+        {
+          "ok": true,
+          "replacement": "silver",
+          "before": "cobalt panel.",
+          "after": "silver panel.",
+          "context": "silver panel.",
+          "audio": null
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [],
+      "parked": false,
+      "manual": false,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "co"
+        ],
+        [
+          "dictation_staged_chunk",
+          "balt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0",
+        "audio-1"
+      ],
+      "seam": true
+    },
+    "scratch": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": "queued"
+          }
+        },
+        true
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture",
+          0,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 5,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "surface": {
+      "results": [
+        {
+          "ok": true,
+          "selection": {
+            "document_id": "document",
+            "revision": 3,
+            "segment_id": "segment-1",
+            "start": 0,
+            "end": 6,
+            "word": "cobalt"
+          }
+        },
+        {
+          "ok": true,
+          "revision": 4,
+          "chars": 13
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "surface_stale": {
+      "results": [
+        {
+          "ok": true,
+          "selection": {
+            "document_id": "document",
+            "revision": 3,
+            "segment_id": "segment-1",
+            "start": 0,
+            "end": 6,
+            "word": "cobalt"
+          }
+        },
+        {
+          "ok": false,
+          "reason": "stale_revision"
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ],
+        [
+          "segment-2",
+          " later"
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "append",
+          "segment-2",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "receipt": {
+      "results": [
+        {
+          "ok": true,
+          "revision": 3,
+          "chars": 14
+        },
+        {
+          "ok": false,
+          "reason": "draft_pending"
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt receipt"
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [],
+      "audio": [],
+      "seam": null
+    },
+    "compact_request": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": "queued"
+          }
+        }
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture",
+          0,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "silver panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ],
+        [
+          "edit",
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "parked": false,
+      "manual": false,
+      "edited": true,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "silver panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": true
+    },
+    "undo": {
+      "results": [
+        {
+          "kind": "correction_undone",
+          "detail": {
+            "wrong": "cobalt",
+            "right": "silver",
+            "where": "review"
+          }
+        }
+      ],
+      "events": [
+        [
+          "speak",
+          0,
+          "Forgot \"cobalt\" to \"silver\".",
+          "acknowledgement"
+        ]
+      ],
+      "pending": null,
+      "revision": 1,
+      "segments": [],
+      "transactions": [],
+      "parked": false,
+      "manual": false,
+      "edited": false,
+      "stack": [],
+      "audio": [],
+      "seam": null
+    },
+    "undo_nothing": {
+      "results": [
+        {
+          "kind": "correction_undo_nothing",
+          "detail": {}
+        }
+      ],
+      "events": [
+        [
+          "speak",
+          0,
+          "There is no correction to take back.",
+          "acknowledgement"
+        ]
+      ],
+      "pending": null,
+      "revision": 1,
+      "segments": [],
+      "transactions": [],
+      "parked": false,
+      "manual": false,
+      "edited": false,
+      "stack": [],
+      "audio": [],
+      "seam": null
+    },
+    "undo_error": {
+      "results": [
+        {
+          "kind": "correction_undo_nothing",
+          "detail": {}
+        }
+      ],
+      "events": [
+        [
+          "speak",
+          0,
+          "There is no correction to take back.",
+          "acknowledgement"
+        ]
+      ],
+      "pending": null,
+      "revision": 1,
+      "segments": [],
+      "transactions": [],
+      "parked": false,
+      "manual": false,
+      "edited": false,
+      "stack": [],
+      "audio": [],
+      "seam": null
+    },
+    "cancel_api": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        true,
+        false
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ]
+      ],
+      "pending": null,
+      "revision": 3,
+      "segments": [
+        [
+          "segment-1",
+          "cobalt panel."
+        ]
+      ],
+      "transactions": [
+        [
+          "append",
+          "segment-1",
+          ""
+        ]
+      ],
+      "parked": true,
+      "manual": true,
+      "edited": false,
+      "stack": [
+        [
+          "dictation_staged_chunk",
+          "cobalt panel."
+        ]
+      ],
+      "audio": [
+        "audio-0"
+      ],
+      "seam": null
+    },
+    "compact_scratch": {
+      "results": [
+        {
+          "ok": true,
+          "word": "cobalt",
+          "occurrence": 0,
+          "ttl_s": 45.0
+        },
+        {
+          "kind": "dictate_word_corrected",
+          "detail": {
+            "word": "cobalt",
+            "replacement": "silver",
+            "pending_chars": 13,
+            "captured": "queued"
+          }
+        },
+        true
+      ],
+      "events": [
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "speak",
+          0,
+          "Say the replacement for \"cobalt\".",
+          "question"
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "acquire",
+          1
+        ],
+        [
+          "release",
+          1
+        ],
+        [
+          "capture",
+          0,
+          "cobalt",
+          "silver",
+          "silver panel.",
+          "audio-0"
+        ]
+      ],
+      "pending": null,
+      "revision": 4,
+      "segments": [],
+      "transactions": [],
+      "parked": false,
+      "manual": false,
+      "edited": false,
+      "stack": [],
+      "audio": [],
+      "seam": null
+    }
+  }
+}

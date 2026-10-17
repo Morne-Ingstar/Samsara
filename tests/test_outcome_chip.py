@@ -36,6 +36,7 @@ _SOURCE = pathlib.Path(sm.__file__)
 
 
 _INTERACT_SOURCE = _SOURCE.with_name("interact.py")
+_CORRECTIONS_SOURCE = _SOURCE.with_name("session_corrections.py")
 
 
 def _literal_kinds(node):
@@ -72,7 +73,11 @@ def _dispatch_outcome_kinds() -> set:
     Only the verified controller.handle -> reply.kind seam is resolved.
     Any other computed kind still fails the original collection guard.
     """
-    tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
+    trees = []
+    for source in (_SOURCE, _CORRECTIONS_SOURCE):
+        assert source.is_file(), f"Missing outcome producer: {source}"
+        trees.append(ast.parse(source.read_text(encoding="utf-8")))
+    tree = trees[0]  # Interact binding analysis belongs to the facade only.
     reply_values = set()
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.FunctionDef) or fn.name != "_dispatch_utterance_locked":
@@ -93,17 +98,18 @@ def _dispatch_outcome_kinds() -> set:
                                 and isinstance(node.value, ast.Name) and node.value.id == "reply")
 
     kinds, dynamic = set(), []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "DispatchOutcome":
-            value = node.args[0] if node.args else next(
-                (kw.value for kw in node.keywords if kw.arg == "kind"), None)
-            found = _literal_kinds(value)
-            if value in reply_values:
-                found = _interact_reply_kinds()
-            if found is None:
-                dynamic.append(node.lineno)
-            else:
-                kinds.update(found)
+    for tree in trees:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "DispatchOutcome":
+                value = node.args[0] if node.args else next(
+                    (kw.value for kw in node.keywords if kw.arg == "kind"), None)
+                found = _literal_kinds(value)
+                if value in reply_values:
+                    found = _interact_reply_kinds()
+                if found is None:
+                    dynamic.append(node.lineno)
+                else:
+                    kinds.update(found)
     assert not dynamic, (
         f"DispatchOutcome built with a non-literal kind at lines {dynamic}; "
         "this test can no longer prove every kind is mapped"
@@ -168,6 +174,22 @@ class TestEveryKindIsMapped:
         assert {"new_literal", "keyword_literal"} <= _dispatch_outcome_kinds()
         source.write_text('InteractReply("known")\nInteractReply(kind=computed)\n', encoding="utf-8")
         with pytest.raises(AssertionError, match="InteractReply built with a non-literal kind"):
+            _dispatch_outcome_kinds()
+
+    def test_moved_producer_changes_are_read_from_source(self, tmp_path, monkeypatch):
+        source = tmp_path / "session_corrections.py"
+        source.write_text('DispatchOutcome(kind="new_correction_literal")\n', encoding="utf-8")
+        monkeypatch.setattr(__import__(__name__, fromlist=["_CORRECTIONS_SOURCE"]),
+                            "_CORRECTIONS_SOURCE", source)
+        assert "new_correction_literal" in _dispatch_outcome_kinds()
+        source.write_text('DispatchOutcome(kind=computed)\n', encoding="utf-8")
+        with pytest.raises(AssertionError, match="DispatchOutcome built with a non-literal kind"):
+            _dispatch_outcome_kinds()
+
+    def test_missing_producer_fails(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(__import__(__name__, fromlist=["_CORRECTIONS_SOURCE"]),
+                            "_CORRECTIONS_SOURCE", tmp_path / "missing.py")
+        with pytest.raises(AssertionError, match="Missing outcome producer"):
             _dispatch_outcome_kinds()
 
     def test_unknown_kind_is_visibly_flagged_not_hidden(self):
