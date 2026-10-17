@@ -6348,7 +6348,7 @@ class DictationApp(CommandFastPathMixin):
                     or _get_foreground_hwnd() != capture_hwnd):
                 return outcome
             steps = tuple(getattr(proposal, 'steps', ()) or (proposal,))
-            if not 1 <= len(steps) <= MAX_PROPOSAL_STEPS:
+            if len(steps) != 1:  # Miss interpretation offers ONE command (608).
                 return outcome
 
             class AvaFeedbackHost:
@@ -6397,9 +6397,9 @@ class DictationApp(CommandFastPathMixin):
                     self._command_mode_miss_count = 0
                 return DispatchOutcome(kind='ava_command_chain', detail={
                     **result.detail, 'origin': proposal.origin, 'heard': outcome.detail.get('heard', '')})
-            from samsara.ava_action_feedback import execute_action
-            result = execute_action(self.command_executor, steps[0].command_id, self,
-                route=Route.MODEL, generation=generation, args=steps[0].args, source_text=text)
+            from plugins.commands.ask_ollama import suggest_command_miss
+            result = suggest_command_miss(self, steps[0].command_id,
+                generation=generation, args=steps[0].args, source_text=text)
             state = getattr(getattr(result, "state", None), "value", "failed")
             if state == "completed":
                 self._command_mode_miss_count = 0
@@ -6413,7 +6413,7 @@ class DictationApp(CommandFastPathMixin):
                     host._speak_session_notice(chip[0], category='command')
                 return DispatchOutcome(kind="command_executed", detail=detail)
             if state == "queued":
-                return DispatchOutcome(kind="command_awaiting_confirmation", detail={
+                return DispatchOutcome(kind="command_suggestion_pending", detail={
                     "phrase": result.phrase, "state": state, "heard": outcome.detail.get("heard", ""),
                 })
             return outcome

@@ -378,15 +378,15 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
 | `core_utils.check_for_updates` | `check for update`, `check for updates`, `update samsara` | - | write | no |  | Checks GitHub for a newer version of Samsara. | `plugins/commands/core_utils.py:60` |
-| `core_utils.move_preview_to_this_screen` | `move live surface to this screen`, `move preview to this screen` | text:text | ui | yes |  | Moves the live surface's saved placement to the foreground display. | `plugins/commands/core_utils.py:281` |
-| `core_utils.read_that_back` | `read it back`, `read my last dictation`, `read that back`, `what did you type` | - | read | yes |  | Reads the latest committed dictation or command aloud for accessibility. | `plugins/commands/core_utils.py:187` |
+| `core_utils.move_preview_to_this_screen` | `move live surface to this screen`, `move preview to this screen` | text:text | ui | yes |  | Moves the live surface's saved placement to the foreground display. | `plugins/commands/core_utils.py:328` |
+| `core_utils.read_that_back` | `read it back`, `read my last dictation`, `read that back`, `what did you type` | - | read | yes |  | Reads the latest committed dictation or command aloud for accessibility. | `plugins/commands/core_utils.py:234` |
 | `core_utils.reload_config` | `refresh config`, `reload config`, `reload configuration`, `reread config` | - | ui | yes |  | Re-reads your settings from disk without restarting. | `plugins/commands/core_utils.py:78` |
-| `core_utils.reset_floating_windows` | `reset floating windows`, `reset indicator position`, `reset live surface`, `reset preview position`, `reset window positions` | text:text | ui | yes |  | Alias for the one live-surface recovery action when available. | `plugins/commands/core_utils.py:244` |
-| `core_utils.reset_hints` | `replay hints`, `reset hints`, `show hints again` | - | write | no |  | Clears the hints you have already seen so they can appear again. | `plugins/commands/core_utils.py:226` |
+| `core_utils.reset_floating_windows` | `reset floating windows`, `reset indicator position`, `reset live surface`, `reset preview position`, `reset window positions` | text:text | ui | yes |  | Alias for the one live-surface recovery action when available. | `plugins/commands/core_utils.py:291` |
+| `core_utils.reset_hints` | `replay hints`, `reset hints`, `show hints again` | - | write | no |  | Clears the hints you have already seen so they can appear again. | `plugins/commands/core_utils.py:273` |
 | `core_utils.restart_samsara` | `reboot samsara`, `restart`, `restart samsara` | - | destructive | no |  | Closes Samsara and starts it again. | `plugins/commands/core_utils.py:33` |
-| `core_utils.save_alias` | `remove alias`, `save alias` | text:text | write | no |  | Saves the offered wording; say "remove alias <words>" to undo it. | `plugins/commands/core_utils.py:307` |
-| `core_utils.what_can_i_say` | `help`, `what are my commands`, `what can i say`, `what commands do i have` | - | read | yes |  | Opens the catalog-backed commands for the focused application. | `plugins/commands/core_utils.py:101` |
-| `core_utils.why_didnt_that_work` | `what did you hear`, `what just happened`, `why didnt that work` | - | read | yes |  | Speaks and shows the most recent recorded outcome chip. | `plugins/commands/core_utils.py:476` |
+| `core_utils.save_alias` | `remove alias`, `save alias` | text:text | write | no |  | Saves the offered wording; say "remove alias <words>" to undo it. | `plugins/commands/core_utils.py:354` |
+| `core_utils.what_can_i_say` | `help`, `what are my commands`, `what can i say`, `what commands do i have` | remainder:text | read | yes |  | Opens the catalog-backed commands for the focused application. | `plugins/commands/core_utils.py:101` |
+| `core_utils.why_didnt_that_work` | `what did you hear`, `what just happened`, `why didnt that work` | - | read | yes |  | Speaks and shows the most recent recorded outcome chip. | `plugins/commands/core_utils.py:523` |
 
 ## example_greet (1)
 

@@ -16,13 +16,13 @@ from samsara import ava_profile
 from samsara import ava_persona
 from samsara import ava_readiness
 from samsara import cloud_llm, ava_local_context, ava_turn_queue
-from samsara import teach_patterns
+from samsara import teach_patterns, execution_policy
 from samsara.ava_memory import AvaMemory, PersonalMemory, log_conversation
 from samsara.paths import samsara_home_dir
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
-from samsara import execution_policy
+from samsara.ava_suggest import suggest_command_miss
 from samsara.execution_policy import Invocation, Route
 from samsara.intent.grammar import asks_to_run_action, catalog_question_goal
 

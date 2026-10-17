@@ -6148,7 +6148,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:281",
+      "source": "plugins/commands/core_utils.py:328",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -6168,7 +6168,7 @@
       "pack": "accessibility",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:187",
+      "source": "plugins/commands/core_utils.py:234",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -6215,7 +6215,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:244",
+      "source": "plugins/commands/core_utils.py:291",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -6234,7 +6234,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:226",
+      "source": "plugins/commands/core_utils.py:273",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -6277,7 +6277,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:307",
+      "source": "plugins/commands/core_utils.py:354",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -6289,7 +6289,13 @@
         "what can i say",
         "what commands do i have"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "core_utils.what_can_i_say",
       "description": "Opens the catalog-backed commands for the focused application.",
       "kind": "plugin",
@@ -6316,7 +6322,7 @@
       "pack": "core",
       "plugin": "core_utils",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:476",
+      "source": "plugins/commands/core_utils.py:523",
       "undoable": true,
       "verb": "why",
       "whole_utterance": false

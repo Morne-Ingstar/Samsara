@@ -103,15 +103,24 @@ def reload_config(app, remainder="", **kwargs):
     aliases=["help", "what are my commands", "what commands do I have"],
     pack="core",
     risk_class="read",
+    param_schema={"remainder": {"type": "str", "required": False}},
 )
 def what_can_i_say(app, remainder="", **kwargs):
     """Opens the catalog-backed commands for the focused application."""
     from samsara.command_packs import pack_for_exe
+    query = (remainder or "").strip()
+    if query.casefold() == "search":
+        query = ""
+    elif query.casefold().startswith("search "):
+        query = query[7:].strip()
     try:
-        from samsara.handlers import _get_foreground_exe_lower
+        from samsara.handlers import _get_foreground_exe_lower, _get_foreground_hwnd
+        hwnd = _get_foreground_hwnd()
         exe = _get_foreground_exe_lower()
     except Exception:
-        exe = None
+        hwnd, exe = None, None
+
+    live_text = _clickable_help(hwnd, query)
 
     from samsara.ui import qt_runtime
     from samsara.ui.command_marquee import EXAMPLE_ALLOWED_PACKS
@@ -124,13 +133,51 @@ def what_can_i_say(app, remainder="", **kwargs):
     def _show_scoped_sheet():
         cheat_sheet = getattr(app, "cheat_sheet", None)
         if cheat_sheet is not None:
-            cheat_sheet.show_scoped(allowed_packs)
+            cheat_sheet.show_scoped(allowed_packs, query=query, live_text=live_text)
 
     # Voice commands arrive from the session worker; the cheat sheet belongs
     # to the shared Qt runtime thread.
     qt_runtime.post(_show_scoped_sheet)
     speak_if_available(app, "Showing what you can say here.")
     return True
+
+
+def _clickable_help(hwnd, query):
+    """Bounded, local discovery only; names never become commands or logs."""
+    from samsara.uia import get_service, normalize_name
+    from samsara.handlers import _get_foreground_hwnd
+    # Stand-in copy (608). Never label static text or hidden/disabled controls
+    # as clickable, and never reuse controls from the help window itself.
+    unavailable = "Could not read controls here. Try show numbers."
+    try:
+        if not hwnd or _get_foreground_hwnd() != hwnd:
+            return unavailable
+        snapshot = get_service().snapshot(refresh=True)
+        if snapshot.hwnd != hwnd or _get_foreground_hwnd() != hwnd:
+            return unavailable
+        clickable_types = {"ButtonControl", "CheckBoxControl", "RadioButtonControl",
+                           "HyperlinkControl", "MenuItemControl", "TabItemControl",
+                           "ListItemControl", "TreeItemControl", "SplitButtonControl"}
+        names, seen = [], set()
+        needle = normalize_name(query)
+        for node in snapshot.nodes:
+            name = " ".join(node.name.split())
+            folded = normalize_name(name)
+            if (node.control_type not in clickable_types or not node.enabled or node.offscreen
+                    or node.hwnd != hwnd or not folded or len(name) > 60
+                    or node.rect[2] <= node.rect[0] or node.rect[3] <= node.rect[1]
+                    or folded in seen or needle not in folded):
+                continue
+            seen.add(folded)
+            names.append(f'click {name}')
+            if len(names) == 6:
+                break
+        if not names:
+            return "No matching clickable controls found here. Try show numbers."
+        return "Controls found here: " + "; ".join(names) + ". Use show numbers for more."
+    except Exception:
+        # A failed provider must not prevent ordinary catalogue help.
+        return unavailable
 
 def _history_value(row, key, default=""):
     """Read a history row without requiring a particular row implementation."""

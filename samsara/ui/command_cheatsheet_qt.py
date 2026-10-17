@@ -358,9 +358,9 @@ class CommandCheatSheetQt:
             self._init_posted = True
             qt_runtime.post(self._init_window)
 
-    def show_scoped(self, pack_ids):
+    def show_scoped(self, pack_ids, *, query="", live_text=""):
         """Show only ``pack_ids``; safe to call from the session worker."""
-        self._request_show(frozenset(pack_ids), None)
+        self._request_show(frozenset(pack_ids), ("All", query, live_text))
 
     def hide(self):
         self._visible = False
@@ -810,6 +810,14 @@ class _CheatSheetWindow(QMainWindow):
         search_layout.addWidget(self._filter)
         lay.addWidget(search_wrap)
 
+        self._live_controls = QLabel(initial_view[2] if initial_view and len(initial_view) > 2 else "")
+        self._live_controls.setTextFormat(Qt.TextFormat.PlainText)
+        self._live_controls.setWordWrap(True)
+        self._live_controls.setStyleSheet(
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;padding:{theme.SPACE_2}px;")
+        self._live_controls.setVisible(bool(self._live_controls.text()))
+        lay.addWidget(self._live_controls)
+
         _sep = lambda: [s := QFrame(), s.setFixedHeight(1),
                         s.setStyleSheet(f"background:{theme.BORDER};")][0]
 
@@ -898,8 +906,10 @@ class _CheatSheetWindow(QMainWindow):
         scope = None if pack_ids is None else frozenset(pack_ids)
         scope_changed = scope != self._pack_scope
         self._pack_scope = scope
+        self._live_controls.setText(view[2] if view and len(view) > 2 else "")
+        self._live_controls.setVisible(bool(self._live_controls.text()))
         if view is not None:
-            self._active_category, text = view
+            self._active_category, text = view[:2]
             self._category_bar.set_active(self._active_category)
             with QSignalBlocker(self._filter):
                 self._filter.setText(text)
