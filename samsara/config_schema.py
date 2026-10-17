@@ -433,7 +433,7 @@ SETTINGS_SCHEMA = {
         "options": ["hold", "toggle"],
         "default": "hold",
         "tab": "commands",
-        "help": {"why": "Hold keeps the session button active while pressed; toggle changes state with each press. Choose the one your physical access and workflow support. The default is hold, so a quick press is not the same as a latched session.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.mode"},
+        "help": {"why": "Hold keeps the session button active while pressed; toggle changes state with each press. Choose the one your physical access and workflow support. New installs use toggle; existing configurations keep their choice.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.mode"},
     },
     "command_mode.suppress_button": {"type": "bool", "default": True, "tab": "commands", "help": {"why": "When Mouse 4 or 5 is a session button, browsers may also treat it as Back or Forward. This suppresses that original mouse action while the binding is in use. It is on by default to prevent unwanted navigation; turn it off if you need the mouse action more.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.suppress_button"}},
     "command_mode.enter_debounce_ms": {

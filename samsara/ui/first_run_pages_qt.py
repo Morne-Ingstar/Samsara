@@ -118,7 +118,8 @@ def initial_config(defaults, config_path):
         if isinstance(value, dict):
             existing = value
     except FileNotFoundError:
-        pass
+        # Fresh installs tap to start/stop; reruns retain their stored mode.
+        put(config, 'command_mode.mode', 'toggle')
     except (OSError, ValueError):
         logger.warning('First-run existing config could not be read', exc_info=True)
     merge(config, existing)
@@ -520,6 +521,7 @@ class Decisions(QObject):
         row.addLayout(heading, 1)
         if action == 'command_mode.button' and not config_defaults.cfg_get(self.owner._config, 'command_mode.enabled'):
             note = label(COPY['talking.session_off'])
+            self.session_off_note = note
             note.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
             text_column.addWidget(note)
         button = _HotkeyBtn(config_value(self.owner._config, action, HOLD_DEFAULTS[action][1]))
@@ -552,7 +554,14 @@ class Decisions(QObject):
         self.row_separator(layout)
         self._hold_key(layout, 'hotkey', COPY['talking.record_key'])
         self.row_separator(layout)
+        from samsara.ui.first_run_hands_free_qt import HandsFreeOffer
+        self.hands_free_offer = HandsFreeOffer(self.owner._config, w)
+        layout.addWidget(self.hands_free_offer)
         self.hands_free = self._hold_key(layout, 'command_mode.button', COPY['talking.hands_free'])
+        self.hands_free.bindingChanged.connect(self.hands_free_offer.refresh)
+        if hasattr(self, 'session_off_note'):
+            self.hands_free_offer.combo.currentIndexChanged.connect(
+                lambda _: self.session_off_note.setVisible(not self.hands_free_offer.combo.currentData()))
         self.row_separator(layout)
         self.wake = self.choices(layout, COPY['talking.wake'],
             [(True, COPY['talking.on'], self.mode_detail('wake_word').split('. ')[0] + '.'),
@@ -641,6 +650,7 @@ class Decisions(QObject):
                 config['mode'] = self.selected(self.mode)
             for path, button in self.owner._hotkey_btns.items():
                 put(config, path, button.combo)
+            put(config, 'command_mode.enabled', self.hands_free_offer.combo.currentData())
             config['wake_word_enabled'] = self.selected(self.wake)
             put(config, 'wake_word_config.phrase', self.phrase.currentText().strip())
         elif name == 'Music':
@@ -687,7 +697,7 @@ class Decisions(QObject):
         lines = [f'Microphone: {self.owner._mic_combo.currentText()}',
             f'Recognition: {str(cfg["model_size"]).title()}', f'Language: {dict((code, name) for name, code in LANGUAGES).get(cfg["language"], cfg["language"])}',
             f'Recording: {COPY.get("talking." + cfg["mode"], cfg["mode"])} · {_pretty_key_combo(cfg["hotkey"])}',
-            f'Hands-free button: {_pretty_button(config_defaults.cfg_get(cfg, "command_mode.button")).replace(" (default)", "")}',
+            f'Hands-free: {"On" if config_defaults.cfg_get(cfg, "command_mode.enabled") else "Off"} · {_pretty_button(config_defaults.cfg_get(cfg, "command_mode.button")).replace(" (default)", "")}',
             f'Wake word: {COPY["talking.on"] if cfg["wake_word_enabled"] else COPY["talking.off"]} · {config_defaults.cfg_get(cfg, "wake_word_config.phrase")}',
             f'Music: {dict((value, title) for value, title, _ in music_choices())[config_defaults.cfg_get(cfg, "ducking.recording_mode")]}',
             f'Voice feedback: {FEEDBACK_LEVEL_CHOICES[config_defaults.cfg_get(cfg, "tts.feedback_level")][0]}',

@@ -411,7 +411,7 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
             "enabled": False,           # opt-in; see Modes tab -> Command Mode
             "command_matching_enabled": False,  # matching during ordinary dictation
             "dictation_literal_commands_only": True,  # 415; False restores argument matching
-            "mode": "hold",             # "hold" (hold to talk) or "toggle"
+            "mode": "toggle",           # Fresh installs; legacy missing values still fall back to hold.
             "button": "rctrl",          # "rctrl" (default), "mouse4"/"mouse5" (XButton1/2), or other keys -- see _CMD_BUTTON_OPTIONS
             "enter_debounce_ms": 200,   # delay before playing enter earcon
             "exit_earcon": True,        # play stop earcon on release/exit
