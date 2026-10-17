@@ -459,12 +459,12 @@ def test_dictation_chase_timer_spins_every_capture_state_without_reset():
     tree, cls = _dictation_class()
     source = (REPO / "dictation.py").read_text(encoding="utf-8-sig")
     methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
-    tick = ast.get_source_segment(source, methods["_icon_chase_tick"])
+    tick = _tray_method_source(source, methods["_icon_chase_tick"])
     assert "SPIN_SECONDS_PER_TURN[pace]" in tick
     for pace in ("'recording'", "'transcribing'", "'listening'", "'armed'"):
         assert re.search(r"tick_interval, pace = ICON_TICK_\w+, " + pace, tick), pace
     for name in ("_start_icon_chase", "_stop_icon_chase"):
-        assert "_icon_rotation = 0.0" not in ast.get_source_segment(source, methods[name]), name
+        assert "_icon_rotation = 0.0" not in _tray_method_source(source, methods[name]), name
 
 
 # ---------------------------------------------------------------------------
@@ -496,6 +496,20 @@ def _dictation_class():
     return tree, next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "DictationApp")
 
 
+def _tray_method_source(source, method):
+    """Inspect the facade and its locally imported animation implementation."""
+    segment = ast.get_source_segment(source, method)
+    for node in method.body:
+        if isinstance(node, ast.ImportFrom) and node.module == "samsara.tray_animation":
+            target = next(alias.name for alias in node.names
+                          if (alias.asname or alias.name) == method.name)
+            moved_source = (REPO / "samsara/tray_animation.py").read_text(encoding="utf-8")
+            moved = next(n for n in ast.parse(moved_source).body
+                         if isinstance(n, ast.FunctionDef) and n.name == target)
+            return segment + "\n" + ast.get_source_segment(moved_source, moved)
+    return segment
+
+
 def test_dictation_tray_render_uses_the_mark_and_no_palette():
     tree, cls = _dictation_class()
     source = (REPO / "dictation.py").read_text(encoding="utf-8-sig")
@@ -505,10 +519,10 @@ def test_dictation_tray_render_uses_the_mark_and_no_palette():
     assert "_arc_polygon" not in methods
     for name in ("_tray_mark", "create_icon_image", "_push_tray_icon", "_flash_tray_heard",
                  "_icon_chase_tick", "_stop_icon_chase"):
-        segment = ast.get_source_segment(source, methods[name])
+        segment = _tray_method_source(source, methods[name])
         assert _string_hex_literals(segment) == [], name
-    assert "MarkFrame" in ast.get_source_segment(source, methods["create_icon_image"])
-    assert "HEARD_KEYFRAMES" in ast.get_source_segment(source, methods["_flash_tray_heard"])
+    assert "MarkFrame" in _tray_method_source(source, methods["create_icon_image"])
+    assert "HEARD_KEYFRAMES" in _tray_method_source(source, methods["_flash_tray_heard"])
 
 
 # ---------------------------------------------------------------------------
