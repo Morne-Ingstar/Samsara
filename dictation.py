@@ -12152,13 +12152,13 @@ class DictationApp(CommandFastPathMixin):
         finally:
             self._quit_draft_pending = False
 
-    def quit_app(self, *, _restart_draft_resolved=False):
+    def quit_app(self, *, reason=None, _restart_draft_resolved=False):
         """Exit the application"""
         if not _restart_draft_resolved and not self._resolve_parked_draft_before_quit():
             return
-        logger.info("[EXIT] Shutting down Samsara...")
-        from plugins.commands.ask_ollama import _finish_ava_session  # noqa: PLC0415
-        _finish_ava_session(self, wait=True)
+        from samsara.runtime.exit_reason import identify_exit, finish_exit
+        exit_reason, exit_source = identify_exit(reason=reason, logger=logger); logger.info("[EXIT] Shutting down Samsara... reason=%s source=%s", exit_reason, exit_source)
+        from plugins.commands.ask_ollama import _finish_ava_session; _finish_ava_session(self, wait=True)  # noqa: PLC0415
 
         # Release the Win32 mouse hook FIRST (32): nothing below may hold the
         # user's mouse hostage, and this method ends in os._exit, which skips
@@ -12385,13 +12385,11 @@ class DictationApp(CommandFastPathMixin):
 
         # Force exit — bypasses any remaining thread cleanup but guarantees
         # termination even if a background thread or Qt modal is blocking.
-        logger.info("[EXIT] Goodbye!")
-        _samsara_boot.end_session(LOG_DIR)      # 48: a deliberate exit, not a crash
-        from samsara import process_exit
+        logger.info("[EXIT] Goodbye!"); _samsara_boot.end_session(LOG_DIR)  # deliberate exit, not a crash
         try:
             audio_ducking.shutdown_host()
         finally:
-            process_exit.hard_exit(0)
+            finish_exit(os.path.join(LOG_DIR, "last_exit.json"), exit_reason, logger=logger)
 
 if __name__ == "__main__":
     # Console is already hidden at top of file
@@ -12407,6 +12405,7 @@ if __name__ == "__main__":
     # its faulthandler summary), and logs worker-thread / unraisable exceptions
     # and Qt's own warnings. See samsara/boot.py "Crash evidence".
     _previous_session = _samsara_boot.begin_session(LOG_DIR, logger)
+    from samsara.runtime.exit_reason import read_previous_exit; read_previous_exit(LOG_DIR / "last_exit.json", logger=logger)
     # 52: put back any app volume a killed run left ducked, before anything
     # can start a new duck and mistake the ducked level for the user's own.
     audio_ducking.configure_duck_journal(
