@@ -8373,7 +8373,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1665",
+      "source": "plugins/commands/show_numbers.py:1647",
       "undoable": true,
       "verb": "grid",
       "whole_utterance": false
@@ -8398,7 +8398,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1652",
+      "source": "plugins/commands/show_numbers.py:1634",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -8419,7 +8419,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1758",
+      "source": "plugins/commands/show_numbers.py:1754",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -8473,7 +8473,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1622",
+      "source": "plugins/commands/show_numbers.py:1604",
       "undoable": true,
       "verb": "mouse",
       "whole_utterance": false
@@ -8498,7 +8498,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1680",
+      "source": "plugins/commands/show_numbers.py:1662",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -8517,7 +8517,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1332",
+      "source": "plugins/commands/show_numbers.py:1314",
       "undoable": true,
       "verb": "overlay",
       "whole_utterance": false
@@ -8528,7 +8528,13 @@
         "refresh numbers",
         "update numbers"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "show_numbers.refresh_numbers",
       "description": "Rescans the focused window and redraws the numbered labels.",
       "kind": "plugin",
@@ -8536,7 +8542,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1769",
+      "source": "plugins/commands/show_numbers.py:1767",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -8585,7 +8591,24 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1697",
+      "source": "plugins/commands/show_numbers.py:1689",
+      "undoable": true,
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "show numbers on taskbar"
+      ],
+      "args": [],
+      "canonical_id": "show_numbers.show_numbers_on_taskbar",
+      "description": "Numbers clickable controls on the primary taskbar.",
+      "kind": "plugin",
+      "object": "numbers_on_taskbar",
+      "pack": "accessibility",
+      "plugin": "show_numbers",
+      "risk": "read",
+      "source": "plugins/commands/show_numbers.py:1683",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -8604,7 +8627,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1221",
+      "source": "plugins/commands/show_numbers.py:1203",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
