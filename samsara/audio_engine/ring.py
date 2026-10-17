@@ -129,7 +129,7 @@ class Reader:
     beyond the Reader object itself until the registry drops it.
     """
 
-    __slots__ = ('_bus', '_read_cursor', 'overrun_count', '_invalidated', '_name')
+    __slots__ = ('_bus', '_read_cursor', 'overrun_count', '_invalidated', '_name', 'retain_history_on_overrun')
 
     def __init__(self, bus: 'FrameBus', initial_cursor: int) -> None:
         self._bus          = bus
@@ -137,13 +137,15 @@ class Reader:
         self.overrun_count = 0
         self._invalidated  = False
         self._name: str | None = None
+        self.retain_history_on_overrun = False
 
     def read_next(self) -> Union[Frame, _Sentinel]:
         """Return the next Frame, or EMPTY if the ring has no new data.
 
         On overrun (writer has lapped this reader), the overrun_count
         metric is incremented, the read cursor is repositioned to
-        write_cursor - PREBUFFER_FRAMES, and the frame at that position is
+        write_cursor - PREBUFFER_FRAMES (or the oldest available frame for
+        hold readers opting into retain_history_on_overrun), and that frame is
         returned. No exception is raised; the consumer simply resumes from
         the most recent prebuffer window.
 
@@ -171,6 +173,7 @@ class Reader:
         # For hold-mode dictation this means the utterance exceeded RING_SECONDS
         # (~58.5 s effective limit). Only the last PREBUFFER_FRAMES are returned.
         if (wc - self._read_cursor) > RING_FRAMES:
+            retained = RING_FRAMES if getattr(self, 'retain_history_on_overrun', False) else PREBUFFER_FRAMES
             self.overrun_count += 1
             lost_frames = (wc - self._read_cursor) - RING_FRAMES
             lost_seconds = lost_frames * FRAME_MS / 1000.0
@@ -179,9 +182,9 @@ class Reader:
                 f"reader was {lost_frames} frames ({lost_seconds:.1f}s) behind write head. "
                 f"Ring capacity is {RING_FRAMES * FRAME_MS / 1000:.0f}s — "
                 f"utterances longer than ~{(RING_FRAMES - PREBUFFER_FRAMES) * FRAME_MS / 1000:.1f}s "
-                f"will be truncated to the last {PREBUFFER_FRAMES * FRAME_MS / 1000:.1f}s."
+                f"retain the last {retained * FRAME_MS / 1000:.1f}s."
             )
-            self._read_cursor = max(0, wc - PREBUFFER_FRAMES)
+            self._read_cursor = max(0, wc - retained)
 
             # Defense-in-depth against the stale-slot TOCTOU race (MA-1, ACE-02):
             # Between repositioning and the actual pcm read below, a fast writer
@@ -200,7 +203,7 @@ class Reader:
             # does NOT add a lock and cannot stall the writer.
             _guard = 0
             while (self._bus._write_cursor - self._read_cursor) > RING_FRAMES:
-                self._read_cursor = max(0, self._bus._write_cursor - PREBUFFER_FRAMES)
+                self._read_cursor = max(0, self._bus._write_cursor - retained)
                 _guard += 1
                 if _guard >= RING_FRAMES:
                     break   # safety valve — impossible at real audio rates

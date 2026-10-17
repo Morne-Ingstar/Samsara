@@ -44,6 +44,7 @@ import numpy as np
 
 from .frame import PREBUFFER_FRAMES, FRAME_MS
 from .ring import EMPTY
+from . import hold_capture
 from samsara.constants import (
     ADAPTIVE_SPEECH_FLOOR_RATIO,
     HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
@@ -62,6 +63,7 @@ class DictationSessionConsumer:
         self._engine = engine
         self._app    = app
         self._reader = engine.register_consumer("dictation_hold")
+        self._reader.retain_history_on_overrun = True
         self._frames: list = []
         self._active         = False
         self._epoch_at_start = None
@@ -77,6 +79,13 @@ class DictationSessionConsumer:
         self._capture_not_after = None
         self._capture_onset = None
         self._prebuffer_rewound = False
+        self.capture_loss = False
+        self.dropped_frames = 0
+        self._capture_logger = logger
+        self._capture_epoch = None
+        self._capture_overflows = 0
+        self._last_capture_seq = -1
+        self._streaming_capturing = False
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
 
@@ -95,6 +104,7 @@ class DictationSessionConsumer:
             if thread is not threading.current_thread():
                 thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
             if thread.is_alive():
+                self.capture_loss = True
                 logger.error("[ACE] Dictation drain stop incomplete: thread %s is still alive", thread.name)
                 return False
             self._drain_thread = None
@@ -152,6 +162,8 @@ class DictationSessionConsumer:
             self._reader.rewind(PREBUFFER_FRAMES)
             self._prebuffer_rewound = True
 
+        hold_capture.begin(self)
+        self._capture_epoch = None
         self._drain_thread = thread_registry.spawn(
             "dictation-hold-consumer", self._hold_drain_loop, args=(self._drain_stop,), daemon=True
         )
@@ -180,8 +192,8 @@ class DictationSessionConsumer:
                 and onset.token == getattr(self._app, '_hold_capture_duck_token', None)
                 and onset.confirmed_at == confirmed):
             self._capture_onset = onset
-            return onset.boundary
-        return confirmed
+            return hold_capture.boundary(self, onset.boundary)
+        return hold_capture.boundary(self, confirmed)
 
     def _frame_inside_capture_duck(self, frame) -> bool:
         """Apply whole-block onset and end boundaries BEFORE either accumulator.
@@ -190,6 +202,7 @@ class DictationSessionConsumer:
         an entire block must start at or after the selected onset boundary. A
         whole boundary block is discarded instead of admitting older samples.
         """
+        hold_capture.observe(self, frame)
         before = self._capture_not_before
         after = self._capture_not_after
         start = frame.t_capture - FRAME_MS / 1000.0
@@ -367,6 +380,7 @@ class DictationSessionConsumer:
         """
         with self._lifecycle_lock:
             self._active = False
+            self._previous_capture_end = time.perf_counter()
             if not self._stop_hold_thread():
                 return False
             with self._frames_lock:
@@ -416,6 +430,7 @@ class DictationSessionConsumer:
             with self._frames_lock:
                 self._frames.append((frame.seq, frame.device_epoch, frame.pcm.copy()))  # [MA-2]
 
+        hold_capture.finish(self)
         with self._frames_lock:
             collected = list(self._frames)
             self._frames.clear()
@@ -533,6 +548,7 @@ class DictationSessionConsumer:
         _streaming_frames for StreamingWorker to snapshot.
         """
         self._streaming_frames: list = []
+        self._streaming_capturing = True
         self._streaming_stop  = threading.Event()
         self._capture_not_before = self._select_capture_boundary()
         self._capture_not_after = None
@@ -551,6 +567,8 @@ class DictationSessionConsumer:
         else:
             self._reader.rewind(PREBUFFER_FRAMES)
 
+        hold_capture.begin(self)
+        self._capture_epoch = None
         self._streaming_thread = thread_registry.spawn(
             "streaming-consumer", self._streaming_drain_loop, args=(self._streaming_stop,), daemon=True
         )
@@ -596,10 +614,24 @@ class DictationSessionConsumer:
             if self._streaming_thread is not threading.current_thread():
                 self._streaming_thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
             if self._streaming_thread.is_alive():
+                self.capture_loss = True
                 logger.error("[ACE] Streaming drain stop incomplete: thread %s is still alive",
                              self._streaming_thread.name)
                 return None
             self._streaming_thread = None
+        # Drain the bounded ring backlog before clearing the accumulator. The
+        # consumer may have been starved when release set its stop event.
+        if self._reader is not None and self._streaming_capturing:
+            while True:
+                frame = self._reader.read_next()
+                if frame is EMPTY:
+                    break
+                if self._frame_inside_capture_duck(frame):
+                    with self._streaming_lock:
+                        self._streaming_frames.append(frame.pcm.astype(np.float32) / 32767.0)
+        if self._streaming_capturing:
+            hold_capture.finish(self)
+        self._streaming_capturing = False
         with self._streaming_lock:
             frames = list(self._streaming_frames)
             self._streaming_frames = []

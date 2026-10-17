@@ -1642,7 +1642,7 @@ class StreamingWorker(threading.Thread):
 
     def run(self):
         try:
-            if getattr(self._session, '_cpu_final_only', False):
+            if getattr(self._session, '_cpu_final_only', False) or getattr(self._session.app, 'device_type', None) == 'cpu':
                 # CPU policy: do not spend a second decode pass on partials.
                 self._stop_event.wait()
             else:
@@ -1713,29 +1713,26 @@ class StreamingWorker(threading.Thread):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
+            from samsara.decode_recovery import stream_final, LOST
+            if getattr(consumer, 'capture_loss', False) is True:
+                self._session._decode_failure = LOST
+                self._session.on_final(None, duration_s=len(audio) / app.model_rate if audio is not None else 0)
+                return
             from samsara.speech_presence import finish_streaming_if_empty
             if finish_streaming_if_empty(self, audio):
                 return
-            with app.model_lock:
-                params = self._final_params()
-                t0 = time.time()
-                segments, info = app.model.transcribe(audio, **params)
-                detected_lang = getattr(info, 'language', None)
-                seg_list = list(segments)
-                text = "".join(seg.text for seg in seg_list).strip()
-                duration_s = len(audio) / app.model_rate
-                elapsed_ms = int((time.time() - t0) * 1000)
+            params = self._final_params()
+            t0 = time.time()
+            seg_list, info, text = stream_final(self, audio, params)
+            detected_lang = getattr(info, 'language', None)
+            duration_s = len(audio) / app.model_rate
+            elapsed_ms = int((time.time() - t0) * 1000)
             try:
                 diag_sig = diagnostics.segment_signals(seg_list)
             except Exception as e:
                 logger.debug(f"[STREAM] segment signal extraction failed: {e}")
                 diag_sig = {}
             if not text:
-                self._session.on_final(None, duration_s=duration_s,
-                                       elapsed_ms=elapsed_ms)
-                return
-
-            if self._decoder_guard(seg_list, text, params, duration_s=duration_s):
                 self._session.on_final(None, duration_s=duration_s,
                                        elapsed_ms=elapsed_ms)
                 return
@@ -1940,7 +1937,7 @@ class _LiveSurfaceStreamingOverlay:
     def delivery_finished(self, text):
         self._partials.final(text, delivered=True)
 
-    def show_empty_result(self):
+    def show_empty_result(self, message="No speech"):
         # Feedback is not document content. Keep the capture token so a late
         # empty result cannot replace feedback belonging to a newer hold.
         from samsara.live_surface.model import EventKind, NoticeKind, SurfaceEvent
@@ -1948,7 +1945,7 @@ class _LiveSurfaceStreamingOverlay:
         self._partials.controller.post(SurfaceEvent(
             EventKind.NOTICE, capture_id=self._partials.capture_id,
             sequence=self._partials.sequence, lane=self._partials.lane,
-            notice=NoticeKind.RESULT, message="No speech"))
+            notice=NoticeKind.RESULT, message=message))
 
     def flash_done_and_fade(self, on_complete):
         kept_session_draft.finish_hold(self._partials)
@@ -2140,6 +2137,9 @@ class StreamingSession:
                 self._state = self.STATE_PASTING
         if not live:
             tutorial_capture.retire_final(self, text, raw_text, duration_s)
+            return
+        from samsara.decode_recovery import deliver_failure
+        if deliver_failure(self, duration_s):
             return
         if not text or not text.strip():
             logger.info("[STREAM] No speech detected")

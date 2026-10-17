@@ -3521,22 +3521,16 @@ class DictationApp(CommandFastPathMixin):
         return ''
 
     def _decode_hotkey_audio(self, audio_faded, transcribe_params, audio_duration, *, free_form=None):
-        """One full hotkey decode pass: single-shot or [LONG]-split
-        (mirrors the >_LONG_DECODE_CEILING_S resource-guard fallback),
-        followed by the same segment-level quality gating either way.
+        """Decode ordinary holds with bounded recovery.
 
-        Extracted from the hotkey transcribe() closure so both the primary
-        decode and the SPARK P0 auto-retry (_apply_retry_on_suspected_loss)
-        call the REAL production branching logic instead of two independent
-        copies that could silently drift apart -- same rationale as
-        _build_hotkey_transcribe_params's own extraction (see
-        tests/test_transcription_params.py's module docstring).
-
-        Returns a _HotkeyDecodeResult(text, low_confidence, seg_list,
-        detected_lang, diag_path, language_rejected).
+        Command/Ava retain single-shot or [LONG]-split segment gating.
+        Return _HotkeyDecodeResult with language and quality evidence.
         """
         if free_form is None:
             free_form = not getattr(self, 'command_mode_recording', False)
+        if free_form and not getattr(self, 'ava_mode_recording', False):
+            from samsara.decode_recovery import decode_hold
+            return decode_hold(self, audio_faded, transcribe_params, audio_duration)
         decode_infos = []
         if audio_duration > _LONG_DECODE_CEILING_S:
             diag_path = "long"
@@ -10862,6 +10856,9 @@ class DictationApp(CommandFastPathMixin):
                     self.play_sound("stop")
             else:
                 audio = self._dictation_consumer.drain()
+            from samsara.decode_recovery import capture_problem
+            if capture_problem(self, audio):
+                return
             if audio is None:
                 logger.debug("[ACE] No audio captured or epoch abort")
                 flight_recorder.record('hold_recording.stop_reason', reason='empty_buffer_or_epoch_abort')
@@ -11063,10 +11060,13 @@ class DictationApp(CommandFastPathMixin):
                     return self._decode_hotkey_audio(
                         audio_faded, _retry_params, audio_duration, free_form=not ownership.is_command)
 
-                _decode_result, _suspected_data_loss, _retried = _apply_retry_on_suspected_loss(
+                _decode_result, _suspected_data_loss, _retried = ((_decode_result, False, False)
+                    if _decode_result.diag_path in ('hold_618', 'failed_618') else _apply_retry_on_suspected_loss(
                     _decode_result, _retry_decode, audio_faded, self.model_rate, audio_duration,
                     ownership.is_command,
-                )
+                ))
+                if _decode_result.diag_path == 'failed_618':
+                    return
                 text = _decode_result.text
                 _low_confidence = _decode_result.low_confidence
                 _diag_all_segs = list(_decode_result.seg_list)

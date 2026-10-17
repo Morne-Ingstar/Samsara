@@ -460,6 +460,8 @@ class HotkeyCluster:
         required_keys = self.parse_hotkey(main_hotkey)
         main_event_held = required_keys.issubset(self.current_keys)
         if self.check_hotkey_state(main_hotkey) and main_event_held:
+            from samsara.decode_recovery import supersede_final
+            supersede_final(self)
             if self.hotkey_pressed:
                 # A hotkey action is in progress. If a key-down still owns it
                 # (this press, or another combo physically held) this is
@@ -760,6 +762,8 @@ class HotkeyCluster:
             with self._capslock_lifecycle_lock:
                 if not self.config.get('streaming_mode', False):
                     return
+                from samsara.decode_recovery import supersede_final
+                supersede_final(self)
                 if self.recording or getattr(self, '_streaming_session', None) is not None:
                     logger.info("[CAPSLOCK] streaming start ignored -- another recording owns capture")
                     return
@@ -1070,6 +1074,8 @@ class HotkeyCluster:
         """
         mode = self.config.get('mode', 'hold')
         if pressed:
+            from samsara.decode_recovery import supersede_final
+            supersede_final(self)
             if getattr(self, '_hold_down_mouse', False):
                 self._mouse_guard("press ignored: button already down (auto-repeat)")
                 return
