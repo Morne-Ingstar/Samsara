@@ -34,7 +34,7 @@ from samsara.audio_engine import guide_capture
 from samsara.audio_engine.ring import EMPTY
 from samsara.audio_engine.wake_prefilter import NativeRateFrames, chunk_rms, oww_prefilter, pcm_to_float
 from samsara.runtime import thread_registry
-from samsara.speech_pace import measured_interword_pauses, recommend_profile
+from samsara.speech_pace import measured_interword_pauses, pace_recommendation
 from samsara.ui import qt_runtime, theme
 from samsara.ui.widgets.step_indicator import StepIndicator
 from samsara.audio_devices import pick_index_by_name
@@ -252,6 +252,7 @@ class _WizardWindow(QDialog):
 
         # Level state
         self._level_history   = collections.deque(maxlen=20)
+        self._pace_history = collections.deque(maxlen=300)  # 30s; calibration keeps its 2s average.
         self._green_since     = None
         self._cal_threshold   = None
 
@@ -459,11 +460,10 @@ class _WizardWindow(QDialog):
 
     def _recommend_speech_pace(self):
         """Offer, never save, a VAD-style recommendation from recent RMS frames."""
-        samples = list(self._level_history)
-        pauses = measured_interword_pauses(samples, 10, speech_threshold=_ZONE_LOW)
-        choice = recommend_profile(pauses)
+        samples = list(self._pace_history)
+        pauses = measured_interword_pauses(samples, 10, speech_threshold=_ZONE_LOW * 0.20)
         self._pace_recommendation.setText(
-            f"Suggested: {choice.replace('_', ' ')}. Choose it in Settings → Modes if it feels right; nothing was changed.")
+            pace_recommendation(pauses) + " Choose it in Settings → Modes if it feels right; nothing was changed.")
 
     def _build_wake_page(self) -> QWidget:
         page = QWidget()
@@ -573,6 +573,7 @@ class _WizardWindow(QDialog):
             self._cal_status.setText("")
             self._green_since = None
             self._level_history.clear()
+            self._pace_history.clear()
             self._ensure_audio_running()
 
         elif step == self._STEP_WAKE:
@@ -1021,6 +1022,7 @@ class _WizardWindow(QDialog):
         elif step == self._STEP_LEVEL:
             self._level_bar.set_level(level)
             self._level_history.append(rms)
+            self._pace_history.append(rms)
             now = time.monotonic()
 
             if level < _ZONE_LOW:

@@ -446,10 +446,10 @@ class _TryPage(QScrollArea):
             return
         self.suggest(measured_interword_pauses(levels, 1000 // FRAME_MS))
     def suggest(self, pauses):
-        from samsara.speech_pace import recommend_profile
+        from samsara.speech_pace import recommend_profile, pace_recommendation
         self._pace_ready = True
         self.pace.setCurrentIndex(self.pace.findData(recommend_profile(pauses)))
-        self.result.setText('Suggested pace: ' + self.pace.currentText() + '. Nothing has been saved.')
+        self.result.setText(pace_recommendation(pauses))
         self.describe_pace()
         self.refresh()
     def owns_preview(self):

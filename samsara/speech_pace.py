@@ -6,6 +6,7 @@ value, avoiding a new competing default during the current config-drift work.
 """
 from __future__ import annotations
 
+from statistics import median
 from typing import Any
 
 
@@ -86,19 +87,33 @@ def clear_gap_s(config: dict) -> float:
 
 
 def measured_interword_pauses(samples, sample_rate: int, *, speech_threshold: float = 0.02) -> list[float]:
-    """Return silence runs between voiced samples; pure synthetic-VAD helper."""
-    pauses, start, in_silence = [], None, False
+    """Return only silence bounded by speech; exclude starting/ending waits."""
+    pauses, start, in_silence, heard_speech = [], None, False, False
     for index, sample in enumerate(samples):
         silent = abs(float(sample)) < speech_threshold
-        if silent and not in_silence:
+        if silent and heard_speech and not in_silence:
             start, in_silence = index, True
-        elif not silent and in_silence:
-            pauses.append((index - start) / float(sample_rate))
-            in_silence = False
+        elif not silent:
+            if in_silence:
+                pauses.append((index - start) / float(sample_rate))
+                in_silence = False
+            heard_speech = True
     return pauses
+
+
+def typical_pause_s(pauses: list[float]) -> float:
+    """Median internal gap, so one hesitation cannot dominate a reading."""
+    return float(median(pauses)) if pauses else 0.0
 
 
 def recommend_profile(pauses: list[float]) -> str:
     """A recommendation only; the wizard never writes it without a choice."""
-    typical = max(pauses, default=0.0)
-    return UNHURRIED if typical >= 2.5 else RELAXED if typical >= 1.0 else STANDARD
+    typical = typical_pause_s(pauses)
+    # At 100ms guide resolution, Relaxed owns twenty distinct gap bins.
+    return UNHURRIED if typical >= 2.5 else RELAXED if typical >= 0.5 else STANDARD
+
+
+def pace_recommendation(pauses: list[float]) -> str:
+    """Shared one-line explanation for both calibration surfaces (stand-in)."""
+    reason = f"typical pause {typical_pause_s(pauses):g} s" if pauses else "no pauses between speech"
+    return f"Suggested pace: {recommend_profile(pauses).capitalize()} ({reason})."  # STAND-IN COPY (615)
