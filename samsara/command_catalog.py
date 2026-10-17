@@ -452,7 +452,10 @@ def infer_args(kind: str, phrase: str, param_schema: Optional[dict], func) -> li
 
 def reserved_whole_utterances() -> set:
     from samsara import session_modes as sm  # noqa: PLC0415
+    from samsara.ava_edit.intent import selection_phrases
     words = set(sm._WHOLE_UTTERANCE_SWITCHES) | {sm.SCRATCH_THAT_PHRASE, sm.DICTATE_COMMIT_PHRASE}
+    words |= {phrase for phrases in selection_phrases().values() for phrase in phrases}
+    words |= {"apply", "discard"}
     words |= set(getattr(sm, "CLEAR_DRAFT_PHRASES", ()))
     words |= set(sm._DICTATE_COMMIT_HOMOPHONES) | set(sm.GLOBAL_SESSION_EXIT_PHRASES)
     words |= set(getattr(sm, "SESSION_SLEEP_PHRASES", ())) | set(getattr(sm, "SESSION_STOP_PHRASES", ()))

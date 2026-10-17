@@ -785,6 +785,15 @@ class CommandExecutor:
             if effective_app and not effective_app.command_matching_enabled:
                 return DispatchResult.miss(text)
 
+        # 632: whole selection requests share Ava's filler/quote rules, then
+        # enter the normal canonical policy path (also for apply/discard).
+        from samsara.ava_edit.selection import command_for_utterance
+        edit_command = command_for_utterance(text) if not literals_only else None
+        if edit_command is not None:
+            return self.execute_canonical(
+                edit_command, effective_app, route=route, generation=generation,
+                args={}, source_text=text)
+
         # The queue id sits between "send" and "to <agent>", so a fixed
         # prefix matcher cannot express this complete, bounded grammar.
         if not literals_only and text.lstrip().lower().startswith("send "):
@@ -824,6 +833,9 @@ class CommandExecutor:
         entry, remainder = self._matcher.match(match_text, context)
         if entry is None:
             entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
+        if (entry is not None and getattr(entry.handler, '__module__', '') ==
+                'plugins.commands.selection_edit' and edit_command is None):
+            return DispatchResult.miss(text)
         if literals_only and not accepts_dictation(self, text, effective_app, entry, context):
             return DispatchResult.miss(text)
         rejected_prefix = None

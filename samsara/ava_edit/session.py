@@ -42,12 +42,13 @@ _pending: "PendingProposal | None" = None
 class PendingProposal:
     """A proposal that has been shown and not yet answered."""
 
-    __slots__ = ("proposal", "created_at", "_clock")
+    __slots__ = ("proposal", "created_at", "_clock", "selection_target")
 
-    def __init__(self, proposal: Proposal, clock=time.monotonic):
+    def __init__(self, proposal: Proposal, clock=time.monotonic, selection_target=None):
         self.proposal = proposal
         self._clock = clock
         self.created_at = clock()
+        self.selection_target = selection_target
 
     def expired(self) -> bool:
         return (self._clock() - self.created_at) > PROPOSAL_TTL_S
@@ -124,10 +125,10 @@ def clear() -> None:
         _pending = None
 
 
-def _stage(proposal: Proposal) -> PendingProposal:
+def _stage(proposal: Proposal, selection_target=None) -> PendingProposal:
     global _pending
     with _lock:
-        _pending = PendingProposal(proposal)
+        _pending = PendingProposal(proposal, selection_target=selection_target)
         return _pending
 
 
@@ -152,8 +153,7 @@ def enabled(app) -> bool:
 
 def source_text(app) -> str:
     """The text an edit would edit: the most recent committed dictation
-    chunk. Empty string when there is nothing -- which is what makes the
-    whole path unreachable with no session buffer (see is_available)."""
+    chunk. Selection capture supplies its own source when this is empty."""
     manager = getattr(app, "_session_mode_manager", None)
     if manager is None:
         return ""
@@ -166,13 +166,14 @@ def source_text(app) -> str:
 
 
 def is_available(app) -> bool:
-    """False when nothing in this path is reachable: no session buffer means
-    no text to edit, so an edit request is not an edit request at all and
-    must fall through to Ava untouched."""
+    """Availability of the existing staged-draft route, not model readiness.
+
+    Selection requests can still use the deterministic cleanup floor.
+    """
     return bool(source_text(app))
 
 
-def propose(text: str, instruction: str, app) -> Proposal:
+def propose(text: str, instruction: str, app, *, offline=False, cleanup=False) -> Proposal:
     """Ask the model for the full rewrite, compute the diff locally, and gate
     the result through the sanitizer.
 
@@ -187,11 +188,20 @@ def propose(text: str, instruction: str, app) -> Proposal:
     if not (instruction or "").strip():
         return Proposal.none("no instruction", original=original, instruction=instruction)
 
-    raw, reason = model.rewrite(original, instruction, app)
+    if offline:
+        from samsara.ava_edit.selection import deterministic_cleanup
+        raw, reason = deterministic_cleanup(original), None
+    else:
+        raw, reason = model.rewrite(original, instruction, app)
+        if cleanup and raw is None and reason == "no model available":
+            from samsara.ava_edit.selection import deterministic_cleanup
+            raw = deterministic_cleanup(original)
     if raw is None:
         return Proposal.none(reason, original=original, instruction=instruction)
 
     refusal = sanitize.check(raw, original, instruction)
+    if refusal is None and cleanup and sanitize.similarity(original, sanitize.clean(raw)) < 0.85:
+        refusal = "not derived from the text"
     if refusal is not None:
         logger.info(f"[AVA-EDIT] rewrite refused by the sanitizer: {refusal}")
         return Proposal.none(refusal, original=original, instruction=instruction)
@@ -199,7 +209,7 @@ def propose(text: str, instruction: str, app) -> Proposal:
     return Proposal.build(original, sanitize.clean(raw), instruction=instruction)
 
 
-def stage(app, proposal: Proposal) -> bool:
+def stage(app, proposal: Proposal, *, selection_target=None) -> bool:
     """Show the proposal and leave it standing. Applies NOTHING.
 
     Returns True when a proposal is now staged and waiting for the word.
@@ -209,7 +219,7 @@ def stage(app, proposal: Proposal) -> bool:
         _say(app, proposal.describe())
         logger.info(f"[AVA-EDIT] not staged: {proposal.reason}")
         return False
-    _stage(proposal)
+    _stage(proposal, selection_target)
     _chip(app, "edit_proposed", {"changes": proposal.change_count})
     _say(app, proposal.describe())
     logger.info(f"[AVA-EDIT] staged: {proposal.change_count} change(s), awaiting apply")
@@ -219,6 +229,9 @@ def stage(app, proposal: Proposal) -> bool:
 def propose_and_stage(app, instruction: str) -> bool:
     """The whole propose half, for a caller that has only the instruction.
     Blocking -- run it off the utterance thread."""
+    from samsara.ava_edit import selection
+    if selection.should_capture(app, instruction):
+        return selection.propose_and_stage(app, instruction)
     original = source_text(app)
     if not original:
         return False
@@ -235,12 +248,16 @@ def apply(app) -> dict:
     configured pacing, as one undoable unit.
 
     Returns SessionModeManager.apply_edit's result dict, or a same-shaped
-    refusal. The slot is cleared either way: a proposal is answered once.
+    refusal. Staged-draft proposals clear on an answer; selection proposals
+    remain pending when their original target can no longer be verified.
     """
     staged = pending()
     if staged is None:
         _chip(app, "edit_refused", {"reason": "nothing staged"})
         return {"applied": False, "reason": "nothing staged", "chars": 0}
+    if staged.selection_target is not None:
+        from samsara.ava_edit import selection
+        return selection.apply(app, staged)
     clear()
 
     manager = getattr(app, "_session_mode_manager", None)
@@ -331,7 +348,10 @@ def handle_utterance(app, text: str) -> bool:
     try:
         if not (text or "").strip():
             return False
-        if not enabled(app):
+        staged = pending()
+        from samsara.ava_edit import selection
+        capture = selection.should_capture(app, text)
+        if not (capture or (staged and staged.selection_target is not None)) and not enabled(app):
             return False
 
         if pending() is not None:
@@ -345,7 +365,7 @@ def handle_utterance(app, text: str) -> bool:
             # the utterance goes to Ava. Not claimed.
             return False
 
-        if intent.is_edit_request(text) and is_available(app):
+        if capture or (intent.is_edit_request(text) and is_available(app)):
             _propose_off_thread(app, text)
             return True
     except Exception as exc:

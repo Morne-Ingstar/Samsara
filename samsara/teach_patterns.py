@@ -456,6 +456,19 @@ def grab_clipboard_text() -> "str | None":
 
 
 def grab_selection_text(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | None":
+    """Teaching phrase capture, retaining the existing word/length bounds."""
+    return _grab_selection_text(timeout_s, _sanitize_source_text)
+
+
+def grab_selection_block(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | None":
+    """Raw selected prose, capped without truncation; sequence proof required."""
+    def validate(raw):
+        return raw if raw and raw.strip() and len(raw) <= 20_000 else None
+
+    return _grab_selection_text(timeout_s, validate, require_sequence=True)
+
+
+def _grab_selection_text(timeout_s, transform, *, require_sequence=False):
     """Grab the CURRENTLY SELECTED/HIGHLIGHTED text (not the clipboard's
     existing content) by sending Ctrl+C and reading what changed, then
     restoring the clipboard to exactly what it held before this call.
@@ -482,9 +495,24 @@ def grab_selection_text(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | 
     import pyautogui
     from samsara import clipboard as clipboard_module
 
+    # Serialize this transaction with paste_with_preservation and other grabs.
+    with clipboard_module.clipboard_lock:
+        return _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
+                                         transform, require_sequence)
+
+
+def _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
+                              transform, require_sequence):
     pre_snapshot = clipboard_module.save_clipboard()
-    seq_before = clipboard_module.get_clipboard_sequence_number()
+    if not getattr(pre_snapshot, "complete", True):
+        return None  # No mutation: an incomplete snapshot cannot be restored.
     try:
+        seq_before = clipboard_module.get_clipboard_sequence_number()
+        if require_sequence and seq_before is None:
+            return None
+        if isinstance(pre_snapshot, clipboard_module.ClipboardSnapshot):
+            # Empty originals need the same restore marker as paste transport.
+            pre_snapshot.pasted_text = ""
         pyautogui.hotkey('ctrl', 'c')
 
         deadline = time.monotonic() + timeout_s
@@ -495,6 +523,8 @@ def grab_selection_text(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | 
                 advanced = True
                 break
             if current_seq is None or seq_before is None:
+                if require_sequence:
+                    return None
                 # Sequence number unavailable (non-Windows / API failure) --
                 # can't detect "nothing selected" reliably; treat as if it
                 # advanced and let sanitization catch genuinely empty text.
@@ -510,9 +540,11 @@ def grab_selection_text(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | 
             raw = pyperclip.paste()
         except Exception:
             raw = None
-        return _sanitize_source_text(raw)
+        return transform(raw)
     finally:
-        clipboard_module.restore_clipboard(pre_snapshot)
+        restored = clipboard_module.restore_clipboard(pre_snapshot)
+        if require_sequence and not restored:
+            raise RuntimeError("Clipboard restoration failed")
 
 
 # ============================================================================
