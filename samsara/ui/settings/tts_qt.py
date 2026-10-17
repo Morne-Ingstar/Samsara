@@ -397,14 +397,19 @@ class TTSPage:
                 status.setText(f"Error: {exc}")
 
     def _watch_tts_sample(self, handle, status):
-        """Read optional 542 outcomes on the Qt thread, for this visit/sample."""
+        """Read engine outcomes on the Qt thread, for this visit/sample."""
         previous = getattr(self, '_tts_sample_timer', None)
         if previous is not None:
             previous.stop()
             previous.deleteLater()
         self._tts_sample_timer = None
-        if status is None or getattr(handle, 'voice_result', None) not in (
-                'pending', 'network', 'windows', 'failed', 'cancelled'):
+
+        def outcome():
+            return getattr(handle, 'voice_result', None) or getattr(handle, '_state', None)
+
+        active = ('pending', 'synthesizing', 'playing')
+        if status is None or outcome() not in (
+                *active, 'done', 'network', 'windows', 'failed', 'cancelled'):
             return
         timer = QTimer(status)
         self._tts_sample_timer = timer
@@ -413,7 +418,7 @@ class TTSPage:
         def poll():
             if self._tts_sample_timer is not timer:
                 return
-            result = getattr(handle, 'voice_result', None)
+            result = outcome()
             if result == 'windows':
                 status.setText('Spoken with the Windows voice because the Network voice did not answer.')
             elif result == 'failed':
@@ -422,12 +427,12 @@ class TTSPage:
                 status.setText('Voice sample cancelled.')
             elif result == 'pending' and getattr(handle, 'network_failed', False):
                 status.setText('The Network voice did not answer. Trying the Windows voice.')
-            if result != 'pending':
+            if result not in active:
                 timer.stop()
 
         timer.timeout.connect(self._visit_callback(poll, status))
         poll()
-        if getattr(handle, 'voice_result', None) == 'pending':
+        if outcome() in active:
             timer.start()
 
     def _voice_notice_dialog(self, read_only=False):

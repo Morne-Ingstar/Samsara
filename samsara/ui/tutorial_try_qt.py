@@ -393,10 +393,19 @@ class _TryPage(QScrollArea):
     def poll(self):
         from samsara.audio_engine.guide_capture import running_engine, block_rms
         from samsara.audio_engine.ring import EMPTY
-        if (self.stage == 1 and self.preview_handle is not None
-                and getattr(self.preview_handle, 'network_failed', False) is True):
-            self.result.setText('The Network voice did not answer.')  # STAND-IN COPY (542)
-            self.states['voice'].setText(self.result.text())
+        handle = self.preview_handle
+        if self.stage == 1 and handle is not None:
+            if (getattr(handle, '_state', None) == 'failed'
+                    or getattr(handle, 'voice_result', None) == 'failed'):
+                self.result.setText('The voice sample could not be spoken.')  # STAND-IN COPY (614)
+                self.states['voice'].setText(self.result.text())
+            elif getattr(handle, 'network_failed', False) is True:
+                self.result.setText('The Network voice did not answer.')  # STAND-IN COPY (542)
+                self.states['voice'].setText(self.result.text())
+            elif (getattr(handle, 'network_bypassed', False) is True
+                  or getattr(handle, 'voice_result', None) == 'windows'):
+                self.result.setText('Network voice unavailable - using the Windows voice.')  # STAND-IN COPY (614; reused 542)
+                self.states['voice'].setText(self.result.text())
         if (self.busy(include_speech=False) or
                 (isinstance(self.preview, SampleSpeech) and not self.preview.authorized())):
             self.stop_preview()
