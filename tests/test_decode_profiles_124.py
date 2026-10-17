@@ -80,18 +80,16 @@ def _literal(node: ast.Dict) -> dict:
 
 
 def shipped_profiles() -> dict:
-    """{'fast'|'balanced'|'accurate': params} from dictation.py's source."""
-    tree = ast.parse(DICTATION.read_text(encoding="utf-8", errors="replace"))
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "get_transcription_params")
-    out = {}
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict):
-            params = _literal(node.value)
-            name = {1: "fast", 3: "balanced", 5: "accurate"}.get(params.get("beam_size"))
-            if name:
-                out[name] = params
-    return out
+    """{'fast'|'balanced'|'accurate': params} from the production helper."""
+    from samsara.transcription_params import get_transcription_params
+
+    return {
+        mode: get_transcription_params(
+            {'performance_mode': mode}, language='en', initial_prompt='',
+            no_speech_threshold=0.6, log_prob_threshold=-1.0,
+        )
+        for mode in ('fast', 'balanced', 'accurate')
+    }
 
 
 def app_config_default(key: str):

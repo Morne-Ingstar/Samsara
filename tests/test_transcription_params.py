@@ -553,3 +553,39 @@ class TestRetryOnSuspectedLoss:
 
         _retry_decode()
         assert captured['initial_prompt'] == ""
+
+@pytest.mark.parametrize('mode', ['fast', 'balanced', 'accurate'])
+def test_pure_profile_returns_fresh_nested_dicts(mode):
+    from samsara.transcription_params import get_transcription_params
+
+    config = {'performance_mode': mode}
+    kwargs = dict(language='fr', initial_prompt='synthetic prompt',
+                  no_speech_threshold=0.42, log_prob_threshold=-2.0)
+    first = get_transcription_params(config, **kwargs)
+    second = get_transcription_params(config, **kwargs)
+    assert first == second
+    assert first is not second
+    assert first['vad_parameters'] is not second['vad_parameters']
+    first['vad_parameters']['speech_pad_ms'] = -1
+    assert second['vad_parameters']['speech_pad_ms'] >= 0
+    assert config == {'performance_mode': mode}
+    assert second['language'] == 'fr'
+    assert second['initial_prompt'] == 'synthetic prompt'
+    assert second['no_speech_threshold'] == 0.42
+    assert second['log_prob_threshold'] == -2.0
+
+
+@pytest.mark.parametrize('is_command', [False, True])
+def test_hotkey_wrapper_preserves_dynamic_base_override_and_identity(is_command):
+    base = {'initial_prompt': None, 'language': 'fr', 'vad_filter': True,
+            'condition_on_previous_text': True, 'custom_option': object()}
+    app = types.SimpleNamespace(command_mode_recording=is_command,
+                                get_transcription_params=Mock(return_value=base))
+    result = dictation.DictationApp._build_hotkey_transcribe_params(app)
+    app.get_transcription_params.assert_called_once_with(include_vocabulary=is_command)
+    assert result is base
+    assert result['initial_prompt'] == ''
+    assert result['language'] == ('en' if is_command else 'fr')
+    assert result['vad_filter'] is False
+    assert result['condition_on_previous_text'] is False
+    assert result['custom_option'] is base['custom_option']
