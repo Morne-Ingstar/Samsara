@@ -151,6 +151,12 @@ def consume(app, text, *, capture_path=None):
             return True
         if not q.opened:
             return True  # The question itself is still being spoken.
+        # Deterministic follow-ups (635) share capture/expiry, without a model turn.
+        answer = getattr(q.runner, "answer", None)
+        if callable(answer):
+            _clear(app, q)
+            answer(text)
+            return True
         answer = (text or "").strip().rstrip(".!?").casefold()
         if answer in {"nevermind", "never mind"}:
             _clear(app, q, "Ava question cancelled.")

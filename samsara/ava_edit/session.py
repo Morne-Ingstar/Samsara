@@ -42,13 +42,15 @@ _pending: "PendingProposal | None" = None
 class PendingProposal:
     """A proposal that has been shown and not yet answered."""
 
-    __slots__ = ("proposal", "created_at", "_clock", "selection_target")
+    __slots__ = ("proposal", "created_at", "_clock", "selection_target", "selection_mode")
 
-    def __init__(self, proposal: Proposal, clock=time.monotonic, selection_target=None):
+    def __init__(self, proposal: Proposal, clock=time.monotonic, selection_target=None,
+                 selection_mode="replace"):
         self.proposal = proposal
         self._clock = clock
         self.created_at = clock()
         self.selection_target = selection_target
+        self.selection_mode = selection_mode
 
     def expired(self) -> bool:
         return (self._clock() - self.created_at) > PROPOSAL_TTL_S
@@ -125,10 +127,11 @@ def clear() -> None:
         _pending = None
 
 
-def _stage(proposal: Proposal, selection_target=None) -> PendingProposal:
+def _stage(proposal: Proposal, selection_target=None, selection_mode="replace") -> PendingProposal:
     global _pending
     with _lock:
-        _pending = PendingProposal(proposal, selection_target=selection_target)
+        _pending = PendingProposal(proposal, selection_target=selection_target,
+                                   selection_mode=selection_mode)
         return _pending
 
 
@@ -173,7 +176,8 @@ def is_available(app) -> bool:
     return bool(source_text(app))
 
 
-def propose(text: str, instruction: str, app, *, offline=False, cleanup=False) -> Proposal:
+def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
+            transform="") -> Proposal:
     """Ask the model for the full rewrite, compute the diff locally, and gate
     the result through the sanitizer.
 
@@ -199,7 +203,11 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False) -
     if raw is None:
         return Proposal.none(reason, original=original, instruction=instruction)
 
-    refusal = sanitize.check(raw, original, instruction)
+    if transform in {"translate", "summarize"}:
+        from samsara.ava_edit.selection import check_transform
+        refusal = check_transform(raw, original, instruction, transform)
+    else:
+        refusal = sanitize.check(raw, original, instruction)
     if refusal is None and cleanup and sanitize.similarity(original, sanitize.clean(raw)) < 0.85:
         refusal = "not derived from the text"
     if refusal is not None:
@@ -209,7 +217,7 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False) -
     return Proposal.build(original, sanitize.clean(raw), instruction=instruction)
 
 
-def stage(app, proposal: Proposal, *, selection_target=None) -> bool:
+def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace") -> bool:
     """Show the proposal and leave it standing. Applies NOTHING.
 
     Returns True when a proposal is now staged and waiting for the word.
@@ -219,9 +227,11 @@ def stage(app, proposal: Proposal, *, selection_target=None) -> bool:
         _say(app, proposal.describe())
         logger.info(f"[AVA-EDIT] not staged: {proposal.reason}")
         return False
-    _stage(proposal, selection_target)
+    _stage(proposal, selection_target, selection_mode)
     _chip(app, "edit_proposed", {"changes": proposal.change_count})
     _say(app, proposal.describe())
+    if selection_mode == "below":
+        _say(app, "The summary will be added below the selection.")  # Stand-in copy (635).
     logger.info(f"[AVA-EDIT] staged: {proposal.change_count} change(s), awaiting apply")
     return True
 

@@ -90,6 +90,9 @@ def is_edit_request(text: str) -> bool:
     """
     if not (text or "").strip():
         return False
+    # Reading captures the selection but is not an edit request.
+    if selection_instruction(text) == "read selection":
+        return False
     return selection_request(text) is not None or (
         _first_word(text) in EDIT_VERBS and detect_stage_reference(text))
 
@@ -115,13 +118,52 @@ def selection_phrases() -> dict[str, tuple[str, ...]]:
             bare += [f"{verb} up {ref}" for ref in ("this", "that", "it")]
             bare += [f"{verb} up"]
         groups[f"{verb} this"] = tuple(bare)
+    groups.update(selection_verb_phrases())
     return groups
+
+
+LANGUAGES = dict(zip(
+    "english spanish french german italian portuguese dutch polish japanese chinese korean russian arabic".split(),
+    "en es fr de it pt nl pl ja zh ko ru ar".split(),
+))
+
+
+def selection_verb_phrases() -> dict[str, tuple[str, ...]]:
+    from samsara.teach_patterns import _SOURCE_KEYWORD_TO_KIND
+    sources = [f"{article}{key}" for key, kind in _SOURCE_KEYWORD_TO_KIND.items()
+               if kind == "selection" for article in ("", "the ")]
+    refs = sources + ["this"]
+    groups = {
+        "read selection": tuple(f"read {ref}" for ref in refs) + ("read that back",),
+        "translate selection": tuple(f"translate {ref}" for ref in refs),
+        "summarize selection": tuple(f"summarize {ref}" for ref in refs) + ("sum this up",),
+        "summarize and replace": ("summarize and replace",) + tuple(
+            f"summarize {ref} and replace" for ref in refs),
+    }
+    for language in LANGUAGES:
+        groups[f"translate selection to {language}"] = tuple(
+            f"translate {ref} to {language}" for ref in refs)
+    return groups
+
+
+def selection_action(text: str) -> "tuple[str, str] | None":
+    """Only the three selection operations; never a staged-draft edit."""
+    instruction = selection_instruction(text)
+    if instruction == "read selection":
+        return "read", ""
+    if instruction and instruction.startswith("translate selection"):
+        return "translate", instruction.partition(" to ")[2]
+    if instruction in {"summarize selection", "summarize and replace"}:
+        return "summarize", "replace" if instruction.endswith("replace") else "below"
+    return None
 
 
 def selection_request(text: str) -> "str | None":
     """Explicit selection or bare referent, with no trailing payload."""
     instruction = selection_instruction(text)
     if instruction is not None:
+        if instruction in selection_verb_phrases():
+            return "selection"
         return "selection" if instruction.endswith(" selection") else "bare"
     return None
 
@@ -137,6 +179,10 @@ def selection_instruction(text: str) -> "str | None":
     for instruction, phrases in selection_phrases().items():
         if whole in phrases:
             return instruction
+    # A whole translation request with an unsupported language still asks once.
+    head, separator, language = whole.partition(" to ")
+    if separator and language and head in selection_verb_phrases()["translate selection"]:
+        return "translate selection"
     return None
 
 

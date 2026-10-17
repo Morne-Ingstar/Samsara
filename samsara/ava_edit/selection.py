@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from samsara.ava_edit import intent, session
+from samsara.ava_edit import intent, model, sanitize, session
 
 DEFAULT_INSTRUCTION = (
     "Fix dictation artifacts only: spurious periods and capitals from pauses, "
@@ -15,6 +15,119 @@ _LOWERCASE_WORDS = frozenset(
     "a an the and or but so to of in on at for from with as by into is are was "
     "were be been being am have has had do does did can could would should "
     "will went bought store some this that it my your our their then".split())
+
+
+def check_transform(raw, original, instruction, operation):
+    """Reuse output hygiene; semantic edits have their own character bounds.
+
+    Similarity, preserving a question, and preserving line structure describe
+    copy editing, not translation or summarization. All earlier output-hygiene
+    guards still apply. Generic edits and cleanup never enter this branch.
+    """
+    refusal = sanitize.check(raw, original, instruction)
+    semantic = {"model answered instead of editing", "rewrite grew too much",
+                "model returned a structured answer"}
+    if refusal and refusal not in semantic and not refusal.startswith("not derived from the text"):
+        return refusal
+    ceiling = len(original) * (3 if operation == "translate" else 1)
+    if len(sanitize.clean(raw)) > ceiling:
+        return "translation grew too much" if operation == "translate" else "summary is longer than the selection"
+    return None
+
+
+def _notice(app, text):
+    session._chip(app, "edit_refused", {"reason": text})
+    session._say(app, text)
+
+
+def read_back(app, original):
+    """Queue sentence chunks on the current voice and its existing interrupt.
+
+    The coordinator's generation changes on both cancel_speech and ordinary
+    speech interruption. Edge may call on_done even on cancellation; the
+    generation guard prevents that callback from continuing the reading.
+    """
+    coordinator = getattr(app, "audio_coordinator", None)
+    if coordinator is None:
+        session._say(app, original)
+        return
+    generation = coordinator._speech_generation
+    chunks = iter(re.findall(r".*?(?:[.!?](?:\s+|$)|\n+|$)", original, re.S))
+
+    def next_sentence():
+        if coordinator._speech_generation != generation:
+            return
+        chunk = next((part for part in chunks if part.strip()), None)
+        if chunk is not None:
+            coordinator.speak(chunk, category="dictation_readback", on_done=next_sentence)
+
+    next_sentence()
+
+
+class TranslationReply:
+    """Deterministic runner; ava_pending owns the sole reply window/lifetime."""
+
+    def __init__(self, app, original, target):
+        from samsara import execution_policy
+        self.app, self.original, self.target = app, original, target
+        self.generation = execution_policy.capture_generation(app)
+        self.coordinator = getattr(app, "audio_coordinator", None)
+        self.speech_generation = getattr(self.coordinator, "_speech_generation", None)
+
+    def eligible(self):
+        from samsara import execution_policy
+        question = getattr(self.app, "_ava_question", None)
+        speaking = question is not None and question.runner is self and not question.opened
+        return (execution_policy.is_current(self.app, self.generation)
+                and session.enabled(self.app)
+                and (not speaking or getattr(self.coordinator, "_speech_generation", None)
+                     == self.speech_generation))
+
+    def answer(self, text):
+        # consume clears capture and question ownership before invoking us.
+        if intent.is_discard_utterance(text):
+            return
+        action = intent.selection_action(text)
+        language = action[1] if action and action[0] == "translate" else intent._normalize(text)
+        if language not in intent.LANGUAGES:
+            _notice(self.app, "Language not recognized.")  # Stand-in copy (635).
+            return
+
+        def translate():
+            if self.eligible():
+                _transform(self.app, self.original, self.target, "translate", language,
+                           generation=self.generation)
+
+        session.thread_registry.spawn("selection-translate", translate, daemon=True)
+
+
+def ask_language(app, original, target):
+    from samsara import ava_pending
+    return ava_pending.ask(app, TranslationReply(app, original, target), "selection_language",
+                           "Into which language?", ())
+
+
+def _transform(app, original, target, operation, argument, *, generation=None):
+    from samsara import execution_policy
+    if generation is None:
+        generation = execution_policy.capture_generation(app)
+    # is_available() is a staged-source predicate, not a backend probe.
+    if not session.enabled(app) or model.resolve_backend(app) is None:
+        _notice(app, "Translation needs Ava's model" if operation == "translate"
+                else "Summarization needs Ava's model")
+        return False
+    if operation == "translate" and not argument:
+        ask_language(app, original, target)
+        return True
+    instruction = (f"Translate the passage into {argument.title()}. Return only the translation."
+                   if operation == "translate" else
+                   "Summarize the passage concisely. Return only the summary.")
+    session._chip(app, "edit_thinking")
+    proposal = session.propose(original, instruction, app, transform=operation)
+    if not execution_policy.is_current(app, generation) or not session.enabled(app):
+        return False
+    return session.stage(app, proposal, selection_target=target,
+                         selection_mode="below" if argument == "below" else "replace")
 
 
 def deterministic_cleanup(text: str) -> str:
@@ -75,11 +188,18 @@ def capture():
 
 def propose_and_stage(app, instruction: str) -> bool:
     original, target = capture()
-    if not original:
+    if not original or not original.strip():
         # Owner-specified wording, also visible on both existing chip surfaces.
         session._chip(app, "edit_refused", {"reason": "Nothing selected"})
         session._say(app, "Nothing selected")
         return False
+    action = intent.selection_action(instruction)
+    if action:
+        operation, argument = action
+        if operation == "read":
+            read_back(app, original)
+            return True
+        return _transform(app, original, target, operation, argument)
     cleanup = intent._first_word(instruction) in _CLEANUP_VERBS
     instruction = DEFAULT_INSTRUCTION if cleanup else instruction
     session._chip(app, "edit_thinking")
@@ -120,10 +240,21 @@ def _paste(staged) -> bool:
     current = teach_patterns.grab_selection_block()
     if current != staged.proposal.original:
         return False
-    return clipboard.paste_with_preservation(
-        staged.proposal.rewritten,
-        before_paste=lambda: _target_matches(target) and session.pending() is staged,
-    )
+    def prepare():
+        if not _target_matches(target) or session.pending() is not staged:
+            return False
+        if staged.selection_mode == "below":
+            import pyautogui
+            # Collapse at the selection's right edge even for backward ranges,
+            # then move to line end. The newline travels in the preserved paste.
+            for key in ("right", "end"):
+                pyautogui.press(key)
+                if not _target_matches(target) or session.pending() is not staged:
+                    return False
+        return True
+
+    payload = ("\n" if staged.selection_mode == "below" else "") + staged.proposal.rewritten
+    return clipboard.paste_with_preservation(payload, before_paste=prepare)
 
 
 def register_commands(module_name: str) -> None:
@@ -133,6 +264,11 @@ def register_commands(module_name: str) -> None:
     groups = intent.selection_phrases()
     groups.update({"apply": ("apply", "apply the edit"), "discard": ("discard", "discard the edit")})
     for instruction, aliases in groups.items():
+        # The whole-request router selects the new reading path. These two
+        # phrases already have catalogue owners; retain their registry entries
+        # and the accessibility command's last-dictation aliases.
+        if instruction == "read selection":
+            aliases = tuple(alias for alias in aliases if alias not in {"read that back", "read this"})
         def make_handler(utterance):
             def handle(app, _remainder):
                 if _remainder:
@@ -142,6 +278,14 @@ def register_commands(module_name: str) -> None:
             handle.__qualname__ = "edit_" + utterance.replace(" ", "_")
             # Owner-editable stand-in, surfaced by the catalogue/reference.
             handle.__doc__ = "Ava: propose an edit, then say apply or discard."
+            if utterance == "read selection":
+                handle.__doc__ = "Ava: read selected text with the current voice; speak to interrupt."
+            elif utterance.startswith("translate selection"):
+                handle.__doc__ = "Ava: propose a translation of selected text, then say apply or discard."
+            elif utterance.startswith("summarize"):
+                handle.__doc__ = ("Ava: propose a summary " +
+                                  ("in place of" if utterance.endswith("replace") else "below") +
+                                  " selected text, then say apply or discard.")
             return handle
 
         handler = make_handler(instruction)
