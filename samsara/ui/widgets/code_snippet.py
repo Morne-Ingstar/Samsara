@@ -1,7 +1,7 @@
 """Read-only command/config field with an accessible, focusable copy action."""
 from html import escape
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QFontDatabase, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QPushButton
 from samsara.ui import theme
 
@@ -22,7 +22,9 @@ class CodeSnippet(QFrame):
         self.preview.setTextFormat(Qt.TextFormat.PlainText)
         self.preview.setWordWrap(True)
         self.preview.setMinimumWidth(0)
-        self.preview.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        # Do not ask Windows for the legacy system FixedFont (often 8514oem).
+        # The stylesheet below already selects Consolas for this preview.
+        self.preview.setFont(QFont("Consolas"))
         self.preview.setStyleSheet(f"background: transparent; color: {theme.TEXT_PRIMARY}; font-family: Consolas; font-size: {theme.TYPE_BODY}px;")
         # Private previews are deliberately masked. Only Copy supplies the usable
         # command; selecting the mask would put a broken command on the clipboard.

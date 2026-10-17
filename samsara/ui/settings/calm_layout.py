@@ -269,6 +269,12 @@ class RowDividers(QObject):
         for index in range(self.layout.count()):
             item = self.layout.itemAt(index)
             widget = item.widget() if item is not None else None
+            # Layouts can outlive widgets during the lazy Settings page
+            # rebuild.  QObject wrappers remain in the layout briefly after
+            # deleteLater(), but asking one for a property raises
+            # RuntimeError (wrapped by Qt as an uncaught SystemError).
+            if widget is not None and not isValid(widget):
+                continue
             if widget and widget.property('settingsRowDivider'):
                 continue
             if widget and widget.isHidden() and widget.property('role') not in ('row', 'settingsGroup') and not widget.property('settingsToolRow'):
@@ -292,6 +298,13 @@ class RowDividers(QObject):
             return
         self.busy = True
         try:
+            # Do not retain deleted wrappers between a page rebuild and the
+            # next queued LayoutRequest.
+            self.groups = [
+                [row for row in group if isValid(row)]
+                for group in self.groups
+            ]
+            self.groups = [group for group in self.groups if group]
             groups = self.collect()
             if groups != self.groups:
                 for _, _, divider, _ in self.dividers:
