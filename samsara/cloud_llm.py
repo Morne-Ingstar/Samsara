@@ -347,6 +347,8 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
         "max_tokens": max_tokens,
         "temperature": 0.3,
     }
+    if "AVA_STRUCTURED_REPLY_624" in system_prompt:
+        payload["response_format"] = {"type": "json_object"}
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     _check_response(base_url, response)
     data = response.json()

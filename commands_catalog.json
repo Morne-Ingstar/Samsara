@@ -432,7 +432,7 @@
       "pack": "ai",
       "plugin": "ask_ollama",
       "risk": "ui",
-      "source": "samsara/ava_turn_queue.py:2986",
+      "source": "samsara/ava_turn_queue.py:2984",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true

@@ -942,7 +942,7 @@ class WakeConsumer:
             while self._running and not stop_event.is_set():
                 if not (
                     app.wake_word_active
-                    or self._is_toggle_cmd(app)
+                    or self._is_toggle_cmd(app) or getattr(getattr(app, '_ava_question', None), 'opened', False)
                 ):
                     time.sleep(0.005)
                     continue

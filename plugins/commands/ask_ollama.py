@@ -15,7 +15,7 @@ from samsara import ava_corrections
 from samsara import ava_profile
 from samsara import ava_persona
 from samsara import ava_readiness
-from samsara import cloud_llm, ava_local_context, ava_turn_queue
+from samsara import cloud_llm, ava_local_context, ava_turn_queue, ava_plan, ava_pending
 from samsara import teach_patterns, execution_policy
 from samsara.ava_memory import AvaMemory, PersonalMemory, log_conversation
 from samsara.paths import samsara_home_dir
@@ -54,8 +54,6 @@ RELAXED_SYSTEM_PROMPT = """
 For simple questions, use 1 to 3 sentences. For a complex explanation, use
 only the detail needed to answer clearly without cutting off mid-sentence.
 
-You have three response modes:
-
 MODE 1 — CONVERSATION:
 For questions, opinions, facts, explanations, or anything not requesting a
 computer action, respond with plain natural language and no prefix."""
@@ -64,8 +62,6 @@ STRICT_SYSTEM_PROMPT = """
 
 Keep every response to 1 to 3 sentences. When a conversation is done, give
 one short acknowledgement and stop.
-
-You have three response modes. Read these carefully and follow them exactly.
 
 MODE 1 — CONVERSATION:
 For questions, opinions, facts, or anything not requesting a computer action,
@@ -213,8 +209,6 @@ cannot do. Never substitute the nearest listed command.
   and the user's own words. Never put a "|" on an ACTION line.
 """
 
-# Compose the active prompt from whichever personality + shared modes.
-# get_system_prompt() picks based on config['ava_personality'].
 DEFAULT_SYSTEM_PROMPT = AVA_PERSONA_TEXT + RELAXED_SYSTEM_PROMPT + _SHARED_MODES
 
 
@@ -911,7 +905,7 @@ def _record_speech(spoken, reason, chars):
         speech.append((spoken, reason, chars))
 
 
-def speak(app, text, category="ava_response"):
+def speak(app, text, category="ava_response", on_done=None):
     """Speak one Ava line. Category "ava_response" is exempt from
     command_mode.tts_char_limit (samsara/tts/coordinator.py): Ava's answers
     are the point of asking, not a command acknowledgement. Returns True
@@ -938,7 +932,8 @@ def speak(app, text, category="ava_response"):
     except Exception as exc:
         logger.debug(f"speak: generation stamp failed: {exc}")
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
-        handle = app.audio_coordinator.speak(text, category=category, interruptible=True)
+        handle = app.audio_coordinator.speak(text, category=category, interruptible=True,
+                                             **({"on_done": on_done} if on_done else {}))
         if getattr(handle, "utterance_id", None) == "noop-cmd-mode":
             _record_speech(False, "suppressed by command_mode.tts_char_limit", chars)
             return False
@@ -951,6 +946,7 @@ def speak(app, text, category="ava_response"):
         return True
     elif hasattr(app, "tts_engine") and app.tts_engine:
         app.tts_engine.speak(text)
+        if on_done: on_done()
         _record_speech(True, "tts_engine", chars)
         if getattr(_turn_local, "spoken_text", None) is not None:
             _turn_local.spoken_text.append(text)
@@ -1629,8 +1625,8 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         print(f"[AVA PROMPT] Model: {model}")
         _system_prompt_logged = True
 
-    # Personal facts and aliases stay on this device. They are supplied only
-    # to a local provider, never included in a cloud-provider request.
+    system = ava_plan.prepare_request(app, prompt, system, allow_search)
+    # Personal facts and aliases stay on this device.
     personal_context_allowed = state.provider.identity == "ollama"
     profile_ctx = ''
     aliases_ctx = ''
@@ -1743,6 +1739,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         "messages": messages,
         "stream": False,
     }
+    if allow_search: payload["format"] = "json"
 
     def _local_failed(kind):
         if not ava_turn_queue.can_deliver(app):
@@ -2031,9 +2028,10 @@ def handle_response(app, response, original_text=None, *, generation=None):
         speak(app, "To Luna, Sol, Astra or Claude Code?")
         return TurnOutcome("conversation", "refused", reason="dispatch_unresolved")
 
-    print(f"[AVA RAW] {response!r}")
     if generation is None:
         generation = execution_policy.current_generation(app)
+    structured = ava_plan.handle_json(app, response, original_text or "", generation)
+    if structured is not None: return structured
 
     # The legacy executable protocol ("EXECUTE <free text>") is gone
     # (Astra 2026-09-12 section 1 item 1): it ran before any confirmation.
@@ -3008,8 +3006,10 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     # used to say "Ava <check>" whatever happened.
     _set_turn_outcome(app, None)
 
-    # Hold-to-talk and other direct Ava callers share the same local dispatch
-    # gate as the latched session; a malformed send never reaches a model.
+    if remainder and ava_pending.consume(app, remainder):
+        _done()
+        return
+    # Direct Ava callers share the local dispatch gate.
     from plugins.commands.dispatch_voice import route_ava_utterance
     if remainder and route_ava_utterance(app, remainder):
         _done()

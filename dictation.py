@@ -4815,6 +4815,8 @@ class DictationApp(CommandFastPathMixin):
         so at most one request is ever in flight; this function itself never
         blocks the caller (the utterance-processing thread).
         """
+        from samsara.ava_pending import consume
+        if consume(self, text): return
         if self._try_cancel_pending_ava_utterance(text):
             return
         # Stop path independent of understanding (execution_policy.stop_all):
@@ -5600,15 +5602,9 @@ class DictationApp(CommandFastPathMixin):
         return True
 
     def _route_to_ava(self, text: str):
-        """Send transcribed speech to Ava -- but try it as a literal voice
-        command first, through the SAME registry/dispatch wake word mode
-        uses (_process_wake_command), so an exact phrase like "show numbers"
-        executes its plugin handler instead of being swallowed whole into
-        an LLM prompt Ava has no way to resolve. force_commands=True mirrors
-        wake word mode: Ava mode is not the command_matching_enabled toggle
-        feature, so a recognized command always dispatches here regardless
-        of that setting. Only text that doesn't match anything registered
-        falls through to Ollama below, unchanged."""
+        """Answer Ava's pending question before literal commands or a new turn."""
+        from samsara.ava_pending import consume
+        if consume(self, text, capture_path='ava_hold'): return
         if self._try_cancel_pending_ava_utterance(text):
             return
         if self._try_stop_utterance(text, 'hold ava'):
@@ -6161,6 +6157,8 @@ class DictationApp(CommandFastPathMixin):
             if _cancel_windows is not None:
                 _cancel_windows.note_utterance_start()
             stage_timing.mark("dispatch_start", words=len(text.split()))
+            from samsara.ava_pending import consume
+            if consume(self, text, capture_path='toggle_command'): return
             outcome = manager.dispatch_utterance(text, signals, onset_context=onset_context)
             outcome = self._resolve_command_miss(outcome, text)
             _timing_outcome = outcome_label(outcome.kind)
@@ -8738,7 +8736,8 @@ class DictationApp(CommandFastPathMixin):
                 return
             
             logger.info(f"[HEAR] \"{describe_text(text)}\"")
-            
+            from samsara.ava_pending import consume
+            if consume(self, text, capture_path='wake'): return
             # Get wake word config
             ww_config = self.config.get('wake_word_config', {})
             wake_phrase = ww_config.get(
@@ -11121,7 +11120,8 @@ class DictationApp(CommandFastPathMixin):
 
                 if text:
                     text_lower = text.lower().strip()
-
+                    from samsara.ava_pending import consume
+                    if (is_command_mode or is_ava_mode) and consume(self, text, capture_path='command_key' if is_command_mode else 'ava_hold'): return
                     # Voice exit from Mouse 4 command mode. Queue 84: WHOLE
                     # utterance only. This was a substring test, the same rule
                     # that let "Have it stop listening to you, or something
