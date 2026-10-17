@@ -3193,166 +3193,50 @@ class DictationApp(CommandFastPathMixin):
     _CALIBRATION_MAX_AGE_S = 24 * 3600
 
     def _calibration_identity(self) -> dict:
-        from samsara.microphone_recovery import calibration_identity
-        return calibration_identity(self, sd)
+        from samsara.mic_calibration import calibration_identity
+        return calibration_identity(self, sd=sd)
 
     def _calibration_cache_path(self) -> Path:
-        return self.config_path.parent / self._CALIBRATION_CACHE_FILENAME
+        from samsara.mic_calibration import calibration_cache_path
+        return calibration_cache_path(self)
 
     def _load_fresh_calibration(self, now: "float | None" = None) -> "float | None":
-        """Threshold from the calibration cache if it belongs to the current
-        device and is younger than _CALIBRATION_MAX_AGE_S, else None."""
-        path = self._calibration_cache_path()
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                stored = json.load(f)
-        except FileNotFoundError:
-            return None
-        except (OSError, ValueError) as e:
-            logger.warning(f"[CAL] Ignoring unreadable calibration cache: {e}")
-            return None
-        if not isinstance(stored, dict):
-            return None
-        ident = self._calibration_identity()
-        if ident['device_name'] and stored.get('device_name'):
-            same_device = stored.get('device_name') == ident['device_name']
-        else:
-            same_device = stored.get('device_id') == ident['device_id']
-        if not same_device:
-            return None
-        if stored.get('capture_rate') != ident['capture_rate']:
-            return None
-        if stored.get('multiplier') != ident['multiplier']:
-            return None
-        try:
-            age = (time.time() if now is None else now) - float(stored['calibrated_at'])
-            threshold = float(stored['threshold'])
-        except (KeyError, TypeError, ValueError):
-            return None
-        if not (0 <= age < self._CALIBRATION_MAX_AGE_S) or not math.isfinite(threshold):
-            return None
-        if self._calibration_saturated(threshold):
-            return None
-        return threshold
+        from samsara.mic_calibration import load_fresh_calibration
+        return load_fresh_calibration(self, now, clock=time.time, logger=logger)
 
     @staticmethod
     def _calibration_saturated(threshold: float) -> bool:
-        """True when calibrate_threshold clamped to CALIBRATION_CEILING: the
-        "ambient" recording was speech or noise, not room tone (live log
-        2026-09-13: ambient RMS 0.1589 -> 0.1500, then reused on the next
-        boot). Such a value may serve the current session but must never be
-        stored or reused -- re-measuring beats reviving a bad calibration."""
-        from samsara.constants import CALIBRATION_CEILING
-        return threshold >= CALIBRATION_CEILING
+        from samsara.mic_calibration import calibration_saturated
+        return calibration_saturated(threshold)
 
     def _save_calibration(self, threshold: float) -> None:
-        """Persist a measured threshold with its device identity. Never raises.
-        A ceiling-clamped (contaminated) threshold is not persisted."""
-        if self._calibration_saturated(threshold):
-            logger.info(f"[CAL] Not persisting calibration at the ceiling "
-                        f"({threshold:.4f}); the room was not quiet")
-            return
-        path = self._calibration_cache_path()
-        record = dict(self._calibration_identity(),
-                      threshold=float(threshold), calibrated_at=time.time())
-        tmp = path.with_suffix('.json.tmp')
-        try:
-            with open(tmp, 'w', encoding='utf-8') as f:
-                json.dump(record, f, indent=2)
-            os.replace(tmp, path)
-        except OSError as e:
-            logger.warning(f"[CAL] Could not persist calibration: {e}")
+        from samsara.mic_calibration import save_calibration
+        return save_calibration(self, threshold, clock=time.time, logger=logger)
 
     def _measure_speech_threshold(self) -> "tuple[float, bool]":
-        """Record ambient noise and derive a threshold. Returns (threshold,
-        measured_ok); a failed or empty recording yields the default and
-        False so it is never persisted as a real calibration."""
-        multiplier = self.config.get('cal_multiplier', 3.0)
-        from samsara.audio_engine.device_resolver import DeviceNotFound
-        try:
-            from samsara.audio_engine.device_resolver import select_input
-            mic_id, _fallback = select_input(sd, self.config)
-            rms_samples = measure_ambient_rms(mic_id, self.capture_rate)
-            threshold = calibrate_threshold(rms_samples, multiplier=multiplier)
-            ambient = float(np.median(rms_samples)) if rms_samples else 0.0
-            logger.debug(f"[CAL] Ambient RMS: {ambient:.4f} | "
-                  f"Multiplier: {multiplier}x | Threshold: {threshold:.4f}")
-            return threshold, len(rms_samples) >= 3
-        except DeviceNotFound:
-            logger.info('[MIC] No microphone available; calibration deferred')
-            return DEFAULT_SPEECH_THRESHOLD, False
-        except Exception as e:
-            threshold = DEFAULT_SPEECH_THRESHOLD
-            logger.exception(f"[CAL] Calibration failed ({e}), using default {threshold:.4f}")
-            return threshold, False
+        from samsara.mic_calibration import measure_speech_threshold
+        return measure_speech_threshold(
+            self, sd=sd,
+            measure_ambient_rms=lambda device, rate: measure_ambient_rms(device, rate),
+            calibrate_threshold=lambda samples, **kwargs: calibrate_threshold(samples, **kwargs),
+            logger=logger,
+        )
 
     def _apply_speech_threshold(self, threshold: float) -> None:
-        """Apply to wake word audio config (in memory; persisted by the next save)."""
-        with self._config_lock:
-            ww_config = self.config.get('wake_word_config', {})
-            if 'audio' not in ww_config:
-                ww_config['audio'] = {}
-            ww_config['audio']['speech_threshold'] = threshold
-            self.config['wake_word_config'] = ww_config
+        from samsara.mic_calibration import apply_speech_threshold
+        return apply_speech_threshold(self, threshold)
 
     def _run_calibration_if_auto(self, use_cache=False):
-        """Run mic calibration if threshold_mode is 'auto'. Updates config in place.
-
-        use_cache=True (boot only) reuses a fresh calibration of the same
-        device instead of recording. Every other caller (manual recalibrate,
-        microphone switch) always records. Returns 'manual', 'cached',
-        'measured' or 'failed'.
-        """
-        from samsara.microphone_recovery import input_available
-        if not input_available(self, sd):
-            return 'unavailable'
-        mode = self.config.get('threshold_mode', 'auto')
-        if mode != 'auto':
-            thresh = self.config.get('wake_word_config', {}).get('audio', {}).get(
-                'speech_threshold', DEFAULT_SPEECH_THRESHOLD)
-            logger.debug(f"[CAL] Threshold mode: manual ({thresh:.4f})")
-            return 'manual'
-
-        if use_cache:
-            cached = self._load_fresh_calibration()
-            if cached is not None:
-                logger.info(f"[CAL] Reusing calibration from the last 24 h "
-                            f"(threshold {cached:.4f}); refreshing after startup")
-                self._apply_speech_threshold(cached)
-                return 'cached'
-
-        threshold, ok = self._measure_speech_threshold()
-        if ok:
-            self._save_calibration(threshold)
-        self._apply_speech_threshold(threshold)
-        return 'measured' if ok else 'failed'
+        from samsara.mic_calibration import run_calibration_if_auto
+        return run_calibration_if_auto(self, use_cache, sd=sd, logger=logger)
 
     def _refresh_calibration_in_background(self) -> None:
-        """Re-measure after startup when boot reused a stored calibration, so
-        a changed room still gets picked up. Skipped (and the stored value
-        kept) if a hold-to-dictate recording is live at either end of the
-        1.5 s window -- the user's own speech must not become "ambient"."""
-        def _do():
-            if self.config.get('threshold_mode', 'auto') != 'auto':
-                return
-            if getattr(self, 'recording', False):
-                logger.info("[CAL] Background recalibration skipped: recording in progress")
-                return
-            threshold, ok = self._measure_speech_threshold()
-            if not ok or getattr(self, 'recording', False) or self._calibration_saturated(threshold):
-                logger.info("[CAL] Background recalibration discarded")
-                return
-            self._save_calibration(threshold)
-            self._apply_speech_threshold(threshold)
-            logger.info(f"[CAL] Background recalibration: threshold {threshold:.4f}")
-        thread_registry.spawn("dictation.calibration_refresh", _do, daemon=True)
+        from samsara.mic_calibration import refresh_calibration_in_background
+        return refresh_calibration_in_background(self, spawn=thread_registry.spawn, logger=logger)
 
     def recalibrate_mic(self):
-        """Re-run calibration in background and update config."""
-        def _do():
-            self._run_calibration_if_auto()
-            self.persist_config()
-        thread_registry.spawn("dictation._do", _do, daemon=True)
+        from samsara.mic_calibration import recalibrate_mic
+        return recalibrate_mic(self, spawn=thread_registry.spawn)
 
     def get_available_microphones(self):
         """Get list of available microphone devices."""
