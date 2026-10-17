@@ -3796,13 +3796,13 @@ class DictationApp(CommandFastPathMixin):
                     cuda_status_message(),
                 )
                 device = "cpu"
-
             if device == "auto":
                 try:
-                    import ctranslate2
-                    cuda_available = (is_cuda_available()
-                                      and ctranslate2.get_cuda_device_count() > 0
-                                      and bool(ctranslate2.get_supported_compute_types('cuda')))
+                    cuda_available = is_cuda_available()
+                    if cuda_available:
+                        import ctranslate2
+                        cuda_available = (ctranslate2.get_cuda_device_count() > 0
+                                          and bool(ctranslate2.get_supported_compute_types('cuda')))
                     if cuda_available:
                         device = "cuda"
                         logger.debug("[GPU] CUDA available via ctranslate2")
