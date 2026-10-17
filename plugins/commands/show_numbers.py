@@ -1687,7 +1687,7 @@ def handle_taskbar_numbers(app, remainder):
 
 
 @command("show numbers",
-         aliases=["show clickable", "show labels", "label things", "show"],
+         aliases=["show clickable", "show labels", "label things", "show", "show the labels", "show the numbers", "show the clickable"],
          pack="accessibility", risk_class="read")
 def handle_show_numbers(app, remainder):
     """Numbers everything clickable in the focused window so you can name one.
@@ -1752,7 +1752,7 @@ def handle_show_numbers(app, remainder):
 
 
 @command("hide numbers",
-         aliases=["dismiss numbers", "hide labels", "clear labels", "hide"],
+         aliases=["dismiss numbers", "hide labels", "clear labels", "hide", "hide the numbers", "hide the labels"],
          pack="accessibility",
          risk_class="ui",
 )
@@ -1765,7 +1765,7 @@ def handle_hide_numbers(app, remainder):
 
 
 @command("refresh numbers",
-         aliases=["update numbers", "refresh"],
+         aliases=["update numbers", "refresh", "refresh the numbers"],
          pack="accessibility",
          risk_class="ui",
 )

@@ -35,7 +35,7 @@ BUILTIN_PROVIDERS = {
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "host": "openrouter.ai",
-        "model": "openrouter/auto",
+        "model": "google/gemini-3.1-flash-lite",
     },
 }
 SUPPORTED_PROVIDERS = frozenset(BUILTIN_PROVIDERS)

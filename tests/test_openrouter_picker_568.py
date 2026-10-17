@@ -177,7 +177,7 @@ def test_custom_auto_filters_accessibility_and_keyboard_choice(picker):
     picker.models.setFocus()
     picker.models.setCurrentRow(0)
     QTest.keyClick(picker.models, Qt.Key.Key_Return)
-    assert picker.entry.text() == ""
+    assert picker.entry.text() == "openrouter/auto"
 
 
 def test_prices_context_and_near_past_expiration_are_visible(picker):
@@ -257,7 +257,7 @@ def test_outside_provider_change_parks_picker_choice_under_openrouter_only(harne
     window._apply_and_close()
     cloud = window.app.config["cloud_llm"]
     assert cloud["provider"] == "openai" and cloud["model"] == "other/owned"
-    assert cloud["provider_settings"]["openrouter"]["model"] == ""
+    assert cloud["provider_settings"]["openrouter"]["model"] == "openrouter/auto"
 
 
 def test_offline_manual_id_still_saves_and_auto_default_is_unchanged(harness):
@@ -268,7 +268,7 @@ def test_offline_manual_id_still_saves_and_auto_default_is_unchanged(harness):
     window._apply_and_close()
     assert window.app.config["cloud_llm"]["model"] == "custom/manual"
     from samsara import cloud_llm
-    assert cloud_llm.BUILTIN_PROVIDERS["openrouter"]["model"] == "openrouter/auto"
+    assert cloud_llm.BUILTIN_PROVIDERS["openrouter"]["model"] == "google/gemini-3.1-flash-lite"
 
 
 def test_auto_applies_without_pinning_provider_default(harness, monkeypatch):
@@ -279,9 +279,9 @@ def test_auto_applies_without_pinning_provider_default(harness, monkeypatch):
     picker.models.setCurrentRow(0)
     picker.select_model()
     window._apply_and_close()
-    assert not window.app.config["cloud_llm"].get("model")
+    assert window.app.config["cloud_llm"]["model"] == "openrouter/auto"
     monkeypatch.setitem(cloud_llm.BUILTIN_PROVIDERS["openrouter"], "model", "future/default")
-    assert cloud_llm._get_provider_config(window.app)[2] == "future/default"
+    assert cloud_llm._get_provider_config(window.app)[2] == "openrouter/auto"
 
 
 def test_unexpected_fetch_exception_returns_picker_to_idle_and_allows_retry(picker, monkeypatch, tmp_path):

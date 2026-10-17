@@ -740,7 +740,7 @@ def handle_media_pause(app, remainder):
     return _media_transport("pause")
 
 
-@command("next", aliases=["skip", "skip track", "next track", "next song", "skip song"], pack="media",
+@command("next", aliases=["skip", "skip track", "skip the track", "next track", "next song", "skip song"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_next(app, remainder):
     """Skips to the next track."""
@@ -754,7 +754,7 @@ def handle_media_previous(app, remainder):
     return _media_transport("previous")
 
 
-@command("mute", aliases=["mute spotify"], pack="media",
+@command("mute", aliases=["mute spotify", "mute the spotify"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_spotify_mute(app, remainder):
     """Mutes or unmutes Spotify without touching the system volume."""

@@ -1,23 +1,21 @@
 # Samsara
 
-**Use your Windows computer by voice.**
+**An evolving, open-source accessibility platform you shape to your situation. Free dictation and voice control for Windows - all in one place.**
 
-An evolving, open-source accessibility platform you shape to your situation.
-Free dictation and voice control for Windows - all in one place.
+Hands-free dictation lets you speak a thought, then send it to the text box you're using by voice. Control your Windows computer by voice, with commands for apps, windows and on-screen controls.
 
 **Free · Open source · Accessibility first**
 
-Samsara is free. No word limits, no subscriptions, no paid tiers, and no
-email address or account needed.
+Samsara is free. No word limits, subscriptions, or paid feature tiers—and no email address or username required.
 
 **[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
 · [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.5)
 · [Website](https://morneis.com/samsara)
 
-![Samsara's dark Home window, with navigation for History, Memos, Dictionary, Voice help and Settings; command and guide cards; and an unlimited words-remaining indicator.](assets/screenshots/samsara-home-beta.png)
+![Samsara Home window.](assets/screenshots/samsara-home-beta.png)
 
-*Beta/development interface. The current public release has an earlier
-interface; see the release choices below.*
+*Interface and features can differ between builds;
+see the release notes for the build you choose.*
 
 ## Get started
 
@@ -40,7 +38,7 @@ Compatible NVIDIA GPUs can use the optional [CUDA add-on](https://morneis.com/sa
 Hotkeys and listening behavior are configurable. The in-app Quick Reference
 shows your bindings. [Open the full quick start →](https://morneis.com/samsara/docs/quick-start/)
 
-In a Hands Free Dictate session, say **“finish”** to commit the staged text.
+In a Hands Free Dictate session, say the default commit word **“finish”** to commit the staged text.
 After saying **“show numbers,”** name a target: **“click 7,” “right click 7,”**
 or **“double click 7.”**
 
@@ -66,6 +64,12 @@ version you choose.
 | **Improve recognition** | Add names and recurring corrections in the Dictionary; review previous dictations in History. |
 | **Talk to Ava** | Use the optional assistant with a local Ollama model and spoken replies, or configure a cloud provider with your own API key. |
 
+- **Tasks:** hold **Ctrl+Alt+T**, speak, and release to add to your local task list.
+- **Several commands:** join up to four supported commands with “and” or “then”; any refused step or step needing a yes prevents the group from starting.
+- **Undo a paste:** use **Ctrl+Alt+Z** in the same eligible editor; recognized terminal apps are excluded.
+- **Voice feedback:** choose Silent, Brief or Full in Audio settings, or say “talk less” or “talk more”; fresh installs use Brief.
+- **Plain requests:** In Command mode, when Ava is on and ready, missed commands can be interpreted from up to sixteen words into up to three supported steps; this is on by default. Those limits do not apply to Ava conversations.
+
 Spoken commands need an active command-capable listening mode. For wake-word
 commands, enable wake words and use your configured phrase—**“Jarvis”** by
 default—before the command. Availability also depends on enabled command
@@ -82,15 +86,13 @@ devices, and more. They are not required for dictation.
 AI account. Local Ava needs Ollama and a downloaded model; Windows speech
 voices can read replies locally.
 
-Online features are separate choices: cloud AI and web search, Edge text-to-speech,
-configured Smart Actions endpoints, and network-backed integrations send the
-information needed for those features. Downloading models and checking for
-updates also use the internet. Automatic update checks are off by default.
+Online choices include cloud AI and web search, Edge text-to-speech, configured Smart Actions endpoints, and network-backed integrations; these send information used by those features.
+Ava Off stops Ava's model requests; separate commands can still send your words to installed, signed-in GPT/Claude tools or the Claude desktop app. Browser searches, selected Edge speech and configured Todoist can also send the words used by those features.
+Model downloads and update checks also use the internet. Automatic update checks are off by default.
 
 History and logs can contain your words. Beta/development builds also have a
-local intent-observation log enabled by default; it records dictated text and
-the focused app's process name. See [privacy, local storage, and how to disable
-that log](PRIVACY.md).
+local intent-observation log, off for fresh profiles; legacy profiles with an explicit log directory can keep it on. When enabled, it records dictated text and
+the focused app's process name. See [privacy, local storage, and log controls](PRIVACY.md).
 
 A few things to expect:
 
@@ -145,8 +147,8 @@ agent in this repository.
 ## Support and license
 
 Samsara is free, with no paid feature tiers. If it helps you,
-[GitHub sponsorship](https://github.com/sponsors/Morne-Ingstar) or
-[Ko-fi](https://ko-fi.com/morneingstar) helps fund development.
+[GitHub sponsorship](https://github.com/sponsors/Morne-Ingstar) and
+[Ko-fi](https://ko-fi.com/morneingstar) are optional support links.
 Contributions are optional.
 
 Licensed under [AGPL-3.0](LICENSE). Bundled third-party components retain
@@ -160,5 +162,5 @@ Developed with help from [Claude](https://anthropic.com),
 [ChatGPT](https://openai.com), and [Gemini](https://deepmind.google), including
 the [ARC](https://github.com/Morne-Ingstar/ARC) review process.
 
-*Named after the Buddhist concept of cyclical existence—Samsara helps break
-the cycle of repetitive strain.*
+*Named after the Buddhist concept of cyclical existence—Samsara aims to reduce
+repeated keyboard and mouse actions.*

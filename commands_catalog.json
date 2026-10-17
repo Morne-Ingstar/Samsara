@@ -7455,7 +7455,8 @@
     {
       "aliases": [
         "mute",
-        "mute spotify"
+        "mute spotify",
+        "mute the spotify"
       ],
       "args": [],
       "canonical_id": "music.mute",
@@ -7477,6 +7478,7 @@
         "next track",
         "skip",
         "skip song",
+        "skip the track",
         "skip track"
       ],
       "args": [],
@@ -8415,7 +8417,9 @@
         "dismiss numbers",
         "hide",
         "hide labels",
-        "hide numbers"
+        "hide numbers",
+        "hide the labels",
+        "hide the numbers"
       ],
       "args": [],
       "canonical_id": "show_numbers.hide_numbers",
@@ -8532,6 +8536,7 @@
       "aliases": [
         "refresh",
         "refresh numbers",
+        "refresh the numbers",
         "update numbers"
       ],
       "args": [
@@ -8587,7 +8592,10 @@
         "show",
         "show clickable",
         "show labels",
-        "show numbers"
+        "show numbers",
+        "show the clickable",
+        "show the labels",
+        "show the numbers"
       ],
       "args": [],
       "canonical_id": "show_numbers.show_numbers",

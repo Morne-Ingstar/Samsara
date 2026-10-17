@@ -182,7 +182,7 @@ class _OpenRouterPicker(QWidget):
     def populate(self, *_args):
         selected = self.models.currentItem()
         selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else self.entry.text().strip()
-        current = self.entry.text().strip() or "openrouter/auto"
+        current = self.entry.text().strip() or cloud_llm.BUILTIN_PROVIDERS["openrouter"]["model"]
         self.models.clear()
         # STAND-IN COPY (568): Auto and the saved choice stay visible through filters.
         rows = [("openrouter/auto", "Auto (OpenRouter chooses)")]
@@ -209,7 +209,7 @@ class _OpenRouterPicker(QWidget):
         item = self.models.currentItem()
         if self.active() and item is not None:
             model_id = item.data(Qt.ItemDataRole.UserRole)
-            self.entry.setText("" if model_id == "openrouter/auto" else model_id)
+            self.entry.setText(model_id)
 
     def load(self, *, refresh=False):
         if self.busy or not self.active():
