@@ -46,6 +46,16 @@ app_dir = Path(SPECPATH).parent
 # source file.  ``os._exit`` prevents dictation.py from starting in this mode.
 _build_work = Path(os.environ.get('SAMSARA_BUILD_WORK', str(app_dir / 'build')))
 _build_dist = Path(os.environ.get('SAMSARA_BUILD_DIST', str(app_dir / 'dist')))
+# Run the stdlib-only component transaction before package imports can load
+# Pillow/native libraries. Copying the module avoids samsara.__init__ here.
+_component_restart_hook = _build_work / 'samsara_component_restart.py'
+_component_restart_hook.parent.mkdir(parents=True, exist_ok=True)
+_component_restart_hook.write_text(
+    (app_dir / 'samsara' / 'components.py').read_text(encoding='utf-8')
+    + '\nimport sys\nif getattr(sys, "frozen", False):\n'
+      '    apply_pending_components(Path(sys.executable).resolve().parent)\n',
+    encoding='utf-8',
+)
 _runtime_import_hook = _build_work / 'samsara_runtime_import_check.py'
 _runtime_import_hook.parent.mkdir(parents=True, exist_ok=True)
 _runtime_import_hook.write_text(r'''
@@ -497,7 +507,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[str(_runtime_import_hook)],
+    runtime_hooks=[str(_component_restart_hook), str(_runtime_import_hook)],
     excludes=[
         # Exclude problematic modules
         'charset_normalizer',
@@ -643,7 +653,8 @@ _GESTURE_DISTRIBUTIONS = (
     'mediapipe', _CV2_DISTRIBUTION, 'absl-py', 'protobuf',
     'flatbuffers', 'attrs', 'six', 'packaging',
     # MediaPipe's current solutions API imports drawing_utils, which imports
-    # matplotlib.  These are its wheel dependencies that are not core.
+    # matplotlib. Individual files can also belong to core; filter against
+    # the collected filesystem and PYZ below rather than assume whole wheels.
     'matplotlib', 'contourpy', 'cycler', 'fonttools', 'kiwisolver',
     'pillow', 'pyparsing', 'python-dateutil',
 )
@@ -672,7 +683,29 @@ def _exclude_gesture_member(relative: Path, distribution_files: set[Path]) -> bo
     return False
 
 
-def _write_gesture_component(output: Path) -> None:
+def _write_gesture_component(output: Path, core_root=None, core_modules=()) -> None:
+    import hashlib
+    import json
+
+    def digest(path):
+        with open(path, 'rb') as handle:
+            return hashlib.file_digest(handle, 'sha256').hexdigest()
+
+    if core_root is not None and not Path(core_root).is_dir():
+        raise RuntimeError('samsara.spec: collected core is missing; cannot exclude shared files')
+    # Python modules in PYZ are absent from the collected filesystem. Match
+    # the exact source module, preserving optional submodules not in core.
+    pure = {}
+    for name, source, _kind in core_modules:
+        if source in (None, '', '-'):
+            continue  # Namespace packages have no source file to compare.
+        relative = name.replace('.', '/')
+        relative += '/__init__.py' if Path(source).name == '__init__.py' else '.py'
+        pure[relative.casefold()] = Path(source)
+    core_files = ({p.relative_to(core_root).as_posix().casefold(): p
+                   for p in Path(core_root).rglob('*') if p.is_file()}
+                  if core_root is not None else {})
+    overlap, inventory = [], []
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix('.zip.tmp')
     seen = set()
@@ -699,7 +732,20 @@ def _write_gesture_component(output: Path) -> None:
                     except ValueError:
                         continue
                     if arcname not in seen:
+                        shared = core_files.get(arcname.casefold()) or pure.get(arcname.casefold())
+                        source_hash = digest(source)
+                        if shared is not None:
+                            core_hash = digest(shared)
+                            overlap.append({'path': arcname, 'sha256': source_hash,
+                                            'core_sha256': core_hash,
+                                            'core_storage': '_internal' if arcname.casefold() in core_files else 'PYZ'})
+                            inventory.append(dict(overlap[-1], disposition='omitted-identical'))
+                            if source_hash != core_hash:
+                                raise RuntimeError(f'samsara.spec: gesture/core bytes differ: {arcname}')
+                            continue
                         archive.write(source, arcname)
+                        inventory.append({'path': arcname, 'sha256': source_hash,
+                                          'core_sha256': None, 'disposition': 'shipped'})
                         seen.add(arcname)
     except Exception:
         temporary.unlink(missing_ok=True)
@@ -710,8 +756,13 @@ def _write_gesture_component(output: Path) -> None:
         raise SystemExit('samsara.spec: gesture component has no cv2 files')
     if any(name.startswith('av/') for name in seen):
         raise SystemExit('samsara.spec: core PyAV leaked into gesture component')
+    output.with_suffix('.overlap.json').write_text(
+        json.dumps(overlap, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    output.with_suffix('.inventory.json').write_text(
+        json.dumps(inventory, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     os.replace(temporary, output)
 
 
 from samsara import __version__  # noqa: E402
-_write_gesture_component(_build_dist / f'Samsara-GestureControl-v{__version__}.zip')
+_write_gesture_component(_build_dist / f'Samsara-GestureControl-v{__version__}.zip',
+                         Path(coll.name) / '_internal', a.pure)

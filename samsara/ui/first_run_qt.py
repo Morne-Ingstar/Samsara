@@ -144,6 +144,13 @@ def component_installed(component: dict, app_root, downloads_dir) -> bool:
     if cid == "core":
         return True
     app_root = Path(app_root)
+    if components.pending_component(app_root, component).exists():
+        return False
+    try:
+        if components.local_component_marker(app_root, component).read_text(encoding="ascii").split()[0] == component.get("sha256"):
+            return True
+    except (OSError, IndexError, UnicodeDecodeError):
+        pass
     try:
         if _marker(component, downloads_dir).read_text(encoding="ascii").split()[0] == component.get("sha256"):
             return True
@@ -295,15 +302,13 @@ def _safe_members(zf: zipfile.ZipFile) -> list:
 
 def install_component(archive, component: dict, app_root, downloads_dir, *,
                       cancel: Optional[Callable[[], bool]] = None) -> list:
-    """Unpack a verified archive into app_root/install_dir. Members are
-    extracted to a temp folder first and moved into place one file at a
-    time with os.replace, then the installed marker is written. Returns the
-    installed relative paths. `cancel()` is polled every megabyte during
+    """Unpack a verified archive, skipping identical installed bytes.
+    Differing existing files are staged for startup; failures roll back new
+    files. Returns installed relative paths. `cancel()` is polled every megabyte during
     extraction; a True answer raises FetchCancelled before any file has
     been moved into place (the temp folder is removed)."""
-    target = Path(app_root) / component.get("install_dir", ".")
+    target = components._install_path(app_root, component.get("install_dir", "."))
     target.mkdir(parents=True, exist_ok=True)
-    installed = []
     with zipfile.ZipFile(archive) as zf:
         members = _safe_members(zf)
         with tempfile.TemporaryDirectory(prefix=".samsara-install-", dir=str(target)) as tmp:
@@ -321,14 +326,9 @@ def install_component(archive, component: dict, app_root, downloads_dir, *,
                         dst.write(piece)
             if cancel is not None and cancel():
                 raise FetchCancelled(component["id"])
-            for _info, rel in members:
-                final = target / rel
-                final.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(tmp_path / rel, final)
-                installed.append(rel.as_posix())
-    Path(downloads_dir).mkdir(parents=True, exist_ok=True)
-    _marker(component, downloads_dir).write_text(
-        f"{component['sha256']}  {component['filename']}\n", encoding="ascii")
+            installed = components.install_extracted_component(
+                tmp_path, [rel for _info, rel in members], component, app_root,
+                _marker(component, downloads_dir))
     return installed
 
 
@@ -449,6 +449,14 @@ def fetch_components_main(argv=None, *, fetch=None, opener=None, cancel=None,
                 print(f"[CANCELLED] {cid}: nothing installed; the core install is intact "
                       "(a partial download is kept for resume)", file=out)
                 return EXIT_CANCELLED
+            except components.ComponentRestartRequired as exc:
+                print(f"[RESTART] {cid}: {exc}", file=out)
+                rc = EXIT_FAILED
+                continue
+            except components.ComponentInstallError as exc:
+                print(f"[FAIL] {cid}: {exc}", file=out)
+                rc = EXIT_FAILED
+                continue
             except components.HashMismatch as exc:
                 print(f"[FAIL] {cid}: {exc}", file=out)
                 rc = EXIT_FAILED
@@ -457,6 +465,10 @@ def fetch_components_main(argv=None, *, fetch=None, opener=None, cancel=None,
                 print(f"[FAIL] {cid}: {exc}. The core install is complete; "
                       "get components later from Settings.", file=out)
                 return EXIT_NETWORK
+            except OSError:
+                print(f"[FAIL] {cid}: {components.INSTALL_FAILED_MESSAGE}", file=out)
+                rc = EXIT_FAILED
+                continue
             print(f"[PASS] {cid}: installed", file=out)
     finally:
         if ui is not None:
@@ -770,7 +782,12 @@ class ComponentsPage:
             result.setAccessibleName(f"{component['name']} result")
             result.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(result)
-            if installed:
+            if components.pending_component(self._app_root, component).exists():
+                get_btn.setText("Restart needed")  # Stand-in owner wording (612).
+                get_btn.setAccessibleName(get_btn.text())
+                get_btn.setEnabled(False)
+                result.setText(components.pending_install_message(self._app_root, component))
+            elif installed:
                 get_btn.setText("Installed")
                 get_btn.setEnabled(False)
                 result.setText("Installed.")
@@ -824,9 +841,12 @@ class ComponentsPage:
                 self._post(lambda: self._finish(component_id, "Installed.", row_ref=row))
             except FetchCancelled:
                 self._post(lambda: self._finish(component_id, "Cancelled. Nothing was changed.", retry=True, row_ref=row))
+            except components.ComponentRestartRequired as exc:
+                self._post(lambda message=str(exc): self._finish(
+                    component_id, message, restart=True, row_ref=row))
             except Exception as exc:  # noqa: BLE001
-                msg = str(exc)
-                self._post(lambda message=msg: self._finish(component_id, f"Could not install: {message}", retry=True, row_ref=row))
+                logger.warning("Component install failed (%s)", type(exc).__name__)
+                self._post(lambda: self._finish(component_id, components.INSTALL_FAILED_MESSAGE, retry=True, row_ref=row))
 
         if self._threaded:
             # Registered with the thread registry (37) so it shows in
@@ -898,7 +918,7 @@ class ComponentsPage:
             app.aboutToQuit.connect(lambda: page.cancel_all())
             self._quit_hooked = True
 
-    def _finish(self, component_id: str, message: str, retry: bool = False, row_ref=None):
+    def _finish(self, component_id: str, message: str, retry: bool = False, row_ref=None, restart=False):
         row = self._rows.get(component_id)
         if (row is None or (row_ref is not None and row is not row_ref)
                 or not _qt_widget_is_valid(self.widget)
@@ -908,7 +928,10 @@ class ComponentsPage:
         row["bar"].setVisible(False)
         row["result"].setText(message)
         row["get"].setEnabled(retry)
-        if not retry:
+        if restart:
+            row["get"].setText("Restart needed")  # Stand-in owner wording (612).
+            row["get"].setAccessibleName(row["get"].text())
+        elif not retry:
             row["get"].setText(f"Installed {row['component']['name']}")
             row["get"].setAccessibleName(row["get"].text())
 

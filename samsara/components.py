@@ -1,12 +1,14 @@
 """Downloadable release components: manifest, state, verified fetch (33).
 
 The runtime half of docs/RELEASE_MANIFEST.md, for the installer and for
-Settings later. It does four things and nothing else:
+Settings later. It provides:
 
     load_manifest(source)            a local path or an https:// URL, validated
     validate_manifest(doc)           every problem, as messages
     component_state(component, root) 'present' | 'missing' | 'unavailable'
     download_component(...)          one component, SHA-256 verified, atomic
+    install_extracted_component(...) collision-aware install with rollback
+    apply_pending_components(root)   complete staged installs before app imports
 
 No UI, no automatic download, and no network access at import time. The
 transport is a plain callable so tests never touch the network.
@@ -21,6 +23,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import urlparse
@@ -73,6 +77,189 @@ class DownloadError(RuntimeError):
 
 class ComponentNotInstalled(RuntimeError):
     """A user-selected optional feature has not been installed yet."""
+
+
+# Stand-in owner wording; tracked in reports/612/ASK.json.
+RESTART_INSTALL_MESSAGE = "Restart Samsara to finish installing."
+INSTALL_FAILED_MESSAGE = "Could not install. Please try again."
+PENDING_FAILED_MESSAGE = "Could not finish installing. Close other Samsara windows, then restart Samsara."
+PENDING_DIR = ".samsara-pending"
+LOCAL_MARKERS_DIR = ".samsara-components"
+
+
+class ComponentInstallError(RuntimeError):
+    """An install failed without exposing an operating-system exception."""
+
+
+class ComponentRestartRequired(ComponentInstallError):
+    """The complete payload is staged; no live core file was replaced."""
+
+
+def pending_component(app_root, component) -> Path:
+    cid = component["id"]
+    if not _ID_RE.fullmatch(cid):
+        raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+    return Path(app_root) / PENDING_DIR / cid
+
+
+def pending_install_message(app_root, component) -> str:
+    pending = pending_component(app_root, component)
+    return PENDING_FAILED_MESSAGE if (pending / "failed").exists() else RESTART_INSTALL_MESSAGE
+
+
+def local_component_marker(app_root, component) -> Path:
+    # Validate the id before using it as a path segment.
+    pending_component(app_root, component)
+    return Path(app_root) / LOCAL_MARKERS_DIR / (component["id"] + ".installed")
+
+
+def _install_path(root, relative) -> Path:
+    root = Path(root).resolve()
+    rel = Path(relative)
+    if (rel.is_absolute() or ".." in rel.parts
+            or any(":" in p for p in rel.parts)):
+        raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+    path = root / rel
+    if not path.resolve().is_relative_to(root):
+        raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+    return path
+
+
+def _stage_component(extracted, records, component, app_root) -> None:
+    pending = pending_component(app_root, component)
+    if pending.exists():
+        # Keep a previously complete staged payload intact.
+        raise ComponentRestartRequired(pending_install_message(app_root, component))
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".samsara-stage-", dir=pending.parent) as tmp:
+        stage = Path(tmp)
+        for record in records:
+            dest = stage / "payload" / record["path"]
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(Path(extracted) / record["path"], dest)
+        receipt = {"component": {k: component[k] for k in ("id", "sha256", "filename", "install_dir")},
+                   "files": records}
+        (stage / "receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
+        os.replace(stage, pending)
+    raise ComponentRestartRequired(RESTART_INSTALL_MESSAGE)
+
+
+def install_extracted_component(extracted, paths, component, app_root, marker, *, expected=None) -> list:
+    """Commit extracted files transactionally. Only startup may replace differing files.
+
+    `expected` is the staged receipt, supplied by the early frozen runtime hook.
+    Normal installs skip identical bytes and defer *all* writes on a collision.
+    """
+    target = _install_path(app_root, component.get("install_dir", "."))
+    records = []
+    seen = set()
+    for relative in paths:
+        rel = Path(relative).as_posix()
+        if rel.casefold() in seen:
+            raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+        seen.add(rel.casefold())
+        source = _install_path(extracted, rel)
+        final = _install_path(target, rel)
+        records.append({"path": rel, "sha256": _sha256_fallback(source),
+                        "before": _sha256_fallback(final) if final.is_file() else None})
+    if expected is not None:
+        if len(records) != len(expected):
+            raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+        for actual, saved in zip(records, expected):
+            if (actual["path"] != saved["path"] or actual["sha256"] != saved["sha256"]
+                    or actual["before"] not in (saved["before"], saved["sha256"])):
+                raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+    elif any(r["before"] is not None and r["before"] != r["sha256"] for r in records):
+        _stage_component(extracted, records, component, app_root)
+
+    changed, created_dirs = [], []
+    marker = Path(marker)
+    target.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".samsara-install-", dir=target) as tmp:
+        work = Path(tmp)
+        try:
+            for index, record in enumerate(records):
+                if record["before"] == record["sha256"]:
+                    continue
+                final = _install_path(target, record["path"])
+                # Detect races before touching a target that changed after preflight.
+                current = _sha256_fallback(final) if final.is_file() else None
+                if current != record["before"]:
+                    raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+                parent = final.parent
+                while not parent.exists():
+                    created_dirs.append(parent)
+                    parent = parent.parent
+                final.parent.mkdir(parents=True, exist_ok=True)
+                backup = (pending_component(app_root, component) / "rollback" / str(index)
+                          if expected is not None else work / f"{index}.old")
+                if record["before"] is not None:
+                    backup.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(final, backup)
+                incoming = work / f"{index}.new"
+                shutil.copy2(Path(extracted) / record["path"], incoming)
+                os.replace(incoming, final)
+                changed.append((final, backup if backup.exists() else None))
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            # Keep an old marker intact if writing the replacement fails.
+            with tempfile.NamedTemporaryFile(dir=marker.parent, delete=False) as handle:
+                marker_tmp = Path(handle.name)
+            try:
+                marker_tmp.write_text(f"{component['sha256']}  {component['filename']}\n", encoding="ascii")
+                os.replace(marker_tmp, marker)
+            finally:
+                marker_tmp.unlink(missing_ok=True)
+        except Exception as exc:
+            for final, backup in reversed(changed):
+                if backup is None:
+                    final.unlink()
+                else:
+                    # Retain startup backups in the pending payload if rollback
+                    # itself is blocked by another process or a disk failure.
+                    restore = work / "restore"
+                    shutil.copy2(backup, restore)
+                    os.replace(restore, final)
+            for directory in created_dirs:
+                if directory.exists() and not any(directory.iterdir()):
+                    directory.rmdir()
+            if expected is None and isinstance(exc, PermissionError):
+                _stage_component(extracted, records, component, app_root)
+            raise ComponentInstallError(INSTALL_FAILED_MESSAGE) from exc
+    return [r["path"] for r in records]
+
+
+def apply_pending_components(app_root) -> None:
+    """Stdlib-only frozen hook: finish staged installs before loading app DLLs.
+
+    The spec copies this module into an early runtime hook, avoiding the heavy
+    samsara package __init__ (which can itself load Pillow). No processes start.
+    An invalid/locked payload remains staged for inspection or a later restart.
+    """
+    root = Path(app_root).resolve()
+    pending_root = root / PENDING_DIR
+    if not pending_root.is_dir() or pending_root.is_symlink():
+        return
+    try:
+        candidates = list(pending_root.iterdir())
+    except OSError:
+        return
+    for pending in candidates:
+        if not pending.is_dir() or pending.is_symlink() or not _ID_RE.fullmatch(pending.name):
+            continue
+        try:
+            receipt = json.loads((pending / "receipt.json").read_text(encoding="utf-8"))
+            component, records = receipt["component"], receipt["files"]
+            if pending_component(root, component) != pending or not records:
+                raise ComponentInstallError(INSTALL_FAILED_MESSAGE)
+            install_extracted_component(pending / "payload", [r["path"] for r in records],
+                                        component, root, local_component_marker(root, component), expected=records)
+        except Exception:
+            try:
+                (pending / "failed").write_text(PENDING_FAILED_MESSAGE, encoding="utf-8")
+            except OSError:
+                pass
+        else:
+            shutil.rmtree(pending, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -406,4 +593,6 @@ __all__ = [
     "ManifestError", "ComponentUnavailable", "HashMismatch", "DownloadError",
     "sha256_file", "validate_component", "validate_manifest", "load_manifest", "get_component",
     "component_path", "component_state", "list_components", "download_component",
+    "ComponentInstallError", "ComponentRestartRequired", "install_extracted_component",
+    "apply_pending_components", "pending_component", "pending_install_message", "local_component_marker",
 ]

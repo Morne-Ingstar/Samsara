@@ -25,7 +25,7 @@ import re
 import subprocess
 import sys
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -224,6 +224,71 @@ def dumps(doc: dict) -> str:
     return json.dumps(doc, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
 
 
+def audit_addon_overlaps(doc: dict, artifacts_dir) -> dict:
+    """Inventory local release ZIPs against the actual core, without downloads.
+
+    Pinned CUDA assets may be absent locally; say so rather than infer their
+    contents from a different environment. PYZ omissions are recorded by the
+    spec's separate source-module audit, not by this filesystem comparison.
+    """
+    artifacts_dir = Path(artifacts_dir)
+    core = next(c for c in doc["components"] if c["id"] == "core")
+
+    def members(archive):
+        result = {}
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            path = PurePosixPath(info.filename.replace("\\", "/"))
+            if path.is_absolute() or ".." in path.parts or ":" in str(path):
+                raise ManifestGenerationError(f"unsafe archive member: {info.filename}")
+            key = path.as_posix().casefold()
+            if key in result:
+                raise ManifestGenerationError(f"duplicate archive member: {info.filename}")
+            result[key] = info
+        return result
+
+    def digest(archive, info):
+        with archive.open(info) as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
+
+    rows = []
+    try:
+        with zipfile.ZipFile(artifacts_dir / core["filename"]) as core_zip:
+            core_files, core_hashes = members(core_zip), {}
+            for component in doc["components"]:
+                if component["id"] == "core":
+                    continue
+                path = artifacts_dir / component["filename"]
+                row = dict(id=component["id"], install_dir=component["install_dir"], files=[])
+                rows.append(row)
+                if not component["available"]:
+                    row["status"] = "unavailable"
+                    continue
+                if not path.is_file():
+                    row["status"] = "artifact-missing"
+                    continue
+                row["status"] = "audited"
+                with zipfile.ZipFile(path) as addon_zip:
+                    for _name, info in sorted(members(addon_zip).items()):
+                        target = (PurePosixPath(component["install_dir"]) /
+                                  info.filename.replace("\\", "/")).as_posix()
+                        shared = core_files.get(target.casefold())
+                        incoming_hash = digest(addon_zip, info)
+                        core_hash = None
+                        if shared is not None:
+                            if target.casefold() not in core_hashes:
+                                core_hashes[target.casefold()] = digest(core_zip, shared)
+                            core_hash = core_hashes[target.casefold()]
+                        row["files"].append(dict(path=info.filename, target=target,
+                            sha256=incoming_hash, core_sha256=core_hash,
+                            overlap="absent" if shared is None else
+                                    "identical" if core_hash == incoming_hash else "different"))
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise ManifestGenerationError(f"cannot audit release archives: {exc}") from exc
+    return dict(core=core["filename"], components=rows)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--artifacts-dir", required=True, help="directory holding the built ZIPs")
@@ -234,6 +299,7 @@ def main(argv=None) -> int:
                         help="ISO 8601 UTC; default: the committer date of --git-sha")
     parser.add_argument("--app-version", default=None, help="default: samsara.__version__")
     parser.add_argument("--output", default="manifest.json")
+    parser.add_argument("--overlap-audit", help="write a per-file core/add-on hash audit (local ZIPs only)")
     args = parser.parse_args(argv)
     try:
         doc = build_manifest(
@@ -241,6 +307,9 @@ def main(argv=None) -> int:
             build_date=args.build_date or git_commit_date(args.git_sha),
             app_version=args.app_version or read_app_version(),
         )
+        if args.overlap_audit:
+            Path(args.overlap_audit).write_text(
+                dumps(audit_addon_overlaps(doc, args.artifacts_dir)), encoding="utf-8")
     except ManifestGenerationError as exc:
         print(f"[FAIL] manifest: {exc}")
         return 1
