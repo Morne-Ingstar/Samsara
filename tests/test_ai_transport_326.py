@@ -282,4 +282,11 @@ def test_call_sites_do_not_bypass_shared_transport():
                        and node.value.id == "requests" and node.attr in {"post", "get", "request", "Session"}
                        for node in ast.walk(tree)), path
     assert isinstance(corrections._session, ai_transport.LocalClient)
-    assert "dictation" not in sys.modules
+    # Inspect these call sites, not modules another test already imported.
+    for path in paths:
+        tree = ast.parse((root / path).read_text(encoding="utf-8"))
+        assert not any(
+            (isinstance(node, ast.Import) and any(
+                alias.name == "dictation" for alias in node.names))
+            or (isinstance(node, ast.ImportFrom) and node.module == "dictation")
+            for node in ast.walk(tree)), path

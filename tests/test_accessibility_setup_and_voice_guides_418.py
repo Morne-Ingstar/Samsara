@@ -44,8 +44,9 @@ ROWS = [
     ("F035", "first", "choice:0", "RadioButton", "Tiny"),
     ("F036", "first", "choice:1", "RadioButton", "Base"),
     ("F037", "first", "choice:2", "RadioButton", "Small"),
-    ("F039", "ava", "_key_combo", "Button", "Activation key"),
-    ("F040", "ava", "_model_combo", "ComboBox", "Model:"),
+    # 630 moved key setup out of this guide; retain F039 for its provider picker.
+    ("F039", "ava", "_provider", "ComboBox", "Provider"),
+    ("F040", "ava", "_model_combo", "ComboBox", "Model"),
     ("F060", "mic", "_device_combo", "ComboBox", "Microphone:"),
     ("F061", "stress", "_results_table", "Table", "Stress Test Results"),
     ("F069", "wake", "slider:0", "Slider", "Speech threshold:"),

@@ -10,7 +10,7 @@
     "samsara/streaming.py": 3284,
     "samsara/ui/history_view.py": 1781,
     "samsara/ui/home_qt.py": 2482,
-    "samsara/updater.py": 1648
+    "samsara/updater.py": 1630
   },
   "slack": 25,
   "threshold": 1500

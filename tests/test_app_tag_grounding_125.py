@@ -32,7 +32,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import plugins.commands.ask_ollama as ask_ollama
-from plugins.commands.app_verbs import ActionResult
+from plugins.commands import app_verbs
 from samsara.command_registry import DispatchState
 
 
@@ -65,7 +65,11 @@ MENU = ["open firefox", "open chrome", "next tab", "minimize all", "snap right",
 
 def _app(menu=MENU, **over):
     app = MagicMock()
-    app.config = {}
+    from samsara import ai_preferences
+    config = {"ollama": {"host": "http://localhost:11434"}}
+    provider = ai_preferences.provider_for(config, "local", resolved_addresses=("127.0.0.1", "::1"))
+    consent = ai_preferences.accept_consent(config, provider=provider, accepted_at="fixture")
+    app.config = ai_preferences.apply_accepted_ava(config, policy="local", consent=consent)
     app.command_executor = _Executor(menu)
     app.audio_coordinator = MagicMock()
     for k, v in over.items():
@@ -89,6 +93,8 @@ def _clear_pending():
 def _real_command_exists(monkeypatch):
     """command_exists() is the invention gate. Pin it to the test menu so a
     test does not depend on the machine's live registry."""
+    monkeypatch.setattr(ask_ollama, "ask_model", lambda *a, **kw: SimpleNamespace(
+        ok=True, text="I do not have a command for that."))
     monkeypatch.setattr(ask_ollama.execution_policy, "command_exists",
                         lambda cid, **kw: cid in MENU)
 
@@ -196,9 +202,9 @@ class TestInventionIsRefused:
         outcome = ask_ollama.handle_response(
             app, "CONFIRM Frobnicate.\nACTION frobnicate the widget",
             original_text="frobnicate the widget")
-        assert outcome.state == "refused" and outcome.reason == "not_a_command"
+        assert outcome.state == "spoken" and outcome.reason == "action_refused_conversational"
         assert app.command_executor.calls == []
-        assert "don't have a command" in _spoken(app).lower()
+        assert "do not have a command" in _spoken(app).lower()
 
     def test_a_real_but_unavailable_command_keeps_the_executors_own_reason(self):
         app = _app(menu=["next tab"])     # volume up exists but is not offered
@@ -206,7 +212,7 @@ class TestInventionIsRefused:
             app, "CONFIRM Turn it up.\nACTION volume up",
             original_text="turn the volume up")
         assert app.command_executor.calls == []
-        assert outcome.state == "refused" and outcome.reason == "not_offered"
+        assert outcome.state == "spoken" and outcome.reason == "action_refused_conversational"
 
     def test_an_unlisted_app_verb_is_refused(self):
         app = _app()
@@ -282,7 +288,7 @@ class TestGrounding:
         seen = {}
         monkeypatch.setattr(ask_ollama, "_execute_action2",
                             lambda app, verb, arg, **kw: seen.update(verb=verb, arg=arg)
-                            or ActionResult.DONE)
+                            or app_verbs.ActionResult.DONE)
         app = _app()
         outcome = ask_ollama.handle_response(
             app, "CONFIRM Open Blender.\nAPP open | blender",
@@ -336,7 +342,7 @@ class TestTheGateCoversTheOrdinaryAvaPath:
         assert ask_ollama.offered_menu(app, "next tab") is None
         outcome = ask_ollama.handle_response(app, "CONFIRM x.\nACTION next tab",
                                              original_text="take me to the next tab")
-        assert outcome.state == "refused" and outcome.reason == "not_offered"
+        assert outcome.state == "spoken" and outcome.reason == "action_refused_conversational"
         assert app.command_executor.calls == []
 
 
