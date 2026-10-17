@@ -1,0 +1,4805 @@
+{
+  "captured_from": "8eb53fb062169663dec68bfb400e4e5c1ca74a30:samsara/session_modes.py",
+  "source_sha256_lf": "9e801d34b836e6e9e7621011c9a619906cd891a2e3f57741752ec31120934b7f",
+  "facade_names": [
+    "CHIP_KINDS",
+    "CHIP_TTL_MS",
+    "_CHIP_TTL_OVERRIDES",
+    "COMMAND_CHIP_COPY",
+    "_COMMAND_HEARD_MAX",
+    "_NO_CHIP",
+    "_REASON_MAX",
+    "CHIP_CHECK",
+    "CHIP_CROSS",
+    "CHIP_ARROW",
+    "CHIP_ELLIPSIS",
+    "CHIP_DASH",
+    "_short",
+    "_STOPPED_LABELS",
+    "_stopped_chip",
+    "_reason",
+    "_first_two_words",
+    "_heard",
+    "_command_copy",
+    "_command_chip_label",
+    "_mode_label",
+    "_abort_chip",
+    "_INTERACT_CHIPS",
+    "outcome_chip",
+    "is_mapped_outcome",
+    "chip_ttl_ms"
+  ],
+  "producer_kinds": [
+    "abort",
+    "ava_dispatched",
+    "ava_entry_failed",
+    "ava_rejected_not_substantive",
+    "command_awaiting_confirmation",
+    "command_cancel_window",
+    "command_executed",
+    "command_failed",
+    "command_miss",
+    "command_suggestion_declined",
+    "command_suggestion_pending",
+    "correction_undo_nothing",
+    "correction_undone",
+    "dictate_blocked_elevated",
+    "dictate_clear_nothing",
+    "dictate_commit_blocked_focus_lock",
+    "dictate_commit_failed",
+    "dictate_commit_refused",
+    "dictate_commit_unavailable",
+    "dictate_committed",
+    "dictate_correction_cancelled",
+    "dictate_correction_failed",
+    "dictate_correction_refused",
+    "dictate_correction_unavailable",
+    "dictate_draft_cleared",
+    "dictate_draft_recovered",
+    "dictate_injected",
+    "dictate_recover_nothing",
+    "dictate_staged",
+    "dictate_suppressed_focus_lock",
+    "dictate_word_corrected",
+    "draft_parked",
+    "draft_pause_refused",
+    "draft_pause_unavailable",
+    "draft_scrolled",
+    "empty",
+    "hands_free_command_blocked",
+    "hands_free_command_executed",
+    "hands_free_command_failed",
+    "hands_free_command_refused",
+    "interact_action",
+    "interact_armed",
+    "interact_choosing",
+    "interact_cleared",
+    "interact_confirm",
+    "interact_exit",
+    "interact_expired",
+    "interact_off",
+    "interact_refused",
+    "interact_reply",
+    "interact_selected",
+    "interact_unknown",
+    "mode_switch",
+    "mode_switch_failed",
+    "pending_reply",
+    "prefix_switch_failed",
+    "scratch_refuse",
+    "scratch_success",
+    "stopped",
+    "surface_review_action"
+  ],
+  "cases": [
+    {
+      "id": "producer/abort",
+      "kind": "abort",
+      "detail": null,
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/ava_dispatched",
+      "kind": "ava_dispatched",
+      "detail": null,
+      "expected": [
+        "Ava\u2026",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/ava_entry_failed",
+      "kind": "ava_entry_failed",
+      "detail": null,
+      "expected": [
+        "\u2717 ava entry failed",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/ava_rejected_not_substantive",
+      "kind": "ava_rejected_not_substantive",
+      "detail": null,
+      "expected": [
+        "Ava: nothing to do",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/command_awaiting_confirmation",
+      "kind": "command_awaiting_confirmation",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 that? yes or no",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/command_cancel_window",
+      "kind": "command_cancel_window",
+      "detail": null,
+      "expected": [
+        "running\u2026 say no",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/command_executed",
+      "kind": "command_executed",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/command_failed",
+      "kind": "command_failed",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 \u2717 command failed",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/command_miss",
+      "kind": "command_miss",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "producer/command_suggestion_declined",
+      "kind": "command_suggestion_declined",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 suggestion cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/command_suggestion_pending",
+      "kind": "command_suggestion_pending",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 did you mean ? say yes or no",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 8000
+    },
+    {
+      "id": "producer/correction_undo_nothing",
+      "kind": "correction_undo_nothing",
+      "detail": null,
+      "expected": [
+        "nothing to take back",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/correction_undone",
+      "kind": "correction_undone",
+      "detail": null,
+      "expected": [
+        "forgot ",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_blocked_elevated",
+      "kind": "dictate_blocked_elevated",
+      "detail": null,
+      "expected": [
+        "\u2717 can't type: admin window",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_clear_nothing",
+      "kind": "dictate_clear_nothing",
+      "detail": null,
+      "expected": [
+        "refused: nothing staged",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_commit_blocked_focus_lock",
+      "kind": "dictate_commit_blocked_focus_lock",
+      "detail": null,
+      "expected": [
+        "refused: focus lock",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_commit_failed",
+      "kind": "dictate_commit_failed",
+      "detail": null,
+      "expected": [
+        "\u2717 Paste blocked - clipboard held by another app",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_commit_refused",
+      "kind": "dictate_commit_refused",
+      "detail": null,
+      "expected": [
+        "refused: unclear",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_commit_unavailable",
+      "kind": "dictate_commit_unavailable",
+      "detail": null,
+      "expected": [
+        "refused: nothing staged",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_committed",
+      "kind": "dictate_committed",
+      "detail": null,
+      "expected": [
+        "typed",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "producer/dictate_correction_cancelled",
+      "kind": "dictate_correction_cancelled",
+      "detail": null,
+      "expected": [
+        "correction cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_correction_failed",
+      "kind": "dictate_correction_failed",
+      "detail": null,
+      "expected": [
+        "word not found",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_correction_refused",
+      "kind": "dictate_correction_refused",
+      "detail": null,
+      "expected": [
+        "refused: say it again",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_correction_unavailable",
+      "kind": "dictate_correction_unavailable",
+      "detail": null,
+      "expected": [
+        "nothing to correct",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_draft_cleared",
+      "kind": "dictate_draft_cleared",
+      "detail": null,
+      "expected": [
+        "draft cleared, say bring back my draft",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_draft_recovered",
+      "kind": "dictate_draft_recovered",
+      "detail": null,
+      "expected": [
+        "draft back",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_injected",
+      "kind": "dictate_injected",
+      "detail": null,
+      "expected": [
+        "typed",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "producer/dictate_recover_nothing",
+      "kind": "dictate_recover_nothing",
+      "detail": null,
+      "expected": [
+        "nothing to bring back",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_staged",
+      "kind": "dictate_staged",
+      "detail": null,
+      "expected": [
+        "staged",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/dictate_suppressed_focus_lock",
+      "kind": "dictate_suppressed_focus_lock",
+      "detail": null,
+      "expected": [
+        "refused: focus lock",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/dictate_word_corrected",
+      "kind": "dictate_word_corrected",
+      "detail": null,
+      "expected": [
+        "\u2713 word fixed",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/draft_parked",
+      "kind": "draft_parked",
+      "detail": null,
+      "expected": [
+        "draft parked",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/draft_pause_refused",
+      "kind": "draft_pause_refused",
+      "detail": null,
+      "expected": [
+        "can't park: unclear",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/draft_pause_unavailable",
+      "kind": "draft_pause_unavailable",
+      "detail": null,
+      "expected": [
+        "nothing to park",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/draft_scrolled",
+      "kind": "draft_scrolled",
+      "detail": null,
+      "expected": [
+        "draft ",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/empty",
+      "kind": "empty",
+      "detail": null,
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "producer/hands_free_command_blocked",
+      "kind": "hands_free_command_blocked",
+      "detail": null,
+      "expected": [
+        "refused: blocked",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/hands_free_command_executed",
+      "kind": "hands_free_command_executed",
+      "detail": null,
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/hands_free_command_failed",
+      "kind": "hands_free_command_failed",
+      "detail": null,
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/hands_free_command_refused",
+      "kind": "hands_free_command_refused",
+      "detail": null,
+      "expected": [
+        "refused: unclear",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_action",
+      "kind": "interact_action",
+      "detail": null,
+      "expected": [
+        "? interact_action",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_armed",
+      "kind": "interact_armed",
+      "detail": null,
+      "expected": [
+        "? interact_armed",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_choosing",
+      "kind": "interact_choosing",
+      "detail": null,
+      "expected": [
+        "? interact_choosing",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_cleared",
+      "kind": "interact_cleared",
+      "detail": null,
+      "expected": [
+        "? interact_cleared",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_confirm",
+      "kind": "interact_confirm",
+      "detail": null,
+      "expected": [
+        "? interact_confirm",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_exit",
+      "kind": "interact_exit",
+      "detail": null,
+      "expected": [
+        "? interact_exit",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_expired",
+      "kind": "interact_expired",
+      "detail": null,
+      "expected": [
+        "? interact_expired",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_off",
+      "kind": "interact_off",
+      "detail": null,
+      "expected": [
+        "? interact_off",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_refused",
+      "kind": "interact_refused",
+      "detail": null,
+      "expected": [
+        "? interact_refused",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_reply",
+      "kind": "interact_reply",
+      "detail": null,
+      "expected": [
+        "? interact_reply",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_selected",
+      "kind": "interact_selected",
+      "detail": null,
+      "expected": [
+        "? interact_selected",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/interact_unknown",
+      "kind": "interact_unknown",
+      "detail": null,
+      "expected": [
+        "? interact_unknown",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/mode_switch",
+      "kind": "mode_switch",
+      "detail": null,
+      "expected": [
+        "\u2192",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/mode_switch_failed",
+      "kind": "mode_switch_failed",
+      "detail": null,
+      "expected": [
+        "\u2717 mode switch failed",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/pending_reply",
+      "kind": "pending_reply",
+      "detail": null,
+      "expected": [
+        "refused: ",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/prefix_switch_failed",
+      "kind": "prefix_switch_failed",
+      "detail": null,
+      "expected": [
+        "\u2717 prefix switch failed",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/scratch_refuse",
+      "kind": "scratch_refuse",
+      "detail": null,
+      "expected": [
+        "refused: undo",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/scratch_success",
+      "kind": "scratch_success",
+      "detail": null,
+      "expected": [
+        "undone",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/stopped",
+      "kind": "stopped",
+      "detail": null,
+      "expected": [
+        "nothing to halt",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "producer/surface_review_action",
+      "kind": "surface_review_action",
+      "detail": null,
+      "expected": [
+        "review",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/active_capture_cancelled",
+      "kind": "active_capture_cancelled",
+      "detail": null,
+      "expected": [
+        "active capture cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/active_capture_failed",
+      "kind": "active_capture_failed",
+      "detail": null,
+      "expected": [
+        "active capture failed",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/active_capture_stopped",
+      "kind": "active_capture_stopped",
+      "detail": null,
+      "expected": [
+        "active capture stopped",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/ava_command_chain",
+      "kind": "ava_command_chain",
+      "detail": null,
+      "expected": [
+        "I could not do \"chain\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/command_chain",
+      "kind": "command_chain",
+      "detail": null,
+      "expected": [
+        "I could not do \"chain\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/dictate_clear_refused",
+      "kind": "dictate_clear_refused",
+      "detail": null,
+      "expected": [
+        "refused: unclear",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/dictation_chunk",
+      "kind": "dictation_chunk",
+      "detail": null,
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "extra/dictation_staged_chunk",
+      "kind": "dictation_staged_chunk",
+      "detail": null,
+      "expected": [
+        "staged",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "extra/edit_applied",
+      "kind": "edit_applied",
+      "detail": null,
+      "expected": [
+        "edited \u2713 0 changes",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/edit_discarded",
+      "kind": "edit_discarded",
+      "detail": null,
+      "expected": [
+        "edit dropped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/edit_proposed",
+      "kind": "edit_proposed",
+      "detail": null,
+      "expected": [
+        "proposed edit: 0 changes - say apply",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "extra/edit_refused",
+      "kind": "edit_refused",
+      "detail": null,
+      "expected": [
+        "no edit",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/edit_thinking",
+      "kind": "edit_thinking",
+      "detail": null,
+      "expected": [
+        "reading it back\u2026",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "extra/personal_alias_offer",
+      "kind": "personal_alias_offer",
+      "detail": null,
+      "expected": [
+        "Save '' as another way to say ''? \u2014 say save alias",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "unknown",
+      "kind": "synthetic_unknown",
+      "detail": null,
+      "expected": [
+        "? synthetic_unknown",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": false,
+      "ttl": 1800
+    },
+    {
+      "id": "nondict/list",
+      "kind": "command_miss",
+      "detail": [],
+      "expected": [
+        "heard: (nothing) \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "nondict/str",
+      "kind": "command_miss",
+      "detail": "synthetic",
+      "expected": [
+        "heard: (nothing) \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "nondict/int",
+      "kind": "command_miss",
+      "detail": 7,
+      "expected": [
+        "heard: (nothing) \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "command/command_executed/None",
+      "kind": "command_executed",
+      "detail": {
+        "state": null,
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_executed/completed",
+      "kind": "command_executed",
+      "detail": {
+        "state": "completed",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_executed/queued",
+      "kind": "command_executed",
+      "detail": {
+        "state": "queued",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 switch window\u2026",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_executed/matched",
+      "kind": "command_executed",
+      "detail": {
+        "state": "matched",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 switch window\u2026",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_executed/rejected",
+      "kind": "command_executed",
+      "detail": {
+        "state": "rejected",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_executed/cancelled",
+      "kind": "command_executed",
+      "detail": {
+        "state": "cancelled",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "model/command_executed",
+      "kind": "command_executed",
+      "detail": {
+        "origin": "model",
+        "state": "completed",
+        "ava_done": "Synthetic action complete",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "Synthetic action complete",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "media/command_executed",
+      "kind": "command_executed",
+      "detail": {
+        "state": "completed",
+        "media_action": true,
+        "message": "Synthetic media result"
+      },
+      "expected": [
+        "Synthetic media result",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_executed/86",
+      "kind": "command_executed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_executed/87",
+      "kind": "command_executed",
+      "detail": {
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_executed/88",
+      "kind": "command_executed",
+      "detail": {
+        "state": "rejected"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_executed/89",
+      "kind": "command_executed",
+      "detail": {
+        "state": "cancelled"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_executed/None",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": null,
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_executed/completed",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "completed",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "\u2192 command: switch window now",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_executed/queued",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "queued",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 switch window\u2026",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_executed/matched",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "matched",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 switch window\u2026",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_executed/rejected",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "rejected",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_executed/cancelled",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "cancelled",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 ran switch window",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "model/hands_free_command_executed",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "origin": "model",
+        "state": "completed",
+        "ava_done": "Synthetic action complete",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "Synthetic action complete",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "media/hands_free_command_executed",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "completed",
+        "media_action": true,
+        "message": "Synthetic media result"
+      },
+      "expected": [
+        "Synthetic media result",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_executed/98",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_executed/99",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_executed/100",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "rejected"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_executed/101",
+      "kind": "hands_free_command_executed",
+      "detail": {
+        "state": "cancelled"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 ran that",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_failed/None",
+      "kind": "command_failed",
+      "detail": {
+        "state": null,
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 \u2717 switch window",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_failed/completed",
+      "kind": "command_failed",
+      "detail": {
+        "state": "completed",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 \u2717 switch window",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_failed/queued",
+      "kind": "command_failed",
+      "detail": {
+        "state": "queued",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 \u2717 switch window",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_failed/matched",
+      "kind": "command_failed",
+      "detail": {
+        "state": "matched",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 \u2717 switch window",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_failed/rejected",
+      "kind": "command_failed",
+      "detail": {
+        "state": "rejected",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 refused: switch window",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/command_failed/cancelled",
+      "kind": "command_failed",
+      "detail": {
+        "state": "cancelled",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 cancelled: switch window",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "model/command_failed",
+      "kind": "command_failed",
+      "detail": {
+        "origin": "model",
+        "state": "completed",
+        "ava_done": "Synthetic action complete",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 \u2717 switch window",
+        "error"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "media/command_failed",
+      "kind": "command_failed",
+      "detail": {
+        "state": "completed",
+        "media_action": true,
+        "message": "Synthetic media result"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 \u2717 command failed",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_failed/110",
+      "kind": "command_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 \u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_failed/111",
+      "kind": "command_failed",
+      "detail": {
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 \u2717 Synthetic reason",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_failed/112",
+      "kind": "command_failed",
+      "detail": {
+        "state": "rejected"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 refused",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/command_failed/113",
+      "kind": "command_failed",
+      "detail": {
+        "state": "cancelled"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_failed/None",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": null,
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_failed/completed",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "completed",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_failed/queued",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "queued",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_failed/matched",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "matched",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_failed/rejected",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "rejected",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 refused: switch window",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command/hands_free_command_failed/cancelled",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "cancelled",
+        "heard": "synthetic command input",
+        "phrase": "switch window now"
+      },
+      "expected": [
+        "heard: synthetic command input \u2014 cancelled: switch window",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "model/hands_free_command_failed",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "origin": "model",
+        "state": "completed",
+        "ava_done": "Synthetic action complete",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "media/hands_free_command_failed",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "completed",
+        "media_action": true,
+        "message": "Synthetic media result"
+      },
+      "expected": [
+        "\u2717 hands free command fail\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_failed/122",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_failed/123",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic reason",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_failed/124",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "rejected"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 refused",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "command-detail/hands_free_command_failed/125",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "state": "cancelled"
+      },
+      "expected": [
+        "heard: (nothing) \u2014 cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_chain/completed/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "completed",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: ",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_chain/completed/2",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "completed",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_chain/queued/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "queued",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "I could not do \"Synthetic third\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_chain/queued/2",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "queued",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second \u00b7 stopped at Synthetic third: stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_chain/rejected/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "rejected",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "I could not do \"Synthetic third\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_chain/rejected/2",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "rejected",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second \u00b7 stopped at Synthetic third: stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/confirmation_required/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "confirmation_required"
+      },
+      "expected": [
+        "Say \"chain\" on its own; it needs your yes.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/confirmation_required/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "confirmation_required"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: confirmation_required",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/target_timeout/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "target_timeout"
+      },
+      "expected": [
+        "I could not do \"chain\": window did not change. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/target_timeout/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "target_timeout"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: window did not change",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/too_many_steps/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "too_many_steps"
+      },
+      "expected": [
+        "I could not do \"chain\": four commands at most. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/too_many_steps/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "too_many_steps"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: four commands at most",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/stale/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "stale"
+      },
+      "expected": [
+        "I could not do \"chain\": cancelled. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/stale/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "stale"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/pack_disabled/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "pack_disabled"
+      },
+      "expected": [
+        "I could not do \"chain\": pack is off. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/pack_disabled/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "pack_disabled"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: pack is off",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/out_of_scope/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "out_of_scope"
+      },
+      "expected": [
+        "I could not do \"chain\": command unavailable here. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/out_of_scope/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "out_of_scope"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: command unavailable here",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/invalid_args/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "invalid_args"
+      },
+      "expected": [
+        "I could not do \"chain\": could not understand that step. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/invalid_args/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "invalid_args"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: could not understand that step",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/queued/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "queued"
+      },
+      "expected": [
+        "I could not do \"chain\": waiting for that step. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/queued/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "queued"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: waiting for that step",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/synthetic reason/0",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "synthetic reason"
+      },
+      "expected": [
+        "I could not do \"chain\": synthetic reason. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_chain/synthetic reason/1",
+      "kind": "command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "synthetic reason"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: synthetic reason",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/ava_command_chain/completed/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "completed",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Completed (Ava): ",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/ava_command_chain/completed/2",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "completed",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Completed (Ava): Synthetic first \u00b7 Synthetic second",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/ava_command_chain/queued/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "queued",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "I could not do \"Synthetic third\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/ava_command_chain/queued/2",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "queued",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second \u00b7 stopped at Synthetic third: stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/ava_command_chain/rejected/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "rejected",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "I could not do \"Synthetic third\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/ava_command_chain/rejected/2",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "rejected",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second \u00b7 stopped at Synthetic third: stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/confirmation_required/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "confirmation_required"
+      },
+      "expected": [
+        "Say \"chain\" on its own; it needs your yes.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/confirmation_required/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "confirmation_required"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: confirmation_required",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/target_timeout/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "target_timeout"
+      },
+      "expected": [
+        "I could not do \"chain\": window did not change. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/target_timeout/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "target_timeout"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: window did not change",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/too_many_steps/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "too_many_steps"
+      },
+      "expected": [
+        "I could not do \"chain\": four commands at most. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/too_many_steps/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "too_many_steps"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: four commands at most",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/stale/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "stale"
+      },
+      "expected": [
+        "I could not do \"chain\": cancelled. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/stale/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "stale"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/pack_disabled/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "pack_disabled"
+      },
+      "expected": [
+        "I could not do \"chain\": pack is off. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/pack_disabled/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "pack_disabled"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: pack is off",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/out_of_scope/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "out_of_scope"
+      },
+      "expected": [
+        "I could not do \"chain\": command unavailable here. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/out_of_scope/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "out_of_scope"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: command unavailable here",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/invalid_args/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "invalid_args"
+      },
+      "expected": [
+        "I could not do \"chain\": could not understand that step. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/invalid_args/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "invalid_args"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: could not understand that step",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/queued/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "queued"
+      },
+      "expected": [
+        "I could not do \"chain\": waiting for that step. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/queued/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "queued"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: waiting for that step",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/synthetic reason/0",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "synthetic reason"
+      },
+      "expected": [
+        "I could not do \"chain\": synthetic reason. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/ava_command_chain/synthetic reason/1",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "synthetic reason"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: synthetic reason",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_executed/completed/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "completed",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: ",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_executed/completed/2",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "completed",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_executed/queued/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "queued",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "I could not do \"Synthetic third\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_executed/queued/2",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "queued",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second \u00b7 stopped at Synthetic third: stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_executed/rejected/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [],
+        "state": "rejected",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "I could not do \"Synthetic third\": stopped. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain/command_executed/rejected/2",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 3,
+        "chain_done": [
+          "Synthetic first",
+          "Synthetic second"
+        ],
+        "state": "rejected",
+        "chain_stopped": "Synthetic third"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 Synthetic second \u00b7 stopped at Synthetic third: stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/confirmation_required/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "confirmation_required"
+      },
+      "expected": [
+        "Say \"chain\" on its own; it needs your yes.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/confirmation_required/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "confirmation_required"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: confirmation_required",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/target_timeout/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "target_timeout"
+      },
+      "expected": [
+        "I could not do \"chain\": window did not change. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/target_timeout/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "target_timeout"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: window did not change",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/too_many_steps/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "too_many_steps"
+      },
+      "expected": [
+        "I could not do \"chain\": four commands at most. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/too_many_steps/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "too_many_steps"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: four commands at most",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/stale/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "stale"
+      },
+      "expected": [
+        "I could not do \"chain\": cancelled. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/stale/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "stale"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/pack_disabled/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "pack_disabled"
+      },
+      "expected": [
+        "I could not do \"chain\": pack is off. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/pack_disabled/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "pack_disabled"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: pack is off",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/out_of_scope/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "out_of_scope"
+      },
+      "expected": [
+        "I could not do \"chain\": command unavailable here. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/out_of_scope/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "out_of_scope"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: command unavailable here",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/invalid_args/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "invalid_args"
+      },
+      "expected": [
+        "I could not do \"chain\": could not understand that step. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/invalid_args/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "invalid_args"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: could not understand that step",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/queued/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "queued"
+      },
+      "expected": [
+        "I could not do \"chain\": waiting for that step. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/queued/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "queued"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: waiting for that step",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/synthetic reason/0",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [],
+        "reason": "synthetic reason"
+      },
+      "expected": [
+        "I could not do \"chain\": synthetic reason. Nothing ran.",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "chain-reason/command_executed/synthetic reason/1",
+      "kind": "command_executed",
+      "detail": {
+        "chain_count": 2,
+        "chain_done": [
+          "Synthetic first"
+        ],
+        "reason": "synthetic reason"
+      },
+      "expected": [
+        "Done: Synthetic first \u00b7 stopped at chain: synthetic reason",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "suppressed/command_miss",
+      "kind": "command_miss",
+      "detail": {
+        "chain_feedback_sent": true
+      },
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "suppressed/command_chain",
+      "kind": "command_chain",
+      "detail": {
+        "chain_feedback_sent": true
+      },
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "suppressed/ava_command_chain",
+      "kind": "ava_command_chain",
+      "detail": {
+        "chain_feedback_sent": true
+      },
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "suppressed/abort",
+      "kind": "abort",
+      "detail": {
+        "chain_feedback_sent": true
+      },
+      "expected": null,
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "suppressed/synthetic_unknown",
+      "kind": "synthetic_unknown",
+      "detail": {
+        "chain_feedback_sent": true
+      },
+      "expected": null,
+      "canonical_id": "",
+      "mapped": false,
+      "ttl": null
+    },
+    {
+      "id": "phrase/command_miss/0",
+      "kind": "command_miss",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": ""
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "phrase/command_miss/13",
+      "kind": "command_miss",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "phrase/command_miss/160",
+      "kind": "command_miss",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic "
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 not a command",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "phrase/command_suggestion_pending/0",
+      "kind": "command_suggestion_pending",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": ""
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 did you mean ? say yes or no",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 8000
+    },
+    {
+      "id": "phrase/command_suggestion_pending/13",
+      "kind": "command_suggestion_pending",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 did you mean switch window? say yes or no",
+        "warning"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": 8000
+    },
+    {
+      "id": "phrase/command_suggestion_pending/160",
+      "kind": "command_suggestion_pending",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic "
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 did you mean Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic S\u2026? say yes or no",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 8000
+    },
+    {
+      "id": "phrase/command_suggestion_declined/0",
+      "kind": "command_suggestion_declined",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": ""
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 suggestion cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "phrase/command_suggestion_declined/13",
+      "kind": "command_suggestion_declined",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 suggestion cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "phrase/command_suggestion_declined/160",
+      "kind": "command_suggestion_declined",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic "
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 suggestion cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "phrase/command_awaiting_confirmation/0",
+      "kind": "command_awaiting_confirmation",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": ""
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 that? yes or no",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "phrase/command_awaiting_confirmation/13",
+      "kind": "command_awaiting_confirmation",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 switch window? yes or no",
+        "pending"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "phrase/command_awaiting_confirmation/160",
+      "kind": "command_awaiting_confirmation",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic "
+      },
+      "expected": [
+        "heard: Synthetic input Synthetic input Synthetic input Synthetic input Synthet\u2026 \u2014 Synthetic Synthetic? yes or no",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "phrase/command_cancel_window/0",
+      "kind": "command_cancel_window",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": ""
+      },
+      "expected": [
+        "running\u2026 say no",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "phrase/command_cancel_window/13",
+      "kind": "command_cancel_window",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "running switch window\u2026 say no",
+        "pending"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "phrase/command_cancel_window/160",
+      "kind": "command_cancel_window",
+      "detail": {
+        "heard": "  Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input   Synthetic\n input ",
+        "phrase": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic "
+      },
+      "expected": [
+        "running Synthetic Synthetic\u2026 say no",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "disabled-pack",
+      "kind": "command_miss",
+      "detail": {
+        "heard": "Synthetic command",
+        "pack": "Synthetic pack"
+      },
+      "expected": [
+        "heard: Synthetic command \u2014 Synthetic pack is off",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 4000
+    },
+    {
+      "id": "alias",
+      "kind": "personal_alias_offer",
+      "detail": {
+        "miss": "synthetic alias",
+        "canonical": "synthetic command"
+      },
+      "expected": [
+        "Save 'synthetic alias' as another way to say 'synthetic command'? \u2014 say save alias",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "reply/approved",
+      "kind": "pending_reply",
+      "detail": {
+        "answer": "approved"
+      },
+      "expected": [
+        "confirmed",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "reply/extended",
+      "kind": "pending_reply",
+      "detail": {
+        "answer": "extended"
+      },
+      "expected": [
+        "waiting",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "reply/rejected",
+      "kind": "pending_reply",
+      "detail": {
+        "answer": "rejected"
+      },
+      "expected": [
+        "cancelled",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "reply/refused:synthetic restriction",
+      "kind": "pending_reply",
+      "detail": {
+        "answer": "refused:synthetic restriction"
+      },
+      "expected": [
+        "refused: synthetic restriction",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "reply/synthetic answer",
+      "kind": "pending_reply",
+      "detail": {
+        "answer": "synthetic answer"
+      },
+      "expected": [
+        "refused: synthetic answer",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "reply/None",
+      "kind": "pending_reply",
+      "detail": {
+        "answer": null
+      },
+      "expected": [
+        "refused: ",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/226",
+      "kind": "stopped",
+      "detail": {
+        "cleared": null
+      },
+      "expected": [
+        "nothing to halt",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/227",
+      "kind": "stopped",
+      "detail": {
+        "cleared": []
+      },
+      "expected": [
+        "nothing to halt",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/228",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {}
+      },
+      "expected": [
+        "nothing to halt",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/229",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "speech": 1
+        }
+      },
+      "expected": [
+        "halted speech",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/230",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "in_flight": 1
+        }
+      },
+      "expected": [
+        "halted Ava",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/231",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "pending": 1
+        }
+      },
+      "expected": [
+        "halted confirm",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/232",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "queued": 12
+        }
+      },
+      "expected": [
+        "halted 12 queued",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/233",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "schedule": 1
+        }
+      },
+      "expected": [
+        "halted schedule",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/234",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "speech": 1,
+          "in_flight": 1,
+          "pending": 1,
+          "queued": 12,
+          "schedule": 1
+        }
+      },
+      "expected": [
+        "halted speech, Ava +3",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/235",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "queued": 123456789012345678901234567890
+        }
+      },
+      "expected": [
+        "halted 1234567890123456\u2026",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "stop/236",
+      "kind": "stopped",
+      "detail": {
+        "cleared": {
+          "generation": 3
+        }
+      },
+      "expected": [
+        "nothing to halt",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "capture/active_capture_stopped",
+      "kind": "active_capture_stopped",
+      "detail": {
+        "label": "Synthetic capture Synthetic capture Synthetic capture Synthetic capture Synthetic capture Synthetic capture ",
+        "chip_kind": "live"
+      },
+      "expected": [
+        "Synthetic capture Synthetic capture Synthetic capture S\u2026",
+        "live"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "capture/active_capture_cancelled",
+      "kind": "active_capture_cancelled",
+      "detail": {
+        "label": "Synthetic capture Synthetic capture Synthetic capture Synthetic capture Synthetic capture Synthetic capture ",
+        "chip_kind": "live"
+      },
+      "expected": [
+        "Synthetic capture Synthetic capture Synthetic capture S\u2026",
+        "live"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "capture/active_capture_failed",
+      "kind": "active_capture_failed",
+      "detail": {
+        "label": "Synthetic capture Synthetic capture Synthetic capture Synthetic capture Synthetic capture Synthetic capture ",
+        "chip_kind": "live"
+      },
+      "expected": [
+        "Synthetic capture Synthetic capture Synthetic capture S\u2026",
+        "live"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "mode/dictate/False",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": "dictate",
+        "side_effect_error": false
+      },
+      "expected": [
+        "\u2192 DICTATE",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/dictate/True",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": "dictate",
+        "side_effect_error": true
+      },
+      "expected": [
+        "\u2192 DICTATE: display error",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/command/False",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": "command",
+        "side_effect_error": false
+      },
+      "expected": [
+        "\u2192 COMMAND",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/command/True",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": "command",
+        "side_effect_error": true
+      },
+      "expected": [
+        "\u2192 COMMAND: display error",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/ava/False",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": "ava",
+        "side_effect_error": false
+      },
+      "expected": [
+        "\u2192 AVA",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/ava/True",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": "ava",
+        "side_effect_error": true
+      },
+      "expected": [
+        "\u2192 AVA: display error",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/None/False",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": null,
+        "side_effect_error": false
+      },
+      "expected": [
+        "\u2192",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "mode/None/True",
+      "kind": "mode_switch",
+      "detail": {
+        "mode": null,
+        "side_effect_error": true
+      },
+      "expected": [
+        "\u2192 display error",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "sleep",
+      "kind": "mode_switch",
+      "detail": {
+        "sleep": true
+      },
+      "expected": [
+        "asleep",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "abort-recoverable",
+      "kind": "abort",
+      "detail": {
+        "recoverable_chars": 40
+      },
+      "expected": [
+        "cancelled, say bring back my draft",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "delivery/dictate_committed/250",
+      "kind": "dictate_committed",
+      "detail": {
+        "copied_to_clipboard": true
+      },
+      "expected": [
+        "copied to clipboard",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_committed/251",
+      "kind": "dictate_committed",
+      "detail": {
+        "empty": true,
+        "immediate": true
+      },
+      "expected": [
+        "nothing to send",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_committed/252",
+      "kind": "dictate_committed",
+      "detail": {
+        "empty": true
+      },
+      "expected": [
+        "typed",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_committed/253",
+      "kind": "dictate_committed",
+      "detail": {
+        "delivery_unverified": true
+      },
+      "expected": [
+        "sent, unconfirmed",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_committed/254",
+      "kind": "dictate_committed",
+      "detail": {
+        "copied_to_clipboard": true,
+        "delivery_unverified": true
+      },
+      "expected": [
+        "copied to clipboard",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_committed/255",
+      "kind": "dictate_committed",
+      "detail": {
+        "saved_to_history": true
+      },
+      "expected": [
+        "typed - saved to History",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_committed/256",
+      "kind": "dictate_committed",
+      "detail": {
+        "delivery_unverified": true,
+        "saved_to_history": true
+      },
+      "expected": [
+        "sent, unconfirmed - saved to History",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/257",
+      "kind": "dictate_injected",
+      "detail": {
+        "copied_to_clipboard": true
+      },
+      "expected": [
+        "copied to clipboard",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/258",
+      "kind": "dictate_injected",
+      "detail": {
+        "empty": true,
+        "immediate": true
+      },
+      "expected": [
+        "nothing to send",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/259",
+      "kind": "dictate_injected",
+      "detail": {
+        "empty": true
+      },
+      "expected": [
+        "typed",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/260",
+      "kind": "dictate_injected",
+      "detail": {
+        "delivery_unverified": true
+      },
+      "expected": [
+        "sent, unconfirmed",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/261",
+      "kind": "dictate_injected",
+      "detail": {
+        "copied_to_clipboard": true,
+        "delivery_unverified": true
+      },
+      "expected": [
+        "copied to clipboard",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/262",
+      "kind": "dictate_injected",
+      "detail": {
+        "saved_to_history": true
+      },
+      "expected": [
+        "typed - saved to History",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "delivery/dictate_injected/263",
+      "kind": "dictate_injected",
+      "detail": {
+        "delivery_unverified": true,
+        "saved_to_history": true
+      },
+      "expected": [
+        "sent, unconfirmed - saved to History",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 900
+    },
+    {
+      "id": "failure/dictate_commit_failed/264",
+      "kind": "dictate_commit_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/dictate_commit_failed/265",
+      "kind": "dictate_commit_failed",
+      "detail": {
+        "reason": "Synthetic reason Synthetic reason Synthetic reason Synthetic reason Synthetic reason "
+      },
+      "expected": [
+        "\u2717 Synthetic reason Synthe\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/ava_entry_failed/266",
+      "kind": "ava_entry_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/ava_entry_failed/267",
+      "kind": "ava_entry_failed",
+      "detail": {
+        "reason": "Synthetic reason Synthetic reason Synthetic reason Synthetic reason Synthetic reason "
+      },
+      "expected": [
+        "\u2717 Synthetic reason Synthe\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/mode_switch_failed/268",
+      "kind": "mode_switch_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/mode_switch_failed/269",
+      "kind": "mode_switch_failed",
+      "detail": {
+        "reason": "Synthetic reason Synthetic reason Synthetic reason Synthetic reason Synthetic reason "
+      },
+      "expected": [
+        "\u2717 Synthetic reason Synthe\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/prefix_switch_failed/270",
+      "kind": "prefix_switch_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/prefix_switch_failed/271",
+      "kind": "prefix_switch_failed",
+      "detail": {
+        "reason": "Synthetic reason Synthetic reason Synthetic reason Synthetic reason Synthetic reason "
+      },
+      "expected": [
+        "\u2717 Synthetic reason Synthe\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/hands_free_command_failed/272",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "error": "Synthetic error",
+        "reason": "Synthetic reason"
+      },
+      "expected": [
+        "\u2717 Synthetic error",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "failure/hands_free_command_failed/273",
+      "kind": "hands_free_command_failed",
+      "detail": {
+        "reason": "Synthetic reason Synthetic reason Synthetic reason Synthetic reason Synthetic reason "
+      },
+      "expected": [
+        "\u2717 Synthetic reason Synthe\u2026",
+        "error"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "blocked/dictate_commit_blocked_focus_lock",
+      "kind": "hands_free_command_blocked",
+      "detail": {
+        "commit_outcome": "dictate_commit_blocked_focus_lock",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "refused: focus lock",
+        "warning"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "blocked/dictate_commit_failed",
+      "kind": "hands_free_command_blocked",
+      "detail": {
+        "commit_outcome": "dictate_commit_failed",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "refused: blocked",
+        "warning"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "blocked/",
+      "kind": "hands_free_command_blocked",
+      "detail": {
+        "commit_outcome": "",
+        "phrase": "switch window"
+      },
+      "expected": [
+        "refused: blocked",
+        "warning"
+      ],
+      "canonical_id": "builtin.switch_window",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/1/1/None",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 1,
+        "scratched": 1,
+        "reason": null
+      },
+      "expected": [
+        "undone",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/5/5/None",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 5,
+        "scratched": 5,
+        "reason": null
+      },
+      "expected": [
+        "undone 5",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/5/2/empty",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 5,
+        "scratched": 2,
+        "reason": "empty"
+      },
+      "expected": [
+        "undone 2 \u2014 nothing left",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/5/2/blocked",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 5,
+        "scratched": 2,
+        "reason": "blocked"
+      },
+      "expected": [
+        "undone 2 of 5 \u2014 stopped",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/5/0/empty",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 5,
+        "scratched": 0,
+        "reason": "empty"
+      },
+      "expected": [
+        "undone",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/0/2/None",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 0,
+        "scratched": 2,
+        "reason": null
+      },
+      "expected": [
+        "undone",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch/2/3/None",
+      "kind": "scratch_success",
+      "detail": {
+        "requested": 2,
+        "scratched": 3,
+        "reason": null
+      },
+      "expected": [
+        "undone 3",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch-message",
+      "kind": "scratch_success",
+      "detail": {
+        "message": "Synthetic undo result"
+      },
+      "expected": [
+        "Synthetic undo result",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scratch-refuse-message",
+      "kind": "scratch_refuse",
+      "detail": {
+        "message": "Synthetic undo refusal"
+      },
+      "expected": [
+        "Synthetic undo refusal",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "edit/edit_proposed/0",
+      "kind": "edit_proposed",
+      "detail": {
+        "changes": 0
+      },
+      "expected": [
+        "proposed edit: 0 changes - say apply",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "edit/edit_proposed/1",
+      "kind": "edit_proposed",
+      "detail": {
+        "changes": 1
+      },
+      "expected": [
+        "proposed edit: 1 change - say apply",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "edit/edit_proposed/3",
+      "kind": "edit_proposed",
+      "detail": {
+        "changes": 3
+      },
+      "expected": [
+        "proposed edit: 3 changes - say apply",
+        "pending"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": null
+    },
+    {
+      "id": "edit/edit_applied/0",
+      "kind": "edit_applied",
+      "detail": {
+        "changes": 0
+      },
+      "expected": [
+        "edited \u2713 0 changes",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "edit/edit_applied/1",
+      "kind": "edit_applied",
+      "detail": {
+        "changes": 1
+      },
+      "expected": [
+        "edited \u2713 1 change",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "edit/edit_applied/3",
+      "kind": "edit_applied",
+      "detail": {
+        "changes": 3
+      },
+      "expected": [
+        "edited \u2713 3 changes",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "edit-refused-reason",
+      "kind": "edit_refused",
+      "detail": {
+        "reason": "Synthetic refusal Synthetic refusal Synthetic refusal Synthetic refusal Synthetic refusal "
+      },
+      "expected": [
+        "no edit \u2014 Synthetic refusal Synthe",
+        "warning"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "corrected-word",
+      "kind": "dictate_word_corrected",
+      "detail": {
+        "replacement": "Synthetic replacement Synthetic replacement Synthetic replacement "
+      },
+      "expected": [
+        "\u2713 fixed: Synthetic repla\u2026",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "scrolled",
+      "kind": "draft_scrolled",
+      "detail": {
+        "where": "synthetic direction"
+      },
+      "expected": [
+        "draft synthetic\u2026",
+        "accent"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "correction-undone",
+      "kind": "correction_undone",
+      "detail": {
+        "wrong": "synthetic correction"
+      },
+      "expected": [
+        "forgot synthetic cor\u2026",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    },
+    {
+      "id": "voice-clear",
+      "kind": "dictate_draft_cleared",
+      "detail": {
+        "voice_clear": true
+      },
+      "expected": [
+        "Draft cleared - say \"bring it back\"",
+        "success"
+      ],
+      "canonical_id": "",
+      "mapped": true,
+      "ttl": 1800
+    }
+  ],
+  "helpers": [
+    {
+      "name": "_short",
+      "args": [
+        null
+      ],
+      "kwargs": {},
+      "expected": "",
+      "canonical_id": ""
+    },
+    {
+      "name": "_short",
+      "args": [
+        "  Synthetic\n spacing  "
+      ],
+      "kwargs": {},
+      "expected": "Synthetic spacing",
+      "canonical_id": ""
+    },
+    {
+      "name": "_short",
+      "args": [
+        "aaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "kwargs": {},
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaa",
+      "canonical_id": ""
+    },
+    {
+      "name": "_short",
+      "args": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "kwargs": {},
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaa\u2026",
+      "canonical_id": ""
+    },
+    {
+      "name": "_short",
+      "args": [
+        "Synthetic value",
+        8
+      ],
+      "kwargs": {},
+      "expected": "Synthet\u2026",
+      "canonical_id": ""
+    },
+    {
+      "name": "_reason",
+      "args": [
+        "synthetic_kind",
+        {}
+      ],
+      "kwargs": {},
+      "expected": "synthetic kind",
+      "canonical_id": ""
+    },
+    {
+      "name": "_reason",
+      "args": [
+        "synthetic_kind",
+        {
+          "reason": "Synthetic reason",
+          "error": "Synthetic error"
+        }
+      ],
+      "kwargs": {},
+      "expected": "Synthetic error",
+      "canonical_id": ""
+    },
+    {
+      "name": "_first_two_words",
+      "args": [
+        " Synthetic first second third "
+      ],
+      "kwargs": {},
+      "expected": "Synthetic first",
+      "canonical_id": ""
+    },
+    {
+      "name": "_first_two_words",
+      "args": [
+        null
+      ],
+      "kwargs": {},
+      "expected": "",
+      "canonical_id": ""
+    },
+    {
+      "name": "_heard",
+      "args": [
+        {}
+      ],
+      "kwargs": {},
+      "expected": "(nothing)",
+      "canonical_id": ""
+    },
+    {
+      "name": "_heard",
+      "args": [
+        {
+          "heard": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic "
+        }
+      ],
+      "kwargs": {},
+      "expected": "Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic Synthetic S\u2026",
+      "canonical_id": ""
+    },
+    {
+      "name": "_command_copy",
+      "args": [
+        "ava_done"
+      ],
+      "kwargs": {
+        "done": "Synthetic completed action"
+      },
+      "expected": "Synthetic completed action",
+      "canonical_id": ""
+    },
+    {
+      "name": "_command_chip_label",
+      "args": [
+        "Synthetic visible label",
+        "switch window"
+      ],
+      "kwargs": {},
+      "expected": "Synthetic visible label",
+      "canonical_id": "builtin.switch_window"
+    },
+    {
+      "name": "_mode_label",
+      "args": [
+        "dictate"
+      ],
+      "kwargs": {},
+      "expected": "DICTATE",
+      "canonical_id": ""
+    },
+    {
+      "name": "_mode_label",
+      "args": [
+        null
+      ],
+      "kwargs": {},
+      "expected": "",
+      "canonical_id": ""
+    },
+    {
+      "name": "_abort_chip",
+      "args": [
+        {}
+      ],
+      "kwargs": {},
+      "expected": null,
+      "canonical_id": ""
+    },
+    {
+      "name": "_abort_chip",
+      "args": [
+        {
+          "recoverable_chars": 1
+        }
+      ],
+      "kwargs": {},
+      "expected": [
+        "cancelled, say bring back my draft",
+        "warning"
+      ],
+      "canonical_id": ""
+    },
+    {
+      "name": "_stopped_chip",
+      "args": [
+        {
+          "cleared": {
+            "speech": 1,
+            "queued": 2
+          }
+        }
+      ],
+      "kwargs": {},
+      "expected": [
+        "halted speech, 2 queued",
+        "warning"
+      ],
+      "canonical_id": ""
+    }
+  ],
+  "ttl_cases": [
+    {
+      "outcome": "dictate_committed",
+      "chip_kind": "success",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_committed",
+      "chip_kind": "error",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_committed",
+      "chip_kind": "warning",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_committed",
+      "chip_kind": "accent",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_committed",
+      "chip_kind": "pending",
+      "expected": null
+    },
+    {
+      "outcome": "dictate_committed",
+      "chip_kind": "live",
+      "expected": null
+    },
+    {
+      "outcome": "dictate_injected",
+      "chip_kind": "success",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_injected",
+      "chip_kind": "error",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_injected",
+      "chip_kind": "warning",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_injected",
+      "chip_kind": "accent",
+      "expected": 900
+    },
+    {
+      "outcome": "dictate_injected",
+      "chip_kind": "pending",
+      "expected": null
+    },
+    {
+      "outcome": "dictate_injected",
+      "chip_kind": "live",
+      "expected": null
+    },
+    {
+      "outcome": "command_miss",
+      "chip_kind": "success",
+      "expected": 4000
+    },
+    {
+      "outcome": "command_miss",
+      "chip_kind": "error",
+      "expected": 4000
+    },
+    {
+      "outcome": "command_miss",
+      "chip_kind": "warning",
+      "expected": 4000
+    },
+    {
+      "outcome": "command_miss",
+      "chip_kind": "accent",
+      "expected": 4000
+    },
+    {
+      "outcome": "command_miss",
+      "chip_kind": "pending",
+      "expected": null
+    },
+    {
+      "outcome": "command_miss",
+      "chip_kind": "live",
+      "expected": null
+    },
+    {
+      "outcome": "command_suggestion_pending",
+      "chip_kind": "success",
+      "expected": 8000
+    },
+    {
+      "outcome": "command_suggestion_pending",
+      "chip_kind": "error",
+      "expected": 8000
+    },
+    {
+      "outcome": "command_suggestion_pending",
+      "chip_kind": "warning",
+      "expected": 8000
+    },
+    {
+      "outcome": "command_suggestion_pending",
+      "chip_kind": "accent",
+      "expected": 8000
+    },
+    {
+      "outcome": "command_suggestion_pending",
+      "chip_kind": "pending",
+      "expected": null
+    },
+    {
+      "outcome": "command_suggestion_pending",
+      "chip_kind": "live",
+      "expected": null
+    },
+    {
+      "outcome": "synthetic_unknown",
+      "chip_kind": "success",
+      "expected": 1800
+    },
+    {
+      "outcome": "synthetic_unknown",
+      "chip_kind": "error",
+      "expected": 1800
+    },
+    {
+      "outcome": "synthetic_unknown",
+      "chip_kind": "warning",
+      "expected": 1800
+    },
+    {
+      "outcome": "synthetic_unknown",
+      "chip_kind": "accent",
+      "expected": 1800
+    },
+    {
+      "outcome": "synthetic_unknown",
+      "chip_kind": "pending",
+      "expected": null
+    },
+    {
+      "outcome": "synthetic_unknown",
+      "chip_kind": "live",
+      "expected": null
+    }
+  ]
+}
