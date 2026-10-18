@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QStyle, QStyleOptionButton, QWidget
 
 from samsara import config_schema
 from samsara.ui import ava_captions_qt, home_qt, home_signals, splash_qt, theme
@@ -184,14 +184,28 @@ def test_shown_status_and_links_geometry(qapp, monkeypatch):
         p = win._panel_cache["Home"]
         links = list(p._links.values())
         dots = p._links_row.findChildren(QLabel, "homeLinkSeparator")
-        def ink(w, button=False):
-            bounds = QFontMetrics(w.font()).tightBoundingRect(w.text())
-            left = x(w)+w.contentsRect().x()+int(button)+(int(w.property("inkPadding") or 0) if button else 0)
-            return left+bounds.left(), left+bounds.right()+1
+        # 501 replaced inkPadding with native content insets to keep labels
+        # whole. The eight-pixel contract now separates layout targets.
         for i, d in enumerate(dots):
-            assert ink(d)[0]-ink(links[i], True)[1] == 8
-            assert ink(links[i+1], True)[0]-ink(d)[1] == 8
-        assert abs(x(p._support_text)+p._support_text.width()-ink(links[-1], True)[1]) <= 2
+            assert x(d) - (x(links[i]) + links[i].width()) == 8
+            assert x(links[i+1]) - (x(d) + d.width()) == 8
+        for button in links:
+            option = QStyleOptionButton()
+            button.initStyleOption(option)
+            content = button.style().subElementRect(
+                QStyle.SubElement.SE_PushButtonContents, option, button)
+            metrics = option.fontMetrics
+            bounds = metrics.tightBoundingRect(button.text())
+            advance = metrics.horizontalAdvance(button.text())
+            assert content.width() >= advance
+            left = content.x() + (content.width() - advance) // 2
+            assert content.left() <= left + bounds.left()
+            assert left + bounds.right() <= content.right()
+        # 679 made the links flow from the cell's left edge so they can wrap.
+        # The support line and links row still share the same full-width cell.
+        assert x(links[0]) == x(p._links_row)
+        assert abs(x(p._support_text)+p._support_text.width()-(x(p._links_row)+p._links_row.width())) <= 2
+        assert all(p._links_row.rect().contains(button.geometry()) for button in links)
         assert all(b.height() >= 44 for b in links)
         assert isinstance(p._support_text, SpinWordLabel)
     finally:
