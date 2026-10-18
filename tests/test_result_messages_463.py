@@ -1,9 +1,6 @@
 """Owner result wording, speech decisions, restore aliases and guarded chain recovery."""
 from pathlib import Path
 from unittest.mock import Mock
-import ast
-import logging
-import time
 import pytest
 
 from samsara import config_schema
@@ -67,20 +64,35 @@ def test_visible_named_command_families_are_quiet(command):
 
 @pytest.mark.parametrize('level', ['silent', 'brief', 'full'])
 @pytest.mark.parametrize('command', ['pause', 'open', 'set reminder'])
-def test_real_ava_result_speech(ava_rig, level, command):
+def test_real_ava_result_speech(ava_rig, monkeypatch, level, command):
+    from types import SimpleNamespace
+    from dictation import DictationApp
+    from plugins.commands import ask_ollama
+    from samsara import ava_suggest, execution_policy as policy
     from tests.test_ava_plain_requests_400 import proposal
-    root = Path(__file__).resolve().parents[1]
-    source = ast.parse((root/'dictation.py').read_text(encoding='utf-8'))
-    cls = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == 'DictationApp')
-    node = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_resolve_command_miss')
-    ns = dict(time=time, logger=logging.getLogger('463.production'))
-    exec(compile(ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[])),str(root/'dictation.py'),'exec'),ns)
+    pending = []
+    monkeypatch.setattr(ask_ollama, 'suggest_command_miss', ava_suggest.suggest_command_miss)
+    monkeypatch.setattr(ask_ollama, '_ai_state', lambda _app: SimpleNamespace(allowed=True))
+    monkeypatch.setattr(ask_ollama, 'get_pending_action', lambda: None)
+    monkeypatch.setattr(ask_ollama, 'speak', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(policy, 'bind_target', lambda _inv: ({}, None))
+    monkeypatch.setattr(policy, 'foreground_window_identity', lambda: {'hwnd': 10})
+    monkeypatch.setattr(policy, 'stage_bound_pending',
+                        lambda _app, _inv, _prompt, **kwargs: pending.append(kwargs))
+    ava_rig.executor._matcher._entries[command] = SimpleNamespace(phrase=command, data={}, handler=None)
     ava_rig.app.config = {'tts': {'feedback_level': level}}
     ava_rig.resolver.return_value = proposal(command)
-    result = ns['_resolve_command_miss'](ava_rig.app, ava_rig.miss, 'please do this')
-    assert result.kind == 'command_executed'
+    result = DictationApp._resolve_command_miss(ava_rig.app, ava_rig.miss, 'please do this')
+    assert result.kind == 'command_suggestion_pending'
+    assert not ava_rig.calls and not ava_rig.speech
+    assert len(pending) == 1 and pending[0]['reply_guard']()
+    # 608 made interpretations suggestions. Result speech belongs after yes.
+    pending[0]['on_approve'](None)
+    assert len(ava_rig.calls) == 1
+    assert ava_rig.calls[0][0] == command and ava_rig.calls[0][1]['confirmed'] is True
     assert bool(ava_rig.speech) == (level == 'full' or command == 'set reminder')
-    assert outcome_chip(result.kind, result.detail)[0].startswith('Ava:') is False
+    if ava_rig.speech:
+        assert not ava_rig.speech[0][0].startswith('Ava:')
 
 
 @pytest.mark.parametrize('level', ['silent', 'brief', 'full'])

@@ -78,11 +78,13 @@ def test_C0166_selected_model_requires_exact_installed_tag(ava_guide):
 def test_C0140_C0157_C0174_C0175_C0176_done_uses_observed_readiness(ava_guide, monkeypatch):
     monkeypatch.setattr(ava_guide_qt, "_ping_ollama", lambda **_kwargs: (False, []))
     monkeypatch.setattr(ava_guide_qt.thread_registry, "spawn", lambda _name, function, daemon: function())
+    ava_guide._go_to(ava_guide._STEP_OLLAMA)
+    ava_guide._check_ollama()
+    assert "cannot connect" in ava_guide._ollama_status_lbl.text().lower()
+    assert "not on your pc" in ava_guide._model_status_lbl.text().lower()
+    assert not ava_guide._next_btn.isEnabled()
     ava_guide._go_to(ava_guide._STEP_DONE)
-    assert "not reachable" in ava_guide._done_summary.text().lower()
-    assert "not installed" in ava_guide._done_summary.text().lower()
-    assert "ready" not in ava_guide._title_lbl.text().lower()
-    assert ava_guide._next_btn.text() == "Set up later"
+    assert not ava_guide._next_btn.isEnabled()  # No completed connection test.
 
 
 def test_C0226_C2509_tutorial_glyphs_follow_practice_on_done(qapp):
@@ -160,22 +162,22 @@ def test_C0175_existing_model_choice_is_selected(qapp):
     }))
     try:
         assert guide._selected_model_name == "llama3.2"
-        assert guide._model_combo.currentData() == "llama3.2"
+        assert guide._model_combo.currentText() == "llama3.2"
     finally:
         _dispose_window(guide, qapp)
 
 
 def test_C0159_activation_button_names_ava(ava_guide, monkeypatch):
-    ava_guide._app.config = ava_guide_qt.ai_preferences.apply_ava_route_choice(
-        ava_guide._app.config, policy="local")
-    ava_guide._ollama_running = True
-    ava_guide._installed_models = [ava_guide._selected_model_name]
-    ava_guide._current_step = ava_guide._STEP_DONE
-    ava_guide._build_done_summary()
-    assert ava_guide._consent_only_missing
-    assert ava_guide._next_btn.text() == "Enable Ava"
+    monkeypatch.setattr(ava_guide_qt.hardware_check, "measure_local", lambda _cfg: 12.0)
+    monkeypatch.setattr(ava_guide_qt.thread_registry, "spawn", lambda _name, fn, daemon: fn())
+    ava_guide._accepted = ('local', ava_guide._provider.currentData())
+    ava_guide._go_to(ava_guide._STEP_TEST)
+    ava_guide._test_route()
+    ava_guide._go_next()
+    assert ava_guide._current_step == ava_guide._STEP_DONE
+    assert ava_guide._next_btn.text() == "Use Ava" and ava_guide._next_btn.isEnabled()
     activate = Mock()
-    monkeypatch.setattr(ava_guide, "_enable_ai_pack", activate)
+    monkeypatch.setattr(ava_guide, "_finish", activate)
     ava_guide._next_btn.click()
     activate.assert_called_once_with()
 
@@ -183,9 +185,13 @@ def test_C0159_activation_button_names_ava(ava_guide, monkeypatch):
 def test_C0176_model_presence_without_consent_is_not_readiness(ava_guide, monkeypatch):
     monkeypatch.setattr(ava_guide_qt, "_ping_ollama", lambda **_kwargs: (True, ["qwen2.5:3b"]))
     monkeypatch.setattr(ava_guide_qt.thread_registry, "spawn", lambda _name, function, daemon: function())
-    ava_guide._go_to(ava_guide._STEP_DONE)
-    assert "installed" in ava_guide._done_summary.text().lower()
-    assert ava_guide._done_title.text() != "Ava is ready."
+    ava_guide._go_to(ava_guide._STEP_OLLAMA)
+    ava_guide._check_ollama()
+    assert "installed" in ava_guide._model_status_lbl.text().lower()
+    ava_guide._next_btn.click()
+    assert ava_guide._current_step == ava_guide._STEP_CONSENT
+    assert not ava_guide._next_btn.isEnabled()
+    assert ava_guide._accepted is None and ava_guide._tested is None
 
 
 def test_C0176_custom_host_does_not_inherit_loopback_evidence(ava_guide, monkeypatch):
@@ -194,59 +200,48 @@ def test_C0176_custom_host_does_not_inherit_loopback_evidence(ava_guide, monkeyp
     ava_guide._installed_models = ["qwen2.5:3b"]
     observed = {}
 
-    def capture_state(*_args, **kwargs):
+    def ping(**kwargs):
         observed.update(kwargs)
-        return SimpleNamespace(allowed=False)
+        return False, []
 
-    monkeypatch.setattr(ava_guide_qt.ai_preferences, "effective_state", capture_state)
-    ava_guide._build_done_summary()
-    assert observed["resolved_addresses"] == ()
-    assert ava_guide._done_title.text() == "Ava is not ready."
+    monkeypatch.setattr(ava_guide_qt, "_ping_ollama", ping)
+    monkeypatch.setattr(ava_guide_qt.thread_registry, "spawn", lambda _name, fn, daemon: fn())
+    ava_guide._go_to(ava_guide._STEP_OLLAMA)
+    ava_guide._check_ollama()
+    assert observed["host"] == "http://remote.example:11434"
+    assert not ava_guide._ollama_running and ava_guide._installed_models == []
+    assert not ava_guide._next_btn.isEnabled()
 
 
 def test_C0175_selected_model_is_not_ready_before_becoming_configured(ava_guide, monkeypatch):
-    ava_guide._selected_model_name = "llama3.2"
-    ava_guide._ollama_running = True
-    ava_guide._installed_models = ["llama3.2"]
-    monkeypatch.setattr(
-        ava_guide_qt.ai_preferences, "effective_state",
-        lambda *_args, **_kwargs: SimpleNamespace(allowed=True),
-    )
-    ava_guide._build_done_summary()
-    assert ava_guide._done_title.text() == "Ava is not ready."
+    ava_guide._tested = ava_guide._signature()
+    ava_guide._model_combo.setCurrentText("llama3.2")
+    ava_guide._on_ollama_status(True, ["llama3.2"])
+    ava_guide._go_to(ava_guide._STEP_DONE)
+    assert ava_guide._selected_model_name == "llama3.2"
+    assert ava_guide._app.config['ollama']['model'] == "qwen2.5:3b"
+    assert ava_guide._tested is None and not ava_guide._next_btn.isEnabled()
 
 
 def test_C0177_C0178_consent_does_not_claim_readiness(ava_guide, monkeypatch):
-    request = Mock(return_value={})
+    measure = Mock(return_value='timeout')
     apply = Mock()
-    monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "request_consent", request)
+    monkeypatch.setattr(ava_guide_qt.hardware_check, "measure_local", measure)
+    monkeypatch.setattr(ava_guide_qt.thread_registry, "spawn", lambda _name, fn, daemon: fn())
     monkeypatch.setattr(ava_guide_qt.ava_consent_qt, "apply_accepted_ava", apply)
-    ava_guide._ollama_running = False
-    ava_guide._enable_ai_pack()
-    request.assert_not_called()
+    ava_guide._test_route()
+    assert ava_guide._current_step == ava_guide._STEP_CONSENT
+    measure.assert_not_called()
     apply.assert_not_called()
-    assert ava_guide._next_btn.text() == "Set up later"
-    assert ava_guide._done_title.text() == "Ava is not ready."
-
-    # Exercise consent itself, rather than returning early on missing setup.
-    ava_guide._app.config = ava_guide_qt.ai_preferences.apply_ava_route_choice(
-        ava_guide._app.config, policy="local")
-    ava_guide._ollama_running = True
-    ava_guide._installed_models = [ava_guide._selected_model_name]
-    ava_guide._enable_ai_pack()
-    request.assert_called_once()
-    apply.assert_called_once()
-    assert ava_guide._next_btn.text() == "Enable Ava"
-    assert ava_guide._done_title.text() == "Ava is not ready."
-
-    request.reset_mock()
-    apply.reset_mock()
-    request.side_effect = RuntimeError("unavailable")
-    ava_guide._enable_ai_pack()
-    request.assert_called_once()
-    apply.assert_not_called()
-    assert ava_guide._next_btn.text() == "Enable Ava"
-    assert ava_guide._done_title.text() == "Ava is not ready."
+    ava_guide._consent_check.setChecked(True)
+    ava_guide._next_btn.click()
+    assert ava_guide._current_step == ava_guide._STEP_TEST
+    assert ava_guide._accepted is not None
+    assert not ava_guide._next_btn.isEnabled()
+    ava_guide._test_route()
+    measure.assert_called_once()
+    assert ava_guide._tested is None and not ava_guide._next_btn.isEnabled()
+    assert ava_guide._app.config['ava']['provider_policy'] == 'off'
 
 
 def test_C0216_C0225_skipped_tutorial_has_neutral_completion_heading(qapp):

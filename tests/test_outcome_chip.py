@@ -534,6 +534,16 @@ class TestWiring:
         app._show_dispatch_outcome_chip(sm.DispatchOutcome(kind="empty"))
         assert app.listening_indicator.calls == []
 
+    def test_handled_edit_preserves_the_handlers_feedback(self, caplog):
+        app = _app()
+        app._show_outcome_chip("edit dropped", "warning")
+        before = list(app.listening_indicator.calls)
+        app._show_dispatch_outcome_chip(sm.DispatchOutcome(kind="ava_edit_handled"))
+        assert outcome_chip("ava_edit_handled") is None
+        assert is_mapped_outcome("ava_edit_handled")
+        assert app.listening_indicator.calls == before
+        assert not any("Unmapped" in record.getMessage() for record in caplog.records)
+
     def test_unmapped_kind_logs_a_warning(self, caplog):
         import logging
 
@@ -577,7 +587,9 @@ class TestTestButtonVolume:
 
         class _Stub:
             play_sound = _d.DictationApp.play_sound
-            _resolve_playback_output = _d.DictationApp._resolve_playback_output
+            # Device enumeration and opening belong to output recovery tests.
+            # These cases exercise cue scaling on an already active stream.
+            _resolve_playback_output = lambda self: None
             stop_sound_stream = lambda self: None
             _start_sound_stream = lambda self: None
 
@@ -587,6 +599,8 @@ class TestTestButtonVolume:
                 self._buffer_lock = threading.Lock()
                 self._playback_buffer = None
                 self.audio_coordinator = None
+                self._sound_stream_device = None
+                self._sound_stream = types.SimpleNamespace(active=True)
 
         return _Stub()
 

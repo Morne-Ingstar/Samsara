@@ -283,7 +283,13 @@ def _capture_lifecycle_app(tmp_path, monkeypatch):
     for name in ('on_key_press', 'on_key_release', '_hotkey_state_text', '_other_hotkey_held'):
         setattr(app, name, MethodType(getattr(hotkeys.HotkeyCluster, name), app))
     jobs = []
-    monkeypatch.setattr(thread_registry, 'spawn', lambda name, fn, **kw: jobs.append((name, fn)))
+    def spawn(name, fn, **kwargs):
+        # 618's bounded decode waits for its registered worker. Execute that
+        # synthetic model job now; keep stop callbacks queued for release.
+        if name == 'hold-final-decode':
+            return fn()
+        jobs.append((name, fn))
+    monkeypatch.setattr(thread_registry, 'spawn', spawn)
     monkeypatch.setattr(tasks, '_refresh_overlay', Mock())
     memos = Mock(return_value={})
     spies.namespace['quick_memo'] = SimpleNamespace(
@@ -395,5 +401,7 @@ def test_escape_without_recording_leaves_all_capture_attributes_untouched(tmp_pa
     app._hotkey_recording = True
     before = vars(app).copy()
     app._cancel_recording_impl()
-    assert vars(app) == before
+    # Cancellation always invalidates capture provenance, even while idle.
+    # Sink/recording ownership and all unrelated attributes remain intact.
+    assert vars(app) == {**before, '_capture_provenance': None}
     assert held == set() and jobs == []

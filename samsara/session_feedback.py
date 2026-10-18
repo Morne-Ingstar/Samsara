@@ -53,7 +53,9 @@ _COMMAND_HEARD_MAX = 72
 #: (see _abort_chip), because then the user has to know the text still exists.
 #: dictation_chunk is a StackItem kind, not an outcome kind -- listed only
 #: because the queue-41 brief names it, and harmless here.
-_NO_CHIP = frozenset({"empty", "abort", "dictation_chunk"})
+# The edit handler emits its own thinking/proposal/result feedback. Its
+# consumed marker must leave that feedback in place on both displays.
+_NO_CHIP = frozenset({"empty", "abort", "dictation_chunk", "ava_edit_handled"})
 
 _REASON_MAX = 24
 

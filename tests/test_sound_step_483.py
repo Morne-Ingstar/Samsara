@@ -151,6 +151,9 @@ def hold_dispatch():
     wrapper.body = lane.body[start:]
     ns = dict(describe_text=describe_text, safe_exception=safe_exception,
               logger=logging.getLogger("483.hold"),
+              # The enclosing finalizer freezes provenance before this
+              # dispatch block; this slice represents the command hold key.
+              ownership=SimpleNamespace(capture_path='command_key'),
               _is_repeat_blacklisted=Mock(return_value=False), increment_command_count=Mock())
     exec(compile(ast.fix_missing_locations(ast.Module(body=[wrapper], type_ignores=[])),
                  "dictation-hold-result-483", "exec"), ns)

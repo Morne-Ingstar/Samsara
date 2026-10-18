@@ -10,7 +10,19 @@ from PySide6.QtWidgets import QLineEdit
 
 from samsara import openrouter_catalog as catalog
 from samsara.ui.settings.ava_cloud_qt import _OpenRouterPicker
-from tests.test_cloud_consent_sticks_537 import harness, local_accepted
+from tests.test_cloud_consent_sticks_537 import harness as settings_harness, local_accepted
+
+
+@pytest.fixture
+def harness(settings_harness):
+    make, dialogs, sent = settings_harness
+
+    def make_ava(*args, **kwargs):
+        window = make(*args, **kwargs)
+        window.show_tab('Ava')  # Settings constructs this destination on demand.
+        return window
+
+    return make_ava, dialogs, sent
 
 
 def model(model_id="example/paid", **extra):

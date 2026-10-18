@@ -21,6 +21,7 @@ def load_gate_methods():
     root = Path(__file__).resolve().parents[1]
     from samsara import audio_tools, config_defaults, diagnostics, session_modes, transcript_gates
     from samsara.hallucination_filter import SignoffContext, is_signoff_hallucination
+    from samsara.dictionary_store import get_dictionary_store
     from samsara.stage_timing import (
         StageTiming, outcome_label, set_current_stage_timing, reset_current_stage_timing,
     )
@@ -31,6 +32,7 @@ def load_gate_methods():
     module.__dict__.update(_languages=languages, collections=collections, math=math, time=time,
                            StageTiming=StageTiming,
                            config_defaults=config_defaults, diagnostics=diagnostics,
+                           get_dictionary_store=get_dictionary_store,
                            SignoffContext=SignoffContext,
                            is_signoff_hallucination=is_signoff_hallucination,
                            outcome_label=outcome_label,
@@ -89,7 +91,8 @@ def load_gate_methods():
 def app():
     production = load_gate_methods()
     fake = SimpleNamespace(
-        production=production, config={"language": "auto", "language_confidence_floor": 0.9},
+        production=production, config={"language": "auto", "language_confidence_floor": 0.9,
+                                       "dictation": {"speech_presence_gate": False}},
         _language_confidence_gate=production._languages.LanguageConfidenceGate(),
         play_sound=Mock(), model_lock=threading.Lock(), model_rate=16000,
         _buffer_has_contiguous_speech=Mock(return_value=False),
@@ -102,6 +105,8 @@ def app():
     for name in production.method_names:
         method = getattr(production, name)
         setattr(fake, name, method if name == "_log_cmd_utt_dropped" else MethodType(method, fake))
+    from samsara.command_fast_path import CommandFastPathMixin
+    fake._decode_session_audio = MethodType(CommandFastPathMixin._decode_session_audio, fake)
     # _buffer_should_skip_decode now delegates to the richer run scanner.
     # Keep this test at that boundary: individual VAD/ZCR behavior has its
     # own tests, while these assertions cover which capture path is selected.
@@ -265,6 +270,9 @@ def test_hotkey_accepts_owner_at_low_confidence(app):
 
 
 def test_long_split_checks_each_decode_info(app):
+    # Ordinary holds use 618's bounded recovery. Ava retains the long-split
+    # decoder and still applies the free-form language check to every chunk.
+    app.ava_mode_recording = True
     segment = SimpleNamespace(text="A complete phrase. ", no_speech_prob=0.01,
                               avg_logprob=-0.1, compression_ratio=1.0)
     app.model = SimpleNamespace(transcribe=Mock(side_effect=[

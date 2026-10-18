@@ -559,14 +559,18 @@ def test_aumid_is_set_at_import_before_any_qt_application(monkeypatch):
     qapp_calls = []
     namespace = {"sys": types.SimpleNamespace(platform="win32"),
                  "QApplication": lambda *a: qapp_calls.append(a)}
-    exec(compile(ast.Module(body=[node], type_ignores=[]), "dictation.py", "exec"), namespace)
+    # This is one isolated statement with a fake ctypes boundary, not an
+    # execution of the application source/bootstrap.
+    exec(compile(ast.Module(body=[node], type_ignores=[]), "<aumid-statement-test>", "exec"), namespace)
     shell32.SetCurrentProcessExplicitAppUserModelID.assert_called_once_with("MorneIngstar.Samsara")
     assert qapp_calls == []
 
 
 def test_spec_ships_the_icon_and_the_mark():
     spec = (REPO / "scripts" / "samsara.spec").read_text(encoding="utf-8")
-    assert "icon=str(app_dir / 'assets' / 'icon' / 'samsara.ico')" in spec
+    # The owner-supplied app artwork moved to brand; the live mark stays icon.
+    assert "icon=str(app_dir / 'assets' / 'brand' / 'samsara.ico')" in spec
+    assert "'samsara.ico'), 'assets/brand'" in spec
     assert "'samsara.svg'), 'assets/icon'" in spec
 
 
@@ -611,7 +615,7 @@ def test_scrollbar_rule_shape():
     assert "background: transparent" in _rule(qss, "QScrollBar::add-page, QScrollBar::sub-page")
     # visible, not overlay-only: nothing hides the bar
     assert "display" not in qss and "opacity" not in qss and "none;" not in qss.replace("border: none;", "") \
-        .replace("background: none;", "")
+        .replace("background: none;", "").replace("image: none;", "")
 
 
 def test_scrollbar_colours_come_from_tokens():
@@ -637,9 +641,15 @@ def test_no_local_scrollbar_overrides_left_in_the_owned_windows():
     paths = [REPO / p for p in _SCROLLBAR_SHEETS_PY] + sorted((REPO / "samsara/ui/settings").glob("*.py"))
     for path in paths:
         source = path.read_text(encoding="utf-8")
-        assert "QScrollBar" not in source, path
+        # 515 deliberately gives Settings' destination scrollbars their own
+        # quiet treatment. All other window/page sheets keep the shared rule.
+        if path.name == 'calm_layout.py':
+            assert 'scroll.verticalScrollBar().setStyleSheet' in source
+            assert not HEX_IN_TEXT.findall(source)
+        else:
+            assert "QScrollBar" not in source, path
     vertical_policies = sum(p.read_text(encoding="utf-8").count("setVerticalScrollBarPolicy") for p in paths)
-    assert vertical_policies == 1      # settings_qt's fixed-height search strip, not a scroll surface
+    assert vertical_policies == 1      # Settings' destination sidebar policy.
 
 
 def test_app_stylesheet_install_is_idempotent(qapp):
@@ -760,9 +770,11 @@ def test_brand_mark_is_heavier_than_the_tray_hollow_line(qapp):
 def test_hub_type_scale_is_additive_and_has_no_role_below_the_minimum():
     """41: one type scale for the hub and Home, added beside the shared four
     sizes without changing them."""
-    # Queue 83: the shared four are now aliases of the one scale, at the floor.
+    # The shared names follow the canonical design scale (506).
+    from samsara.ui.design_scale import TYPE_SCALE
     assert (theme.FONT_SIZE_TITLE, theme.FONT_SIZE_HEADING, theme.FONT_SIZE_BODY,
-            theme.FONT_SIZE_CAPTION, theme.FONT_SIZE_DISPLAY) == (22, 18, 16, 14, 26)
+            theme.FONT_SIZE_CAPTION, theme.FONT_SIZE_DISPLAY) == tuple(
+                TYPE_SCALE[role] for role in ('title', 'heading', 'body', 'caption', 'display'))
     tokens = {theme.TYPE_NAV, theme.TYPE_STATE, theme.TYPE_CARD_TITLE, theme.TYPE_BODY,
               theme.TYPE_SECONDARY, theme.TYPE_SECTION_LABEL, theme.TYPE_FIGURE, theme.TYPE_CREED}
     assert set(theme.HOME_TYPE_SCALE.values()) <= tokens

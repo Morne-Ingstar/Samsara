@@ -166,7 +166,13 @@ def test_modelless_wake_profile_still_reaches_whisper_fallback():
 
     consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
 
+    # 344 closed this bypass: merely enabling a model-less profile cannot
+    # admit arbitrary audio. A real primary hit can still reach Whisper.
+    app.process_wake_word_buffer.assert_not_called()
+    app._oww_primary_hit = True
+    consumer._flush([np.zeros(160, dtype=np.float32)], owner_token=None)
     app.process_wake_word_buffer.assert_called_once()
+    assert app.process_wake_word_buffer.call_args.kwargs['oww_confirmed'] is True
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +183,7 @@ def test_modelless_wake_profile_still_reaches_whisper_fallback():
 
 def test_flush_utterance_dispatches_buffered_audio():
     app = _wake_app(app_state='long_dictation')
-    consumer = WakeConsumer.__new__(WakeConsumer)
-    consumer._app = app
+    consumer, _feed = _wake_rig(app)
     consumer._utterance_frames = [np.zeros(160, dtype=np.float32)]
     consumer._buffer_rms_history = [0.0]
     consumer._hands_free_capture_duck_token = 5
@@ -195,8 +200,7 @@ def test_flush_utterance_dispatches_buffered_audio():
 
 
 def test_flush_utterance_is_noop_when_nothing_buffered():
-    consumer = WakeConsumer.__new__(WakeConsumer)
-    consumer._app = _wake_app()
+    consumer, _feed = _wake_rig(_wake_app())
     consumer._utterance_frames = []
     consumer._buffer_rms_history = []
     consumer._hands_free_capture_duck_token = None
@@ -238,6 +242,7 @@ def test_release_tail_ignores_prebuffer_when_rewind_was_skipped(caplog):
     class FakeReader:
         def __init__(self):
             self.rewound = []
+            self._read_cursor = 0
 
         def snap_to_head(self):
             pass
@@ -281,6 +286,7 @@ def test_release_tail_uses_real_prebuffer_when_rewound(caplog):
     class FakeReader:
         def __init__(self):
             self.rewound = []
+            self._read_cursor = 0
 
         def snap_to_head(self):
             pass
@@ -372,7 +378,8 @@ def test_finalized_transcript_snapshot_is_independent_copy():
     session.app = SimpleNamespace()
     captured = {}
     session._overlay = SimpleNamespace(
-        set_transcript=lambda finalized, partial: captured.update(finalized=finalized, partial=partial)
+        set_transcript=lambda finalized, partial, *, link_words: captured.update(
+            finalized=finalized, partial=partial, link_words=link_words)
     )
 
     session.on_utterance_final("world", scratch_success=False, dictate_committed=False)
@@ -381,6 +388,7 @@ def test_finalized_transcript_snapshot_is_independent_copy():
     session._finalized.append("mutated-after")
 
     assert snapshot == ["hello", "world"]
+    assert captured['link_words'] is True
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +445,8 @@ def test_dispatch_session_transition_drops_concurrent_racers(monkeypatch):
 def _pause_word_app(is_speaking):
     segment = SimpleNamespace(text="pause")
     return SimpleNamespace(
-        capture_rate=16000, model_rate=16000, config={},
+        capture_rate=16000, model_rate=16000,
+        config={'dictation': {'speech_presence_gate': False}},
         _transcription_owners=SimpleNamespace(claim=Mock(return_value=1), release=Mock()),
         model_lock=threading.Lock(),
         model=SimpleNamespace(transcribe=Mock(return_value=([segment], SimpleNamespace(language='en')))),
@@ -447,6 +456,7 @@ def _pause_word_app(is_speaking):
         _filter_dictation_language=Mock(side_effect=lambda text, info: text),
         voice_training_window=SimpleNamespace(apply_corrections=lambda text: text),
         _emit_wake_trace=Mock(), _log_history=Mock(),
+        _probe_media_transport=Mock(return_value=None),
         app_state='long_dictation', _dictation_paused=False,
         wake_dictation_buffer=[], play_sound=Mock(),
         is_speaking=is_speaking, silence_start=12345.0,
