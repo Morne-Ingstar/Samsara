@@ -543,6 +543,7 @@ class _WizardWindow(QDialog):
         available = self.screen().availableGeometry()
         self.resize(min(960, available.width()-40), min(660, available.height()-60))
         self.setMinimumSize(720, 420)
+        theme.apply_design_scale(self)
         self._current_step = self._STEP_INTRO
         self._go_to(self._STEP_INTRO)
 

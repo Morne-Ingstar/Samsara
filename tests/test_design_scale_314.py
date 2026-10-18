@@ -6,7 +6,7 @@ from samsara.ui import design_scale, theme
 
 ROOT = Path(__file__).resolve().parents[1]
 SURFACES = (
-    "samsara/ui/settings_qt.py",
+    "samsara/ui/settings/assembly.py",
     "samsara/ui/first_run_wizard_qt.py",
     "samsara/ui/tutorial_qt.py",
     "samsara/ui/ava_guide_qt.py",

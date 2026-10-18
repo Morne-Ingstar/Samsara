@@ -295,6 +295,8 @@ def quiet_windows(qapp, monkeypatch, tmp_path):
         }
         window = constructors[kind]()
         made.append(window)
+        if kind in ('settings', 'settings_again'):
+            window._ensure_preferences()
         if kind == 'settings_again':
             theme.apply_design_scale(window)
         window.show()
@@ -337,13 +339,16 @@ def test_inline_accent_without_primary_class_keeps_visible_focus(qapp, palette):
 
 def test_repeated_settings_scale_is_stable_and_hotkey_restyle_keeps_focus(qapp, quiet_windows):
     window = quiet_windows('settings')
-    buttons = window.findChildren(QPushButton)
+    buttons = real_buttons(window)
     assert any(button.objectName() == 'helpButton' for button in buttons)
     # Construction has already applied the scale once.
     before = {button: button.styleSheet() for button in buttons}
+    spin = window._widgets['adv_silence']
+    spin_state = (spin.styleSheet(), spin.buttonSymbols(), spin.sizeHint())
     theme.apply_design_scale(window)
     settle(qapp)
     assert before == {button: button.styleSheet() for button in buttons}
+    assert spin_state == (spin.styleSheet(), spin.buttonSymbols(), spin.sizeHint())
     from samsara.ui.settings.shared_qt import _HotkeyButton
     hotkey = next(button for button in buttons if isinstance(button, _HotkeyButton))
     sheet = hotkey.styleSheet()
@@ -353,11 +358,18 @@ def test_repeated_settings_scale_is_stable_and_hotkey_restyle_keeps_focus(qapp, 
     assert '[keyboardFocus="true"]:focus' in sheet and 'outline: none' in sheet
 
 
+def real_buttons(window):
+    """Visit destination controls, excluding retained source scaffolding."""
+    store = getattr(window, '_source_store', None)
+    return [button for button in window.findChildren(QPushButton)
+            if store is None or not store.isAncestorOf(button)]
+
+
 @pytest.mark.parametrize('kind', ('ava', 'first', 'mic', 'stress', 'tutorial', 'quick',
                                  'reference', 'settings', 'network', 'settings_again'))
 def test_every_real_window_button_keeps_focus_pixels(qapp, quiet_windows, kind):
     window = quiet_windows(kind)
-    buttons = window.findChildren(QPushButton)
+    buttons = real_buttons(window)
     assert buttons
     for button in buttons:
         # Visit the real stacked page/disclosure. Disabled controls are enabled

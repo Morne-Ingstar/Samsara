@@ -988,9 +988,11 @@ def _style_settings_inputs(window):
         layout = window._settings_input_layout = _SettingsInputLayout(window)
         layout.refresh()
     else:
-        from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit
-        for widget in window.findChildren(QWidget):
-            if isinstance(widget, (QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit)) and not isinstance(widget.parentWidget(), (QAbstractSpinBox, QComboBox)):
+        # Lazy Settings keeps unplaced source controls under the owner too.
+        # Observe new live inputs before restyling, within the layout's scope.
+        layout.refresh()
+        for widget in layout.window.findChildren(QWidget):
+            if widget.property('settingsInputField'):
                 layout.style_field(widget)
 
 
