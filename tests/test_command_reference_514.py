@@ -14,7 +14,14 @@ from samsara.ui.settings.sidebar import SearchGlyph, search_qss
 
 
 @pytest.fixture
-def reference(qapp, tmp_path, monkeypatch):
+def reference(qapp, tmp_path, monkeypatch, request):
+    old_theme = theme.active_theme()
+    # Layout variants construct only their own panel under the target palette.
+    # A global refresh would also restyle windows retained by earlier files.
+    palette = getattr(request.node, "callspec", None)
+    palette = palette.params.get("palette") if palette is not None else None
+    if palette is not None:
+        theme.set_theme(palette, refresh=False)
     commands = [
         dict(phrase='open notepad', canonical_id='builtin.notepad', kind='builtin',
              aliases=['open notepad', 'start editor', 'launch editor', 'show editor', 'use editor'],
@@ -43,6 +50,7 @@ def reference(qapp, tmp_path, monkeypatch):
     win.deleteLater()
     qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
+    theme.set_theme(old_theme, refresh=False)
 
 
 def item(win, phrase='open notepad'):
@@ -171,8 +179,7 @@ def test_refresh_and_filter_close_card_without_retaining_item(reference):
 @pytest.mark.parametrize('width', ['default', 'minimum'])
 def test_grid_control_heights_dropdown_clearance_and_corner_grip(reference, qapp, palette, width):
     win, _, _ = reference
-    old = theme.active_theme()
-    theme.set_theme(palette)
+    assert theme.active_theme() == palette
     try:
         win.resize(cs._DEFAULT_W if width == 'default' else win.minimumWidth(), cs._DEFAULT_H)
         qapp.processEvents()
@@ -194,7 +201,7 @@ def test_grid_control_heights_dropdown_clearance_and_corner_grip(reference, qapp
         assert grip.geometry().bottomRight() == grip.parentWidget().rect().bottomRight()
         assert win._list.geometry().bottom() == grip.parentWidget().rect().bottom()
     finally:
-        theme.set_theme(old)
+        win.hide()
 
 
 def test_shared_search_and_scroll_treatments(reference, qapp):

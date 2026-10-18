@@ -324,7 +324,11 @@ def _expected_scopes():
     expected.update({p: {"tags": ["mouse_grid.visible"]}
                      for p in ("hide grid", "grid back", "move here")})
     expected.update({p: {"argument_tags": ["show_numbers.visible"]}
-                     for p in ("click", "left click", "right click", "double click")})
+                     for p in ("left click", "right click", "double click")})
+    # 604 makes click <name> global; only choosing a pending match is scoped.
+    expected['choose control'] = {'tags': ['click_by_name.pending']}
+    # 607 adds the short-lived selection from "list all windows".
+    expected['choose'] = {'tags': ['window_cube.selection']}
     browsers = ['brave.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe', 'opera.exe', 'vivaldi.exe']
     # 265 deliberately scopes browser accelerators, including inherited pack
     # scope. Launch commands explicitly opt out and stay global.
@@ -460,11 +464,12 @@ def test_cheatsheet_window_hides_not_live_and_says_how_many(qapp, executor, tmp_
     try:
         ids = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert "window_cube.two" not in ids and "window_cube.window_two" in ids
-        # 12 overlay-only + 37 browser + 5 Word commands are hidden in Warp;
-        # bare Show Numbers click forms stay global.
+        # Overlay/selection-only, browser and Word commands are hidden in Warp;
+        # the bare click forms and named-control discovery stay global.
         hidden = {'window_cube.' + word for word in (
             'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine')}
         hidden.update({'show_numbers.hide_grid', 'show_numbers.grid_back', 'show_numbers.move_here'})
+        hidden.update({'click_by_name.choose_control', 'window_cube.choose'})
         specs = cc.build_catalog(executor)
         ids_by_phrase = {alias: spec.canonical_id for spec in specs for alias in spec.aliases}
         hidden.update(ids_by_phrase[phrase]

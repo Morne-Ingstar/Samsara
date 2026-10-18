@@ -141,6 +141,10 @@ def _buffered_dictation_app(config_overrides=None):
     app._notify_main_window = Mock()
     app.play_sound = Mock()
     app._update_mode_overlay = Mock()
+    # Formatting tests do not own command matching or a live preview ticker.
+    app._probe_hands_free_command = Mock(return_value=None)
+    app._update_streaming_preview = Mock()
+    app._release_streaming_preview = Mock()
     app.exit_command_mode = Mock()
     return app
 

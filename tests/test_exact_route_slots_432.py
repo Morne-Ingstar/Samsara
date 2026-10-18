@@ -32,6 +32,12 @@ VOICE_SLOTS = {
     'line spacing': ('two', {'remainder': 'two'}),
     'set font': ('Arial', {'remainder': 'Arial'}),
     'claude message submit': ('Foo', {'remainder': 'Foo'}),
+    # 604 adds named-control actions and selection-scoped disambiguation.
+    'choose control': ('two', {'remainder': 'two'}),
+    'toggle': ('Foo', {'remainder': 'Foo'}),
+    'expand': ('Foo', {'remainder': 'Foo'}),
+    'collapse': ('Foo', {'remainder': 'Foo'}),
+    'focus control': ('Foo', {'remainder': 'Foo'}),
 }
 CONTROLLER_SLOTS = {
     'interact focus': {'subject_token': 'opaque-controller-token'},
@@ -351,7 +357,7 @@ def test_valid_semantic_slots_do_not_bypass_other_policy_refusals(live, monkeypa
 
 
 SEMANTIC_COMMANDS = ('find window', 'cursor to', 'window move', 'bring',
-                     'focus', 'open', 'close', 'send')
+                     'focus', 'open', 'close', 'send', 'snap')
 
 
 def _head_type_ok(typ, value, **_kwargs):

@@ -14,21 +14,35 @@ _KEYS = {
 }
 
 
-def _advanced_save(config, qapp):
+@pytest.fixture
+def _advanced_save(qapp):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from shiboken6 import isValid
     from samsara.ui.settings_qt import _SettingsWindow
     from tests.test_settings import _StubApp
 
-    app = _StubApp()
-    app.config = config
-    window = _SettingsWindow(app)
-    save = next(
-        fn for fn in window._save_fns
-        if '_build_advanced_tab' in fn.__qualname__
-    )
-    return window, save
+    windows = []
+
+    def build(config):
+        app = _StubApp()
+        app.config = config
+        window = _SettingsWindow(app)
+        windows.append(window)  # Own cleanup even if lazy page assembly raises.
+        save = next(fn for fn in window._source_saves['advanced']
+                    if '_build_advanced_tab' in fn.__qualname__)
+        return window, save
+
+    yield build
+    for window in windows:
+        if isValid(window):
+            window.close()
+            window.deleteLater()
+            QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
+        assert not isValid(window)
+    qapp.processEvents()
 
 
-def test_schema_defaults_reach_advanced_controls_and_saved_ducking(qapp):
+def test_schema_defaults_reach_advanced_controls_and_saved_ducking(_advanced_save):
     from samsara.config_defaults import DEFAULTS
     from samsara.config_schema import SETTINGS_SCHEMA
 
@@ -44,7 +58,7 @@ def test_schema_defaults_reach_advanced_controls_and_saved_ducking(qapp):
         'ducking.hands_free_enabled'
     )
 
-    window, save = _advanced_save({}, qapp)
+    window, save = _advanced_save({})
     try:
         assert window._widgets['adv_hands_free_ducking_enabled'].isChecked() is True
         assert window._widgets['adv_hands_free_ducking_level'].value() == pytest.approx(0.15)
@@ -62,7 +76,7 @@ def test_schema_defaults_reach_advanced_controls_and_saved_ducking(qapp):
         window.deleteLater()
 
 
-def test_existing_hands_free_values_round_trip_without_dropping_siblings(qapp):
+def test_existing_hands_free_values_round_trip_without_dropping_siblings(_advanced_save):
     original = {
         'ducking': {
             'enabled': True,
@@ -73,7 +87,7 @@ def test_existing_hands_free_values_round_trip_without_dropping_siblings(qapp):
             'future_ducking_key': 'keep me',
         }
     }
-    window, save = _advanced_save(original, qapp)
+    window, save = _advanced_save(original)
     try:
         assert window._widgets['adv_hands_free_ducking_enabled'].isChecked() is False
         assert window._widgets['adv_hands_free_ducking_level'].value() == pytest.approx(0.35)

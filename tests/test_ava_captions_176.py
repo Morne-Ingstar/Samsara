@@ -27,6 +27,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Retire test-owned speech workers before later files dispose Qt wrappers.
+from tests.test_tts_feedback_level_372 import _shutdown_test_coordinators
+
 from samsara.tts.coordinator import (
     AVA_SPEECH_CATEGORIES,
     MUTED_AVA_ID,

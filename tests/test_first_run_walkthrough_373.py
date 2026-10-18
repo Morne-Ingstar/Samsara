@@ -36,6 +36,7 @@ def make_window(qapp, tmp_path, monkeypatch):
         if existing is not None:
             path.write_text(json.dumps(existing), encoding='utf-8')
         window = wizard._WizardWindow(path)
+        windows.append(window)
         window._mics = [{'id': 7, 'name': 'Synthetic microphone'},
                         {'id': 8, 'name': 'Second synthetic microphone'}]
         window._mic_result.emit('_load_done_', '')
@@ -45,13 +46,14 @@ def make_window(qapp, tmp_path, monkeypatch):
         window.resize(1000, 800)
         window.show()
         qapp.processEvents()
-        windows.append(window)
         return window
     yield make
     for window in windows:
         if isValid(window):
             window.close()
             window.deleteLater()
+            QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
+        assert not isValid(window)
     qapp.processEvents()
 
 
@@ -283,7 +285,8 @@ def test_window_destruction_releases_callbacks_safely(make_window, qapp):
     visit(window, 'Talking')
     window.close()
     window.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # Destroy the subject, without collecting other files' deferred widgets.
+    QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
     qapp.processEvents()
     gc.collect()
     assert not isValid(window)

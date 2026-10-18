@@ -4,6 +4,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtGui import QAccessible
 from PySide6.QtWidgets import QApplication, QLabel
+from shiboken6 import isValid
 from samsara.ui import settings_qt
 from samsara.ui.settings import agents_section, tools_page
 from samsara.ui.widgets.beta_notice import BetaNotice
@@ -30,10 +31,15 @@ def window(qapp, monkeypatch):
     win.show()
     qapp.processEvents()
     yield win
+    # Qt can delete earlier queued windows too. Keep their Python wrappers
+    # alive until Qt has finished, rather than leaving those deletes pending.
+    pending_wrappers = QApplication.allWidgets()
     win.hide()
     win.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not isValid(win)
     qapp.processEvents()
+    del pending_wrappers
 
 
 def test_notice_is_lazy_one_per_page_and_dismiss_hides_all_pages(window):

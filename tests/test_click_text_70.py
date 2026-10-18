@@ -61,6 +61,14 @@ class _App:
 @pytest.fixture
 def rig(monkeypatch):
     """handle_click with OCR, overlay, chips and clicks faked."""
+    from plugins.commands import click_by_name
+
+    # 604 added UIA before OCR. This rig covers the OCR fallback, so make
+    # discovery return no UIA target and keep pending selections out of it.
+    monkeypatch.setattr(click_by_name, "try_named", lambda *a, **k: None)
+    monkeypatch.setattr(click_by_name, "selection_number", lambda *a: None)
+    monkeypatch.setattr(sn, "grid_active", lambda: False)
+    monkeypatch.setattr(sn, "_dom_active", False)
     app = _App()
     state = SimpleNamespace(snapshot=None, drawn=None, clicked=[], reads=0, reaches=lambda x, y: True)
 
@@ -123,12 +131,20 @@ class TestCoordinates:
         assert plan["screen_rect"] == mapping[1]
         assert [k["rect"] for k in plan["kept"]] == [expected_logical]
 
+    @pytest.mark.requires_desktop
     @pytest.mark.skipif(sys.platform != "win32", reason="real screen capture is Windows-only")
     def test_real_window_text_is_read_back_where_it_is_on_every_monitor(self, qapp):
         pytest.importorskip("winsdk.windows.media.ocr")
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QFont
         from PySide6.QtWidgets import QApplication, QLabel, QWidget
+        if QApplication.platformName() != "windows":
+            # read_foreground captures desktop pixels through a native HWND;
+            # offscreen widgets cannot exercise that integration boundary.
+            pytest.skip(
+                "requires_desktop: needs a visible native Windows Qt window "
+                "(QT_QPA_PLATFORM=windows); offscreen Qt has no capturable desktop window"
+            )
         if any(s.devicePixelRatio() != 1.0 for s in QApplication.screens()):
             pytest.skip("uses Qt logical positions as physical; needs every monitor at 100%")
         known = [("Export", 30, 30), ("Settings", 240, 30), ("Export", 30, 170)]
@@ -229,9 +245,9 @@ class TestClickText:
         state.snapshot = _snapshot([_line(("File", 120, 120, 150, 140))])
         assert sn.handle_click(app, "export") is DispatchState.FAILED
         assert state.clicked == [] and state.drawn is None
-        assert app.spoken == ["Nothing on screen matches that."]
-        assert app.chips and "nothing on screen matches that" in app.chips[-1][0]
-        assert "icons have no text" in app.chips[-1][0]
+        # 604 shares the name-miss feedback between UIA and OCR.
+        assert app.spoken == ["No match: export"]
+        assert app.chips == [("No match: export", "error")]
 
     def test_text_covered_by_another_window_is_not_a_match(self, rig):
         app, state = rig

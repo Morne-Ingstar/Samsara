@@ -1,6 +1,6 @@
 """Queue 183: Ava consent is explicit, versioned, and cloud-aware."""
 
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 import json
 
 import pytest
@@ -14,12 +14,14 @@ from samsara.ui import ava_consent_qt as consent
 
 
 @pytest.fixture(autouse=True)
-def _dispose_test_widgets(request):
+def _dispose_test_widgets(request, monkeypatch):
     """Destroy this test's windows while their Python wrappers are still valid."""
     if "qapp" not in request.fixturenames:
         yield
         return
     qapp = request.getfixturevalue("qapp")
+    from samsara import autostart
+    monkeypatch.setattr(autostart, "sync_run_entry", lambda *_args: None)
     before = set(qapp.topLevelWidgets())
     yield
     # Settings.close() only hides, and deleteLater() needs an explicit drain
@@ -105,10 +107,11 @@ def test_decline_produces_no_record_and_leaves_ava_off(qapp, monkeypatch):
     monkeypatch.setattr(
         consent, "request_consent", lambda *_args, **_kwargs: shown.append(True) or None)
     try:
-        checkbox = window._widgets["ava_enabled"]
-        checkbox.click()
+        route = window._widgets["providerRoute"]
+        route.setCurrentIndex(route.findData("local"))
         assert shown == [True]
-        assert checkbox.isChecked() is False
+        assert route.currentData() == "off"
+        assert not ai_preferences.runtime_state(app.config, "ava").allowed
     finally:
         window.deleteLater()
 
@@ -149,9 +152,9 @@ def test_ava_page_accept_and_apply_enables_once_and_survives_reload(
     _AcceptedDialog.shown = 0
     window = _SettingsWindow(app)
     try:
-        checkbox = window._widgets["ava_enabled"]
-        checkbox.click()
-        assert checkbox.isChecked() is True
+        route = window._widgets["providerRoute"]
+        route.setCurrentIndex(route.findData("local"))
+        assert route.currentData() == "local"
         assert _AcceptedDialog.shown == 1
         assert len(saves) == 1
         assert ai_preferences.runtime_state(app.config, "ava").allowed
@@ -177,10 +180,10 @@ def test_ava_page_accept_and_apply_enables_once_and_survives_reload(
 
         window2 = _SettingsWindow(app2)
         try:
-            checkbox2 = window2._widgets["ava_enabled"]
-            assert checkbox2.isChecked() is True
-            checkbox2.click()
-            checkbox2.click()
+            route2 = window2._widgets["providerRoute"]
+            assert route2.currentData() == "local"
+            route2.setCurrentIndex(route2.findData("off"))
+            route2.setCurrentIndex(route2.findData("local"))
         finally:
             window2.deleteLater()
         assert _AcceptedDialog.shown == 1
@@ -200,7 +203,7 @@ def test_modes_has_no_ava_enable_switch_and_preserves_master_state(qapp):
         assert "ava_cmd_enabled" not in window._widgets
         assert "ava_mode_enabled" not in window._widgets
         app.config["ava_command_session"]["enabled"] = True
-        modes_save = next(save for save in window._save_fns
+        modes_save = next(save for saves in window._source_saves.values() for save in saves
                           if "_build_modes_tab" in save.__qualname__)
         updates = modes_save({})
         assert updates["ava_command_session"]["enabled"] is True
@@ -219,7 +222,8 @@ def test_fresh_config_master_on_local_is_ready_without_modes(qapp, monkeypatch):
     _AcceptedDialog.shown = 0
     window = _SettingsWindow(app)
     try:
-        window._widgets["ava_enabled"].click()
+        route = window._widgets["providerRoute"]
+        route.setCurrentIndex(route.findData("local"))
         window._apply_and_close()
 
         assert _AcceptedDialog.shown == 1
@@ -242,8 +246,8 @@ def test_fresh_config_master_on_cloud_is_ready_without_modes(qapp, monkeypatch):
     window = _SettingsWindow(app)
     try:
         window._widgets["cloud_api_key"].setText("fixture-only")
-        window._widgets["cloud_enabled"].click()
-        window._widgets["ava_enabled"].click()
+        route = window._widgets["providerRoute"]
+        route.setCurrentIndex(route.findData("cloud"))
         window._apply_and_close()
 
         assert _AcceptedDialog.shown == 1
@@ -271,9 +275,9 @@ def test_master_off_turns_every_ava_route_off(qapp):
     app.config["ava_edit"]["enabled"] = True
     window = _SettingsWindow(app)
     try:
-        master = window._widgets["ava_enabled"]
-        assert master.isChecked()
-        master.click()
+        route = window._widgets["providerRoute"]
+        assert route.currentData() == "local"
+        route.setCurrentIndex(route.findData("off"))
         window._apply_and_close()
 
         assert app.config["ava"]["provider_policy"] == "off"
@@ -298,11 +302,13 @@ def test_declining_cloud_consent_leaves_the_cloud_toggle_off(qapp, monkeypatch):
     window = _SettingsWindow(app)
     monkeypatch.setattr(consent, "request_consent", lambda *_args, **_kwargs: None)
     try:
+        route = window._widgets["providerRoute"]
         cloud = window._widgets["cloud_enabled"]
         warm = window._widgets["ava_warm_on_boot"]
         # 252's fail-closed policy disables warm-up until Ava is enabled.
         assert warm.isChecked() is False
-        cloud.click()
+        route.setCurrentIndex(route.findData("cloud"))
+        assert route.currentData() == "off"
         assert cloud.isChecked() is False
         assert warm.isChecked() is False
     finally:
@@ -359,47 +365,36 @@ def test_dialog_has_accessible_actions_and_safe_initial_focus(qapp):
     dialog.close()
 
 
-def _pending_local_guide(app, owner):
-    from samsara.ui.ava_guide_qt import _WizardWindow
-
-    # The route is selected but cannot run until consent is accepted.
-    app.config["ava"]["provider_policy"] = "local"
-    app.config["ava_command_session"]["enabled"] = True
-    model = app.config["ollama"]["model"]
-    guide = SimpleNamespace(
-        _app=app, _selected_model_name=model, _ollama_running=True,
-        _installed_models=[model], _done_title=QLabel(owner), _done_summary=QLabel(owner),
-        _skip_btn=QPushButton(owner), _next_btn=QPushButton(owner),
-    )
-    guide._build_done_summary = MethodType(_WizardWindow._build_done_summary, guide)
-    guide._build_done_summary()
-    assert guide._consent_only_missing
-    assert guide._next_btn.text() == "Enable Ava"
-    assert not ai_preferences.runtime_state(app.config, "ava").allowed
-    return guide
-
-
 @pytest.fixture
-def pending_local_guide(qapp):
-    owner = QWidget()
+def pending_local_guide(qapp, monkeypatch):
+    from samsara.ui import ava_guide_qt as guide_ui
+
+    monkeypatch.setattr(guide_ui, "_ping_ollama", lambda **_kwargs: (False, []))
+    monkeypatch.setattr(guide_ui.thread_registry, "spawn", lambda _name, fn, **_kwargs: fn())
     guides = []
 
     def build(app):
-        guide = _pending_local_guide(app, owner)
+        guide = guide_ui._WizardWindow(app)
         guides.append(guide)
+        guide._route = "local"
+        guide._selected_model_name = app.config["ollama"]["model"]
+        guide._ollama_running = True
+        guide._installed_models = [guide._selected_model_name]
+        guide._go_to(guide._STEP_TEST)
+        assert guide._ensure_consent() is False
+        assert guide._current_step == guide._STEP_CONSENT
+        assert not guide._next_btn.isEnabled()
+        assert not ai_preferences.runtime_state(app.config, "ava").allowed
         return guide
 
     yield build
-    # Break the bound-method/self cycle before destroying the owned C++ widgets.
     for guide in guides:
-        del guide._build_done_summary
-    owner.close()
-    owner.deleteLater()
+        guide.close()
+        guide.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
     from shiboken6 import isValid
-    assert not isValid(owner)
-    assert all(not isValid(guide._next_btn) for guide in guides)
+    assert all(not isValid(guide) for guide in guides)
 
 
 def test_guide_decline_does_not_enable_ai_pack(qapp, monkeypatch, pending_local_guide):
@@ -411,14 +406,14 @@ def test_guide_decline_does_not_enable_ai_pack(qapp, monkeypatch, pending_local_
         update_config=lambda update, save: updates.append((update, save)),
     )
     guide = pending_local_guide(app)
-    monkeypatch.setattr(consent, "request_consent", lambda *_args, **_kwargs: None)
-
-    _WizardWindow._enable_ai_pack(guide)
+    # 630 embeds permission in the guide; declining closes without finishing.
+    guide._next_btn.click()  # disabled until the agreement is checked
+    guide.close()
 
     assert updates == []
     assert not ai_preferences.runtime_state(app.config, "ava").allowed
     assert app.config["command_packs"]["ai"] is False
-    assert guide._next_btn.text() == "Enable Ava"
+    assert not guide._next_btn.isEnabled()
 
 
 def test_guide_accept_persists_and_activates_the_selected_local_route(
@@ -445,9 +440,18 @@ def test_guide_accept_persists_and_activates_the_selected_local_route(
     _AcceptedDialog.shown = 0
 
     guide = pending_local_guide(app)
-    _WizardWindow._enable_ai_pack(guide)
+    guide._consent_check.setChecked(True)
+    guide._next_btn.click()
+    assert guide._accepted == ("local", guide._provider.currentData())
+    assert saves == []  # agreement alone does not enable an untested route
+    from samsara import hardware_check
+    monkeypatch.setattr(hardware_check, "measure_local", lambda _config: 24.0)
+    guide._test_route()
+    assert guide._tested == guide._signature()
+    guide._go_to(guide._STEP_DONE)
+    guide._next_btn.click()
 
-    assert _AcceptedDialog.shown == 1
+    assert _AcceptedDialog.shown == 0
     assert len(saves) == 1
     assert app.config["ava"]["provider_policy"] == "local"
     assert app.config["ava_command_session"]["enabled"] is True
@@ -456,8 +460,7 @@ def test_guide_accept_persists_and_activates_the_selected_local_route(
     assert json.loads(state_file.read_text(encoding="utf-8"))[
         "ava_command_session"]["enabled"] is True
     assert rebuilt == [True]
-    assert guide._next_btn.text() == "Finish"
-    assert guide._done_title.text() == "Ava is ready."
+    assert guide._closed is True
 
 
 def test_schema_registers_the_nested_consent_record():

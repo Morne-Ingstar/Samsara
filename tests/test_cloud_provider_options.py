@@ -25,8 +25,10 @@ def test_openrouter_default_uses_official_compatible_endpoint_and_auto_router():
     assert cloud_llm._get_provider_config(_app()) == (
         "openrouter",
         "https://openrouter.ai/api/v1",
-        "openrouter/auto",
+        "google/gemini-3.1-flash-lite",
     )
+    # A saved Auto choice remains explicit; 629 only changed fresh installs.
+    assert cloud_llm._get_provider_config(_app(model="openrouter/auto"))[2] == "openrouter/auto"
 
 
 def test_openrouter_model_override_is_preserved():
@@ -50,7 +52,7 @@ def test_hidden_provider_endpoint_override_is_ignored():
 
     assert provider == "openrouter"
     assert base_url == "https://openrouter.ai/api/v1"
-    assert model == "openrouter/auto"
+    assert model == "google/gemini-3.1-flash-lite"
 
 
 def test_unsupported_provider_fails_without_network_request(monkeypatch):
@@ -87,7 +89,7 @@ def test_openrouter_send_reuses_openai_compatible_request(monkeypatch):
     assert cloud_llm.send("system", "hello", _app()) == "routed"
     assert request["url"] == "https://openrouter.ai/api/v1/chat/completions"
     assert request["headers"]["Authorization"] == "Bearer test-key"
-    assert request["json"]["model"] == "openrouter/auto"
+    assert request["json"]["model"] == "google/gemini-3.1-flash-lite"
 
 
 def test_openrouter_is_selectable_in_ava_cloud_ui(qapp):
@@ -95,15 +97,18 @@ def test_openrouter_is_selectable_in_ava_cloud_ui(qapp):
     from tests.test_settings import _StubApp
 
     win = _SettingsWindow(_StubApp())
-    combo = win._widgets["cloud_provider"]
+    try:
+        combo = win._widgets["cloud_provider"]
 
-    assert combo.findText("OpenRouter") >= 0
-    combo.setCurrentText("OpenRouter")
-    assert win._widgets["cloud_model"].placeholderText() == (
-        "Default: openrouter/auto"
-    )
-    assert "many models" in win._widgets["cloud_info_label"].text()
+        assert combo.findText("OpenRouter") >= 0
+        combo.setCurrentText("OpenRouter")
+        assert win._widgets["cloud_model"].placeholderText() == (
+            "Default: google/gemini-3.1-flash-lite"
+        )
+        assert "many models" in win._widgets["cloud_info_label"].text()
 
-    save_ava = win._source_saves["ava"][0]
-    assert save_ava({})["cloud_llm"]["provider"] == "openrouter"
-    win.close()
+        save_ava = win._source_saves["ava"][0]
+        assert save_ava({})["cloud_llm"]["provider"] == "openrouter"
+    finally:
+        win.close()
+        win.deleteLater()

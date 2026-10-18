@@ -18,7 +18,9 @@ def no_network(monkeypatch):
 
 @pytest.mark.parametrize("provider,expected", [
     ("deepseek", "deepseek-flash"), ("anthropic", "claude-sonnet-5-5"),
-    ("openai", "gpt-4o-mini"), ("openrouter", "openrouter/auto"),
+    ("openai", "gpt-4o-mini"),
+    # Keep the historical node ID while pinning 629's owner-approved default.
+    pytest.param("openrouter", "google/gemini-3.1-flash-lite", id="openrouter-openrouter/auto"),
 ])
 def test_defaults_and_settings_agree(provider, expected):
     from samsara.ui.settings import ava_cloud_qt

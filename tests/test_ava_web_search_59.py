@@ -14,6 +14,9 @@ from unittest.mock import MagicMock, Mock
 import pytest
 import requests
 
+# Retire test-owned speech workers before later files dispose Qt wrappers.
+from tests.test_tts_feedback_level_372 import _shutdown_test_coordinators
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 

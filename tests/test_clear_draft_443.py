@@ -305,13 +305,14 @@ def test_parked_edited_draft_restores_document_undo_and_stale_coordinates(make_m
 
 def test_new_live_display_shows_clear_and_restore_from_real_outcomes(make_manager, qapp, monkeypatch):
     from samsara.live_surface.controller import LiveSurfaceController, LiveSurfaceIndicatorAdapter
-    from samsara.live_surface.model import CaptureState, Lane
+    from samsara.live_surface.model import CaptureState, Lane, LiveSurfaceModel
 
     monkeypatch.setattr("samsara.live_surface.controller.qt_runtime.post", lambda _: None)
     manager, _, _, _ = make_manager()
     app = SimpleNamespace(config={"ui": {"live_surface": {"enabled": True}}},
                           _session_mode_manager=manager)
-    controller = LiveSurfaceController(app)
+    now = [0.0]
+    controller = LiveSurfaceController(app, model=LiveSurfaceModel(clock=lambda: now[0]))
     controller.start()
     adapter = LiveSurfaceIndicatorAdapter(controller)
     controller.begin_capture(Lane.HANDS_FREE_DICTATE, capture=CaptureState.HANDS_FREE_LISTENING)
@@ -325,7 +326,17 @@ def test_new_live_display_shows_clear_and_restore_from_real_outcomes(make_manage
             controller.sync_draft(manager)
             adapter.show_outcome(*outcome_chip(outcome.kind, outcome.detail))
             controller.drain()
+            if phrase == "bring it back":
+                # 591 protects the first receipt's reading time while the
+                # authoritative document still restores immediately.
+                assert controller.view().notice.message == 'Draft cleared - say "bring it back"'
+                assert controller.view().text == manager.dictate_pending_buffer
+                now[0] = controller.view().notice.expires_at + 0.001
+                controller.refresh_expired()
             assert controller.view().notice.message == expected
             assert controller.view().text == manager.dictate_pending_buffer
     finally:
         controller.close()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
