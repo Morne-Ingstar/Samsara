@@ -57,6 +57,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import dictation
+from samsara import audio_tools
+from samsara.command_fast_path import CommandFastPathMixin
 
 
 _COMMAND_VOCAB_MARKER = 'Voice commands: test_command_a, test_command_b'
@@ -281,13 +283,8 @@ def test_get_transcription_params_include_vocabulary_true_is_default(mode):
 # ============================================================================
 # Per-path wiring: does each of the three methods that call
 # get_transcription_params() directly (not through _build_hotkey_transcribe_
-# params) pass the correct include_vocabulary value? Each test patches
-# get_transcription_params with a spy that raises immediately after
-# recording its kwargs -- this captures the ONE call under test without
-# needing to mock the rest of that method's downstream pipeline (model
-# decode, diagnostics, corrections, command dispatch), matching this
-# module's established "exercise the real production code, minimal
-# scaffolding" philosophy for a method this large.
+# params) pass the correct include_vocabulary value? The spy records its
+# kwargs and lets the real path reach a synthetic empty model result.
 # ============================================================================
 
 class _FakeModelLock:
@@ -333,13 +330,17 @@ def _base_fake_app(**extra):
         # Unconditional finally-block cleanup a couple of these methods
         # perform regardless of the early "text came back empty" return --
         # no-ops here since none of it is what's under test.
-        _vad_reset=lambda: None, _vad_available=True, _log_history=lambda **k: None,
+        _vad_reset=lambda: None, _vad_available=True, _log_history=Mock(),
+        _filter_dictation_language=lambda text, info: text,
+        _log_cmd_utt_dropped=Mock(),
         **extra,
     )
     from tests.conftest import apply_fake_app_defaults
     apply_fake_app_defaults(app)
     app.model.transcribe.return_value = ([], types.SimpleNamespace(language='en'))
     app.get_transcription_params = types.MethodType(_capture_get_transcription_params, app)
+    app._decode_session_audio = types.MethodType(
+        CommandFastPathMixin._decode_session_audio, app)
     return app, captured
 
 
@@ -349,6 +350,8 @@ def test_transcribe_continuous_buffer_omits_vocabulary():
     buffer = [np.zeros(16000, dtype=np.float32)]  # 1.0s, above the 0.51s guard
     dictation.DictationApp.transcribe_continuous_buffer(app, buffer)
     assert captured.get('include_vocabulary') is False
+    app.model.transcribe.assert_called_once()
+    app._log_history.assert_not_called()
 
 
 def test_process_wake_word_buffer_dictation_lane_omits_vocabulary():
@@ -374,6 +377,9 @@ def test_process_wake_word_buffer_dictation_lane_omits_vocabulary():
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp.process_wake_word_buffer(app, buffer)
     assert captured.get('include_vocabulary') is False
+    app.model.transcribe.assert_called_once()
+    assert all(call.kwargs.get('status') != 'failed'
+               for call in app._log_history.call_args_list)
 
 
 @pytest.mark.parametrize('mode, expected', [
@@ -392,6 +398,8 @@ def test_handle_command_mode_utterance_gates_on_session_mode(mode, expected):
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp._handle_command_mode_utterance(app, buffer, 16000)
     assert captured.get('include_vocabulary') is expected
+    app.model.transcribe.assert_called_once()
+    app._log_cmd_utt_dropped.assert_called_once_with('empty_transcription', 'unknown', 1.0)
 
 
 @pytest.mark.parametrize('mode', [
@@ -425,7 +433,9 @@ def test_handle_command_mode_utterance_forces_english_on_every_mode(mode):
     )
     buffer = [np.zeros(16000, dtype=np.float32)]
     dictation.DictationApp._handle_command_mode_utterance(app, buffer, 16000)
+    app.model.transcribe.assert_called_once()
     assert app.model.transcribe.call_args.kwargs['language'] == 'en'
+    app._log_cmd_utt_dropped.assert_called_once_with('empty_transcription', 'unknown', 1.0)
 
 
 # ============================================================================
@@ -442,7 +452,7 @@ class TestRetryOnSuspectedLoss:
         return dictation._HotkeyDecodeResult(text, low_confidence, [], 'en', 'short')
 
     def test_no_retry_when_not_suspected(self, monkeypatch):
-        monkeypatch.setattr(dictation, '_suspected_silent_data_loss', lambda *a, **k: False)
+        monkeypatch.setattr(audio_tools, '_suspected_silent_data_loss', lambda *a, **k: False)
         original = self._result('a complete sentence')
         retry_fn = Mock(side_effect=AssertionError('retry_fn must not be called'))
         result, suspected, retried = dictation._apply_retry_on_suspected_loss(
@@ -457,7 +467,7 @@ class TestRetryOnSuspectedLoss:
     def test_no_retry_on_command_lane_even_when_suspected(self, monkeypatch):
         """Retry must NEVER fire on command-lane decodes -- matcher-side,
         short utterances; this mechanism exists for long free-form prose."""
-        monkeypatch.setattr(dictation, '_suspected_silent_data_loss', lambda *a, **k: True)
+        monkeypatch.setattr(audio_tools, '_suspected_silent_data_loss', lambda *a, **k: True)
         original = self._result('short')
         retry_fn = Mock(side_effect=AssertionError('retry_fn must not be called'))
         result, suspected, retried = dictation._apply_retry_on_suspected_loss(
@@ -483,7 +493,7 @@ class TestRetryOnSuspectedLoss:
                 return False
             raise AssertionError('sanity check invoked more than twice -- retry fired more than once')
 
-        monkeypatch.setattr(dictation, '_suspected_silent_data_loss', _fake_sanity)
+        monkeypatch.setattr(audio_tools, '_suspected_silent_data_loss', _fake_sanity)
         original = self._result('codex transcripts')
         retry_result = self._result('so I made a folder for codex transcripts mainly the ones run through CLI')
         retry_fn = Mock(return_value=retry_result)
@@ -498,7 +508,7 @@ class TestRetryOnSuspectedLoss:
         assert retried is True
 
     def test_retry_fires_once_and_delivers_the_longer_when_both_fail(self, monkeypatch):
-        monkeypatch.setattr(dictation, '_suspected_silent_data_loss', lambda *a, **k: True)
+        monkeypatch.setattr(audio_tools, '_suspected_silent_data_loss', lambda *a, **k: True)
         original = self._result('a somewhat longer original fragment of text')
         shorter_retry = self._result('short retry')
         retry_fn = Mock(return_value=shorter_retry)
@@ -513,7 +523,7 @@ class TestRetryOnSuspectedLoss:
         assert retried is True
 
     def test_retry_fires_once_and_delivers_the_longer_retry_when_both_fail(self, monkeypatch):
-        monkeypatch.setattr(dictation, '_suspected_silent_data_loss', lambda *a, **k: True)
+        monkeypatch.setattr(audio_tools, '_suspected_silent_data_loss', lambda *a, **k: True)
         original = self._result('short original')
         longer_retry = self._result('a substantially longer retry fragment of recovered text')
         retry_fn = Mock(return_value=longer_retry)
@@ -527,7 +537,7 @@ class TestRetryOnSuspectedLoss:
         assert suspected is True
         assert retried is True
 
-    def test_retry_decode_uses_empty_initial_prompt(self):
+    def test_retry_decode_uses_empty_initial_prompt(self, tmp_path, monkeypatch):
         """Integration-shaped check on the REAL retry_fn construction (not
         just the pure trigger function above): the closure built in the
         hotkey transcribe() path must override initial_prompt to "" for
@@ -535,24 +545,24 @@ class TestRetryOnSuspectedLoss:
         (including a non-empty explicit Priority-1 override -- the retry
         is the last-resort recovery attempt, see
         _apply_retry_on_suspected_loss's docstring)."""
-        captured = {}
+        from tests import test_commands_only_key_391 as proof
+        app, _spies = proof._app(tmp_path, monkeypatch, 'synthetic sentence',
+                                 command_key=False)
+        app.voice_training_window.get_initial_prompt = lambda **kw: 'synthetic override'
+        app._decode_hotkey_audio = Mock(side_effect=[
+            self._result('original fragment'), self._result('recovered synthetic sentence')])
+        checks = iter([True, False])
+        monkeypatch.setattr(audio_tools, '_suspected_silent_data_loss',
+                            lambda *a, **kw: next(checks))
 
-        class _FakeApp:
-            model_rate = 16000
+        proof._run(app)
 
-            def _decode_hotkey_audio(self, audio_faded, transcribe_params, audio_duration):
-                captured['initial_prompt'] = transcribe_params['initial_prompt']
-                return dictation._HotkeyDecodeResult('retried text', False, [], 'en', 'short')
-
-        transcribe_params = {'initial_prompt': 'some explicit override', 'language': 'en'}
-
-        def _retry_decode():
-            _retry_params = dict(transcribe_params)
-            _retry_params['initial_prompt'] = ""
-            return _FakeApp()._decode_hotkey_audio(None, _retry_params, 24.0)
-
-        _retry_decode()
-        assert captured['initial_prompt'] == ""
+        assert app._decode_hotkey_audio.call_count == 2
+        first, retry = app._decode_hotkey_audio.call_args_list
+        assert first.args[1]['initial_prompt'] == 'synthetic override'
+        assert retry.args[1]['initial_prompt'] == ''
+        assert first.args[1] is not retry.args[1]
+        app._paste_preserving_clipboard.assert_called_once()
 
 @pytest.mark.parametrize('mode', ['fast', 'balanced', 'accurate'])
 def test_pure_profile_returns_fresh_nested_dicts(mode):

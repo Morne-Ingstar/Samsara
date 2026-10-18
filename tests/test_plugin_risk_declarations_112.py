@@ -88,6 +88,9 @@ def executor():
 @pytest.fixture(autouse=True)
 def _real_plugins_present(executor):
     _load_real_plugins()
+    from samsara.command_scope import MatchContext, active_tags
+    executor._matcher.set_context_provider(
+        lambda: MatchContext.for_app('chrome.exe', 'synthetic browser', active_tags()))
     yield
 
 
@@ -252,24 +255,27 @@ class TestTheUnvalidatedBacklogIsGone:
         buckets = _buckets(executor, app)
         offered = buckets.get("ALLOWED", [])
         total = sum(len(v) for v in buckets.values())
-        assert abs(total - CANDIDATES) <= 2, (
-            f"the candidate set moved a lot: {total} vs {CANDIDATES}")
+        assert total >= CANDIDATES, (
+            f"the candidate set lost coverage: {total} vs {CANDIDATES}")
         assert len(offered) > BEFORE_OFFERED, (
             f"112 should offer more than 107's {BEFORE_OFFERED}, got {len(offered)}")
 
     def test_everything_still_withheld_is_write_or_destructive(self, executor, app):
-        """After 112 there is exactly one honest reason left to withhold a
-        registered, in-scope command from a model: it is write or destructive
-        and not on the allow-list. Whether the policy words that refusal
-        "not_allowed_for_model" or "unvalidated" depends on whether the
-        command also declares an argument schema -- either way it must never
-        be a read or ui command, because those are what Ava is for."""
+        """Low-risk commands can also require an argument absent from the menu.
+
+        Risk declarations must not bypass argument validation or the model
+        allow-list. No-argument read/ui commands remain reachable.
+        """
         buckets = _buckets(executor, app)
         withheld = [p for reason, names in buckets.items()
                     if reason != "ALLOWED" for p in names]
         for phrase in withheld:
-            risk, _rev, _schema = ep.classify(phrase, executor=executor, app=app,
-                                              declared_only=True)
+            risk, _rev, schema = ep.classify(phrase, executor=executor, app=app,
+                                             declared_only=True)
+            if risk in (ep.RISK_READ, ep.RISK_UI):
+                assert _reason(executor, app, phrase) == 'invalid_args', phrase
+                assert any(spec.get('required') for spec in schema.values()), phrase
+                continue
             assert risk in (ep.RISK_WRITE, ep.RISK_DESTRUCTIVE), (
                 f"{phrase!r} is withheld from the model but classifies "
                 f"as {risk} -- a read/ui command should be offered")
@@ -310,7 +316,14 @@ class TestNothingPreviouslyDecidedMoved:
     def test_a_destructive_command_is_not_model_callable(self, executor, app):
         for phrase in ("restart samsara", "clear health log", "delete layout",
                        "remove task", "clear completed"):
-            assert _reason(executor, app, phrase) == "not_allowed_for_model", phrase
+            risk, _rev, schema = ep.classify(phrase, executor=executor, app=app,
+                                            declared_only=True)
+            assert risk == ep.RISK_DESTRUCTIVE, phrase
+            assert not ep.model_may_call(phrase, app=app, executor=executor, risk=risk)
+            # Schema validation precedes the allow-list; undeclared arguments
+            # are refused before the policy reaches that second barrier.
+            expected = ('unvalidated' if not schema else 'not_allowed_for_model')
+            assert _reason(executor, app, phrase) == expected, phrase
 
 
 # ---------------------------------------------------------------------------
@@ -374,30 +387,53 @@ def sent_something(calls):
 # ---------------------------------------------------------------------------
 
 class TestArgumentSchemas:
-    #: Commands whose handler needs the spoken words to do anything.
+    #: Keep the original node IDs while checking the typed slots restored in 134.
     TAKES_TEXT = ("find tab", "window switch", "snap", "cursor to", "bring",
                   "send", "restore layout", "cube page", "focus", "open")
+    SLOTS = {
+        'find tab': ({'query': 'text'}, {'query': 'synthetic tab'}),
+        'window switch': ({'label': 'nato_letter'}, {'label': 'alpha'}),
+        'snap': ({'side': 'str', 'app_name': 'app_name'},
+                 {'side': 'left', 'app_name': 'chrome'}),
+        'cursor to': ({'monitor': 'monitor'}, {'monitor': 'left'}),
+        'bring': ({'app_name': 'app_name'}, {'app_name': 'chrome'}),
+        'send': ({'app_name': 'app_name', 'monitor': 'monitor'},
+                 {'app_name': 'chrome', 'monitor': 'left'}),
+        'restore layout': ({'name': 'text'}, {'name': 'synthetic layout'}),
+        'cube page': ({'page': 'int'}, {'page': 2}),
+        'focus': ({'app_name': 'app_name'}, {'app_name': 'chrome'}),
+        'open': ({'app_name': 'app_name'}, {'app_name': 'chrome'}),
+    }
 
     @pytest.mark.parametrize("phrase", TAKES_TEXT)
     def test_it_declares_a_schema_for_its_spoken_remainder(self, phrase):
         _risk, _rev, schema = ep.classify(phrase, declared_only=True)
         assert schema, f"{phrase!r} takes words but declares no param_schema"
-        assert ep.SPOKEN_REMAINDER_KEY in schema
+        expected, _args = self.SLOTS[phrase]
+        assert {key: spec['type'] for key, spec in schema.items()} == expected
 
     @pytest.mark.parametrize("phrase", TAKES_TEXT)
     def test_a_model_may_pass_that_remainder(self, executor, app, gen, phrase):
-        """Without a schema this is Denied('unvalidated'); the whole reason
-        the declaration is worth making."""
+        """Models accept primitive slots; semantic slots remain user-route only."""
+        slots, args = self.SLOTS[phrase]
         decision = ep.authorize(
-            Invocation(phrase, {"remainder": "something"}, Route.MODEL, gen, "", ""),
+            Invocation(phrase, args, Route.MODEL, gen, "", ""),
             app=app, executor=executor, quiet=True)
-        if isinstance(decision, ep.Denied):
-            assert decision.reason != "unvalidated", (phrase, decision)
-            assert decision.reason != "invalid_args", (phrase, decision)
+        if any(typ not in {'str', 'int', 'float', 'bool'} for typ in slots.values()):
+            assert isinstance(decision, ep.Denied), (phrase, decision)
+            assert decision.reason == 'invalid_args', (phrase, decision)
+        else:
+            assert isinstance(decision, ep.Allowed), (phrase, decision)
+        if ep.SPOKEN_REMAINDER_KEY not in slots:
+            legacy = ep.authorize(
+                Invocation(phrase, {'remainder': 'something'}, Route.MODEL, gen, '', ''),
+                app=app, executor=executor, quiet=True)
+            assert isinstance(legacy, ep.Denied)
+            assert legacy.reason == 'invalid_args'
 
     def test_a_non_string_argument_is_still_refused(self, executor, app, gen):
         decision = ep.authorize(
-            Invocation("find tab", {"remainder": 7}, Route.MODEL, gen, "", ""),
+            Invocation("find tab", {"query": 7}, Route.MODEL, gen, "", ""),
             app=app, executor=executor, quiet=True)
         assert isinstance(decision, ep.Denied)
         assert decision.reason == "invalid_args"

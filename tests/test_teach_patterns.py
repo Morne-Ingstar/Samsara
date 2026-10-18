@@ -21,6 +21,7 @@ Layers:
 """
 import sys
 import time
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -551,6 +552,10 @@ class _FakeApp:
 @pytest.fixture
 def app_with_vt(tmp_path):
     app = _FakeApp(tmp_path)
+    # A deliberately empty saved profile bypasses first-run dictionary seeding.
+    # These tests measure only the correction/vocabulary taught in this session.
+    (tmp_path / 'training_data.json').write_text(
+        json.dumps({'vocabulary': [], 'corrections': {}}), encoding='utf-8')
     app.voice_training_window = DictionaryStore(app)
     app.play_sound = MagicMock()
     return app
@@ -1066,7 +1071,7 @@ class TestDispatchAvaAliasUnaffected:
         handled = ao._check_teaching_intent(app_with_vt, "when I say db I mean database")
 
         assert handled is True
-        assert "means" in spoken[-1]
+        assert spoken[-1] == 'I saved "db" to mean "database".'
         assert add_calls == [("db", "database")]
 
     def test_non_teaching_text_falls_through_to_llm(self, app_with_vt, monkeypatch):

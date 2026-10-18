@@ -12,6 +12,7 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QFontMetrics
 from samsara.ui import theme, tutorial_qt
 from samsara import tutorial_capture
+from samsara.dictionary_store import get_dictionary_store
 from samsara.ui.widgets.step_indicator import StepIndicator
 from PySide6.QtWidgets import QWidget
 
@@ -167,8 +168,12 @@ def assert_delivered(h, app, window, callback, real_paste, expected):
     assert len(histories) == 1
     assert histories[0].kwargs['display_text'] == expected.strip()
     assert [c.args[0] for c in app.play_sound.call_args_list].count('success') == 1
-    assert h.c.view().notice.message == 'typed'
+    # flash_success owns its reading time before the queued delivery receipt.
+    assert h.c.view().notice.message == 'Captured'
     h.clock[0] = 2.0
+    h.c.refresh_expired()
+    assert h.c.view().notice.message == 'typed'
+    h.clock[0] = 4.0
     h.c.refresh_expired()
     assert h.c.widget._state.text() == 'Idle'
     assert h.c.view().form is VisibleForm.MARK
@@ -212,7 +217,8 @@ def legacy_app(tmp_path, monkeypatch, h, *, command=False, text='hello world'):
     names = ('_stop_recording_impl', '_take_recording_ownership', 'get_transcription_params',
         '_build_hotkey_transcribe_params', '_decode_hotkey_audio', '_resolve_command_miss',
         '_handle_session_dispatch_outcome', '_show_dispatch_outcome_chip',
-        '_show_outcome_chip', '_show_hold_pending_chip', '_resolve_hold_chip')
+        '_show_outcome_chip', '_show_hold_pending_chip', '_resolve_hold_chip',
+        '_finish_empty_hold_capture')
     nodes = [method('dictation.py', name) for name in names]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(ROOT / 'dictation.py'), 'exec'), namespace)
     from samsara.config_seed import build_default_config
@@ -226,9 +232,6 @@ def legacy_app(tmp_path, monkeypatch, h, *, command=False, text='hello world'):
     app._schedule_ui = h.app._schedule_ui
     for name in ('_show_hold_pending_chip', '_show_outcome_chip'):
         setattr(app, name, getattr(h.app, name).__func__.__get__(app))
-    # 391 predates 481's final retirement seam; bind its exact production method.
-    app._finish_empty_hold_capture = compile_method(method(
-        'dictation.py', '_finish_empty_hold_capture')).__get__(app)
     app._empty_hold_chip_seq = 0
     return app, spies
 
@@ -255,6 +258,7 @@ def test_legacy_final_completes_ordinary_ending(window, hold, tmp_path, monkeypa
 def test_continuous_final_completes_ordinary_ending(window, hold):
     import numpy as np
     import time
+    from samsara import config_defaults
     h = hold
     app = h.app
     callback, real_paste, _ = bind_delivery(app, window)
@@ -272,7 +276,8 @@ def test_continuous_final_completes_ordinary_ending(window, hold):
     prepare_pending(h)
     transcribe = compile_method(method('dictation.py', 'transcribe_continuous_buffer'),
         np=np, time=time, resample_audio=lambda audio, *a: audio,
-        clean_text=lambda text, **kw: text)
+        clean_text=lambda text, **kw: text, config_defaults=config_defaults,
+        get_dictionary_store=get_dictionary_store)
     transcribe(app, tutorial_capture.CaptureFrames(
         [np.ones(16000, dtype=np.float32)], app._tutorial_capture_token))
     assert_delivered(h, app, window, callback, real_paste, 'hello world')
