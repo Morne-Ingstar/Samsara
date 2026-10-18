@@ -51,7 +51,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import QEvent, QRectF, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
+    QApplication, QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -1782,8 +1782,7 @@ class HomePage(QWidget):
         self._notice_btn = _button(OPEN_VOICE_HELP, primary=True)
         self._notice_btn.clicked.connect(self._on_notice_action)
         lay.addWidget(self._notice_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._notice_card = card
-        card.setVisible(False)
+        self._notice_card = card; card.setVisible(False)
         return card
 
     def _build_hint(self) -> QWidget:
@@ -1985,10 +1984,8 @@ class HomePage(QWidget):
         links_row = QWidget()
         links_row.setStyleSheet("background: transparent;")
         links_row.setAccessibleName("Links")
-        lrl = QHBoxLayout(links_row)
+        lrl = FlowLayout(links_row, h_spacing=8, v_spacing=_px(4))
         lrl.setContentsMargins(0, 0, 0, 0)
-        lrl.setSpacing(8)
-        lrl.addStretch(1)
         from PySide6.QtGui import QFontMetrics
 
         class InkLink(QPushButton):
@@ -2266,7 +2263,7 @@ class HomePage(QWidget):
         actions.setMaximumWidth(actions.minimumWidth() if release else 16777215)
         actions.setMinimumHeight(_px(30) if release else 0)
         actions.setMaximumHeight(_px(30) if release else 16777215)
-        self._hint_card.setVisible(True)
+        self._hint_card.setVisible(True); self._relayout()
 
     def _on_toggle_details(self, checked: bool):
         """Show or hide the working. Nothing is spoken: the label appears in
@@ -2336,8 +2333,11 @@ class HomePage(QWidget):
     def _relayout(self):
         """Re-flow the two grids for the room the VIEWPORT has now."""
         avail = max(1, min(CONTENT_MAX_W, self._scroll.viewport().width() - 2 * GRID))
-        self._relayout_cards(avail)
-        self._relayout_identity(avail)
+        notice = self._notice_card.layout(); stack = avail < self._notice_btn.sizeHint().width() + _px(120) + 3 * GRID
+        notice.setDirection(QBoxLayout.Direction.TopToBottom if stack else QBoxLayout.Direction.LeftToRight); notice.setAlignment(self._notice_btn, Qt.AlignmentFlag.AlignRight if stack else Qt.AlignmentFlag(0))
+        actions, grid = self._hint_action_btn.parentWidget(), self._hint_card.layout(); stacked = bool(self._whats_new and avail < self._hint_heading.minimumSizeHint().width() + self._hint_action_btn.parentWidget().minimumWidth() + 3 * GRID)
+        if self._whats_new and (grid.getItemPosition(grid.indexOf(actions))[1] == 0) != stacked: grid.removeWidget(actions); grid.addWidget(actions, 3 if stacked else 0, 0 if stacked else 1, 1 if stacked else 3, 1, Qt.AlignmentFlag.AlignVCenter)
+        self._relayout_cards(avail); self._relayout_identity(avail)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
