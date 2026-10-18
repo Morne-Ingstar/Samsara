@@ -963,8 +963,10 @@ def _make_utterance_app(mode, dictate_preview=None, outcome_kind="dictate_staged
 
     manager = Mock()
     manager.mode = mode
+    manager.dictate_pending_buffer = []
     manager.dispatch_utterance = Mock(
         return_value=DispatchOutcome(kind=outcome_kind, detail={}))
+    app._session_mode_manager = manager
     app._ensure_session_mode_manager = Mock(return_value=manager)
     return app, manager
 

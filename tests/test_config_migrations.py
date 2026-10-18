@@ -85,7 +85,7 @@ def test_first_load_migrates_and_the_keys_are_gone_on_disk(home, caplog):
     assert "key" not in on_disk["ava_command_session"]
     assert "miss_limit" not in on_disk["ava_command_session"]
     assert "queue_depth_cap" not in on_disk["ava_command_session"]
-    assert on_disk["ava_command_session"]["interpret_misses"] is False
+    assert on_disk["ava_command_session"]["interpret_misses"] is True
     assert "enabled" not in on_disk["wake_word_config"]
 
 

@@ -76,3 +76,10 @@ window_cube.two
 windows.bring
 windows.send
 windows.snap
+app_verbs.desk
+click_by_name.collapse
+click_by_name.expand
+click_by_name.toggle
+selection_edit.apply
+selection_edit.discard
+window_cube.choose

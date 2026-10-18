@@ -23,7 +23,7 @@ def production(name):
     ns = dict(time=time, logger=logging.getLogger('400.ast'))
     nodes = [ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0), fn]
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
-                 str(ROOT / 'dictation.py'), 'exec'), ns)
+                 '<ava-plain-requests-production-ast>', 'exec'), ns)
     return ns[name]
 
 
@@ -39,6 +39,7 @@ def rig(monkeypatch):
     entries = {name: SimpleNamespace(phrase=name, data={}, handler=None)
                for name in ('pause', 'volume up', 'scroll down', 'close window', 'open')}
     executor._matcher = SimpleNamespace(_entries=entries, should_suppress=lambda _e: False)
+    executor._registry_entry = lambda command_id: entries.get(command_id)
     executor._grammar_request_serial = 1
     calls, chips, speech, preflight = [], [], [], []
     app = SimpleNamespace(config={}, _ava_interpret_request=0, _ava_cmd_generation=0,
@@ -65,10 +66,17 @@ def rig(monkeypatch):
         return DispatchResult(DispatchState.COMPLETED, name, name,
                               {'message': 'paused Spotify' if name == 'pause' else name})
     monkeypatch.setattr(executor, 'execute_canonical', execute)
+    from plugins.commands import ask_ollama
+    suggestions = []
+    def suggest(_app, command_id, **kwargs):
+        suggestions.append((command_id, kwargs))
+        return DispatchResult(DispatchState.QUEUED, kwargs.get('source_text', ''), command_id,
+                              {'awaiting_confirmation': True, 'prompt': f"Did you mean '{command_id}'? Say yes."})
+    monkeypatch.setattr(ask_ollama, 'suggest_command_miss', suggest)
     resolver = Mock(return_value=proposal('pause'))
     monkeypatch.setattr(ava, 'resolve', resolver)
     miss = DispatchOutcome(kind='command_miss', detail={'heard': 'please do this'})
-    yield SimpleNamespace(app=app, executor=executor, calls=calls, chips=chips, speech=speech,
+    yield SimpleNamespace(app=app, executor=executor, calls=calls, suggestions=suggestions, chips=chips, speech=speech,
                           preflight=preflight, resolver=resolver, miss=miss, foreground=foreground,
                           run=lambda text='please pause the music': production('_resolve_command_miss')(app, miss, text))
     ava.reset_cancellations()
@@ -115,29 +123,25 @@ def test_retired_migration_fills_true_without_overwriting_opt_out():
 @pytest.mark.parametrize('words, expected', [(8, True), (9, True), (16, True), (17, False)])
 def test_dispatcher_word_limit(rig, words, expected):
     result = rig.run(' '.join(['word'] * words))
-    assert bool(rig.calls) is expected
+    assert bool(rig.suggestions) is expected
     assert rig.resolver.called is expected
     if expected:
-        assert result.kind == 'command_executed'
+        assert result.kind == 'command_suggestion_pending'
 
 
 @pytest.mark.parametrize('names', [('pause',), ('pause', 'volume up'), ('pause', 'volume up', 'scroll down')])
 def test_one_two_three_steps_route_and_feedback(rig, names):
     rig.resolver.return_value = proposal(*names)
     result = rig.run()
-    assert [c[0] for c in rig.calls] == list(names)
-    assert all(c[1]['route'] is policy.Route.MODEL for c in rig.calls)
-    assert rig.app._command_mode_miss_count == 0
     if len(names) == 1:
-        assert outcome_chip(result.kind, result.detail) == ('paused Spotify', 'success')
-        assert rig.chips == ['paused Spotify']  # original app passed to the single handler
+        assert not rig.calls
+        assert result.kind == 'command_suggestion_pending'
+        assert rig.suggestions[0][0] == names[0]
+        assert result.detail['phrase'] == names[0]
+        assert result.detail['state'] == 'queued'
     else:
-        assert all(i.route is policy.Route.MODEL and kw['quiet'] for i, kw in rig.preflight)
-        assert rig.chips == [("Completed (Ava): " + ' · '.join(
-            ['paused Spotify', *names[1:]]), 'success')]
-        assert rig.speech[0][0] == rig.chips[0][0]
-        assert rig.speech[0][1]['category'] == 'command'
-        assert outcome_chip(result.kind, result.detail) is None
+        assert result is rig.miss
+        assert not rig.calls and not rig.suggestions
 
 
 @pytest.mark.parametrize('decision', [policy.NeedsConfirmation('confirm'), policy.Denied('not_allowed_for_model')])
@@ -145,18 +149,15 @@ def test_chain_preflight_refuses_everything_before_effects(rig, monkeypatch, dec
     rig.resolver.return_value = proposal('pause', 'close window')
     monkeypatch.setattr(policy, 'authorize', lambda inv, **kw: decision if inv.command_id == 'close window' else policy.Allowed())
     result = rig.run()
-    assert not rig.calls
-    assert result.kind == 'ava_command_chain'
-    assert rig.chips[0][0].startswith(('Say ', 'I could not do '))
-    if isinstance(decision, policy.NeedsConfirmation):
-        assert 'needs your yes' in rig.chips[0][0]
+    assert result is rig.miss
+    assert not rig.calls and not rig.suggestions
 
 
 def test_single_keeps_confirmation_path(rig, monkeypatch):
     monkeypatch.setattr(rig.executor, 'execute_canonical', lambda *a, **kw:
                         DispatchResult(DispatchState.QUEUED, 'close window', 'close window'))
     rig.resolver.return_value = proposal('close window')
-    assert rig.run().kind == 'command_awaiting_confirmation'
+    assert rig.run().kind == 'command_suggestion_pending'
 
 
 def test_four_steps_are_dropped(rig):
@@ -212,17 +213,17 @@ def test_chain_stops_remaining_steps(rig, monkeypatch, stop):
         state = DispatchState.FAILED if stop == 'failure' else DispatchState.COMPLETED
         return DispatchResult(state, name, name)
     monkeypatch.setattr(rig.executor, 'execute_canonical', execute)
-    rig.run()
-    assert len(rig.calls) == 1
+    assert rig.run() is rig.miss
+    assert not rig.calls
 
 
 def test_chain_follows_opened_foreground(rig, monkeypatch):
     rig.resolver.return_value = proposal('open', 'volume up')
     wait = Mock(return_value=True)
     monkeypatch.setattr(rig.executor, '_grammar_wait_target', wait)
-    rig.run()
-    assert [c[0] for c in rig.calls] == ['open', 'volume up']
-    wait.assert_called_once()
+    assert rig.run() is rig.miss
+    assert not rig.calls
+    wait.assert_not_called()
 
 
 @pytest.fixture

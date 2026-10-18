@@ -146,7 +146,7 @@ class TestEmptyOverwriteGuardAvaCorrections:
         ac.add("db", "database")
         assert ac.total_count() == 1
 
-        assert ac.remove("db") is True
+        assert ac.remove("db") == ("removed", "database")
         assert ac.total_count() == 0
 
         # Persisted, not just in-memory -- reload from disk and confirm.
@@ -316,7 +316,7 @@ class TestSuccessLogEmission:
         with caplog.at_level(logging.INFO):
             assert vt.save_training_data() is True
 
-        msg = next(r.message for r in caplog.records if "[STORE]" in r.message)
+        msg = next(r.message for r in reversed(caplog.records) if "[STORE]" in r.message)
         assert "training_data.json saved: 2 vocab, 1 corrections" in msg
 
 

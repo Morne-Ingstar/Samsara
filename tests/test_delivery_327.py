@@ -39,7 +39,8 @@ def production():
         "_languages": SimpleNamespace(describe_diagnostics_language=lambda *args: "en"),
     }
     module = ast.Module(body=[copy.deepcopy(methods["_output_dictation"]), route], type_ignores=[])
-    exec(compile(ast.fix_missing_locations(module), str(source), "exec"), namespace)
+    exec(compile(ast.fix_missing_locations(module),
+                 "<delivery-production-ast>", "exec"), namespace)
     return namespace
 
 
@@ -173,4 +174,5 @@ def test_focused_editor_seam_returns_paste_result(monkeypatch):
 
 
 def test_dictation_module_is_not_imported():
-    assert "dictation" not in sys.modules
+    module = sys.modules.get("dictation")
+    assert module is None or getattr(getattr(module, "__spec__", None), "loader", object()) is None

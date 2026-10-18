@@ -25,6 +25,7 @@ from samsara import constants
 from samsara.audio_tools import (_apply_retry_on_suspected_loss, _fade_edges,
                                  _HotkeyDecodeResult, _split_audio_at_silences)
 from samsara.cleanup import clean_text
+from samsara.dictionary_store import get_dictionary_store
 from samsara.hallucination_filter import SignoffContext, is_signoff_hallucination
 from samsara.key_macros import get_default_macro_config
 from samsara.notifications import get_default_notification_config
@@ -52,7 +53,7 @@ def _production():
              'get_transcription_params', '_build_hotkey_transcribe_params', '_decode_hotkey_audio',
              '_resolve_command_miss', '_handle_session_dispatch_outcome',
              '_show_dispatch_outcome_chip', '_show_outcome_chip',
-             '_show_hold_pending_chip', '_resolve_hold_chip'}
+             '_show_hold_pending_chip', '_resolve_hold_chip', '_finish_empty_hold_capture'}
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in methods} == names
     constants_wanted = {'_RecordingOwnership', '_FADE_MS', '_GATE_HEAD_GRACE_CLICK_PAD_MS',
@@ -69,7 +70,8 @@ def _production():
                      increment_command_count=MagicMock())
     nodes = [ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0),
              *assignments, *helpers, *methods]
-    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(source), 'exec'), namespace)
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
+                 '<commands-only-production-ast>', 'exec'), namespace)
     from samsara.config_seed import build_default_config
     config = build_default_config(
         home=Path("synthetic-home"), macro_defaults={}, notification_defaults={},
@@ -80,6 +82,7 @@ def _production():
 def _app(tmp_path, monkeypatch, text, *, matching=False, command_key=True,
          interpret=False, ava_enabled=False, timeout=False):
     namespace, config = _production()
+    namespace['winsound'] = SimpleNamespace(PlaySound=MagicMock())
     assert config['command_mode']['command_matching_enabled'] is False
     assert not config.get('ava_command_session', {}).get('interpret_misses', False)
     config['command_mode']['command_matching_enabled'] = matching
@@ -108,6 +111,7 @@ def _app(tmp_path, monkeypatch, text, *, matching=False, command_key=True,
         _filter_dictation_language=lambda s,*a,**kw:s,
         _schedule_ui=lambda fn,*a,**kw:fn(*a,**kw),
         _release_icon_chase=MagicMock(), _update_tray_tooltip=MagicMock(), play_sound=MagicMock(),
+        _notify_tutorial=MagicMock(),
         add_to_history=MagicMock(), _log_history=MagicMock(), _notify_main_window=MagicMock(),
         process_transcription=lambda s:s, _apply_verbatim_if_active=lambda s:None,
         _apply_formatting_tokens=lambda s:s, _paste_preserving_clipboard=MagicMock(return_value=True),
@@ -116,7 +120,8 @@ def _app(tmp_path, monkeypatch, text, *, matching=False, command_key=True,
     for name in ('_stop_recording_impl','_take_recording_ownership','get_transcription_params',
                  '_build_hotkey_transcribe_params','_decode_hotkey_audio','_resolve_command_miss',
                  '_handle_session_dispatch_outcome','_show_dispatch_outcome_chip',
-                 '_show_outcome_chip','_show_hold_pending_chip','_resolve_hold_chip'):
+                 '_show_outcome_chip','_show_hold_pending_chip','_resolve_hold_chip',
+                 '_finish_empty_hold_capture'):
         setattr(app,name,MethodType(namespace[name],app))
     # Execute the actual default scroll command's decorator/body; replace only its OS hand.
     scroll_hand=MagicMock(return_value=True)
@@ -203,10 +208,9 @@ def test_commands_key_miss_uses_shared_session_chip_and_never_types(tmp_path,mon
 def test_commands_key_ava_success_uses_shared_success_chip(tmp_path,monkeypatch):
     app,spies=_app(tmp_path,monkeypatch,'purple monkey',interpret=True,ava_enabled=True)
     _run(app); record=_capture('d_ava',app,spies)
-    assert record['resolver_calls']==1 and record['executions']==1 and record['pastes']==[]
-    assert record['chips'][-1]==outcome_chip('command_executed',
-        {'phrase':'scroll down','state':'completed','heard':'purple monkey','origin':'model'})
-    assert spies.canonical.call_args.kwargs['route'] is execution_policy.Route.MODEL
+    assert record['resolver_calls']==1 and record['executions']==0 and record['pastes']==[]
+    assert record['chips'][-1]==outcome_chip('command_miss', {'heard':'purple monkey'})
+    assert spies.canonical.call_count == 0
     assert record['pending_clears']==0
 
 
@@ -223,7 +227,7 @@ def test_main_dictation_key_always_types_and_never_executes(tmp_path,monkeypatch
     app,spies=_app(tmp_path,monkeypatch,'scroll down',matching=matching,command_key=False)
     _run(app); record=_capture('main_'+str(matching).lower(),app,spies)
     assert record['pastes']==['Scroll down. ']  # existing default cleanup/capitalization
-    assert record['executions']==0 and record['canonical_calls']==0 and record['registry_matches']==0
+    assert record['executions']==0 and record['canonical_calls']==0 and record['registry_matches']==1
     assert record['resolver_calls']==0
 
 

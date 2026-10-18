@@ -29,7 +29,8 @@ _BOUND_METHODS = (
     '_write_last_known_good', 'list_config_backups',
     '_migrate_wake_word_config', '_wake_word_config_already_migrated',
     '_deep_update', '_migrate_command_matching_enabled_flag',
-    '_migrate_ai_command_mode_config',
+    '_migrate_ai_command_mode_config', '_migrate_retired_ava_command_session_config',
+    '_migrate_recording_media_mode',
 )
 
 

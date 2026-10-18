@@ -55,7 +55,7 @@ PALETTE_FILE = "samsara/ui/theme.py"
 
 #: Pinned number of `colour-token: exempt` markers in the app. Change it only
 #: together with the reason on each exempted line.
-EXPECTED_EXEMPTIONS = 8
+EXPECTED_EXEMPTIONS = 0
 
 EXEMPT_RE = re.compile(r"colour-token:\s*exempt\s*--\s*(.{12,})", re.I)
 

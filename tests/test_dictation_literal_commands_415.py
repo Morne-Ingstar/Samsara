@@ -25,7 +25,7 @@ def adapted_hold_app(tmp_path, monkeypatch, text, **kwargs):
              'get_transcription_params', '_build_hotkey_transcribe_params', '_decode_hotkey_audio',
              '_resolve_command_miss', '_handle_session_dispatch_outcome',
              '_show_dispatch_outcome_chip', '_show_outcome_chip',
-             '_show_hold_pending_chip', '_resolve_hold_chip')
+             '_show_hold_pending_chip', '_resolve_hold_chip', '_finish_empty_hold_capture')
     for name in names:
         monkeypatch.setitem(namespace, name, getattr(module.DictationApp, name))
     # Bind the adapter's original method bodies; never compile dictation source.
@@ -171,7 +171,7 @@ def test_whole_session_controls_and_pending_answers_keep_ownership(rig, monkeypa
     answer = Mock(return_value='approved')
     monkeypatch.setattr(policy, 'answer_pending', answer)
     assert executor.process_text('yes').result == 'pending_reply'
-    answer.assert_called_once_with(app, 'yes')
+    answer.assert_called_once_with(app, 'yes', capture_path=None)
 
 
 @pytest.mark.parametrize('mode', ['hold', 'toggle'])

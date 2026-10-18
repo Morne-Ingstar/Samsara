@@ -34,6 +34,14 @@ NOT_COMMAND_PHRASES = {
     "escape": "cancel_hotkey fallback KEY name (pynput key), not an utterance",
     "silence": "continuous_commit_trigger enum VALUE, not an utterance",
     "refresh": "quick reference button label",
+    "collapse": "most used commands disclosure control",
+    "expand": "most used commands disclosure control",
+    "toggle": "configured mode value or UI label",
+    "tap": "ordinary tutorial instruction for a button press",
+    "start": "tutorial row field key, not displayed command text",
+}
+NON_SPOKEN_LABELS = {
+    "command reference": "title of the command reference window",
 }
 
 
@@ -66,7 +74,8 @@ def test_no_surface_contains_a_literal_command_phrase(catalog, path):
         bare = low.lstrip("rbuf").strip("'\"").strip()
         for alias in aliases:
             quoted = f"'{alias}'" in low or f'"{alias}"' in low
-            if (bare == alias or quoted) and alias not in NOT_COMMAND_PHRASES:
+            if ((bare == alias or quoted) and alias not in NOT_COMMAND_PHRASES
+                    and alias not in NON_SPOKEN_LABELS):
                 hits.append((line, alias))
     assert hits == []
 

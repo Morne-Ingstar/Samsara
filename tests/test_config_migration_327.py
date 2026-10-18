@@ -27,7 +27,7 @@ def loader(tmp_path):
                  "logger": logging.getLogger(__name__)}
     exec(compile(ast.fix_missing_locations(ast.Module(
         body=[copy.deepcopy(methods[name]) for name in names], type_ignores=[])),
-        str(source), "exec"), namespace)
+        "<config-migration-production-ast>", "exec"), namespace)
     path = tmp_path / "config.json"
     defaults = {"wake_profiles": [], "wake_word_config": {
         "wake_abort_phrase": ["cancel", "abort"], "send_words": ["over"]}}
@@ -92,7 +92,8 @@ def test_auto_device_uses_available_cuda_device(monkeypatch, device_count, pack_
         "_create_whisper_model": lambda *args, **kwargs: devices.append(kwargs["device"]) or object(),
         "smart_corrections_is_enabled": lambda config: False,
     }
-    exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+    exec(compile(ast.Module(body=[method], type_ignores=[]),
+                 "<config-migration-production-ast>", "exec"), namespace)
     monkeypatch.setattr(cuda_detect, "is_cuda_available", lambda: pack_available)
     monkeypatch.setitem(sys.modules, "ctranslate2", SimpleNamespace(
         get_cuda_device_count=lambda: device_count,

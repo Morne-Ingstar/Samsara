@@ -250,7 +250,7 @@ class TestCommandModeUtteranceHallucinationGating:
             dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
 
         assert any(
-            "[GUARD] Suppressed hallucination" in r.message for r in caplog.records
+            "[HALLUCINATION] dropped" in r.message for r in caplog.records
         )
 
     def test_trim_logged_at_info(self, caplog):

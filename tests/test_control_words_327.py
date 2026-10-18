@@ -33,7 +33,7 @@ def app():
                  "StageTiming": StageTiming,
                  "_WAKE_SESSION_SEND_WORDS": ["over"]}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[route], type_ignores=[])),
-                 str(source), "exec"), namespace)
+                 "<control-words-production-ast>", "exec"), namespace)
     instance = SimpleNamespace(
         config={"wake_word_config": {"wake_abort_phrase": ["cancel", "cancel dictation"],
                                      "end_words": ["over", "done"],
