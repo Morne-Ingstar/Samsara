@@ -2,6 +2,32 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.8] - 2026-10-17
+
+Lighter and faster: no idle CPU drain, quicker theme switching, and a way back to the previous version after an update.
+
+### Updates
+
+- After an update, Samsara keeps the previous install, and Updates can take you back to it. This works for updates installed from beta.8 onward.
+- Every quit is logged with what asked for it (tray, window close, voice command, updater, crash or Windows shutting down), so unexpected exits can be traced.
+
+### Speed
+
+- Samsara no longer keeps a CPU core busy while idle.
+- Switching between light and dark is about 3.5 times faster.
+- Settings load faster at startup, and two startup warnings are gone.
+
+### Settings and setup
+
+- Settings > Ava has a button that opens the Ava setup guide. Settings > Audio links to the microphone guide, and the Command library has a Command list button.
+- The PC check in the Ava setup guide is one card: what it reads, a Run the PC check button, and the results.
+- Reopening Settings no longer shows an error, and focus outlines fit their controls.
+
+### Fixes
+
+- Preview first run no longer crashes on start.
+- A setting missing from your config now falls back to the same default everywhere, so it cannot quietly turn on alarms or change speech behaviour.
+
 ## [0.30.0-beta.7] - 2026-10-17
 
 More reliable installed updates, friendlier AI app setup, and more ways to use selected text.
@@ -9,6 +35,7 @@ More reliable installed updates, friendlier AI app setup, and more ways to use s
 <!-- Stand-in release wording for the owner's review. -->
 
 ### Updates
+
 - The installer offers a checked-by-default option to create a Start Menu shortcut.
 - In-app updates work again on installed copies whose install path ends in a backslash. If the update helper does not start, Samsara reports it with a retry; the helper keeps a log, and a stuck "ready" update is noticed.
 - Anyone on beta.6 must install beta.7 once by hand from the [download page](https://github.com/Morne-Ingstar/Samsara/releases/latest), because beta.6's updater has this bug.
