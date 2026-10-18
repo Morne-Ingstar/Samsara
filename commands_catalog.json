@@ -8517,6 +8517,43 @@
     },
     {
       "aliases": [
+        "clean up everything",
+        "clean up the draft",
+        "clean up the whole draft"
+      ],
+      "args": [],
+      "canonical_id": "selection_edit.clean_up_the_draft",
+      "description": "Ava: propose an edit, then say apply or discard.",
+      "kind": "plugin",
+      "object": "up_the_draft",
+      "pack": "core",
+      "plugin": "selection_edit",
+      "risk": "write",
+      "source": "samsara/ava_edit/selection.py:273",
+      "undoable": false,
+      "verb": "clean",
+      "whole_utterance": true
+    },
+    {
+      "aliases": [
+        "clean up last sentence",
+        "clean up the last sentence"
+      ],
+      "args": [],
+      "canonical_id": "selection_edit.clean_up_the_last_sentence",
+      "description": "Ava: propose an edit, then say apply or discard.",
+      "kind": "plugin",
+      "object": "up_the_last_sentence",
+      "pack": "core",
+      "plugin": "selection_edit",
+      "risk": "write",
+      "source": "samsara/ava_edit/selection.py:273",
+      "undoable": false,
+      "verb": "clean",
+      "whole_utterance": true
+    },
+    {
+      "aliases": [
         "correct highlighted text",
         "correct highlighted word",
         "correct selected text",
