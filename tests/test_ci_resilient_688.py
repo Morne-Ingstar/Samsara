@@ -40,6 +40,27 @@ def test_ci_installs_pinned_worker_and_timeout_plugins():
     assert any('-r requirements-test.txt' in step.get('run', '') for step in _steps())
 
 
+def test_ci_routes_desktop_tests_to_a_bounded_native_step():
+    steps = _steps()
+    main = next(step for step in steps if step.get('name') == 'Run tests with coverage')
+    args = shlex.split(main['run'])
+    assert main['env']['QT_QPA_PLATFORM'] == 'offscreen'
+    assert args[args.index('-m', 3) + 1] == 'not requires_desktop'
+
+    desktop = steps[steps.index(main) + 1]
+    assert desktop['name'] == 'Run native desktop tests'
+    assert desktop['shell'] == 'pwsh' and desktop['if'] == 'always()'
+    assert desktop['continue-on-error'] is True
+    assert desktop['timeout-minutes'] == 15
+    assert 'QT_QPA_PLATFORM' not in desktop.get('env', {})
+    unset, command = desktop['run'].strip().splitlines()
+    assert unset == 'Remove-Item Env:\\QT_QPA_PLATFORM -ErrorAction SilentlyContinue'
+    assert shlex.split(command) == [
+        'python', '-m', 'pytest', '-m', 'requires_desktop', '-p', 'no:cacheprovider',
+        '--timeout=120', '--timeout-method=thread', '-v',
+    ]
+
+
 def test_ci_preserves_coverage_and_uploads_junit_even_on_failure():
     steps = _steps()
     args = shlex.split(next(step['run'] for step in steps if step.get('name') == 'Run tests with coverage'))

@@ -113,6 +113,7 @@ def _close(qapp, w):
 
 # -- the pointer reaches an unreachable box ----------------------------------
 
+@pytest.mark.requires_desktop
 def test_cursor_inside_the_rect_wakes_an_idle_click_through_box(qapp, monkeypatch):
     """The reported incident, in the order it happened: draft on screen, box
     goes idle and click-through, the Clear button disappears -- and then the
@@ -182,6 +183,7 @@ def test_leaving_restarts_the_countdown_instead_of_idling_at_once(qapp, monkeypa
 
 # -- the two things waking must NOT do ---------------------------------------
 
+@pytest.mark.requires_desktop
 def test_waking_by_hover_does_not_move_the_foreground_or_the_focused_control(qapp, monkeypatch):
     """The box sits over the user's work. Waking it must leave the keyboard
     exactly where it was -- verified against the OS's own idea of the
@@ -231,6 +233,7 @@ def test_waking_by_hover_does_not_move_the_foreground_or_the_focused_control(qap
         _close(qapp, w)
 
 
+@pytest.mark.requires_desktop
 def test_hover_never_wakes_a_fully_hidden_preview(qapp, monkeypatch):
     """Opacity 0 is an explicit "hide the preview completely" setting. The
     window is still a rectangle the OS would hit-test the moment
@@ -367,6 +370,7 @@ def _spot_away_from(point, size):
     pytest.skip("no corner of this screen is clear of the pointer")
 
 
+@pytest.mark.requires_desktop
 def test_the_real_cursor_and_the_window_rect_are_in_the_same_space(qapp):
     """cursor_screen_pos() and frameGeometry() must be the same coordinate
     space or the rectangle test is nonsense. Proved against the pointer where

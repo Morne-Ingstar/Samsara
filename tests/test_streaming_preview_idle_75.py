@@ -226,6 +226,7 @@ def test_no_hint_when_fully_hidden(qapp):
 
 # -- click-through ---------------------------------------------------------
 
+@pytest.mark.requires_desktop
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows hit test")
 def test_faded_preview_lets_the_click_reach_the_window_underneath(qapp):
     """The OS's own hit test, not a Qt attribute: WindowFromPoint at the

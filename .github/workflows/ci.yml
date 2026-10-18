@@ -75,7 +75,16 @@ jobs:
         # A thread timeout/native crash retires one worker; the controller
         # reports that test as failed and continues with replacement workers.
         # Keep each file together so its module/session state stays local.
-        run: python -m pytest -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
+        run: python -m pytest -m "not requires_desktop" -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
+
+      - name: Run native desktop tests
+        if: always()
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+          python -m pytest -m requires_desktop -p no:cacheprovider --timeout=120 --timeout-method=thread -v
 
       - name: Upload test reports
         uses: actions/upload-artifact@v4
