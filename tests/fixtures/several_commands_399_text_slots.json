@@ -32,6 +32,12 @@
     "state": "completed",
     "text": "ask gpt alpha and volume down"
   },
+  "ask_agent.ask_hermes": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "ask hermes alpha and volume down"
+  },
   "ask_agent.new_conversation_with": {
     "calls": [
       [
@@ -42,6 +48,12 @@
     "detail": {},
     "state": "completed",
     "text": "new conversation with alpha and volume down"
+  },
+  "ask_agent.new_hermes_session": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "new hermes session alpha and volume down"
   },
   "ask_ollama.hey_ava": {
     "calls": [],
@@ -66,6 +78,56 @@
     "detail": {},
     "state": "miss",
     "text": "switch mic to alpha and volume down"
+  },
+  "click_by_name.choose_control": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "choose control alpha and volume down"
+  },
+  "click_by_name.collapse": {
+    "calls": [
+      [
+        "collapse",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "collapse alpha and volume down"
+  },
+  "click_by_name.expand": {
+    "calls": [
+      [
+        "expand",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "expand alpha and volume down"
+  },
+  "click_by_name.focus_control": {
+    "calls": [
+      [
+        "focus control",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "focus control alpha and volume down"
+  },
+  "click_by_name.toggle": {
+    "calls": [
+      [
+        "toggle",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "toggle alpha and volume down"
   },
   "comfy.make_an_image_of": {
     "calls": [],
@@ -112,18 +174,34 @@
     "state": "completed",
     "text": "save alias alpha and volume down"
   },
-  "flashforge_printer.start_print": {
-    "calls": [],
+  "core_utils.what_can_i_say": {
+    "calls": [
+      [
+        "what can i say",
+        "alpha and volume down"
+      ]
+    ],
     "detail": {},
-    "state": "miss",
+    "state": "completed",
+    "text": "what can i say alpha and volume down"
+  },
+  "flashforge_printer.start_print": {
+    "calls": [
+      [
+        "open",
+        "print alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
     "text": "start print alpha and volume down"
   },
   "gif_search.search_for_a_gif_of": {
+    "_407": "The argument-less command 'search music' used to consume this sentence with extra words.",
     "calls": [],
     "detail": {},
     "state": "miss",
-    "text": "search for a gif of alpha and volume down",
-    "_407": "The argument-less command 'search music' used to consume this sentence with extra words."
+    "text": "search for a gif of alpha and volume down"
   },
   "health_tracker.health_summary": {
     "calls": [
@@ -298,11 +376,11 @@
     "text": "ask alpha and volume down"
   },
   "reminders.cancel_reminder": {
+    "_407": "The argument-less command 'cancel' used to consume this sentence with extra words.",
     "calls": [],
     "detail": {},
     "state": "miss",
-    "text": "cancel reminder alpha and volume down",
-    "_407": "The argument-less command 'cancel' used to consume this sentence with extra words."
+    "text": "cancel reminder alpha and volume down"
   },
   "reminders.remind_me_to": {
     "calls": [],
@@ -332,6 +410,17 @@
     "detail": {},
     "state": "completed",
     "text": "mouse grid alpha and volume down"
+  },
+  "show_numbers.refresh_numbers": {
+    "calls": [
+      [
+        "refresh numbers",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "refresh numbers alpha and volume down"
   },
   "smart_actions.brain_dump": {
     "calls": [
@@ -434,11 +523,11 @@
     "text": "go to alpha and volume down"
   },
   "web_shortcuts.search_for": {
+    "_407": "The argument-less command 'search music' used to consume this sentence with extra words.",
     "calls": [],
     "detail": {},
     "state": "miss",
-    "text": "search for alpha and volume down",
-    "_407": "The argument-less command 'search music' used to consume this sentence with extra words."
+    "text": "search for alpha and volume down"
   },
   "window_cube.refresh_cube": {
     "calls": [
@@ -481,6 +570,17 @@
     "detail": {},
     "state": "completed",
     "text": "save layout alpha and volume down"
+  },
+  "windows.snap": {
+    "calls": [
+      [
+        "snap",
+        "alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "state": "completed",
+    "text": "snap alpha and volume down"
   },
   "word.font_size": {
     "calls": [

@@ -26,13 +26,19 @@ from samsara import plugin_commands  # noqa: E402
 
 @pytest.fixture
 def clean_registry():
-    saved = dict(plugin_commands._REGISTRY)
-    plugin_commands._REGISTRY.clear()
+    # Discovery and service startup share more than the phrase registry.
+    # Keep these inert package tests from starting previously loaded hooks.
+    names = ("_REGISTRY", "_MODULE_ENTRIES", "_LOADED_MODULES", "_STARTED_SERVICES")
+    saved = {name: getattr(plugin_commands, name).copy() for name in names}
+    for name in names:
+        getattr(plugin_commands, name).clear()
     try:
         yield
     finally:
-        plugin_commands._REGISTRY.clear()
-        plugin_commands._REGISTRY.update(saved)
+        for name in names:
+            state = getattr(plugin_commands, name)
+            state.clear()
+            state.update(saved[name])
 
 
 def _drop_modules(prefix):
@@ -152,6 +158,8 @@ class TestServicesAreExplicit:
         plugin_commands.load_plugins(plugin_package)
         module = importlib.import_module("idpkg.cmds.with_service")
         assert module.STARTS == []
+        assert {m.__name__ for m in plugin_commands._LOADED_MODULES.values()} == {
+            "idpkg.cmds.example", "idpkg.cmds.with_service"}
 
         app = object()
         plugin_commands.start_plugin_services(app)

@@ -253,6 +253,21 @@ def _slots(record: dict, remainder: list[str]) -> dict | None:
         return {} if value is None else {name: value}
 
     kinds = [a.get("type") for a in args]
+    if record.get("canonical_id") == "windows.snap" and [a.get("name") for a in args] == ["side", "app_name"]:
+        # The snap handler accepts a direction alone or after an app name.
+        # Reuse its direction vocabulary without resolving or moving a window.
+        from plugins.commands.windows import _SNAP_DIRECTIONS
+        directions = _SNAP_DIRECTIONS | {"left third", "full", "next screen"}
+        for cut in range(len(remainder)):
+            side = " ".join(remainder[cut:])
+            if side not in directions:
+                continue
+            if not cut:
+                return {"side": side}
+            app = _slot(args[1], remainder[:cut])
+            if app:
+                return {"side": side, app[0]: app[1]}
+        return None
     # Both two-slot command families use an explicit destination boundary.
     if kinds == ["app_name", "monitor"]:
         for i, word in enumerate(remainder):

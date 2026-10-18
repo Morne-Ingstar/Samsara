@@ -24,6 +24,8 @@ def _record(canonical_id: str) -> dict:
 def _positive(record: dict) -> str:
     phrase = record["aliases"][0]
     args = record.get("args", [])
+    if record["canonical_id"] == "windows.snap":
+        return f"{phrase} left"
     if len(args) == 2:
         kinds = [arg["type"] for arg in args]
         if kinds == ["app_name", "monitor"]:
@@ -120,9 +122,9 @@ def test_every_argument_bearing_canonical_form_has_generated_positive_and_negati
     # Read the registry flag so future controller identities follow it too.
     with_args = [record for record in RECORDS if record.get("args")
                  and not non_voice_aliases.intersection(record["aliases"])]
-    # 253 and subsequent additions replaced the old 72-record catalogue.
+    # The refreshed live snapshot includes 89 voice argument-bearing records.
     # The companion registry test pins every ID, alias, slot and scope.
-    assert len(with_args) == 78
+    assert len(with_args) == 89
     positives = [_positive(record) for record in with_args]
     negatives = [_negative(record) for record in with_args]
     assert len(positives) == len(with_args)
@@ -132,6 +134,23 @@ def test_every_argument_bearing_canonical_form_has_generated_positive_and_negati
     assert {grammar.parse(utterance, CATALOG)[0][0] for utterance in positives} >= {
         record["canonical_id"] for record in with_args
     }
+
+
+@pytest.mark.parametrize("text, args", [
+    ("snap left", {"side": "left"}),
+    ("dock top right", {"side": "top right"}),
+    ("snap obsidian right", {"side": "right", "app_name": "obsidian"}),
+    ("snap vs code next screen", {"side": "next screen", "app_name": "vs code"}),
+])
+def test_snap_current_schema_parses_without_window_lookup(text, args, _stub_live_window_resolution):
+    result = grammar.parse(text, CATALOG)
+    assert result[0][:2] == ("windows.snap", args)
+    assert _stub_live_window_resolution == []
+
+
+@pytest.mark.parametrize("text", ["dock sample value", "snap", "i said snap left"])
+def test_snap_current_schema_rejects_missing_or_invalid_direction(text):
+    assert grammar.parse(text, CATALOG) == []
 
 
 def test_parser_is_fast_for_one_thousand_repeated_utterances():
