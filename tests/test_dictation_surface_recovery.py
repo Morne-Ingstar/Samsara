@@ -4,6 +4,7 @@ Only bind capture methods from the bootstrap AST; never import dictation or
 attach devices, global hotkeys, or the running app's log handler.
 """
 import ast
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import MethodType, SimpleNamespace
@@ -11,6 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from samsara import listening_display
 from samsara.live_surface.controller import LiveSurfaceController
 from samsara.live_surface.model import CaptureState, DocumentState
 from samsara.ui.live_surface_qt import LiveSurfaceWidget
@@ -25,7 +27,7 @@ def capture_app():
     names = {"_start_recording_impl", "_live_surface_hold_parking_enabled"}
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
     foreground = {"hwnd": 41}
-    namespace = dict(logger=Mock(), flight_recorder=Mock(),
+    namespace = dict(logger=Mock(), flight_recorder=Mock(), listening_display=listening_display, time=time,
                      _get_foreground_hwnd=lambda: foreground["hwnd"],
                      _get_foreground_exe_lower=lambda: "writer.exe")
     exec(compile(ast.Module(body=methods, type_ignores=[]), "dictation.py", "exec"), namespace)
@@ -237,14 +239,16 @@ def test_surface_never_offers_an_insert_button_for_recording_pending_or_delivere
     widget = LiveSurfaceWidget(review())
     try:
         widget.show(); qapp.processEvents()
-        for view in (review(), replace(review(), capture=CaptureState.RECORDING),
-                     replace(review(), document=DocumentState.EDITABLE_DRAFT),
-                     replace(review(), document=DocumentState.DELIVERED)):
+        pending = replace(review(), document=DocumentState.EDITABLE_DRAFT)
+        for view in (replace(pending, document=DocumentState.EMPTY),
+                     replace(pending, capture=CaptureState.RECORDING), pending,
+                     replace(pending, document=DocumentState.DELIVERED)):
             widget.refresh(view, animate=False)
             # Finish2 R4 permits the separate waiting-draft action, hidden here.
             assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)) if button.isVisible())
-        # Finish2 R1 includes the lane even on a current delivery receipt.
-        assert widget._state.text() == "Hold — inserted"
+        # The receipt keeps its lane and result in separate header labels.
+        assert widget._lane.text() == "Hold"
+        assert widget._state.text() == "inserted"
     finally:
         widget.deleteLater()
 

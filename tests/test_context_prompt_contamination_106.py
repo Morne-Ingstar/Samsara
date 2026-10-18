@@ -295,7 +295,7 @@ class _LoopManager:
         self.staged = []
         self.dispatch_utterance = Mock(side_effect=self._dispatch)
 
-    def _dispatch(self, text, signals):
+    def _dispatch(self, text, signals, *, onset_context=None):
         self.staged.append(text)
         self.buffer += (" " if self.buffer else "") + text
         return DispatchOutcome(kind="dictate_staged",
@@ -409,7 +409,7 @@ class TestTheLiveIncident:
         app, manager = _make_loop_app(["finish", sentence])
         manager.buffer = sentence
 
-        def dispatch(text, _signals):
+        def dispatch(text, _signals, *, onset_context=None):
             if text == "finish":
                 return DispatchOutcome(kind="dictate_commit_failed",
                                        detail={"pending_chars": len(manager.buffer)})

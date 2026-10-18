@@ -28,6 +28,7 @@ COMMANDS = [
 PASTE_FIRST = {'submit', 'enter', 'press tab', 'next field', 'previous field',
               'back field', 'back tab', 'bold', 'italic', 'underline'}
 UNAVAILABLE = ['next window', 'open notepad']
+ARGUMENT_COMMANDS = {'window switch', 'window switch bravo', 'focus notepad', 'open', 'close'}
 SENTENCES = ['Synthetic first sentence.', 'Synthetic second sentence.']
 
 
@@ -156,7 +157,9 @@ def test_exact_command_pending_policy(rig, live, command, variation, record_prop
                        r.manager.draft_document.segments, r.manager.draft_document.manual_commit)
     shown_before = r.visible()
     assert shown_before == before.strip()
-    probe = r.app._probe_hands_free_command(command)
+    # 415: argument-taking commands need explicit intent even with a held draft.
+    spoken = 'command ' + command if command in ARGUMENT_COMMANDS else command
+    probe = r.app._probe_hands_free_command(spoken)
     assert probe is not None
     assert probe.pending_policy is (PendingTextPolicy.COMMIT if command in PASTE_FIRST
                                     else PendingTextPolicy.PRESERVE)
@@ -177,12 +180,12 @@ def test_exact_command_pending_policy(rig, live, command, variation, record_prop
         # Hold command-only capture dispatches straight to the executor; it
         # does not switch the persistent hands-free manager's lane.
         r.app.command_mode_recording = True
-        result = move(command)
+        result = move(spoken)
         kind = result.state
     else:
-        result = r.manager.dispatch_utterance(command, SIGNALS)
+        result = r.manager.dispatch_utterance(spoken, SIGNALS)
         kind = result.kind
-        r.show(command)
+        r.show(spoken)
     record_property('447_row', json.dumps({
         'display': 'Full' if live else 'Compact', 'command': command,
         'variation': variation, 'policy': probe.pending_policy.value,
@@ -237,15 +240,18 @@ def test_alias_uses_canonical_pending_policy(rig, live, canonical, monkeypatch):
 
 
 @pytest.mark.parametrize('live', [True, False], ids=['Full', 'Compact'])
-@pytest.mark.parametrize('command', UNAVAILABLE)
+@pytest.mark.parametrize('command', UNAVAILABLE + sorted(ARGUMENT_COMMANDS))
 def test_unclaimed_variations_remain_dictation(rig, live, command, record_property):
     r = rig(live)
+    before = r.manager.dictate_pending_buffer
     assert r.app._probe_hands_free_command(command) is None
     outcome = r.manager.dispatch_utterance(command, SIGNALS)
     record_property('447_row', json.dumps({'display': 'Full' if live else 'Compact',
         'command': command, 'variation': 'unclaimed', 'outcome': outcome.kind,
         'pastes': r.pastes, 'effects': len(r.effects)}))
     assert outcome.kind == 'dictate_staged'
+    # Continuing prose joins the preceding thought without its final stop.
+    assert r.manager.dictate_pending_buffer == before.rstrip('.') + ' ' + command
     assert not r.pastes and not r.effects
 
 

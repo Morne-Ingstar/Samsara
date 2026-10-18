@@ -31,7 +31,7 @@ from samsara.command_registry import (  # noqa: E402
     adapt_handler_return,
 )
 from samsara.commands import CommandExecutor  # noqa: E402
-from samsara import session_modes as sm  # noqa: E402
+from samsara import listening_display, session_modes as sm  # noqa: E402
 
 ASTRA_UTTERANCE = 'ask ava Tell Claude: "Don\'t rename Foo.py to foo.py".'
 ASTRA_PAYLOAD = 'Tell Claude: "Don\'t rename Foo.py to foo.py"'
@@ -75,6 +75,7 @@ def _dictation_bindings():
     module.__dict__.update(vars(sm))
     module.__dict__.update(
         time=time, logger=Mock(), increment_command_count=Mock(),
+        listening_display=listening_display,
         _get_foreground_exe_lower=lambda: "editor.exe",
         _get_foreground_hwnd=lambda: 1,
         injection_safety=SimpleNamespace(window_integrity=lambda: None),
@@ -361,28 +362,32 @@ class TestWaterfallNeverReinterpretsAClaimedCommand:
         app.config = _enabled_local_ava_config()
         app._ava_interpret_request = 0
         app.command_executor.ava_menu = lambda *a, **k: ["focus"]
-        executions = []
+        suggestions = []
 
-        def execute(command_id, target, **kwargs):
-            calls.append("dispatch")
-            executions.append((command_id, target, kwargs))
-            return DispatchResult(DispatchState.COMPLETED, "focus", "focus")
+        def suggest(target, command_id, **kwargs):
+            calls.append("suggest")
+            suggestions.append((command_id, target, kwargs))
+            return DispatchResult(DispatchState.QUEUED, "focus", "focus")
 
-        app.command_executor.execute_canonical = execute
+        # 608: a resolved miss offers one command; consent owns execution.
+        monkeypatch.setattr(ask_ollama, "suggest_command_miss", suggest)
+        app.command_executor.execute_canonical = Mock(
+            side_effect=AssertionError("a miss suggestion must not execute"))
         manager = bindings.DictationApp._ensure_session_mode_manager(app)
         outcome = manager._dispatch_command("focus notepad", allow_suggestion=False)
         assert outcome.kind == "command_miss"
         assert app._command_mode_miss_count == 2  # only the final outcome owns miss accounting
         resolved = bindings.DictationApp._resolve_command_miss(app, outcome, "focus notepad")
-        assert calls == [("resolve", "focus notepad", "1"), "b", "dispatch"]
-        assert executions == [("focus", app, {
-            "route": Route.MODEL, "generation": execution_policy.capture_generation(app),
+        assert calls == [("resolve", "focus notepad", "1"), "b", "suggest"]
+        assert suggestions == [("focus", app, {
+            "generation": execution_policy.capture_generation(app),
             "args": {"remainder": "notepad"}, "source_text": "focus notepad",
         })]
-        assert resolved == sm.DispatchOutcome(kind="command_executed", detail={
-            "phrase": "focus", "state": "completed", "heard": "focus notepad", "origin": "model",
+        assert resolved == sm.DispatchOutcome(kind="command_suggestion_pending", detail={
+            "phrase": "focus", "state": "queued", "heard": "focus notepad",
         })
-        assert app._command_mode_miss_count == 0
+        assert app._command_mode_miss_count == 2
+        app.command_executor.execute_canonical.assert_not_called()
 
 
 def _manager(dispatch_result):
