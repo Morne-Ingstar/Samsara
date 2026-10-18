@@ -131,5 +131,6 @@ def test_initial_load_normalizes_before_the_hook_is_installed():
              if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
              and node.func.attr in {'load_config', '_install_capslock_hook'}}
     assert calls['load_config'] < calls['_install_capslock_hook']
+    # Loaded settings retire through migrate_loaded_config's current migration chain.
     assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-               and node.func.id == 'migrate_removed_settings' for node in ast.walk(load))
+               and node.func.id == 'migrate_loaded_config' for node in ast.walk(load))

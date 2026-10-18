@@ -34,6 +34,7 @@ from samsara.commands import CommandExecutor  # noqa: E402
 from samsara import listening_display, session_modes as sm  # noqa: E402
 from samsara import config_defaults  # noqa: E402
 
+
 ASTRA_UTTERANCE = 'ask ava Tell Claude: "Don\'t rename Foo.py to foo.py".'
 ASTRA_PAYLOAD = 'Tell Claude: "Don\'t rename Foo.py to foo.py"'
 
@@ -156,6 +157,18 @@ class TestDispatchResult:
 # ---------------------------------------------------------------------------
 
 class TestProcessTextStates:
+    @pytest.fixture(autouse=True)
+    def restore_synthetic_registrations(self):
+        """Restore test-only commands without disturbing real plugin registrations."""
+        registry = dict(_plugin_commands._REGISTRY)
+        module_entries = {name: dict(entries)
+                          for name, entries in _plugin_commands._MODULE_ENTRIES.items()}
+        yield
+        _plugin_commands._REGISTRY.clear()
+        _plugin_commands._REGISTRY.update(registry)
+        _plugin_commands._MODULE_ENTRIES.clear()
+        _plugin_commands._MODULE_ENTRIES.update(module_entries)
+
     def _executor(self, commands_file, tmp_path):
         return CommandExecutor(commands_file, plugins_dir=tmp_path / "none")
 

@@ -2,6 +2,7 @@
 
 import ast
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -137,14 +138,18 @@ def test_quit_tail_cleans_host_and_always_hard_exits():
     tail.body = [node for node in tail.body if not isinstance(node, ast.ImportFrom)]
     for host in (call("host"), fail_host):
         events.clear()
-        scope = dict(logger=SimpleNamespace(info=call("goodbye")),
-                     _samsara_boot=SimpleNamespace(end_session=call("marker")), LOG_DIR=None,
-                     audio_ducking=SimpleNamespace(shutdown_host=host), process_exit=fake)
+        scope = dict(logger=SimpleNamespace(info=call("goodbye"), debug=call("debug")),
+                     _samsara_boot=SimpleNamespace(end_session=call("marker")), LOG_DIR="logs",
+                     audio_ducking=SimpleNamespace(shutdown_host=host), process_exit=fake,
+                     thread_registry=SimpleNamespace(shutdown=call("threads")),
+                     os=os,
+                     exit_reason="user_quit",
+                     finish_exit=lambda *args, **kwargs: call("exit")())
         try:
             exec(compile(tail, "quit-tail", "exec"), scope)
         except OSError:
             pass
-        assert events == ["goodbye", "marker", "host", "exit"]
+        assert events == ["threads", "goodbye", "marker", "host", "exit"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows mutex lifetime")

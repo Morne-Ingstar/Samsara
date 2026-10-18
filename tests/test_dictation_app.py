@@ -5,6 +5,7 @@ Tests settings management, history, text processing, and hotkey parsing.
 import pytest
 import json
 import sys
+import threading
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
@@ -123,8 +124,11 @@ class TestConfigManagement:
         # already used for other branched-on Mock attributes elsewhere in
         # this test suite (see e.g. tests/test_tray_qt.py's _make_app).
         app._config_load_failed = False
+        app._config_migration_batch = False
+        app._config_lock = threading.Lock()
 
-        DictationApp.save_config(app)
+        with app._config_lock:
+            DictationApp.save_config(app)
 
         # Verify file was written
         assert config_file.exists()
