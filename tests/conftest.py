@@ -15,6 +15,96 @@ from unittest.mock import Mock, MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+_HARD_WATCHDOG_700 = pytest.StashKey()
+
+
+def _hard_timeout_seconds_700():
+    import math
+
+    value = os.environ.get('SAMSARA_TEST_HARD_TIMEOUT', '180')
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = -1
+    if not math.isfinite(seconds) or seconds < 0:
+        raise pytest.UsageError('SAMSARA_TEST_HARD_TIMEOUT must be finite and >= 0')
+    return seconds
+
+
+def _rearm_hard_watchdog_700(item):
+    import faulthandler
+    from time import monotonic
+
+    state = item.stash.get(_HARD_WATCHDOG_700, None)
+    if state is not None:
+        fd, deadline = state
+        faulthandler.dump_traceback_later(
+            max(0.001, deadline - monotonic()), file=fd, exit=True)
+
+
+@pytest.hookimpl(hookwrapper=True, trylast=True)
+def pytest_runtest_protocol(item):
+    """A C watchdog can retire a worker even while native code holds the GIL."""
+    import faulthandler
+    from time import monotonic
+
+    seconds = _hard_timeout_seconds_700()
+    if seconds == 0:
+        yield
+        return
+    # This hook runs outside per-test capture. On Windows execnet preserves
+    # the real stderr in sys.stderr but redirects fd 2 (sys.__stderr__) to NUL.
+    try:
+        stderr_fd = sys.stderr.fileno()
+    except (AttributeError, ValueError):
+        stderr_fd = sys.__stderr__.fileno()
+    fd = os.dup(stderr_fd)
+    item.stash[_HARD_WATCHDOG_700] = (fd, monotonic() + seconds)
+    try:
+        os.write(fd, f'[hard watchdog {seconds:g}s] {item.nodeid}\n'.encode(
+            'utf-8', errors='backslashreplace'))
+        _rearm_hard_watchdog_700(item)
+        yield
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+        del item.stash[_HARD_WATCHDOG_700]
+        os.close(fd)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_call(item):
+    _rearm_hard_watchdog_700(item)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_teardown(item):
+    # Pytest's exception diagnostics (and test-owned timers) can cancel the
+    # single faulthandler timer. Restore it without extending this test's budget.
+    _rearm_hard_watchdog_700(item)
+
+
+@pytest.hookimpl(optionalhook=True, tryfirst=True)
+def pytest_xdist_make_scheduler(config, log):
+    if config.option.dist != 'loadfile':
+        return None
+    from xdist.scheduler.loadfile import LoadFileScheduling
+
+    class HardWatchdogLoadFileScheduling(LoadFileScheduling):
+        def remove_node(self, node):
+            # xdist 3.8 requeues the entire unfinished file, including the
+            # crashed item. Mark that item complete before it reassigns work,
+            # but return its id so xdist still reports the crash as a failure.
+            for work_unit in self.assigned_work[node].values():
+                for nodeid, completed in work_unit.items():
+                    if not completed:
+                        work_unit[nodeid] = True
+                        super().remove_node(node)
+                        return nodeid
+            return super().remove_node(node)
+
+    return HardWatchdogLoadFileScheduling(config, log)
+
+
 @pytest.fixture(autouse=True)
 def _speech_presence_unknown_for_decoder_fixtures(request, monkeypatch):
     """Synthetic decoder inputs are not a speech-detector corpus (534)."""
