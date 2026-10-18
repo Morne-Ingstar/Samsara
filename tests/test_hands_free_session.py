@@ -173,6 +173,7 @@ def test_reserved_command_execution_failure_does_not_become_dictation():
 
 def _probe_app(canonical_by_text):
     app = DictationApp.__new__(DictationApp)
+    app.config = {"hands_free": {"exact_commands": True}}
     app.command_executor = Mock()
     app.command_executor.find_command.side_effect = canonical_by_text.get
     app.command_executor.find_exact_command.side_effect = canonical_by_text.get
@@ -197,7 +198,8 @@ def test_runtime_probe_marks_focus_navigation_commit_first():
 
     match = app._probe_hands_free_command("focus Claude")
 
-    assert match.pending_policy is PendingTextPolicy.COMMIT
+    # 447 keeps the hands-free draft when focus navigation runs (dictation.py:4080).
+    assert match.pending_policy is PendingTextPolicy.PRESERVE
     assert match.dispatch_text == "focus claude"
 
 
@@ -208,7 +210,8 @@ def test_runtime_probe_accepts_bare_number_only_while_overlay_active():
         match = app._probe_hands_free_command("twenty six")
 
     assert match.dispatch_text == "click twenty six"
-    assert match.pending_policy is PendingTextPolicy.COMMIT
+    # 447 keeps the hands-free draft when Show Numbers runs (dictation.py:4080).
+    assert match.pending_policy is PendingTextPolicy.PRESERVE
 
 
 def test_runtime_probe_runs_any_enabled_exact_command_and_commits_first():
@@ -218,7 +221,8 @@ def test_runtime_probe_runs_any_enabled_exact_command_and_commits_first():
 
     assert match.dispatch_text == "open chrome"
     assert match.phrase == "open chrome"
-    assert match.pending_policy is PendingTextPolicy.COMMIT
+    # 447 keeps the hands-free draft for generic exact commands (dictation.py:4080).
+    assert match.pending_policy is PendingTextPolicy.PRESERVE
 
 
 def test_runtime_probe_leaves_command_prefix_with_remainder_as_dictation():
