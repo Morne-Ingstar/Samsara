@@ -393,13 +393,23 @@ def test_decode_finishing_after_session_cap_cannot_deliver(rig, monkeypatch):
 
 def test_flush_drops_capture_when_timer_closed_session_mid_frame(rig, monkeypatch):
     r = rig()
-    r.app._start_wake_session()
-    r.app._end_wake_session()
-    spawn = Mock()
-    monkeypatch.setattr(wake_module.thread_registry, 'spawn', spawn)
-    r.consumer._flush([np.zeros(FRAME_SIZE, dtype=np.float32)], owner_token=1)
-    spawn.assert_not_called()
-    r.app._close_hands_free_capture_duck.assert_called_with(1)
+    # This lifecycle proof has no foreground-window dependency. Keep its
+    # native boundary and spawn sentinel scoped until all owned work is done.
+    with monkeypatch.context() as scoped:
+        scoped.setattr(dictation, '_get_foreground_hwnd', lambda: 0, raising=False)
+        try:
+            r.app._start_wake_session()
+            r.app._end_wake_session()
+            r.drain()
+            spawn = Mock()
+            scoped.setattr(wake_module.thread_registry, 'spawn', spawn)
+            r.consumer._flush([np.zeros(FRAME_SIZE, dtype=np.float32)], owner_token=1)
+            spawn.assert_not_called()
+            r.app.process_wake_word_buffer.assert_not_called()
+            r.app._close_hands_free_capture_duck.assert_called_with(1)
+        finally:
+            r.app._end_wake_session()
+            r.drain()
 
 
 def test_fallback_warning_once_per_app_start(rig, monkeypatch, caplog):

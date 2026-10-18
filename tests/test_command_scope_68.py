@@ -455,13 +455,14 @@ def test_cheatsheet_annotation_and_filter():
     assert sheet.live_filter(out, False) == (out, 0)
 
 
-def test_cheatsheet_window_hides_not_live_and_says_how_many(qapp, executor, tmp_path, monkeypatch):
+def test_cheatsheet_window_hides_not_live_and_says_how_many(
+        qapp, executor, tmp_path, monkeypatch, qt_widget_scope):
     from PySide6.QtCore import Qt
     from samsara.ui import command_cheatsheet_qt as sheet
     monkeypatch.setattr(sheet, "_scope_context", lambda: cs.MatchContext.for_app("warp.exe"))
     rows = executor._matcher.list_commands()
-    win = sheet._CheatSheetWindow(lambda p: None, lambda: rows, tmp_path / "palette.json")
-    try:
+    with qt_widget_scope(sheet._CheatSheetWindow(
+            lambda p: None, lambda: rows, tmp_path / "palette.json")) as win:
         ids = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert "window_cube.two" not in ids and "window_cube.window_two" in ids
         # Overlay/selection-only, browser and Word commands are hidden in Warp;
@@ -481,5 +482,3 @@ def test_cheatsheet_window_hides_not_live_and_says_how_many(qapp, executor, tmp_
         ids = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert "window_cube.two" in ids and win._category_bar._hidden_lbl.text() == ""
         assert ids == all_ids
-    finally:
-        win.deleteLater()

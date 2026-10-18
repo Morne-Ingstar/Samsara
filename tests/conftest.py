@@ -717,3 +717,31 @@ def qt_deferred_delete(qapp):
                 break
             qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, min(5, remaining_ms))
     return drain
+
+
+@pytest.fixture
+def qt_widget_scope(qapp, qt_deferred_delete):
+    """Destroy an owned widget before its test's patches and callbacks expire."""
+    from contextlib import contextmanager
+    from PySide6.QtCore import QAbstractAnimation, QTimer
+    from shiboken6 import isValid
+
+    @contextmanager
+    def owned(widget):
+        try:
+            yield widget
+        finally:
+            if isValid(widget):
+                for animation in widget.findChildren(QAbstractAnimation):
+                    animation.stop()
+                for timer in widget.findChildren(QTimer):
+                    timer.stop()
+                try:
+                    widget.close()
+                finally:
+                    if isValid(widget):
+                        widget.hide()
+                        widget.deleteLater()
+                        qt_deferred_delete(widget)
+
+    return owned

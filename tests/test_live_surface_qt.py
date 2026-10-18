@@ -84,18 +84,19 @@ def test_card_children_stay_inside_the_specified_all_sides_inset(qapp, form):
 
 
 @pytest.mark.parametrize("form", (VisibleForm.STATUS, VisibleForm.LIVE, VisibleForm.REVIEW))
-def test_card_has_a_distinct_surface_and_border_in_both_palettes(qapp, form):
+def test_card_has_a_distinct_surface_and_border_in_both_palettes(qapp, form, qt_widget_scope):
     for palette in ("dark", "light"):
         theme.set_theme(palette)
-        widget = LiveSurfaceWidget(_view(form, text="Settled words", partial="new words",
-                                         capture=CaptureState.RECORDING))
-        widget.ensurePolished()
-        qapp.processEvents()
-        image = widget.grab().toImage()
-        card = widget.card_rect
-        assert image.pixelColor(card.x(), card.y() + card.height() // 2) != \
-            image.pixelColor(card.x() + CARD_INSET + 3, card.y() + card.height() // 2)
-        widget.close()
+        with qt_widget_scope(LiveSurfaceWidget(
+                _view(form, text="Settled words", partial="new words",
+                      capture=CaptureState.RECORDING))) as widget:
+            widget.show()
+            widget.ensurePolished()
+            qapp.processEvents()
+            image = widget.grab().toImage()
+            card = widget.card_rect
+            assert image.pixelColor(card.x(), card.y() + card.height() // 2) != \
+                image.pixelColor(card.x() + CARD_INSET + 3, card.y() + card.height() // 2)
 
 
 def test_provisional_tail_has_a_shape_and_type_cue_not_a_literal_label(qapp):

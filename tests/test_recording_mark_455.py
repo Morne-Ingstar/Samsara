@@ -33,7 +33,8 @@ def test_large_recording_matches_listening_geometry_and_alpha(qapp, monkeypatch,
 
     monkeypatch.setattr(tray_qt, 'mark_svg', capture)
     try:
-        theme.set_theme(palette)
+        # Renderer palette coverage must not retheme unrelated live widgets.
+        theme.set_theme(palette, refresh=False)
         tray_qt.clear_mark_caches()
         listening = tray_qt.render_mark('listening', 'armed', size, rotation, brand=brand)
         recording = tray_qt.render_mark('recording', 'armed', size, rotation, brand=brand)
@@ -43,7 +44,7 @@ def test_large_recording_matches_listening_geometry_and_alpha(qapp, monkeypatch,
         assert [listening.pixelColor(x, y).alpha() for y in range(size) for x in range(size)] == [
             recording.pixelColor(x, y).alpha() for y in range(size) for x in range(size)]
     finally:
-        theme.set_theme(previous)
+        theme.set_theme(previous, refresh=False)
 
 
 @pytest.mark.parametrize('weight', (tray_qt.RING_LINE_WIDTH, tray_qt.RING_BRAND_WIDTH))
@@ -106,14 +107,14 @@ def test_small_recording_uses_regular_head_and_tail_in_red_at_both_scales(qapp, 
 def test_generated_recording_assets_match_live_regular_snake(qapp, size):
     previous = theme.active_theme()
     try:
-        theme.set_theme('dark')
+        theme.set_theme('dark', refresh=False)
         actual = tray_qt.render_mark('recording', 'off', size, small_max=tray_qt.TASKBAR_SMALL_MAX)
         expected = QImage(str(Path(__file__).resolve().parents[1] /
                              f'assets/icon/states/samsara_recording_{size}.png'))
         assert actual == expected.convertToFormat(QImage.Format.Format_ARGB32)
         assert actual == tray_qt.render_mark('recording', 'off', size, small_max=0)
     finally:
-        theme.set_theme(previous)
+        theme.set_theme(previous, refresh=False)
 
 
 def test_renderer_cache_separates_small_body_from_regular(qapp):
@@ -127,9 +128,9 @@ def test_renderer_cache_separates_small_body_from_regular(qapp):
 
 @pytest.mark.parametrize('armed', (False, True))
 @pytest.mark.parametrize('session', (None, 'DICTATE', 'AVA'))
-def test_compact_capture_selects_recording_without_changing_eye_or_spin(qapp, armed, session):
-    widget = ListeningIndicator()
-    try:
+def test_compact_capture_selects_recording_without_changing_eye_or_spin(
+        qapp, armed, session, qt_widget_scope):
+    with qt_widget_scope(ListeningIndicator()) as widget:
         widget._wake_armed = armed
         widget._session_mode_name = session
         widget._listening = True
@@ -138,6 +139,3 @@ def test_compact_capture_selects_recording_without_changing_eye_or_spin(qapp, ar
         assert capture == 'recording'
         assert eye == ('armed' if armed and session is None else 'off')
         assert (rotation, opacity) == (37.0, 1.0)
-    finally:
-        widget.hide()
-        widget.deleteLater()
