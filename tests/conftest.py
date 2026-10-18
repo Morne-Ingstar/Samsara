@@ -697,10 +697,23 @@ def qapp():
 
 @pytest.fixture(scope="session")
 def qt_deferred_delete(qapp):
-    """Drain queued widget deletion before a fixture removes its patches."""
-    from PySide6.QtCore import QCoreApplication, QEvent
+    """Deliver owned deletes, or pump global deletes within a finite budget."""
+    from time import monotonic
+    from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop
 
-    def drain():
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        qapp.processEvents()
+    def drain(receiver=None):
+        # A fixture with an owner must not delete another fixture's objects.
+        # Do not dispatch unrelated timers while the owner is being destroyed.
+        if receiver is not None:
+            QCoreApplication.sendPostedEvents(receiver, QEvent.Type.DeferredDelete)
+            return
+        deadline = monotonic() + 0.050
+        for _ in range(8):
+            if monotonic() >= deadline:
+                break
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            remaining_ms = int((deadline - monotonic()) * 1000)
+            if remaining_ms <= 0:
+                break
+            qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, min(5, remaining_ms))
     return drain

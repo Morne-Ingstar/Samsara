@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import time
 
 import pytest
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QAbstractAnimation, QRect, Qt, QTimer
 from PySide6.QtGui import QAccessible, QPalette
 
 from samsara.live_surface.controller import LiveSurfaceController, LiveSurfaceIndicatorAdapter
@@ -33,10 +33,21 @@ def surface(qapp, monkeypatch, qt_deferred_delete):
     app._schedule_ui = lambda fn, *args: fn(*args)
     c._screens = lambda: [Screen('test', Rect(0, 0, 1600, 1200), True)]
     c.start()
-    yield c, indicator, clock
-    c.close()
-    qt_deferred_delete()
-    theme.set_theme(previous)
+    try:
+        yield c, indicator, clock
+    finally:
+        widget = c.widget
+        try:
+            if widget is not None:
+                for animation in widget.findChildren(QAbstractAnimation):
+                    animation.stop()
+                for timer in widget.findChildren(QTimer):
+                    timer.stop()
+            c.close()
+            if widget is not None:
+                qt_deferred_delete(widget)
+        finally:
+            theme.set_theme(previous)
 
 
 def question(indicator, owner='q1'):
