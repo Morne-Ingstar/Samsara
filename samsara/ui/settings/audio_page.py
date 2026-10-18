@@ -145,6 +145,26 @@ GROUPS = {
 
 def build(owner):
     from .calm_layout import group_page
+    from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
+
     page = owner.make_page(TITLE, SUBTITLE, BASE, [row for row in ADVANCED if not row[3].startswith("echo_cancellation.")])
+    microphone_guide = QFrame(page.container)
+    microphone_guide.setObjectName("microphoneSetupGuide")
+    microphone_guide.setProperty("role", "row")
+    guide_layout = QHBoxLayout(microphone_guide)
+    guide_layout.setContentsMargins(0, 10, 0, 10)
+    guide_layout.setSpacing(12)
+    guide_copy = QLabel("Choose and test the microphone Samsara listens to.")
+    guide_copy.setWordWrap(True)
+    guide_copy.setProperty("role", "description")
+    guide_button = QPushButton("Set up microphone...")
+    guide_button.setMinimumHeight(44)
+    guide_button.clicked.connect(
+        lambda: getattr(owner.app, "open_mic_setup_guide", lambda: None)()
+    )
+    guide_layout.addWidget(guide_copy, 1)
+    guide_layout.addWidget(guide_button)
+    page.base.insertWidget(0, microphone_guide)
+    owner._widgets["audio_mic_setup_guide_button"] = guide_button
     group_page(page, GROUPS)
     return page

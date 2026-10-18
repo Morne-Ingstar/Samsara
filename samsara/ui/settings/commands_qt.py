@@ -298,6 +298,14 @@ class CommandsPage:
         commands_title = self._section_title("Voice Commands")
         cmd_header.addWidget(commands_title)
         cmd_header.addStretch()
+        quick_reference_button = QPushButton("Command list...")
+        quick_reference_button.setObjectName("commandListButton")
+        quick_reference_button.setMinimumHeight(44)
+        quick_reference_button.clicked.connect(
+            lambda: getattr(self.app, "open_quick_reference", lambda: None)()
+        )
+        self._widgets["commandListButton"] = quick_reference_button
+        cmd_header.addWidget(quick_reference_button)
         search_box = QLineEdit()
         search_box.setAccessibleName("Search commands")
         search_box.setPlaceholderText("Search commands...")
