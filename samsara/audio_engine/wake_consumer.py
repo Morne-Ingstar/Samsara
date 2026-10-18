@@ -366,6 +366,10 @@ class WakeConsumer:
         self._wake_admission = None
         self._guard_discarded_samples = 0
         self._hands_free_capture_duck_token: int | None = None
+        self._mouth_shadow = None
+        if app.config.get('mouth_sounds', {}).get('experiment_shadow') is True:
+            from .mouth_sound_detector import MouthSoundShadow
+            self._mouth_shadow = MouthSoundShadow(app.config)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -388,6 +392,8 @@ class WakeConsumer:
                 logger.error("[ACE] Wake start refused: thread %s is still alive", self._thread.name)
                 return False
             self._utterance_frames = []
+            if self._mouth_shadow is not None:
+                self._mouth_shadow.invalidate()
             self._buffer_rms_history = []
             self._last_voice_ns = None
             self._speech_start_ns = None
@@ -464,6 +470,8 @@ class WakeConsumer:
         without this the stale buffer would sit frozen -- neither flushed
         nor discarded -- for the whole recovery window."""
         app = self._app
+        if self._mouth_shadow is not None:
+            self._mouth_shadow.invalidate()
         self._utterance_frames   = []
         self._buffer_rms_history = []
         self._last_voice_ns = None
@@ -970,6 +978,8 @@ class WakeConsumer:
             self.abort_utterance()
             self._await_wake_onset = True
             app._wake_rearm_needs_onset = False
+        if self._mouth_shadow is not None:
+            self._mouth_shadow.observe(self, frame)
 
         # Epoch-change detection: abort utterance and reset state
         if self._last_epoch is not None and frame.device_epoch != self._last_epoch:
@@ -989,21 +999,9 @@ class WakeConsumer:
                 self._log_frame(logging.DEBUG, 'frame_572', f"_vad_reset failed after epoch change: {e}")
         self._last_epoch = frame.device_epoch
 
-        # ── FIX 1 (2026-07-10 hotkey word-loss investigation): full
-        # deafness during hotkey recording ─────────────────────────────────
-        # Supersedes the old pre-onset-only "Hotkey-recording suppression"
-        # guard (formerly here, inside the `if not app.is_speaking:` block
-        # below) -- that guard stopped applying the moment app.is_speaking
-        # went True, so once WakeConsumer detected its OWN speech onset
-        # mid-hotkey-hold it kept running a full, separate utterance
-        # (prebuffer prepend, VAD, buffering, eventual flush) concurrently
-        # with the hotkey capture -- confirmed via the [SEAM] diagnostic
-        # added in commit 0e837ba. That utterance also contends for the
-        # dedicated app._vad_model / app._vad_lock used by the hotkey path's
-        # contiguous-speech gate. The current ONNX wrapper is stateless
-        # between calls and the shared lock serializes inference, but running
-        # a redundant wake utterance here still wastes work and delays gates.
-        #
+        # Full hold deafness also applies after speech onset, preventing
+        # concurrent wake/hold capture. Sound suppression observes every
+        # frame above, including OWW barge-in and the legacy toggle exemption.
         # Toggle-command-mode used to be UNCONDITIONALLY exempted here: an
         # active, user-initiated listening session that must keep
         # servicing regardless of a concurrent hotkey press (a hotkey
@@ -1192,6 +1190,8 @@ class WakeConsumer:
                 return
 
         # ── RMS on raw signal (not AEC) ───────────────────────────────────────
+        if self._mouth_shadow is not None:
+            self._mouth_shadow.consume(self, frame, admission)
         rms = float(np.sqrt(np.mean(raw_chunk ** 2)))
 
         # ── Threshold / state selection ───────────────────────────────────────

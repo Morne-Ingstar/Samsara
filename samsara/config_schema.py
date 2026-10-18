@@ -64,6 +64,22 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "mouth_sounds.experiment_shadow": {
+        "type": "bool", "default": False, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Offline-calibrated mouth-sound experiment; shadow telemetry only.",
+    },
+    "mouth_sounds.pair_window_ms": {
+        "type": "list", "default": [150, 350], "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Inclusive onset-gap bounds in milliseconds; validated by the shadow detector.",
+    },
+    "mouth_sounds.refractory_ms": {
+        "type": "int", "min": 350, "max": 5000, "default": 800, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Shadow pair refractory interval after the second onset.",
+    },
+    "mouth_sounds.onset_rms": {
+        "type": "float", "min": .001, "max": .5, "default": .025, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Minimum normalized RMS in a five-millisecond transient bin.",
+    },
     "agent_server.command_key_only": {"type": "bool", "default": False, "tab": "commands",
                                       "optional_pack": "agents", "depends_on": "agent_server.allow_typing"},
     "agent_server.allow_typing": {"type": "bool", "default": False, "tab": "commands",
