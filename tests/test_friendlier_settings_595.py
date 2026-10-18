@@ -28,18 +28,28 @@ def window(qapp, monkeypatch):
     config = _schema_defaults()
     config['ui']['live_surface'] = {'enabled': True}
     win = settings_qt._SettingsWindow(_StubApp(config))
+    retired = []
+    refresh_visit = win._refresh_visit
+
+    def refresh():
+        # A revisit detaches these roots before queueing their deletion.
+        retired.extend((win.centralWidget(), win._source_store, win._search_debounce))
+        refresh_visit()
+
+    monkeypatch.setattr(win, '_refresh_visit', refresh)
     win.show()
     qapp.processEvents()
     yield win
-    # Qt can delete earlier queued windows too. Keep their Python wrappers
-    # alive until Qt has finished, rather than leaving those deletes pending.
-    pending_wrappers = QApplication.allWidgets()
     win.hide()
     win.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # Never drain other tests' queued cleanup after their patches have ended.
+    # Include our detached visit trees so they cannot leak into a later drain.
+    for obj in (win, *retired):
+        if isValid(obj):
+            QCoreApplication.sendPostedEvents(obj, QEvent.Type.DeferredDelete)
     assert not isValid(win)
+    assert all(not isValid(obj) for obj in retired)
     qapp.processEvents()
-    del pending_wrappers
 
 
 def test_notice_is_lazy_one_per_page_and_dismiss_hides_all_pages(window):
