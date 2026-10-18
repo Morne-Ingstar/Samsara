@@ -8,6 +8,7 @@ import pytest
 
 from samsara import kept_session_draft, session_modes, streaming
 from samsara.audio_engine.wake_consumer import WakeConsumer
+from samsara.audio_engine.ring import FrameBus
 from samsara.live_surface.controller import LiveSurfaceController
 from samsara.live_surface.model import CaptureState, Lane, LiveSurfaceModel
 from samsara.live_surface.partials import CapturePartials
@@ -137,8 +138,7 @@ def test_live_capture_onset_flushes_pending_audio_once_and_excludes_hold_frames(
     app._hotkey_recording = False
     app._vad_reset = Mock()
     app._close_hands_free_capture_duck = Mock()
-    wake = object.__new__(WakeConsumer)
-    wake._app = app
+    wake = WakeConsumer(SimpleNamespace(register_consumer=lambda _: FrameBus().new_reader()), app)
     frames = [np.ones(1600, dtype=np.float32)]
     wake._utterance_frames = frames
     wake._buffer_rms_history = [0.1]
@@ -209,13 +209,13 @@ def test_hold_capture_boundary_cannot_rewind_into_flushed_session_audio(kept, fu
     r.app._hold_capture_onset = HoldOnset(3, 10.0, 10.0, True, Mock())
     monkeypatch.setattr('time.perf_counter', lambda: 10.1)
     kept_session_draft.suspend_hands_free_for_hold(r.app)
-    c = object.__new__(DictationSessionConsumer)
-    c._app = r.app
+    c = DictationSessionConsumer(
+        SimpleNamespace(register_consumer=lambda _: FrameBus().new_reader()), r.app)
     c._capture_not_before = c._select_capture_boundary()
     c._capture_not_after = None
     assert c._capture_not_before == 10.1
-    assert not c._frame_inside_capture_duck(SimpleNamespace(t_capture=10.05))
-    assert c._frame_inside_capture_duck(SimpleNamespace(t_capture=10.3))
+    assert not c._frame_inside_capture_duck(SimpleNamespace(t_capture=10.05, seq=0, device_epoch=0))
+    assert c._frame_inside_capture_duck(SimpleNamespace(t_capture=10.3, seq=1, device_epoch=0))
     r.app._wake_consumer.flush_utterance.assert_called_once()
     r.app._wake_consumer.discard_stale_wake_utterance.assert_called_once()
 

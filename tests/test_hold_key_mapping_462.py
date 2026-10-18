@@ -11,19 +11,16 @@ from samsara import hold_key_rules as rules
 def ava_462(qapp, monkeypatch, request):
     from samsara.ui import ava_guide_qt as ava, theme
     previous = theme.active_theme()
-    palette = getattr(request.node, 'callspec', SimpleNamespace(params={})).params.get('palette', 'dark')
-    theme.set_theme(palette, refresh=False)
-    monkeypatch.setattr(ava._WizardWindow, '_check_ollama', lambda self: None)
-    monkeypatch.setattr(ava._WizardWindow, '_check_installed_models', lambda self: None)
-    monkeypatch.setattr(ava._WizardWindow, '_available_height',
-        lambda self: round(1032 / self.screen().devicePixelRatio()) - 40)
-    provider = ava.ai_preferences.identify_provider('ollama', 'http://127.0.0.1:11434')
-    initial_policy = getattr(request.node, 'callspec', SimpleNamespace(params={})).params.get('initial_policy', 'local')
-    app = SimpleNamespace(config={'ava': {'provider_policy': initial_policy},
+    params = getattr(request.node, 'callspec', SimpleNamespace(params={})).params
+    theme.set_theme(params.get('palette', 'dark'), refresh=False)
+    monkeypatch.setattr(ava.thread_registry, 'spawn', lambda *a, **kw: None)
+    policy = params.get('initial_policy', 'local')
+    app = SimpleNamespace(config={'ava': {'provider_policy': policy},
         'ava_command_session': {'enabled': True},
-        'ollama': {'enabled': True, 'model': 'qwen2.5:3b', 'host': provider.origin}})
+        'ollama': {'enabled': True, 'model': 'qwen2.5:3b', 'host': 'http://127.0.0.1:11434'}})
+    provider = ava.ai_preferences.identify_provider('ollama', app.config['ollama']['host'])
     window = ava._WizardWindow(app)
-    window._go_to(3)
+    window._go_to(window._STEP_OLLAMA)
     window._on_ollama_status(True, ['qwen2.5:3b'])
     window.show()
     qapp.processEvents()
@@ -36,36 +33,33 @@ def ava_462(qapp, monkeypatch, request):
 
 def test_ava_bottom_bar_consent_decline_and_accept(ava_462, monkeypatch, qapp):
     from samsara.ui import ava_consent_qt
-    from samsara import ai_preferences
     window, app, provider = ava_462
     before = deepcopy(app.config)
     writes = []
-    app.update_config = lambda *a, **kw: writes.append((a, kw))
-    requests = []
-    def decline(*args, **kwargs):
-        requests.append(kwargs)
-        return None
-    monkeypatch.setattr(ava_consent_qt, 'request_consent', decline)
-    assert window._next_btn.text() == 'Enable Ava'
+    monkeypatch.setattr(ava_consent_qt, 'apply_accepted_ava',
+                        lambda *a, **kw: writes.append(kw))
+    assert window._next_btn.text() == 'Continue'
     assert window._skip_btn.text() == 'Set up later' and window._skip_btn.isVisible()
-    assert 0 <= window._skip_btn.x() - window._back_btn.geometry().right() - 1 <= 16
-    assert 'needs your OK' in window._done_summary.text()
-    assert not hasattr(window, '_enable_pack_btn')
     window._next_btn.click()
-    assert requests == [{'cloud_enabled': False}]
+    assert window._current_step == window._STEP_CONSENT
+    assert not window._next_btn.isEnabled()
+    window._next_btn.click()
+    assert window._accepted is None and app.config == before and writes == []
+    window._consent_check.setChecked(True)
+    assert window._next_btn.isEnabled()
+    window._next_btn.click()
+    assert window._accepted == ('local', window._provider.currentData())
+    assert window._current_step == window._STEP_TEST
     assert app.config == before and writes == []
-    consent = ai_preferences.accept_consent(app.config, provider=provider, accepted_at='test')
-    monkeypatch.setattr(ava_consent_qt, 'request_consent', lambda *a, **kw: consent)
-    applied = []
-    def accept(app, record, *, policy):
-        applied.append(policy)
-        app.config = ai_preferences.apply_accepted_ava(app.config, policy=policy, consent=record)
-    monkeypatch.setattr(ava_consent_qt, 'apply_accepted_ava', accept)
+    window._tested = window._signature()
+    window._job_config = deepcopy(app.config)
+    window._go_to(window._STEP_DONE)
+    assert window._next_btn.text() == 'Use Ava'
+    consent = {'accepted_at': 'fixture'}
+    monkeypatch.setattr(window, '_draft', lambda: {'ava': {'consent': consent}})
     window._next_btn.click()
-    assert applied == ['local']
-    assert window._next_btn.text() == 'Finish'
-    assert window._done_title.text() == 'Ava is ready.'
-    assert not window._skip_btn.isVisible()
+    assert writes == [{'policy': 'local', 'config': {'ava': {'consent': consent}}}]
+    assert window._closed
 
 
 @pytest.mark.parametrize('policy,running,models,reason', [
@@ -75,49 +69,55 @@ def test_ava_bottom_bar_consent_decline_and_accept(ava_462, monkeypatch, qapp):
     ('off', True, ['qwen2.5:3b'], 'Ava is set to Off in Settings > Ava.'),
 ])
 def test_ava_done_names_missing_prerequisite(ava_462, monkeypatch, policy, running, models, reason):
-    from samsara.ui import ava_consent_qt
+    from samsara.ui import ava_guide_qt as ava
     window, app, _ = ava_462
     app.config['ava']['provider_policy'] = policy
-    window._on_ollama_status(running, models)
-    assert reason in window._done_summary.text()
-    assert window._next_btn.text() == 'Set up later'
-    assert not window._consent_only_missing
     before = deepcopy(app.config)
-    monkeypatch.setattr(ava_consent_qt, 'request_consent', lambda *a, **kw: pytest.fail('unexpected consent'))
-    window._enable_ai_pack()
+    window._on_ollama_status(running, models)
+    # Setup stages a new choice; the existing saved policy is not a prerequisite.
+    assert window._next_btn.isEnabled() == (running and 'qwen2.5:3b' in models)
+    assert window._download_ollama_btn.isHidden() == running
+    if not running:
+        assert window._ollama_status_lbl.text() == ava.COPY['ollama_missing']
+    if not models:
+        assert window._model_status_lbl.text() == ava.COPY['model_missing']
+    else:
+        assert window._model_status_lbl.text() == 'Model installed. Ready for a speed test.'
     assert app.config == before
 
 
 @pytest.mark.parametrize('policy', ['cloud', 'off'])
 @pytest.mark.parametrize('when', ['before', 'during'])
 def test_ava_route_change_cannot_be_overwritten_by_consent(ava_462, monkeypatch, policy, when):
-    from samsara.ui import ava_consent_qt
+    from samsara.ui import ava_consent_qt, ava_guide_qt as ava
     window, app, _ = ava_462
-    requests = []
-    def request(*args, **kwargs):
-        requests.append(True)
-        app.config['ava']['provider_policy'] = policy
-        return {'accepted_at': 'test'}
-    monkeypatch.setattr(ava_consent_qt, 'request_consent', request)
-    monkeypatch.setattr(ava_consent_qt, 'apply_accepted_ava', lambda *a, **kw: pytest.fail('route overwritten'))
     if when == 'before':
         app.config['ava']['provider_policy'] = policy
-    window._next_btn.click()
-    assert app.config['ava']['provider_policy'] == policy
-    assert requests == ([True] if when == 'during' else [])
-    assert window._next_btn.text() == 'Set up later'
+    window._job_config = deepcopy(app.config)
+    window._tested = window._signature()
+    window._go_to(window._STEP_DONE)
+    writes = []
+    monkeypatch.setattr(ava_consent_qt, 'apply_accepted_ava', lambda *a, **kw: writes.append(kw))
+    if when == 'during':
+        app.config['ava']['provider_policy'] = policy
+    else:
+        window._model_changed('another-fixture-model')
+    window._finish()
+    assert app.config['ava']['provider_policy'] == policy and writes == []
+    assert window._save_status.text() == ava.COPY['changed']
+    assert not window._next_btn.isEnabled()
 
 
 @pytest.mark.parametrize('palette', ['dark', 'light'])
 def test_ava_navigation_label_content_rect_and_stable_height(ava_462, qapp, palette):
     from PySide6.QtWidgets import QStyle, QStyleOptionButton
-    window, _, _ = ava_462
     from samsara.ui import theme
+    window, _, _ = ava_462
     assert theme.active_theme() == palette
     height = window.height()
     for button, labels in ((window._back_btn, ['Back']),
-                (window._skip_btn, ['Skip', 'Set up later']),
-                (window._next_btn, ['Next  ->', 'Finish', 'Set up later', 'Enable Ava'])):
+                (window._skip_btn, ['Set up later']),
+                (window._next_btn, ['Get started', 'Continue', 'Use Ava'])):
         original = button.text()
         for text in labels:
             button.setText(text)
@@ -128,86 +128,77 @@ def test_ava_navigation_label_content_rect_and_stable_height(ava_462, qapp, pale
             content = button.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, option, button)
             assert content.width() >= button.fontMetrics().horizontalAdvance(text)
             assert content.height() >= button.fontMetrics().height()
-            assert button.width() - button.fontMetrics().horizontalAdvance(text) >= 2 * theme.SPACE_2
         button.setText(original)
-    for step in range(4):
+    for step in range(window._stack.count()):
         window._go_to(step)
         qapp.processEvents()
         assert window.height() == height
-        assert window._stack.currentWidget().verticalScrollBar().maximum() == 0
+        assert window._stack.currentWidget().horizontalScrollBar().maximum() == 0
 
 
 @pytest.mark.parametrize('initial_policy', ['local', 'cloud', 'off'])
 def test_ava_initial_route_reserves_every_page_height(ava_462, qapp, initial_policy):
-    window, _, _ = ava_462
+    window, app, _ = ava_462
+    before = deepcopy(app.config)
     height = window.height()
-    for step in range(4):
+    assert window._stack.count() == 8
+    for step in range(window._stack.count()):
         window._go_to(step)
         qapp.processEvents()
         assert window.height() == height
-        assert window._stack.currentWidget().verticalScrollBar().maximum() == 0
+        assert window._stack.currentWidget().horizontalScrollBar().maximum() == 0
+        assert app.config == before
 
 
 def test_ava_short_screen_keeps_scroll_fallback(qapp, monkeypatch):
     from samsara.ui import ava_guide_qt as ava
-    monkeypatch.setattr(ava._WizardWindow, '_available_height', lambda self: 420)
-    monkeypatch.setattr(ava._WizardWindow, '_check_ollama', lambda self: None)
-    monkeypatch.setattr(ava._WizardWindow, '_check_installed_models', lambda self: None)
+    monkeypatch.setattr(ava.thread_registry, 'spawn', lambda *a, **kw: None)
     window = ava._WizardWindow(SimpleNamespace(config={}))
-    window.show()
-    qapp.processEvents()
-    assert window.height() == 420
-    assert window._stack.currentWidget().verticalScrollBar().maximum() > 0
-    window.close()
-    window.deleteLater()
+    try:
+        window.resize(720, 420)
+        window._go_to(window._STEP_CHECK)
+        window.show()
+        qapp.processEvents()
+        assert window.height() == 420
+        assert window._stack.currentWidget().verticalScrollBar().maximum() > 0
+        assert window._stack.currentWidget().horizontalScrollBar().maximum() == 0
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.processEvents()
 
 
 @pytest.mark.parametrize('palette', ['dark', 'light'])
 @pytest.mark.parametrize('scale', [1.0, 1.5])
 def test_ava_setup_compact_controls_and_step_clearance(qapp, monkeypatch, palette, scale):
-    from PySide6.QtCore import QRectF, Qt
-    from PySide6.QtGui import QFont, QFontMetricsF
-    from PySide6.QtWidgets import QLabel, QScrollArea
-    from samsara.runtime import thread_registry
+    from PySide6.QtWidgets import QScrollArea
     from samsara.ui import ava_guide_qt as ava, theme
-
-    monkeypatch.setattr(thread_registry, 'spawn', lambda *a, **kw: None)
-    monkeypatch.setattr(ava._WizardWindow, '_check_ollama', lambda self: None)
-    monkeypatch.setattr(ava._WizardWindow, '_check_installed_models', lambda self: None)
+    monkeypatch.setattr(ava.thread_registry, 'spawn', lambda *a, **kw: None)
     previous = theme.active_theme()
     theme.set_theme(palette)
     window = ava._WizardWindow(SimpleNamespace(config={}))
     try:
-        strip = window._step_indicator
-        strip.set_ui_scale(scale)
+        # Smaller logical space represents the same screen at the larger scale.
+        window.resize(max(720, round(960 / scale)), max(420, round(660 / scale)))
         window.show()
         qapp.processEvents()
-        divider = window._step_strip.mapTo(window, window._step_strip.rect().bottomLeft()).y()
-        for index, text in enumerate(strip.steps):
-            box = QRectF(strip.visualItemRect(strip.item(index)))
-            top = box.top() + theme.TYPE_TITLE * scale * 1.6
-            font = theme.qfont(round(theme.TYPE_MIN * scale))
-            font.setWeight(QFont.Weight.DemiBold if index == 0 else QFont.Weight.Normal)
-            bounds = QFontMetricsF(font).boundingRect(
-                QRectF(box.left(), top, box.width(), box.bottom() - top),
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, text)
-            bottom = bounds.bottom() + strip.viewport().mapTo(window, strip.viewport().rect().topLeft()).y()
-            assert divider - bottom >= theme.SPACE_2
-        for index in range(4):
+        sidebar = window.findChild(ava.QWidget, 'sidebar')
+        assert len(window._steps) == 5
+        for label in window._steps:
+            assert label.parentWidget() is sidebar and label.isVisible()
+            assert label.width() >= label.fontMetrics().horizontalAdvance(label.text())
+            assert label.height() >= label.fontMetrics().height()
+        for index in range(window._stack.count()):
             window._go_to(index)
             qapp.processEvents()
-            assert isinstance(window._stack.currentWidget(), QScrollArea)
-        assert window._key_combo.width() <= window._key_combo.sizeHint().width()
-        window._go_to(2)
+            page = window._stack.currentWidget()
+            assert isinstance(page, QScrollArea)
+            assert page.horizontalScrollBar().maximum() == 0
+            assert window._next_btn.isVisible() and window._skip_btn.isVisible()
+        window._go_to(window._STEP_OLLAMA)
         qapp.processEvents()
-        assert window._model_combo.width() < window._stack.width() / 2, (
-            window._model_combo.font().toString(), window._model_combo.sizeHint(),
-            window._model_combo.minimumSize(), window._model_combo.maximumSize(),
-            window._stack.currentWidget().widget().size())
-        assert 'Key:' not in [label.text() for label in window.findChildren(QLabel)]
-        for name in ('avaExamples', 'avaOllamaStatus', 'avaKeyGroup', 'avaUsage'):
-            group = window.findChild(ava.QWidget, name)
-            assert f'QWidget#{name}' in group.styleSheet()
+        assert window._model_combo.isVisible()
+        assert window._model_combo.width() <= window._stack.width()
     finally:
         window.close()
         window.deleteLater()

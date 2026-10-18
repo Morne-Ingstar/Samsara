@@ -1,6 +1,7 @@
 """Exercise the production dispatch seam without importing the live app."""
 from samsara.log import describe_text, safe_exception
 import ast
+import builtins
 import copy
 import logging
 import string
@@ -59,8 +60,11 @@ def production():
         and ("COMMAND" in target.id or target.id.endswith("PREFIXES")) for target in node.targets)]
     module = ast.Module(body=copy.deepcopy(constants) + [copy.deepcopy(methods[name]) for name in (
         "_probe_media_transport", "_probe_hands_free_command",
-        "_handle_session_dispatch_outcome")] + [adapter, route], type_ignores=[])
+        "_handle_session_dispatch_outcome")], type_ignores=[])
     exec(compile(ast.fix_missing_locations(module), str(source), "exec"), namespace)
+    # These two wrappers are test-generated AST, not original app definitions.
+    wrappers = ast.Module(body=[adapter, route], type_ignores=[])
+    exec(compile(ast.fix_missing_locations(wrappers), __file__, "exec"), namespace)
     return namespace
 
 
@@ -75,7 +79,7 @@ def app(tmp_path, monkeypatch, production):
         app_state="long_dictation", _dictation_paused=False, _dictation_require_end=True,
         wake_dictation_buffer=["existing draft"], command_mode_active=False,
         _session_mode_manager=None, listening_indicator=Mock(), _schedule_ui=Mock(),
-        play_sound=Mock(), _emit_wake_trace=Mock(), _output_dictation=Mock(),
+        play_sound=Mock(), _emit_wake_trace=Mock(), _output_dictation=Mock(), _notify_tutorial=Mock(),
         _reset_wake_dictation=Mock(), _log_command_dispatch=Mock(), add_to_history=Mock(),
         _log_history=Mock(), inject=Mock(return_value=True), outcomes=[],
         _touch_session_activity=Mock(),
@@ -184,6 +188,15 @@ def test_combined_draft_and_media_failure_detail_survive_dispatch(app, combined,
     else:
         app.route(phrase)
         outcome = app.outcomes[-1]
+    if combined and phrase == "unpause music":
+        # 415: the play command accepts arguments, so ordinary Dictate keeps
+        # it as prose. The explicit wake command lane still dispatches it.
+        app.transport.assert_not_called()
+        assert outcome.kind == "dictate_staged"
+        assert manager.dictate_pending_buffer == pending + " " + phrase
+        assert manager.mode is SessionMode.DICTATE
+        app.inject.assert_not_called()
+        return
     app.transport.assert_called_once_with(action)
     assert manager.dictate_pending_buffer == pending
     assert manager.mode is SessionMode.DICTATE
@@ -207,5 +220,12 @@ def test_transport_allowlist_is_catalog_backed_and_exact(app, monkeypatch):
         command_catalog.hands_free_media_phrases.cache_clear()
 
 
-def test_dictation_module_is_not_imported():
-    assert "dictation" not in sys.modules
+def test_dictation_module_is_not_imported(monkeypatch):
+    original_import = builtins.__import__
+
+    def no_dictation_import(name, *args, **kwargs):
+        assert name != "dictation", "the fixture must not import the desktop bootstrap"
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_dictation_import)
+    production.__wrapped__()

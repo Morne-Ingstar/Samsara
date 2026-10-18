@@ -133,7 +133,10 @@ def test_sleep_with_nothing_staged_retains_nothing():
 def test_other_exit_phrases_keep_their_anywhere_match_and_abort_outcome():
     rig = _Rig()
     rig.open_session()
-    assert rig.say("okay stop listening now").kind == "abort"
+    # All exits now require the whole utterance (84), protecting ordinary prose.
+    assert rig.say("okay stop listening now").kind == "dictate_staged"
+    assert rig.aborts == 0
+    assert rig.say("Stop listening!").kind == "abort"
     assert rig.aborts == 1
 
 

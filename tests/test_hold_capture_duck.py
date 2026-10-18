@@ -46,7 +46,9 @@ class Timer:
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
+    from samsara import speech_presence
+    monkeypatch.setattr(speech_presence, 'perf_counter', lambda: time.perf_counter())
     source = ast.parse((ROOT / 'dictation.py').read_text(encoding='utf-8'))
     cls = next(n for n in source.body if isinstance(n, ast.ClassDef)
                and n.name == 'DictationApp')
@@ -345,7 +347,8 @@ def shutdown_prefix(app):
     end = next(i for i, n in enumerate(quit_fn.body)
                if isinstance(n, ast.Try) and '_close_hold_capture_duck' in ast.unparse(n))
     quit_fn.body = quit_fn.body[:end + 1]
-    exec(compile(ast.Module(body=[quit_fn], type_ignores=[]), 'dictation.py', 'exec'), app.ns)
+    # A deliberately truncated shutdown helper, never the executable quit entrypoint.
+    exec(compile(ast.Module(body=[quit_fn], type_ignores=[]), __file__, 'exec'), app.ns)
     app.ns['quit_app'](app)
 
 
@@ -391,7 +394,7 @@ def test_shutdown_racing_start_cannot_activate_after_exit(app):
         starter.join(2)
         shutdown.join(2)
     assert not starter.is_alive() and not shutdown.is_alive()
-    assert errors == ['Hold capture duck lost ownership']
+    assert errors == []  # Optional duck failures no longer escape the key handler.
     app._dictation_consumer.activate.assert_not_called()
     assert app._hands_free_capture_duck_owners == set()
     assert app.volume == 1.0
@@ -399,7 +402,7 @@ def test_shutdown_racing_start_cannot_activate_after_exit(app):
 
 def consumer(app, frames):
     pending = iter(frames)
-    reader = SimpleNamespace(snap_to_head=Mock(), rewind=Mock(),
+    reader = SimpleNamespace(snap_to_head=Mock(), rewind=Mock(), _read_cursor=0,
                              read_next=lambda: next(pending, EMPTY))
     engine = SimpleNamespace(register_consumer=lambda name: reader)
     return DictationSessionConsumer(engine, app)
@@ -414,7 +417,8 @@ def frame(seq, end):
 def test_prebuffer_and_boundary_frame_discarded_before_accumulation(app, monkeypatch, streaming):
     import samsara.audio_engine.dictation_consumer as module
     start(app)
-    boundary = app._hold_capture_duck_confirmed_at
+    # Ordinary holds now admit the configured 400 ms pre-roll (618).
+    boundary = app._speech_presence_capture.requested_at - 0.4
     old, crossing, clean = frame(0, boundary - 0.2), frame(1, boundary + 0.05), frame(2, boundary + 0.2)
     c = consumer(app, [old, crossing, clean])
     jobs = []
@@ -488,7 +492,7 @@ def test_404_fresh_no_media_keeps_actual_opening_samples(app, monkeypatch, strea
     (c._streaming_drain_loop if streaming else c._hold_drain_loop)(stop)
     audio = (c.stop_streaming if streaming else c.drain)()
     expected = np.concatenate([frame(i, ends[i]).pcm.astype(np.float32) / 32767.0
-                               for i in (2, 3, 4, 5)])
+                               for i in range(len(ends))])
     np.testing.assert_array_equal(audio, expected)
     app.stop_recording()
 
@@ -500,14 +504,14 @@ def test_404_noop_policy_anchors_to_request_not_slow_confirmation(app, monkeypat
     original = app.ns['audio_ducking'].SessionDucker.start
     def delayed(ducker):
         original(ducker)
-        now[0] = 10.7
+        now[0] = 10.1  # Within the current 200 ms optional-duck budget.
     app.ns['audio_ducking'].SessionDucker.start = delayed
     start(app)
     onset = app._hold_capture_onset
     assert onset.policy == 'eligible'
     assert onset.boundary == 9.75
-    assert app._hold_capture_duck_confirmed_at == 10.7
-    assert onset.confirmed_at == 10.7
+    assert app._hold_capture_duck_confirmed_at == 10.1
+    assert onset.confirmed_at == 10.1
     app.stop_recording()
     assert app._hold_capture_onset is None
     assert app._hold_capture_duck_confirmed_at is None
@@ -535,6 +539,9 @@ def test_404_strict_cases_preserve_confirmed_sample_boundary(app, monkeypatch, c
     start(app)
     assert app._hold_capture_onset.policy == 'strict'
     assert app._hold_capture_onset.boundary == app._hold_capture_duck_confirmed_at == 10.0
+    # Command/Ava holds retain the strict duck boundary; ordinary holds use
+    # 618's request-relative pre-roll regardless of media ownership.
+    app.command_mode_recording = True
     for streaming in (False, True):
         c = consumer(app, [frame(0, 9.9), frame(1, 10.05), frame(2, 10.2)])
         monkeypatch.setattr(module.thread_registry, 'spawn', lambda *args, **kwargs: None)

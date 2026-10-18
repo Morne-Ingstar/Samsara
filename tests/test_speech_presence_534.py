@@ -176,7 +176,8 @@ def test_other_final_call_sites_gate_before_decode(name):
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name==name)
     calls = [n for n in ast.walk(method) if isinstance(n, ast.Call)]
     gates = [n for n in calls if isinstance(n.func, ast.Name) and n.func.id=='skip_decode']
-    decodes = [n for n in calls if isinstance(n.func, ast.Attribute) and n.func.attr in {'transcribe', '_decode_hotkey_audio'}]
+    decodes = [n for n in calls if isinstance(n.func, ast.Attribute)
+               and n.func.attr in {'transcribe', '_decode_hotkey_audio', '_decode_session_audio'}]
     assert gates and decodes and min(n.lineno for n in gates)<min(n.lineno for n in decodes)
 
 

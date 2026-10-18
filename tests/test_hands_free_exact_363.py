@@ -38,6 +38,12 @@ ROWS = [
     ('open notepad and volume thirty', 'dictate_staged', None),
     ('please invent a command', 'dictate_staged', None),
 ]
+# 415's default literal-only policy supersedes these older admission rows.
+# Keep their existing node IDs so CI can compare every original case.
+ROWS = [pytest.param(text, 'dictate_staged' if text in {
+    'scroll down', 'page up', 'open', 'find tab', 'Um, SHOW COMMANDS!',
+} else expected, previous, id=f'{text}-{expected}-{previous}')
+        for text, expected, previous in ROWS]
 
 
 @pytest.fixture(scope='module')
@@ -143,7 +149,9 @@ def test_opt_out_preserves_reserved_set(lane, live):
     assert manager.dispatch_utterance('scratch that', SIGNALS).kind == 'scratch_success'
     assert not manager.dictate_pending_buffer
     clock[0] += 3
-    assert manager.dispatch_utterance('scroll down', SIGNALS).kind == 'hands_free_command_executed'
+    assert manager.dispatch_utterance('scroll down', SIGNALS).kind == 'dictate_staged'
+    assert manager.dictate_pending_buffer == 'scroll down'
+    assert DictatePreviewSession._is_reserved_hands_free_command(manager, 'scratch that')
 
 
 def test_low_confidence_command_is_refused_without_staging(lane):

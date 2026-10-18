@@ -315,8 +315,7 @@ def test_the_stop_phrases_come_from_the_config_key():
     call = _manager_call()
     passed = {kw.arg: ast.unparse(kw.value) for kw in call.keywords}
     assert "stop_phrases" in passed["stop_phrases"] or "stop_phrases" in str(passed)
-    assert "'stop_phrases'" in passed["stop_phrases"]
-    assert "command_mode" in passed["stop_phrases"]
+    assert "config_defaults.cfg_get(self.config, 'command_mode.stop_phrases')" in passed["stop_phrases"]
 
 
 # ---------------------------------------------------------------------------

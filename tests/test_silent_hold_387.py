@@ -101,7 +101,10 @@ def test_shared_batch_backstop_runs_after_decoder_guard(make_worker, monkeypatch
     backstop = Mock(return_value=True)
     monkeypatch.setattr(transcript_gates, '_is_hallucinated_segments', backstop)
     worker._final_pass()
-    backstop.assert_called_once()
+    # Recovery retries the same admitted PCM once, guarding each decode.
+    assert session.app.model.transcribe.call_count == 2
+    assert backstop.call_count == 2
+    assert backstop.call_args_list[0] == backstop.call_args_list[1]
     assert session.on_final.call_args.args == (None,)
     session.app.process_transcription.assert_not_called()
 
@@ -112,10 +115,12 @@ def test_one_guard_line_contains_signals_without_transcript(make_worker, caplog)
         worker._final_pass()
     lines = [record.getMessage() for record in caplog.records
              if '[GUARD] streaming final discarded:' in record.getMessage()]
-    assert len(lines) == 1
-    for signal in ('avg_logprob=', 'compression_ratio=', 'temperature=', 'speech_level='):
-        assert signal in lines[0]
-    assert 'A complete ordinary sentence' not in lines[0]
+    assert worker._session.app.model.transcribe.call_count == 2
+    assert len(lines) == 2  # One diagnostic per rejected original/recovery decode.
+    for line in lines:
+        for signal in ('avg_logprob=', 'compression_ratio=', 'temperature=', 'speech_level='):
+            assert signal in line
+        assert 'A complete ordinary sentence' not in line
 
 
 @pytest.mark.parametrize('logprob,expected', [(-2.4, None), (-3.2, None),
@@ -207,7 +212,7 @@ def test_release_caller_passes_measured_signals_before_finalizing(make_worker):
                      logger=logging.getLogger('387-release'),
                      HOLD_RELEASE_TAIL_SPEECH_THRESHOLD=FLOOR)
     exec(compile(ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[])),
-                 str(ROOT / 'dictation.py'), 'exec'), namespace)
+                 __file__, 'exec'), namespace)
     app = SimpleNamespace(config={}, hotkey_pressed=False, play_sound=Mock(),
         _dictation_consumer=SimpleNamespace(finish_capture=Mock(),
             wait_for_streaming_release_tail=Mock(return_value=dict(reason='silence',

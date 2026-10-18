@@ -19,7 +19,7 @@ C. Ava could not be interrupted. A mode switch, an abort phrase or leaving
    nothing, and the cancellation is chipped.
 """
 import collections
-import subprocess
+import runpy
 import sys
 import threading
 import time
@@ -171,14 +171,12 @@ class TestScheduleLifecycle:
 # ---------------------------------------------------------------------------
 
 class TestThreadDiscipline:
-    def test_checker_passes_on_the_working_tree(self):
-        result = subprocess.run(
-            [sys.executable, "-X", "utf8", "-B",
-             str(ROOT / "tools" / "check_thread_discipline.py")],
-            capture_output=True, text=True, cwd=str(ROOT),
-        )
-        assert result.returncode == 0, (
-            f"thread discipline check failed:\n{result.stdout}\n{result.stderr}")
+    def test_checker_passes_on_the_working_tree(self, capsys):
+        with pytest.raises(SystemExit) as result:
+            runpy.run_path(str(ROOT / "tools" / "check_thread_discipline.py"), run_name="__main__")
+        captured = capsys.readouterr()
+        assert result.value.code == 0, captured.out + captured.err
+        assert "Thread discipline check PASSED" in captured.out
 
     def test_ci_runs_the_checker(self):
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

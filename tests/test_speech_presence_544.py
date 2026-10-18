@@ -393,7 +393,8 @@ def test_delayed_hold_start_sound_updates_bound_context_without_changing_batch_g
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DictationApp')
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'play_sound')
     timing = SimpleNamespace(feedback_started=Mock(), feedback_finished=Mock())
-    ns = dict(speech_presence=presence, np=np, current_stage_timing=lambda: timing)
+    ns = dict(speech_presence=presence, np=np, current_stage_timing=lambda: timing,
+              time=time, logger=logging.getLogger(__name__))
     exec(compile(ast.Module(body=[method], type_ignores=[]), '<544-play>', 'exec'), ns)
     fake = app(0)
     fake._hotkey_recording = True
@@ -401,6 +402,7 @@ def test_delayed_hold_start_sound_updates_bound_context_without_changing_batch_g
     fake._sound_cache = {'start': np.zeros((1920, 1))}
     fake._resolve_playback_output = lambda: 7
     fake._sound_stream_device = 7
+    fake._sound_stream = SimpleNamespace(active=True)
     fake._buffer_lock = threading.Lock()
     monkeypatch.setattr(presence, 'perf_counter', lambda: .2)
     ns['play_sound'](fake, 'start')

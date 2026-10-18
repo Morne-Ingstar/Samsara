@@ -13,6 +13,12 @@ import numpy as np
 import pytest
 
 from samsara import languages as _languages
+from samsara import config_defaults, diagnostics, execution_policy
+from samsara.dictionary_store import get_dictionary_store
+from samsara.stage_timing import (
+    StageTiming, set_current_stage_timing, reset_current_stage_timing,
+)
+from samsara.session_modes import is_self_hear_capture
 from samsara.audio_engine import wake_dispatch
 from samsara.audio_engine.ring import FrameBus
 from samsara.audio_engine.wake_consumer import WakeConsumer
@@ -74,6 +80,13 @@ def rig(monkeypatch):
         audio_ducking=SimpleNamespace(SessionDucker=Mock()),
         resample_audio=lambda audio, *_: audio,
         _languages=_languages,
+        config_defaults=config_defaults,
+        diagnostics=diagnostics, get_dictionary_store=get_dictionary_store,
+        StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
+        reset_current_stage_timing=reset_current_stage_timing,
+        is_self_hear_capture=is_self_hear_capture,
+        _get_foreground_hwnd=lambda: 123,
+        _cancel_window_module=lambda: execution_policy,
         _WAKE_SESSION_CHUNK_GAP_S=1.0, _WAKE_SESSION_SEND_WORDS=('send',),
         _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S=.5,
     )

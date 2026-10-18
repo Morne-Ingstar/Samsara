@@ -250,12 +250,14 @@ class TestFatalClassification:
                     IOError("stream closed")):
             assert wake_module.classify_fatal(exc) == wake_module.FATAL_TRANSIENT, exc
 
-    def test_portaudio_errors_are_transient(self):
-        sd = pytest.importorskip("sounddevice")
-        error = getattr(sd, "PortAudioError", None)
-        if error is None:
-            pytest.skip("this sounddevice build has no PortAudioError")
-        assert wake_module.classify_fatal(error("no device")) == wake_module.FATAL_TRANSIENT
+    def test_portaudio_errors_are_transient(self, monkeypatch):
+        # Expose the dependency's exception type without initializing PortAudio.
+        class PortAudioError(Exception):
+            pass
+
+        monkeypatch.setitem(sys.modules, 'sounddevice', types.SimpleNamespace(PortAudioError=PortAudioError))
+        assert wake_module.classify_fatal(PortAudioError("no device")) == wake_module.FATAL_TRANSIENT
+        assert wake_module.classify_fatal(Exception("no device")) == wake_module.FATAL_PERMANENT
 
     def test_programming_errors_are_permanent(self):
         """A retry would re-enter the same code with the same inputs and
@@ -300,7 +302,7 @@ class TestFatalLeavesRecoverableState:
         assert state.detail.startswith("Hands-free stopped")
         assert state.action == home_signals.ACTION_RESTART_HANDS_FREE
         assert state.action_label == home_signals.RESTART_HANDS_FREE_LABEL
-        assert "OSError" in state.evidence
+        assert state.evidence == "Wake activation is on in Settings > Dictation > Wake activation"
 
     def test_the_beep_is_no_longer_the_whole_notification(self, app):
         consumer, reader = _real_consumer(app)
@@ -462,7 +464,7 @@ class TestReadinessIsRuntime:
         app._wake_consumer = _FakeConsumer(running=False)
         state = home_signals.hands_free_state(app)
         assert state.status == home_signals.UNAVAILABLE
-        assert state.detail == "Hands-free is not listening."
+        assert state.detail == "Hands-free stopped listening. Select Restart hands-free below to try again."
         assert state.action == home_signals.ACTION_RESTART_HANDS_FREE
         assert home_signals.mic_available(app) is True
 
@@ -511,7 +513,7 @@ class TestReadinessIsRuntime:
         app.available_mics = []
         app._wake_consumer = _FakeConsumer(running=False)
         state = home_signals.hands_free_state(app)
-        assert state.detail == "Microphone unavailable."
+        assert state.detail == "Your selected device is unavailable. Choose another in Settings > General > Microphone."
         assert state.action == ""        # no button reconnects a microphone
 
 
@@ -540,7 +542,8 @@ class TestOutcomeSchema:
         hints = [h for h in home_signals.diagnostic_hints(app) if h.id == "diag.misses"]
         assert hints, "repeated command failure still gets no guidance"
         assert hints[0].text == "3 of your last 3 commands were not recognised."
-        assert "threshold 3" in hints[0].evidence
+        assert hints[0].evidence == "Open the command list to review what Samsara can hear in this window."
+        assert (hints[0].action_label, hints[0].action) == ("View window commands", "cheatsheet")
 
     def test_one_miss_short_of_the_threshold_says_nothing(self, app, monkeypatch):
         monkeypatch.setattr(home_signals, "corrections_waiting", lambda a: 0)
@@ -592,7 +595,7 @@ class TestOutcomeSchema:
         app._show_dispatch_outcome_chip(sm.DispatchOutcome(kind="command_miss"))
         rec = app._outcome_ring[-1]
         assert isinstance(rec, outcome_ring.OutcomeRecord)
-        assert (rec.label, rec.kind, rec.source) == ("MISS", "error", "command_miss")
+        assert (rec.label, rec.kind, rec.source) == ("heard: (nothing) — not a command", "error", "command_miss")
         assert rec.at > 0
 
     def test_a_directly_raised_chip_still_classifies_from_its_label(self, app):
@@ -608,9 +611,10 @@ class TestOutcomeSchema:
         from samsara.ui import home_qt
         app._show_dispatch_outcome_chip(sm.DispatchOutcome(kind="command_miss"))
         rec = app._outcome_ring[-1]
-        assert (rec[0], rec[1]) == ("MISS", "error")
-        assert home_qt.classify_outcome(rec[0], rec[1]) == "miss"
+        assert (rec[0], rec[1]) == ("heard: (nothing) — not a command", "error")
+        assert home_qt.classify_outcome("MISS", "error") == "miss"  # Legacy tuple label.
         assert home_qt.render_outcome(app, rec)[0] == home_qt.KIND_MISSED
+        assert home_qt.render_outcome(app, ("MISS", "error", 1.0))[0] == home_qt.KIND_MISSED
         assert home_qt.outcome_ring(app)[-1] is rec
 
     def test_the_old_shapes_are_still_readable(self, app):

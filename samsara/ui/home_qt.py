@@ -763,7 +763,6 @@ def last_typed_text(app) -> str:
 def render_outcome(app, outcome) -> tuple:
     """(kind label, content) for an outcome tuple (label, kind, ts): the
     kind in plain words first, then what it was about.
-
     Command records carry a catalog id alongside their short live-chip label.
     The row resolves that id through the cached ring lookup; old records and
     removed commands keep their stored human text. Chips outside the three
@@ -771,7 +770,8 @@ def render_outcome(app, outcome) -> tuple:
     label, kind = str(outcome[0]), str(outcome[1])
     record = outcome_ring_schema.as_record(outcome)
     command_id = record.canonical_id if record is not None else ""
-    cls = "command" if command_id and kind == "success" else classify_outcome(label, kind)
+    cls = ("miss" if outcome_ring_schema.is_command_miss(record) else
+           "command" if command_id and kind == "success" else classify_outcome(label, kind))
     if cls == "typed":
         text = last_typed_text(app).replace('\n', ' ').strip()
         return (KIND_DICTATED, text)

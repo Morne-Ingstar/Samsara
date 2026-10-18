@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -345,15 +346,15 @@ class TestWakeConsumerPollLoopFailsLoud:
         app.exit_command_mode.assert_called_once()
 
     def test_loop_death_during_ava_command_session_force_exits_it(self):
-        """2026-07-19 incident report item 6: this handler used to force-
-        exit toggle-command-mode only -- a consumer crash while the Ava
-        command session was active left it exactly as latched-but-deaf as
-        the original incident, just via a different trigger."""
-        wc, reader, app = _make_consumer(ava_command_session_active=True)
+        """Ava shares the toggle session; a fatal must clear its live latch."""
+        from samsara.session_modes import SessionMode
+        wc, reader, app = _make_consumer(command_mode_active=True, mode='toggle')
+        app._session_mode_manager = SimpleNamespace(mode=SessionMode.AVA)
         reader.read_next = Mock(side_effect=RuntimeError("ring exploded"))
         wc._running = True
         wc._poll_loop()
-        app.exit_ava_command_session.assert_called_once()
+        app.exit_command_mode.assert_called_once()
+        assert app.command_mode_active is False
 
     def test_loop_death_without_ava_command_session_does_not_call_its_exit(self):
         wc, reader, app = _make_consumer(ava_command_session_active=False)

@@ -226,6 +226,8 @@ def test_compact_result_returns_to_retained_draft_reminder(qapp, kept, monkeypat
     r = kept(False)
     before = snapshot(r.manager)
     indicator = ListeningIndicator()
+    now_ms = [0]
+    monkeypatch.setattr(indicator, '_now_ms', lambda: now_ms[0])
     indicator.set_idle_animation(False)
     indicator.set_position('bottom-left')
     r.app.listening_indicator = indicator
@@ -254,6 +256,8 @@ def test_compact_result_returns_to_retained_draft_reminder(qapp, kept, monkeypat
             r.session._deliver_final(HOLD, None, 1.0, 0)
         else:
             r.session.cancel()
+        # The result owns the chip until its reading-time deadline expires.
+        now_ms[0] = round(indicator._chip_deadline * 1000) + 1
         for callback in timers:
             callback()
         picture('after_' + finish)

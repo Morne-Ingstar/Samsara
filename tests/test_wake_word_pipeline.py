@@ -229,13 +229,14 @@ class TestProcessTextSignature:
     def test_command_executor_disabled_mode(self, temp_commands_file):
         """With app.command_matching_enabled=False, commands should not execute."""
         import threading
+        from types import SimpleNamespace
         executor = CommandExecutor(temp_commands_file)
-        mock_app = Mock()
+        mock_app = SimpleNamespace()
         mock_app.command_matching_enabled = False
         mock_app._config_lock = threading.Lock()
         mock_app.config = {}
         # Reminder parsing must not fire for plain "copy"
-        mock_app.notification_manager.parse_remind_command.return_value = None
+        mock_app.notification_manager = SimpleNamespace(parse_remind_command=Mock(return_value=None))
         result, was_cmd = executor.process_text("copy", mock_app)
         assert was_cmd is False
         assert result == "copy"  # returned as dictation text

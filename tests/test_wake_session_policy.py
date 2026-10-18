@@ -19,7 +19,10 @@ from samsara.audio_engine.ring import FrameBus
 from samsara.audio_engine.wake_consumer import WakeConsumer, wake_session_policy
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners, WakeDispatchQueue
 from samsara.session_modes import SessionMode
-from samsara import config_defaults
+from samsara import config_defaults, execution_policy
+from samsara.stage_timing import (
+    StageTiming, set_current_stage_timing, reset_current_stage_timing,
+)
 
 
 def load_app_policy_methods():
@@ -51,6 +54,10 @@ def load_app_policy_methods():
         # top-level `from samsara import config_defaults`, so any
         # extracted method's globals must be supplied here by hand.
         config_defaults=config_defaults,
+        StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
+        reset_current_stage_timing=reset_current_stage_timing,
+        _get_foreground_hwnd=lambda: 123,
+        _cancel_window_module=lambda: execution_policy,
     )
     constants = [node for node in tree.body if isinstance(node, ast.Assign)
                  and any(isinstance(target, ast.Name) and target.id in {

@@ -167,7 +167,13 @@ class TestNoHotkeyRecordingIsUnaffected:
         args, kwargs = app.process_wake_word_buffer.call_args
         buffer, sample_rate = args
         assert sample_rate == SAMPLE_RATE
-        assert kwargs == {'oww_confirmed': False, 'owner_token': None, 'tracked': False}
+        assert set(kwargs) == {'oww_confirmed', 'owner_token', 'tracked',
+                               'last_voice_ns', 'speech_end_ns'}
+        assert kwargs['oww_confirmed'] is False and kwargs['tracked'] is False
+        assert kwargs['owner_token'] is None
+        assert all(isinstance(kwargs[key], int) and kwargs[key] > 0
+                   for key in ('last_voice_ns', 'speech_end_ns'))
+        assert kwargs['last_voice_ns'] <= kwargs['speech_end_ns']
         assert len(buffer) == len(frames)
         for actual, frame in zip(buffer, frames):
             np.testing.assert_array_equal(actual, frame.pcm.astype(np.float32) / 32767.0)

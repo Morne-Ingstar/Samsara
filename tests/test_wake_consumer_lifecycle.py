@@ -20,8 +20,6 @@ would simply not reproduce.
 """
 import ast
 import logging
-import os
-import subprocess
 import sys
 import threading
 import time
@@ -495,7 +493,8 @@ def test_timed_out_drain_cannot_be_resurrected(
         release.wait(1)
         return EMPTY
 
-    r.consumer._reader = types.SimpleNamespace(read_next=blocked_read, snap_to_head=Mock(), rewind=Mock())
+    r.consumer._reader = types.SimpleNamespace(
+        read_next=blocked_read, snap_to_head=Mock(), rewind=Mock(), _read_cursor=0)
     streaming = stop_method == 'stop_streaming'
     assert getattr(r.consumer, 'activate_streaming' if streaming else 'activate')() is True
     assert entered.wait(1)
@@ -532,7 +531,8 @@ def test_frame_failure_stops_once_and_clears_latches(
     r.app.app_state = 'wake_session'
     r.app.wake_word_triggered = True
     r.app.command_mode_active = True
-    r.app.ava_command_session_active = True
+    # Ava now uses the unified toggle session, rather than a separate latch.
+    r.app._session_mode_manager = types.SimpleNamespace(mode=SessionMode.AVA)
     r.app.config = {'command_mode': None}  # Cleanup must not re-read broken policy.
     r.consumer._hands_free_capture_duck_token = 41
     if cleanup_raises:
@@ -560,7 +560,8 @@ def test_frame_failure_stops_once_and_clears_latches(
     assert r.consumer._hands_free_capture_duck_token is None
     if kind == 'wake':
         assert not r.app.wake_word_active and not r.app.wake_word_triggered
-        assert not r.app.command_mode_active and not r.app.ava_command_session_active
+        assert not r.app.command_mode_active
+        r.app.exit_command_mode.assert_called_once()
         assert r.app.app_state == 'asleep'
         assert r.consumer._utterance_frames == []
         assert r.consumer._wake_admission is None
@@ -598,38 +599,27 @@ def test_repeating_frame_logs_are_limited_to_five_seconds(consumer_rig, monkeypa
     assert len(debug) == 2
 
 
-def test_no_live_app_module_imported(tmp_path):
-    """This file's whole point (see module docstring and
-    load_app_policy_methods above) is exercising real DictationApp policy
-    methods via AST extraction WITHOUT ever importing the actual
-    dictation.py module -- that module's import-time side effects are
-    exactly what a lightweight consumer-lifecycle test must avoid.
+def test_no_live_app_module_imported(monkeypatch):
+    """Dependency module bodies and the AST loader never request the bootstrap.
 
-    Checking sys.modules in-process is meaningless run as part of the full
-    suite: pytest imports every test module's own module-level imports
-    during collection, before any test executes, and numerous OTHER test
-    files still do `import dictation` at module level (a pre-existing,
-    known condition -- see conftest.py's hermetic-collection comment). A
-    subprocess that imports only THIS file's own dependencies is the only
-    way to test the actual invariant: that they don't transitively pull in
-    dictation.py."""
-    env = dict(os.environ, SAMSARA_HOME_DIR=str(tmp_path))
-    result = subprocess.run(
-        [sys.executable, '-c', (
-            "import sys\n"
-            "import samsara.audio_engine.continuous_consumer\n"
-            "import samsara.audio_engine.dictation_consumer\n"
-            "import samsara.audio_engine.wake_consumer\n"
-            "import samsara.session_modes\n"
-            "sys.exit(1 if 'dictation' in sys.modules else 0)\n"
-        )],
-        cwd=str(Path(__file__).resolve().parents[1]),
-        env=env, capture_output=True, text=True, timeout=30,
-    )
-    assert result.returncode == 0, (
-        "importing this file's own dependencies pulled in dictation.py "
-        f"(stdout={result.stdout!r} stderr={result.stderr!r})"
-    )
+    An active import guard also works when the shared adapter or another test
+    already installed a safe dictation module. No child process is needed.
+    """
+    import builtins
+    import samsara.session_modes as session_module
+
+    original_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        assert name != 'dictation', 'consumer dependency imported the desktop bootstrap'
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', guarded_import)
+    for module in (continuous_module, hold_module, wake_module, session_module):
+        namespace = {'__name__': module.__name__, '__package__': module.__package__}
+        path = Path(module.__file__)
+        exec(compile(path.read_text(encoding='utf-8'), str(path), 'exec'), namespace)
+    load_app_policy_methods({'_ensure_wake_consumer', '_release_wake_consumer'})
 
 
 def test_stop_reports_status_and_preserves_existing_frame_flush_contract(consumer_rig):
@@ -685,7 +675,8 @@ def test_successful_drain_keeps_frame_already_being_read(
     entered, release = threading.Event(), threading.Event()
     poll_threads.releases.append(release)
     monkeypatch.setattr(hold_module, '_THREAD_JOIN_TIMEOUT_S', 0.5)
-    frame = types.SimpleNamespace(seq=1, device_epoch=0, pcm=np.full(FRAME_SIZE, 8000, dtype=np.int16))
+    frame = types.SimpleNamespace(seq=1, device_epoch=0, t_capture=time.perf_counter(),
+                                  pcm=np.full(FRAME_SIZE, 8000, dtype=np.int16))
 
     def read_one():
         if entered.is_set():
@@ -694,7 +685,8 @@ def test_successful_drain_keeps_frame_already_being_read(
         release.wait(1)
         return frame
 
-    r.consumer._reader = types.SimpleNamespace(read_next=read_one, snap_to_head=Mock(), rewind=Mock())
+    r.consumer._reader = types.SimpleNamespace(
+        read_next=read_one, snap_to_head=Mock(), rewind=Mock(), _read_cursor=1)
     getattr(r.consumer, 'activate_streaming' if streaming else 'activate')()
     assert entered.wait(1)
     results = []
