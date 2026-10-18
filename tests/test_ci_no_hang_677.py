@@ -92,6 +92,11 @@ def test_ci_installs_and_enables_windows_thread_timeout():
     run = next(step['run'] for step in steps if step.get('name') == 'Run tests with coverage')
     assert '--timeout=120' in run.split()
     assert '--timeout-method=thread' in run.split()
+    args = run.split()
+    assert args[args.index('-n'):args.index('-n') + 2] == ['-n', '2']
+    assert '--dist loadfile' in run
+    assert '--max-worker-restart=100' in args
     requirements = (root / 'requirements-test.txt').read_text(encoding='utf-8').splitlines()
     assert 'pytest-timeout==2.4.0' in requirements
+    assert 'pytest-xdist==3.8.0' in requirements
     assert any('-r requirements-test.txt' in step.get('run', '') for step in steps)
