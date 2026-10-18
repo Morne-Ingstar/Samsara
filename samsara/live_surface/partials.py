@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from samsara.config_defaults import DEFAULTS
 from samsara.live_surface.model import EventKind, Lane, SurfaceEvent
 
 
 def cpu_final_only(app) -> bool:
     """CPU capture never schedules an additional partial decode."""
-    return str(getattr(app, "device_type", "") or app.config.get("device", "cpu")).lower() == "cpu"
+    return str(getattr(app, "device_type", "") or app.config.get("device", DEFAULTS["device"])).lower() == "cpu"
 
 
 @dataclass

@@ -1,5 +1,6 @@
 """Focused detached first-run preview launch/failure tests."""
 
+import inspect
 import os
 import subprocess
 from pathlib import Path
@@ -8,7 +9,19 @@ from unittest.mock import Mock
 import pytest
 
 import dictation
-from plugins.commands import core_utils
+from samsara import app_restart
+
+
+@pytest.fixture(autouse=True)
+def _real_preview_functions(monkeypatch):
+    # Gate adapters guard process entry points. These tests mock every launch
+    # boundary and exercise the preserved production definitions underneath.
+    for owner, name in (
+        (dictation.DictationApp, "preview_first_run"),
+        (dictation, "_monitor_preview_startup"),
+        (dictation, "_show_preview_failure"),
+    ):
+        monkeypatch.setattr(owner, name, inspect.unwrap(getattr(owner, name)))
 
 
 class _Process:
@@ -42,7 +55,7 @@ def test_preview_launch_isolated_detached_and_captures_diagnostics(
     monkeypatch.setenv("SAMSARA_HOME_DIR", str(tmp_path / "primary-profile"))
     monkeypatch.setattr(dictation, "_reap_old_preview_profiles", lambda: None)
     monkeypatch.setattr("tempfile.mkdtemp", lambda **_kwargs: str(profile))
-    monkeypatch.setattr(core_utils, "_build_restart_args", lambda: (args, cwd))
+    monkeypatch.setattr(app_restart, "build_relaunch", lambda **_kwargs: (args, cwd))
 
     def popen(actual_args, **kwargs):
         captured.update(args=actual_args, **kwargs)
@@ -137,7 +150,7 @@ def test_spawn_failure_closes_diagnostic_and_removes_unused_profile(
     monkeypatch.setattr(dictation, "_reap_old_preview_profiles", lambda: None)
     monkeypatch.setattr("tempfile.mkdtemp", lambda **_kwargs: str(profile))
     monkeypatch.setattr(
-        core_utils, "_build_restart_args", lambda: (["Samsara.exe"], str(tmp_path)),
+        app_restart, "build_relaunch", lambda **_kwargs: (["Samsara.exe"], str(tmp_path)),
     )
     monkeypatch.setattr(
         dictation.subprocess, "Popen", Mock(side_effect=OSError("spawn denied")),

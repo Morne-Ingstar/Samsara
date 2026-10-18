@@ -23,6 +23,8 @@ from samsara.constants import DEFAULT_WAKE_PHRASE
 # nonetheless found with conflicting literal defaults in the audit. See
 # The audit and follow-up review explain the reasoning behind each choice.
 _EXTRA_DEFAULTS = {
+    # The legacy webhook bridge accepts its own section, separate from CLI agents.
+    "smart_actions.timeout_s": 30,
     "updates.include_prerelease": False,
     # Matches samsara.constants.DEFAULT_WAKE_PHRASE and the live config
     # value; the debug UI's 'samsara' / 'hey samsara' literals were the

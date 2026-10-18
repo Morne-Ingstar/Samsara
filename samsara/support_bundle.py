@@ -207,14 +207,14 @@ def _version_text(config: Any) -> str:
         compute_mode = "CPU"
     else:
         compute_mode = "Unknown"
-    model_size = config.get("model_size", "unknown")
+    model_size = config.get("model_size")
     model_sizes = {
         "tiny", "tiny.en", "base", "base.en", "small", "small.en",
         "medium", "medium.en", "large-v3",
     }
     if not isinstance(model_size, str) or model_size not in model_sizes:
         model_size = "unknown"
-    compute_type = config.get("compute_type", "unknown")
+    compute_type = config.get("compute_type")
     if not isinstance(compute_type, str) or compute_type not in {"float16", "int8", "float32"}:
         compute_type = "unknown"
     lines = [

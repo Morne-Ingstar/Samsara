@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from samsara.agent_channel.claude_reply import spoken_form
+from samsara.config_defaults import DEFAULTS
 from samsara.paths import samsara_home_dir
 from samsara.runtime import thread_registry
 
@@ -183,7 +184,7 @@ class CliAgent:
         config = config or {}
         home = home or samsara_home_dir()
         cwd = Path(config.get("cwd") or DEFAULT_CWD)
-        timeout = max(0.01, float(config.get("timeout_s", 240)))
+        timeout = max(0.01, float(config.get("timeout_s", DEFAULTS["agent_channel.timeout_s"])))
         allow_writes = bool(config.get("allow_writes", False))
         prompt = f"{config.get('voice_preamble') or DEFAULT_PREAMBLE}\n\n{question.strip()}"
         if not cwd.is_dir():

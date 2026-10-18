@@ -16,6 +16,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import samsara
+from samsara.config_defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class SmartActionsBridge:
     def __init__(self, config: dict):
         self._endpoint_url: str = config.get('endpoint_url', '').strip()
         self._auth_header: str = config.get('auth_header', '').strip()
-        self._timeout_s: int = int(config.get('timeout_s', 30))
+        self._timeout_s: int = int(config.get('timeout_s', DEFAULTS['smart_actions.timeout_s']))
 
     def is_configured(self) -> bool:
         return bool(self._endpoint_url)

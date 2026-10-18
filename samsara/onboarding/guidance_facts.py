@@ -87,7 +87,7 @@ def facts_from_config(config: dict[str, Any] | None) -> GuidanceFacts:
     wake_aliases: tuple[str, ...] = ()
 
     profiles: list[WakeProfileFacts] = []
-    for profile in config.get("wake_profiles", ()):
+    for profile in config.get("wake_profiles", DEFAULTS["wake_profiles"]):
         if not isinstance(profile, dict) or not profile.get("enabled", True):
             continue
         phrase = _word(profile.get("phrase"), "")

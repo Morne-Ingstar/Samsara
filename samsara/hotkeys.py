@@ -11,7 +11,7 @@ import time
 
 import keyboard
 
-from samsara import ai_preferences, flight_recorder, listening_display, hold_key_rules
+from samsara import ai_preferences, config_defaults, flight_recorder, listening_display, hold_key_rules
 from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY, DEFAULT_CONTINUOUS_COMMIT_TRIGGER
 from samsara.runtime import thread_registry
 from samsara.session_modes import SessionMode
@@ -805,7 +805,7 @@ class HotkeyCluster:
             buttons.add(btn)
             if cfg.get('suppress_button', True):
                 suppress.add(btn)
-        hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        hotkey = str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey']) or '').strip().lower()
         if hotkey in _MOUSE_HOTKEY_BUTTONS:
             buttons.add(hotkey)
             suppress.add(hotkey)
@@ -937,8 +937,7 @@ class HotkeyCluster:
           hotkey") and the Settings hotkey row (mouse_hotkey_status) all say
           the mouse hotkey is disabled and why.
         """
-        from samsara import config_defaults
-        hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        hotkey = str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey']) or '').strip().lower()
         fallback = config_defaults.DEFAULTS['hotkey']
         self._mouse_hotkey_disabled_reason = f"{why}: {reason}" if reason else why
         if hotkey in _MOUSE_HOTKEY_BUTTONS:
@@ -1022,7 +1021,7 @@ class HotkeyCluster:
             key = SimpleNamespace(name=button_name, hold_name=button_name, hold_keys=frozenset(down))
             (self.on_key_press if pressed else self.on_key_release)(key)
             return
-        hotkey = str(self.config.get('hotkey', '') or '').strip().lower()
+        hotkey = str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey']) or '').strip().lower()
         logger.debug("[MOUSE] event button=%s pressed=%s main_hotkey=%r | %s",
                      button_name, pressed, hotkey, self._hotkey_state_text())
         try:

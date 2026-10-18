@@ -2,6 +2,7 @@
 
 App state and prompt/language resolution stay in the DictationApp facade.
 """
+from samsara.config_defaults import DEFAULTS
 
 def get_transcription_params(config, *, language, initial_prompt,
                              no_speech_threshold, log_prob_threshold):
@@ -22,10 +23,10 @@ def get_transcription_params(config, *, language, initial_prompt,
     Returns dict of parameters for model.transcribe()
     Performance modes:
     - fast: Lowest latency, may sacrifice some accuracy
-    - balanced: Good speed/accuracy tradeoff (default)
-    - accurate: Best accuracy, slower
+    - balanced: Good speed/accuracy tradeoff
+    - accurate: Best accuracy, slower (default)
     """
-    mode = config.get('performance_mode', 'balanced')
+    mode = config.get('performance_mode', DEFAULTS['performance_mode'])
 
     base_params = {
         # Single source of truth for the Whisper `language` kwarg --

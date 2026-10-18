@@ -2009,7 +2009,7 @@ class DictationApp(CommandFastPathMixin):
             output_device_resolver=self._resolve_playback_output,
         )
         self.alarm_manager.on_alarm_triggered = self._show_alarm_notification
-        if self.config.get('alarms', {}).get('enabled', True):
+        if config_defaults.cfg_get(self.config, 'alarms.enabled'):
             self.alarm_manager.start()
 
         # Contextual hint system
@@ -4470,7 +4470,7 @@ class DictationApp(CommandFastPathMixin):
             # only added.
             stop_fn=_session_stop,
             stop_phrases=_config_phrase_list(
-                self.config.get('command_mode', {}).get('stop_phrases', [])),
+                config_defaults.cfg_get(self.config, 'command_mode.stop_phrases')),
             # Queue 80: "scratch everything" asks out loud before discarding.
             speak_fn=self._speak_session_notice,
             fragment_clear_gap_s=__import__('samsara.speech_pace', fromlist=['clear_gap_s']).clear_gap_s(self.config),
@@ -6157,8 +6157,7 @@ class DictationApp(CommandFastPathMixin):
         Disabled (intent.shadow_enabled false) costs one dict lookup -- no
         import of the gate, no thread, no file."""
         try:
-            section = self.config.get('intent')
-            if isinstance(section, dict) and not section.get('shadow_enabled', True):
+            if not config_defaults.cfg_get(self.config, 'intent.shadow_enabled'):
                 return
             shadow = getattr(self, '_intent_shadow', None)
             if shadow is None:
@@ -6668,7 +6667,7 @@ class DictationApp(CommandFastPathMixin):
             # explicitly pressed the hotkey — all captured audio is intentional
             # speech. VAD was stripping 80% of audio, causing garbled output.
             transcribe_params['vad_filter'] = False
-            perf_mode = self.config.get('performance_mode', 'balanced')
+            perf_mode = self.config.get('performance_mode', config_defaults.DEFAULTS['performance_mode'])
             
             # Guard: Whisper hallucinates on very short audio (<0.5s).
             # It outputs phantom phrases like "Thank you" or "Subtitles by Amara".
@@ -7560,7 +7559,7 @@ class DictationApp(CommandFastPathMixin):
         "activate hermes". Drop trained .onnx files there and restart to activate
         the OWW pre-filter for those profiles.
         """
-        profiles = self.config.get('wake_profiles', [])
+        profiles = self.config.get('wake_profiles', config_defaults.DEFAULTS['wake_profiles'])
         if not profiles:
             return
 
@@ -7597,7 +7596,7 @@ class DictationApp(CommandFastPathMixin):
         Returns the first matching profile dict, or None if no profile matched.
         Called from process_wake_word_buffer before the legacy single-phrase check.
         """
-        for profile in self.config.get('wake_profiles', []):
+        for profile in self.config.get('wake_profiles', config_defaults.DEFAULTS['wake_profiles']):
             if not profile.get('enabled', True):
                 continue
             if not wake_profiles.profile_admitted(
@@ -8495,7 +8494,7 @@ class DictationApp(CommandFastPathMixin):
             # empty transcription. Disable it so RMS-gated audio passes through.
             if not self._vad_available:
                 transcribe_params['vad_filter'] = False
-            perf_mode = self.config.get('performance_mode', 'balanced')
+            perf_mode = self.config.get('performance_mode', config_defaults.DEFAULTS['performance_mode'])
 
             if stage_timing is not None:
                 stage_timing.mark(
@@ -8850,7 +8849,7 @@ class DictationApp(CommandFastPathMixin):
             logger.info(
                 "[WAKE-CHECK] transcript=%r profiles=%r",
                 describe_text(corrected_lower),
-                [t.get('phrase') for t in self.config.get('wake_profiles', []) if t.get('enabled', True)],
+                [t.get('phrase') for t in self.config.get('wake_profiles', config_defaults.DEFAULTS['wake_profiles']) if t.get('enabled', True)],
             )
 
             # Phase 1: check multi-wake profiles BEFORE the legacy single-phrase check.
@@ -8866,7 +8865,7 @@ class DictationApp(CommandFastPathMixin):
 
             matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
             if (matched and self.app_state == 'asleep'
-                    and any(t.get('enabled', True) for t in self.config.get('wake_profiles', []))
+                    and any(t.get('enabled', True) for t in self.config.get('wake_profiles', config_defaults.DEFAULTS['wake_profiles']))
                     and not getattr(buffer, 'primary_hit', False)):
                 # A profile detector's hit cannot authorize the generic wake phrase.
                 matched = False
@@ -10619,7 +10618,7 @@ class DictationApp(CommandFastPathMixin):
                 # with the hotkey-path overrides (VAD off, clean-slate reset)
                 # applied -- see _build_hotkey_transcribe_params.
                 transcribe_params = self._build_hotkey_transcribe_params()
-                perf_mode = self.config.get('performance_mode', 'balanced')
+                perf_mode = self.config.get('performance_mode', config_defaults.DEFAULTS['performance_mode'])
 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
@@ -12007,7 +12006,7 @@ class DictationApp(CommandFastPathMixin):
 
         Temp-dir creation, arg construction, and the actual spawn are ALL
         inside the try below -- previously only the Popen call itself was
-        guarded, so a failure in mkdtemp()/_build_restart_args() would raise
+        guarded, so a failure in mkdtemp()/build_relaunch() would raise
         uncaught, and a Popen failure was logged but otherwise invisible.
         This is a manually-triggered dev action with no other feedback
         path, so any failure here now also surfaces a visible toast instead
@@ -12016,7 +12015,7 @@ class DictationApp(CommandFastPathMixin):
         import tempfile
         # Reuses the same frozen-vs-source argv logic as the "restart" voice
         # command instead of duplicating it here.
-        from plugins.commands.core_utils import _build_restart_args
+        from samsara.app_restart import build_relaunch
 
         home_dir = None
         diagnostic_handle = None
@@ -12026,7 +12025,7 @@ class DictationApp(CommandFastPathMixin):
             home_dir = tempfile.mkdtemp(prefix="samsara_firstrun_")
             logger.info(f"[PREVIEW] Launching first-run preview, SAMSARA_HOME_DIR={home_dir}")
 
-            args, cwd = _build_restart_args()
+            args, cwd = build_relaunch(argv=[])
             env = os.environ.copy()
             env["SAMSARA_HOME_DIR"] = home_dir
 

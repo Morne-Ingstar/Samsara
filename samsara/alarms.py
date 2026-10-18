@@ -22,6 +22,7 @@ from typing import Optional, Callable, Dict, List, Any
 # Windows sound playback
 import sys
 
+from samsara.config_defaults import DEFAULTS
 from samsara.log import get_logger
 from samsara.output_devices import output_sample_rate
 from samsara.runtime import thread_registry
@@ -47,7 +48,7 @@ except ImportError:
 def get_default_alarm_config() -> Dict[str, Any]:
     """Return the default alarms configuration."""
     return {
-        "enabled": True,
+        "enabled": DEFAULTS["alarms.enabled"],
         "complete_hotkey": "f7",    # User completed the task, gets streak credit
         "dismiss_hotkey": "f8",     # Just silence it, no credit, breaks streak
         "nag_interval_seconds": 60,
@@ -210,7 +211,7 @@ class AlarmManager:
     @property
     def enabled(self) -> bool:
         """Check if alarms are globally enabled."""
-        return self.alarms_config.get('enabled', True)
+        return self.alarms_config.get('enabled', DEFAULTS['alarms.enabled'])
     
     @property
     def complete_hotkey(self) -> str:
@@ -776,7 +777,7 @@ class AlarmManager:
         config = self.get_config()
         if 'alarms' not in config:
             config['alarms'] = get_default_alarm_config()
-        was_enabled = config['alarms'].get('enabled', True)
+        was_enabled = config['alarms'].get('enabled', DEFAULTS['alarms.enabled'])
         config['alarms']['enabled'] = enabled
         self.save_config()
         if enabled and not was_enabled and self.running:
