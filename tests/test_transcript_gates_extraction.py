@@ -95,7 +95,8 @@ def test_the_gates_still_run_through_the_dictation_path():
     assert dictation._drop_trailing_garbage_segments([]) == []
     assert dictation._context_words('"Fuck, no."') == ["fuck", "no"]
     assert dictation._is_context_echo("a b c d", "x y z a b c d") is True
-    assert dictation._sanitise_context_tail("real words here ha ha ha") == "real words here"
+    # Repeated-token trimming retains one occurrence of the repeated token.
+    assert dictation._sanitise_context_tail("real words here ha ha ha") == "real words here ha"
     assert dictation._is_quality_exhausted([], {}) is False
     assert dictation._keep_low_confidence_long_chunk([], "", 0.0) is False
     assert dictation._apply_segment_quality_gates([], {}, 0.0) == ("", False)

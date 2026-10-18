@@ -256,11 +256,22 @@ def test_child_tree_kill_records_before_fake_kill(path, name, monkeypatch, trace
 def test_model_pull_termination_trace(monkeypatch):
     events = []
     monkeypatch.setattr(process_exit, 'trace_exit', lambda *a, **k: events.append('trace'))
-    owner = SimpleNamespace(_ollama_recheck_timer=SimpleNamespace(stop=lambda: None),
-                            _pull_proc=SimpleNamespace(pid=987, terminate=lambda: events.append('terminate')))
-    function = extracted('samsara/ui/ava_guide_qt.py', 'closeEvent', logger=logging.getLogger())
-    function(owner, SimpleNamespace(accept=lambda: events.append('accept')))
-    assert events == ['trace', 'terminate', 'accept']
+    from unittest.mock import Mock
+    from PySide6.QtWidgets import QLineEdit
+    owner = SimpleNamespace(_generation=1, _pages=[], _picker=None,
+                            _ollama_recheck_timer=SimpleNamespace(stop=lambda: events.append('stop-timer')),
+                            _pull_proc=SimpleNamespace(pid=987, terminate=lambda: events.append('terminate')),
+                            _consent_check=Mock(), _api_key=Mock(), _show_key=Mock(),
+                            hide=lambda: events.append('hide'))
+    function = extracted('samsara/ui/ava_guide_qt.py', 'closeEvent',
+                         logger=logging.getLogger(), QLineEdit=QLineEdit)
+    function(owner, SimpleNamespace(ignore=lambda: events.append('ignore')))
+    # The guide is now reusable: closing invalidates its callbacks and hides
+    # it, without killing the model download or reporting a process death.
+    assert events == ['stop-timer', 'hide', 'ignore']
+    assert owner._closed and owner._generation == 2
+    owner._consent_check.setChecked.assert_called_once_with(False)
+    owner._api_key.setEchoMode.assert_called_once_with(QLineEdit.EchoMode.Password)
 
 
 def test_update_request_trace_after_helper_before_quit(monkeypatch):

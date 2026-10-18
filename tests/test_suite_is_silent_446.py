@@ -14,7 +14,10 @@ def test_all_output_boundaries_record_without_devices(silent_audio, request):
     import winsound
     from PySide6.QtWidgets import QApplication
 
-    assert Path(silent_audio.source) == Path(__file__).with_name('conftest.py').resolve()
+    reference = Path(__file__).with_name('conftest.py').read_text(encoding='utf-8')
+    block = reference.split('# BEGIN SILENT AUDIO 446\n', 1)[1].split('\n# END SILENT AUDIO 446\n', 1)[0]
+    # xdist workers inherit the exact guard via sitecustomize, before conftest.
+    assert block in Path(silent_audio.source).read_text(encoding='utf-8')
     assert silent_audio.nodeid == request.node.nodeid
 
     winsound.PlaySound('SystemHand', winsound.SND_ALIAS)
@@ -209,6 +212,7 @@ def test_winrt_and_edge_playback_use_recorded_streams(silent_audio):
     winrt._tts_stream = None
     winrt._tts_buffer = collections.deque()
     winrt._tts_buffer_lock = threading.Lock()
+    winrt._tts_callback_progress = [None]
     winrt._open_persistent_stream()
     assert isinstance(winrt._tts_stream, silent_audio.SilentStream)
     winrt._close_persistent_stream()

@@ -81,8 +81,9 @@ def test_dictionary_items_use_readable_theme_tokens(qapp, palette):
 
 
 def test_new_install_defaults_keep_tts_opt_in_and_use_edge_ava():
-    assert config_defaults.DEFAULTS["tts.enabled"] is False
-    assert config_defaults.DEFAULTS["tts.engine"] == "edge"
+    # Spoken feedback is on by default; alarms remain an explicit opt-in.
+    assert config_defaults.DEFAULTS["tts.enabled"] is True
+    assert config_defaults.DEFAULTS["tts.engine"] == "winrt"
     assert config_defaults.DEFAULTS["tts.voice_id"] == "en-US-AvaNeural"
     assert config_defaults.DEFAULTS["alarms.enabled"] is False
 
@@ -93,8 +94,9 @@ def test_settings_footer_buttons_size_to_their_text(qapp):
     window = build_settings_window()
     window.resize(1100, 760)
     window.layout().activate()
-    for label in ("Close", "Apply && Close"):
+    for label in ("Cancel", "Apply && Close"):
         button = next(btn for btn in window.findChildren(QPushButton) if btn.text() == label)
-        assert button.minimumWidth() >= button.sizeHint().width()
+        # Layouts use the natural size hint; the minimum is the 44px hit floor.
+        assert button.width() >= button.sizeHint().width()
         assert button.contentsRect().width() >= button.fontMetrics().horizontalAdvance(label)
     window.close()

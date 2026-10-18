@@ -31,6 +31,7 @@ def test_profile_isolation():
     # Mock() auto-vivifies that attribute as another Mock, which doesn't
     # support the `with` protocol a real lock does.
     app._wake_session_lock = threading.RLock()
+    app._wake_pending_stage_timings = []
     app.config = {}
     app._wake_session_send_word = None
     app._start_wake_session = Mock(wraps=lambda **kw: DictationApp._start_wake_session(app, **kw))

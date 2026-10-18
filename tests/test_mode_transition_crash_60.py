@@ -56,21 +56,27 @@ def _manager(on_mode_change=None, on_error=None):
 
 def test_mode_change_side_effect_raising_surfaces_error_and_leaves_defined_state(caplog):
     on_error = Mock()
-    mgr = _manager(on_mode_change=Mock(side_effect=RuntimeError("preview teardown failed")), on_error=on_error)
-    mgr.force_mode(SessionMode.DICTATE)      # entry side effect fails too; must not raise
+    def present(mode):
+        if mode is SessionMode.AVA:
+            raise RuntimeError("preview teardown failed")
+    mgr = _manager(on_mode_change=Mock(side_effect=present), on_error=on_error)
+    mgr.force_mode(SessionMode.DICTATE)
     assert mgr.mode is SessionMode.DICTATE
     on_error.reset_mock()
 
     outcome = mgr.dispatch_utterance("Oracle.", GOOD)
 
-    assert outcome.kind == "mode_switch"
+    assert outcome.kind == "mode_switch_failed"
     assert outcome.detail["mode"] is SessionMode.AVA
-    assert "RuntimeError: preview teardown failed" in outcome.detail["side_effect_error"]
-    assert mgr.mode is SessionMode.AVA                       # defined: the switch stands
+    assert "RuntimeError: preview teardown failed" in outcome.detail["error"]
+    assert outcome.detail["reverted_to"] is SessionMode.DICTATE
+    assert mgr.mode is SessionMode.DICTATE                   # display and routing roll back together
     on_error.assert_called_once()
-    assert outcome_chip(outcome.kind, outcome.detail) == ("→ AVA: display error", "warning")
-    assert any("side effects failed; mode is ava" in r.getMessage() for r in caplog.records)
-    # The session keeps working: the next utterance goes to Ava.
+    assert outcome_chip(outcome.kind, outcome.detail) == ("✗ RuntimeError: preview t…", "error")
+    assert any("failed; reverted to dictate" in r.getMessage() for r in caplog.records)
+    # The session keeps working: a successful retry can reach Ava.
+    mgr._on_mode_change = Mock()
+    assert mgr.dispatch_utterance("Oracle.", GOOD).kind == "mode_switch"
     assert mgr.dispatch_utterance("what time is it in Tokyo", GOOD).kind == "ava_dispatched"
 
 

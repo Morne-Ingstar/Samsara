@@ -7,6 +7,8 @@ level); the session state machine is the real SessionModeManager.
 """
 
 import copy
+import ast
+import textwrap
 import inspect
 import json
 import re
@@ -109,6 +111,10 @@ def _state(mgr):
                 "revision": value.revision,
                 "flags": (value.manual_commit, value.edited),
             }
+        if value.__class__.__name__ == "ClearDraftUndo":
+            # Compare the take-back state, never deepcopy its synchronization lock.
+            return {name: value_snapshot(item) for name, item in vars(value).items()
+                    if name not in ("_lock", "_clock")}
         return repr(copy.deepcopy(value))
 
     snapshot = {}
@@ -117,8 +123,8 @@ def _state(mgr):
             continue
         if name == "_dispatch_lock":
             continue                            # synchronization, not session state
-        snapshot[name] = value_snapshot(value) if not name.startswith("_stack") else repr(
-            [(i.kind, i.payload, i.mode, i.extra) for i in getattr(value, "_items", [])] or value)
+        snapshot[name] = value_snapshot(value) if name != "_stack" else repr(
+            [(i.kind, i.payload, i.mode, i.extra) for i in value._items])
     return snapshot
 
 
@@ -210,10 +216,18 @@ def test_observer_only_ever_sees_text_and_the_outcome_kind():
 def test_hook_sits_after_dispatch_and_outcome_handling():
     import dictation
     src = inspect.getsource(dictation.DictationApp._handle_command_mode_utterance)
-    dispatch = src.index("outcome = manager.dispatch_utterance(text, signals)")
-    handled = src.index("self._handle_session_dispatch_outcome(outcome, text)")
-    preview = src.index("self._dictate_preview.on_utterance_final(")
-    hook = src.index("self._intent_shadow_observe(text, outcome)")
+    tree = ast.parse(textwrap.dedent(src))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    def line(name):
+        matches = [node.lineno for node in calls
+                   if (isinstance(node.func, ast.Attribute) and node.func.attr == name)
+                   or (isinstance(node.func, ast.Name) and node.func.id == name)]
+        assert len(matches) == 1, name
+        return matches[0]
+    dispatch = line("dispatch_utterance")
+    handled = line("_handle_session_dispatch_outcome")
+    preview = line("on_session_final")
+    hook = line("_intent_shadow_observe")
     assert dispatch < handled < preview < hook
     assert src.count("self._intent_shadow_observe(") == 1
 
@@ -348,7 +362,8 @@ def test_shadow_module_never_reads_a_window_title():
 
 def test_would_have_done_labels(tmp_path, resolver):
     config = {"intent": {"shadow_dir": str(tmp_path)}}
-    shadow = sh.IntentShadow(lambda: resolver, lambda: config, spawn=_NoThread(), pid_fn=lambda: None)
+    shadow = sh.IntentShadow(lambda: resolver, lambda: config, spawn=_NoThread(),
+                             pid_fn=lambda: 4242, name_fn=lambda _pid: "chrome.exe")
     for text in ("open chrome", "yesterday I told my sister we should close tab before dinner",
                  "clothes tab", "next tab and then close tab"):
         shadow.observe(text, "dictate_staged")
@@ -361,7 +376,7 @@ def test_would_have_done_labels(tmp_path, resolver):
     assert by_text["next tab and then close tab"]["chain"] == ["builtin.next_tab", "builtin.close_tab"]
     for line in by_text.values():
         assert isinstance(line["elapsed_us"], int) and line["elapsed_us"] >= 0
-        assert line["app"] is None
+        assert line["app"] == "chrome.exe"
 
 
 def test_one_file_per_local_day(tmp_path, resolver):

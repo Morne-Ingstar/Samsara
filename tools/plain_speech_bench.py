@@ -215,7 +215,9 @@ class LiveTiers:
         def run(text):
             nonlocal counter
             counter += 1
-            deadline = time.monotonic() + DEADLINE_MS / 1000
+            # The shared lane also checks deadlines now. This offline bench
+            # measures late answers rather than discarding them at either gate.
+            deadline = math.inf
             menus, prompts = [], []
             menu_source = app.command_executor.ava_menu
             ask_source = ask_ollama.ask_ollama

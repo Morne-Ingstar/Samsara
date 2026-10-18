@@ -18,10 +18,12 @@ dispatch -- these rules are what makes wiring it in arguable later.
 
 import contextlib
 import io
+from functools import partial
 
 import pytest
 
 from samsara.intent import resolve as rs
+from samsara.command_scope import MatchContext
 
 APPS = ("chrome", "spotify", "discord", "notepad", "vs code", "firefox", "obsidian", "steam", "terminal")
 PREFIX = "samsara"
@@ -35,7 +37,10 @@ def records():
 
 @pytest.fixture(scope="module")
 def resolver(records):
-    return rs.IntentResolver(records, app_names=APPS)
+    resolver = rs.IntentResolver(records, app_names=APPS)
+    # Browser accelerators are intentionally unavailable without a browser.
+    resolver.resolve = partial(resolver.resolve, context=MatchContext.for_app("chrome.exe"))
+    return resolver
 
 
 # ---------------------------------------------------------------------------

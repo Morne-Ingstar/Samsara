@@ -284,8 +284,12 @@ def test_the_delivery_path_is_the_one_that_preserves_the_clipboard():
 
     app_src = (REPO / "dictation.py").read_text(encoding="utf-8")
     body = app_src.split("def _paste_preserving_clipboard(", 1)[1].split("\n    def ", 1)[0]
+    assert "return _paste.paste_preserving_clipboard(" in body
+    # Delivery moved behind this facade; check the real implementation too.
+    paste_src = (REPO / "samsara" / "paste.py").read_text(encoding="utf-8")
+    body = paste_src.split("def paste_preserving_clipboard(", 1)[1].split("\ndef ", 1)[0]
     assert "injection_safety.window_integrity()" in body      # elevated windows refused
-    assert "paste_with_preservation(" in body                 # clipboard saved + restored
+    assert "paste_with_preservation_fn(" in body              # clipboard saved + restored
     assert "_record_undoable_paste(" in body                  # "undo that" still works
 
     handlers = (REPO / "samsara" / "handlers.py").read_text(encoding="utf-8")

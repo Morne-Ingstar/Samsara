@@ -7,6 +7,7 @@ compiled out of the source with ast, the same way test_wake_session_policy does.
 from samsara.log import describe_text, safe_exception
 import ast
 import logging
+import time
 import types
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +16,11 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from samsara import session_modes, transcript_gates
+from samsara import session_modes, transcript_gates, config_defaults, diagnostics, flight_recorder
+from samsara import languages as _languages
+from samsara.dictionary_store import get_dictionary_store
+from samsara.hallucination_filter import SignoffContext, is_signoff_hallucination
+from samsara.stage_timing import StageTiming, set_current_stage_timing, reset_current_stage_timing
 from samsara.command_registry import CommandMatcher
 from samsara.session_modes import (
     CommandDispatchResult,
@@ -226,6 +231,13 @@ def _load_methods():
     module.__dict__.update(
         describe_text=describe_text, safe_exception=safe_exception,
         np=np, logger=logging.getLogger("dictation_extract_54"), SessionMode=SessionMode,
+        StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
+        reset_current_stage_timing=reset_current_stage_timing,
+        time=time, config_defaults=config_defaults, diagnostics=diagnostics,
+        flight_recorder=flight_recorder, _languages=_languages,
+        get_dictionary_store=get_dictionary_store,
+        SignoffContext=SignoffContext, is_signoff_hallucination=is_signoff_hallucination,
+        is_self_hear_capture=session_modes.is_self_hear_capture,
         resample_audio=lambda audio, *a: audio,
         # Queue 128 moved these pure, Qt/model-free gates out of dictation.
         # Import their production module instead of duplicating its AST seam.
@@ -267,6 +279,12 @@ def _app(mode=SessionMode.COMMAND, text="", ghost=False):
     app._ensure_session_mode_manager = lambda: manager
     segs = [SimpleNamespace(text=text)] if text else []
     app.model = SimpleNamespace(transcribe=lambda audio, **kw: (iter(segs), SimpleNamespace(language="en")))
+    def decode(audio, params, **kwargs):
+        segments, info = app.model.transcribe(audio, **params)
+        return list(segments), info
+    # Session decode now materializes the model's segment iterator before
+    # diagnostics and transcript gates read it. Keep the injected model seam.
+    app._decode_session_audio = decode
     for name in _METHODS:
         fn = _MOD.__dict__[name]
         setattr(app, name, types.MethodType(fn, app) if name != "_log_cmd_utt_dropped" else fn)

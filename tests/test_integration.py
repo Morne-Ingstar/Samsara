@@ -8,6 +8,7 @@ import sys
 import threading
 import numpy as np
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -103,10 +104,8 @@ class TestCommandModeToggle:
         from samsara.commands import CommandExecutor
         executor = CommandExecutor(temp_commands_file)
 
-        mock_app = Mock()
-        mock_app.command_matching_enabled = False
-        mock_app._config_lock = threading.Lock()
-        mock_app.config = {}
+        mock_app = SimpleNamespace(command_matching_enabled=False,
+                                   _config_lock=threading.Lock(), config={}, save_config=Mock())
 
         result, was_command = executor.process_text("enable command mode", mock_app)
 
@@ -119,10 +118,8 @@ class TestCommandModeToggle:
         from samsara.commands import CommandExecutor
         executor = CommandExecutor(temp_commands_file)
 
-        mock_app = Mock()
-        mock_app.command_matching_enabled = True
-        mock_app._config_lock = threading.Lock()
-        mock_app.config = {}
+        mock_app = SimpleNamespace(command_matching_enabled=True,
+                                   _config_lock=threading.Lock(), config={}, save_config=Mock())
 
         result, was_command = executor.process_text("disable command mode", mock_app)
 

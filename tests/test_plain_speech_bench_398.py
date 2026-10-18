@@ -133,8 +133,8 @@ def test_production_model_menu_prompt_grounding_and_late_deadline(live, monkeypa
     assert run('can you turn that down a bit').canonical_id is None
     monkeypatch.setattr(ask_ollama, 'ask_ollama', lambda *a, **k: 'CONFIRM Test action.\nAPP open | made up app')
     assert run('can you turn that down a bit').canonical_id is None
-    # Eligibility remains production, including long sentences.
-    assert not run('can you please turn down the volume of the computer for me').detail['model_called']
+    # Exercise the current production length boundary, without a provider call.
+    assert not run('please ' * (ava_command_session.MAX_REQUEST_WORDS + 1)).detail['model_called']
     # Prove that only expiry is disabled, not closed-world acceptance. Artificial
     # clock advances after provider reply; no real sleep or model load.
     monkeypatch.setattr(ask_ollama, 'ask_ollama', fake_ask)

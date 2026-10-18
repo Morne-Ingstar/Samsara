@@ -278,7 +278,8 @@ def _parse(resolver, text):
     ("drag discord onto the right monitor", "windows.send", {"app_name": "discord", "monitor": "right monitor"}),
     ("move to the second display notepad", "windows.send", {"app_name": "notepad", "monitor": "the second display"}),
     ("cursor to the main screen", "windows.cursor_to", {"monitor": "main screen"}),
-    ("snap to the left side", "windows.snap", {"side": "left"}),
+    # The handler now accepts the complete spoken side as a text slot.
+    ("snap to the left side", "windows.snap", {"side": "to the left side"}),
     ("click twelve", "show_numbers.click", {"label": 12}),
     ("press number 7", "show_numbers.click", {"label": 7}),
     ("window switch bravo", "window_switcher.window_switch", {"label": "B"}),

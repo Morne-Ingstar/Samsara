@@ -108,14 +108,17 @@ def test_rejection_logs_counts_only_and_does_not_try_shorter_prefix(rig, monkeyp
     original = executor._matcher.match
     def match(text, context=None):
         seen.append(text)
-        return (entry, 'private sentence') if len(seen) == 1 else (shorter, 'cats')
+        # The same complete query must stay deterministic across admission
+        # probes. A shortened retry would resolve to a different command.
+        return (entry, 'private sentence') if text == 'volume down private sentence' else (shorter, 'cats')
     monkeypatch.setattr(executor._matcher, 'match', match)
     app.config['commands']['grammar_tier'] = False
     with caplog.at_level('INFO'):
         result = executor.process_text('volume down private sentence', force_commands=True)
     assert result.state is State.MISS
     assert calls == []
-    assert seen == ['volume down private sentence']
+    # Admission may probe again; every query must retain the complete text.
+    assert seen and all(text == 'volume down private sentence' for text in seen)
     assert "[CMD] 'volume down' needs the whole sentence; treating '2 extra words' as not a command" in caplog.text
     assert 'private sentence' not in caplog.text
     monkeypatch.setattr(executor._matcher, 'match', original)
@@ -189,8 +192,19 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
         if len(fn.args.args) < 2:
             continue
         parameter = fn.args.args[1].arg
+        body = fn.body
+        if (body and isinstance(body[0], ast.If)
+                and isinstance(body[0].test, ast.Name) and body[0].test.id == parameter
+                and not body[0].orelse and len(body[0].body) == 1
+                and isinstance(body[0].body[0], ast.Return)
+                and isinstance(body[0].body[0].value, ast.Constant)
+                and body[0].body[0].value.value is False):
+            # Selection-edit handlers READ the remainder only to refuse it.
+            # They must stay no-argument commands, rather than swallow prose.
+            assert not executor._takes_argument(entry), entry.phrase
+            body = body[1:]
         if any(isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id == parameter
-               for statement in fn.body for n in ast.walk(statement)):
+               for statement in body for n in ast.walk(statement)):
             assert executor._takes_argument(entry), entry.phrase
             if not entry.param_schema:
                 readers.append(entry)

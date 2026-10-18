@@ -11,6 +11,11 @@ from tests.test_outcome_chip import _dispatch_outcome_kinds
 
 GOLDEN = json.loads((Path(__file__).parent / "fixtures/session_feedback_pre_move.json")
                     .read_text(encoding="utf-8"))
+# Preserve every historical case; 658/695 added this producer after extraction.
+GOLDEN["producer_kinds"].append("ava_edit_handled")
+GOLDEN["cases"].append({"id": "ava-edit-handled", "kind": "ava_edit_handled",
+                      "detail": {}, "expected": None, "mapped": True,
+                      "canonical_id": "", "ttl": 0})
 
 
 def test_every_original_name_is_the_same_export():

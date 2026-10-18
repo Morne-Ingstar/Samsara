@@ -212,7 +212,10 @@ def test_abort_phrase_that_breaks_a_built_in_is_warned(qapp, phrase, fragment):
 
 def test_descriptions_state_the_edges(qapp):
     _app, win, _save = _win({})
-    explanations = {key: row.full_help for key, row in win._rows_by_widget.items()}
+    # LookupMap materializes lazy Settings destinations on indexed lookup.
+    keys = ('cmd_matching_enabled', 'cmd_exit_earcon', 'cmd_utterance_silence',
+            'cmd_dictate_utterance_silence', 'cmd_abort_phrases')
+    explanations = {key: win._rows_by_widget[key].full_help for key in keys}
     assert mq._CMD_MATCHING_DESC in explanations['cmd_matching_enabled']
     assert "typed as text" in explanations['cmd_matching_enabled']
     assert mq._CMD_EXIT_EARCON_DESC in explanations['cmd_exit_earcon']

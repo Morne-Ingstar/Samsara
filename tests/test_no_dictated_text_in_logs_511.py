@@ -35,7 +35,21 @@ NOT_USER_TEXT |= {("dictation.py", "[PREVIEW]"), ("dictation.py", "[CAL]"),
                   ("samsara/echo_cancel.py", "[AEC-CAL] Calibration failed:"),
                   ("samsara/ui/mic_setup_wizard_qt.py", "[WIZARD] Wake calibration not saved:")}
 LOG_TRANSPORTS = {("dictation.py", "print"),
-                  ("samsara/audio_engine/wake_consumer.py", "_log_frame")}
+                  ("samsara/audio_engine/wake_consumer.py", "_log_frame"),
+                  ("samsara/microphone_recovery.py", "warn_once"),
+                  ("samsara/update_installer.py", "note")}
+
+
+def test_hardware_and_installer_log_transports_receive_only_diagnostics():
+    # These helpers accept a generic message; pin every caller so their
+    # transport exemption cannot allow a future dictation-text argument.
+    for file, name in (("samsara/microphone_recovery.py", "warn_once"),
+                       ("samsara/update_installer.py", "note")):
+        calls = [node for node in ast.walk(tree(file)) if isinstance(node, ast.Call)
+                 and ((isinstance(node.func, ast.Attribute) and node.func.attr == name)
+                      or (isinstance(node.func, ast.Name) and node.func.id == name))]
+        assert calls
+        assert not any(unsafe_names(arg) for call in calls for arg in call.args)
 
 
 @pytest.fixture(autouse=True)
