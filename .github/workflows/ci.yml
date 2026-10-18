@@ -19,7 +19,7 @@ jobs:
     # Automation dependencies during collection. Linux cannot exercise the
     # supported runtime and fails before the meaningful suites can run.
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
