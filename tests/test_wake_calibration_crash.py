@@ -27,6 +27,26 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 
+@pytest.fixture(autouse=True)
+def _owned_guides(monkeypatch, qt_widget_scope):
+    """Keep guide callbacks/timers inside the test that creates the guide."""
+    from samsara.ui.mic_setup_wizard_qt import _WizardWindow
+    from shiboken6 import isValid
+    windows = []
+    original = _WizardWindow.__init__
+
+    def remember(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        windows.append(self)
+
+    monkeypatch.setattr(_WizardWindow, '__init__', remember)
+    yield
+    for window in reversed(windows):
+        if isValid(window):
+            with qt_widget_scope(window):
+                pass
+
+
 # ---------------------------------------------------------------------------
 # calibrate_wake_mic, compiled from dictation.py without importing it
 # ---------------------------------------------------------------------------
@@ -66,7 +86,7 @@ class _FakeClock:
 
 def _harness_class(clock):
     namespace = {"np": np, "math": math, "time": clock}
-    exec(compile(_load_calibration(), str(ROOT / "dictation.py"), "exec"), namespace)
+    exec(compile(_load_calibration(), "<wake-calibration-harness-ast>", "exec"), namespace)
     return namespace["Harness"]
 
 
@@ -245,7 +265,7 @@ def test_refused_sample_is_shown_in_the_guide_with_counts(qapp, monkeypatch):
 
     text = window._oww_result_lbl.text()
     assert "only 5 of the 30" in text and "0.5 s" in text and "Nothing was saved" in text
-    assert wizard._WARNING.lower() in window._oww_result_lbl.styleSheet().lower()
+    assert wizard.theme.WARNING.lower() in window._oww_result_lbl.styleSheet().lower()
 
 
 def test_successful_calibration_shows_floor_frames_and_seconds(qapp, monkeypatch):
@@ -293,6 +313,7 @@ def test_stop_audio_never_closes_the_stream_from_the_calling_thread(qapp, monkey
     stream = _BlockingStream()
     monkeypatch.setattr(wizard.sd, "InputStream", lambda **kwargs: stream)
     monkeypatch.setattr(wizard, "_detect_capture_rate", lambda device: 16000)
+    monkeypatch.setattr(wizard, '_capture_channels', lambda device: 1)
 
     stop = threading.Event()
     window._audio_stop = stop

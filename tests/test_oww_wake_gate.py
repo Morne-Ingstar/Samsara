@@ -56,10 +56,10 @@ def test_oww_hit_dispatches_directly_to_process_wake_word_buffer(monkeypatch):
     spawn.assert_not_called()
     app.process_wake_word_buffer.assert_called_once_with(
         buffer_copy, wake_consumer_module.SAMPLE_RATE,
-        oww_confirmed=True, owner_token=owner_token, tracked=False,
+        oww_confirmed=True, owner_token=None, tracked=False,
     )
     assert app._oww_wake_detected is False
-    app._open_hands_free_capture_duck.assert_called_once()
+    app._open_hands_free_capture_duck.assert_not_called()
     app._close_hands_free_capture_duck.assert_not_called()
 
 
@@ -131,10 +131,10 @@ def test_oww_hit_stays_confirmed_when_whisper_profiles_are_enabled(monkeypatch):
     spawn.assert_not_called()
     app.process_wake_word_buffer.assert_called_once_with(
         buffer_copy, wake_consumer_module.SAMPLE_RATE,
-        oww_confirmed=True, owner_token=owner_token, tracked=False,
+        oww_confirmed=True, owner_token=None, tracked=False,
     )
     assert app._oww_wake_detected is False
-    app._open_hands_free_capture_duck.assert_called_once()
+    app._open_hands_free_capture_duck.assert_not_called()
     app._close_hands_free_capture_duck.assert_not_called()
 
 
@@ -148,16 +148,19 @@ def test_profile_fallback_still_reaches_whisper_without_primary_oww_hit(monkeypa
     spawn = Mock()
     monkeypatch.setattr(wake_consumer_module.thread_registry, "spawn", spawn)
     buffer_copy = [np.zeros(160, dtype=np.float32)]
+    # 344 requires the profile's own hit; merely enabling a profile cannot
+    # admit arbitrary room audio. Passive admission never ducks media (404).
+    app._oww_profile_hits = {'hermes'}
 
     consumer._flush(buffer_copy, owner_token=None)
 
     spawn.assert_not_called()
     app.process_wake_word_buffer.assert_called_once_with(
         buffer_copy, wake_consumer_module.SAMPLE_RATE,
-        oww_confirmed=False, owner_token=owner_token, tracked=False,
+        oww_confirmed=True, owner_token=None, tracked=False,
     )
     detector.reset.assert_not_called()
-    app._open_hands_free_capture_duck.assert_called_once()
+    app._open_hands_free_capture_duck.assert_not_called()
     app._close_hands_free_capture_duck.assert_not_called()
 
 

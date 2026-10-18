@@ -28,6 +28,7 @@ import pytest
 from samsara.audio_engine import wake_consumer as wake_module
 from samsara.audio_engine.frame import FRAME_SIZE, SAMPLE_RATE
 from samsara.audio_engine.ring import FrameBus
+from tests.test_wake_calibration_crash import _owned_guides
 
 ROOT = Path(__file__).resolve().parent.parent
 WIZARD_SRC = ROOT / "samsara" / "ui" / "mic_setup_wizard_qt.py"
@@ -345,11 +346,13 @@ def test_fallback_conversion_is_the_engines_own_callback(monkeypatch):
     from samsara.audio_engine.wake_prefilter import NativeRateFrames, pcm_to_float
 
     monkeypatch.setattr(sounddevice, "query_devices",
-                        lambda device=None, kind=None: {"default_samplerate": 44100, "name": "x"})
+                        lambda device=None, kind=None: {"default_samplerate": 44100, "name": "x",
+                                                        'max_input_channels': 1, 'hostapi': 0})
+    monkeypatch.setattr(sounddevice, 'query_hostapis', lambda: [{'name': 'Windows WASAPI'}])
     monkeypatch.setattr(sounddevice, "InputStream",
-                        lambda **kw: types.SimpleNamespace(start=lambda: None))
+                        lambda **kw: types.SimpleNamespace(start=lambda: None, stop=lambda: None, close=lambda: None))
     bus = FrameBus()
-    engine = AudioCaptureEngine(bus, config={})
+    engine = AudioCaptureEngine(bus, config={'microphone': 30})
     engine._open_stream(30)
     reader = bus.new_reader()
     rng = np.random.default_rng(1)
@@ -360,6 +363,7 @@ def test_fallback_conversion_is_the_engines_own_callback(monkeypatch):
         engine._on_audio_block(block[:, None], len(block), None, None)
         ring_frame = pcm_to_float(reader.read_next().pcm)
         assert np.array_equal(conv.convert(block), ring_frame)
+    engine._teardown_stream_only()
 
 
 # ---------------------------------------------------------------------------

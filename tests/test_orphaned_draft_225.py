@@ -1,6 +1,7 @@
 """Queue 225: a staged DICTATE draft must survive session exit visibly."""
 
 import types
+import pytest
 
 from samsara.session_modes import SessionMode, SessionModeManager
 from samsara.streaming import DictatePreviewSession
@@ -27,7 +28,19 @@ def _preview(manager):
     return preview
 
 
-def test_session_exit_parks_and_next_dictate_preview_names_the_waiting_draft():
+@pytest.mark.timeout(5, method='thread')
+def test_session_exit_parks_and_next_dictate_preview_names_the_waiting_draft(monkeypatch):
+    # This is a synchronous state/renderer test. Entering Qt would dispatch
+    # unrelated callbacks left by a neighbour, not exercise draft retention.
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QDialog
+
+    def unexpected_loop(*args, **kwargs):
+        pytest.fail('Draft restoration must not enter or pump a Qt event loop')
+
+    monkeypatch.setattr(QCoreApplication, 'processEvents', unexpected_loop)
+    monkeypatch.setattr(QCoreApplication, 'exec', unexpected_loop)
+    monkeypatch.setattr(QDialog, 'exec', unexpected_loop)
     manager = SessionModeManager(
         abort_phrases=[],
         foreground_exe_resolver=lambda: "test.exe",
@@ -36,6 +49,7 @@ def test_session_exit_parks_and_next_dictate_preview_names_the_waiting_draft():
         command_dispatch_fn=lambda text: None,
         agent_dispatch_fn=lambda text: None,
         buffer_dictate_until_commit=True,
+        clock=lambda: 1000.0,
     )
     manager._dictate_pending_buffer = "one two three"
 
@@ -48,3 +62,4 @@ def test_session_exit_parks_and_next_dictate_preview_names_the_waiting_draft():
     assert manager.dictate_pending_buffer == "one two three"
     assert preview._overlay.prompts == ["3 words waiting — say finish to paste, or clear"]
     assert preview._overlay.transcripts == [(["one two three"], "", True)]
+    assert preview._words == [('one', 0), ('two', 0), ('three', 0)]

@@ -155,6 +155,8 @@ def _decode_as_whisper_would(r, buffer, monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import Mock
     import threading
+    from samsara import diagnostics, languages
+    from samsara.dictionary_store import get_dictionary_store
 
     heard = []
 
@@ -172,8 +174,13 @@ def _decode_as_whisper_would(r, buffer, monkeypatch):
     app._filter_dictation_language = lambda text, info: text
     app.voice_training_window = SimpleNamespace(apply_corrections=lambda text: text)
     app._emit_wake_trace = Mock()
-    app._log_history = Mock()
+    app._log_history = Mock(side_effect=lambda **kw: pytest.fail(
+        f"Synthetic wake decode failed: {kw.get('display_text')}") if kw.get('status') == 'failed' else None)
+    app._probe_media_transport = lambda text: None
     monkeypatch.setattr(dictation, 'resample_audio', lambda audio, *args: audio, raising=False)
+    monkeypatch.setattr(dictation, 'get_dictionary_store', get_dictionary_store, raising=False)
+    monkeypatch.setattr(dictation, 'diagnostics', diagnostics, raising=False)
+    monkeypatch.setattr(dictation, '_languages', languages, raising=False)
     dictation.DictationApp._decode_wake_word_buffer(app, buffer, SAMPLE_RATE)
     return heard
 

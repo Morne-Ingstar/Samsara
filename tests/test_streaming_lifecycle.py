@@ -25,6 +25,7 @@ def _bare_streaming_session():
     session._capture_cleanup_lock = threading.Lock()
     session._capture_cleaned = False
     session._finished_notified = False
+    session._parking_enabled = False
     return session, app, consumer
 
 

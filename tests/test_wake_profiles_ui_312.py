@@ -1,6 +1,7 @@
 from copy import deepcopy
 from pathlib import Path
 from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QEventLoop
 
 from samsara import config_defaults
 from samsara.config_schema import SETTINGS_SCHEMA
@@ -38,11 +39,11 @@ def test_schema_default_is_the_shipped_profile_list():
     assert config_defaults.DEFAULTS["wake_profiles"] == shipped
 
 
-def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path):
+def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path, qt_widget_scope):
     window = _window(monkeypatch, tmp_path)
-    try:
+    with qt_widget_scope(window):
         window.show_tab("Dictation")
-        qapp.processEvents()
+        qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
         profiles = deepcopy(window.app.config["wake_profiles"])
         controls = window._widgets["wake_profile_controls"]
         assert len(controls) == len(profiles) == 3
@@ -50,7 +51,7 @@ def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path):
         assert row.page_name == "Dictation"
         assert row.disclosure is window._pages["Dictation"].advanced
         assert "second" not in row.help.accessibleDescription().lower()
-        assert "you" in row.help.accessibleDescription().lower()
+        assert 'matching trained model' in row.help.accessibleDescription().lower()
 
         window._search_edit.setText("claude")
         window._apply_search_filter()
@@ -58,7 +59,7 @@ def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path):
         assert row.isVisible()
         proof = tmp_path
         proof.mkdir(parents=True, exist_ok=True)
-        qapp.processEvents()
+        qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
         QWidget.grab(window).save(str(proof / "312-wake-profiles.png"))
 
         controls[0]["phrase"].setText("start claude")
@@ -74,5 +75,3 @@ def test_profile_editor_search_and_save_round_trip(qapp, monkeypatch, tmp_path):
         assert saved[0]["mode"] == profiles[0]["mode"]
         assert saved[1]["enabled"] is False
         assert window.app.config["wake_profiles"] == profiles
-    finally:
-        window.deleteLater()

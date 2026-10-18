@@ -21,7 +21,6 @@ import dictation
 
 
 DEFAULT_WAKE_WORD_CONFIG = {
-    "enabled": True,
     "phrase": "jarvis",
     "phrase_options": ["jarvis", "hey jarvis"],
     "quick_silence_timeout": 1.0,
@@ -76,6 +75,7 @@ def _make_app(config):
 def _already_migrated_config():
     return {
         "mode": "hold",
+        "wake_word_enabled": True,
         "wake_word_config": copy.deepcopy(DEFAULT_WAKE_WORD_CONFIG),
         "wake_profiles": copy.deepcopy(DEFAULT_WAKE_PROFILES),
     }

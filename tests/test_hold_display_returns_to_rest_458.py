@@ -15,7 +15,7 @@ from samsara.ui.live_surface_qt import LiveSurfaceWidget
 
 
 @pytest.fixture
-def hold(qapp, monkeypatch):
+def hold(qapp, monkeypatch, qt_widget_scope):
     # The gate supplies exact DictationApp definitions without its bootstrap.
     from dictation import DictationApp
     from samsara import streaming
@@ -53,8 +53,10 @@ def hold(qapp, monkeypatch):
     flush()
     yield SimpleNamespace(app=app, c=controller, clock=clock, flush=flush,
                           session=session, partials=partials, token=token)
+    widget = controller.widget
     controller.close()
-    qapp.processEvents()
+    with qt_widget_scope(widget):
+        pass
 
 
 def release_and_deliver(h):
@@ -132,8 +134,15 @@ def test_non_streaming_toggle_and_hands_free_finish_settle_their_result(hold, la
         indicator.set_session_mode('HANDS FREE')
         h.app._show_dispatch_outcome_chip(DispatchOutcome(kind='dictate_committed'))
     h.flush()
-    h.clock[0] = 2.0
-    h.c.refresh_expired()
+    # Captured and typed are separate protected receipts. Each gets its
+    # reading time, so settle at most these two finite deadlines.
+    for _ in range(2):
+        notice = h.c.view().notice
+        if notice.kind is NoticeKind.NONE:
+            break
+        assert notice.expires_at is not None
+        h.clock[0] = notice.expires_at + .001
+        h.c.refresh_expired()
     assert h.c.view().notice.kind is NoticeKind.NONE
     assert h.c.view().capture is (CaptureState.OFF if lane is Lane.TOGGLE
                                   else CaptureState.HANDS_FREE_LISTENING)

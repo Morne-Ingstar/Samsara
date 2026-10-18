@@ -146,7 +146,7 @@ def test_capture_cutoff_is_not_extended_by_cleanup(ducked):
     cutoff = c._capture_not_after
     c.finish_capture()
     assert c._capture_not_after == cutoff
-    assert not c._frame_inside_capture_duck(SimpleNamespace(t_capture=cutoff + .1))
+    assert not c._frame_inside_capture_duck(SimpleNamespace(t_capture=cutoff + .1, seq=0, device_epoch=0))
 
 @pytest.mark.parametrize('held_count', [0, 2])
 def test_streaming_immediate_quiet_uses_floor_with_fewer_than_three_frames(held_count):

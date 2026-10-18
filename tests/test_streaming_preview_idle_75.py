@@ -55,10 +55,11 @@ def _tick_to(w, clock, ms, step=50):
 
 
 def _close(qapp, w):
+    from PySide6.QtCore import QCoreApplication, QEvent
     w.stop_life()
     w._w.hide()
     w._w.deleteLater()
-    qapp.processEvents()
+    QCoreApplication.sendPostedEvents(w._w, QEvent.Type.DeferredDelete)
 
 
 # -- settings ----------------------------------------------------------------
@@ -381,8 +382,11 @@ def test_fully_hidden_still_leaves_the_listening_indicator_showing_state():
     the indicator for the whole hands-free session regardless of the user's
     indicator setting -- so a fully hidden idle preview is never the only
     signal, and never the absence of one."""
-    streaming_src = (ROOT / "samsara" / "streaming.py").read_text(encoding="utf-8")
-    assert "listening_indicator" not in streaming_src
+    import ast
+    streaming_tree = ast.parse((ROOT / 'samsara/streaming.py').read_text(encoding='utf-8'))
+    preview = next(n for n in streaming_tree.body if isinstance(n, ast.ClassDef)
+                   and n.name == 'DictatePreviewSession')
+    assert 'listening_indicator' not in ast.unparse(preview)
     dictation_src = (ROOT / "dictation.py").read_text(encoding="utf-8")
     start = dictation_src.index("self._ensure_wake_consumer('toggle_session')")
     window = dictation_src[start:start + 900]

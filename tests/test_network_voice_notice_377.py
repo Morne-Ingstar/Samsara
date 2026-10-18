@@ -13,7 +13,7 @@ from samsara.ui import network_voice_notice
 
 
 @pytest.fixture
-def make_window(qapp, monkeypatch):
+def make_window(qapp, monkeypatch, qt_widget_scope):
     import sounddevice
     from samsara import autostart, listening_display
     from samsara.ui.first_run_qt import ComponentsPage
@@ -50,9 +50,8 @@ def make_window(qapp, monkeypatch):
 
     yield make
     for window in windows:
-        window.hide()
-        window.deleteLater()
-    qapp.processEvents()
+        with qt_widget_scope(window):
+            pass
 
 
 def respond(monkeypatch, accept):
@@ -120,7 +119,7 @@ def test_existing_user_inline_choice_is_pending(make_window, local):
     window = make_window('edge')
     panel = window._widgets['network_voice_existing']
     assert panel.isVisible()
-    assert panel.parentWidget() == window._pages['Audio'].widget()
+    assert window._pages['Audio'].widget().isAncestorOf(panel)
     assert window._widgets['tts_engine'].currentText() == 'edge'
     texts = [w.text() for w in panel.findChildren(QLabel)]
     assert network_voice_notice.NOTICE_HEADING in texts
@@ -201,8 +200,8 @@ def test_notice_layout_is_compact(make_window, qapp):
     assert dialog.height() - (buttons[0].y() + buttons[0].height()) <= 28
     panel = window._widgets['network_voice_existing']
     actions = panel.findChildren(QPushButton)
-    assert actions[0].x() > panel.width() // 3
-    assert panel.width() - (actions[-1].x() + actions[-1].width()) <= theme.SPACE_4 + 2
+    assert actions[0].mapTo(panel, QPoint()).x() > panel.width() // 3
+    assert panel.width() - (actions[-1].mapTo(panel, QPoint()).x() + actions[-1].width()) <= theme.SPACE_4 + 2
     dialog.hide()
     dialog.deleteLater()
 

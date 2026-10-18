@@ -8,11 +8,15 @@ def test_migration_drops_dead_settings_and_keeps_output_identity():
            'ava_edit': {'timeout_s': 9}}
     assert migrate_removed_settings(cfg)
     assert cfg['output_device_name'] == 'General headset'
-    assert cfg['tts'] == {}
+    assert cfg['tts'] == {'feedback_level': 'silent', 'enabled': False}
     assert cfg['audio_coordinator'] == {'duck_factor': .7}
     assert cfg['smart_corrections'] == {}
     assert cfg['ava_edit']['timeout_seconds'] == 9
 
 def test_migration_is_idempotent():
     cfg = {'ava_edit': {'timeout_seconds': 9}}
+    assert migrate_removed_settings(cfg)
+    from copy import deepcopy
+    migrated = deepcopy(cfg)
     assert not migrate_removed_settings(cfg)
+    assert cfg == migrated

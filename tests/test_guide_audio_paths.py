@@ -6,6 +6,7 @@ and faulthandler being armed at boot (dictation.py source, never imported).
 import ast
 import os
 import sys
+import time
 import types
 from pathlib import Path
 from unittest.mock import Mock
@@ -123,7 +124,8 @@ def _load_enable_faulthandler():
     # The function moved to samsara/boot.py in 27; the call stays in dictation.py.
     tree = ast.parse((ROOT / "samsara" / "boot.py").read_text(encoding="utf-8-sig"))
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_enable_faulthandler")
-    namespace = {"os": os, "sys": sys}
+    namespace = {"os": os, "sys": sys, "time": time,
+                 "migrate_before_boot": lambda: None}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), "samsara/boot.py", "exec"), namespace)
     return namespace["_enable_faulthandler"]
 

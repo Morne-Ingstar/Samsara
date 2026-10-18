@@ -16,6 +16,7 @@ convention as test_wake_consumer_hotkey_deafness.py (Mock() auto-creates
 truthy attributes, which would silently defeat these exact guards).
 """
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -23,6 +24,7 @@ import pytest
 from samsara.audio_engine import wake_consumer as wc_module
 from samsara.audio_engine.wake_consumer import WakeConsumer
 from samsara.audio_engine.frame import FRAME_SIZE
+from samsara.session_modes import SessionMode
 
 
 class _FakeClock:
@@ -42,14 +44,21 @@ def _make_wc(monkeypatch, ava_command_session_active=True, tts_speaking=False):
     engine = Mock()
     reader = Mock()
     reader.read_next = Mock(return_value=EMPTY)
+    reader._read_cursor = 1
     engine.register_consumer = Mock(return_value=reader)
 
-    app = Mock()
+    app = SimpleNamespace()
     app.wake_word_active = True
     app._hotkey_recording = False
-    app.command_mode_active = False
-    app.ava_command_session_active = ava_command_session_active
-    app.config = {'command_mode': {'mode': 'hold'}}
+    app.command_mode_active = ava_command_session_active
+    app.ava_command_session_active = False  # retired independent latch
+    app._session_mode_manager = SimpleNamespace(mode=SessionMode.AVA)
+    app.config = {'command_mode': {'mode': 'toggle' if ava_command_session_active else 'hold'}}
+    app._dictation_silence_timeout = None
+    app._wake_rearm_needs_onset = False
+    app._wake_profile_detectors = {}
+    app._open_hands_free_capture_duck = Mock(return_value=7)
+    app._close_hands_free_capture_duck = Mock()
     app.is_speaking = False  # VAD-detected USER speech onset -- unrelated flag
     app.silence_start = None
     app._command_executed_at = None
@@ -79,10 +88,7 @@ def _make_wc(monkeypatch, ava_command_session_active=True, tts_speaking=False):
 def _loud_frame(epoch=0):
     """A frame whose RMS clears any plausible speech threshold."""
     pcm = np.full(FRAME_SIZE, 20000, dtype=np.int16)
-    frame = Mock()
-    frame.pcm = pcm
-    frame.device_epoch = epoch
-    frame.seq = 0
+    frame = SimpleNamespace(pcm=pcm, device_epoch=epoch, seq=0, t_capture=1000.0)
     return frame
 
 

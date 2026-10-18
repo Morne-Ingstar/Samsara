@@ -10,8 +10,25 @@ from samsara.audio_engine import wake_consumer as wake_module
 from samsara.stage_timing import StageTiming
 
 
-def test_dictation_module_is_not_imported():
-    assert "dictation" not in sys.modules
+def test_dictation_module_is_not_imported(monkeypatch):
+    """A fresh consumer import must never bootstrap the application."""
+    import builtins
+    import importlib.util
+    before = sys.modules.get('dictation')
+    original_import = builtins.__import__
+
+    def checked_import(name, *args, **kwargs):
+        assert name != 'dictation', 'consumer imported the application bootstrap'
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', checked_import)
+    name = 'samsara.audio_engine._endpoint_import_probe_698'
+    spec = importlib.util.spec_from_file_location(name, wake_module.__file__)
+    fresh = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, fresh)
+    spec.loader.exec_module(fresh)
+    assert fresh.WakeConsumer is not wake_module.WakeConsumer
+    assert sys.modules.get('dictation') is before
 
 
 def _make_timing_sink(tmp_path):

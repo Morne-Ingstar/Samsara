@@ -9,6 +9,7 @@ import pytest
 
 import dictation
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners
+from samsara.audio_engine.wake_consumer import AdmittedWakeBuffer
 
 
 class _Recorder:
@@ -18,6 +19,8 @@ class _Recorder:
         self._log, self._name, self._result = log, name, result
 
     def __call__(self, *args, **kwargs):
+        if self._name == '_log_history' and kwargs.get('status') == 'failed':
+            pytest.fail(f"Synthetic wake decode failed: {kwargs.get('display_text')}")
         self._log.append((self._name, args, tuple(sorted(kwargs.items()))))
         return self._result(*args) if callable(self._result) else self._result
 
@@ -40,6 +43,8 @@ def _app(config, transcript, command_mode_active=False):
         "_confirm_wake_capture": None, "play_sound": None, "_process_wake_command": None,
         "_start_wake_timeout": None, "_vad_reset": None, "_schedule_ui": None,
         "_dispatch_session_transition": None, "_try_cancel_pending_wake_command": False,
+        "_probe_media_transport": None,
+        "_flash_tray_heard": None,
     }.items():
         setattr(app, name, _Recorder(log, name, result))
     app.enter_command_mode = "enter_command_mode"       # identity marker for the transition
@@ -53,7 +58,9 @@ def _run(config, transcript="jarvis open chrome", **kw):
     monkey = pytest.MonkeyPatch()
     monkey.setattr(dictation, "resample_audio", lambda audio, *a: audio)
     try:
-        app._decode_wake_word_buffer([np.full(1600, .2, dtype=np.float32)], src_rate=16000)
+        buffer = AdmittedWakeBuffer([np.full(1600, .2, dtype=np.float32)],
+                                    primary_hit=True, profile_hits=())
+        app._decode_wake_word_buffer(buffer, src_rate=16000, oww_confirmed=True)
     finally:
         monkey.undo()
     return app, [entry for entry in log if entry[0] != "_emit_wake_trace"], log
@@ -129,6 +136,9 @@ def test_session_manager_receives_configured_abort_phrases(monkeypatch):
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
+        def set_spoken_notices(self, value):
+            pass
+
     monkeypatch.setattr(dictation, "SessionModeManager", _Manager)
     app = SimpleNamespace(
         _session_mode_manager=None, config={"command_mode": {"abort_phrases": "that's all"},
@@ -136,6 +146,10 @@ def test_session_manager_receives_configured_abort_phrases(monkeypatch):
         command_executor=None, _apply_formatting_tokens=lambda t: t,
         _ava_session_agent_dispatch_fn=None, _dictate_commit_redecode=None,
         _pop_pending_action_for_scratch=None,
+        _answer_cancel_window=lambda text: None,
+        _stage_hands_free_cancel_window=lambda *args: 0,
+        _handle_deferred_session_outcome=lambda outcome: None,
+        _speak_session_notice=lambda *args: None,
     )
     dictation.DictationApp._ensure_session_mode_manager(app)
     assert captured["extra_sleep_phrases"] == ["that's all"]

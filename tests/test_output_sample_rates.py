@@ -2,6 +2,7 @@
 
 import collections
 import threading
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
@@ -16,6 +17,12 @@ class _FakeStream:
     def start(self):
         return None
 
+    def abort(self):
+        pass
+
+    def close(self):
+        pass
+
     def __enter__(self):
         return self
 
@@ -27,11 +34,16 @@ class _FakeStream:
 
 
 def _fake_output_api(monkeypatch, sd_module, calls, rate=48000):
+    devices = [{'name': f'Unused endpoint {i}', 'hostapi': 0,
+                'max_output_channels': 0, 'default_samplerate': rate} for i in range(24)]
+    devices[23].update(name='Headphones (Arctis Nova Pro Wireless)', max_output_channels=2)
     monkeypatch.setattr(
         sd_module,
         "query_devices",
-        lambda device, kind: {"default_samplerate": rate},
+        lambda device=None, kind=None: devices if device is None and kind is None else devices[device or 0],
     )
+    monkeypatch.setattr(sd_module, 'query_hostapis', lambda: [{'name': 'Windows WASAPI'}])
+    monkeypatch.setattr(sd_module, 'default', SimpleNamespace(device=(0, 23)), raising=False)
     monkeypatch.setattr(
         sd_module,
         "OutputStream",
@@ -49,6 +61,7 @@ def test_persistent_earcons_recache_and_open_at_selected_device_rate(monkeypatch
     app.output_device_name = "Headphones (Arctis Nova Pro Wireless)"
     app._sound_stream_sr = 44100
     app._sound_stream = None
+    app._resolve_playback_output = lambda: 23
     app._audio_refresh_lock = threading.RLock()
     app._buffer_lock = threading.Lock()
     app._playback_buffer = np.ones((4, 1), dtype=np.float32)
@@ -71,6 +84,7 @@ def test_edge_tts_resamples_pcm_to_selected_device_rate(monkeypatch):
     _fake_output_api(monkeypatch, sd, calls)
     engine = object.__new__(EdgeTTSEngine)
     engine._output_device = 23
+    engine._output_device_resolver = None
     engine._lock = threading.Lock()
     engine._cancelled = False
     source = np.zeros(441, dtype=np.int16).tobytes()  # 10 ms at 44.1 kHz
@@ -91,9 +105,11 @@ def test_winrt_persistent_stream_opens_at_selected_device_rate(monkeypatch):
     engine = object.__new__(WinRTEngine)
     engine._tts_buffer = collections.deque()
     engine._tts_buffer_lock = threading.Lock()
+    engine._tts_callback_progress = [None]
     engine._tts_stream = None
     engine._using_persistent_stream = False
     engine._output_device = 23
+    engine._output_device_resolver = None
     engine._output_sample_rate = 44100
 
     engine._open_persistent_stream()
@@ -101,16 +117,13 @@ def test_winrt_persistent_stream_opens_at_selected_device_rate(monkeypatch):
     assert calls[0]["device"] == 23
     assert calls[0]["samplerate"] == 48000
     assert engine._output_sample_rate == 48000
+    engine._close_persistent_stream()
 
 
 def test_alarm_route_reloads_cache_and_plays_at_selected_device_rate(monkeypatch):
     from samsara import alarms
 
-    monkeypatch.setattr(
-        alarms.sd,
-        "query_devices",
-        lambda device, kind: {"default_samplerate": 48000},
-    )
+    _fake_output_api(monkeypatch, alarms.sd, [])
     played = []
     monkeypatch.setattr(
         alarms.sd,
@@ -121,6 +134,7 @@ def test_alarm_route_reloads_cache_and_plays_at_selected_device_rate(monkeypatch
 
     manager = object.__new__(alarms.AlarmManager)
     manager.output_device = None
+    manager._output_device_resolver = None
     manager._sound_sample_rate = 44100
     manager._sound_cache = {"alarm": np.zeros(480, dtype=np.float32)}
     manager._load_sound_cache = Mock()

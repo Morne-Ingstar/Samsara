@@ -24,6 +24,8 @@ import numpy as np
 import pytest
 
 from samsara import config_defaults
+from samsara.dictionary_store import get_dictionary_store
+from samsara.stage_timing import StageTiming
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners
 from samsara.constants import ADAPTIVE_SPEECH_FLOOR_RATIO, DEFAULT_SPEECH_THRESHOLD
 
@@ -60,6 +62,8 @@ def _load_dictation_methods():
         "logging": logging,
         "logger": _LOGGER,
         "config_defaults": config_defaults,
+        "get_dictionary_store": get_dictionary_store,
+        "StageTiming": StageTiming,
         "ADAPTIVE_SPEECH_FLOOR_RATIO": ADAPTIVE_SPEECH_FLOOR_RATIO,
         "DEFAULT_SPEECH_THRESHOLD": DEFAULT_SPEECH_THRESHOLD,
         "resample_audio": lambda audio, src, dst: audio,
@@ -105,9 +109,11 @@ class _Harness:
         self._filter_dictation_language = lambda text, info: text
         self.voice_training_window = SimpleNamespace(apply_corrections=lambda text: text)
         self._emit_wake_trace = Mock()
-        self._log_history = Mock()
+        self._log_history = Mock(side_effect=lambda **kw: pytest.fail(
+            f"Synthetic wake decode failed: {kw.get('display_text')}") if kw.get('status') == 'failed' else None)
         self.play_sound = Mock()
         self._output_dictation = Mock()
+        self._probe_media_transport = lambda text: None
         self._reset_wake_dictation = Mock()
         self._end_wake_session = Mock()
         self._restart_dictation_timer = Mock()
@@ -159,8 +165,14 @@ def test_end_word_at_0005_inside_open_session_ends_the_session():
     app = _Harness(app_state="quick_dictation", transcript="that is all. over.")
     app._decode_wake_word_buffer(_buffer(0.005), src_rate=16000)
 
-    app.model.transcribe.assert_called_once()
-    app._output_dictation.assert_called_once_with("that is all.")
+    # 84 protects prose: an embedded end word stays in the draft. The whole
+    # control utterance, still below the old RMS threshold, ends the session.
+    assert app.wake_dictation_buffer == ['that is all. over.']
+    app._reset_wake_dictation.assert_not_called()
+    app.model.transcribe.return_value = ([SimpleNamespace(text='Over.')], SimpleNamespace(language='en'))
+    app._decode_wake_word_buffer(_buffer(0.005), src_rate=16000)
+    assert app.model.transcribe.call_count == 2
+    app._output_dictation.assert_called_once_with("that is all. over.")
     app._reset_wake_dictation.assert_called_once_with()
 
 

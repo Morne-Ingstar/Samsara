@@ -25,6 +25,7 @@ def _app(manager):
         _handle_session_dispatch_outcome=handled,
         _indicator_success_and_reset=Mock(), _indicator_reset=Mock(),
         _start_wake_timeout=Mock(),
+        _resolve_command_miss=lambda outcome, text: outcome,
     )
     return app, handled
 

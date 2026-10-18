@@ -40,7 +40,7 @@ def test_follow_default_reads_a_changed_windows_default_on_each_play():
 
 
 def test_sounds_page_keeps_default_label_short_and_refreshes_device_on_show(
-    qapp, monkeypatch,
+    qapp, monkeypatch, qt_widget_scope,
 ):
     from PySide6.QtCore import QCoreApplication, QEvent
     from samsara.ui.settings_qt import _SettingsWindow
@@ -58,22 +58,21 @@ def test_sounds_page_keeps_default_label_short_and_refreshes_device_on_show(
     app.get_available_output_devices = lambda: [
         {"id": 0, "name": "Roku TV", "hostapi": "Windows WASAPI"}
     ]
-    window = _SettingsWindow(app)
+    with qt_widget_scope(_SettingsWindow(app)) as window:
+        # 284 removed the duplicate Sounds selector/current-device label.
+        # The one Audio selector stores an unresolved default identity.
+        window.show_tab('Audio')
+        combo = window._widgets['output_combo']
+        assert combo.itemText(0) == 'System default'
+        assert 'Roku TV' not in combo.itemText(0)
+        assert window._widgets['output_label_map']['System default'] == (None, None, None)
+        assert output_devices.output_identity(sd, output_devices.resolve_playback_device(sd))[0] == 'Roku TV'
 
-    combo = window._widgets["sound_output_combo"]
-    description = window._widgets["sound_output_description"]
-    assert combo.itemText(0) == "Follow Windows default (recommended)"
-    assert "Roku TV" not in combo.itemText(0)
-    assert description.text().endswith("Currently playing to: Roku TV.")
-
-    # The Settings window and Sounds page are reused on reopen.
-    sd.devices = [_output("New Windows Default")]
-    QCoreApplication.sendEvent(
-        window._stack.widget(3), QEvent(QEvent.Type.Show)
-    )
-    assert description.text().endswith(
-        "Currently playing to: New Windows Default."
-    )
+        sd.devices = [_output('Roku TV'), _output('New Windows Default')]
+        sd.default.device = (0, 1)
+        QCoreApplication.sendEvent(window._pages['Audio'], QEvent(QEvent.Type.Show))
+        assert combo.currentText() == 'System default'
+        assert output_devices.output_identity(sd, output_devices.resolve_playback_device(sd))[0] == 'New Windows Default'
 
 
 def test_missing_selected_output_falls_back_to_default_and_logs_once(caplog):
@@ -92,8 +91,10 @@ def test_earcons_and_both_tts_engines_share_the_live_resolver_seam():
     winrt_source = (root / "samsara" / "tts" / "winrt_engine.py").read_text(encoding="utf-8")
     assert "def resolve_playback_device" in output_source
     assert "def _resolve_playback_output" in app_source
-    assert "EdgeTTSEngine(output_device_resolver=self._resolve_playback_output)" in app_source
-    assert "WinRTEngine(output_device_resolver=self._resolve_playback_output)" in app_source
+    runtime_source = (root / 'samsara/tts/runtime.py').read_text(encoding='utf-8')
+    assert 'rebuild_tts_runtime' in app_source
+    assert "factory = EdgeTTSEngine if provider == 'edge' else WinRTEngine" in runtime_source
+    assert "factory(output_device_resolver=getattr(app, '_resolve_playback_output', None))" in runtime_source
     assert "device = self._resolve_playback_output()" in app_source
     assert "output_device_resolver" in edge_source and "self._playback_device()" in edge_source
     assert "output_device_resolver" in winrt_source and "_refresh_output_at_play_time" in winrt_source

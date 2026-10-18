@@ -11,9 +11,62 @@ from samsara.tts.coordinator import AudioCoordinator
 from samsara.tts.engine_base import SpeechHandle, VoiceInfo
 from samsara.tts.exceptions import RenderError
 from samsara.ui import tutorial_try_preview
-from tests.test_settings_revisit_543 import window as settings_window
+from tests.test_settings_revisit_543 import _wait_catalog
 from tests.test_tutorial_try_389 import build
-from tests.test_network_voice_fallback_542 import rig
+from tests.test_network_voice_fallback_542 import rig as _network_rig
+from tests.test_tts_feedback_level_372 import _shutdown_test_coordinators
+
+
+@pytest.fixture
+def rig(_network_rig, monkeypatch):
+    # The provider fixture owns queued Edge jobs. Voice enumeration is a
+    # different worker added by 619; run that fake catalog synchronously.
+    from samsara.runtime import thread_registry
+    queued = thread_registry.spawn
+
+    def spawn(name, worker, **kwargs):
+        if name == 'settings-voice-catalog':
+            worker()
+            return None
+        return queued(name, worker, **kwargs)
+
+    monkeypatch.setattr(thread_registry, 'spawn', spawn)
+    return _network_rig
+
+
+@pytest.fixture
+def settings_window(qapp, monkeypatch, qt_widget_scope):
+    """Own the Settings window and keep catalogs/Apply entirely offline."""
+    import sounddevice
+    from threading import RLock
+    from samsara import autostart, ava_readiness, listening_display
+    from samsara.ui import settings_qt, ava_consent_qt
+    from samsara.ui.first_run_qt import ComponentsPage
+    from PySide6.QtWidgets import QDialog
+    from tests.test_settings_pages import _StubApp, _schema_defaults
+
+    monkeypatch.setattr(sounddevice, 'query_devices', lambda *a, **k: [])
+    monkeypatch.setattr(sounddevice, 'query_hostapis', lambda *a, **k: [])
+    monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **k: None)
+    monkeypatch.setattr(ComponentsPage, 'refresh_async', lambda *a: None)
+    monkeypatch.setattr(ava_readiness, 'recheck_after_settings', lambda *a: None)
+    monkeypatch.setattr(listening_display, 'request_restart_once', lambda *a: None)
+    monkeypatch.setattr(ava_consent_qt.AvaConsentDialog, 'exec', lambda self: QDialog.DialogCode.Accepted)
+    config = deepcopy(_schema_defaults())
+    config['tts'].update(engine='winrt', network_voice_accepted=True,
+                         enabled=True, feedback_level='brief')
+    config['ava']['provider_policy'] = 'local'
+    config['ava']['consent'] = ava_consent_qt.accepted_consent(config)
+    app = _StubApp(config)
+    app.save_config = Mock()
+    app.tts_engine = RecordingEngine('winrt')
+    app.audio_coordinator = SimpleNamespace(engine=object(), speak=Mock(), _dispatch_lock=RLock())
+    monkeypatch.setattr(tutorial_try_preview, 'make_engine', lambda app, provider: RecordingEngine(provider))
+    monkeypatch.setattr(settings_qt._SettingsWindow, '_replace_tts_runtime', lambda *a: None)
+    with qt_widget_scope(settings_qt._SettingsWindow(app)) as window:
+        window.show_tab('Audio')
+        _wait_catalog(window)
+        yield window
 
 
 class RecordingEngine:
@@ -53,6 +106,7 @@ def test_settings_test_button_reaches_engine_with_each_unsaved_voice(settings_wi
     install_router(window.app, engine, provider)
     window._widgets['tts_engine'].setCurrentText(provider)
     window._refresh_tts_voices()
+    _wait_catalog(window)
     before = deepcopy(window.app.config)
     button = next(b for b in window.findChildren(QPushButton) if b.text() == 'Test Voice')
     for voice in engine.voices:
@@ -228,6 +282,7 @@ def test_network_choice_and_cooldown_fallback_are_visible(rig, settings_window, 
         install_router(window.app, rig.engine, 'edge')
         window._widgets['tts_engine'].setCurrentText('edge')
         window._refresh_tts_voices()
+        _wait_catalog(window)
         choose = window._widgets['tts_voice_combo']
         choose.setCurrentIndex(choose.findData('en-US-AriaNeural'))
         next(b for b in window.findChildren(QPushButton) if b.text() == 'Test Voice').click()

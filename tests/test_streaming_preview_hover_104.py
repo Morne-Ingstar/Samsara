@@ -104,10 +104,11 @@ def _tick_to(w, clock, ms, step=50):
 
 
 def _close(qapp, w):
+    from PySide6.QtCore import QCoreApplication, QEvent
     w.stop_life()
     w._w.hide()
     w._w.deleteLater()
-    qapp.processEvents()
+    QCoreApplication.sendPostedEvents(w._w, QEvent.Type.DeferredDelete)
 
 
 # -- the pointer reaches an unreachable box ----------------------------------

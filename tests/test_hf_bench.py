@@ -220,10 +220,18 @@ def test_offline_adapter_does_not_import_app_or_open_log(monkeypatch):
     real_import = builtins.__import__
 
     def checked_import(name, *args, **kwargs):
-        assert name != "dictation" and not name.startswith("samsara"), name
+        assert name != "dictation", name
+        # 128 moved the offline gates to pure modules; importing those is
+        # necessary. UI/bootstrap imports and new log handlers remain forbidden.
+        if name == 'samsara':
+            assert set(kwargs.get('fromlist', args[2] if len(args) > 2 else ())) <= {'audio_tools', 'transcript_gates'}
+        elif name.startswith('samsara'):
+            assert name in {'samsara.log', 'samsara.dictionary_store'}, name
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", checked_import)
+    monkeypatch.setattr(logging.FileHandler, '__init__',
+                        lambda *a, **kw: pytest.fail('Offline adapter opened a log handler'))
     adapter = hf_bench.load_production_adapter()
     assert sys.modules.get("dictation") is before.get("dictation")
     assert logging.getLogger().handlers == handlers

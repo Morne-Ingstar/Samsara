@@ -10,7 +10,7 @@ import pytest
 
 from samsara.audio_engine.wake_consumer import AdmittedWakeBuffer, WakeConsumer
 from samsara.wake_profiles import profile_admitted
-from samsara import wake_profiles
+from samsara import wake_profiles, config_defaults
 from samsara.wake_word_matcher import match_wake_phrase
 
 
@@ -117,7 +117,8 @@ def test_actual_dictation_profile_match_seam_without_importing_app():
                      if isinstance(node, ast.ClassDef) and node.name == "DictationApp")
     method = next(node for node in app_class.body
                   if isinstance(node, ast.FunctionDef) and node.name == "_check_wake_profiles")
-    namespace = {"wake_profiles": wake_profiles, "match_wake_phrase": match_wake_phrase}
+    namespace = {"wake_profiles": wake_profiles, "match_wake_phrase": match_wake_phrase,
+                 "config_defaults": config_defaults}
     exec(compile(ast.Module(body=[method], type_ignores=[]), "dictation.py", "exec"), namespace)
     check = namespace["_check_wake_profiles"]
     claude = {"id": "claude", "phrase": "hey claude", "enabled": True}

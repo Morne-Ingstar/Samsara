@@ -36,6 +36,7 @@ def _consumer(monkeypatch, callback=None):
     consumer._toggle_worker_active = False
     consumer._hands_free_capture_duck_token = None
     consumer._speech_start_ns = None
+    consumer._mouth_shadow = None
     consumer._onset_context = None
     consumer._log_frame = Mock()
     monkeypatch.setattr(wake_module.thread_registry, "spawn",
@@ -163,7 +164,7 @@ def test_dictate_arm_guard_uses_real_playback_window_without_importing_app():
     function.body = [guard, ast.Return(value=ast.Constant("admitted"))]
     namespace = {"normalize_utterance": normalize_utterance}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])),
-                 str(source), "exec"), namespace)
+                 "<interact-onset-guard-ast>", "exec"), namespace)
     coordinator = SimpleNamespace(speech_windows=lambda: (SpeechWindow(100, 300),))
     app = SimpleNamespace(_show_outcome_chip=Mock())
     namespace.update(

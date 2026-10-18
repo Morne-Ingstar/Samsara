@@ -220,7 +220,7 @@ def test_schema_defaults_and_removed_key():
     assert "feedback.spoken_notices" not in schema.SETTINGS_SCHEMA
 
 
-def test_settings_combo_mirror_help_and_save(qapp):
+def test_settings_combo_mirror_help_and_save(qapp, qt_widget_scope):
     from tests.test_settings_pages import _StubApp
     from samsara.ui.settings_qt import _SettingsWindow
     app = _StubApp({"tts": {"feedback_level": "brief", "enabled": True}})
@@ -236,7 +236,8 @@ def test_settings_combo_mirror_help_and_save(qapp):
         assert not mirror.isVisible()
         assert window._widgets["tts_engine"].currentText() == "winrt"
         assert "spoken_notices_combo" not in window._widgets
-        assert window._rows_by_widget["tts_feedback_level"].detail.text() == schema.FEEDBACK_LEVEL_CHOICES["brief"][1]
+        assert window._rows_by_widget["tts_feedback_level"].detail.text() == 'Choose how much Samsara says aloud.'
+        assert combo.accessibleDescription() == schema.FEEDBACK_LEVEL_CHOICES['brief'][1]
         for level in schema.FEEDBACK_LEVELS:
             combo.setCurrentIndex(combo.findData(level))
             assert mirror.isChecked() is (level != "silent")
@@ -246,11 +247,11 @@ def test_settings_combo_mirror_help_and_save(qapp):
             assert saved["feedback_level"] == level
             assert saved["enabled"] is (level != "silent")
     finally:
-        window.hide()
-        window.deleteLater()
+        with qt_widget_scope(window):
+            pass
 
 
-def test_saved_engine_survives_settings(qapp):
+def test_saved_engine_survives_settings(qapp, qt_widget_scope):
     from tests.test_settings_pages import _StubApp
     from samsara.ui.settings_qt import _SettingsWindow
     window = _SettingsWindow(_StubApp({"tts": {"engine": "edge", "feedback_level": "full", "enabled": True}}))
@@ -258,7 +259,8 @@ def test_saved_engine_survives_settings(qapp):
         assert window._widgets["tts_engine"].currentText() == "edge"
         assert window._source_saves["tts"][0]({})["tts"]["engine"] == "edge"
     finally:
-        window.deleteLater()
+        with qt_widget_scope(window):
+            pass
 
 
 def test_thin_runtime_setter_persists_and_updates_manager_without_importing_dictation():
@@ -291,15 +293,9 @@ class _FinishEngine:
         return False
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(autouse=True)
 def _gate_uses_fake_engine_factories():
-    """Keep legacy Settings Apply tests from constructing audio/network engines.
-
-    The required gate starts with this file. Its session fixture protects all
-    later Apply tests too; individual revocation tests still override these
-    exported factories with their own recording engines. Real runtime/config
-    logic is exercised unchanged, with only external engine constructors faked.
-    """
+    """Fake external engines for this test; restore them before its neighbours."""
     import samsara.tts as tts
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(tts, "WinRTEngine", lambda **kwargs: _FinishEngine())
@@ -376,7 +372,7 @@ def test_finish_boot_schedules_worker_even_when_silent():
     app._tts_init_worker = MagicMock()
     spawn = MagicMock()
     namespace = {"self": app, "threading": threading, "thread_registry": SimpleNamespace(spawn=spawn)}
-    exec(compile(ast.Module(body=init.body[start:end], type_ignores=[]), str(source), "exec"), namespace)
+    exec(compile(ast.Module(body=init.body[start:end], type_ignores=[]), "<tts-init-fragment-ast>", "exec"), namespace)
     spawn.assert_called_once_with("dictation.tts_init", app._tts_init_worker, daemon=True)
     app._maybe_announce_ava_command_session_migration.assert_not_called()
 
@@ -496,7 +492,7 @@ def test_finish_claude_reply_completes_skipped_speech_once(handle_id):
     done.assert_called_once()
 
 
-def test_finish_test_voice_reports_disabled_engine(qapp):
+def test_finish_test_voice_reports_disabled_engine(qapp, qt_widget_scope):
     from tests.test_settings_pages import _StubApp
     from samsara.ui.settings_qt import _SettingsWindow
     app = _StubApp({"tts": {"feedback_level": "silent", "enabled": False}})
@@ -508,7 +504,8 @@ def test_finish_test_voice_reports_disabled_engine(qapp):
         assert "TTS is off" in window._widgets["tts_test_status"].text()
         app.audio_coordinator.speak.assert_not_called()
     finally:
-        window.deleteLater()
+        with qt_widget_scope(window):
+            pass
 
 
 @pytest.mark.parametrize("handle_id", ["noop-silent", "noop-brief-earcon", "noop-tts-disabled"])
@@ -519,6 +516,7 @@ def test_finish_ava_helper_does_not_report_skipped_speech_as_spoken(handle_id):
     node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "speak")
     record = MagicMock()
     namespace = {"logger": logging.getLogger(__name__), "_strip_tags": lambda text: text,
+                 "ava_turn_queue": SimpleNamespace(can_deliver=lambda app: True),
                  "get_max_response_length": lambda app: 0, "_record_speech": record,
                  "execution_policy": SimpleNamespace(current_generation=lambda app: 1),
                  "_turn_local": SimpleNamespace(spoken_text=[])}
@@ -531,7 +529,7 @@ def test_finish_ava_helper_does_not_report_skipped_speech_as_spoken(handle_id):
     app.tts_engine.speak.assert_not_called()
 
 
-def test_finish_requested_voice_sample_speaks_in_brief(qapp):
+def test_finish_requested_voice_sample_speaks_in_brief(qapp, qt_widget_scope):
     from tests.test_settings_pages import _StubApp
     from samsara.ui.settings_qt import _SettingsWindow
     app = _StubApp({"tts": {"feedback_level": "brief", "enabled": True}})
@@ -545,4 +543,5 @@ def test_finish_requested_voice_sample_speaks_in_brief(qapp):
         assert "Speaking:" in window._widgets["tts_test_status"].text()
     finally:
         app.audio_coordinator.shutdown()
-        window.deleteLater()
+        with qt_widget_scope(window):
+            pass
