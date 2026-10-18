@@ -303,7 +303,7 @@ def test_log_contains_only_closed_outcomes_and_length_bucket(rig, caplog, monkey
     assert not any('outcome=accepted' in r for r in requests)
 
 
-def test_switch_ui_persists_and_parent_off_clears_it(rig, qapp):
+def test_switch_ui_persists_and_parent_off_clears_it(rig, qapp, qt_deferred_delete):
     from PySide6.QtWidgets import QCheckBox
     from samsara.ui.settings.agents_section import AgentsControls
     rig.app._agent_server = rig.service
@@ -324,9 +324,11 @@ def test_switch_ui_persists_and_parent_off_clears_it(rig, qapp):
         assert not rig.service.typing_enabled and rig.service.status == 'off'
     finally:
         controls.close()
+        controls.deleteLater()
+        qt_deferred_delete()
 
 
-def test_switch_save_failure_restores_state(rig, qapp):
+def test_switch_save_failure_restores_state(rig, qapp, qt_deferred_delete):
     from PySide6.QtWidgets import QCheckBox
     from samsara.ui.settings.agents_section import AgentsControls
     rig.app._agent_server = rig.service
@@ -341,6 +343,8 @@ def test_switch_save_failure_restores_state(rig, qapp):
         assert rig.service.enabled and rig.service.typing_enabled and enabled.isChecked()
     finally:
         controls.close()
+        controls.deleteLater()
+        qt_deferred_delete()
 
 
 @pytest.mark.parametrize('exe,reason', [
@@ -657,7 +661,7 @@ def test_ignored_yes_can_be_followed_by_command_key_yes(rig):
     assert len(rig.pastes) == 1
 
 
-def test_approval_style_default_persistence_and_disabled_state(rig, qapp):
+def test_approval_style_default_persistence_and_disabled_state(rig, qapp, qt_deferred_delete):
     from PySide6.QtWidgets import QCheckBox
     from samsara.config_defaults import cfg_get
     from samsara.ui.settings.agents_section import AgentsControls
@@ -687,6 +691,8 @@ def test_approval_style_default_persistence_and_disabled_state(rig, qapp):
         assert not controls.approval_style.isEnabled()
     finally:
         controls.close()
+        controls.deleteLater()
+        qt_deferred_delete()
 
 
 @pytest.mark.parametrize('started', [False, True])
