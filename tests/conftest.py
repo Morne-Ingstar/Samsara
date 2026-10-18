@@ -721,13 +721,13 @@ def qt_deferred_delete(qapp):
 
 @pytest.fixture
 def qt_widget_scope(qapp, qt_deferred_delete):
-    """Destroy an owned widget before its test's patches and callbacks expire."""
+    """Destroy an owned widget before patches expire; close may retire its controller."""
     from contextlib import contextmanager
     from PySide6.QtCore import QAbstractAnimation, QTimer
     from shiboken6 import isValid
 
     @contextmanager
-    def owned(widget):
+    def owned(widget, *, close=None):
         try:
             yield widget
         finally:
@@ -737,7 +737,7 @@ def qt_widget_scope(qapp, qt_deferred_delete):
                 for timer in widget.findChildren(QTimer):
                     timer.stop()
                 try:
-                    widget.close()
+                    (close or widget.close)()
                 finally:
                     if isValid(widget):
                         widget.hide()

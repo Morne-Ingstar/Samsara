@@ -139,20 +139,15 @@ def test_damaged_install_notice_is_once_and_does_not_write_registry(tmp_path,mon
     assert ins.repair_notice() is None
 
 
-def test_updates_window_has_installer_link_and_no_network(qapp,monkeypatch):
+def test_updates_window_has_installer_link_and_no_network(qapp,monkeypatch,qt_widget_scope):
     from samsara.ui import update_qt
-    from PySide6.QtCore import QCoreApplication,QEvent
     from PySide6.QtWidgets import QLabel
     monkeypatch.setattr(ins,'dialog_notice',lambda: ins.GUARD_MESSAGE)
     network=Mock();monkeypatch.setattr(update_qt,'check_for_update',network)
-    dialog=update_qt._UpdateDialog(SimpleNamespace(config={}))
-    try:
+    with qt_widget_scope(update_qt._UpdateDialog(SimpleNamespace(config={}))) as dialog:
         note=dialog.findChild(QLabel,'installerUpdateNotice')
         assert ins.RELEASES_URL in note.text() and note.openExternalLinks()
         network.assert_not_called()
-    finally:
-        dialog.close();dialog.deleteLater()
-        QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
 
 
 
@@ -260,29 +255,23 @@ def test_reader_opens_only_app_key_in_all_hives_and_views(monkeypatch):
     fake.EnumKey.assert_not_called()
 
 
-def test_owner_error_sentence_is_exact_without_exception_text(qapp):
+def test_owner_error_sentence_is_exact_without_exception_text(qapp,qt_widget_scope):
     from samsara.ui import update_qt
-    from PySide6.QtCore import QCoreApplication,QEvent
-    dialog=update_qt._UpdateDialog(SimpleNamespace(config={}))
-    try:
+    with qt_widget_scope(update_qt._UpdateDialog(SimpleNamespace(config={}))) as dialog:
         dialog._on_check_finished(None,'synthetic private detail')
         assert dialog._status.text()=="Couldn’t check for updates. Samsara remains unchanged. Check your connection and try again."
-    finally:
-        dialog.close();dialog.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
 
 
 @requires_installer
 @pytest.mark.parametrize('missing',['installer','checksum'])
-def test_missing_installer_pair_returns_link_instead_of_error(tmp_path,monkeypatch,qapp,missing):
+def test_missing_installer_pair_returns_link_instead_of_error(tmp_path,monkeypatch,qapp,qt_widget_scope,missing):
     installed(tmp_path,monkeypatch)
     meta=payload()
     meta['assets']=[a for a in meta['assets'] if (a['name'].endswith('.sha256') if missing=='installer' else not a['name'].endswith('.sha256'))]
     offer=up.check_for_update('0.30.0',opener=opener({up.GITHUB_RELEASES_API:json.dumps(meta).encode()}))
     assert offer.installer_link_only
     from samsara.ui import update_qt
-    from PySide6.QtCore import QCoreApplication,QEvent
-    dialog=update_qt._UpdateDialog(SimpleNamespace(config={}))
-    try:
+    with qt_widget_scope(update_qt._UpdateDialog(SimpleNamespace(config={}))) as dialog:
         dialog._on_check_finished(offer,'')
         assert dialog._phase=='installer'
         assert dialog._status.text()==ins.GUARD_MESSAGE
@@ -290,5 +279,3 @@ def test_missing_installer_pair_returns_link_instead_of_error(tmp_path,monkeypat
         opened=Mock();monkeypatch.setattr(update_qt.QDesktopServices,'openUrl',opened)
         dialog._primary_clicked()
         opened.assert_called_once()
-    finally:
-        dialog.close();dialog.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
