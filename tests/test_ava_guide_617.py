@@ -137,7 +137,6 @@ def test_intro_starts_with_explanation_and_does_no_work(window, monkeypatch):
     assert window._next_btn.text() == 'Get started'
     window._go_next()
     assert window._current_step == window._STEP_CHECK
-    window._check_pc()
     probe.assert_not_called()
     assert window._app.config == {}
 
@@ -146,7 +145,6 @@ def test_permission_fills_same_editable_fields_without_navigation(window, monkey
     probe = Mock(return_value=facts(12, 32))
     monkeypatch.setattr(hw, 'check_hardware', probe)
     window._go_to(window._STEP_CHECK)
-    window._permission.setChecked(True)
     window._check_btn.click()
     probe.assert_called_once_with(consent=True)
     assert window._current_step == window._STEP_CHECK
@@ -163,7 +161,6 @@ def test_failed_check_preserves_entries_and_allows_continue(window, monkeypatch)
     window._gpu.setText('Entered graphics card')
     monkeypatch.setattr(hw, 'check_hardware', Mock(side_effect=OSError('private failure')))
     window._go_to(window._STEP_CHECK)
-    window._permission.setChecked(True)
     window._check_pc()
     assert window._gpu.text() == 'Entered graphics card'
     assert window._hardware_status.text() == ag.COPY['check_failed']

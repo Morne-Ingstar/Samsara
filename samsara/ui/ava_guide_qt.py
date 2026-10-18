@@ -401,7 +401,6 @@ COPY = {
     'details': 'Enter what you know, or let Samsara fill in these same fields.',
     'permission': 'Check my graphics card, memory and processor. Nothing leaves this computer.',
     'check_failed': 'The PC check could not finish. Your entries are still here. Enter what you know, or continue without a recommendation.',
-    'check_done': 'The check filled in your details. You can correct them before continuing.',
     'unknown': 'There is not enough information to recommend a choice. Both choices are available.',
     'manual_cpu': 'Your processor has not been checked. The speed test will help you decide.',
     'choose': 'This is a suggestion. You can use either choice and change it later.',
@@ -492,6 +491,7 @@ class _WizardWindow(QDialog):
           QLineEdit:focus {{ border: 2px solid {theme.ACCENT}; }}
           QDoubleSpinBox {{ background:{theme.BG2}; border:1px solid {theme.BORDER}; border-radius:6px; padding:0 12px; }}
           QScrollArea {{ border: none; }}
+          QFrame#pcCheck {{ background: {theme.BG1}; border: 1px solid {theme.BORDER}; border-radius: 8px; }}
         ''' + theme.SCROLLBAR_QSS)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -601,17 +601,22 @@ class _WizardWindow(QDialog):
 
     def _build_details(self):
         col = self._page('Tell us about your PC', COPY['details'])
-        self._permission = QCheckBox('Allow the PC check')
-        self._permission.setMinimumHeight(44)
-        permission_row = QHBoxLayout()
-        permission_row.addWidget(self._permission)
-        permission_row.addStretch()
-        self._check_btn = self._button('Fill in my details', self._check_pc)
-        self._check_btn.setEnabled(False)
-        self._permission.toggled.connect(self._check_btn.setEnabled)
-        permission_row.addWidget(self._check_btn)
-        col.addWidget(_text(COPY['permission']))
-        col.addLayout(permission_row)
+        self._pc_check = QFrame()
+        self._pc_check.setObjectName('pcCheck')
+        self._pc_check.setAccessibleName('PC check')
+        check = QVBoxLayout(self._pc_check)
+        check.setContentsMargins(16, 12, 16, 12)
+        check.setSpacing(8)
+        check.addWidget(_text('PC check', 'label'))
+        self._check_explanation = _text(COPY['permission'])
+        check.addWidget(self._check_explanation)
+        self._check_btn = self._button('Run the PC check', self._check_pc)
+        self._check_btn.setAccessibleDescription(COPY['permission'])
+        check.addWidget(self._check_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        self._hardware_status = self._status()
+        self._hardware_status.hide()
+        check.addWidget(self._hardware_status)
+        col.addWidget(self._pc_check)
         fields = QGridLayout()
         self._gpu = QLineEdit()
         self._gpu.setPlaceholderText('For example, NVIDIA RTX 3060')
@@ -642,8 +647,6 @@ class _WizardWindow(QDialog):
             signal = control.textEdited if isinstance(control, QLineEdit) else control.valueChanged
             signal.connect(self._manual_changed)
         col.addLayout(fields)
-        self._hardware_status = self._status()
-        col.addWidget(self._hardware_status)
         col.addStretch()
 
     def _build_choose(self):
@@ -820,10 +823,13 @@ class _WizardWindow(QDialog):
         if not self._filling:
             self._facts = None
             self._hardware_status.setText('')
+            self._hardware_status.hide()
 
     def _check_pc(self):
-        if not self._permission.isChecked() or self._busy:
+        if self._busy:
             return
+        # Pressing this explicitly labelled button is consent for this check only.
+        self._hardware_status.show()
         self._hardware_status.setText('Checking this PC…')
         self._work('hardware', lambda: hardware_check.check_hardware(consent=True))
 
@@ -837,7 +843,13 @@ class _WizardWindow(QDialog):
         self._cpu.setText(facts.processor)
         self._cores.setValue(facts.cores)
         self._filling = False
-        self._hardware_status.setText(COPY['check_done'])
+        graphics = f'{gpu.name}, {gpu.dedicated_bytes / hardware_check.GIB:g} GB graphics memory' if gpu else 'Graphics card not found'
+        processor = facts.processor or 'Processor not identified'
+        self._hardware_status.setText(
+            f'{graphics}\n{facts.ram_bytes / hardware_check.GIB:g} GB system memory; {processor} ({facts.cores} cores).')
+        self._hardware_status.show()
+        self._check_btn.setText('Run again')
+        self._check_btn.setAccessibleName('Run again')
 
     def _recommend(self):
         facts = self._facts
@@ -892,7 +904,7 @@ class _WizardWindow(QDialog):
         elif step in (self._STEP_TEST, self._STEP_DONE):
             ready = self._tested is not None and self._tested == self._signature()
         self._next_btn.setEnabled(ready and not self._busy)
-        self._check_btn.setEnabled(self._permission.isChecked() and not self._busy)
+        self._check_btn.setEnabled(not self._busy)
         self._key_btn.setEnabled(bool(self._api_key.text().strip()) and not self._busy)
         self._test_btn.setEnabled(not self._busy)
 
