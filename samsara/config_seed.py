@@ -85,7 +85,6 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
         "cleanup_mode": "clean",  # "clean" (filler removal + spacing) or "verbatim"
         "streaming_mode": False,  # live overlay partials in 'hold' mode
         "streaming_direct_paste": False,  # also paste partials into focused app
-        "streaming_hotkey": "capslock",  # hotkey for streaming mode (suppressed; no caps toggle)
         "device": "auto",
         "microphone": None,
         "output_device": None,

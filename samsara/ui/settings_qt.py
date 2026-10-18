@@ -137,6 +137,7 @@ class _SettingsWindow(
         footer_strip.setObjectName('footer')
         footer = QHBoxLayout(footer_strip)
         tools = QPushButton("Tools")
+        theme.prepare_menu_button(tools)
         menu = QMenu(tools)
         for name in tools_page.TOOLS:
             menu.addAction(name).triggered.connect(lambda checked=False, n=name: self.open_tool(n))

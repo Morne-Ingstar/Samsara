@@ -1173,6 +1173,20 @@ def install_app_scrollbars(app=None) -> None:
 # Dialog-wide stylesheet
 # ---------------------------------------------------------------------------
 
+def prepare_menu_button(button) -> None:
+    """Keep pixel-sized menu buttons out of Windows' point-font arrow path."""
+    import sys
+    from PySide6.QtWidgets import QStyleFactory
+
+    if sys.platform == "win32":
+        # Windows' menu-arrow metric/painter passes pointSize() == -1 back
+        # to QFont for pixel fonts. Fusion handles the same font in pixels;
+        # the existing button QSS still supplies its colours and dimensions.
+        style = QStyleFactory.create("Fusion")
+        style.setParent(button)
+        button.setStyle(style)
+
+
 def build_stylesheet() -> str:
     """One QSS string covering the shared baseline for all three windows:
     window/dialog background and text, class-selector button rules (a

@@ -2622,22 +2622,8 @@ class DictationApp(CommandFastPathMixin):
             # section 4). Safe here: self.config was read from that file a
             # moment ago under _config_lock, so there is no external edit to
             # preserve.
-            self._config_migration_save = True
-            try:
-                # Migrate old flat wake word config to new nested structure
-                logger.debug("[CONFIG] load_config: starting _migrate_wake_word_config")
-                self._migrate_wake_word_config(default_config)
-                logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
-
-                self._migrate_command_matching_enabled_flag()
-                self._migrate_ai_command_mode_config()
-                self._migrate_retired_ava_command_session_config()
-                self._migrate_recording_media_mode()
-                from samsara.config_schema import migrate_removed_settings
-                if migrate_removed_settings(self.config):
-                    self.save_config()
-            finally:
-                self._config_migration_save = False
+            from samsara.config_migrations import migrate_loaded_config
+            migrate_loaded_config(self, default_config)
 
             # Fill in any missing top-level keys
             for key in default_config:
@@ -2897,6 +2883,10 @@ class DictationApp(CommandFastPathMixin):
                 "to write defaults over the preserved original. Restore a "
                 "backup and restart to re-enable saving."
             )
+            return
+
+        if getattr(self, '_config_migration_batch', False):
+            self._config_migration_pending = True
             return
 
         tmp_path = self.config_path.with_suffix('.json.tmp')

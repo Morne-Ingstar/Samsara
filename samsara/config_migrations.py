@@ -14,6 +14,36 @@ from samsara import wake_profiles
 logger = logging.getLogger("Samsara")
 
 
+def migrate_loaded_config(self, default_config):
+    """Run every startup migration, then persist once through the normal saver.
+
+    The load caller holds the config lock. Migration saves bypass the disk
+    merge so removed keys stay removed; the single write backs up the original
+    file instead of rotating it away through intermediate migration states.
+    """
+    self._config_migration_save = True
+    self._config_migration_batch = True
+    self._config_migration_pending = False
+    try:
+        logger.debug("[CONFIG] load_config: starting _migrate_wake_word_config")
+        self._migrate_wake_word_config(default_config)
+        logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
+        self._migrate_command_matching_enabled_flag()
+        self._migrate_ai_command_mode_config()
+        self._migrate_retired_ava_command_session_config()
+        self._migrate_recording_media_mode()
+        from samsara.config_schema import migrate_removed_settings
+        if migrate_removed_settings(self.config):
+            self.save_config()
+        self._config_migration_batch = False
+        if self._config_migration_pending:
+            self.save_config()
+    finally:
+        self._config_migration_batch = False
+        self._config_migration_pending = False
+        self._config_migration_save = False
+
+
 def _migrate_wake_word_config(self, default_config):
     """Migrate old flat wake word settings to new nested structure"""
     # The top-level key is the sole listener switch.  The stale nested

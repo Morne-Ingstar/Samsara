@@ -338,6 +338,7 @@ class PageAssembly:
 
     def _choice_button(self, title, names):
         button = QPushButton(title)
+        theme.prepare_menu_button(button)
         button.setMinimumHeight(44)
         menu = QMenu(button)
         for label, key in names:
@@ -393,6 +394,7 @@ class PageAssembly:
             self._widgets['openCorrections'] = corrections
         if destination == 'Audio':
             preview = QPushButton('Preview')
+            theme.prepare_menu_button(preview)
             sounds = QMenu(preview)
             for key, text in [('start', 'Recording start'), ('stop', 'Recording stop'), ('success', 'Success'), ('error', 'Error'), ('capture_started', 'Capture started'), ('capture_saved', 'Capture saved'), ('agent_routing', 'Agent routing'), ('agent_response', 'Agent response'), ('confirm_required', 'Confirmation'), ('action_complete', 'Action complete'), ('thinking_pulse', 'Thinking')]:
                 sounds.addAction(text).triggered.connect(lambda checked=False, k=key: self._preview_sound(k))
