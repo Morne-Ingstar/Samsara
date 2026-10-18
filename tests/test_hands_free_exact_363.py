@@ -146,12 +146,17 @@ def test_opt_out_preserves_reserved_set(lane, live):
     assert app._probe_hands_free_command('show commands') is None
     assert manager.dispatch_utterance('show commands', SIGNALS).kind == 'dictate_staged'
     assert not DictatePreviewSession._is_reserved_hands_free_command(manager, 'show commands')
+    preview = object.__new__(DictatePreviewSession)
+    preview.app = app
+    # Session controls bypass the optional generic exact-command probe.
+    assert preview._is_control_phrase('scratch that')
     assert manager.dispatch_utterance('scratch that', SIGNALS).kind == 'scratch_success'
     assert not manager.dictate_pending_buffer
     clock[0] += 3
     assert manager.dispatch_utterance('scroll down', SIGNALS).kind == 'dictate_staged'
     assert manager.dictate_pending_buffer == 'scroll down'
-    assert DictatePreviewSession._is_reserved_hands_free_command(manager, 'scratch that')
+    assert preview._is_control_phrase('scratch that')
+    assert not effects and not injected
 
 
 def test_low_confidence_command_is_refused_without_staging(lane):
