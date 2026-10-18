@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -107,6 +108,8 @@ class _UpdateDialog(QDialog):
         self._scroll.setStyleSheet("#updateBodyScroll { background: transparent; border: none; }")
         self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self._scroll.setWidgetResizable(True)
+        self._scroll.setMinimumHeight(0)
+        self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.viewport().setAutoFillBackground(False)
         self._scroll.setWidget(self._body)
@@ -208,7 +211,7 @@ class _UpdateDialog(QDialog):
         wanted = self.height() - self._scroll.height() + self._scroll.sizeHint().height()
         if screen:
             wanted = min(wanted, int(screen.availableGeometry().height() * 0.9))
-        if wanted > self.height():
+        if wanted != self.height():
             self.resize(self.width(), wanted)
 
     def closeEvent(self, event):

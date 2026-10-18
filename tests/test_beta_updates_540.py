@@ -302,6 +302,7 @@ def test_setup_finishes_with_explicit_beta_choice_without_enabling_automatic_che
 # ---- FINISH IT 3: the Updates window shows all of its text, scrolls when it must ----
 
 def _squeezed_or_overlapping(dialog):
+    from PySide6.QtCore import QRect
     from PySide6.QtGui import QTextDocument
     from PySide6.QtWidgets import QLabel
     labels = [w for w in dialog.findChildren(QLabel) if w.isVisibleTo(dialog) and w.text()]
@@ -314,8 +315,10 @@ def _squeezed_or_overlapping(dialog):
         document.setTextWidth(label.width())
         if label.height() + 1 < document.size().height():
             problems.append(('squeezed', label.text()[:30]))
+        label_rect = QRect(label.mapToGlobal(label.rect().topLeft()), label.size())
         for other in labels:
-            if other is not label and label.geometry().intersects(other.geometry()):
+            other_rect = QRect(other.mapToGlobal(other.rect().topLeft()), other.size())
+            if other is not label and label_rect.intersects(other_rect):
                 problems.append(('overlap', label.text()[:30], other.text()[:30]))
     return problems
 

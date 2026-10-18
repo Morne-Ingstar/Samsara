@@ -32,6 +32,7 @@ from samsara.command_registry import (  # noqa: E402
 )
 from samsara.commands import CommandExecutor  # noqa: E402
 from samsara import listening_display, session_modes as sm  # noqa: E402
+from samsara import config_defaults  # noqa: E402
 
 ASTRA_UTTERANCE = 'ask ava Tell Claude: "Don\'t rename Foo.py to foo.py".'
 ASTRA_PAYLOAD = 'Tell Claude: "Don\'t rename Foo.py to foo.py"'
@@ -76,6 +77,7 @@ def _dictation_bindings():
     module.__dict__.update(
         time=time, logger=Mock(), increment_command_count=Mock(),
         listening_display=listening_display,
+        config_defaults=config_defaults,
         _get_foreground_exe_lower=lambda: "editor.exe",
         _get_foreground_hwnd=lambda: 1,
         injection_safety=SimpleNamespace(window_integrity=lambda: None),
