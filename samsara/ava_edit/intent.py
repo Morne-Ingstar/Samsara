@@ -118,6 +118,10 @@ def selection_phrases() -> dict[str, tuple[str, ...]]:
             bare += [f"{verb} up {ref}" for ref in ("this", "that", "it")]
             bare += [f"{verb} up"]
         groups[f"{verb} this"] = tuple(bare)
+    groups["clean up the draft"] = (
+        "clean up the draft", "clean up everything", "clean up the whole draft",
+    )
+    groups["clean up the last sentence"] = ("clean up the last sentence", "clean up last sentence")
     groups.update(selection_verb_phrases())
     return groups
 
@@ -161,11 +165,21 @@ def selection_action(text: str) -> "tuple[str, str] | None":
 def selection_request(text: str) -> "str | None":
     """Explicit selection or bare referent, with no trailing payload."""
     instruction = selection_instruction(text)
+    if instruction in {"clean up the draft", "clean up the last sentence"}:
+        return "draft"
     if instruction is not None:
         if instruction in selection_verb_phrases():
             return "selection"
         return "selection" if instruction.endswith(" selection") else "bare"
     return None
+
+
+def draft_cleanup_scope(text: str) -> "str | None":
+    """Only whole cleanup requests; embedded or quoted instructions stay text."""
+    instruction = selection_instruction(text)
+    if instruction not in {"clean this", "clean up the draft", "clean up the last sentence"}:
+        return None
+    return "last sentence" if "last sentence" in _normalize(text) else "everything"
 
 
 def selection_instruction(text: str) -> "str | None":

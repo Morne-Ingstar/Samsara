@@ -42,7 +42,7 @@ _pending: "PendingProposal | None" = None
 class PendingProposal:
     """A proposal that has been shown and not yet answered."""
 
-    __slots__ = ("proposal", "created_at", "_clock", "selection_target", "selection_mode")
+    __slots__ = ("proposal", "created_at", "_clock", "selection_target", "selection_mode", "draft_target")
 
     def __init__(self, proposal: Proposal, clock=time.monotonic, selection_target=None,
                  selection_mode="replace"):
@@ -51,6 +51,7 @@ class PendingProposal:
         self.created_at = clock()
         self.selection_target = selection_target
         self.selection_mode = selection_mode
+        self.draft_target = None
 
     def expired(self) -> bool:
         return (self._clock() - self.created_at) > PROPOSAL_TTL_S
@@ -80,6 +81,10 @@ def _chip(app, outcome_kind: str, detail: "dict | None" = None) -> None:
     TTL comes from chip_ttl_ms(), so "edit_proposed" inherits pending's
     no-TTL rule: a staged proposal stays on screen until it is answered.
     """
+    from samsara.ui import qt_runtime
+    if qt_runtime.is_alive():
+        from samsara.ui.live_surface_qt import sync_cleanup_buttons
+        qt_runtime.post(lambda: sync_cleanup_buttons(app))
     show = getattr(app, "_show_outcome_chip", None)
     if show is None:
         return
@@ -89,6 +94,9 @@ def _chip(app, outcome_kind: str, detail: "dict | None" = None) -> None:
         if chip is None:
             return
         label, chip_kind = chip
+        staged = pending()
+        if outcome_kind == "edit_proposed" and staged and staged.draft_target is not None:
+            label = label.split(" - ", 1)[0].replace("proposed edit:", "Proposed edit:")
         show(label, chip_kind, chip_ttl_ms(outcome_kind, chip_kind))
     except Exception as exc:
         logger.debug(f"[AVA-EDIT] chip failed: {exc}")
@@ -127,11 +135,12 @@ def clear() -> None:
         _pending = None
 
 
-def _stage(proposal: Proposal, selection_target=None, selection_mode="replace") -> PendingProposal:
+def _stage(proposal: Proposal, selection_target=None, selection_mode="replace", draft_target=None) -> PendingProposal:
     global _pending
     with _lock:
         _pending = PendingProposal(proposal, selection_target=selection_target,
                                    selection_mode=selection_mode)
+        _pending.draft_target = draft_target
         return _pending
 
 
@@ -160,6 +169,9 @@ def source_text(app) -> str:
     manager = getattr(app, "_session_mode_manager", None)
     if manager is None:
         return ""
+    draft = getattr(manager, "dictate_pending_buffer", None)
+    if isinstance(draft, str) and draft:
+        return draft
     try:
         item = manager.top_dictation_chunk()
     except Exception as exc:
@@ -217,7 +229,7 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
     return Proposal.build(original, sanitize.clean(raw), instruction=instruction)
 
 
-def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace") -> bool:
+def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace", draft_target=None) -> bool:
     """Show the proposal and leave it standing. Applies NOTHING.
 
     Returns True when a proposal is now staged and waiting for the word.
@@ -227,9 +239,12 @@ def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="rep
         _say(app, proposal.describe())
         logger.info(f"[AVA-EDIT] not staged: {proposal.reason}")
         return False
-    _stage(proposal, selection_target, selection_mode)
+    _stage(proposal, selection_target, selection_mode, draft_target)
     _chip(app, "edit_proposed", {"changes": proposal.change_count})
-    _say(app, proposal.describe())
+    description = proposal.describe()
+    if draft_target is not None:
+        description = description.replace("Say apply to make it so.", "Choose Accept or Cancel.")
+    _say(app, description)
     if selection_mode == "below":
         _say(app, "The summary will be added below the selection.")  # Stand-in copy (635).
     logger.info(f"[AVA-EDIT] staged: {proposal.change_count} change(s), awaiting apply")
@@ -242,11 +257,37 @@ def propose_and_stage(app, instruction: str) -> bool:
     from samsara.ava_edit import selection
     if selection.should_capture(app, instruction):
         return selection.propose_and_stage(app, instruction)
+    manager = getattr(app, "_session_mode_manager", None)
+    document = getattr(manager, "draft_document", None)
+    if document is not None and document.text:
+        return _propose_draft(app, instruction, manager)
+    if intent.selection_request(instruction) == "draft":
+        return False
     original = source_text(app)
     if not original:
         return False
     _chip(app, "edit_thinking")
     return stage(app, propose(original, instruction, app))
+
+
+def _propose_draft(app, instruction, manager):
+    import re
+    from samsara.ava_edit.selection import DEFAULT_INSTRUCTION
+
+    with manager._dispatch_lock:
+        document = manager.draft_document
+        original = document.text
+        target = (manager, document.document_id, document.revision, original)
+    scope = intent.draft_cleanup_scope(instruction)
+    start = 0
+    if scope == "last sentence":
+        boundaries = list(re.finditer(r'[.!?]["\x27\u201d\u2019]*\s+(?=\S)', original.rstrip()))
+        start = boundaries[-1].end() if boundaries else 0
+    source = original[start:]
+    _chip(app, "edit_thinking")
+    proposal = propose(source, DEFAULT_INSTRUCTION if scope else instruction, app,
+                       offline=bool(scope) and not enabled(app), cleanup=bool(scope))
+    return stage(app, proposal, draft_target=(*target, start))
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +309,35 @@ def apply(app) -> dict:
     if staged.selection_target is not None:
         from samsara.ava_edit import selection
         return selection.apply(app, staged)
+    if staged.draft_target is not None:
+        manager, document_id, revision, original, start = staged.draft_target
+        if getattr(app, "_session_mode_manager", None) is not manager:
+            return {"applied": False, "reason": "the session changed", "chars": 0}
+        with manager._dispatch_lock:
+            document = manager.draft_document
+            valid = (document.document_id == document_id and document.revision == revision
+                     and document.text == original)
+            if valid:
+                from copy import deepcopy
+                from samsara.session_modes import StackItem
+                before = deepcopy(document)
+                document.replace_text(original[:start] + staged.proposal.rewritten, edited=True)
+                manager._clear_draft_undo.drop()
+                manager._last_dictate_ended_terminal = None
+                manager._stack.push(StackItem(kind="draft_edit_apply", payload=document.text,
+                    mode=manager.mode, timestamp=manager._clock(), extra={"document": before}))
+        clear()
+        _chip(app, "edit_applied" if valid else "edit_refused",
+              {"changes": staged.proposal.change_count, "reason": "the text changed"})
+        surface = getattr(app, "live_surface", None)
+        if valid and surface is not None:
+            surface.sync_draft(manager)
+        preview = getattr(app, "_dictate_preview", None)
+        if valid and preview is not None:
+            preview._resync_from_draft(manager)
+            preview._render("")
+        return {"applied": valid, "reason": "" if valid else "the text changed",
+                "chars": len(staged.proposal.rewritten) if valid else 0}
     clear()
 
     manager = getattr(app, "_session_mode_manager", None)
@@ -361,14 +431,24 @@ def handle_utterance(app, text: str) -> bool:
         staged = pending()
         from samsara.ava_edit import selection
         capture = selection.should_capture(app, text)
-        if not (capture or (staged and staged.selection_target is not None)) and not enabled(app):
+        manager = getattr(app, "_session_mode_manager", None)
+        draft = getattr(manager, "dictate_pending_buffer", "")
+        cleanup = bool(draft) and intent.draft_cleanup_scope(text) is not None
+        if not (capture or cleanup or (staged and (staged.selection_target is not None
+                                                 or staged.draft_target is not None))) and not enabled(app):
             return False
 
         if pending() is not None:
             if intent.is_apply_utterance(text):
+                preview = getattr(app, "_dictate_preview", None)
+                if preview is not None:
+                    preview._edit_reply_text = text.strip()
                 apply(app)
                 return True
             if intent.is_discard_utterance(text):
+                preview = getattr(app, "_dictate_preview", None)
+                if preview is not None:
+                    preview._edit_reply_text = text.strip()
                 discard(app)
                 return True
             # Anything else: the proposal stands, the text is untouched, and

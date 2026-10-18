@@ -726,7 +726,8 @@ def match_ava_invocation(raw_text: str, invocations) -> bool:
 # ---------------------------------------------------------------------------
 
 # Unambiguous noun phrases -- position in the utterance doesn't matter.
-_STAGE_REFERENCE_PHRASES = ("the text", "what i dictated", "the dictation")
+_STAGE_REFERENCE_PHRASES = ("the text", "what i dictated", "the dictation",
+                            "last sentence", "everything", "the whole draft")
 
 
 def detect_stage_reference(text: str) -> bool:
@@ -2495,6 +2496,13 @@ class SessionModeManager(UtteranceUndoMixin):
     def _dispatch_in_mode(
         self, text: str, signals: Optional[UtteranceSignals] = None,
     ) -> DispatchOutcome:
+        from samsara.ava_edit import intent, session as edits
+        app = getattr(self._agent_dispatch_fn, "__self__", None)
+        if app is not None and passes_switch_anti_hallucination_gate(signals) and (intent.draft_cleanup_scope(text) is not None
+                                or (edits.pending() is not None and
+                                    (intent.is_apply_utterance(text) or intent.is_discard_utterance(text)))):
+            if edits.handle_utterance(app, text):
+                return DispatchOutcome(kind="ava_edit_handled")
         if self.mode is SessionMode.COMMAND:
             return self._dispatch_command(text)
         if self.mode is SessionMode.DICTATE:
@@ -3035,24 +3043,12 @@ class SessionModeManager(UtteranceUndoMixin):
         return DispatchOutcome(kind="dictate_committed", detail=detail)
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:
-        """Every AVA-mode utterance goes to the agent as natural language --
-        except micro-utterances that fail is_substantive_utterance (coughs,
-        "uh", stray syllables): those never reach _agent_dispatch_fn at all,
-        so they never enter the caller's request queue and never cost an
-        API call. This substance gate runs AFTER abort/scratch-that/switch-
-        word handling (dispatch_utterance's job, above _dispatch_in_mode) --
-        it only ever sees text already committed to being ordinary AVA
-        content, so it can never eat a mode switch.
+        """Send substantive Ava turns after global controls and draft edits.
 
-        The DICTATE stage buffer is attached ONLY when detect_stage_reference
-        finds an explicit reference AND the buffer is non-empty -- never by
-        default. Attaching (an "explicit send") clears the buffer here, at
-        dispatch time: this module is synchronous and fire-and-forget
-        towards the agent (see AgentDispatchFn) and never observes whether
-        the agent's response succeeds, so "the moment Samsara hands off a
-        buffer-attached request" is the only deterministic point at which
-        "sent" can be defined. Agent turns are never pushed onto the
-        scratch-that stack -- an agent exchange can't be unsent."""
+        Only explicit stage references attach and clear committed context.
+        Dispatch is fire-and-forget: handoff defines 'sent', not model success.
+        Agent exchanges never enter the scratch-that stack.
+        """
         if not is_substantive_utterance(text):
             owner = getattr(self._agent_dispatch_fn, "__self__", None)
             follow_up = False
@@ -3075,20 +3071,21 @@ class SessionModeManager(UtteranceUndoMixin):
     # -- scratch that / retype that ------------------------------------------
 
     def _do_scratch_that(self) -> bool:
-        """Pop a staged unit or remove a verified external insertion.
-        Production requires an owned-range receipt; legacy injected callbacks
-        remain available to embedders. No receipt means no external deletion.
-        Guarded by TWO independent focus checks before any keystroke is
-        sent, both fail-closed:
-          1. exe-name check_focus_lock (existing) -- catches switching to a
-             different application entirely.
-          2. HWND equality (this method) -- catches switching to a
-             DIFFERENT WINDOW of the SAME exe (e.g. two Notepad windows),
-             which (1) alone cannot see. A mismatch here means the window
-             that received the original text is not the one in front of
-             the user right now, so undoing here would delete content in
-             the wrong window -- irreversible for a keyboard-unable user.
-             We refuse rather than guess or auto-refocus."""
+        """Undo staged edits locally or remove a verified external insertion.
+
+        External undo requires an owned-range receipt in production, plus
+        independent exe-name and HWND checks. Mismatches refuse deletion.
+        Legacy injected callbacks remain available to embedders.
+        """
+        top = self._stack.peek()
+        if top is not None and top.kind == "draft_edit_apply":
+            before = top.extra["document"]
+            if self._draft.document_id != before.document_id or self._draft.text != top.payload:
+                return False
+            before.revision = self._draft.revision + 1
+            self._draft = before
+            self._stack.pop()
+            return True
         # Immediate scratch uses only confirmed external undo; parked drafts stay local.
         delivery = getattr(self, '_hands_free_delivery', None)
         immediate = self.mode is SessionMode.DICTATE and delivery is not None and delivery.enabled(self)

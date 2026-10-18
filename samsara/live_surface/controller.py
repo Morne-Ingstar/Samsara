@@ -191,6 +191,7 @@ class LiveSurfaceController:
     # Widget intents deliberately call the existing side-effect owners.
     def _connect_intents(self) -> None:
         for name, callback in (("commit_requested", self._commit),
+                               ("clean_up_requested", self._clean_up),
                                ("clear_requested", self._clear),
                                ("pause_requested", self._pause),
                                ("correct_word_requested", self._correct),
@@ -395,7 +396,21 @@ class LiveSurfaceController:
             commit()
             self.sync_draft(manager)
 
+    def _clean_up(self) -> None:
+        from samsara.ava_edit import session
+        manager = self._manager()
+        staged = session.pending()
+        if staged is not None and staged.draft_target is not None:
+            session.apply(self.app)
+        elif manager is not None and manager.dictate_pending_buffer:
+            session.handle_utterance(self.app, "clean up")
+
     def _clear(self) -> None:
+        from samsara.ava_edit import session
+        staged = session.pending()
+        if staged is not None and staged.draft_target is not None:
+            session.discard(self.app)
+            return
         hold = self._active_lane is Lane.HOLD
         generation = self._capture_seq
         if hold:

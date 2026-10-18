@@ -14,9 +14,9 @@ from typing import Any, Callable
 from PySide6.QtCore import QEvent, QEasingCurve, QRect, QRectF, QPropertyAnimation, QSignalBlocker, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (QCloseEvent, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter,
                            QPaintEvent, QPainterPath, QPen, QRegion)
-from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget, QSizePolicy
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget, QSizePolicy, QGraphicsOpacityEffect
 
-from samsara.live_surface.model import (CaptureState, DocumentState, NoticeKind,
+from samsara.live_surface.model import (CaptureState, DocumentState, Lane, NoticeKind,
                                         SurfaceView, VisibleForm)
 from samsara.ui import theme
 from samsara.live_surface.feedback import (FILL_TOKENS, KIND_WORDS,
@@ -217,11 +217,68 @@ class _FeedbackBand(QWidget):
             painter.end()
 
 
+
+def style_cleanup_buttons(clean, clear):
+    """One small button family, with room for both labels after polishing."""
+    for button, labels, primary in ((clean, ("Clean up", "Accept?"), True),
+                                    (clear, ("Clear draft", "Cancel"), False)):
+        fill = theme.ACCENT if primary else theme.BG2
+        ink = theme.TEXT_ON_ACCENT if primary else theme.TEXT_PRIMARY
+        button.setFont(theme.qfont(theme.TYPE_MIN))
+        button.setStyleSheet(f"QPushButton {{ background: {fill}; color: {ink}; border: 1px solid {theme.BORDER}; border-radius: 5px; font-family: '{theme.FONT_FAMILY}'; font-size: {theme.TYPE_MIN}px; padding: 0 {theme.SPACE_2}px; }} QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; background: {theme.BG2}; }} QPushButton:hover {{ border-color: {theme.ACCENT}; }}")
+        button.ensurePolished()
+        padding = 2*theme.SPACE_2+2
+        button.setProperty("labelPadding", padding)
+        button.setMinimumWidth(max(button.fontMetrics().horizontalAdvance(t) for t in labels)+padding)
+        button.setFixedHeight(max(26, button.fontMetrics().height()+6))
+
+
+def cleanup_buttons(clean, clear, pending, *, reduced_motion=False):
+    """Swap labels in place; opacity affects paint only, never geometry."""
+    if clean.property("cleanupPending") == pending:
+        return
+    clean.setProperty("cleanupPending", pending)
+    for button, label in ((clean, "Accept?" if pending else "Clean up"),
+                          (clear, "Cancel" if pending else "Clear draft")):
+        button.setText(label); button.setAccessibleName(label); button.setToolTip(label)
+        previous = getattr(button, "_cleanup_fade", None)
+        if previous is not None:
+            previous.stop()
+        if reduced_motion:
+            continue
+        effect = button.graphicsEffect()
+        if effect is None:
+            effect = QGraphicsOpacityEffect(button); button.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", button)
+        animation.setDuration(140); animation.setStartValue(.25); animation.setEndValue(1.)
+        button._cleanup_fade = animation
+        animation.start()
+
+
+def sync_cleanup_buttons(app):
+    """Called on Qt's thread after a proposal outcome, for either display."""
+    from samsara.ava_edit import session
+    staged = session.pending()
+    manager = getattr(app, "_session_mode_manager", None)
+    active = bool(staged and staged.draft_target and staged.draft_target[0] is manager)
+    surface = getattr(app, "live_surface", None)
+    full = getattr(surface, "widget", None)
+    if full is not None:
+        cleanup_buttons(full._clean_up, full._clear, active, reduced_motion=full._reduced_motion)
+    preview = getattr(app, "_dictate_preview", None)
+    overlay = getattr(preview, "_overlay", None)
+    compact = getattr(getattr(overlay, "_widget", None), "_w", None)
+    if compact is not None:
+        cleanup_buttons(compact._clean_up_btn, compact._clear_btn, active,
+                        reduced_motion=compact._reduced_motion)
+
+
 class LiveSurfaceWidget(QWidget):
     """One shaped HWND for M/D/S/L/R with review kept inside the same card."""
 
     commit_requested = Signal()
     clear_requested = Signal()
+    clean_up_requested = Signal()
     pause_requested = Signal()
     correct_word_requested = Signal(object)
     correction_apply_requested = Signal(object, str)
@@ -310,14 +367,15 @@ class LiveSurfaceWidget(QWidget):
         self._badge.setAccessibleName("Draft pending")
         self._latest = self._button("Read the latest draft text", "Latest", self._latest_clicked)
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
-        self._clear = self._button("Clear draft", "Clear", self.clear_requested.emit)
-        self._clear.setObjectName("quietClear")
+        self._clear = self._button("Clear draft", "Clear draft", self.clear_requested.emit)
+        self._clean_up = self._button("Clean up draft", "Clean up", self.clean_up_requested.emit)
+        style_cleanup_buttons(self._clean_up, self._clear)
         self._insert = self._button("Insert waiting text", "Insert text", self.commit_requested.emit)
         self._pause = self._button("Pause capture", "Pause", self.pause_requested.emit)
         self._correct = self._button("Correct a word", "Correct", self._request_correct)
         self._edit_receipt = self._button("Edit sent receipt as a new draft", "Edit as new draft", self._request_edit_receipt)
         self._collapse = self._button("Collapse surface", "Collapse", self.collapse_requested.emit)
-        self._controls = (self._clear, self._pause, self._correct, self._edit_receipt, self._collapse)
+        self._controls = (self._clear, self._clean_up, self._pause, self._correct, self._edit_receipt, self._collapse)
         self._picker_buttons = [self._button("Draft word", "", lambda n=n: self._choose_picker(n))
                                 for n in range(4)]
         self._candidate_buttons = [self._button("Correction candidate", "", lambda n=n: self._choose_candidate(n))
@@ -349,7 +407,7 @@ class LiveSurfaceWidget(QWidget):
 
     def _button_width(self, button: QPushButton, minimum: int = MARK_SIZE) -> int:
         button.ensurePolished()
-        return max(MARK_SIZE, minimum, button.sizeHint().width(),
+        return max(MARK_SIZE, minimum, button.minimumWidth(), button.sizeHint().width(),
                    button.fontMetrics().horizontalAdvance(button.text()) + 2*theme.SPACE_2 + 2)
 
     @property
@@ -642,8 +700,16 @@ class LiveSurfaceWidget(QWidget):
         if self._view.secondary_notice:
             self._band_height += self._secondary_band.required_height(width-2*CARD_INSET)
         if form is VisibleForm.STATUS:
-            return QRect(self.x(), self.y(), STATUS_SIZE[0], 76+self._band_height)
+            return QRect(self.x(), self.y(), STATUS_SIZE[0], 76+self._band_height+self._cleanup_row_height())
         width = LIVE_SIZE[0] if form is VisibleForm.LIVE else REVIEW_SIZE[0]
+        if self._cleanup_row_height() and parked and (not self._follow_latest or self._unread_segments):
+            # Retain every existing header control and the full lane label.
+            actions_width = sum(self._button_width(b, n) for b, n in
+                                ((self._clear, 64), (self._insert, 132), (self._latest, 104)))
+            title_width = max(self._lane.fontMetrics().horizontalAdvance(self._lane_text(self._view)),
+                              self._state.fontMetrics().horizontalAdvance(self._state_text(self._view)))
+            width = max(width, 2*CARD_INSET+MARK_SIZE+12+actions_width+title_width+4*REGION_GAP
+                        + (min(200, self._chip.desired_width()) if self._chip is not None else 0))
         if self._selection is not None or self._picker_active:
             source = self._candidates if self._selection is not None else self._word_targets
             page = self._candidate_page if self._selection is not None else self._picker_page
@@ -666,7 +732,7 @@ class LiveSurfaceWidget(QWidget):
             self._transcript_height = text_height
             return QRect(self.x(), self.y(), width,
                          2*CARD_INSET + HEADER_HEIGHT + REGION_GAP
-                         + self._band_height + text_height)
+                         + self._band_height + text_height + self._cleanup_row_height())
         return QRect(self.x(), self.y(), width, height + self._band_height + 20)
 
     def _animate_geometry(self, target: QRect) -> None:
@@ -695,6 +761,15 @@ class LiveSurfaceWidget(QWidget):
                 self._state.setGeometry(state.x()+26, state.y(), max(1, state.width()-26), state.height())
             bar.setValue(bar.maximum() if self._follow_latest else position)
 
+    def _cleanup_visible(self) -> bool:
+        return (getattr(self._controller, "idle_capture", None) is CaptureState.HANDS_FREE_LISTENING
+                or self._view.capture is CaptureState.HANDS_FREE_LISTENING)
+
+    def _cleanup_row_height(self) -> int:
+        correcting = self._selection is not None or self._picker_active
+        occupied = bool(self._view.text.strip()) or self._chip is not None
+        return 34 if self._cleanup_visible() and occupied and not correcting else 0
+
     def _layout_content(self) -> None:
         form = self._display_form(); self._mark.setGeometry(0, 0, MARK_SIZE, MARK_SIZE); self._hide_children()
         if form is VisibleForm.MARK:
@@ -716,7 +791,8 @@ class LiveSurfaceWidget(QWidget):
         self._state.setGeometry(state_x, content.y()+HEADER_HEIGHT//2, content.width()-MARK_SIZE-12-clear_width-REGION_GAP, HEADER_HEIGHT//2)
         self._lane.show(); self._state.show()
         self._state.setVisible(not self._parked_idle(self._view))
-        band_y = content.y()+HEADER_HEIGHT+12
+        cleanup_row = self._cleanup_row_height()
+        band_y = content.y()+HEADER_HEIGHT+12+cleanup_row
         parked = self._view.document is DocumentState.PARKED_DRAFT
         primary_height = self._band.required_height(content.width())
         self._band.setGeometry(content.x(), band_y, content.width(), primary_height)
@@ -730,7 +806,20 @@ class LiveSurfaceWidget(QWidget):
                 NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
             if clearable:
                 self._clear.setGeometry(content.right()+1-clear_width, content.y(), clear_width, MARK_SIZE); self._clear.show()
-            self._layout_chip(self._clear.x()-REGION_GAP if clearable else content.right()+1)
+            right = self._clear.x()-REGION_GAP if clearable else content.right()+1
+            if self._cleanup_visible():
+                width = self._button_width(self._clean_up)
+                self._clean_up.setEnabled(False)
+                self._clean_up.setGeometry(right-width, content.y()+9, width, 26); self._clean_up.show()
+                right -= width+REGION_GAP
+                self._lane.setGeometry(state_x, content.y(), max(1, right-state_x), HEADER_HEIGHT//2)
+                self._state.setGeometry(state_x, content.y()+HEADER_HEIGHT//2, max(1, right-state_x), HEADER_HEIGHT//2)
+            if cleanup_row:
+                self._clean_up.move(content.right()+1-self._clean_up.width(), content.y()+HEADER_HEIGHT+REGION_GAP)
+                right = self._clear.x()-REGION_GAP if clearable else content.right()+1
+                self._lane.setGeometry(state_x, content.y(), max(1, right-state_x), HEADER_HEIGHT//2)
+                self._state.setGeometry(state_x, content.y()+HEADER_HEIGHT//2, max(1, right-state_x), HEADER_HEIGHT//2)
+            self._layout_chip(right)
             return
         if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
             self._layout_chip(content.right()+1)
@@ -738,26 +827,37 @@ class LiveSurfaceWidget(QWidget):
         # Reserve each action's space once. Pending-text recovery is separate
         # from ordinary capture, whose final is inserted automatically.
         actions = [(self._clear, 64)]
+        if self._cleanup_visible():
+            self._clean_up.setEnabled(bool(self._view.text.strip()) and self._view.document in
+                                      (DocumentState.EDITABLE_DRAFT, DocumentState.PARKED_DRAFT))
+            if cleanup_row:
+                width = self._button_width(self._clean_up)
+                self._clear.setGeometry(content.right()+1-clear_width, content.y()+HEADER_HEIGHT+REGION_GAP, clear_width, 26)
+                self._clear.show(); actions = []
+                self._clean_up.setGeometry(self._clear.x()-REGION_GAP-width, content.y()+HEADER_HEIGHT+REGION_GAP, width, 26)
+                self._clean_up.show()
+            else:
+                actions.insert(0, (self._clean_up, 0))
         if self._view.document is DocumentState.PARKED_DRAFT and self._view.text:
             actions.insert(0, (self._insert, 132))
         if not self._follow_latest or self._unread_segments:
             latest = "Latest" + (f" (+{self._unread_segments})" if self._unread_segments else "")
             self._latest.setToolTip(latest)
             self._latest.setText("Latest" if parked and self._chip is not None else latest)
-            actions.insert(0, (self._latest, 104))
+            actions.append((self._latest, 104))
         right = content.right()+1
         for button, width in reversed(actions):
             width = self._button_width(button, width)
             right -= width
-            button.setGeometry(right, content.y(), width, MARK_SIZE); button.show()
+            button.setGeometry(right, content.y()+(9 if button in (self._clean_up, self._clear) else 0), width, 26 if button in (self._clean_up, self._clear) else MARK_SIZE); button.show()
             right -= REGION_GAP
         state_x = content.x()+MARK_SIZE+12
         self._lane.setGeometry(state_x, content.y(), max(1, right-state_x), HEADER_HEIGHT//2)
         self._state.setGeometry(state_x, content.y()+HEADER_HEIGHT//2, max(1, right-state_x), HEADER_HEIGHT//2)
         self._layout_chip(right)
-        y = content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height
+        y = content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+cleanup_row
         if form in (VisibleForm.LIVE, VisibleForm.REVIEW):
-            band_y = content.y()+HEADER_HEIGHT+REGION_GAP
+            band_y = content.y()+HEADER_HEIGHT+REGION_GAP+cleanup_row
             self._band.move(content.x(), band_y)
             if self._view.secondary_notice:
                 self._secondary_band.move(content.x(), band_y+primary_height)
@@ -853,6 +953,7 @@ class LiveSurfaceWidget(QWidget):
         self._state.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.Medium if active else QFont.Weight.Normal))
         self._state.setStyleSheet(f"QLabel#surfaceState {{ color: {state_color}; font-size: {theme.TYPE_BODY}px; font-weight: {500 if active else 400}; }}")
         self._band.restyle(); self._secondary_band.restyle()
+        style_cleanup_buttons(self._clean_up, self._clear)
         if self._chip is not None: self._chip.restyle()
         self._transcript.setFont(theme.qfont(theme.TYPE_BODY))
         self._provisional.setFont(theme.qfont(theme.TYPE_BODY, italic=True)); self._badge.setFont(theme.qfont(theme.TYPE_MIN))

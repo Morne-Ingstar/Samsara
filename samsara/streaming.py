@@ -636,9 +636,6 @@ class _StreamingWidget:
                 self._choices.hide()
                 cLay.addWidget(self._choices)
 
-                # Controls. Their visibility IS the "you can click me" signal:
-                # they appear only while the box is interactive, and go away
-                # with the fade that makes it click-through.
                 self._controls = QWidget()
                 self._controls.setStyleSheet("background:transparent;")
                 bLay = QHBoxLayout(self._controls)
@@ -647,16 +644,19 @@ class _StreamingWidget:
                 self._clear_btn = QPushButton(CLEAR_BUTTON_TEXT)
                 self._clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 self._clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                self._clear_btn.setStyleSheet(
-                    f"QPushButton{{background:{control_bg()};color:{theme.TEXT_PRIMARY};"
-                    f"border:1px solid {theme.BORDER};border-radius:5px;"
-                    f"padding:3px 10px;font-size:{HINT_FONT_SIZE}px;"
-                    f"font-family:'{FONT_FAMILY}';}}"
-                    f"QPushButton:hover{{border-color:{theme.ACCENT};}}"
-                )
                 self._clear_btn.clicked.connect(self._on_clear_clicked)
-                bLay.addWidget(self._clear_btn)
+                self._clean_up_btn = QPushButton("Clean up")
+                self._clean_up_btn.setAccessibleName("Clean up draft")
+                self._clean_up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                self._clean_up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                self._clean_up_btn.clicked.connect(lambda: self._on_clean_up and self._on_clean_up())
+                from samsara.ui.live_surface_qt import style_cleanup_buttons
+                style_cleanup_buttons(self._clean_up_btn, self._clear_btn)
                 bLay.addStretch(1)
+                self._controls.setMinimumHeight(self._clean_up_btn.height()+4)
+                bLay.addWidget(self._clean_up_btn); bLay.addWidget(self._clear_btn)
+                self._clean_up_btn.hide()
+                self._on_clean_up = None
                 self._controls.hide()
                 cLay.addWidget(self._controls)
                 lay.addWidget(content, stretch=1)
@@ -709,6 +709,11 @@ class _StreamingWidget:
             def enable_interaction(self, on_word_clicked, on_clear):
                 self._on_word_clicked = on_word_clicked
                 self._on_clear = on_clear
+
+            def enable_cleanup(self, callback):
+                self._on_clean_up = callback
+                self._clean_up_btn.setVisible(callback is not None)
+                self._refresh_controls()
 
             def _on_scroll_value(self, value):
                 """The user (or a voice scroll) moved the view: follow the
@@ -903,7 +908,8 @@ class _StreamingWidget:
                 click-through."""
                 if self._idle is None:
                     return
-                show = self._interactive and self._has_draft
+                show = self._interactive and (self._has_draft or self._on_clean_up is not None)
+                self._clean_up_btn.setEnabled(self._has_draft)
                 if show != self._controls.isVisible():
                     self._controls.setVisible(show)
                     self._position()
@@ -951,6 +957,7 @@ class _StreamingWidget:
                 # session; drop them here for the same reason as the probe.
                 self._on_word_clicked = None
                 self._on_clear = None
+                self._on_clean_up = None
                 self._on_choice = None
                 self._on_choice_dismiss = None
 
@@ -1157,19 +1164,13 @@ class _StreamingWidget:
                     # so without this the scroll range stays ~0 however long
                     # the draft gets, and the text is simply clipped.
                     self._label.setMinimumHeight(hint_h)
-                if self._hint.isVisible():
-                    hint_h += self._hint.heightForWidth(OVERLAY_W - 40) + 6
-                if self._prompt.isVisible():
-                    hint_h += self._prompt.heightForWidth(OVERLAY_W - 40) + 6
-                if self._choices.isVisible():
-                    hint_h += self._choices.sizeHint().height() + 6
-                if self._controls.isVisible():
-                    hint_h += self._controls.sizeHint().height() + 4
-                # Queue 85: the dictate preview may grow taller before it
-                # starts scrolling -- reading the draft back is the point.
+                layout = self._controls.parentWidget().layout()
+                rows = [layout.itemAt(i).widget() for i in range(layout.count())]
+                rows = [row for row in rows if row is not None and not row.isHidden()]
+                fixed_h = sum(max(row.sizeHint().height(), row.minimumSizeHint().height(), row.minimumHeight()) for row in rows if row is not self._scroll)
+                fixed_h += layout.spacing()*max(0, len(rows)-1) + 20
                 max_h = OVERLAY_MAX_H if self._idle is None else DICTATE_OVERLAY_MAX_H
-                req_h  = max(OVERLAY_MIN_H,
-                             min(max_h, hint_h + 20))
+                req_h = max(OVERLAY_MIN_H, min(max_h, hint_h+fixed_h), fixed_h+24)
                 self.setFixedHeight(req_h)
                 placement = self._preview_position
                 if isinstance(placement, tuple):
@@ -1274,6 +1275,7 @@ class _StreamingWidget:
     # Queue 85. Called on the Qt thread (StreamingOverlayQt posts them).
     def enable_interaction(self, on_word_clicked, on_clear):
         self._w.enable_interaction(on_word_clicked, on_clear)
+    def enable_cleanup(self, callback): self._w.enable_cleanup(callback)
     def set_correction_choice_callbacks(self, on_choice, on_dismiss):
         # Queue 161 installs these during construction. Keep the wrapper
         # surface complete so entering Hands-Free cannot crash.
@@ -1425,6 +1427,9 @@ class StreamingOverlayQt:
         self._on_word_clicked = on_word_clicked
         self._on_clear = on_clear
 
+    def set_cleanup_callback(self, callback):
+        self._on_clean_up = callback
+
     def set_correction_choice_callbacks(self, on_choice, on_dismiss) -> None:
         self._on_choice = on_choice
         self._on_choice_dismiss = on_dismiss
@@ -1435,6 +1440,7 @@ class StreamingOverlayQt:
                                   on_placement_committed=self._on_placement_committed)
         if self._on_word_clicked is not None or self._on_clear is not None:
             widget.enable_interaction(self._on_word_clicked, self._on_clear)
+        widget.enable_cleanup(getattr(self, "_on_clean_up", None))
         if self._on_choice is not None or self._on_choice_dismiss is not None:
             widget.set_correction_choice_callbacks(self._on_choice, self._on_choice_dismiss)
         return widget
@@ -2565,30 +2571,14 @@ class DictatePreviewSession:
                                                activity_probe=self._speech_active,
                                                preview_position=saved_placement,
                                                on_placement_committed=self._save_preview_placement)
-        # Session-scoped rolling transcript -- see module comment above and
-        # on_utterance_final below. A fresh DictatePreviewSession is
-        # constructed on every DICTATE re-entry (dictation.py's
-        # _ensure_streaming_preview never reuses one across entries), so
-        # this is empty for every new session by construction; also
-        # reset explicitly in start() so "re-entering DICTATE starts a
-        # fresh empty transcript" holds even if that construction contract
-        # ever changes.
         self._finalized: list = []
-        # Bumped on every on_utterance_final call (a real utterance/commit
-        # boundary). _loop captures this before its own slow decode and
-        # skips rendering if it's gone stale by the time decode finishes --
-        # see _loop's comment below (DEFECT 2026-09-11: a partial that was
-        # still mid-decode when a commit landed used to render its
-        # now-stale text over the just-cleared transcript).
         self._generation = 0
-        # Queue 85: [(word, occurrence)] for the text currently on screen, in
-        # render order. Rebuilt by _render from the SAME helper the renderer
-        # uses, so href "w:i" and self._words[i] are the same word.
         self._words: list = []
-        # True between a word click and the utterance that answers it: that
-        # utterance is a replacement, never a new dictation fragment.
         self._correction_armed = False
         self._overlay.set_interaction_callbacks(self._on_word_clicked, self._on_clear_clicked)
+        cleanup = getattr(self._overlay, "set_cleanup_callback", None)
+        if callable(cleanup):
+            cleanup(self._on_clean_up_clicked)
         set_choices = getattr(self._overlay, "set_correction_choice_callbacks", None)
         if callable(set_choices):
             set_choices(self._on_candidate_chosen, self._on_candidates_dismissed)
@@ -2781,11 +2771,12 @@ class DictatePreviewSession:
         self._hide_correction_choices()
 
     def _on_clear_clicked(self) -> None:
-        """The Clear draft button (Qt thread). Goes through the session's own
-        confirm_clear_draft -- the exact path the spoken "scratch everything"
-        -> "yes" takes -- so the button and the phrase cannot diverge, and
-        queue 84's recovery slot covers the button too."""
         if self._closed:
+            return
+        from samsara.ava_edit import session
+        staged = session.pending()
+        if staged is not None and staged.draft_target is not None:
+            session.discard(self.app)
             return
         manager = self._manager()
         if manager is None:
@@ -2800,10 +2791,17 @@ class DictatePreviewSession:
         self._set_prompt("")
         self._render("")
 
+    def _on_clean_up_clicked(self) -> None:
+        from samsara.ava_edit import session
+        if not self._closed:
+            staged = session.pending()
+            if staged is not None and staged.draft_target is not None:
+                session.apply(self.app)
+            else:
+                session.handle_utterance(self.app, "clean up")
+
     def _resync_from_draft(self, manager=None) -> None:
-        """Replace the preview's own fragments with the session's staged draft.
-        Used after a word correction: the session edited the draft in place, so
-        re-reading it is both simpler and truer than patching the copy here."""
+        """Re-read the authoritative draft after a correction or applied edit."""
         manager = manager if manager is not None else self._manager()
         buffer = ""
         if manager is not None:
@@ -2948,6 +2946,11 @@ class DictatePreviewSession:
             return
         self._generation += 1
         final_text = (final_text or "").strip()
+        if final_text and final_text == getattr(self, "_edit_reply_text", None):
+            self._edit_reply_text = None
+            self._resync_from_draft()
+            self._render("")
+            return
         # getattr: tests/test_streaming_preview_box.py builds this class with
         # __new__ and sets only the fields it needs, so a new attribute must
         # never be assumed present.
@@ -3048,34 +3051,18 @@ class DictatePreviewSession:
             return False
 
     def _is_control_phrase(self, text: str) -> bool:
-        """True when `text` is a recognized session CONTROL phrase rather
-        than dictation content -- reuses the SAME authoritative matchers
-        dispatch_utterance() itself checks (session_modes.is_scratch_that /
-        is_dictate_commit / match_switch_word / match_ava_invocation, plus
-        the session's own configured abort/exit-phrase matcher), so this
-        predicate can never drift from what the final path actually treats
-        as control. Display-only: never used for dispatch, injection, or
-        the scratch-that stack -- see module docstring above.
+        """Suppress whole control phrases in the preview, using dispatch matchers.
 
-        "literal <phrase>" needs no special-case exclusion: every one of
-        these matchers requires exact/whole-utterance equality (post
-        normalize_utterance's filler-word stripping, which does not strip
-        "literal"), so "literal scratch that" normalizes to "literal
-        scratch that" and never equals "scratch that" -- match_literal_
-        payload's own escape hatch falls out of this for free.
-
-        Does NOT re-run passes_switch_anti_hallucination_gate/passes_
-        dictate_commit_gate (those need segment-level signals this
-        lightweight partial decode doesn't have) -- a control phrase
-        spoken on low-confidence audio that the real gate would have
-        rejected (and treated as ordinary text) could still be suppressed
-        here. Display-only edge case, not the bug this predicate exists
-        to fix (confidently-spoken control phrases showing up as
-        dictation), and self-correcting: the REAL dispatch outcome always
-        wins for what actually happens to the injected text.
+        Literal payloads never match. Partials lack confidence signals; final
+        dispatch remains authoritative for what is staged or inserted.
         """
         if not text:
             return False
+        from samsara.ava_edit import intent, session
+        if intent.draft_cleanup_scope(text) is not None:
+            return True
+        if session.pending() is not None and (intent.is_apply_utterance(text) or intent.is_discard_utterance(text)):
+            return True
         try:
             manager = self.app._ensure_session_mode_manager()
         except Exception as e:

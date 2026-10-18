@@ -133,18 +133,41 @@ def test_draft_badge_keeps_its_12_dip_rounded_corner(qapp):
 
 @pytest.mark.parametrize("form", (VisibleForm.LIVE, VisibleForm.REVIEW))
 def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
+    from PySide6.QtWidgets import QPushButton
+    from samsara.ui.live_surface_qt import cleanup_buttons
+
     widget = LiveSurfaceWidget(_view(form, text="Settled", partial="moving words",
-                                     capture=CaptureState.RECORDING))
+                                     capture=CaptureState.RECORDING,
+                                     document=DocumentState.EDITABLE_DRAFT))
     widget.show()
-    qapp.processEvents()
-    assert widget._transcript.y() == widget.card_content_rect.y() + 44 + 8
-    assert widget._transcript.height() >= 24
-    assert widget._clear.isVisible() and widget._clear.height() >= MARK_SIZE
-    assert not widget._pause.isVisible() and not widget._correct.isVisible()
-    # Finish2 R4 permits Insert text only in the waiting-draft form.
-    assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)) if button.isVisible())
-    # 220-G makes this a scrollable QTextBrowser; its document begins at top.
-    assert widget._transcript.document().documentMargin() >= 0
+    for capture, pending, labels in (
+        (CaptureState.RECORDING, False, {"Clear draft"}),
+        (CaptureState.HANDS_FREE_LISTENING, False, {"Clean up", "Clear draft"}),
+        (CaptureState.HANDS_FREE_LISTENING, True, {"Accept?", "Cancel"}),
+        (CaptureState.HANDS_FREE_LISTENING, False, {"Clean up", "Clear draft"}),
+    ):
+        widget.refresh(_view(form, text="Settled", partial="moving words",
+                             capture=capture, document=DocumentState.EDITABLE_DRAFT),
+                       animate=False)
+        cleanup_buttons(widget._clean_up, widget._clear, pending, reduced_motion=True)
+        qapp.processEvents()
+        content = widget.card_content_rect
+        # 658 reserves a separate action row, never the transcript's width.
+        action_row = 34 if capture is CaptureState.HANDS_FREE_LISTENING else 0
+        assert widget._transcript.y() == content.y() + 44 + 8 + action_row
+        assert widget._transcript.height() >= 24
+        assert widget._transcript.x() == content.x()
+        assert widget._transcript.width() == content.width()
+        buttons = [b for b in widget.findChildren(QPushButton) if b.isVisible()]
+        assert {b.text() for b in buttons} == labels and len(buttons) == len(labels)
+        assert widget._clear.height() == 26
+        for button in buttons:
+            assert content.contains(button.geometry())
+            assert not button.geometry().intersects(widget._transcript.geometry())
+        # Exact allowlist also excludes Pause, Correct, Insert text and extra state controls.
+        assert not widget._pause.isVisible() and not widget._correct.isVisible()
+        # 220-G keeps both settled and incoming words in a scrollable browser.
+        assert widget._transcript.document().documentMargin() >= 0
     widget.close()
 
 
@@ -221,11 +244,30 @@ def test_compact_mark_has_opaque_backing_and_visible_state(qapp):
 
 def test_no_persistent_commit_or_extra_state_control(qapp):
     from PySide6.QtWidgets import QPushButton
-    w = LiveSurfaceWidget(_view(VisibleForm.LIVE, text='Synthetic settled text'))
+    from samsara.ui.live_surface_qt import cleanup_buttons
+
+    w = LiveSurfaceWidget(_view(VisibleForm.LIVE))
     w.show(); qapp.processEvents()
-    assert [b.text() for b in w.findChildren(QPushButton) if b.isVisible()] == ['Clear']
-    # Finish2 R4's waiting-draft action is hidden on the ordinary live card.
-    assert not any(b.text().lower() in ('commit', 'insert text') for b in w.findChildren(QPushButton) if b.isVisible())
+    for capture in (CaptureState.OFF, CaptureState.HANDS_FREE_LISTENING):
+        for text, pending in (("", False), ("Synthetic settled text", False),
+                              ("Synthetic settled text", True), ("", False)):
+            hands_free = capture is CaptureState.HANDS_FREE_LISTENING
+            pending = pending and hands_free
+            w.refresh(_view(VisibleForm.LIVE, text=text, capture=capture,
+                            document=DocumentState.EDITABLE_DRAFT if text else DocumentState.EMPTY),
+                      animate=False)
+            cleanup_buttons(w._clean_up, w._clear, pending, reduced_motion=True)
+            qapp.processEvents()
+            buttons = [b for b in w.findChildren(QPushButton) if b.isVisible()]
+            labels = {"Accept?", "Cancel"} if pending else {"Clear draft"}
+            if hands_free and not pending:
+                labels.add("Clean up")
+            assert {b.text() for b in buttons} == labels and len(buttons) == len(labels)
+            # Empty hands-free draft retains the approved disabled cleanup affordance.
+            if hands_free:
+                assert w._clean_up.isEnabled() == bool(text)
+            # Insert text belongs only to the waiting-draft form, never ordinary live.
+            assert not any(b.text().lower() in ("commit", "insert text") for b in buttons)
     w.hide(); w.deleteLater()
 
 
