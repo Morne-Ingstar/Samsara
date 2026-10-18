@@ -844,7 +844,9 @@ class _WizardWindow(QDialog):
         self._cpu.setText(facts.processor)
         self._cores.setValue(facts.cores)
         self._filling = False
-        graphics = f'{gpu.name}, {gpu.dedicated_bytes / hardware_check.GIB:g} GB graphics memory' if gpu else 'Graphics card not found'
+        graphics = (f'{gpu.name} (shared memory)' if gpu and gpu.dedicated_bytes == 0 else
+                    f'{gpu.name}, {gpu.dedicated_bytes / hardware_check.GIB:g} GB graphics memory' if gpu else
+                    'Graphics card not found')
         processor = facts.processor or 'Processor not identified'
         self._hardware_status.setText(
             f'{graphics}\n{facts.ram_bytes / hardware_check.GIB:g} GB system memory; {processor} ({facts.cores} cores).')
@@ -1103,6 +1105,7 @@ class _WizardWindow(QDialog):
             try:
                 result = action()
             except Exception:
+                logger.exception('[AVA-GUIDE] %s job failed', kind)
                 result = 'exception'
             self._result.emit(token, kind, result)
         thread_registry.spawn('ava-guide-' + kind, run, daemon=True)

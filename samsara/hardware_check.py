@@ -93,15 +93,28 @@ def _registry_gpus(registry):
             if name.lower().startswith("\\device\\video") and value.lower().startswith(prefix.lower()):
                 paths.add(value[len(prefix):])
     gpus = []
+    seen = set()
     for path in sorted(paths):
-        with registry.OpenKey(registry.HKEY_LOCAL_MACHINE, path) as adapter:
-            name = registry.QueryValueEx(adapter, "DriverDesc")[0]
-            memory, kind = registry.QueryValueEx(adapter, "HardwareInformation.qwMemorySize")
-            if kind not in (registry.REG_QWORD, registry.REG_BINARY):
-                raise ValueError("64-bit dedicated graphics memory unavailable")
-            gpus.append(GPU(str(name), dedicated_bytes(memory)))
-    if not gpus:
-        raise ValueError("No active display adapter details")
+        try:
+            with registry.OpenKey(registry.HKEY_LOCAL_MACHINE, path) as adapter:
+                name = str(registry.QueryValueEx(adapter, "DriverDesc")[0])
+                try:
+                    memory, kind = registry.QueryValueEx(adapter, "HardwareInformation.qwMemorySize")
+                    if kind == registry.REG_QWORD and type(memory) is int and memory >= 0:
+                        capacity = memory
+                    elif (kind == registry.REG_BINARY and isinstance(memory, bytes)
+                          and len(memory) == 8):
+                        capacity = dedicated_bytes(memory)
+                    else:
+                        capacity = 0
+                except (OSError, ValueError, TypeError):
+                    capacity = 0
+        except OSError:
+            continue
+        identity = (name, capacity)
+        if identity not in seen:
+            seen.add(identity)
+            gpus.append(GPU(name, capacity))
     return tuple(gpus)
 
 
@@ -147,7 +160,10 @@ def _read_windows():
     avx2 = bool(kernel.IsProcessorFeaturePresent(40))  # PF_AVX2_INSTRUCTIONS_AVAILABLE.
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as cpu:
         processor = winreg.QueryValueEx(cpu, "ProcessorNameString")[0]
-    return Hardware(_registry_gpus(winreg), memory.total, str(processor).strip(), cores, avx2)
+    ram_bytes = memory.total
+    processor = str(processor).strip()
+    gpus = _registry_gpus(winreg)
+    return Hardware(gpus, ram_bytes, processor, cores, avx2)
 
 
 def measure_local(config, *, request=None):
