@@ -3,12 +3,45 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+from PySide6.QtCore import QAbstractAnimation, QTimer
+from shiboken6 import isValid
+
 from samsara.live_surface.controller import LiveSurfaceController
 from samsara.live_surface.model import (CaptureState, DocumentState, EventKind, Lane,
                                         Notice, NoticeKind, PresentationState,
                                         SurfaceEvent, SurfaceView, VisibleForm)
 from samsara.session_modes import SessionMode, SessionModeManager, UtteranceSignals
 from samsara.ui.live_surface_qt import LiveSurfaceWidget, MARK_SIZE
+
+
+@pytest.fixture
+def surface_owner(qapp, qt_deferred_delete):
+    """Keep review objects alive until their Qt activity is stopped and deleted."""
+    owners = []
+
+    def own(obj):
+        owners.append(obj)
+        return obj
+
+    try:
+        yield own
+    finally:
+        for owner in reversed(owners):
+            controller = isinstance(owner, LiveSurfaceController)
+            widget = owner.widget if controller else owner
+            if widget is not None and isValid(widget):
+                for animation in widget.findChildren(QAbstractAnimation):
+                    animation.stop()
+                for timer in widget.findChildren(QTimer):
+                    timer.stop()
+                if controller:
+                    owner.close()
+                else:
+                    widget.hide()
+                    widget.deleteLater()
+                # Do not run queued controller callbacks or another test's deletes.
+                qt_deferred_delete(widget)
 
 
 def manager(*, live=True):
@@ -34,9 +67,9 @@ class Source:
         "revision": self._view.revision, "segments": self.segments}
 
 
-def test_repeated_word_selection_carries_segment_span_and_occurrence(qapp):
+def test_repeated_word_selection_carries_segment_span_and_occurrence(qapp, surface_owner):
     source = Source(review(), [("s", "one two two three")])
-    widget = LiveSurfaceWidget(source); widget.show(); qapp.processEvents()
+    widget = surface_owner(LiveSurfaceWidget(source)); widget.show(); qapp.processEvents()
     chosen = []
     widget.correct_word_requested.connect(chosen.append)
     widget._anchor_clicked(__import__('PySide6').QtCore.QUrl("word:2"))
@@ -69,9 +102,9 @@ def test_local_correction_is_undoable_and_never_trains_a_global_rule():
     assert subject.dictate_pending_buffer == "wrong word "
 
 
-def test_no_match_keeps_spell_and_edit_and_picker_targets_are_large(qapp):
+def test_no_match_keeps_spell_and_edit_and_picker_targets_are_large(qapp, surface_owner):
     source = Source(review(), [("s", "unusualtoken")])
-    widget = LiveSurfaceWidget(source); widget.show_word_picker(); qapp.processEvents()
+    widget = surface_owner(LiveSurfaceWidget(source)); widget.show_word_picker(); qapp.processEvents()
     assert widget._picker_buttons[0].minimumHeight() >= MARK_SIZE
     selection = {"document_id": "d", "revision": 1, "segment_id": "s", "start": 0, "end": 12, "word": "unusualtoken"}
     widget.show(); widget.show_candidates(selection, []); qapp.processEvents()
@@ -83,10 +116,10 @@ def test_no_match_keeps_spell_and_edit_and_picker_targets_are_large(qapp):
     widget._apply_editor(); assert applied == ["A-b'"]
 
 
-def test_scroll_back_stays_pinned_while_new_text_arrives_and_latest_resumes(qapp):
+def test_scroll_back_stays_pinned_while_new_text_arrives_and_latest_resumes(qapp, surface_owner):
     long = "word " * 500
     source = Source(review(long), [("s", long)])
-    widget = LiveSurfaceWidget(source); widget.show(); qapp.processEvents()
+    widget = surface_owner(LiveSurfaceWidget(source)); widget.show(); qapp.processEvents()
     bar = widget._transcript.verticalScrollBar(); bar.setValue(0); widget._follow_latest = False; qapp.processEvents()
     assert not widget._follow_latest
     source._view = review(long + "new "); source.segments = [("s", long + "new ")]
@@ -95,10 +128,10 @@ def test_scroll_back_stays_pinned_while_new_text_arrives_and_latest_resumes(qapp
     widget._latest_clicked(); assert widget._follow_latest and widget._unread_segments == 0
 
 
-def test_controller_uses_candidate_service_and_identity_not_rendered_offsets(qapp):
+def test_controller_uses_candidate_service_and_identity_not_rendered_offsets(qapp, surface_owner):
     subject = manager(); subject.pause_draft(); subject.stage_parked_hold("hear hear ")
     app = SimpleNamespace(_session_mode_manager=subject, voice_training_window=None)
-    controller = LiveSurfaceController(app)
+    controller = surface_owner(LiveSurfaceController(app))
     controller.sync_draft(subject); controller.drain()
     controller.start(); qapp.processEvents()
     segment = subject.draft_document.segments[0]
@@ -132,13 +165,13 @@ def test_scoped_voice_picker_phrases_are_inert_without_the_surface():
     assert disabled.dispatch_utterance("word 2", signals).kind == "dictate_staged"
 
 
-def test_correction_survives_queued_draft_sync_and_cancel_closes_it(qapp, monkeypatch):
+def test_correction_survives_queued_draft_sync_and_cancel_closes_it(qapp, surface_owner):
     from PySide6.QtTest import QTest
     from PySide6.QtCore import Qt
     from samsara.live_surface.model import PresentationState
     subject = manager(); subject.pause_draft(); subject.stage_parked_hold('stop here ')
     app = SimpleNamespace(_session_mode_manager=subject, voice_training_window=None)
-    c = LiveSurfaceController(app)
+    c = surface_owner(LiveSurfaceController(app))
     c.sync_draft(subject); c.drain(); c.start()
     segment = subject.draft_document.segments[0]
     c._correct({'document_id': subject.draft_document.document_id,
@@ -149,17 +182,16 @@ def test_correction_survives_queued_draft_sync_and_cancel_closes_it(qapp, monkey
     QTest.keyClick(c.widget, Qt.Key.Key_Escape); c.drain()
     assert c.widget._selection is None
     assert c.view().presentation is not PresentationState.CORRECTION
-    c.close(); qapp.processEvents()
 
 
-def test_candidate_and_empty_panes_remain_visible_in_every_source_form(qapp):
+def test_candidate_and_empty_panes_remain_visible_in_every_source_form(qapp, surface_owner):
     from dataclasses import replace
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
     selection = {'document_id': 'd', 'revision': 1, 'word': 'stop'}
     for form in VisibleForm:
         for candidates in ([], [SimpleNamespace(replacement=f'choice {n}') for n in range(6)]):
-            w = LiveSurfaceWidget(replace(review(), form=form))
+            w = surface_owner(LiveSurfaceWidget(replace(review(), form=form)))
             w.show(); w.show_candidates(selection, candidates); qapp.processEvents()
             assert w._more.isVisible() is (len(candidates) > 4)
             controls = (w._keep, w._spell, w._edit) + ((w._more,) if len(candidates) > 4 else ())
@@ -179,29 +211,27 @@ def test_candidate_and_empty_panes_remain_visible_in_every_source_form(qapp):
             assert w._picker_buttons[0].isVisible() and w._cancel.isVisible()
             QTest.keyClick(w, Qt.Key.Key_Escape)
             assert not w._picker_active
-            w.hide(); w.deleteLater()
+            w.hide()
 
 
-def test_finishing_keyboard_correction_restores_passive_window(qapp):
+def test_finishing_keyboard_correction_restores_passive_window(qapp, surface_owner):
     from PySide6.QtCore import Qt
-    w = LiveSurfaceWidget(review())
+    w = surface_owner(LiveSurfaceWidget(review()))
     w.show(); w.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'two'}, [])
     w._open_editor('edit')
     assert not (w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus)
     w._cancel_editor(); w._keep.click()
     assert w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
     assert w.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-    w.hide(); w.deleteLater()
 
 
-def test_changed_document_closes_editor_and_restores_passive_capture(qapp):
+def test_changed_document_closes_editor_and_restores_passive_capture(qapp, surface_owner):
     from dataclasses import replace
     from PySide6.QtCore import Qt
-    w = LiveSurfaceWidget(review())
+    w = surface_owner(LiveSurfaceWidget(review()))
     w.show(); w.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'two'}, [])
     w._open_editor('edit')
     cancelled = []; w.correction_cancel_requested.connect(lambda: cancelled.append(True))
     w.refresh(replace(review(), revision=2), animate=False)
     assert w._selection is None and not w._editor.isVisible() and cancelled == [True]
     assert w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
-    w.hide(); w.deleteLater()
