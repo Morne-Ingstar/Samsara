@@ -17,7 +17,7 @@ def settle(qapp):
 
 
 @pytest.fixture(params=('home', 'settings'))
-def window(request, qapp, monkeypatch):
+def window(request, qapp, monkeypatch, qt_widget_scope):
     from samsara import autostart
     from samsara.ui.first_run_qt import ComponentsPage
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **k: None)
@@ -32,13 +32,11 @@ def window(request, qapp, monkeypatch):
     else:
         from samsara.ui.settings_qt import _SettingsWindow
         result = _SettingsWindow(_StubApp(_schema_defaults()))
-    result.resize(1160, 900)
-    result.show()
-    settle(qapp)
-    yield result
-    result.hide()
-    result.deleteLater()
-    settle(qapp)
+    with qt_widget_scope(result):
+        result.resize(1160, 900)
+        result.show()
+        settle(qapp)
+        yield result
 
 
 def rings(window):
@@ -137,17 +135,20 @@ def test_guides_mouse_keeps_clicked_control(window, qapp):
 
 @pytest.mark.parametrize('palette', ('dark', 'light'))
 @pytest.mark.parametrize('origin', ('local', 'application'))
-def test_rendered_border_tracks_keyboard_and_same_widget_mouse(qapp, palette, origin, request):
+def test_rendered_border_tracks_keyboard_and_same_widget_mouse(
+        qapp, palette, origin, request, qt_widget_scope):
+    old_theme = theme.active_theme()
     theme.set_theme(palette, refresh=False)
     install()
     button = QPushButton('Focus fixture')
     old_sheet = qapp.styleSheet()
     def cleanup():
-        button.hide()
-        button.deleteLater()
+        # Deliver this owner's DeferredDelete BEFORE replacing the shared QSS.
+        # Global processEvents does not reliably deliver deferred deletion.
+        with qt_widget_scope(button):
+            pass
         qapp.setStyleSheet(old_sheet)
-        theme.set_theme('dark', refresh=False)
-        settle(qapp)
+        theme.set_theme(old_theme, refresh=False)
     request.addfinalizer(cleanup)
     sheet = (f'QPushButton {{ background: {theme.BG1}; border: 2px solid transparent; }}'
              f'QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}')

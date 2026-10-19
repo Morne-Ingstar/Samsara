@@ -154,6 +154,64 @@ def test_after_crash():
     assert 'Timeout (' in result.stderr
 
 
+@pytest.mark.parametrize('sabotage', ['cancel', 'disable', 'replace'])
+def test_process_watchdog_survives_disarmed_faulthandler(tmp_path, sabotage):
+    result, finished = run_child(tmp_path, NATIVE_BLOCK + f'''
+import faulthandler
+
+def test_disarmed():
+    if {sabotage!r} == 'disable':
+        faulthandler.disable()
+    if {sabotage!r} == 'replace':
+        faulthandler.dump_traceback_later(60, file=sys.stderr, exit=True)
+    else:
+        faulthandler.cancel_dump_traceback_later()
+    native_block(60)
+''', hard='1', soft='0')
+    assert result.returncode != 0, result.stdout + result.stderr
+    entered = float(re.search(r'NATIVE_ENTER (\d+\.\d+)', result.stderr).group(1))
+    assert 1 <= finished - entered < 10, result.stderr
+    assert '[process watchdog] killed pid=' in result.stderr
+    assert 'test_probe.py::test_disarmed' in result.stderr
+
+
+def test_process_watchdog_restarts_xdist_and_names_the_crashed_item(tmp_path):
+    result, _ = run_child(tmp_path, NATIVE_BLOCK + '''
+import faulthandler
+
+def test_disarmed():
+    faulthandler.disable()
+    faulthandler.cancel_dump_traceback_later()
+    native_block(60)
+
+def test_after_crash():
+    assert True
+''', hard='1', soft='0', extra=(
+        '-p', 'xdist.plugin', '-n', '2', '--dist', 'loadfile', '--max-worker-restart=2'))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert '1 failed, 1 passed' in result.stdout
+    assert '[process watchdog] killed pid=' in result.stderr
+    assert 'test_probe.py::test_disarmed' in result.stderr
+
+
+def test_process_watchdog_covers_outer_protocol_teardown(tmp_path):
+    result, _ = run_child(tmp_path, '''
+def test_passes_before_outer_teardown():
+    assert True
+''', hard='1', soft='0', conftest_extra=NATIVE_BLOCK + '''
+import faulthandler
+
+@pytest.hookimpl(hookwrapper=True, trylast=True, specname='pytest_runtest_protocol')
+def pytest_outer_teardown_probe(item):
+    yield
+    faulthandler.cancel_dump_traceback_later()
+    native_block(60)
+''')
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert '[process watchdog] killed pid=' in result.stderr
+    assert 'test_probe.py::test_passes_before_outer_teardown' in result.stderr
+
+
 def test_default_exceeds_ci_soft_timeout(monkeypatch):
     monkeypatch.delenv('SAMSARA_TEST_HARD_TIMEOUT', raising=False)
     assert support._hard_timeout_seconds_700() == 180

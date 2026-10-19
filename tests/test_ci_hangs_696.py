@@ -1,5 +1,5 @@
 """Real layout paths stay nonmodal and retire native owners before patches expire."""
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from time import monotonic
 from unittest.mock import Mock
 
@@ -106,24 +106,71 @@ def test_full_label_paths_destroy_widgets_with_activity_stopped(
             super().__init__(*args, **kwargs)
             created.append((self, self.findChildren(QWidget)))
 
-        def hide(self):
-            if self.isVisible():
-                stopped.append(all(not timer.isActive() for timer in self.findChildren(QTimer)) and
-                               all(animation.state() == QAbstractAnimation.State.Stopped
-                                   for animation in self.findChildren(QAbstractAnimation)))
-            return super().hide()
+    @contextmanager
+    def checked_scope(widget, *, close=None):
+        def checked_close():
+            stopped.append(all(not timer.isActive() for timer in widget.findChildren(QTimer)) and
+                           all(animation.state() == QAbstractAnimation.State.Stopped
+                               for animation in widget.findChildren(QAbstractAnimation)))
+            (close or widget.close)()
+        # Observe the explicit cleanup boundary rather than overriding hide
+        # on a Python subclass while native Qt is destroying its children.
+        with qt_widget_scope(widget, close=checked_close):
+            yield widget
 
     monkeypatch.setattr(full_tests, "LiveSurfaceWidget", ObservedSurface)
     if case in ("dark", "light"):
-        full_tests.test_clear_label_and_padding_with_runtime_font(qapp, monkeypatch, qt_widget_scope, case)
+        full_tests.test_clear_label_and_padding_with_runtime_font(qapp, monkeypatch, checked_scope, case)
     elif case == "latest":
-        full_tests.test_latest_counter_uses_the_same_text_padding_rule(qapp, qt_widget_scope)
+        full_tests.test_latest_counter_uses_the_same_text_padding_rule(qapp, checked_scope)
     else:
-        full_tests.test_parked_draft_text_controls_fit_the_effective_font(qapp, qt_widget_scope)
+        full_tests.test_parked_draft_text_controls_fit_the_effective_font(qapp, checked_scope)
     assert len(created) == 1
     widget, children = created[0]
     assert not isValid(widget) and all(not isValid(child) for child in children)
     assert stopped and all(stopped)
+
+
+@pytest.mark.parametrize('fail', (False, True))
+def test_support_route_retires_both_windows_before_patches_expire(
+        qapp, monkeypatch, qt_widget_scope, fail):
+    from tests import test_tutorial_support_link as support_tests
+
+    created, closed, destroyed = [], [], []
+
+    class Settings(support_tests.settings_qt._SettingsWindow):
+        def __init__(self, *args):
+            super().__init__(*args)
+            created.append(self)
+            self.probe_timer = QTimer(self)
+            self.probe_timer.start(0)
+            self.destroyed.connect(lambda *_: destroyed.append(
+                support_tests.settings_qt._SettingsWindow is Settings))
+
+        def closeEvent(self, event):
+            closed.append(not self.probe_timer.isActive())
+            super().closeEvent(event)
+
+    class Tutorial(support_tests.TutorialWindow):
+        def __init__(self, *args):
+            super().__init__(*args)
+            created.append(self)
+            if fail:
+                done = self._pages[[key for key, _ in self._steps].index('done')]
+
+                def failed_lookup(*args):
+                    raise AssertionError('synthetic support-route failure')
+
+                monkeypatch.setattr(done, 'findChild', failed_lookup)
+
+    monkeypatch.setattr(support_tests.settings_qt, '_SettingsWindow', Settings)
+    monkeypatch.setattr(support_tests, 'TutorialWindow', Tutorial)
+    expected = pytest.raises(AssertionError, match='synthetic support-route failure') if fail else nullcontext()
+    with expected:
+        support_tests.test_done_step_button_opens_settings_on_help_and_support(
+            qapp, monkeypatch, qt_widget_scope)
+    assert len(created) == 2 and all(not isValid(widget) for widget in created)
+    assert closed == [True] and destroyed == [True]
 
 
 def test_scrollbar_switch_does_not_refresh_unrelated_window(qapp, monkeypatch, qt_widget_scope):

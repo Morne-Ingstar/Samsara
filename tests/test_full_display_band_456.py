@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import time
 
 import pytest
-from PySide6.QtCore import QAbstractAnimation, QRect, Qt, QTimer
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QAccessible, QPalette
 
 from samsara.live_surface.controller import LiveSurfaceController, LiveSurfaceIndicatorAdapter
@@ -21,7 +21,7 @@ from samsara.message_durations import message_duration_ms
 
 
 @pytest.fixture
-def surface(qapp, monkeypatch, qt_deferred_delete):
+def surface(qapp, monkeypatch, qt_widget_scope):
     previous = theme.active_theme()
     monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
     clock = [0.0]
@@ -32,22 +32,12 @@ def surface(qapp, monkeypatch, qt_deferred_delete):
     app.listening_indicator = indicator
     app._schedule_ui = lambda fn, *args: fn(*args)
     c._screens = lambda: [Screen('test', Rect(0, 0, 1600, 1200), True)]
-    c.start()
     try:
-        yield c, indicator, clock
+        c.start()
+        with qt_widget_scope(c.widget, close=c.close):
+            yield c, indicator, clock
     finally:
-        widget = c.widget
-        try:
-            if widget is not None:
-                for animation in widget.findChildren(QAbstractAnimation):
-                    animation.stop()
-                for timer in widget.findChildren(QTimer):
-                    timer.stop()
-            c.close()
-            if widget is not None:
-                qt_deferred_delete(widget)
-        finally:
-            theme.set_theme(previous)
+        theme.set_theme(previous, refresh=False)
 
 
 def question(indicator, owner='q1'):
@@ -58,7 +48,7 @@ def question(indicator, owner='q1'):
 @pytest.mark.parametrize('palette', ['dark', 'light'])
 @pytest.mark.parametrize('kind', ['success', 'warning', 'error', 'accent', 'pending'])
 def test_roles_effective_font_ink_and_accessible_names(surface, qapp, palette, kind):
-    c, i, _ = surface; theme.set_theme(palette)
+    c, i, _ = surface; theme.set_theme(palette, refresh=False)
     i.set_session_mode('COMMAND'); i.show_outcome('Synthetic result', kind, 1800); c.drain()
     w = c.widget; w.ensurePolished(); qapp.processEvents()
     assert w._lane.text() == 'Command' and w._state.text() == 'listening'

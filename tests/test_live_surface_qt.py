@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QEventLoop, QPoint, Qt
 
 from samsara.live_surface.model import (CaptureState, DocumentState, Notice, NoticeKind,
                                         PresentationState, SurfaceView, VisibleForm)
@@ -86,13 +86,15 @@ def test_card_children_stay_inside_the_specified_all_sides_inset(qapp, form):
 @pytest.mark.parametrize("form", (VisibleForm.STATUS, VisibleForm.LIVE, VisibleForm.REVIEW))
 def test_card_has_a_distinct_surface_and_border_in_both_palettes(qapp, form, qt_widget_scope):
     for palette in ("dark", "light"):
-        theme.set_theme(palette)
+        # Only the new card needs this palette; do not restyle old top levels
+        # retained by preceding tests while their deletion is pending.
+        theme.set_theme(palette, refresh=False)
         with qt_widget_scope(LiveSurfaceWidget(
                 _view(form, text="Settled words", partial="new words",
-                      capture=CaptureState.RECORDING))) as widget:
+                      capture=CaptureState.RECORDING), reduced_motion=True)) as widget:
             widget.show()
             widget.ensurePolished()
-            qapp.processEvents()
+            qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
             image = widget.grab().toImage()
             card = widget.card_rect
             assert image.pixelColor(card.x(), card.y() + card.height() // 2) != \

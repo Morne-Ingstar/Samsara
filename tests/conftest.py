@@ -17,6 +17,128 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 _HARD_WATCHDOG_700 = pytest.StashKey()
+_PROCESS_WATCHDOG_705 = pytest.StashKey()
+
+# Run stdlib-only code in a separate interpreter: neither the worker's GIL,
+# faulthandler's single timer, nor a blocked traceback writer can disarm it.
+_PROCESS_WATCHDOG_SOURCE_705 = r'''
+import json, os, sys, time
+from pathlib import Path
+
+pid, heartbeat = int(sys.argv[1]), Path(sys.argv[2])
+if sys.platform == 'win32':
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    # Hold the process object, so a recycled PID can never target another app.
+    handle = kernel.OpenProcess(0x100001, False, pid)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    alive = lambda: kernel.WaitForSingleObject(handle, 0) == 258
+    def kill():
+        if not kernel.TerminateProcess(handle, 1):
+            raise ctypes.WinError(ctypes.get_last_error())
+else:
+    import signal
+    alive = lambda: os.getppid() == pid
+    def kill():
+        os.kill(pid, signal.SIGKILL)
+
+heartbeat.with_suffix('.ready').touch()
+try:
+    while alive():
+        try:
+            state = json.loads(heartbeat.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            break
+        except PermissionError:
+            # Windows can briefly deny open while os.replace retires the old
+            # file. A hung worker stops replacing it, so reads then succeed.
+            time.sleep(0.01)
+            continue
+        if state and time.monotonic() >= state['deadline'] + 1.0:
+            # Terminate BEFORE logging: even a full stderr pipe must not stop us.
+            kill()
+            os.write(2, ('[process watchdog] killed pid=' + str(pid) + ' ' +
+                         state['nodeid'] + '\n').encode('utf-8', 'backslashreplace'))
+            break
+        time.sleep(0.05)
+finally:
+    if sys.platform == 'win32':
+        kernel.CloseHandle(handle)
+'''
+
+
+class _ProcessWatchdog705:
+    def __init__(self, stderr_fd):
+        import subprocess
+
+        self.directory = Path(tempfile.mkdtemp(prefix='pytest-watchdog-'))
+        self.heartbeat = self.directory / 'heartbeat.json'
+        self.write(None)
+        # Preserve the inherited silent-audio guard in this child as well.
+        self.process = subprocess.Popen(
+            [sys.executable, '-c', _PROCESS_WATCHDOG_SOURCE_705,
+             str(os.getpid()), str(self.heartbeat)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=stderr_fd,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        deadline = _watchdog_monotonic_701() + 10
+        while not self.heartbeat.with_suffix('.ready').exists():
+            if self.process.poll() is not None or _watchdog_monotonic_701() >= deadline:
+                self.close()
+                raise pytest.UsageError('independent test watchdog failed to start')
+            import time
+            time.sleep(0.01)
+
+    def write(self, state):
+        import time
+
+        pending = self.heartbeat.with_suffix('.tmp')
+        pending.write_text(json.dumps(state), encoding='utf-8')
+        for attempt in range(50):
+            try:
+                os.replace(pending, self.heartbeat)
+                return
+            except PermissionError:
+                if attempt == 49:
+                    raise
+                time.sleep(0.01)
+
+    def arm(self, nodeid, deadline):
+        if self.process.poll() is not None:
+            raise pytest.UsageError('independent test watchdog exited unexpectedly')
+        self.write(dict(nodeid=nodeid, deadline=deadline))
+
+    def close(self):
+        import subprocess
+
+        self.heartbeat.unlink(missing_ok=True)
+        try:
+            self.process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=2)
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+
+def pytest_sessionstart(session):
+    config = session.config
+    if _hard_timeout_seconds_700() == 0:
+        return
+    if getattr(config.option, 'numprocesses', 0) and not hasattr(config, 'workerinput'):
+        return  # xdist controller never executes test items.
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, ValueError):
+        fd = sys.__stderr__.fileno()
+    watchdog = _ProcessWatchdog705(fd)
+    config.stash[_PROCESS_WATCHDOG_705] = watchdog
+    config.add_cleanup(watchdog.close)
 
 
 def _hard_timeout_seconds_700():
@@ -44,9 +166,9 @@ def _rearm_hard_watchdog_700(item):
             max(0.001, deadline - monotonic()), file=fd, exit=True)
 
 
-@pytest.hookimpl(hookwrapper=True, trylast=True)
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_protocol(item):
-    """A C watchdog can retire a worker even while native code holds the GIL."""
+    """Cover setup, call, reports and teardown, including other hook wrappers."""
     import faulthandler
     from time import monotonic
     monotonic = _watchdog_monotonic_701
@@ -55,6 +177,9 @@ def pytest_runtest_protocol(item):
     if seconds == 0:
         yield
         return
+    deadline = monotonic() + seconds
+    watchdog = item.config.stash[_PROCESS_WATCHDOG_705]
+    watchdog.arm(item.nodeid, deadline)
     # This hook runs outside per-test capture. On Windows execnet preserves
     # the real stderr in sys.stderr but redirects fd 2 (sys.__stderr__) to NUL.
     try:
@@ -62,7 +187,7 @@ def pytest_runtest_protocol(item):
     except (AttributeError, ValueError):
         stderr_fd = sys.__stderr__.fileno()
     fd = os.dup(stderr_fd)
-    item.stash[_HARD_WATCHDOG_700] = (fd, monotonic() + seconds)
+    item.stash[_HARD_WATCHDOG_700] = (fd, deadline)
     try:
         os.write(fd, f'[hard watchdog {seconds:g}s] {item.nodeid}\n'.encode(
             'utf-8', errors='backslashreplace'))
@@ -72,6 +197,7 @@ def pytest_runtest_protocol(item):
         faulthandler.cancel_dump_traceback_later()
         del item.stash[_HARD_WATCHDOG_700]
         os.close(fd)
+        watchdog.write(None)
 
 
 @pytest.hookimpl(trylast=True)

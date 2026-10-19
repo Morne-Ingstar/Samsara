@@ -68,7 +68,12 @@ jobs:
         shell: pwsh
         run: python tools\check_thread_discipline.py
 
+      - name: Report plugin imports
+        shell: pwsh
+        run: python tools/ci_plugin_import_report.py
+
       - name: Run tests with coverage
+        timeout-minutes: 100
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
