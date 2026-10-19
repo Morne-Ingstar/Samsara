@@ -1127,6 +1127,67 @@ def qapp():
     yield app
 
 
+def _qt_windows_717():
+    # Do not import Qt or create an application for tests that never use it.
+    widgets = sys.modules.get('PySide6.QtWidgets')
+    if widgets is None or widgets.QApplication.instance() is None:
+        return ()
+    return tuple(widgets.QApplication.topLevelWidgets())
+
+
+def _qt_cleanup_windows_717(previous):
+    """Retire this test's windows without delivering another owner's events."""
+    if not _qt_windows_717():
+        return
+    from PySide6.QtCore import QAbstractAnimation, QCoreApplication, QEvent, QTimer
+    from PySide6.QtWidgets import QWidget
+    from shiboken6 import isValid
+
+    retained = {id(widget) for widget in previous}
+    # A close handler may create another window. Bound those follow-up rounds;
+    # never pump the event loop (which would dispatch unrelated timer callbacks).
+    for _ in range(8):
+        windows = [widget for widget in _qt_windows_717()
+                   if id(widget) not in retained and isValid(widget)]
+        if not windows:
+            return
+        # Tool windows also appear in topLevelWidgets(). Retire their owner
+        # first: its close/hide handlers may still access those children.
+        def depth(widget):
+            count = 0
+            parent = widget.parentWidget()
+            while parent is not None:
+                count += 1
+                parent = parent.parentWidget()
+            return count
+        windows.sort(key=depth)
+        for widget in windows:
+            if not isValid(widget):  # An earlier parent can have deleted it.
+                continue
+            for activity in (*widget.findChildren(QAbstractAnimation), *widget.findChildren(QTimer)):
+                if isValid(activity):
+                    activity.stop()
+            try:
+                widget.close()
+            finally:
+                if isValid(widget):
+                    QWidget.hide(widget)
+                    widget.deleteLater()
+                    QCoreApplication.sendPostedEvents(widget, QEvent.Type.DeferredDelete)
+    raise RuntimeError('Qt teardown kept creating top-level windows after 8 rounds')
+
+
+@pytest.fixture(autouse=True)
+def _qt_test_windows_717(monkeypatch):
+    # Wider-scoped fixtures have already been set up. Keep their windows alive;
+    # delete function-owned windows before this test's monkeypatch is undone.
+    previous = _qt_windows_717()
+    try:
+        yield
+    finally:
+        _qt_cleanup_windows_717(previous)
+
+
 @pytest.fixture(scope="session")
 def qt_deferred_delete(qapp):
     """Deliver owned deletes, or pump global deletes within a finite budget."""
