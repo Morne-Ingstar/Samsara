@@ -144,7 +144,8 @@ def _make_stub(mode='toggle', enabled=True, listening_indicator_enabled=False):
 
         def _ensure_session_mode_manager(self):
             if self._session_mode_manager is None:
-                self._session_mode_manager = Mock()
+                self._session_mode_manager = Mock(has_parked_hold=False, dictate_pending_buffer='')
+                self._session_mode_manager.retain_draft.return_value = 0
             return self._session_mode_manager
 
         # Inert collaborators for lifecycle surfaces this file doesn't

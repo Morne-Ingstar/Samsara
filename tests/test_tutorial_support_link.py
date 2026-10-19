@@ -14,7 +14,7 @@ from samsara.ui.tutorial_qt import TutorialWindow
 from tests.test_support_feedback_ui import _FeedbackApp
 
 
-def test_done_step_button_opens_settings_on_help_and_support(qapp, monkeypatch):
+def test_done_step_button_opens_settings_on_help_and_support(qapp, monkeypatch, qt_deferred_delete):
     monkeypatch.setattr(qt_runtime, "post", lambda cb: cb())
     window = settings_qt._SettingsWindow(_FeedbackApp())
     app = SimpleNamespace(
@@ -33,9 +33,11 @@ def test_done_step_button_opens_settings_on_help_and_support(qapp, monkeypatch):
         button.click()
 
         app.open_settings.assert_called_once_with()
-        assert window._stack.currentIndex() == settings_qt._TAB_NAMES.index("Help & Support")
+        assert window._stack.currentIndex() == settings_qt._TAB_NAMES.index("Help")
     finally:
         tutorial.close()
         tutorial.deleteLater()
+        qt_deferred_delete(tutorial)
         window.hide()
         window.deleteLater()
+        qt_deferred_delete(window)

@@ -185,6 +185,10 @@ def test_window_explicit_level_wins_but_unchanged_enabled_leaf_keeps_live(settin
 
 def test_window_without_snapshot_retains_ordinary_apply_behavior(settings_window):
     window = settings_window
+    # Exercise the services fallback after normal page collection. Current
+    # consent-aware page assembly itself requires the window's open snapshot.
+    updates = window._collect_destination_updates({})
+    window._save_fns = [lambda _acc: copy.deepcopy(updates)]
     del window._config_at_open
     _outside_silent(window)
     window._apply_and_close()

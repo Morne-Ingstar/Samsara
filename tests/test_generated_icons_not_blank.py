@@ -13,9 +13,10 @@ REPO = Path(__file__).resolve().parent.parent
 STATES_DIR = REPO / "assets" / "icon" / "states"
 SVG_PATH = REPO / "assets" / "icon" / "samsara.svg"
 TRAY_SIZES = (16, 24, 32, 48, 64)
-# The current non-Ava baseline bottoms out at 94 opaque pixels (idle/off at
-# 16 px).  Leave four pixels of renderer tolerance while rejecting blanks.
-MIN_OPAQUE_PIXELS = 90
+# Approved articulated artwork uses 80 visible pixels for recording at 16px.
+# Retain the 90px floor at larger sizes and the same four-pixel tolerance
+# for the 80px 16px artwork. The source-render alpha mask is checked too.
+MIN_OPAQUE_PIXELS = {16: 76, 24: 90, 32: 90, 48: 90, 64: 90}
 
 
 def _opaque_pixels(path: Path) -> int:
@@ -31,11 +32,20 @@ def _generator_module():
     return module
 
 
-def test_every_generated_state_and_size_has_visible_pixels():
+def test_every_generated_state_and_size_has_visible_pixels(qapp):
+    from PySide6.QtGui import QImage
+    generator = _generator_module()
     for state in tray_qt.MARK_STATES:
         for size in TRAY_SIZES:
             path = STATES_DIR / f"samsara_{state}_{size}.png"
-            assert _opaque_pixels(path) > MIN_OPAQUE_PIXELS, path
+            assert _opaque_pixels(path) > MIN_OPAQUE_PIXELS[size], path
+            generated = QImage(str(path))
+            reference = generator.render(state, size)
+            assert generated.size() == reference.size(), path
+            # A nonblank but wrong/truncated state must fail too. Allow one
+            # alpha step for Qt patch-version antialias rounding.
+            assert max(abs(generated.pixelColor(x, y).alpha() - reference.pixelColor(x, y).alpha())
+                       for y in range(size) for x in range(size)) <= 1, path
 
 
 def test_every_capture_table_ring_resolves_regular_and_small():

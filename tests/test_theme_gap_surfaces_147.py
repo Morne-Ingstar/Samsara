@@ -16,7 +16,7 @@ def test_queue_129_gap_surfaces_are_shared_by_the_switch_test_and_proof_tool():
     assert expected <= set(test_theme_switch.SURFACES)
 
 
-def test_ava_guide_step_labels_fit_and_do_not_overlap_connectors(qapp):
+def test_ava_guide_step_labels_fit_and_do_not_overlap_connectors(qapp, qt_widget_scope):
     from samsara.ui.ava_guide_qt import _WizardWindow
 
     theme.set_theme("dark", refresh=False)
@@ -24,15 +24,17 @@ def test_ava_guide_step_labels_fit_and_do_not_overlap_connectors(qapp):
     guide.show()
     qapp.processEvents()
     try:
-        strip = guide._step_indicator
-        assert strip.height() >= theme.HIT_TARGET_MIN
-        font = theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.DemiBold)
-        for index, name in enumerate(strip.steps):
-            bounds = strip.visualItemRect(strip.item(index))
-            assert bounds.width() >= QFontMetrics(font).horizontalAdvance(name)
-            marker_bottom = bounds.top() + theme.TYPE_TITLE * 0.85 + theme.TYPE_BODY * 0.76
-            label_top = bounds.top() + theme.TYPE_TITLE * 1.6
-            assert marker_bottom < label_top < bounds.bottom()
+        # The current Ava guide has a vertical sidebar, not the retired strip.
+        assert len(guide._steps) == 5
+        for index, label in enumerate(guide._steps):
+            assert label.height() >= theme.HIT_TARGET_MIN
+            assert label.width() >= label.fontMetrics().horizontalAdvance(label.text())
+            assert label.height() >= label.fontMetrics().height()
+            if index:
+                previous = guide._steps[index - 1]
+                assert previous.geometry().bottom() < label.geometry().top()
+                assert previous.x() == label.x()
     finally:
-        guide.close()
+        with qt_widget_scope(guide):
+            guide.close()
         theme.set_theme("dark", refresh=False)

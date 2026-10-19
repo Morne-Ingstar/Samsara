@@ -19,7 +19,6 @@ STEPS = ["Device", "Level", "Wake word", "Done"]
 CALL_SITES = (
     "mic_setup_wizard_qt.py",
     "first_run_wizard_qt.py",
-    "ava_guide_qt.py",
     "tutorial_qt.py",
 )
 
@@ -108,16 +107,17 @@ def test_only_four_step_bars_adopt_widget():
             assert "self._step_indicator = SetupStepIndicator(" in source
         else:
             assert "from samsara.ui.widgets.step_indicator import StepIndicator" in source
-        if filename == "ava_guide_qt.py":
-            assert "class _AvaStepIndicator(StepIndicator):" in source
-            assert "self._step_indicator = _AvaStepIndicator(" in source
-            assert "super()._refresh()" in source
-        elif filename != "first_run_wizard_qt.py":
+        if filename != "first_run_wizard_qt.py":
             assert "self._step_indicator = StepIndicator(" in source
         assert "self._step_indicator.set_progress(" in source
         assert "self._dots" not in source
     mic = (ROOT / "samsara/ui/mic_setup_wizard_qt.py").read_text(encoding="utf-8")
     ava = (ROOT / "samsara/ui/ava_guide_qt.py").read_text(encoding="utf-8")
+    assert "for name in ('Welcome', 'Your PC', 'Choose', 'Set up', 'Test'):" in ava
+    assert 'self._steps.append(item)' in ava
+    assert 'for i, label in enumerate(self._steps):' in ava
+    assert "label.setText(('✓  ' if i < position else '●  ' if i == position else '    ')" in ava
     assert 'dot = QLabel("*")' in mic
-    assert 'self._ollama_dot = QLabel("●")' in ava
-    assert 'self._model_status_dot = QLabel("●")' in ava
+    assert '_ollama_dot' not in ava  # The retired install-status section is gone.
+    assert 'self._model_status_dot = QLabel()' in ava
+    assert 'self._model_status_dot.setStyleSheet(' in ava

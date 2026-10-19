@@ -2,6 +2,7 @@
 import ast
 from pathlib import Path
 from types import SimpleNamespace
+from time import monotonic
 from unittest.mock import Mock
 
 import pytest
@@ -16,18 +17,31 @@ from samsara.live_surface.partials import CapturePartials
 from samsara.live_surface.placement import Edge, Placement, Rect, Screen, placement_record
 
 
+def settle(controller):
+    from PySide6.QtCore import QAbstractAnimation
+    deadline = monotonic() + 2
+    while (controller.widget._animation is not None
+           and controller.widget._animation.state() is QAbstractAnimation.State.Running
+           and monotonic() < deadline):
+        QTest.qWait(10)
+    assert (controller.widget._animation is None
+            or controller.widget._animation.state() is QAbstractAnimation.State.Stopped)
+
+
 @pytest.fixture
-def surface(qapp, monkeypatch):
+def surface(qapp, monkeypatch, qt_widget_scope):
     # Dispatch is controlled by each test; timers run on this test's Qt loop.
     monkeypatch.setattr("samsara.live_surface.controller.qt_runtime.post", lambda *_: None)
-    app = SimpleNamespace(config={})
+    app = SimpleNamespace(config={'ui': {'live_surface': {'enabled': True}}})
     clock = [10.0]
     controller = LiveSurfaceController(app, model=LiveSurfaceModel(clock=lambda: clock[0]))
     controller._screens = lambda: [Screen("test", Rect(0, 0, 1280, 900), True)]
     controller.start()
-    yield controller, LiveSurfaceIndicatorAdapter(controller), clock
-    controller.close()
-    qapp.processEvents()
+    with qt_widget_scope(controller.widget):
+        try:
+            yield controller, LiveSurfaceIndicatorAdapter(controller), clock
+        finally:
+            controller.close()
 
 
 @pytest.mark.parametrize("edge", list(Edge))
@@ -40,6 +54,7 @@ def test_actual_widget_keeps_its_form_size_through_repeated_placement(surface, e
             c.begin_capture(Lane.HOLD)
             c.post(SurfaceEvent(EventKind.PARTIAL, text=text))
         c.drain()
+        settle(c)
         # The compact mark now reserves width for its visible state label.
         expected = (152, 44) if text is None else (500, c.widget.height())
         for _ in range(4):
@@ -58,6 +73,7 @@ def test_drag_preserves_exact_mark_position_without_snap_or_resize(surface, expa
         c.post(SurfaceEvent(EventKind.PARTIAL, text="Synthetic preview."))
         c.drain()
     w = c.widget
+    settle(c)
     initial_size = w.size()
     local = QPointF(w.mark_rect.center())
     start = QPointF(w.mapToGlobal(local.toPoint()))
@@ -80,11 +96,17 @@ def test_success_expires_on_timer_without_another_capture(surface):
     c, indicator, clock = surface
     indicator.flash_success()
     c.drain()
+    settle(c)
     assert c.widget.view.form is VisibleForm.STATUS
     assert c.widget.width() == 360
-    clock[0] += 1.1
-    QTest.qWait(150)
+    # Reading time is content-dependent; exercise the real expiry timer after
+    # its model deadline instead of assuming the old one-second receipt.
+    clock[0] = c.view().notice.expires_at + .1
+    deadline = monotonic() + 2
+    while c.widget.view.form is not VisibleForm.MARK and monotonic() < deadline:
+        QTest.qWait(10)
     assert c.widget.view.form is VisibleForm.MARK
+    settle(c)
     assert (c.widget.width(), c.widget.height()) == (152, 44)
 
 
@@ -175,6 +197,7 @@ def test_reading_earlier_live_words_does_not_jump_to_latest(surface, qapp):
     partials = CapturePartials(c, Lane.HOLD, token)
     partials.partial("Synthetic text to scroll. " * 100)
     c.drain()
+    settle(c)
     qapp.processEvents()
     bar = c.widget._transcript.verticalScrollBar()
     assert bar.maximum() > 0
@@ -182,6 +205,7 @@ def test_reading_earlier_live_words_does_not_jump_to_latest(surface, qapp):
     bar.setValue(0)
     partials.partial("Synthetic text to scroll. " * 110)
     c.drain()
+    settle(c)
     qapp.processEvents()
     assert not c.widget._follow_latest and bar.value() == 0
     assert c.widget._latest.isVisible()
@@ -306,6 +330,7 @@ def test_synthetic_visual_proofs(surface, qapp):
             theme.set_theme(palette, refresh=False)
             indicator.set_session_mode("COMMAND")
             c.drain()
+            settle(c)
             qapp.processEvents()
             assert c.widget.grab().save(str(Path(destination) / f"command-{palette}.png"))
             indicator.set_session_mode(None)
@@ -313,14 +338,17 @@ def test_synthetic_visual_proofs(surface, qapp):
             partials = CapturePartials(c, Lane.HOLD, capture)
             partials.partial("This is a synthetic live preview. Words appear while recording, and the final text is inserted when the hold ends.")
             c.drain()
+            settle(c)
             qapp.processEvents()
             assert c.widget.grab().save(str(Path(destination) / f"recording-{palette}.png"))
             partials.final("Synthetic final.", delivered=True)
             partials.stop()
             c.drain()
-            clock[0] += 1.1
+            from samsara.live_surface.model import RESULT_RECEIPT_S
+            clock[0] += RESULT_RECEIPT_S + .1
             c.refresh_expired()
-            assert c.widget.width() == 44
+            settle(c)
+            assert c.widget.width() == 152
             assert c.widget.grab().save(str(Path(destination) / f"idle-{palette}.png"))
     finally:
         theme.set_theme(old_theme, refresh=False)

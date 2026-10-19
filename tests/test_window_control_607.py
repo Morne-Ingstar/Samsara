@@ -198,7 +198,7 @@ def test_desk_missing_state_refuses_without_keys(app, monkeypatch):
 def test_desk_stalled_transition_stops(monkeypatch):
     monkeypatch.setattr(av, '_desktop_state', lambda: ([b'a', b'b'], 0))
     ticks = iter([0, 2])
-    monkeypatch.setattr(av.time, 'monotonic', lambda: next(ticks))
+    monkeypatch.setattr(av, 'time', SimpleNamespace(monotonic=lambda: next(ticks)))
     import pyautogui
     keys = Mock()
     monkeypatch.setattr(pyautogui, 'hotkey', keys)
@@ -223,7 +223,7 @@ def test_desktop_registry_validates_ids(monkeypatch):
 def test_choose_expiry(app, monkeypatch):
     monkeypatch.setattr(cube, '_build_rows', lambda a: [(11, 'Editor', 'Doc')])
     clock = [10.0]
-    monkeypatch.setattr(cube.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(cube, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
     ws.handle_read_windows(app, '')
     clock[0] = 41.0
     assert not cube._selection_available()

@@ -480,8 +480,8 @@ class TestModesTabRoundTripIntoQuickReference:
         win._widgets['capture_correction_hotkey']._combo = 'ctrl+alt+y'
         win._widgets['continuous_commit_hotkey']._combo = 'ctrl+alt+k'
         win._widgets['continuous_commit_trigger'].setCurrentText('key')
-        win._widgets['ava_mode_key'].setCurrentText('F13')
-        updates = win._save_fns[1]({})
+        win._widgets['ava_mode_key']._combo = 'f13'
+        updates = win._source_saves['modes'][0]({})
         rows = {r["label"]: r for r in qr._resolve_hotkeys(_make_app(updates))}
         assert rows["Memo recording"]["value"] == "Ctrl+Alt+Q"
         assert rows["Correction capture"]["value"] == "Ctrl+Alt+Y"

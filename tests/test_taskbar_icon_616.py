@@ -98,8 +98,13 @@ def test_shortcuts_match_process_identity_and_use_embedded_exe_icon():
     installer = (REPO / "installer/samsara.iss").read_text(encoding="utf-8")
     shortcuts = installer.split("[Icons]", 1)[1].split("[Tasks]", 1)[0]
     entries = [line for line in shortcuts.splitlines() if line.startswith("Name:")]
-    assert len(entries) == 2
-    for entry in entries:
+    assert len(entries) == 3
+    app_entries = [entry for entry in entries if 'Filename: "{app}\\{#AppExeName}"' in entry]
+    uninstall_entries = [entry for entry in entries if 'Filename: "{uninstallexe}"' in entry]
+    assert len(app_entries) == 2
+    assert len(uninstall_entries) == 1
+    assert 'Tasks: startmenushortcut' in uninstall_entries[0]
+    for entry in app_entries:
         assert re.search(r'AppUserModelID:\s*"([^"]+)"', entry).group(1) == app_id
         assert 'IconFilename: "{app}\\{#AppExeName}"' in entry
         assert 'Filename: "{app}\\{#AppExeName}"' in entry

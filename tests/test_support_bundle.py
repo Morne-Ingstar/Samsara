@@ -35,6 +35,7 @@ def _support_page():
         def __init__(self):
             self.app = SimpleNamespace(config={})
             self._widgets = {}
+            self._save_fns = []
 
         def _section_title(self, title):
             return QLabel(title)
@@ -267,7 +268,7 @@ def test_versions_ignore_malformed_config_values():
     assert "private-compute-value-sentinel" not in text
 
 
-def test_help_support_button_creates_bundle_and_opens_folder(qapp, tmp_path, monkeypatch):
+def test_help_support_button_creates_bundle_and_opens_folder(qapp, tmp_path, monkeypatch, qt_deferred_delete):
     from PySide6.QtGui import QDesktopServices
     from PySide6.QtWidgets import QLabel, QPushButton
 
@@ -299,9 +300,10 @@ def test_help_support_button_creates_bundle_and_opens_folder(qapp, tmp_path, mon
         assert "Opened the report folder" in status.text()
     finally:
         page.deleteLater()
+        qt_deferred_delete(page)
 
 
-def test_help_support_button_reports_build_failure(qapp, monkeypatch):
+def test_help_support_button_reports_build_failure(qapp, monkeypatch, qt_deferred_delete):
     from PySide6.QtWidgets import QLabel, QPushButton
 
     from samsara import support_bundle
@@ -321,3 +323,4 @@ def test_help_support_button_reports_build_failure(qapp, monkeypatch):
         assert not open_folder.isEnabled()
     finally:
         page.deleteLater()
+        qt_deferred_delete(page)

@@ -520,7 +520,7 @@ SETTINGS_SCHEMA = {
     },
     "command_mode.short_decode_enabled": {
         "type": "bool", "default": False, "tab": "commands",
-        "ui_less": True,
+        "settings_ui": False,
         "ui_less_reason": "Experimental command-only short decode; opt in after recorded-audio accuracy and latency checks.",
     },
     "command_mode.dictate_utterance_silence_s": {

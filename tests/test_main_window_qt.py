@@ -151,18 +151,15 @@ class _MarkApp:
 
 
 @pytest.fixture
-def window(qapp, monkeypatch):
+def window(qapp, monkeypatch, qt_widget_scope):
     from unittest.mock import MagicMock
 
     monkeypatch.setattr(main_window_qt, "HistoryView", lambda *a, **k: QWidget())
     monkeypatch.setattr(main_window_qt.QTimer, "singleShot", MagicMock())
     app = _MarkApp()
     win = main_window_qt._MainWindow(app)
-    yield win, app
-    win._poll_timer.stop()
-    win._header_mark.stop()
-    win.hide()
-    win.deleteLater()
+    with qt_widget_scope(win):
+        yield win, app
 
 
 class TestHeaderMark:
@@ -345,7 +342,8 @@ class TestBrandHeaderAndSidebar:
         assert _theme.TEXT_SECONDARY in rest and "QPushButton:hover" in rest
         assert win._nav_btns["Home"].isChecked() and not win._nav_btns["History"].isChecked()
         assert win._nav_btns["Home"].styleSheet() == selected
-        assert win._nav_btns["History"].styleSheet() == rest
+        from samsara.ui.focus_ring import keyboard_stylesheet
+        assert win._nav_btns["History"].styleSheet() == keyboard_stylesheet(rest)
 
     def test_paused_is_visible_and_exitable(self, window, qapp):
         win, app = window

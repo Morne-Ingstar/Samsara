@@ -57,8 +57,11 @@ def test_handler_posts_focused_scope_and_speaks_feedback(monkeypatch):
     audio = Mock()
     app = SimpleNamespace(cheat_sheet=sheet, audio_coordinator=audio)
     monkeypatch.setattr(handlers, "_get_foreground_exe_lower", lambda: "chrome.exe")
+    monkeypatch.setattr(handlers, '_get_foreground_hwnd', lambda: 17)
+    monkeypatch.setattr(core_utils, '_clickable_help', lambda hwnd, query: 'Synthetic clickable help')
     monkeypatch.setattr(qt_runtime, "post", lambda callback: callback())
 
     assert core_utils.what_can_i_say(app) is True
-    sheet.show_scoped.assert_called_once_with(set(EXAMPLE_ALLOWED_PACKS) | {"browsers"})
+    sheet.show_scoped.assert_called_once_with(set(EXAMPLE_ALLOWED_PACKS) | {"browsers"},
+                                            query='', live_text='Synthetic clickable help')
     assert audio.speak.call_args.args[0] == "Showing what you can say here."

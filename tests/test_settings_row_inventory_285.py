@@ -106,8 +106,6 @@ AUDITED_KEYS = set([
     "ducking.hands_free_level",
     "ducking.level",
     "ducking.recording_mode",
-    "echo_cancellation.enabled",
-    "echo_cancellation.latency_ms",
     "tts.feedback_level",  # 372: one speech-level row replaces Spoken notices.
     "format_numbers",
     "gesture.enabled",
@@ -163,18 +161,18 @@ AUDITED_KEYS = set([
 
 
 @pytest.fixture
-def window(qapp, monkeypatch):
+def window(qapp, monkeypatch, qt_widget_scope):
     from samsara import autostart
     from samsara.ui.first_run_qt import ComponentsPage
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **kw: None)
     monkeypatch.setattr(ComponentsPage, 'refresh_async', lambda self: None)
     win = settings_qt._SettingsWindow(_StubApp(_schema_defaults()))
-    yield win
-    win.deleteLater()
+    with qt_widget_scope(win):
+        yield win
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 147  # 525 retires the dedicated capture editor.
+    assert len(AUDITED_KEYS) == 145  # 405 retires both echo-cancellation editors.
     bindings = window.config_row_inventory()
     counts = Counter(key for key, _page, _widget in bindings)
     assert AUDITED_KEYS <= counts.keys(), sorted(AUDITED_KEYS - counts.keys())
@@ -216,11 +214,16 @@ def test_six_pages_keep_approved_base_budgets(window):
     # 525: General basic stays at 7; only the retired Advanced capture row leaves.
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced
                for row in window._destination_rows) == 5
-    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [8, 5]
+    # 595 adds Ava's setup guide ahead of the eight preference rows.
+    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [9, 6]
+    for tool in settings_qt.tools_page.TOOLS:
+        window._ensure_tool(tool)
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}
 
 
 def test_preferences_do_not_apply_tool_optins(window):
+    for tool in ('Integrations', 'Alarms', 'Health'):
+        window._ensure_tool(tool)
     before = copy.deepcopy(window.app.config)
     window._widgets['todoist_enabled'].setChecked(True)
     window._widgets['alarms_enabled'].setChecked(False)
@@ -229,7 +232,13 @@ def test_preferences_do_not_apply_tool_optins(window):
     assert 'tasks' not in updates
     assert 'gesture' not in updates
     assert 'music_library' not in updates
-    assert updates['alarms']['enabled'] == before['alarms']['enabled']
+    # Preferences copy existing alarm settings while changing only hotkeys;
+    # toggling the separate tool's unsaved editors must not alter that copy.
+    assert updates['alarms'] == {
+        **before['alarms'],
+        'complete_hotkey': window._widgets['alarms_complete_key'].combo,
+        'dismiss_hotkey': window._widgets['alarms_dismiss_key'].combo,
+    }
 
 
 def test_integration_apply_cannot_change_preferences(window):
@@ -397,11 +406,11 @@ def test_help_is_click_only_and_one_panel_at_a_time(window, qapp):
     window.hide()
 
 
-def test_rows_without_distinct_help_omit_the_button(qapp):
+def test_rows_without_distinct_help_omit_the_button(qapp, qt_widget_scope):
     from PySide6.QtWidgets import QPushButton
     from samsara.ui.settings.presentation import SettingRow
 
-    row = SettingRow('Plain setting', 'Short explanation.', [QPushButton('Change')])
-    assert row.help is None
-    assert row.help_panel is None
-    assert row.values.itemAt(0).widget().accessibleDescription() == 'Short explanation.'
+    with qt_widget_scope(SettingRow('Plain setting', 'Short explanation.', [QPushButton('Change')])) as row:
+        assert row.help is None
+        assert row.help_panel is None
+        assert row.values.itemAt(0).widget().accessibleDescription() == 'Short explanation.'

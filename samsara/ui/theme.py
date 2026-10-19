@@ -810,7 +810,14 @@ class _SettingsInputLayout(QObject):
 
     def refresh(self):
         self.pending = False
-        for widget in self.window.findChildren(QWidget):
+        from PySide6.QtWidgets import QDialog
+        widgets = self.window.findChildren(QWidget)
+        # Lazy Settings scopes page styling to its central widget. Its later
+        # dialogs belong to the main window, outside that page subtree.
+        if self.window is not self.parent():
+            for dialog in self.parent().findChildren(QDialog):
+                widgets.extend([dialog, *dialog.findChildren(QWidget)])
+        for widget in widgets:
             if not widget.property('settingsInputObserved'):
                 widget.setProperty('settingsInputObserved', True)
                 self.apply(widget)

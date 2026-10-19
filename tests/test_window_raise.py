@@ -97,8 +97,13 @@ def test_refused_raise_keeps_snap_command_successful(monkeypatch):
     raise_window = MagicMock(return_value=False)
     monkeypatch.setattr(wm, "raise_window", raise_window)
 
-    assert wm.handle_snap(None, "left") is True
+    from samsara.command_registry import DispatchState
+    # Current snap success requires both a verified move and a successful raise.
+    assert wm.handle_snap(None, "left").state is DispatchState.FAILED
     raise_window.assert_called_once_with(303, activate=True)
+    raise_window.return_value = True
+    monkeypatch.setattr(wm.win32gui, 'GetWindowRect', lambda _hwnd: (1920, 0, 2880, 1080))
+    assert wm.handle_snap(None, 'left') is True
 
 
 def test_window_switcher_force_focus_returns_shared_delegate_boolean(monkeypatch):

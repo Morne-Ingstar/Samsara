@@ -41,10 +41,10 @@ def stylesheet(treatment: Treatment) -> str:
     """Return additive QSS for one visual candidate using theme tokens only."""
     theme = _theme()
     base = f"""
-        QWidget {{ font-family: {theme.FONT_FAMILY}; font-size: {TYPE_SCALE['body']}px; }}
-        QLabel[role='title'] {{ font-size: {TYPE_SCALE['title']}px; font-weight: {WEIGHT_SCALE['semibold']}; }}
-        QLabel[role='label'] {{ font-size: {TYPE_SCALE['label']}px; font-weight: {WEIGHT_SCALE['semibold']}; }}
-        QLabel[role='description'] {{ font-size: {TYPE_SCALE['body']}px; line-height: 1.5; color: {theme.TEXT_SECONDARY}; }}
+        QWidget {{ font-family: {theme.FONT_FAMILY}; font-size: {theme.TYPE_BODY}px; }}
+        QLabel[role='title'] {{ font-size: {theme.TYPE_TITLE}px; font-weight: {WEIGHT_SCALE['semibold']}; }}
+        QLabel[role='label'] {{ font-size: {theme.TYPE_EMPHASIS}px; font-weight: {WEIGHT_SCALE['semibold']}; }}
+        QLabel[role='description'] {{ font-size: {theme.TYPE_BODY}px; line-height: 1.5; color: {theme.TEXT_SECONDARY}; }}
         QPushButton, QLineEdit, QComboBox, QAbstractSpinBox {{ min-height: {TAP_TARGET}px; font-weight: {WEIGHT_SCALE['medium']}; }}
         QCheckBox {{ min-height: {TAP_TARGET}px; spacing: {SPACE_SCALE[2]}px; }}
         QCheckBox::indicator {{ width: 24px; height: 24px; }}
@@ -65,7 +65,7 @@ def stylesheet(treatment: Treatment) -> str:
         return base + cards
     return base + cards + f"""
         QFrame#designCandidateHeader {{ background: {theme.BG1}; border-bottom: 2px solid {theme.ACCENT}; }}
-        QLabel#designCandidateGlyph {{ color: {theme.ACCENT}; font-size: {TYPE_SCALE['heading']}px; font-weight: {WEIGHT_SCALE['bold']}; }}
+        QLabel#designCandidateGlyph {{ color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: {WEIGHT_SCALE['bold']}; }}
     """
 
 

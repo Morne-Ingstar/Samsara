@@ -6,20 +6,21 @@ from types import SimpleNamespace, MethodType
 from unittest.mock import Mock
 import ast
 import threading
+from time import monotonic
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from samsara.live_surface.controller import LiveSurfaceController, LiveSurfaceIndicatorAdapter
 from samsara.live_surface.model import (CaptureState, DocumentState, EventKind, Lane,
-    LiveSurfaceModel, SurfaceEvent, VisibleForm)
+    LiveSurfaceModel, SurfaceEvent, VisibleForm, RESULT_RECEIPT_S)
 from samsara.live_surface.partials import CapturePartials
 from samsara.streaming import DictatePreviewSession, StreamingSession, _LiveSurfaceDictateOverlay
 from tests.test_hold_park_220 import make_manager
 
 
 @pytest.fixture
-def surface(qapp, monkeypatch):
+def surface(qapp, monkeypatch, qt_widget_scope):
     posted = []
     monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', posted.append)
     clock = [10.0]
@@ -29,8 +30,23 @@ def surface(qapp, monkeypatch):
     c = LiveSurfaceController(app, model=LiveSurfaceModel(clock=lambda: clock[0]))
     app.live_surface = c
     c.start(); c.widget.set_reduced_motion(False)
-    yield c, app, clock, posted, injected
-    c.close(); qapp.processEvents()
+    with qt_widget_scope(c.widget):
+        try:
+            yield c, app, clock, posted, injected
+        finally:
+            c.close()
+
+
+def settle(controller):
+    """Let the real resize animation finish before inspecting its controls."""
+    from PySide6.QtCore import QAbstractAnimation
+    deadline = monotonic() + 2
+    while (controller.widget._animation is not None
+           and controller.widget._animation.state() is QAbstractAnimation.State.Running
+           and monotonic() < deadline):
+        QTest.qWait(10)
+    assert (controller.widget._animation is None
+            or controller.widget._animation.state() is QAbstractAnimation.State.Stopped)
 
 
 def flush(posted):
@@ -92,7 +108,7 @@ def test_rolling_preview_never_republishes_committed_lines_as_provisional(surfac
 
 
 def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
-    c, app, _, posted, injected = surface
+    c, app, clock, posted, injected = surface
     tree = ast.parse((Path(__file__).parents[1]/'dictation.py').read_text(encoding='utf-8'))
     cls = next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='DictationApp')
     names = {'cancel_recording','_cancel_recording_impl','_on_streaming_session_finished'}
@@ -111,6 +127,7 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
     app.listening_indicator = LiveSurfaceIndicatorAdapter(c)
     app._streaming_session = session = StreamingSession(app)
     session.on_partial('Synthetic live words'); c.drain()
+    settle(c)
     assert c.widget._clear.isVisible()
     session.on_final('Synthetic final queued before Clear')
     c.widget._clear.click()
@@ -120,6 +137,11 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
     assert not app.recording and app._streaming_session is None
     assert app._session_mode_manager.draft_document.text == ''
     assert c.view().text == '' and c.view().provisional_text == ''
+    # The cancellation error gets its protected reading time before the queued
+    # explicit Clear receipt. Safety effects above must already be complete.
+    assert c.view().notice.message == 'Recording failed'
+    clock[0] = c.view().notice.expires_at + .1
+    c.refresh_expired()
     assert c.widget._chip.notice.message == 'cleared; nothing inserted'  # 517: result moved into header.
     assert c.widget._mark.capture != 'recording'
     app._paste_preserving_clipboard.assert_not_called()
@@ -130,9 +152,12 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
 def test_clear_is_available_before_first_hold_partial(surface):
     c, app, _, _, _ = surface
     c.begin_capture(Lane.HOLD); c.drain()
+    settle(c)
     assert c.view().form is VisibleForm.STATUS
     assert c.widget._clear.isVisible()
-    assert c.widget._clear.height() >= 44
+    # 658's owner-approved cleanup family is text-sized on both displays.
+    assert c.widget._clear.height() == max(26, c.widget._clear.fontMetrics().height() + 6)
+    assert c.widget._clear.width() >= c.widget._clear.fontMetrics().horizontalAdvance('Clear draft') + c.widget._clear.property('labelPadding')
 
 
 def test_waiting_draft_stays_visible_and_insert_routes_to_existing_commit(surface):
@@ -141,8 +166,9 @@ def test_waiting_draft_stays_visible_and_insert_routes_to_existing_commit(surfac
     app._session_mode_manager.stage_parked_hold('Synthetic words')
     c.sync_draft(app._session_mode_manager); c.drain()
     clock[0] += 6; c.refresh_expired()
+    settle(c)
     assert c.view().form is VisibleForm.LIVE
-    assert c.widget._lane.text() == 'Hold' and c.widget._state.text() == 'staged'
+    assert c.widget._lane.text() == 'Kept draft' and c.widget._state.isHidden()
     assert 'Synthetic words' in c.widget._transcript.toPlainText()
     assert c.widget._transcript.isVisible()
     assert c.widget._insert.isVisible() and c.widget._clear.isVisible()
@@ -179,7 +205,7 @@ def test_outcomes_expire_and_wake_settings_cannot_resurrect_them(surface):
     words = CapturePartials(c,Lane.HOLD,token)
     words.final('Synthetic delivered text',delivered=True);words.stop();c.drain()
     assert 'inserted' in c.widget._state.text().lower()
-    clock[0] += 1.1;c.refresh_expired()
+    clock[0] += RESULT_RECEIPT_S + .1;c.refresh_expired()
     assert c.view().document is DocumentState.EMPTY and c.widget._state.text() == 'Idle'
     indicator.show_outcome('Sent','success');c.drain()
     clock[0] += (2500 + 55 * len('Sent')) / 1000 + .01;c.refresh_expired()

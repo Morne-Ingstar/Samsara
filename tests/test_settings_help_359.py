@@ -15,6 +15,39 @@ FIXTURES = Path(__file__).parent / "fixtures" / "359"
 DOCS_AUDIT = FIXTURES / "docs_audit.md"
 DECISIONS = FIXTURES / "help_decisions.md"
 
+# Explicit changes since the historical synthetic 359 inventory. New schema
+# keys still fail unless a decision is recorded here or in that inventory.
+DECISION_UPDATES = {
+    'mouth_sounds.experiment_shadow': ('DROP', 'Offline shadow experiment, configured outside Settings.'),
+    'mouth_sounds.pair_window_ms': ('DROP', 'Developer calibration bounds for the shadow detector.'),
+    'mouth_sounds.refractory_ms': ('DROP', 'Developer shadow-detector refractory interval.'),
+    'mouth_sounds.onset_rms': ('DROP', 'Developer transient threshold for the shadow detector.'),
+    'agent_server.command_key_only': ('DROP', 'The AI-app setup control explains the command-key restriction.'),
+    'agent_server.allow_typing': ('DROP', 'The AI-app setup control explains the typing opt-in.'),
+    'agent_server.port': ('DROP', 'Advanced loopback port configured outside Settings.'),
+    'hermes.profile': ('DROP', 'Optional Hermes setup owns its profile choice.'),
+    'hermes.model': ('DROP', 'Optional Hermes setup owns its model choice.'),
+    'hermes.effort': ('DROP', 'Optional Hermes setup owns its effort choice.'),
+    'hermes.notice_accepted': ('DROP', 'Recorded by the explicit Hermes notice.'),
+    'commands.grammar_tier': ('DROP', 'Config-only developer switch for grammar matching.'),
+    'tasks.capture.ava_parse': ('DROP', 'Config-only optional Ava parsing of captured tasks.'),
+    'dictation.speech_presence_gate': ('DROP', 'Developer speech-presence escape hatch, configured outside Settings.'),
+    'task_hotkey': ('DROP', 'The Task held key row explains this shortcut.'),
+    'streaming_mode': ('DROP', 'Retired capture flag retained only for migration.'),
+    'command_mode.dictation_literal_commands_only': ('KEEP', 'Explain why argument-taking commands are typed while dictating.'),
+    'command_mode.utterance_silence_s': ('KEEP', 'Explain the separate command and dictation pause thresholds.'),
+    'command_mode.short_decode_enabled': ('DROP', 'Developer command-decode experiment, configured outside Settings.'),
+    'hands_free.exact_commands': ('DROP', 'Config-only override; reserved session controls remain available.'),
+    'hands_free.send_mode': ('DROP', 'The hands-free delivery choices explain staged and immediate output.'),
+    'tts.feedback_level': ('DROP', 'The Voice feedback choices explain the speech levels.'),
+    'ui.listening_display': ('DROP', 'The listening-display chooser includes its own explanation.'),
+    'ui.live_surface.enabled': ('DROP', 'Legacy flag superseded by the listening-display chooser.'),
+    'ava.conversation_log_enabled': ('DROP', 'The conversation log row describes its opt-in.'),
+    'tts.network_voice_accepted': ('DROP', 'Acknowledgement recorded by the network voice notice.'),
+    'diagnostics.stage_timing': ('KEEP', 'Explain that timing logs are local and contain no dictated text.'),
+    'echo_cancellation.latency_ms': ('KEEP', 'Explain that this legacy option is retired.'),
+}
+
 
 def test_every_schema_key_has_a_decision_and_help_docs_home():
     audit = DOCS_AUDIT.read_text(encoding="utf-8")
@@ -24,21 +57,10 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
         DECISIONS.read_text(encoding="utf-8"), re.MULTILINE,
     )
     # The fixed fixture retains the legacy speech key for migration coverage.
-    decisions = [item for item in decisions if item[0] != "feedback.spoken_notices"]
-    decisions.append(("tts.feedback_level", "DROP",
-                      "The Voice feedback row and its choices explain the speech levels."))
-    for key, reason in {
-        "tasks.capture.ava_parse": "Config-only optional Ava parsing of captured tasks.",
-        "commands.grammar_tier": "Config-only developer switch for grammar matching.",
-    }.items():
-        if key in SETTINGS_SCHEMA:
-            decisions.append((key, "DROP", reason))
-    # Timing diagnostics require their own explanation.
-    decisions = [
-        (key, "KEEP", "Timing logs are for debugging and contain no dictated text.")
-        if key == "diagnostics.stage_timing" else (key, decision, reason)
-        for key, decision, reason in decisions
-    ]
+    decisions = [item for item in decisions if item[0] != "feedback.spoken_notices"
+                 and item[0] not in DECISION_UPDATES]
+    decisions.extend((key, decision, reason) for key, (decision, reason) in DECISION_UPDATES.items())
+    anchors.update({'command_mode.dictation_literal_commands_only', 'command_mode.utterance_silence_s'})
     assert len(decisions) == len(SETTINGS_SCHEMA)
     assert {key for key, _decision, _reason in decisions} == set(SETTINGS_SCHEMA)
     decision_by_key = {key: (decision, reason) for key, decision, reason in decisions}
@@ -50,7 +72,15 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
         assert decision == ("KEEP" if help_data else "DROP"), key
         if help_data:
             assert set(help_data) == {"why", "docs"}
-            assert 2 <= len(re.findall(r"[.!?](?:\s|$)", help_data["why"])) <= 4, key
+            if key in {'echo_cancellation.enabled', 'echo_cancellation.latency_ms'}:
+                assert entry['settings_ui'] is False
+                assert help_data['why'] == 'This option is inactive because echo cancellation was retired.'
+            elif key == 'ava_command_session.interpret_misses':
+                from samsara.result_messages import AVA_INTERPRET_HELP_LONG
+                assert help_data['why'] == AVA_INTERPRET_HELP_LONG
+                assert len(re.findall(r"[.!?](?:\s|$)", help_data['why'])) == 5
+            else:
+                assert 2 <= len(re.findall(r"[.!?](?:\s|$)", help_data["why"])) <= 4, key
             assert help_data["docs"] == f"https://morneis.com/samsara/docs/settings/#{key}"
             assert key in anchors, key
 
@@ -65,7 +95,7 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
     assert all(SETTINGS_SCHEMA[key].get("help") or decision_by_key[key][1] for key in no_home)
 
 
-def test_rows_only_show_schema_help_and_keyboard_link(qapp):
+def test_rows_only_show_schema_help_and_keyboard_link(qapp, qt_widget_scope):
     window = _SettingsWindow(_StubApp(_schema_defaults()))
     try:
         window.show()
@@ -103,5 +133,5 @@ def test_rows_only_show_schema_help_and_keyboard_link(qapp):
         assert row.help_panel.isHidden()
         assert row.help.hasFocus()
     finally:
-        window.hide()
-        window.deleteLater()
+        with qt_widget_scope(window):
+            window.hide()

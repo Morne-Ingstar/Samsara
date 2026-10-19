@@ -100,7 +100,7 @@ def _texts(menu):
     return [action.text() for action in menu.actions()]
 
 
-def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypatch):
+def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypatch, qt_deferred_delete):
     opened = []
     monkeypatch.setattr(
         update_qt,
@@ -110,6 +110,7 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
     app = _SettingsApp({"updates": {"channel": "stable"}})
     window = settings_qt._SettingsWindow(app)
     try:
+        window.show_tab('Help')
         checkbox = window.findChild(QCheckBox, "automaticUpdateChecksCheckbox")
         button = window.findChild(QPushButton, "checkForUpdatesButton")
         assert checkbox is not None
@@ -149,6 +150,7 @@ def test_settings_updates_are_opt_in_and_explain_network_privacy(qapp, monkeypat
     finally:
         window.close()
         window.deleteLater()
+        qt_deferred_delete(window)
 
 
 def test_update_dialog_source_mode_never_starts_network_worker(qapp, monkeypatch):

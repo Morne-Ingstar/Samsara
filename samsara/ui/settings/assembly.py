@@ -504,6 +504,12 @@ class PageAssembly:
         for pack_id, control in self._widgets['_pack_checkboxes'].items():
             if pack_id != 'ai':
                 bindings.append(('command_packs.' + pack_id, 'Command library', control))
+        from .agents_section import AgentsControls
+        agents = self._tool_pages['Command library'].findChild(AgentsControls)
+        bindings.extend((key, 'Command library', control) for key, control in (
+            ('agent_server.allow_typing', agents.typing),
+            ('agent_server.command_key_only', agents.approval_style),
+        ))
         for key in ('profile', 'model', 'effort'):
             if 'hermes_' + key in self._widgets:
                 bindings.append(('hermes.' + key, 'Command library', self._widgets['hermes_' + key]))

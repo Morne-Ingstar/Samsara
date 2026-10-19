@@ -8,12 +8,12 @@ def _window_and_save(config, qapp):
 
     app = _StubApp()
     app.config = config
-    window = _SettingsWindow(app)
-    save = next(fn for fn in window._save_fns if "_build_music_tab" in fn.__qualname__)
+    window = _SettingsWindow(app, tool='Music')
+    save = window._source_saves['music'][0]
     return window, save
 
 
-def test_music_library_migrates_adds_deletes_and_round_trips(qapp):
+def test_music_library_migrates_adds_deletes_and_round_trips(qapp, qt_deferred_delete):
     config = {'music_library': {'Morning Coffee': 'spotify:playlist:coffee'}}
     window, save = _window_and_save(config, qapp)
     try:
@@ -43,6 +43,7 @@ def test_music_library_migrates_adds_deletes_and_round_trips(qapp):
         assert 'Morning Coffee' not in save({})['music_library']
     finally:
         window.deleteLater()
+        qt_deferred_delete(window)
 
     reloaded = {'music_library': saved}
     second_window, _save = _window_and_save(reloaded, qapp)
@@ -51,3 +52,4 @@ def test_music_library_migrates_adds_deletes_and_round_trips(qapp):
         assert second_window._music_library == saved
     finally:
         second_window.deleteLater()
+        qt_deferred_delete(second_window)

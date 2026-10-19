@@ -18,7 +18,7 @@ def style():
     QLabel {{ background: transparent; }}
     QSlider {{ background: transparent; }}
     QLabel[role='description'] {{ color: {theme.TEXT_SECONDARY}; }}
-    QLabel[role='title'] {{ font-size: {theme.TYPE_BODY + 12}px; font-weight: 600; }}
+    QLabel[role='title'] {{ font-size: {theme.TYPE_TITLE}px; font-weight: 600; }}
     QLabel[role='label'] {{ font-weight: 600; }}
     QPushButton, QComboBox, QLineEdit, QSpinBox {{ background: {theme.BG2};
         border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 0 12px; }}

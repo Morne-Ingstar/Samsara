@@ -186,6 +186,7 @@ class _FeedbackBand(QWidget):
         self.fill = theme.qcolor(fill)
         size = theme.TYPE_MIN if self.chip else theme.TYPE_BODY
         self.label.setFont(theme.qfont(size))
+        # type-floor: exempt -- size selects only the TYPE_MIN and TYPE_BODY tokens above.
         self.label.setStyleSheet(f"QLabel#{self.label.objectName()} {{ color: {self.ink.name()}; font-size: {size}px; font-weight: 400; background: transparent; border: 0; }}")
         if self.notice:
             self.set_notice(self.notice)

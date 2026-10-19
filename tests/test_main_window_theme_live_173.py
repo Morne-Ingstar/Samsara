@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+from contextlib import ExitStack
 import threading
 from types import SimpleNamespace
 
@@ -85,9 +86,13 @@ class _App:
 
 
 @pytest.fixture
-def dark_again():
-    yield
-    theme.set_theme("dark", refresh=False)
+def dark_again(qt_widget_scope):
+    previous = theme.active_theme()
+    try:
+        with ExitStack() as owners:
+            yield lambda widget: owners.enter_context(qt_widget_scope(widget))
+    finally:
+        theme.set_theme(previous, refresh=False)
 
 
 def _pump(qapp):
@@ -96,9 +101,11 @@ def _pump(qapp):
 
 
 def _visible_background(widget) -> QColor:
-    """Sample a rendered central pixel, not just a stylesheet string."""
-    image = widget.grab().toImage()
-    return image.pixelColor(image.width() // 2, image.height() // 2)
+    """Sample rendered background coverage; one pixel may land on text ink."""
+    image = widget.grab().toImage().scaled(64, 64)
+    colours = collections.Counter(image.pixelColor(x, y).name()
+                                 for y in range(image.height()) for x in range(image.width()))
+    return QColor(colours.most_common(1)[0][0])
 
 
 def test_signal_is_created_on_the_existing_qapplication_thread(qapp):
@@ -108,13 +115,13 @@ def test_signal_is_created_on_the_existing_qapplication_thread(qapp):
     assert signal.thread() == qapp.thread()
 
 
-def test_picker_rethemes_every_constructed_hub_page_without_recreation(qapp, dark_again):
+def test_picker_rethemes_every_constructed_hub_page_without_recreation(qapp, dark_again, monkeypatch):
     """The user path updates real pixels without replacing page widgets."""
     from samsara.ui.settings_qt import _SettingsWindow
 
     theme.set_theme("dark", refresh=False)
     app = _App()
-    hub = main_window_qt._MainWindow(app)
+    hub = dark_again(main_window_qt._MainWindow(app))
     hub._poll_timer.stop()
     hub.resize(1100, 780)
     hub.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
@@ -128,7 +135,8 @@ def test_picker_rethemes_every_constructed_hub_page_without_recreation(qapp, dar
             hub._activate(name)
     page_ids = {name: id(page) for name, page in hub._panel_cache.items()}
 
-    settings = _SettingsWindow(app)
+    monkeypatch.setattr(_SettingsWindow, '_replace_tts_runtime', lambda *_: None)
+    settings = dark_again(_SettingsWindow(app))
     settings.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     settings.show()
     _pump(qapp)

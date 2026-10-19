@@ -144,12 +144,29 @@ def test_hold_stream_uses_legacy_overlay_when_live_surface_flag_is_absent(monkey
     assert len(constructed) == 1
 
 
-def test_adapters_cover_every_public_overlay_method_and_call_signature():
+def test_adapters_cover_every_public_overlay_method_and_call_signature(qapp, monkeypatch, qt_widget_scope):
     import inspect
-    from samsara.streaming import StreamingOverlayQt, _LiveSurfaceDictateOverlay, _LiveSurfaceStreamingOverlay
+    from unittest.mock import Mock
+    from samsara.streaming import StreamingOverlayQt, _LiveSurfaceDictateOverlay, _LiveSurfaceStreamingOverlay, DictatePreviewSession
     # Enumerate the real class, not a hand-maintained list that can drift.
     methods = {name: method for name, method in inspect.getmembers(StreamingOverlayQt, inspect.isfunction)
                if not name.startswith('_')}
+    # Cleanup is an explicitly optional registration on the legacy overlay;
+    # Full owns that intent on its controller instead of the preview session.
+    assert callable(methods.pop('set_cleanup_callback'))
+    source = inspect.getsource(DictatePreviewSession.__init__)
+    assert 'cleanup = getattr(self._overlay, "set_cleanup_callback", None)' in source
+    assert 'if callable(cleanup):' in source
+    monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
+    controller = LiveSurfaceController(SimpleNamespace(config={'ui': {'live_surface': {'enabled': True}}}))
+    controller._clean_up = cleanup = Mock()
+    controller.start()
+    with qt_widget_scope(controller.widget):
+        try:
+            controller.widget.clean_up_requested.emit()
+            cleanup.assert_called_once_with()
+        finally:
+            controller.close()
     for adapter in (_LiveSurfaceDictateOverlay, _LiveSurfaceStreamingOverlay):
         for name, method in methods.items():
             assert callable(getattr(adapter, name, None)), (adapter.__name__, name)
@@ -159,26 +176,30 @@ def test_adapters_cover_every_public_overlay_method_and_call_signature():
             inspect.signature(getattr(adapter, name)).bind(None, *args, **kwargs)
 
 
-def test_hold_pause_then_partials_reach_real_surface(qapp, monkeypatch):
+def test_hold_pause_then_partials_reach_real_surface(qapp, monkeypatch, qt_widget_scope):
     from samsara.streaming import DictatePreviewSession, _LiveSurfaceDictateOverlay, _LiveSurfaceStreamingOverlay, StreamingOverlayQt
     from samsara.live_surface.partials import CapturePartials
     monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
-    c = LiveSurfaceController(SimpleNamespace(config={}))
+    c = LiveSurfaceController(SimpleNamespace(config={'ui': {'live_surface': {'enabled': True}}}))
     c.start()
-    preview = CapturePartials(c, Lane.HANDS_FREE_DICTATE, c.begin_capture(Lane.HANDS_FREE_DICTATE))
-    session = DictatePreviewSession.__new__(DictatePreviewSession)
-    session._overlay = _LiveSurfaceDictateOverlay(c, preview)
-    session._generation = 0; session._finalized = []
-    hold = CapturePartials(c, Lane.HOLD, c.begin_capture(Lane.HOLD))
-    assert session._enter_hold_pause(False)
-    overlay = _LiveSurfaceStreamingOverlay(hold)
-    overlay.update_text('Synthetic live hold words', StreamingOverlayQt.STATE_PROCESSING)
-    c.drain(); qapp.processEvents()
-    assert c.widget.isVisible() and c.widget._transcript.isVisible()
-    assert 'Synthetic live hold words' in c.widget._transcript.toPlainText()
-    assert c.view().capture is CaptureState.RECORDING
-    hold.stop(); session._overlay.resume()
-    session._overlay.set_transcript([], 'Synthetic resumed words')
-    c.drain()
-    assert c.view().provisional_text == 'Synthetic resumed words'
-    c.close(); qapp.processEvents()
+    with qt_widget_scope(c.widget):
+        try:
+            c.widget.set_reduced_motion(True)  # This case checks routing, not animation.
+            preview = CapturePartials(c, Lane.HANDS_FREE_DICTATE, c.begin_capture(Lane.HANDS_FREE_DICTATE))
+            session = DictatePreviewSession.__new__(DictatePreviewSession)
+            session._overlay = _LiveSurfaceDictateOverlay(c, preview)
+            session._generation = 0; session._finalized = []
+            hold = CapturePartials(c, Lane.HOLD, c.begin_capture(Lane.HOLD))
+            assert session._enter_hold_pause(False)
+            overlay = _LiveSurfaceStreamingOverlay(hold)
+            overlay.update_text('Synthetic live hold words', StreamingOverlayQt.STATE_PROCESSING)
+            c.drain(); qapp.processEvents()
+            assert c.widget.isVisible() and c.widget._transcript.isVisible()
+            assert 'Synthetic live hold words' in c.widget._transcript.toPlainText()
+            assert c.view().capture is CaptureState.RECORDING
+            hold.stop(); session._overlay.resume()
+            session._overlay.set_transcript([], 'Synthetic resumed words')
+            c.drain()
+            assert c.view().provisional_text == 'Synthetic resumed words'
+        finally:
+            c.close()

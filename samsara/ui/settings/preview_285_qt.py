@@ -114,7 +114,7 @@ def style():
     QFrame#sidebar, QFrame#footer {{ background: {theme.BG1}; }}
     QLabel {{ background: transparent; }}
     QLabel[role='description'] {{ color: {theme.TEXT_SECONDARY}; }}
-    QLabel[role='title'] {{ font-size: {theme.TYPE_BODY + 12}px; font-weight: 600; }}
+    QLabel[role='title'] {{ font-size: {theme.TYPE_TITLE}px; font-weight: 600; }}
     QLabel[role='label'] {{ font-weight: 600; }}
     QFrame[role='row'] {{ border-bottom: 1px solid {theme.BORDER_FAINT}; }}
     QPushButton, QComboBox, QLineEdit, QSpinBox {{ background: {theme.BG2};

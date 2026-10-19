@@ -59,14 +59,12 @@ BODY_ROLE_TOKENS = ("TYPE_BODY", "TYPE_SECONDARY", "TYPE_CREED", "FONT_SIZE_BODY
 
 #: Pinned number of `type-floor: exempt` markers in the app. Change it only
 #: together with the reason on the exempted line.
-EXPECTED_EXEMPTIONS = 3
+EXPECTED_EXEMPTIONS = 5  # Token-selected band size and enlarged separator glyph.
 
 #: path (posix, repo-relative) -> why it is not migrated yet.
 PENDING_FILES: dict[str, str] = {
-    # Queue 75 is editing both files right now (streaming preview idle fade and
-    # its Settings controls). Migrating them here would collide with that work.
+    # Streaming still uses local legacy font constants; Modes has migrated.
     "samsara/streaming.py": "queue 75 owns it; FONT_SIZE/DIM_FONT_SIZE/HINT_FONT_SIZE -> theme tokens when it lands",
-    "samsara/ui/settings/modes_qt.py": "queue 75 owns it; 10 literal sizes -> theme tokens when it lands",
 }
 
 EXEMPT_RE = re.compile(r"type-floor:\s*exempt\s*--\s*(.{12,})", re.I)

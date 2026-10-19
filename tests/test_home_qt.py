@@ -108,7 +108,9 @@ def _native_home_font(qapp):
 
 
 @pytest.fixture(autouse=True)
-def _isolated(monkeypatch):
+def _isolated(monkeypatch, qapp, qt_widget_scope):
+    from shiboken6 import isValid
+    existing = set(qapp.topLevelWidgets())
     _FakeSettings.values = {}
     monkeypatch.setattr(home_qt, "QSettings", _FakeSettings)
     # No hint tier may reach the real machine's files in a test.
@@ -116,6 +118,13 @@ def _isolated(monkeypatch):
     monkeypatch.setattr(home_signals, "_user_words_exist", lambda: True)
     monkeypatch.setattr(home_signals, "generic_hints", lambda app: [])
     monkeypatch.setattr(home_signals, "_diag_records", lambda app, limit: [])
+    yield
+    # These tests construct pages, hubs and strips directly. Retire only this
+    # test's native owners before its patches expire or another palette runs.
+    for widget in qapp.topLevelWidgets():
+        if widget not in existing and isValid(widget):
+            with qt_widget_scope(widget):
+                pass
 
 
 def _app(**over):

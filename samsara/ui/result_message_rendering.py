@@ -10,6 +10,7 @@ def result_html(label, *, ink=None):
     if not is_chain_result(label):
         return escape(str(label))
     colour = ink or theme.TEXT_PRIMARY
+    # type-floor: exempt -- only the decorative separator grows relative to the surrounding token font.
     joiner = f' &nbsp;<span style="font-size:125%;font-weight:900;color:{colour}">·</span>&nbsp; '
     return joiner.join(escape(part) for part in str(label).split(CHAIN_CONNECTOR))
 

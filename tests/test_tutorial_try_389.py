@@ -543,11 +543,13 @@ def test_calm_rows_share_surfaces_heights_and_columns(build, qapp, scale):
     from PySide6.QtCore import QPoint
     from samsara.ui import theme
     from samsara.ui.settings.calm_layout import stylesheet
+    from samsara.ui.focus_ring import keyboard_stylesheet
     from samsara.ui.settings.audio_page import BASE
 
     window, page, _ = build()
+    page.show_stage(1)
     for slider in (page.speed, page.volume):
-        assert slider.styleSheet() == stylesheet()
+        assert slider.styleSheet() == keyboard_stylesheet(stylesheet())
     if scale != 1:
         for widget in [window, *window.findChildren(QWidget)]:
             widget.setStyleSheet(re.sub(r'(font-size\s*:\s*)(\d+(?:\.\d+)?)px',

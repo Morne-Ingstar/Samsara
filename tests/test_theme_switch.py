@@ -8,6 +8,8 @@ in both palettes and asserts the pixels moved.
 """
 
 from __future__ import annotations
+from contextlib import ExitStack
+from unittest.mock import Mock
 
 import pytest
 
@@ -15,18 +17,14 @@ from samsara.ui import theme
 
 
 @pytest.fixture
-def dark_again(qapp):
+def dark_again(qapp, qt_widget_scope):
     """Always hand the process back in the shipped palette, whatever fails."""
-    from PySide6.QtCore import QEvent
-
-    # Earlier Settings cases leave hide-on-close windows alive. Retire their
-    # native widget trees before processing events for a fresh palette case.
-    for widget in qapp.topLevelWidgets():
-        widget.hide()
-        widget.deleteLater()
-    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    yield
-    theme.set_theme("dark", refresh=False)
+    previous = theme.active_theme()
+    try:
+        with ExitStack() as owners:
+            yield lambda widget: owners.enter_context(qt_widget_scope(widget))
+    finally:
+        theme.set_theme(previous, refresh=False)
 
 
 # --- the config key -------------------------------------------------------------
@@ -160,13 +158,13 @@ def test_switching_the_setting_changes_what_the_surface_renders(
     from tests._theme_surfaces import SURFACES as BUILDERS
 
     theme.set_theme("dark", refresh=False)
-    dark_widget = BUILDERS[surface]()
+    dark_widget = dark_again(BUILDERS[surface]())
     dark_widget.resize(900, 650)
     qapp.processEvents()
     dark_pixel = _dominant_background(dark_widget)
 
     theme.set_theme("light", refresh=False)
-    light_widget = BUILDERS[surface]()
+    light_widget = dark_again(BUILDERS[surface]())
     light_widget.resize(900, 650)
     qapp.processEvents()
     light_pixel = _dominant_background(light_widget)
@@ -205,7 +203,7 @@ def test_the_combo_arrow_is_rewritten_per_palette(dark_again):
     ("light", "dark", False),
 ])
 def test_settings_apply_keeps_selected_theme_and_live_surface(
-        qapp, dark_again, tmp_path, initial, requested, live_enabled):
+        qapp, dark_again, tmp_path, initial, requested, live_enabled, monkeypatch):
     """General's theme and Advanced's live-surface edit must both survive Apply."""
     import json
 
@@ -223,14 +221,18 @@ def test_settings_apply_keeps_selected_theme_and_live_surface(
     app.config = {
         "ui": {"theme": initial, "live_surface": {"enabled": not live_enabled}},
     }
-    window = _SettingsWindow(app)
+    notice = Mock()
+    monkeypatch.setattr('samsara.ui.settings.services.QMessageBox.information', notice)
+    monkeypatch.setattr(_SettingsWindow, '_replace_tts_runtime', lambda *_: None)
+    window = dark_again(_SettingsWindow(app))
     observed = []
     signal = theme.theme_change_signal().changed
     signal.connect(observed.append)
     try:
         picker = window._widgets["theme_combo"]
         picker.setCurrentIndex(picker.findData(requested))
-        window._widgets["adv_live_surface_enabled"].setChecked(live_enabled)
+        display = window._widgets['listening_display']
+        display.setCurrentIndex(display.findData('full' if live_enabled else 'compact'))
 
         window._apply_and_close()
 
@@ -238,7 +240,9 @@ def test_settings_apply_keeps_selected_theme_and_live_surface(
         assert observed == [requested]
         saved = json.loads(config_path.read_text(encoding="utf-8"))
         assert saved["ui"]["theme"] == requested
-        assert saved["ui"]["live_surface"]["enabled"] is live_enabled
+        assert saved['ui']['listening_display'] == ('full' if live_enabled else 'compact')
+        assert saved["ui"]["live_surface"]["enabled"] is not live_enabled
+        notice.assert_called_once_with(window, 'Samsara', 'Restart required to apply.')
     finally:
         # Apply may start a native TTS stream on this test's short-lived app.
         # Retire its callback before releasing the app and its widget tree.

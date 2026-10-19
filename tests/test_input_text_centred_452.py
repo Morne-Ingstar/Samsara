@@ -152,6 +152,7 @@ def settings_inputs(request, qapp):
         config = _schema_defaults()
         config['echo_cancellation'] = {'enabled': True, 'latency_ms': 30}
         window = _SettingsWindow(_StubApp(config))
+        window._ensure_preferences()
         window._widgets['adv_ducking_level'].setValue(0.10)
         window._widgets['cmd_stop_phrases'].setPlainText('stop\nfinish')
         window.resize(1160, 900)
@@ -286,6 +287,7 @@ def test_late_alarm_dialog_inputs_keep_buttons_and_fit(settings_inputs, qapp, mo
         spin.setValue(spin.maximum())
         for widget in (name, spin, dialog.findChild(CleanComboBox)):
             for _ in range(12): qapp.processEvents()
+            assert widget.property('settingsInputObserved') is True
             data = input_geometry(widget)
             assert abs(data['font_above'] - data['font_below']) <= 1, data
             content = data['content']; ratio = data['dpr']

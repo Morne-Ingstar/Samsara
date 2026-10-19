@@ -74,21 +74,21 @@ def test_live_log_existing_minimized_window_is_restored(monkeypatch, qapp):
         window.close()
 
 
-def test_advanced_audio_copy_is_honest_and_distinguishes_both_ducking_features(qapp):
+def test_advanced_audio_copy_is_honest_and_distinguishes_both_ducking_features(qapp, qt_widget_scope):
     from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
 
-    window = _SettingsWindow(_SettingsApp())
-    advanced = window._stack.widget(_TAB_NAMES.index("Advanced"))
-    text = " ".join(
-        widget.text()
-        for cls in (QLabel, QCheckBox)
-        for widget in advanced.findChildren(cls)
-    )
-
-    assert "Experimental Echo Cancellation" in text
-    assert "not recommended" in text
-    assert "3–8% echo reduction" in text
-    assert "may distort audio" in text
-    assert "Playback Reduction While Dictating" in text
-    assert "Absolute volume level for other apps" in text
-    assert "Fraction of other apps' current volume" not in text
+    with qt_widget_scope(_SettingsWindow(_SettingsApp())) as window:
+        audio = window._pages['Audio']
+        text = " ".join(widget.text() for cls in (QLabel, QCheckBox)
+                        for widget in audio.findChildren(cls))
+        text += ' ' + ' '.join(row.full_help for row in window._destination_rows
+                               if row.page_name == 'Audio')
+        assert "Experimental Echo Cancellation" not in text
+        assert "3–8% echo reduction" not in text
+        assert not any(key.startswith('echo_cancellation.')
+                       for key, _page, _widget in window.config_row_inventory())
+        assert 'adv_aec_enabled' not in window._rows_by_widget
+        assert 'adv_aec_latency' not in window._rows_by_widget
+        assert "Playback Reduction While Dictating" in text
+        assert "Absolute volume level for other apps" in text
+        assert "Fraction of other apps' current volume" not in text

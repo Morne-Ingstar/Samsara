@@ -126,13 +126,13 @@ def test_feedback_voice_commands_are_always_on_and_open_exact_forms():
     assert commands["report a bug"] == {
         "type": "launch",
         "target": BUG_REPORT_URL,
-        "description": "Open the structured Samsara problem report form",
+        "description": "Opens the structured Samsara problem report form.",
         "pack": "core",
     }
     assert commands["send feedback"] == {
         "type": "launch",
         "target": BETA_FEEDBACK_URL,
-        "description": "Open the Samsara beta feedback form",
+        "description": "Opens the Samsara beta feedback form.",
         "pack": "core",
     }
 

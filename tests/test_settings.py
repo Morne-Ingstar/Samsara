@@ -12,6 +12,17 @@ from unittest.mock import Mock, patch, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+@pytest.fixture(autouse=True)
+def _owned_settings_widgets(qapp, monkeypatch, qt_widget_scope):
+    from shiboken6 import isValid
+    existing = set(qapp.topLevelWidgets())
+    yield
+    for widget in qapp.topLevelWidgets():
+        if widget not in existing and isValid(widget):
+            with qt_widget_scope(widget):
+                pass
+
+
 class _StubApp:
     """Minimal app stand-in for headlessly constructing _SettingsWindow.
 
@@ -106,9 +117,11 @@ class TestSettingsWindowConstruction:
             QTableWidget,
         )
         from samsara.ui.settings_qt import _SettingsWindow
+        from samsara.ui.widgets.beta_notice import BetaNotice
         from PySide6.QtCore import Qt
 
         win = _SettingsWindow(_StubApp())
+        win._ensure_preferences()
         for widget_type in (
             QAbstractButton,
             QComboBox,
@@ -119,8 +132,16 @@ class TestSettingsWindowConstruction:
             QTableWidget,
         ):
             for widget in win.findChildren(widget_type):
-                assert widget.minimumWidth() >= 44
-                assert widget.minimumHeight() >= 44
+                notice = widget.parentWidget()
+                if isinstance(notice, BetaNotice) and widget is notice.close_button:
+                    # The owner's thin beta notice explicitly overrides the
+                    # shared floor; pin its intentional dimensions separately.
+                    assert widget.minimumWidth() == 22
+                    assert widget.minimumHeight() == notice.message.fontMetrics().height() + 2
+                    assert widget.accessibleName() == 'Dismiss beta help for this session'
+                    continue
+                assert widget.minimumWidth() >= 44, (widget.objectName(), type(widget).__name__)
+                assert widget.minimumHeight() >= 44, (widget.objectName(), type(widget).__name__)
 
         assert win._search_edit.minimumHeight() >= 44
         for row in range(win._sidebar.count()):
@@ -290,12 +311,15 @@ class TestSettingsWindowConstruction:
             mode.setCurrentText('toggle')
             assert win._source_saves['modes'][0]({})['mode'] == 'toggle'
             row = win._rows_by_widget['mode']
-            assert row.full_help == (
+            explanation = (
                 'The primary keyboard method of dictating has two modes, either hold or toggle. '
                 'If you hold, then it records your speech until you let go of the button, and then '
                 'it transcribes into the text box which you have clicked on. If you toggle, then you '
                 'just tap the button, talk for as long as you like, and then tap it again when you\'re done.'
             )
+            assert explanation in row.full_help
+            assert row.full_help.startswith('Choose the dictation key and its behaviour.')
+            assert row.full_help.rstrip().endswith('Hold or toggle recording for text output.')
         finally:
             win.deleteLater()
 
@@ -688,6 +712,10 @@ class TestApplyAndCloseSnapshot:
                               if key in ('complete_hotkey', 'dismiss_hotkey')}
         # 300: Help now owns both explicit, default-off diagnostics choices.
         expected['diagnostics'] = {'stage_timing': False, 'write_jsonl': False}
+        # Current Dictation and Ava rows persist their explicit defaults.
+        expected['command_mode']['dictation_literal_commands_only'] = True
+        expected['hands_free'] = {'send_mode': 'staged'}
+        expected['ava'] = {'conversation_log_enabled': False}
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()

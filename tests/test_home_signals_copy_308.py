@@ -67,22 +67,10 @@ def _copy_strings(value):
 
 
 def _declared_settings_rows():
-    rows = {}
-    for path in (REPO / "samsara" / "ui" / "settings").glob("*_page.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        values = {}
-        for node in tree.body:
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id in {"TITLE", "BASE", "ADVANCED"}:
-                        values[target.id] = ast.literal_eval(node.value)
-        page = values.get("TITLE")
-        if page:
-            rows[page] = {
-                spec[0] for field in ("BASE", "ADVANCED")
-                for spec in values.get(field, []) if spec and isinstance(spec[0], str)
-            }
-    return rows
+    from samsara.ui.settings_qt import PAGE_MODULES
+    # Declarations also use imported labels; they are data, not all literals.
+    return {module.TITLE: {spec[0] for spec in module.BASE + module.ADVANCED}
+            for module in PAGE_MODULES}
 
 
 def _all_state_copy(monkeypatch):
