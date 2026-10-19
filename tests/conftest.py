@@ -615,14 +615,19 @@ def pytest_collection_modifyitems(config, items):
     total = os.environ.get('SAMSARA_TEST_SHARD_TOTAL')
     if index is None or total is None:
         return
+    # Copied hooks in child-pytest probes must not shard their tiny sessions.
+    root = Path(__file__).resolve().parents[1]
+    if config.rootpath.resolve() != root:
+        return
     try:
         index, total = int(index), int(total)
     except ValueError:
         raise pytest.UsageError('test shard index and total must be integers') from None
     if total < 1 or not 0 <= index < total:
         raise pytest.UsageError('test shard requires total > 0 and 0 <= index < total')
+    shard_items = [item for item in items if item.path.is_relative_to(root / 'tests')]
     counts = {}
-    for item in items:
+    for item in shard_items:
         path = item.path.relative_to(config.rootpath).as_posix()
         counts[path] = counts.get(path, 0) + 1
     loads, assignments = [0] * total, {}
@@ -632,6 +637,9 @@ def pytest_collection_modifyitems(config, items):
         loads[target] += counts[path]
     kept, deselected = [], []
     for item in items:
+        if not item.path.is_relative_to(root / 'tests'):
+            kept.append(item)
+            continue
         path = item.path.relative_to(config.rootpath).as_posix()
         (kept if assignments[path] == index else deselected).append(item)
     items[:] = kept

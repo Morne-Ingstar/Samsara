@@ -45,7 +45,10 @@ def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra=
     (tmp_path / 'pytest.ini').write_text('[pytest]\n', encoding='utf-8')
     home = tmp_path / 'home'
     home.mkdir()
-    env = dict(os.environ, SAMSARA_TEST_HARD_TIMEOUT=hard,
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith('SAMSARA_TEST_SHARD_')
+           and key != 'SAMSARA_TEST_HARD_TIMEOUT'}
+    env.update(SAMSARA_TEST_HARD_TIMEOUT=hard,
                PYTEST_DISABLE_PLUGIN_AUTOLOAD='1', PYTEST_ADDOPTS='', PYTEST_PLUGINS='',
                PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8')
     for key in ('HOME', 'USERPROFILE', 'SAMSARA_HOME_DIR', 'APPDATA',
@@ -67,6 +70,25 @@ def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra=
     (tmp_path / 'child.result.txt').write_text(
         f'exit={result.returncode}; elapsed={finished - started:.3f}s\n', encoding='utf-8')
     return result, finished
+
+
+def test_child_environment_isolates_shards_and_watchdog(tmp_path, monkeypatch):
+    for key, value in {'SAMSARA_TEST_SHARD_INDEX': '3', 'SAMSARA_TEST_SHARD_TOTAL': '4',
+                       'SAMSARA_TEST_SHARD_FUTURE': 'parent',
+                       'SAMSARA_TEST_HARD_TIMEOUT': '999',
+                       'SAMSARA_TEST_AUDIO_LOG': 'preserved-audio-log'}.items():
+        monkeypatch.setenv(key, value)
+    captured = {}
+
+    def run(command, **kwargs):
+        captured.update(kwargs['env'])
+        return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+    monkeypatch.setattr(subprocess, 'run', run)
+    run_child(tmp_path, 'def test_probe(): pass', hard='7')
+    assert not any(key.startswith('SAMSARA_TEST_SHARD_') for key in captured)
+    assert captured['SAMSARA_TEST_HARD_TIMEOUT'] == '7'
+    assert captured['SAMSARA_TEST_AUDIO_LOG'] == 'preserved-audio-log'
 
 
 def test_native_gil_hold_defeats_the_soft_timeout(tmp_path):

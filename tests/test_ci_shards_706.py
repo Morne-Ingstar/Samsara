@@ -89,7 +89,7 @@ def test_invalid_shards_fail_before_silently_losing_tests(
     monkeypatch.setenv(INDEX, index)
     monkeypatch.setenv(TOTAL, total)
     with pytest.raises(pytest.UsageError, match='shard'):
-        shard_hook(SimpleNamespace(), [])
+        shard_hook(SimpleNamespace(rootpath=ROOT), [])
 
 
 def test_assignment_ignores_checkout_location_and_parametrization(
@@ -98,6 +98,7 @@ def test_assignment_ignores_checkout_location_and_parametrization(
     monkeypatch.setenv(TOTAL, '4')
     results = []
     for checkout in (tmp_path / 'one', tmp_path / 'nested/two'):
+        monkeypatch.setitem(shard_hook.__globals__, '__file__', str(checkout / 'tests/conftest.py'))
         original = [Mock(path=checkout / f'tests/test_file_{number}.py',
                          nodeid=f'tests/test_file_{number}.py::test_value[{param}]')
                     for number in range(40) for param in ('a', 'b')]
@@ -112,6 +113,35 @@ def test_assignment_ignores_checkout_location_and_parametrization(
             items=[item for item in original if item not in items])
         results.append([item.nodeid for item in items])
     assert results[0] == results[1]
+
+
+@pytest.mark.parametrize('nested', [False, True])
+def test_child_session_ignores_inherited_shards(shard_hook, monkeypatch, tmp_path, nested):
+    child = tmp_path / 'child'
+    if nested:
+        child = ROOT / 'tests' / 'child-probe'
+    monkeypatch.setenv(INDEX, 'invalid')
+    monkeypatch.setenv(TOTAL, '4')
+    item = Mock(path=child / 'test_probe.py')
+    items = [item]
+    config = SimpleNamespace(rootpath=child, hook=Mock())
+    shard_hook(config, items)
+    assert items == [item]
+    config.hook.pytest_deselected.assert_not_called()
+
+
+def test_only_repository_tests_are_sharded(shard_hook, monkeypatch, tmp_path):
+    monkeypatch.setenv(INDEX, '1')
+    monkeypatch.setenv(TOTAL, '4')
+    repo_test = Mock(path=ROOT / 'tests/test_example.py')
+    probes = [Mock(path=ROOT / 'test_probe.py'),
+              Mock(path=ROOT / 'tools/test_probe.py'),
+              Mock(path=tmp_path / 'test_probe.py')]
+    items = [probes[0], repo_test, *probes[1:]]
+    config = SimpleNamespace(rootpath=ROOT, hook=Mock())
+    shard_hook(config, items)
+    assert items == probes
+    config.hook.pytest_deselected.assert_called_once_with(items=[repo_test])
 
 
 def test_greedy_packing_balances_large_files_and_ignores_collection_order(
