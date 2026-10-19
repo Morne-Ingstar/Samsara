@@ -4,9 +4,20 @@ These intentionally cover shared tokens and representative real widgets;
 legacy windows with private stylesheets are outside the centralized pass.
 """
 
+import pytest
+
 from PySide6.QtWidgets import QLabel, QPushButton
 
 from samsara.ui import theme
+
+
+@pytest.fixture(autouse=True)
+def restore_palette():
+    previous = theme.active_theme()
+    try:
+        yield
+    finally:
+        theme.set_theme(previous, refresh=False)
 
 
 def _relative_luminance(rgb: tuple[int, int, int]) -> float:
@@ -21,9 +32,13 @@ def _relative_luminance(rgb: tuple[int, int, int]) -> float:
     return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 
 
-def _rgba_white_over(hex_background: str, alpha: float) -> tuple[int, int, int]:
+def _rgba_over(value: str, hex_background: str) -> tuple[int, int, int]:
+    red, green, blue, alpha = map(
+        float, value.removeprefix("rgba(").removesuffix(")").split(",")
+    )
     background = theme._hex_to_rgb(hex_background)
-    return tuple(round(value * (1.0 - alpha) + 255 * alpha) for value in background)
+    return tuple(round(base * (1.0 - alpha) + ink * alpha)
+                 for base, ink in zip(background, (red, green, blue)))
 
 
 def _contrast_ratio(rgb_a: tuple[int, int, int], rgb_b: tuple[int, int, int]) -> float:
@@ -36,20 +51,29 @@ def _contrast_ratio(rgb_a: tuple[int, int, int], rgb_b: tuple[int, int, int]) ->
 def test_shared_caption_floor_and_secondary_opacity():
     # Queue 83 raised the shared caption to the absolute floor (14 px).
     assert theme.FONT_SIZE_CAPTION == theme.TYPE_MIN >= 14
-    assert theme.TEXT_SECONDARY == "rgba(255,255,255,0.75)"
+    for palette, secondary in (("dark", "rgba(255,255,255,0.75)"),
+                               ("light", "rgba(0,0,0,0.68)")):
+        theme.set_theme(palette, refresh=False)
+        assert theme.TEXT_SECONDARY == secondary
 
 
 def test_secondary_text_exceeds_wcag_normal_text_contrast_on_every_surface():
-    for background in (theme.BG0, theme.BG1, theme.BG2):
-        background_rgb = theme._hex_to_rgb(background)
-        secondary_rgb = _rgba_white_over(background, 0.75)
-        assert _contrast_ratio(secondary_rgb, background_rgb) >= 4.5
+    for palette in ("dark", "light"):
+        theme.set_theme(palette, refresh=False)
+        for background in (theme.BG0, theme.BG1, theme.BG2):
+            background_rgb = theme._hex_to_rgb(background)
+            secondary_rgb = _rgba_over(theme.TEXT_SECONDARY, background)
+            assert _contrast_ratio(secondary_rgb, background_rgb) >= 4.5, (
+                palette, theme.TEXT_SECONDARY, background
+            )
 
 
 def test_shared_stylesheet_propagates_accessible_tokens():
-    stylesheet = theme.build_stylesheet()
-    assert f"color: {theme.TEXT_SECONDARY};" in stylesheet
-    assert f"font-size: {theme.FONT_SIZE_CAPTION}px;" in stylesheet
+    for palette in ("dark", "light"):
+        theme.set_theme(palette, refresh=False)
+        stylesheet = theme.build_stylesheet()
+        assert f"color: {theme.TEXT_SECONDARY};" in stylesheet
+        assert f"font-size: {theme.FONT_SIZE_CAPTION}px;" in stylesheet
 
 
 def test_representative_caption_and_ghost_button_fit_their_content(qapp):
