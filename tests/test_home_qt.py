@@ -1210,6 +1210,10 @@ app.setFont(QFont("Segoe UI", 9))
 if sys.argv[2] != "1":
     f = app.font(); f.setPointSizeF(f.pointSizeF() * float(sys.argv[2])); app.setFont(f)
 from samsara.ui import main_window_qt, home_qt
+from tests.test_home_qt import _FakeSettings
+# QSettings uses the Windows registry even when HOME is isolated.
+home_qt.QSettings = _FakeSettings
+home_qt.whats_new_note = lambda *a, **k: ("9.9.9", "A beta for testers.")
 main_window_qt.HistoryView = lambda *a, **k: QWidget()
 fake = types.SimpleNamespace(
     config={'mode': 'hold', 'hotkey': 'ctrl+shift', 'microphone': 7, 'wake_word_enabled': True,
@@ -1226,10 +1230,20 @@ for _ in range(40):
 home = win._panel_cache["Home"]
 # Measure Home while it is the CURRENT page: a hidden page keeps stale
 # geometry, which would make this gate lie.
+# The compact release actions have a separate 30-DIP contract (388).
+# Measure them while Home is current, including the shared clipping check.
+release_actions = (home._hint_action_btn, home._hint_hide_btn)
+assert home._whats_new == "9.9.9"
+assert all(b.isVisibleTo(home) for b in release_actions)
 home_metrics = {
     "home_overflow": home_qt.overflowing_widgets(home),
     "content_w": home.content_widget.width(),
     "viewport_w": home._scroll.viewport().width(),
+    "release_action_heights": [b.height() for b in release_actions],
+    "release_action_height": home_qt._px(30),
+    "buttons_under_44": [b.text() for b in home.findChildren(main_window_qt.QPushButton)
+                         if b not in release_actions and b.isVisibleTo(home)
+                         and (b.height() < 44 or b.width() < 44)],
 }
 win._activate("Voice help")
 for _ in range(20):
@@ -1239,8 +1253,6 @@ out = {
     "help_overflow": home_qt.overflowing_widgets(help_page),
     **home_metrics,
     "scale": home_qt.text_scale(),
-    "buttons_under_44": [b.text() for b in home.findChildren(main_window_qt.QPushButton)
-                         if b.isVisibleTo(home) and (b.height() < 44 or b.width() < 44)],
 }
 print("RESULT " + json.dumps(out))
 '''
@@ -1270,6 +1282,7 @@ def test_nothing_clips_at_windows_scaling_and_larger_text(tmp_path, scale_factor
     assert result["help_overflow"] == [], result
     assert result["content_w"] <= result["viewport_w"], result
     assert result["buttons_under_44"] == [], result
+    assert result["release_action_heights"] == [result["release_action_height"]] * 2, result
     if font_factor != "1":
         assert result["scale"] > 1.1
 

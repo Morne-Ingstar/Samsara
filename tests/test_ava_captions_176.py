@@ -526,6 +526,15 @@ class TestThePanel:
 # ---------------------------------------------------------------------------
 
 class TestSettingsControls:
+    @pytest.fixture(autouse=True)
+    def _local_voice_catalog(self, monkeypatch):
+        # Saving accessibility controls also builds the Audio page. Its voice
+        # catalog must not create a native WinRT engine on a headless runner.
+        from samsara.ui import tutorial_try_preview
+
+        monkeypatch.setattr(tutorial_try_preview, "make_engine", lambda *a, **k:
+                            types.SimpleNamespace(list_voices=lambda: [], shutdown=lambda: None))
+
     def _page(self, config=None):
         from tests._theme_stub_app import build_settings_window
 
