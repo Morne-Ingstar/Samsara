@@ -110,6 +110,9 @@ def test_production_model_menu_prompt_grounding_and_late_deadline(live, monkeypa
     _, tiers = live
     from plugins.commands import ask_ollama
     from samsara import ava_command_session, ai_preferences
+    # A prior command-session exit may have cancelled every request in this
+    # worker. Give this synthetic session its own registry, restored on exit.
+    monkeypatch.setattr(ava_command_session, '_CANCELLED', set())
     # No network transport: keep actual resolver/menu/prompt/parser.
     seen = []
     def fake_ask(text, app, model, system):
@@ -137,10 +140,17 @@ def test_production_model_menu_prompt_grounding_and_late_deadline(live, monkeypa
     assert not run('please ' * (ava_command_session.MAX_REQUEST_WORDS + 1)).detail['model_called']
     # Prove that only expiry is disabled, not closed-world acceptance. Artificial
     # clock advances after provider reply; no real sleep or model load.
-    monkeypatch.setattr(ask_ollama, 'ask_ollama', fake_ask)
-    clock = iter([100., 100., 110.])
-    monkeypatch.setattr(ava_command_session.time, 'monotonic', lambda: next(clock, 110.))
+    clock = [100.]
+    def late_ask(*args, **kwargs):
+        response = fake_ask(*args, **kwargs)
+        clock[0] = 110.
+        return response
+    monkeypatch.setattr(ask_ollama, 'ask_ollama', late_ask)
+    # Patch this module's clock, without changing the shared time module or
+    # relying on how many monotonic calls the resolver happens to make.
+    monkeypatch.setattr(ava_command_session, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
     assert run('can you turn that down a bit').canonical_id == selected
+    assert clock[0] == 110.
 
 
 def test_from_shadow_fixture_and_cli_do_not_persist_text(tmp_path, monkeypatch):

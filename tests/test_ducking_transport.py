@@ -142,15 +142,27 @@ class TestHangMidOp:
         finally:
             transport.shutdown()
 
-    def test_second_caller_is_not_made_to_wait_a_second_full_deadline(self):
+    def test_second_caller_is_not_made_to_wait_a_second_full_deadline(self, monkeypatch):
         """A hung op holds the transport; a concurrent caller must fail
         fast rather than stack another deadline on top."""
         import threading
 
         transport = _transport("hang")
         hang_errors = []
+        entered, release = threading.Event(), threading.Event()
+        hanger = None
         try:
-            transport.request("ping", deadline=TEST_DEADLINE)
+            assert transport.request("ping", deadline=TEST_DEADLINE)["ok"] is True
+            original = transport._request_locked
+            operations = []
+
+            def held_request(op, deadline, fields):
+                operations.append(op)
+                entered.set()  # request() has acquired the real transport lock.
+                assert release.wait(5), "second caller did not finish"
+                return original(op, deadline, fields)
+
+            monkeypatch.setattr(transport, "_request_locked", held_request)
 
             def hang():
                 try:
@@ -160,18 +172,23 @@ class TestHangMidOp:
 
             hanger = threading.Thread(target=hang)
             hanger.start()
-            time.sleep(0.05)  # let it get inside the hanging op
+            assert entered.wait(5), "first caller did not acquire the transport"
 
-            started = time.monotonic()
             reply = transport.request("ping", deadline=TEST_DEADLINE)
-            elapsed = time.monotonic() - started
 
             assert reply["ok"] is False
-            assert elapsed < TEST_DEADLINE * 2
+            assert reply["err"] == "ducking host busy"
+            # The second caller exhausted only its lock deadline; it never
+            # entered an operation with a fresh full response deadline.
+            assert operations == ["get_volume"]
+            release.set()
             hanger.join(timeout=5)
             assert not hanger.is_alive(), "hanger thread did not stop within the join timeout"
             assert hang_errors == [], hang_errors
         finally:
+            release.set()
+            if hanger is not None:
+                hanger.join(timeout=5)
             transport.shutdown()
 
 
