@@ -88,6 +88,9 @@ def executor():
 @pytest.fixture(autouse=True)
 def _real_plugins_present(executor):
     _load_real_plugins()
+    # The module executor may have captured collection-time test commands.
+    # Rebuild after conftest clears those and we reinstall the real plugins.
+    executor.rebuild_matcher()
     from samsara.command_scope import MatchContext, active_tags
     executor._matcher.set_context_provider(
         lambda: MatchContext.for_app('chrome.exe', 'synthetic browser', active_tags()))

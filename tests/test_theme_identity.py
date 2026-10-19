@@ -109,6 +109,16 @@ def test_generated_assets_are_up_to_date(qapp, gen_icons):
     assert gen_icons.stale_assets() == []
 
 
+def test_generated_assets_ignore_the_active_light_palette(qapp, gen_icons):
+    previous = theme.active_theme()
+    try:
+        theme.set_theme("light", refresh=False)
+        assert gen_icons.stale_assets() == []
+        assert theme.active_theme() == "light"
+    finally:
+        theme.set_theme(previous, refresh=False)
+
+
 def test_ico_holds_every_app_size(gen_icons):
     data = (REPO / "assets" / "icon" / "samsara.ico").read_bytes()
     reserved, kind, count = struct.unpack_from("<HHH", data, 0)

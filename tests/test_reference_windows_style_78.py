@@ -18,6 +18,7 @@ here.
 from __future__ import annotations
 
 import io
+import ast
 import re
 import sys
 import tempfile
@@ -378,8 +379,18 @@ class TestStillGeneratedFromTheCatalog:
     def test_no_command_phrase_is_written_into_the_window_source(self):
         """The overhaul was styling only: a hand-written phrase here would
         mean the window had stopped reading the catalog."""
-        code = _code_only(REPO / WINDOWS[0])
+        tree = ast.parse((REPO / WINDOWS[0]).read_text(encoding="utf-8"))
+        # The window's title is also a spoken alias. Exempt that one title
+        # assignment, while still rejecting the same phrase in command rows.
+        titles = {id(node.value.args[0]) for node in ast.walk(tree)
+                  if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Attribute) and target.attr == '_title_label'
+                          for target in node.targets)
+                  and isinstance(node.value, ast.Call) and node.value.args}
+        literals = {node.value.lower() for node in ast.walk(tree)
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and id(node) not in titles}
         aliases = {a.lower() for r in (command_catalog.load_catalog_json() or [])
                    for a in r.get("aliases", []) if len(a.split()) > 1}
-        hits = [a for a in aliases if f'"{a}"' in code.lower()]
+        hits = sorted(aliases & literals)
         assert hits == [], f"hardcoded command phrases: {hits}"

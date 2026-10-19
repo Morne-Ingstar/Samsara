@@ -66,9 +66,14 @@ IDS = [r["canonical_id"] for r in RECORDS]
 
 @pytest.fixture(scope="module")
 def live_specs():
-    # Load before conftest's per-test registry isolation suppresses discovery.
+    # Collection of other files can register synthetic commands before this
+    # module fixture runs. Discover only repository plugins, then restore them.
+    from samsara import plugin_commands
     from tools.gen_command_catalog import generate
-    return generate()[0]
+    with pytest.MonkeyPatch.context() as clean:
+        clean.setattr(plugin_commands, '_REGISTRY', {})
+        clean.setattr(plugin_commands, '_shared_matcher', None)
+        return generate()[0]
 
 
 def _normalise(text):

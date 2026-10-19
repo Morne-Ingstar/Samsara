@@ -24,7 +24,12 @@ APPS = ("chrome", "spotify", "discord", "notepad", "vs code", "firefox", "obsidi
 
 @pytest.fixture(scope="module")
 def records():
-    with contextlib.redirect_stdout(io.StringIO()):
+    from samsara import plugin_commands
+    # Whole-suite collection can register synthetic commands before this
+    # module fixture runs; those are not part of the repository snapshot.
+    with pytest.MonkeyPatch.context() as clean, contextlib.redirect_stdout(io.StringIO()):
+        clean.setattr(plugin_commands, '_REGISTRY', {})
+        clean.setattr(plugin_commands, '_shared_matcher', None)
         return rs.load_records()
 
 

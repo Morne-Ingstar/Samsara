@@ -28,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import logging
 import re
 import struct
@@ -81,6 +82,19 @@ _CENTRELINE_PATH = re.compile(r'(<path data-role="centreline" d=")([^"]*)(")')
 
 APP_SIZES = (16, 24, 32, 48, 64, 128, 256)
 TRAY_SIZES = (16, 24, 32, 48, 64)
+
+
+@contextmanager
+def _asset_palette():
+    """Committed artwork always uses dark tokens, regardless of UI state."""
+    previous = theme._REQUESTED_SETTING
+    try:
+        theme.set_theme("dark", refresh=False)
+        clear_mark_caches()
+        yield
+    finally:
+        theme.set_theme(previous, refresh=False)
+        clear_mark_caches()
 
 MONTAGE_STATES = ("off", "asleep", "idle", "listening", "recording", "ava", "armed", "heard")
 _MONTAGE_LABELS = {"heard": "heard-flash"}
@@ -230,6 +244,7 @@ def render_brand(size: int) -> QImage:
     return image
 
 
+@_asset_palette()
 def brand_outputs(directory: Path) -> dict[Path, bytes]:
     """Deterministic generated brand PNG bytes, rooted at checkout or a temp dir.
 
@@ -283,6 +298,7 @@ def build_ico(pngs: list[tuple[int, bytes]]) -> bytes:
     return header + directory + blobs
 
 
+@_asset_palette()
 def expected_outputs() -> dict[Path, QImage | bytes]:
     """Every generated file -> its image (PNG) or bytes (ICO)."""
     _ensure_gui_app()

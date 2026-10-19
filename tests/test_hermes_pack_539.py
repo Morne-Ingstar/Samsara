@@ -55,6 +55,7 @@ def fake(tmp_path, monkeypatch):
     state = SimpleNamespace(output=events(), errors="session_id: " + SID, code=0,
                             calls=[], processes=[], workers=[], after_wait=None)
     agent = hermes.HermesAgent()
+    original_spawn = hermes.thread_registry.spawn
 
     def popen(argv, **kwargs):
         assert FORBIDDEN.isdisjoint(argv)
@@ -69,8 +70,10 @@ def fake(tmp_path, monkeypatch):
     def spawn(name, fn, args=(), **kwargs):
         if name.startswith("hermes.std"):
             fn(*args)
-        else:
+        elif name.startswith(("agent.hermes", "hermes.")):
             state.workers.append((name, fn))
+        else:
+            return original_spawn(name, fn, args=args, **kwargs)
 
     def kill(process):
         process.killed = True
@@ -489,6 +492,8 @@ def test_timeout_keeps_session_seen_before_completion(fake):
 def test_consent_persists_immediately_and_unrelated_apply_keeps_it(fake, settings_window, monkeypatch, qapp):
     from samsara.ui import hermes_notice
     win = settings_window
+    win.open_tool('Command library')
+    qapp.processEvents()
     section = win._widgets['hermes_section']
     assert not section.accepted
     assert win._config_at_open['hermes']['notice_accepted'] is False
@@ -500,11 +505,14 @@ def test_consent_persists_immediately_and_unrelated_apply_keeps_it(fake, setting
     assert not win.app.config.get('command_packs', {}).get('hermes', False)
     assert not fake.calls
     # Audio Apply in this retained window does not save command-library edits.
+    win.show_tab('Audio')
+    qapp.processEvents()
     win._widgets['tts_speed'].setValue(1.4)
     win._apply_and_close()
     assert win.app.config['hermes']['notice_accepted'] is True
     assert win.app.config['tts']['speed'] == 1.4
     win.show_tab('Audio')
+    win.open_tool('Command library')
     qapp.processEvents()
     rebuilt = win._widgets['hermes_section']
     assert rebuilt is not section and rebuilt.accepted
@@ -544,10 +552,13 @@ def test_hermes_controls_rebuild_from_live_config_and_apply_in_tool(fake, settin
 def test_hermes_acceptance_from_retired_visit_is_discarded(fake, settings_window, monkeypatch, qapp):
     from samsara.ui import hermes_notice
     win = settings_window
+    win.open_tool('Command library')
+    qapp.processEvents()
     old = win._widgets['hermes_section']
     def retired_dialog(_):
         win.close()
         win.show_tab('Audio')
+        win.open_tool('Command library')
         return True
     monkeypatch.setattr(hermes_notice, 'request_acceptance', retired_dialog)
     old.enabled.setChecked(True)

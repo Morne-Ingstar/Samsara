@@ -108,6 +108,7 @@ def test_generated_recording_assets_match_live_regular_snake(qapp, size):
     previous = theme.active_theme()
     try:
         theme.set_theme('dark', refresh=False)
+        tray_qt.clear_mark_caches()
         actual = tray_qt.render_mark('recording', 'off', size, small_max=tray_qt.TASKBAR_SMALL_MAX)
         expected = QImage(str(Path(__file__).resolve().parents[1] /
                              f'assets/icon/states/samsara_recording_{size}.png'))
