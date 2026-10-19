@@ -185,7 +185,7 @@ def test_synthetic_config_load_budget_includes_disk_migrations_and_snapshot(load
     assert not app.writes
 
 
-def test_themed_pixel_font_menu_button_renders_without_point_size_warning(qapp):
+def test_themed_pixel_font_menu_button_renders_without_point_size_warning(qapp, qt_deferred_delete):
     from PySide6.QtCore import qInstallMessageHandler
     from PySide6.QtWidgets import QMenu, QPushButton
     from samsara.ui import theme
@@ -206,17 +206,16 @@ def test_themed_pixel_font_menu_button_renders_without_point_size_warning(qapp):
         button.setStyleSheet(_button_qss(False))
         button.ensurePolished()
         button.grab()
-        qapp.processEvents()
     finally:
         button.deleteLater()
-        qapp.processEvents()
+        qt_deferred_delete(button)
         qInstallMessageHandler(previous)
     assert not [message for message in messages
                 if "QFont::" in message or "DpiAwareness" in message]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows native menu font regression")
-def test_settings_menu_buttons_all_use_pixel_safe_style(qapp, monkeypatch):
+def test_settings_menu_buttons_all_use_pixel_safe_style(qapp, monkeypatch, qt_deferred_delete):
     from PySide6.QtCore import qInstallMessageHandler
     from PySide6.QtWidgets import QPushButton
     from samsara import autostart
@@ -237,11 +236,10 @@ def test_settings_menu_buttons_all_use_pixel_safe_style(qapp, monkeypatch):
             # Inherited QSS wraps the base style; exercise its metrics/paint.
             button.ensurePolished()
             button.grab()
-        qapp.processEvents()
     finally:
         if window is not None:
             window.deleteLater()
-        qapp.processEvents()
+            qt_deferred_delete(window)
         qInstallMessageHandler(previous)
     assert not [message for message in messages
                 if "QFont::" in message or "DpiAwareness" in message]

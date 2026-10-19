@@ -15,6 +15,8 @@ def _no_real_sendinput(monkeypatch):
     clipboard-paste path they were written for."""
     import dictation
     monkeypatch.setattr(dictation, 'type_text_unicode', lambda text: False)
+    from samsara import paste
+    monkeypatch.setattr(paste, '_editor_snapshot', lambda: None)
 
 
 

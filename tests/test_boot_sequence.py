@@ -151,6 +151,15 @@ def test_smart_corrections_warm_up_is_off_the_startup_lane(monkeypatch, sc_enabl
     reach Startup complete without calling it inline, spawn it on its own
     thread only when Smart Corrections is enabled, and never at all when off."""
     app = _worker_app(False)
+    # Warm-up also requires the production AI route and editing consent.
+    from samsara import ai_preferences
+    if sc_enabled:
+        app.config['ollama'] = {'host': 'http://127.0.0.1:11434', 'model': 'fixture'}
+        consent = ai_preferences.accept_consent(
+            app.config, features=('editing',),
+            provider=ai_preferences.provider_for(app.config, 'local'), accepted_at='fixture')
+        app.config = ai_preferences.apply_preferences(
+            app.config, policy='local', editing=True, consent=consent, local_model='fixture')
     app.config["smart_corrections"] = {"enabled": sc_enabled}
     app._write_last_known_good = Mock()
     warm_up = Mock()

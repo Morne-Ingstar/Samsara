@@ -10,28 +10,20 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# ---------------------------------------------------------------------------
-# Minimal win32 stubs so the module imports cleanly in a headless environment
-# ---------------------------------------------------------------------------
-
-_win32_mocks = {}
-# psutil is a real installed dependency — never stub it, so other test files
-# that import real psutil exception classes (e.g. test_media_keys.py) are
-# unaffected by collection order.
-for _mod in ('win32api', 'win32con', 'win32gui', 'win32process'):
-    if _mod not in sys.modules:
-        _win32_mocks[_mod] = MagicMock()
-        sys.modules[_mod] = _win32_mocks[_mod]
-
-# win32con constants used by the plugin
-sys.modules['win32con'].SW_SHOWMAXIMIZED = 3
-sys.modules['win32con'].SW_MAXIMIZE = 3
-sys.modules['win32con'].SW_RESTORE = 9
-sys.modules['win32con'].GWL_EXSTYLE = -20
-
-import importlib
 import plugins.commands.windows as wm
-importlib.reload(wm)
+
+
+@pytest.fixture(autouse=True)
+def _private_win32(monkeypatch):
+    # Module globals and sys.modules can refer to different stubs after other
+    # files run. Own both bindings and every mock's history for this test.
+    for name in ('win32api', 'win32con', 'win32gui', 'win32process'):
+        module = MagicMock()
+        monkeypatch.setitem(sys.modules, name, module)
+        monkeypatch.setattr(wm, name, module)
+    wm.win32con.SW_SHOWMAXIMIZED = wm.win32con.SW_MAXIMIZE = 3
+    wm.win32con.SW_RESTORE = 9
+    wm.win32con.GWL_EXSTYLE = -20
 
 
 # ---------------------------------------------------------------------------

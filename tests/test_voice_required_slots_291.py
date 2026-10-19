@@ -30,6 +30,11 @@ REQUIRED_VOICE_PHRASES = {
     "line spacing",
     "set font",
     "claude message submit",
+    "choose control",
+    "collapse",
+    "expand",
+    "focus control",
+    "toggle",
 }
 
 # 345b's controller identities have required tokens, but are never voice slots.
@@ -43,7 +48,11 @@ REQUIRED_TYPED_PHRASES = {
 @pytest.fixture(scope="module")
 def voice_executor():
     """A production registry snapshot, built before per-test registry isolation."""
-    executor = build_executor()
+    with pytest.MonkeyPatch.context() as clean:
+        clean.setattr(plugin_commands, '_REGISTRY', {})
+        clean.setattr(plugin_commands, '_shared_matcher', None)
+        executor = build_executor()
+        registry = dict(plugin_commands._REGISTRY)
     required = {
         entry.phrase: entry
         for entry in executor._matcher._sorted
@@ -57,7 +66,7 @@ def voice_executor():
     assert all(not required[phrase].voice_triggerable
                for phrase in REQUIRED_TYPED_PHRASES if phrase.startswith('interact '))
     assert required['send'].param_schema['monitor'] == {'type': 'monitor', 'required': True}
-    return executor, entries, dict(plugin_commands._REGISTRY)
+    return executor, entries, registry
 
 
 @pytest.fixture
@@ -80,7 +89,7 @@ def test_required_slots_accept_the_actual_exact_voice_remainder(live_voice_regis
     with monkeypatch.context() as patch:
         patch.setattr(executor, "execute_canonical", capture)
         patch.setattr(executor._matcher, "current_context",
-                      lambda: MatchContext.for_app("chrome.exe"))
+                      lambda: MatchContext.for_app("chrome.exe", tags={'click_by_name.pending'}))
         for phrase in sorted(entries):
             executor.process_text(f"{phrase} foo", force_commands=True)
         for alias in ('playlist', 'album', 'artist'):

@@ -22,6 +22,13 @@ from samsara.session_modes import (
 GOOD = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.3,))
 
 
+@pytest.fixture(autouse=True)
+def _legacy_commit_word(monkeypatch):
+    from samsara import session_modes
+    monkeypatch.setattr(session_modes, 'DICTATE_COMMIT_PHRASE', 'end')
+    monkeypatch.setattr(session_modes, '_DICTATE_COMMIT_HOMOPHONES', frozenset({'end'}))
+
+
 def _manager(command_matches=None):
     inject = Mock(side_effect=lambda text, guard=None: text)
     result = (CommandDispatchResult(matched=True, phrase=command_matches)

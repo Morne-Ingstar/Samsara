@@ -37,6 +37,13 @@ GOOD = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.3,))
 BAD = UtteranceSignals(has_contiguous_speech=None, compression_ratios=())
 
 
+@pytest.fixture(autouse=True)
+def _legacy_commit_word(monkeypatch):
+    # These regressions explicitly exercise the old configurable "end" word.
+    monkeypatch.setattr(session_modes, 'DICTATE_COMMIT_PHRASE', 'end')
+    monkeypatch.setattr(session_modes, '_DICTATE_COMMIT_HOMOPHONES', frozenset({'end'}))
+
+
 def _manager(redecode=None, command_dispatch=None):
     inject = Mock(side_effect=lambda text, guard=None: text)
     mgr = SessionModeManager(

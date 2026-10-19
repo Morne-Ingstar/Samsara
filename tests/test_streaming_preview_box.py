@@ -33,6 +33,13 @@ from samsara.streaming import (
 # tests never touch Qt.
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _legacy_commit_word(monkeypatch):
+    from samsara import session_modes
+    monkeypatch.setattr(session_modes, 'DICTATE_COMMIT_PHRASE', 'end')
+    monkeypatch.setattr(session_modes, '_DICTATE_COMMIT_HOMOPHONES', frozenset({'end'}))
+
+
 class _FakeOverlay:
     def __init__(self):
         self.calls = []

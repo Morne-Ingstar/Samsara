@@ -173,6 +173,15 @@ def test_focused_editor_seam_returns_paste_result(monkeypatch):
     assert paste.deliver_text_to_focused_editor(instance, "draft") is True
 
 
-def test_dictation_module_is_not_imported():
-    module = sys.modules.get("dictation")
-    assert module is None or getattr(getattr(module, "__spec__", None), "loader", object()) is None
+def test_dictation_module_is_not_imported(monkeypatch):
+    import builtins
+    original_import = builtins.__import__
+    before = sys.modules.get('dictation')
+
+    def guarded_import(name, *args, **kwargs):
+        assert name != 'dictation', 'delivery extraction must not import the app'
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', guarded_import)
+    production()
+    assert sys.modules.get('dictation') is before

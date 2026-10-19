@@ -104,8 +104,9 @@ def test_worker_thread_exception_is_logged(restore_hooks, caplog):
         raise ValueError("calibration exploded")
 
     t = threading.Thread(target=worker, name="wizard-wake-calibration-%s")
-    # dictation.py's Thread.run wrapper is not installed here: this is the
-    # path threading.excepthook alone has to cover.
+    # Earlier bootstrap tests may wrap run() on each new Thread instance.
+    # Own this thread's run method so its exception reaches excepthook.
+    t.run = worker
     with caplog.at_level(logging.CRITICAL):
         t.start()
         t.join(5)

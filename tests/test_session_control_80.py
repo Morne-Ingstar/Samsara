@@ -33,6 +33,13 @@ GOOD = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.3,))
 NOISE = UtteranceSignals(has_contiguous_speech=False, compression_ratios=(50.0,))
 
 
+@pytest.fixture(autouse=True)
+def _legacy_commit_word(monkeypatch):
+    from samsara import session_modes
+    monkeypatch.setattr(session_modes, 'DICTATE_COMMIT_PHRASE', 'end')
+    monkeypatch.setattr(session_modes, '_DICTATE_COMMIT_HOMOPHONES', frozenset({'end'}))
+
+
 class _NoMatch:
     matched = False
     phrase = None

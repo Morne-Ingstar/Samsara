@@ -23,6 +23,9 @@ def _foreground_integrity_is_ordinary(monkeypatch):
     # which window the developer has in front (an elevated one refuses delivery).
     from types import SimpleNamespace as _NS
     from samsara import injection_safety
+    from samsara import paste
+    monkeypatch.setattr(paste, '_editor_snapshot', lambda: None)
+    monkeypatch.setattr(dictation, 'type_text_unicode', lambda *a, **kw: False)
     monkeypatch.setattr(injection_safety, "window_integrity",
                         lambda *a, **k: _NS(blocked=False, confirmed_ok=True, describe=lambda: "pinned by the test"))
 
@@ -34,6 +37,7 @@ def _paste_app():
     app._record_undoable_paste = Mock()
     app.play_sound = Mock()          # 474: the delivery seam owns the success feedback
     app._show_outcome_chip = Mock()
+    app._foreground_wants_typed_injection = lambda: False
     return app
 
 

@@ -20,6 +20,13 @@ from samsara.session_modes import (
 GOOD = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.0,))
 
 
+@pytest.fixture(autouse=True)
+def _legacy_commit_word(monkeypatch):
+    from samsara import session_modes
+    monkeypatch.setattr(session_modes, 'DICTATE_COMMIT_PHRASE', 'end')
+    monkeypatch.setattr(session_modes, '_DICTATE_COMMIT_HOMOPHONES', frozenset({'end'}))
+
+
 class Editor:
     def __init__(self):
         self.window, self.control, self.tick = 101, 102, 1
