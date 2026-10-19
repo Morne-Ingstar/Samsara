@@ -76,6 +76,86 @@ def live_specs():
         return generate()[0]
 
 
+@pytest.mark.parametrize('failure', [ImportError, TypeError])
+def test_capture_registration_survives_optional_wmi_import_failure(monkeypatch, failure):
+    """Capture's optional COM backend must not remove its voice commands."""
+    import builtins
+    import importlib
+    import threading
+    import types
+    from samsara import plugin_commands
+
+    name = 'plugins.commands.workflow_capture'
+    parent = importlib.import_module('plugins.commands')
+    monkeypatch.setattr(parent, 'workflow_capture', None, raising=False)
+    for key in (name, 'samsara_plugin_workflow_capture'):
+        # Record even an absent original, so the freshly imported module is
+        # removed at teardown rather than escaping into the next test.
+        monkeypatch.setitem(sys.modules, key, None)
+        monkeypatch.delitem(sys.modules, key)
+    monkeypatch.setitem(sys.modules, 'pythoncom', types.ModuleType('pythoncom'))
+    monkeypatch.setattr(plugin_commands, '_REGISTRY', {})
+    monkeypatch.setattr(plugin_commands, '_MODULE_ENTRIES', {})
+    monkeypatch.setattr(plugin_commands, '_LOADED_MODULES', {})
+    original_import = builtins.__import__
+    attempted = []
+
+    def unavailable(module, *args, **kwargs):
+        if module == 'win32com.client':
+            attempted.append(module)
+            raise failure('synthetic WMI import failure')
+        return original_import(module, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', unavailable)
+    # This uses the production loader, including its cached-module reuse path.
+    capture = plugin_commands._import_plugin(REPO / 'plugins/commands/workflow_capture.py')
+    assert attempted == []
+    expected = {'start capture', 'stop capture', 'capture status', 'review capture'}
+    assert {entry['phrase'] for entry in plugin_commands._REGISTRY.values()} == expected
+    plugin_commands._REGISTRY.clear()
+    assert plugin_commands._import_plugin(REPO / 'plugins/commands/workflow_capture.py') is capture
+    assert {entry['phrase'] for entry in plugin_commands._REGISTRY.values()} == expected
+    assert capture._proc_loop_wmi(threading.Event()) is False
+    assert attempted == ['win32com.client']
+
+
+def test_plugin_import_report_counts_partial_and_previously_imported_commands(tmp_path, capsys, monkeypatch):
+    from samsara import plugin_commands
+    from tools import ci_plugin_import_report as report
+
+    monkeypatch.setattr(plugin_commands, '_REGISTRY', {})
+    monkeypatch.setattr(plugin_commands, '_MODULE_ENTRIES', {})
+    package = tmp_path / 'counted_plugins'
+    package.mkdir()
+    (package / '__init__.py').write_text('', encoding='utf-8')
+    (package / 'a_failure.py').write_text(
+        'from samsara.plugin_commands import command\n'
+        '@command("partially registered")\n'
+        'def handle(app, remainder): pass\n'
+        "raise RuntimeError('synthetic import failure')\n", encoding='utf-8')
+    (package / 'b_importer.py').write_text(
+        'from counted_plugins import z_commands\n', encoding='utf-8')
+    (package / 'z_commands.py').write_text(
+        'from samsara.plugin_commands import command\n'
+        '@command("count me", aliases=["count alias", "another alias"])\n'
+        'def handle(app, remainder): pass\n'
+        '@command("count twice")\n'
+        'def other(app, remainder): pass\n', encoding='utf-8')
+    monkeypatch.setattr(report, 'plugin_modules', lambda root: iter([
+        'counted_plugins.a_failure', 'counted_plugins.b_importer', 'counted_plugins.z_commands']))
+    try:
+        assert report.main(tmp_path) == 0
+    finally:
+        for name in list(sys.modules):
+            if name == 'counted_plugins' or name.startswith('counted_plugins.'):
+                del sys.modules[name]
+    output = capsys.readouterr().out
+    assert 'FAIL counted_plugins.a_failure commands=1' in output
+    assert 'RuntimeError: synthetic import failure' in output
+    assert 'OK counted_plugins.b_importer commands=0' in output
+    assert 'OK counted_plugins.z_commands commands=2' in output
+
+
 def _normalise(text):
     """Lowercase, drop punctuation, collapse spaces -- so a description is
     compared to its phrase on words alone, not on a full stop."""

@@ -856,7 +856,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|
-| `workflow_capture.capture_status` | `capture status`, `how many events`, `workflow capture status` | - | ui | yes |  | Says whether workflow capture is running and how much it has recorded. | `plugins/commands/workflow_capture.py:617` |
-| `workflow_capture.review_capture` | `open capture review`, `review capture`, `show capture review` | - | ui | yes |  | Reopens the review window showing the last workflow you captured. | `plugins/commands/workflow_capture.py:627` |
-| `workflow_capture.start_capture` | `begin capture`, `capture workflow`, `start capture`, `start workflow capture` | - | destructive | no |  | Starts recording which shortcuts and clicks you use, never what you type. | `plugins/commands/workflow_capture.py:583` |
-| `workflow_capture.stop_capture` | `end capture`, `finish capture`, `stop capture`, `stop recording workflow` | - | destructive | no |  | Stops recording your workflow and opens the review window. | `plugins/commands/workflow_capture.py:601` |
+| `workflow_capture.capture_status` | `capture status`, `how many events`, `workflow capture status` | - | ui | yes |  | Says whether workflow capture is running and how much it has recorded. | `plugins/commands/workflow_capture.py:612` |
+| `workflow_capture.review_capture` | `open capture review`, `review capture`, `show capture review` | - | ui | yes |  | Reopens the review window showing the last workflow you captured. | `plugins/commands/workflow_capture.py:622` |
+| `workflow_capture.start_capture` | `begin capture`, `capture workflow`, `start capture`, `start workflow capture` | - | destructive | no |  | Starts recording which shortcuts and clicks you use, never what you type. | `plugins/commands/workflow_capture.py:578` |
+| `workflow_capture.stop_capture` | `end capture`, `finish capture`, `stop capture`, `stop recording workflow` | - | destructive | no |  | Stops recording your workflow and opens the review window. | `plugins/commands/workflow_capture.py:596` |

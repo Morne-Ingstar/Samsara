@@ -12754,7 +12754,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "ui",
-      "source": "plugins/commands/workflow_capture.py:617",
+      "source": "plugins/commands/workflow_capture.py:612",
       "undoable": true,
       "verb": "capture",
       "whole_utterance": false
@@ -12773,7 +12773,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "ui",
-      "source": "plugins/commands/workflow_capture.py:627",
+      "source": "plugins/commands/workflow_capture.py:622",
       "undoable": true,
       "verb": "review",
       "whole_utterance": false
@@ -12793,7 +12793,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "destructive",
-      "source": "plugins/commands/workflow_capture.py:583",
+      "source": "plugins/commands/workflow_capture.py:578",
       "undoable": false,
       "verb": "start",
       "whole_utterance": false
@@ -12813,7 +12813,7 @@
       "pack": "experimental",
       "plugin": "workflow_capture",
       "risk": "destructive",
-      "source": "plugins/commands/workflow_capture.py:601",
+      "source": "plugins/commands/workflow_capture.py:596",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false

@@ -42,13 +42,6 @@ try:
 except ImportError:
     _WIN32 = False
 
-try:
-    import pythoncom as _pythoncom
-    import win32com.client as _wcom
-    _WMI = True
-except ImportError:
-    _WMI = False
-
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
 
@@ -317,12 +310,14 @@ def _proc_loop_wmi(stop: threading.Event) -> bool:
     Returns False if WMI is unavailable or setup fails (caller should use psutil).
     Runs on its own daemon thread with STA COM initialized on that thread.
     """
-    if not _WMI:
-        return False
     try:
+        # WMI is optional capture infrastructure, not a registration dependency.
+        # win32com can fail during import as well as during COM setup.
+        import pythoncom as _pythoncom
+        import win32com.client as _wcom
         _pythoncom.CoInitialize()
     except Exception as exc:
-        logger.debug("[CAPTURE] WMI CoInitialize failed: %s", exc)
+        logger.debug("[CAPTURE] WMI setup failed: %s", exc)
         return False
 
     try:
