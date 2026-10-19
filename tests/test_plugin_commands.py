@@ -62,20 +62,23 @@ _PLUGIN_SOURCE = textwrap.dedent('''
 @pytest.fixture
 def plugin_package(tmp_path, clean_registry):
     """An inert plugin living in a real importable package: idpkg.cmds.example."""
-    pkg = tmp_path / "idpkg"
+    # An outer sys.path entry (including a gate's plugin directory) must not
+    # turn pytest's temporary ancestors into extra namespace packages.
+    plugin_root = tmp_path / "plugin-root"
+    pkg = plugin_root / "idpkg"
     cmds = pkg / "cmds"
     cmds.mkdir(parents=True)
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (cmds / "__init__.py").write_text("", encoding="utf-8")
     (cmds / "example.py").write_text(_PLUGIN_SOURCE, encoding="utf-8")
-    sys.path.insert(0, str(tmp_path))
+    sys.path.insert(0, str(plugin_root))
     _drop_modules("idpkg")
     try:
         yield cmds
     finally:
         _drop_modules("idpkg")
         sys.modules.pop("samsara_plugin_example", None)
-        sys.path.remove(str(tmp_path))
+        sys.path.remove(str(plugin_root))
 
 
 class TestCanonicalIdentity:

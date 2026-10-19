@@ -168,6 +168,12 @@ class TestOnlyTheDescriptionsMoved:
     single command -- a phrase change silently breaks what the user says."""
 
     def test_the_record_count_is_unchanged(self, live_specs):
+        expected = set(IDS)
+        actual = {spec.canonical_id for spec in live_specs}
+        assert actual == expected, {
+            "missing_live": sorted(expected - actual),
+            "extra_live": sorted(actual - expected),
+        }
         assert len(RECORDS) == len(live_specs)
 
     def test_no_canonical_id_is_duplicated(self):
