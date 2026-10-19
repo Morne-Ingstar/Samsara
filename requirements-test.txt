@@ -4,6 +4,7 @@ pytest-cov>=4.0.0
 pytest-mock>=3.10.0
 pytest-timeout==2.4.0
 pytest-xdist==3.8.0
+py-spy>=0.4.0  # External CI stack dumps, including native/GIL hangs.
 tzdata>=2024.1  # IANA zones for Windows, which has no system zoneinfo database.
 
 # Drives real Chromium for Show Numbers DOM-fidelity tests (visibility,

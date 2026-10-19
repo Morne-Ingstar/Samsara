@@ -19,6 +19,67 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 _HARD_WATCHDOG_700 = pytest.StashKey()
 _PROCESS_WATCHDOG_705 = pytest.StashKey()
 
+
+def _ci_progress_711(phase, nodeid=''):
+    """Progress records, not a liveness pulse: a wedged thread must go stale."""
+    directory = os.environ.get('SAMSARA_CI_HEARTBEAT_DIR')
+    if not directory:
+        return
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f'{os.getpid()}.json'
+    pending = path.with_suffix('.tmp')
+    pending.write_text(json.dumps(dict(pid=os.getpid(), phase=phase, nodeid=nodeid,
+                                       progress=_watchdog_monotonic_701())), encoding='utf-8')
+    for attempt in range(50):
+        try:
+            os.replace(pending, path)
+            break
+        except PermissionError:
+            if attempt == 49:
+                raise
+            import time
+            time.sleep(0.01)
+
+
+def _ci_dump_listener_711():
+    """Cooperative fallback only; the external supervisor owns termination."""
+    import faulthandler
+    import threading
+
+    directory = os.environ.get('SAMSARA_CI_HEARTBEAT_DIR')
+    if not directory:
+        return
+    root = Path(directory)
+    def listen():
+        import time
+        request = root / f'{os.getpid()}.dump'
+        while True:
+            if request.exists():
+                request.unlink(missing_ok=True)
+                with (root / f'faulthandler-{os.getpid()}.txt').open('w') as output:
+                    faulthandler.dump_traceback(file=output, all_threads=True)
+            time.sleep(0.1)
+    threading.Thread(target=listen, name='ci-stack-request', daemon=True).start()
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True, specname='pytest_runtest_protocol')
+def pytest_ci_progress_protocol_711(item):
+    _ci_progress_711('test', item.nodeid)
+    try:
+        yield
+    finally:
+        _ci_progress_711('between-tests', item.nodeid)
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_sessionfinish(session, exitstatus):
+    _ci_progress_711('sessionfinish')
+    try:
+        yield
+    finally:
+        _ci_progress_711('shutdown')
+
 # Run stdlib-only code in a separate interpreter: neither the worker's GIL,
 # faulthandler's single timer, nor a blocked traceback writer can disarm it.
 _PROCESS_WATCHDOG_SOURCE_705 = r'''
@@ -127,6 +188,8 @@ class _ProcessWatchdog705:
 
 
 def pytest_sessionstart(session):
+    _ci_progress_711('collection')
+    _ci_dump_listener_711()
     config = session.config
     if _hard_timeout_seconds_700() == 0:
         return

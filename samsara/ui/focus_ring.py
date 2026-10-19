@@ -1,8 +1,9 @@
 """Keyboard-only QSS focus rings; real Qt focus and accessibility stay intact."""
 import re
+import sys
 from functools import lru_cache
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
 from shiboken6 import isValid
 
@@ -39,6 +40,9 @@ class FocusRings(QObject):
     def __init__(self, app):
         super().__init__(app)
         self.app, self.busy, self.navigation = app, False, False
+        self._stopped = self._filtering = False
+        app.aboutToQuit.connect(self.stop)
+        app.destroyed.connect(self.stop)
         app.installEventFilter(self)
         self.style(app)
         for widget in app.allWidgets():
@@ -82,7 +86,27 @@ class FocusRings(QObject):
     def end_navigation(self):
         self.navigation = False
 
+    def stop(self, *_):
+        if self._stopped:
+            return
+        self._stopped = True
+        if isValid(self) and isValid(self.app):
+            self.app.removeEventFilter(self)
+
     def eventFilter(self, widget, event):
+        # Check Python guards BEFORE any Qt call (even event.type can re-enter
+        # Shiboken during __moduleShutdown). No wrapper access while finalizing.
+        if self._stopped or self._filtering or sys.is_finalizing():
+            return False
+        self._filtering = True
+        try:
+            if QCoreApplication.closingDown():
+                return False
+            return self._filter_event(widget, event)
+        finally:
+            self._filtering = False
+
+    def _filter_event(self, widget, event):
         kind = event.type()
         if kind == QEvent.Type.MouseButtonPress:
             self.navigation = False

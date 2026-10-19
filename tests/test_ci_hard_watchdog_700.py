@@ -36,7 +36,8 @@ def native_block(seconds):
 '''
 
 
-def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra=''):
+def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra='',
+              step_watchdog=False):
     """Use the real shared hooks in an isolated, bounded child pytest process."""
     shutil.copyfile(Path(__file__).with_name('conftest.py'), tmp_path / 'conftest.py')
     with (tmp_path / 'conftest.py').open('a', encoding='utf-8') as handle:
@@ -47,7 +48,7 @@ def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra=
     home.mkdir()
     env = {key: value for key, value in os.environ.items()
            if not key.startswith('SAMSARA_TEST_SHARD_')
-           and key != 'SAMSARA_TEST_HARD_TIMEOUT'}
+           and key not in ('SAMSARA_TEST_HARD_TIMEOUT', 'SAMSARA_CI_HEARTBEAT_DIR')}
     env.update(SAMSARA_TEST_HARD_TIMEOUT=hard,
                PYTEST_DISABLE_PLUGIN_AUTOLOAD='1', PYTEST_ADDOPTS='', PYTEST_PLUGINS='',
                PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8')
@@ -61,6 +62,10 @@ def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra=
                '-p', 'pytest_timeout', '--timeout=' + soft, '--timeout-method=thread',
                '--basetemp', str(tmp_path / 'pytest-temp'), '-q', '-s', *extra,
                str(tmp_path / 'test_probe.py')]
+    if step_watchdog:
+        command = [sys.executable, '-u', str(Path(__file__).resolve().parents[1] /
+                   'tools/ci_hang_reporter.py'), '--state-dir', str(tmp_path / 'step'),
+                   '--idle-seconds', '2', '--report-seconds', '0.5', '--', *command]
     started = time.monotonic()
     result = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True,
                             text=True, encoding='utf-8', errors='replace', timeout=30)
@@ -237,6 +242,61 @@ def pytest_outer_teardown_probe(item):
 def test_default_exceeds_ci_soft_timeout(monkeypatch):
     monkeypatch.delenv('SAMSARA_TEST_HARD_TIMEOUT', raising=False)
     assert support._hard_timeout_seconds_700() == 180
+
+
+@pytest.mark.parametrize('phase', ['collection', 'sessionfinish', 'atexit', 'native'])
+def test_step_supervisor_covers_gaps_outside_item_watchdogs(tmp_path, phase):
+    hook = NATIVE_BLOCK + '''
+import atexit
+import faulthandler
+'''
+    if phase == 'collection':
+        hook += '\nnative_block(60)\n'
+    elif phase == 'sessionfinish':
+        hook += '\ndef pytest_sessionfinish(session): native_block(60)\n'
+    elif phase == 'atexit':
+        hook += '\natexit.register(native_block, 60)\n'
+    result, _ = run_child(tmp_path, NATIVE_BLOCK + '''
+def test_probe():
+    BODY
+'''.replace('BODY', 'native_block(60)' if phase == 'native' else 'pass'),
+        hard='0', soft='0', conftest_extra=hook, step_watchdog=True)
+    assert result.returncode == 124, result.stdout + result.stderr
+    assert 'deadline exceeded' in result.stdout
+    assert 'killed owned process tree' in result.stdout
+    assert 'cpu_seconds' in result.stdout
+
+
+def test_step_supervisor_preserves_normal_exit_and_diagnostics(tmp_path):
+    result, _ = run_child(tmp_path, 'def test_probe(): pass', hard='0', soft='0',
+                          step_watchdog=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'pytest exited 0' in result.stdout
+    states = list((tmp_path / 'step').glob('*.json'))
+    assert len(states) == 1
+    import json
+    assert json.loads(states[0].read_text())['phase'] == 'shutdown'
+
+
+@pytest.mark.parametrize('probe', ['dump_stacks', 'describe'])
+def test_stack_probe_failure_still_terminates_owned_tree(tmp_path, monkeypatch, probe):
+    from tools import ci_hang_reporter as reporter
+    from unittest.mock import Mock
+    root = Mock(pid=123)
+    root.children.return_value = []
+    child = Mock(pid=123, returncode=1)
+    running = [True]
+    child.poll.side_effect = lambda: None if running[0] else 1
+    root.kill.side_effect = lambda: running.__setitem__(0, False)
+    monkeypatch.setattr(reporter.subprocess, 'Popen', lambda *a, **k: child)
+    monkeypatch.setattr(reporter.psutil, 'Process', lambda pid: root)
+    monkeypatch.setattr(reporter, 'describe', lambda processes: [])
+    monkeypatch.setattr(reporter, probe, Mock(side_effect=OSError('probe failed')))
+    ticks = iter([0, 2])
+    monkeypatch.setattr(reporter.time, 'monotonic', lambda: next(ticks))
+    with pytest.raises(OSError, match='probe failed'):
+        reporter.supervise(['pytest'], tmp_path, idle_seconds=1)
+    root.kill.assert_called_once()
 
 
 @pytest.mark.parametrize('value', ['-1', 'nan', 'inf', '-inf', 'invalid', ''])

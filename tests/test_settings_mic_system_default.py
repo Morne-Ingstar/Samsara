@@ -11,10 +11,27 @@ _on_refresh_devices, the reference implementation for this pattern: a
 import sys
 from pathlib import Path
 from unittest.mock import Mock
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.test_settings import _StubApp
+
+
+@pytest.fixture(autouse=True)
+def owned_settings_windows(monkeypatch, qt_widget_scope):
+    """Retire every native window while its test patches are still installed."""
+    from samsara.ui.settings_qt import _SettingsWindow
+    windows = []
+    original = _SettingsWindow.__init__
+    def initialize(window, *args, **kwargs):
+        original(window, *args, **kwargs)
+        windows.append(window)
+    monkeypatch.setattr(_SettingsWindow, '__init__', initialize)
+    yield
+    for window in windows:
+        with qt_widget_scope(window):
+            pass
 
 
 _DEFAULT_MICS = [

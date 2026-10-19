@@ -8,7 +8,7 @@ from samsara import hold_key_rules as rules
 
 
 @pytest.fixture
-def ava_462(qapp, monkeypatch, request):
+def ava_462(qapp, monkeypatch, request, qt_widget_scope):
     from samsara.ui import ava_guide_qt as ava, theme
     previous = theme.active_theme()
     params = getattr(request.node, 'callspec', SimpleNamespace(params={})).params
@@ -24,11 +24,11 @@ def ava_462(qapp, monkeypatch, request):
     window._on_ollama_status(True, ['qwen2.5:3b'])
     window.show()
     qapp.processEvents()
-    yield window, app, provider
-    window.close()
-    window.deleteLater()
-    qapp.processEvents()
-    theme.set_theme(previous, refresh=False)
+    try:
+        with qt_widget_scope(window):
+            yield window, app, provider
+    finally:
+        theme.set_theme(previous, refresh=False)
 
 
 def test_ava_bottom_bar_consent_decline_and_accept(ava_462, monkeypatch, qapp):
@@ -150,7 +150,7 @@ def test_ava_initial_route_reserves_every_page_height(ava_462, qapp, initial_pol
         assert app.config == before
 
 
-def test_ava_short_screen_keeps_scroll_fallback(qapp, monkeypatch):
+def test_ava_short_screen_keeps_scroll_fallback(qapp, monkeypatch, qt_deferred_delete):
     from samsara.ui import ava_guide_qt as ava
     monkeypatch.setattr(ava.thread_registry, 'spawn', lambda *a, **kw: None)
     window = ava._WizardWindow(SimpleNamespace(config={}))
@@ -165,12 +165,13 @@ def test_ava_short_screen_keeps_scroll_fallback(qapp, monkeypatch):
     finally:
         window.close()
         window.deleteLater()
-        qapp.processEvents()
+        qt_deferred_delete(window)
 
 
 @pytest.mark.parametrize('palette', ['dark', 'light'])
 @pytest.mark.parametrize('scale', [1.0, 1.5])
-def test_ava_setup_compact_controls_and_step_clearance(qapp, monkeypatch, palette, scale):
+def test_ava_setup_compact_controls_and_step_clearance(qapp, monkeypatch, palette, scale,
+                                                     qt_deferred_delete):
     from PySide6.QtWidgets import QScrollArea
     from samsara.ui import ava_guide_qt as ava, theme
     monkeypatch.setattr(ava.thread_registry, 'spawn', lambda *a, **kw: None)
@@ -202,7 +203,7 @@ def test_ava_setup_compact_controls_and_step_clearance(qapp, monkeypatch, palett
     finally:
         window.close()
         window.deleteLater()
-        qapp.processEvents()
+        qt_deferred_delete(window)
         theme.set_theme(previous)
 
 
