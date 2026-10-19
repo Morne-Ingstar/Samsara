@@ -212,15 +212,14 @@ def test_hands_free_probe_rejects_targets_before_forced_dispatch(rig, monkeypatc
     assert calls == [('close', 'firefox')]
 
 
-def test_settings_default_save_and_help(qapp, monkeypatch):
+def test_settings_default_save_and_help(qapp, monkeypatch, qt_widget_scope):
     from samsara.config_schema import SETTINGS_SCHEMA
     from samsara.ui.settings_qt import _SettingsWindow
     from tests.test_settings_pages import _StubApp
     from samsara import autostart
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **kw: None)
     app = _StubApp({'command_mode': {'enabled': False, 'foreign_setting': 'preserved'}})
-    window = _SettingsWindow(app)
-    try:
+    with qt_widget_scope(_SettingsWindow(app)) as window:
         widget = window._widgets['cmd_dictation_literal_only']
         row = window._rows_by_widget['cmd_dictation_literal_only']
         assert widget.isChecked()
@@ -239,15 +238,12 @@ def test_settings_default_save_and_help(qapp, monkeypatch):
         # Evidence is optional output, never an input required by exported tests.
         if os.environ.get('GATE_RESULT'):
             window.show_tab('Dictation'); window.resize(1080, 920); window.show()
-            qapp.processEvents()
-            row.help.click(); qapp.processEvents()
+            from PySide6.QtCore import QEventLoop
+            qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
+            row.help.click()
+            qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
             row.grab().save(str(Path(os.environ['GATE_RESULT']).parent / 'settings-415.png'))
             row.help_panel.grab().save(str(Path(os.environ['GATE_RESULT']).parent / 'settings-415-help.png'))
-    finally:
-        window.close(); window.deleteLater()
-        from PySide6.QtCore import QCoreApplication, QEvent
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        qapp.processEvents()
 
 
 def test_latched_dictate_state_is_not_the_command_lane(rig, monkeypatch):

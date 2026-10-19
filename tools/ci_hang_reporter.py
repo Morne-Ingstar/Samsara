@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+from xml.etree import ElementTree
 
 import psutil
 
@@ -82,6 +83,48 @@ def terminate_tree(processes, emit):
     emit('killed owned process tree: ' + str(killed))
 
 
+def report_interrupted_session(path, states, elapsed, emit):
+    """Record an infrastructure failure without inventing completed test results."""
+    root = ElementTree.Element('testsuites')
+    if path.exists():
+        try:
+            existing = ElementTree.parse(path).getroot()
+            if existing.tag == 'testsuites':
+                root = existing
+            elif existing.tag == 'testsuite':
+                root.append(existing)
+        except (OSError, ElementTree.ParseError):
+            # Retain the partial writer output for diagnosis.
+            shutil.copyfile(path, path.with_suffix(path.suffix + '.interrupted'))
+    pending = sorted({state.get('nodeid') for state in states.values()
+                      if state.get('nodeid')})
+    names = pending or ['pytest session (no completed progress available)']
+    suite = ElementTree.SubElement(root, 'testsuite', name='ci-interrupted-session',
+                                   tests=str(len(names)), failures=str(len(names)),
+                                   errors='0', skipped='0', time=f'{elapsed:.3f}')
+    detail = ('CI deadline exceeded; the session was terminated. These are last '
+              'observed items, not proof that each item itself hung.\n' +
+              json.dumps(states, sort_keys=True, indent=2))
+    for name in names:
+        case = ElementTree.SubElement(suite, 'testcase', classname='ci.interrupted',
+                                      name=name, time='0')
+        ElementTree.SubElement(case, 'failure', type='CIHang',
+                               message='pytest did not finish before the CI deadline').text = detail
+    # Aggregate attributes, when present, must include the added failures too.
+    for attribute in ('tests', 'failures', 'errors', 'skipped'):
+        if attribute in root.attrib:
+            root.set(attribute, str(sum(int(s.get(attribute, '0')) for s in root)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending_path = path.with_suffix(path.suffix + '.tmp')
+    ElementTree.ElementTree(root).write(pending_path, encoding='utf-8', xml_declaration=True)
+    pending_path.replace(path)
+    emit('=========================== short test summary info ===========================')
+    for name in names:
+        emit(f'FAILED {name} - CI deadline exceeded (last observed item)')
+    emit(f'================= {len(names)} failed (interrupted session) in {elapsed:.2f}s =================')
+    emit(f'generated interrupted-session junit: {path}')
+
+
 @contextmanager
 def owned_command(command, env):
     """An error in diagnostics must not leave a blocked Popen.__exit__ wait."""
@@ -95,7 +138,7 @@ def owned_command(command, env):
 
 
 def supervise(command, directory, *, idle_seconds=600, report_seconds=300,
-              max_seconds=5400, poll_seconds=1):
+              max_seconds=5400, poll_seconds=1, junit_path=None):
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, SAMSARA_CI_HEARTBEAT_DIR=str(directory.resolve()),
                PYTHONUNBUFFERED='1')
@@ -130,6 +173,9 @@ def supervise(command, directory, *, idle_seconds=600, report_seconds=300,
                     finally:
                         terminate_tree(processes, emit)
                         child.wait(timeout=10)
+                        if junit_path is not None:
+                            report_interrupted_session(junit_path, current,
+                                                       time.monotonic() - started, emit)
                     return 124
                 time.sleep(poll_seconds)
             emit(f'pytest exited {child.returncode}')
@@ -142,6 +188,8 @@ def main():
     parser.add_argument('--idle-seconds', type=float, default=600)
     parser.add_argument('--report-seconds', type=float, default=300)
     parser.add_argument('--max-seconds', type=float, default=5400)
+    parser.add_argument('--junit-path', type=Path,
+                        help='write interrupted-session failures here if pytest cannot finish')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command
@@ -150,7 +198,8 @@ def main():
     if not command or min(args.idle_seconds, args.report_seconds, args.max_seconds) <= 0:
         parser.error('a command and positive deadlines are required')
     return supervise(command, args.state_dir, idle_seconds=args.idle_seconds,
-                     report_seconds=args.report_seconds, max_seconds=args.max_seconds)
+                     report_seconds=args.report_seconds, max_seconds=args.max_seconds,
+                     junit_path=args.junit_path)
 
 
 if __name__ == '__main__':

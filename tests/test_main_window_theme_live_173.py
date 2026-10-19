@@ -8,8 +8,9 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEventLoop, Qt
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication
 
 from samsara.ui import main_window_qt, theme
 from samsara.ui.tray_qt import MarkFrame
@@ -86,18 +87,20 @@ class _App:
 
 
 @pytest.fixture
-def dark_again(qt_widget_scope):
+def dark_again(qapp, qt_widget_scope, monkeypatch):
     previous = theme.active_theme()
+    previous_sheet = qapp.styleSheet()
     try:
         with ExitStack() as owners:
             yield lambda widget: owners.enter_context(qt_widget_scope(widget))
     finally:
         theme.set_theme(previous, refresh=False)
+        qapp.setStyleSheet(previous_sheet)
 
 
 def _pump(qapp):
     for _ in range(12):
-        qapp.processEvents()
+        qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
 
 
 def _visible_background(widget) -> QColor:
@@ -140,6 +143,9 @@ def test_picker_rethemes_every_constructed_hub_page_without_recreation(qapp, dar
     settings.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     settings.show()
     _pump(qapp)
+    # Theme refresh belongs to this test's windows; prior tests may retain
+    # wrappers whose owners have already been destroyed.
+    monkeypatch.setattr(QApplication, 'topLevelWidgets', staticmethod(lambda: [hub, settings]))
     combo = settings._widgets["theme_combo"]
     combo.setCurrentIndex(combo.findData("light"))
     settings._apply_and_close()  # real picker -> save -> set_theme path
@@ -161,8 +167,4 @@ def test_picker_rethemes_every_constructed_hub_page_without_recreation(qapp, dar
         assert colour in light_surfaces, f"{name} retained {colour} instead of a light surface"
         assert colour not in dark_surfaces
 
-    settings.close()
-    hub.close()
-    settings.deleteLater()
-    hub.deleteLater()
-    _pump(qapp)
+    # dark_again destroys both owners once, before the patches expire.

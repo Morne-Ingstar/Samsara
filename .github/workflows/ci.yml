@@ -94,7 +94,7 @@ jobs:
         # Keep each file together so its module/session state stays local.
         # The supervisor starts first and runs pytest as its background child.
         # It also covers collection, the controller, gaps and interpreter exit.
-        run: python -u tools/ci_hang_reporter.py --state-dir ci-hang-report -- pytest -m "not requires_desktop" -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
+        run: python -u tools/ci_hang_reporter.py --state-dir ci-hang-report --junit-path junit.xml -- pytest -m "not requires_desktop" -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
 
       - name: Run native desktop tests
         if: always() && matrix.shard == 0

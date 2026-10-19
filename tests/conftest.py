@@ -75,10 +75,77 @@ def pytest_ci_progress_protocol_711(item):
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_sessionfinish(session, exitstatus):
     _ci_progress_711('sessionfinish')
+    diagnostics = None
+    if hasattr(session.config, 'workerinput'):
+        # Preserve execnet's real stderr before other finish hooks restore
+        # capture streams (fd 2 itself points to NUL on Windows workers).
+        diagnostics = os.fdopen(os.dup(sys.stderr.fileno()), 'w', encoding='utf-8',
+                                errors='backslashreplace')
     try:
-        yield
+        try:
+            outcome = yield
+        finally:
+            _ci_progress_711('shutdown')
+        # This outer wrapper resumes AFTER xdist sends workerfinished.
+        # Never truncate its reports or hide an exception from a finish hook.
+        if outcome.excinfo is None:
+            _worker_exit_guard_714(session.config, exitstatus, stream=diagnostics)
     finally:
-        _ci_progress_711('shutdown')
+        if diagnostics is not None:
+            diagnostics.close()
+
+
+def _worker_exit_guard_714(config, exitstatus, *, timeout=2.0, stream=None):
+    """Bound leaked threads only in a worker that has reported its results."""
+    if not hasattr(config, 'workerinput'):
+        return
+    import threading
+    import traceback
+
+    stream = sys.stderr if stream is None else stream
+    # execnet interrupts the main thread after 5s of gateway shutdown, and
+    # xdist kills the process after 10s. Leave time for diagnostics and exit.
+    deadline = _watchdog_monotonic_701() + timeout
+    registry = sys.modules.get('samsara.runtime.thread_registry')
+    if registry is not None:
+        def stop_registered():
+            try:
+                registry.shutdown(timeout=max(0.0, deadline - _watchdog_monotonic_701()))
+            except Exception:
+                traceback.print_exc(file=stream)
+        # Callbacks are application code and can themselves block. They share
+        # the join budget, so they must not run on the sessionfinish thread.
+        cleanup = threading.Thread(target=stop_registered,
+                                   name='ci-worker-cleanup-714', daemon=True)
+        cleanup.start()
+        cleanup.join(max(0.0, deadline - _watchdog_monotonic_701()))
+
+    def remaining_threads():
+        return [thread for thread in threading.enumerate()
+                if thread is not threading.current_thread()
+                and thread is not threading.main_thread()
+                and not thread.daemon and thread.is_alive()]
+
+    for thread in remaining_threads():
+        thread.join(max(0.0, deadline - _watchdog_monotonic_701()))
+    stragglers = remaining_threads()
+    if stragglers:
+        print(f'[worker exit guard 714] non-daemon threads remain after {timeout}s; '
+              f'exiting with reported status {int(exitstatus)}', file=stream)
+    frames = sys._current_frames()
+    for thread in stragglers:
+        print(f'[worker exit guard 714] {thread.name!r} ident={thread.ident} '
+              f'daemon={thread.daemon}', file=stream)
+        frame = frames.get(thread.ident)
+        if frame is not None:
+            traceback.print_stack(frame, file=stream)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    stream.flush()
+    # A fully reported worker can otherwise return to execnet's primary-thread
+    # wait indefinitely, even with only daemon threads. All sessionfinish hooks
+    # (including coverage/result transport) have completed before this point.
+    _real_process_exit_701(int(exitstatus))
 
 # Run stdlib-only code in a separate interpreter: neither the worker's GIL,
 # faulthandler's single timer, nor a blocked traceback writer can disarm it.
