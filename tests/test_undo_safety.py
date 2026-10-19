@@ -25,6 +25,7 @@ def _foreground_integrity_is_ordinary(monkeypatch):
     from samsara import injection_safety
     from samsara import paste
     monkeypatch.setattr(paste, '_editor_snapshot', lambda: None)
+    monkeypatch.setattr(paste, 'flight_foreground_process_name', lambda: 'notepad.exe')
     monkeypatch.setattr(dictation, 'type_text_unicode', lambda *a, **kw: False)
     monkeypatch.setattr(injection_safety, "window_integrity",
                         lambda *a, **k: _NS(blocked=False, confirmed_ok=True, describe=lambda: "pinned by the test"))

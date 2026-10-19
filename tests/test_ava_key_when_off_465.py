@@ -111,7 +111,11 @@ def test_legacy_pynput_key_gets_the_same_refusal(app):
     app._show_outcome_chip.assert_called_once()
 
 
-def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch):
+def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch, qt_deferred_delete):
+    from samsara import ava_readiness
+    # Route/capture UI behavior does not own the process-wide provider worker.
+    recheck = Mock()
+    monkeypatch.setattr(ava_readiness, 'recheck_after_settings', recheck)
     from samsara.ui import ava_consent_qt
     consent_request = Mock(side_effect=lambda _parent, config, **kwargs:
                            ava_consent_qt.accepted_consent(config, **kwargs))
@@ -134,6 +138,7 @@ def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch):
     consent_request.assert_called_once()
     window._widgets['providerRoute'].setCurrentIndex(0)
     assert not note.isHidden()
+    assert recheck.called
     # Exercise this window's repaint without restyling other tests' windows.
     theme.set_theme('light', refresh=False)
     window.apply_theme()
@@ -141,6 +146,7 @@ def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch):
     theme.set_theme('dark', refresh=False)
     window.hide()
     window.deleteLater()
+    qt_deferred_delete(window)
 
 @pytest.mark.parametrize('display', ['compact', 'full'])
 def test_off_result_reaches_selected_display_through_shared_bridge(app, display):

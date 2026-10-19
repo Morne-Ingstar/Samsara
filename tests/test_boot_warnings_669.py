@@ -185,19 +185,33 @@ def test_synthetic_config_load_budget_includes_disk_migrations_and_snapshot(load
     assert not app.writes
 
 
-def test_themed_pixel_font_menu_button_renders_without_point_size_warning(qapp, qt_deferred_delete):
-    from PySide6.QtCore import qInstallMessageHandler
-    from PySide6.QtWidgets import QMenu, QPushButton
+def test_themed_pixel_font_menu_button_renders_without_point_size_warning(qapp, qt_deferred_delete, monkeypatch):
+    from PySide6.QtCore import Qt, qInstallMessageHandler
+    from PySide6.QtWidgets import QMenu, QPushButton, QStyleFactory
     from samsara.ui import theme
     from samsara.ui.design_scale import _button_qss
 
     messages = []
+    created = []
+    real_create = QStyleFactory.create
+
+    def create_style(name):
+        style = real_create(name)
+        created.append(style)
+        return style
+
+    monkeypatch.setattr(QStyleFactory, "create", create_style)
+    old_qss = qapp.styleSheet()
+    # Reproduce the inherited QSS wrapper used by a previously themed app.
+    qapp.setStyleSheet("QPushButton { padding: 2px; }")
     previous = qInstallMessageHandler(lambda kind, context, message: messages.append(message))
     button = QPushButton("Menu")
     try:
         theme.prepare_menu_button(button)
         if sys.platform == "win32":
-            assert button.style().objectName().lower() == "fusion"
+            assert len(created) == 1 and created[0].objectName().lower() == "fusion"
+            assert created[0].parent() is button
+            assert button.testAttribute(Qt.WidgetAttribute.WA_SetStyle)
         button.setFont(theme.qfont(theme.TYPE_BODY))
         assert button.font().pointSize() == -1
         menu = QMenu(button)
@@ -209,6 +223,7 @@ def test_themed_pixel_font_menu_button_renders_without_point_size_warning(qapp, 
     finally:
         button.deleteLater()
         qt_deferred_delete(button)
+        qapp.setStyleSheet(old_qss)
         qInstallMessageHandler(previous)
     assert not [message for message in messages
                 if "QFont::" in message or "DpiAwareness" in message]

@@ -155,16 +155,30 @@ def test_snap_current_schema_rejects_missing_or_invalid_direction(text):
 
 def test_parser_is_fast_for_one_thousand_repeated_utterances():
     utterances = ["volume down twice", "click twenty five", "window switch bravo", "snap left"] * 250
-    # 399: best of five avoids unrelated workers' scheduling pauses; keep 30 ms.
+    # Warm lazy imports/indexes before comparing steady-state Python work.
+    for utterance in utterances[:4]:
+        assert grammar.parse(utterance, CATALOG)
+    # One plain catalog scan per utterance calibrates this process, including
+    # tracing/coverage overhead. Parsing may cost at most three such scans;
+    # rebuilding the alias index on every parse still exceeds this budget.
+    calibration = []
     samples = []
     for _ in range(5):
+        start = time.perf_counter()
+        aliases = 0
+        for _utterance in utterances:
+            for record in RECORDS:
+                aliases += len(record["aliases"])
+        calibration.append((time.perf_counter() - start) * 1000)
+        assert aliases > len(utterances) * len(RECORDS)
         start = time.perf_counter()
         for utterance in utterances:
             grammar.parse(utterance, CATALOG)
         samples.append((time.perf_counter() - start) * 1000)
     elapsed_ms = min(samples)
-    print(f"grammar 1,000 utterances, best of five: {elapsed_ms:.3f} ms")
-    assert elapsed_ms < 30, f"grammar took {elapsed_ms:.3f} ms"
+    budget_ms = 3 * min(calibration)
+    print(f"grammar 1,000 utterances: {elapsed_ms:.3f} ms; calibrated budget: {budget_ms:.3f} ms")
+    assert elapsed_ms < budget_ms, f"grammar took {elapsed_ms:.3f} ms (budget {budget_ms:.3f} ms)"
 
 
 def test_module_does_not_import_dispatch_or_dictation():

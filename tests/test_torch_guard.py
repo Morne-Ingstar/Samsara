@@ -213,9 +213,48 @@ def test_scipy_array_api_probe_with_guard(tmp_path):
 
 def test_openwakeword_hey_jarvis_model_with_guard(tmp_path):
     _run_guarded_probe(tmp_path, """
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import numpy as np
+        import onnxruntime as ort
         import openwakeword
         from openwakeword.model import Model
 
-        model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
-        assert "hey_jarvis" in model.models
+        # Wheels need not contain downloaded weights. Keep real downstream
+        # imports and Model/AudioFeatures setup; fake only the weight sessions.
+        sessions = []
+
+        class WeightSession:
+            def __init__(self, path, **kwargs):
+                self.name = Path(path).name
+                sessions.append(self.name)
+                assert kwargs["providers"] == ["CPUExecutionProvider"]
+
+            def get_inputs(self):
+                return [SimpleNamespace(name="input", shape=[1, 16, 96])]
+
+            def get_outputs(self):
+                return [SimpleNamespace(shape=[1, 1])]
+
+            def get_providers(self):
+                return ["CPUExecutionProvider"]
+
+            def run(self, outputs, feeds):
+                if self.name == "melspectrogram.onnx":
+                    return [np.ones((1, 100, 32), dtype=np.float32)]
+                batch = next(iter(feeds.values())).shape[0]
+                return [np.ones((batch, 1, 1, 96), dtype=np.float32)]
+
+        with patch.object(ort, "InferenceSession", WeightSession):
+            model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+            assert "hey_jarvis" in model.models
+            assert set(sessions) == {"hey_jarvis_v0.1.onnx", "melspectrogram.onnx", "embedding_model.onnx"}
+            assert model.preprocessor.feature_buffer.shape[1] == 96
+
+        # Preserve the real weight-loading integration where assets exist.
+        resources = Path(openwakeword.__file__).parent / "resources" / "models"
+        if all((resources / name).is_file() for name in sessions):
+            model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+            assert "hey_jarvis" in model.models
     """)

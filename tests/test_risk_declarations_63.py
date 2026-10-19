@@ -202,7 +202,17 @@ def test_must_ask_command_rejected_never_runs(stem, spoken, tmp_path):
 
 
 @pytest.mark.parametrize("stem,spoken", RUNS_DIRECTLY)
-def test_spoken_runs_directly_command_executes_without_asking(stem, spoken, tmp_path):
+def test_spoken_runs_directly_command_executes_without_asking(stem, spoken, tmp_path, monkeypatch):
+    if (stem, spoken) == ("windows", "send"):
+        from plugins.commands import windows
+        # Exercise the real destination validator without a desktop dependency.
+        monitors = [
+            dict(handle=1, index=1, rect=(0, 0, 1920, 1080), primary=True, device="left"),
+            dict(handle=2, index=2, rect=(1920, 0, 3840, 1080), primary=False, device="right"),
+        ]
+        monkeypatch.setattr(windows, "get_monitors", lambda: monitors)
+        monkeypatch.setattr(windows.win32api, "EnumDisplayMonitors",
+                            lambda: [(m["handle"], None, m["rect"]) for m in monitors])
     calls = []
     phrase = _register_stub(stem, spoken, calls)
     app = _app(stem, spoken)

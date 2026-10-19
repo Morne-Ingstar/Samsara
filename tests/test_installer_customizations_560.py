@@ -409,10 +409,17 @@ function Assert-NotReparsePoint($path, $root) {{
         assert (prepared.rollback_dir / "_internal/commands.json").read_bytes() == expected_old_bytes
         return
     if orphan:
-        # Fake legacy helper really consumes reported as success and deletes
-        # rollback/workspace. The raw archive must survive that deletion.
+        # 651 retains the previous install even for a reported orphan update.
+        # The raw archive must also survive deletion of the workspace.
         assert outcome["state"] == "reported"
-        assert not prepared.rollback_dir.exists() and not workspace.exists()
+        assert prepared.rollback_dir.is_dir() and not workspace.exists()
+        assert Path(outcome["previous"]["path"]) == prepared.rollback_dir
+        assert (prepared.rollback_dir / "_internal/commands.json").read_bytes() == expected_old_bytes
+        assert outcome["previous"]["sha256"] == hashlib.sha256(b"old").hexdigest()
+        assert outcome["customization_failure"] == "orphaned_helper"
+        assert outcome["customization_retry"] is False
+        assert outcome["customization_state"] == "failed"
+        assert outcome["customization_notice_shown"] is True
         archive = Path(outcome["customization_backup_dir"])
         assert (archive / "commands.json").read_bytes() == expected_old_bytes
         assert (archive / "plugins/commands/custom.py").read_bytes() == b"custom = True\n"
@@ -423,8 +430,11 @@ function Assert-NotReparsePoint($path, $root) {{
     assert (tmp_path / "maintenance-logs").exists() == (failure == "legacy")
     assert (install / "unins000.exe").read_bytes() == b"old"
     assert (install / "unins000.dat").read_bytes() == b"old"
-    assert not prepared.rollback_dir.exists()
+    assert prepared.rollback_dir.is_dir() == success
     if success:
+        assert Path(outcome["previous"]["path"]) == prepared.rollback_dir
+        assert (prepared.rollback_dir / "_internal/commands.json").read_bytes() == expected_old_bytes
+        assert outcome["previous"]["sha256"] == hashlib.sha256(b"old").hexdigest()
         assert json.loads(old_commands.read_text())["commands"] == {
             "new": {"action": "new"}, "old": {"action": "late-edit"}
         }

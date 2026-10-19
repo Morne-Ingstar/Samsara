@@ -316,6 +316,19 @@ function Keep-PreviousVersion {
 '''.replace('__CAPABILITY_FILE__', CAPABILITY_FILE)
 
 
+def _preserve_customization_status(script):
+    """Retaining a healthy copy must keep the startup recovery receipt."""
+    return script.replace('$data | ConvertTo-Json', r'''if (($state -in @('installed', 'reported', 'cleanup_pending')) -and (Test-Path -LiteralPath $status)) {
+        $saved = Get-Content -LiteralPath $status -Raw | ConvertFrom-Json
+        if ($saved.tag -eq $tag -and $saved.install_dir -eq $install) {
+            foreach ($property in $saved.PSObject.Properties) {
+                if ($property.Name.StartsWith('customization_')) { $data[$property.Name] = $property.Value }
+            }
+        }
+    }
+    $data | ConvertTo-Json''', 1)
+
+
 def decorate_helper(script, prepared):
     """Add retention to the existing logged helper, keeping its transaction."""
     from samsara import __version__, updater
@@ -340,7 +353,7 @@ if (Test-Path -LiteralPath $status) {{
     # The installer uses a multiline success cleanup block.
     script = script.replace('Assert-NotReparsePoint $rollback $installParent\n                Remove-Item -LiteralPath $rollback -Recurse -Force',
                             'Keep-PreviousVersion', 1)
-    return script
+    return _preserve_customization_status(script)
 
 
 def decorate_cleanup(script):
@@ -364,7 +377,7 @@ function Write-CleanupStatus''', 1)
     Remove-ObsoletePrevious
     foreach ($candidate in @($rollbackFull, $workspaceFull)) {
         if ($candidate -ieq $script:previous.path) { continue }''', 1)
-    return script
+    return _preserve_customization_status(script)
 
 
 def reverse_helper(prepared, current_pid):
