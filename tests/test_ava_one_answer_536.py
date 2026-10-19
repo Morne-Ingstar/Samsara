@@ -1,5 +1,6 @@
 """536: deterministic 25s/1s fake HTTP turns, no network or app bootstrap."""
 import json
+import logging
 from collections import deque
 import sys
 import threading
@@ -263,6 +264,8 @@ def test_cancel_drops_active_and_queued_answers_and_delayed_ui(harness, monkeypa
 
 def test_local_load_only_loopback_no_user_text_and_failure_silent(harness, monkeypatch, caplog):
     h, sent = harness, []
+    # A previous test's readiness listeners must not run during this warm-up.
+    monkeypatch.setattr(ava_readiness, "tracker", ava_readiness.ReadinessTracker(h.clock.monotonic))
 
     def request(method, url, **kwargs):
         sent.append((method, url, kwargs["json"]))
@@ -286,7 +289,11 @@ def test_local_load_only_loopback_no_user_text_and_failure_silent(harness, monke
     assert len(sent) == 1
     assert not h.app.listening_indicator.show_feedback.called
     assert h.app.answers == []
-    assert not any(record.levelname in {"WARNING", "ERROR"} for record in caplog.records)
+    # The queued worker runs inline above. Other workers can still log while
+    # this test runs; only warnings from this call belong to its silence check.
+    warnings = [(record.name, record.getMessage()) for record in caplog.records
+                if record.thread == threading.get_ident() and record.levelno >= logging.WARNING]
+    assert warnings == []
 
 
 def test_model_and_route_changes_schedule_once_and_cloud_stays_opt_in(harness, monkeypatch):
