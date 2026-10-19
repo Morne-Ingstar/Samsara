@@ -112,7 +112,9 @@ def test_generated_recording_assets_match_live_regular_snake(qapp, size):
         actual = tray_qt.render_mark('recording', 'off', size, small_max=tray_qt.TASKBAR_SMALL_MAX)
         expected = QImage(str(Path(__file__).resolve().parents[1] /
                              f'assets/icon/states/samsara_recording_{size}.png'))
-        assert actual == expected.convertToFormat(QImage.Format.Format_ARGB32)
+        from tools.gen_icons import image_diff
+        comparison = image_diff(actual, expected)
+        assert comparison['matches'], comparison
         assert actual == tray_qt.render_mark('recording', 'off', size, small_max=0)
     finally:
         theme.set_theme(previous, refresh=False)

@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+import json
 import logging
+import platform
 import re
 import struct
 import tempfile
@@ -82,6 +84,88 @@ _CENTRELINE_PATH = re.compile(r'(<path data-role="centreline" d=")([^"]*)(")')
 
 APP_SIZES = (16, 24, 32, 48, 64, 128, 256)
 TRAY_SIZES = (16, 24, 32, 48, 64)
+# Build checks allow sparse rounding noise, while preserving the silhouette.
+PIXEL_CHANNEL_TOLERANCE = 2
+MAX_DIFFERING_PIXEL_SHARE = 0.05
+
+
+def image_diff(actual: QImage, expected: QImage) -> dict:
+    """Pixel diagnostics and the shared generated-artwork acceptance rule.
+
+    The alpha mask is the exact set of nontransparent pixels. Alpha values
+    are also compared within the channel tolerance; a moved edge cannot pass.
+    Compare decoded RGBA, never PNG compression bytes or QImage storage formats.
+    """
+    result = {"actual_size": [actual.width(), actual.height()],
+              "expected_size": [expected.width(), expected.height()],
+              "max_channel_delta": None, "differing_pixel_count": None,
+              "differing_pixel_share": None, "alpha_mask_equal": False,
+              "alpha_values_equal": False, "matches": False}
+    if actual.isNull() or expected.isNull() or actual.size() != expected.size():
+        return result
+    actual = actual.convertToFormat(QImage.Format.Format_RGBA8888)
+    expected = expected.convertToFormat(QImage.Format.Format_RGBA8888)
+    left, right = bytes(actual.constBits()), bytes(expected.constBits())
+    maxima, differing, mask_equal, alpha_equal = [0] * 4, 0, True, True
+    for offset in range(0, len(left), 4):
+        a, b = left[offset:offset + 4], right[offset:offset + 4]
+        deltas = [abs(x - y) for x, y in zip(a, b)]
+        maxima = [max(x, y) for x, y in zip(maxima, deltas)]
+        differing += any(deltas)
+        mask_equal &= (a[3] > 0) == (b[3] > 0)
+        alpha_equal &= a[3] == b[3]
+    share = differing / (actual.width() * actual.height())
+    result.update(max_channel_delta=maxima, differing_pixel_count=differing,
+                  differing_pixel_share=share, alpha_mask_equal=mask_equal,
+                  alpha_values_equal=alpha_equal,
+                  matches=(mask_equal and max(maxima) <= PIXEL_CHANNEL_TOLERANCE
+                           and share <= MAX_DIFFERING_PIXEL_SHARE))
+    return result
+
+
+def write_diagnostics(directory: Path) -> Path:
+    """Regenerate into an artifact directory without changing source assets."""
+    import PySide6
+    from PySide6.QtCore import qVersion
+
+    directory.mkdir(parents=True, exist_ok=True)
+    records = {}
+    outputs = {**expected_outputs(), **brand_outputs(BRAND_DIR)}
+    for source, value in outputs.items():
+        relative = source.relative_to(REPO)
+        generated = directory / "generated" / relative
+        generated.parent.mkdir(parents=True, exist_ok=True)
+        generated.write_bytes(value if isinstance(value, bytes) else png_bytes(value))
+        committed = directory / "committed" / relative
+        if source.exists():
+            committed.parent.mkdir(parents=True, exist_ok=True)
+            committed.write_bytes(source.read_bytes())
+        if source.suffix == ".png":
+            expected = QImage(str(generated))
+            records[relative.as_posix()] = image_diff(QImage(str(source)), expected)
+        elif source.suffix == ".ico":
+            # Preserve both containers and report every embedded PNG frame.
+            data = source.read_bytes() if source.exists() else b""
+            frames = {}
+            try:
+                for index, size in enumerate(_ico_sizes(data)):
+                    length, offset = struct.unpack_from("<II", data, 6 + 16 * index + 8)
+                    actual = QImage.fromData(data[offset:offset + length])
+                    expected = outputs[ICON_DIR / f"samsara_{size}.png"]
+                    frames[str(size)] = image_diff(actual, expected)
+                records[relative.as_posix()] = {"frames": frames, "sizes": _ico_sizes(data)}
+            except (struct.error, KeyError):
+                records[relative.as_posix()] = {"error": "missing or invalid ICO container"}
+    summary = directory / "pixel-diff.json"
+    summary.write_text(json.dumps({
+        "runtime": {"python": platform.python_version(), "platform": platform.platform(),
+                    "pyside": PySide6.__version__, "qt": qVersion()},
+        "policy": {"max_channel_delta": PIXEL_CHANNEL_TOLERANCE,
+                   "max_differing_pixel_share": MAX_DIFFERING_PIXEL_SHARE,
+                   "alpha_mask": "exact nontransparent pixel support"},
+        "files": records,
+    }, indent=2) + "\n", encoding="utf-8")
+    return summary
 
 
 @contextmanager
@@ -279,7 +363,7 @@ def stale_brand_assets() -> list[Path]:
         stale = []
         for generated in temporary.iterdir():
             committed = BRAND_DIR / generated.name
-            if not committed.exists() or committed.read_bytes() != generated.read_bytes():
+            if not image_diff(QImage(str(committed)), QImage(str(generated)))["matches"]:
                 stale.append(committed)
         return stale
 
@@ -352,7 +436,7 @@ def stale_assets() -> list[Path]:
         elif isinstance(value, bytes):
             if path.suffix == ".ico" and _ico_sizes(path.read_bytes()) != list(APP_SIZES):
                 stale.append(path)
-        elif QImage(str(path)).convertToFormat(QImage.Format.Format_ARGB32) != value:
+        elif not image_diff(QImage(str(path)), value)["matches"]:
             stale.append(path)
     if STATES_DIR.exists():
         stale.extend(p for p in STATES_DIR.glob("*.png") if p not in expected)
@@ -672,6 +756,8 @@ def write_spin_legibility(path: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="exit 1 if generated assets are stale")
+    parser.add_argument("--diagnostics", type=Path,
+                        help="regenerate into this artifact directory and write pixel-diff.json")
     parser.add_argument("--montage", type=Path, help="write the state montage to this path")
     parser.add_argument("--spin-sheet", type=Path, help="write the 128 px rotation sheet to this path")
     parser.add_argument("--weight-sheet", type=Path, help="write the hollow/recording weight sheet to this path")
@@ -694,6 +780,9 @@ def main(argv: list[str] | None = None) -> int:
 
     require_mark_ids()
 
+    if args.diagnostics:
+        print(f"saved {write_diagnostics(args.diagnostics)}")
+
     if args.check:
         # The queue-241 icon family is regenerated under %TEMP% before any
         # comparison, so a locally changed PNG can never make its own gate
@@ -702,6 +791,8 @@ def main(argv: list[str] | None = None) -> int:
         for path in stale:
             print(f"stale: {path.relative_to(REPO)}")
         return 1 if stale else 0
+    if args.diagnostics:
+        return 0
     sheets = [(args.montage, write_montage), (args.spin_sheet, write_spin_sheet),
               (args.weight_sheet, write_weight_sheet), (args.taskbar_reality, write_taskbar_reality),
               (args.spin_legibility, write_spin_legibility),

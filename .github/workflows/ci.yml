@@ -105,6 +105,24 @@ jobs:
           Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
           python -m pytest -m requires_desktop -p no:cacheprovider --timeout=120 --timeout-method=thread -v
 
+      # File balancing can move the icon tests between shards. Capture on
+      # every shard, including failed test jobs, so the relevant runner is kept.
+      - name: Capture generated icon pixel differences
+        if: always()
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          SAMSARA_HOME_DIR: ${{ runner.temp }}/icon-diagnostics-home
+        run: python tools/gen_icons.py --diagnostics "${{ runner.temp }}/icon-pixels"
+
+      - name: Upload generated icon pixel differences
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: icon-pixels-${{ matrix.shard }}
+          path: ${{ runner.temp }}/icon-pixels
+          if-no-files-found: warn
+
       - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()

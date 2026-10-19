@@ -7,6 +7,7 @@ imported, here."""
 import ast
 import importlib.util
 import io
+import json
 import math
 import re
 import struct
@@ -117,6 +118,86 @@ def test_generated_assets_ignore_the_active_light_palette(qapp, gen_icons):
         assert theme.active_theme() == "light"
     finally:
         theme.set_theme(previous, refresh=False)
+
+
+def _isolated_generated_asset(gen_icons, monkeypatch, tmp_path):
+    with gen_icons._asset_palette():
+        image = gen_icons.render("recording", 32)
+    path = tmp_path / "recording.png"
+    assert image.save(str(path))
+    monkeypatch.setattr(gen_icons, "REPO", tmp_path)
+    monkeypatch.setattr(gen_icons, "STATES_DIR", tmp_path / "states")
+    monkeypatch.setattr(gen_icons, "expected_outputs", lambda: {path: image})
+    monkeypatch.setattr(gen_icons, "stale_brand_assets", lambda: [])
+    return path, image
+
+
+def test_generated_asset_check_accepts_sparse_channel_rounding(qapp, gen_icons, monkeypatch, tmp_path):
+    path, expected = _isolated_generated_asset(gen_icons, monkeypatch, tmp_path)
+    actual = expected.copy()
+    x, y = next((x, y) for y in range(32) for x in range(32)
+                if actual.pixelColor(x, y).alpha() == 255)
+    colour = actual.pixelColor(x, y)
+    colour.setRed(colour.red() - 2)
+    actual.setPixelColor(x, y, colour)
+    assert actual.save(str(path))
+    comparison = gen_icons.image_diff(actual, expected)
+    assert comparison["max_channel_delta"] == [2, 0, 0, 0]
+    assert comparison["differing_pixel_count"] == 1
+    assert comparison["alpha_mask_equal"] and comparison["matches"]
+    assert gen_icons.main(["--check"]) == 0
+
+
+@pytest.mark.parametrize("damage", ["shape", "colour", "broad_drift", "size", "unreadable"])
+def test_generated_asset_check_rejects_deliberately_stale_asset(
+        qapp, gen_icons, monkeypatch, tmp_path, damage):
+    path, expected = _isolated_generated_asset(gen_icons, monkeypatch, tmp_path)
+    actual = expected.copy()
+    opaque = [(x, y) for y in range(32) for x in range(32)
+              if (actual.pixelColor(x, y).alpha() > 0 if damage == "broad_drift"
+                  else actual.pixelColor(x, y).alpha() == 255)]
+    if damage in {"shape", "colour", "broad_drift"}:
+        for x, y in opaque if damage == "broad_drift" else opaque[:1]:
+            colour = actual.pixelColor(x, y)
+            if damage == "shape":
+                colour.setAlpha(0)
+            else:
+                colour.setRed(colour.red() - (3 if damage == "colour" else 1))
+            actual.setPixelColor(x, y, colour)
+    elif damage == "size":
+        actual = actual.scaled(31, 32)
+    assert actual.save(str(path))
+    if damage == "unreadable":
+        path.write_bytes(b"invalid PNG")
+    comparison = gen_icons.image_diff(gen_icons.QImage(str(path)), expected)
+    if damage == "broad_drift":
+        assert comparison["max_channel_delta"] == [1, 0, 0, 0]
+        assert comparison["differing_pixel_share"] > gen_icons.MAX_DIFFERING_PIXEL_SHARE
+    assert not comparison["matches"], comparison
+    assert gen_icons.stale_assets() == [path]
+    assert gen_icons.main(["--check"]) == 1
+
+
+def test_icon_diagnostics_preserve_sources_and_include_ico_frames(qapp, gen_icons, monkeypatch, tmp_path):
+    def no_source_writes():
+        pytest.fail("diagnostics must not regenerate into the repository")
+
+    monkeypatch.setattr(gen_icons, "write_assets", no_source_writes)
+    assert gen_icons.main(["--diagnostics", str(tmp_path)]) == 0
+    report = json.loads((tmp_path / "pixel-diff.json").read_text(encoding="utf-8"))
+    assert report["runtime"]["qt"]
+    files = report["files"]
+    frames = files["assets/icon/samsara.ico"]["frames"]
+    assert set(frames) == {str(size) for size in gen_icons.APP_SIZES}
+    assert all(frame["matches"] for frame in frames.values())
+    for name, comparison in files.items():
+        assert (tmp_path / "committed" / name).read_bytes() == (REPO / name).read_bytes()
+        assert (tmp_path / "generated" / name).exists()
+        if name.endswith(".png"):
+            assert comparison["matches"], (name, comparison)
+            assert comparison["alpha_mask_equal"]
+            assert comparison["max_channel_delta"] is not None
+            assert comparison["differing_pixel_count"] is not None
 
 
 def test_ico_holds_every_app_size(gen_icons):

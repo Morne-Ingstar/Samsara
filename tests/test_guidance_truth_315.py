@@ -14,10 +14,23 @@ from samsara.ui import ava_guide_qt, tutorial_qt
 def _dispose_window(window, qapp):
     window.close()
     window.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    qapp.processEvents()
+    # Deliver only this fixture's deletion; unrelated queued UI events may
+    # reference widgets already destroyed by earlier files on a CI worker.
+    QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
     from shiboken6 import isValid
     assert not isValid(window)
+
+
+def test_dispose_window_leaves_unrelated_deletion_queued(qapp):
+    from shiboken6 import isValid
+
+    unrelated, owned = QLabel("unrelated"), QLabel("owned")
+    unrelated.deleteLater()
+    try:
+        _dispose_window(owned, qapp)
+        assert isValid(unrelated), "fixture cleanup drained another window's events"
+    finally:
+        QCoreApplication.sendPostedEvents(unrelated, QEvent.Type.DeferredDelete)
 
 
 @pytest.mark.parametrize(

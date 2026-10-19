@@ -62,8 +62,12 @@ def executor():
 def _real_plugins_present(executor):
     """conftest's isolation fixture clears the registry before every test; put
     the real entries back so execution_policy's plugin lookups see them."""
+    ava_command_session.reset_cancellations()
     _load_real_plugins()
-    yield
+    try:
+        yield
+    finally:
+        ava_command_session.reset_cancellations()
 
 
 class _Coordinator:

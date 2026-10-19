@@ -46,9 +46,13 @@ def matcher():
     ('list all windows', ws.handle_read_windows, ''),
     ('start Notepad', av.handle_open, 'Notepad'),
     ('desk two', av.handle_desk, 'two'),
-    ('snap chrome left', win.handle_snap, 'chrome left'),
+    ('snap chrome left', 'handle_snap', 'chrome left'),
 ])
 def test_registered_routes(matcher, phrase, handler, remainder):
+    # test_window_destination reloads windows during collection, after this
+    # parametrization may have been built. Resolve its current function now.
+    if isinstance(handler, str):
+        handler = getattr(win, handler)
     entry, rest = matcher.match(phrase)
     assert entry.handler is handler
     assert rest == remainder
