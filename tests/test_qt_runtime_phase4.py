@@ -22,6 +22,7 @@ poison every qt_runtime test in every file that runs afterward in the same
 session.
 """
 
+import os
 import sys
 import threading
 import time
@@ -30,7 +31,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1]))
 sys.path.insert(0, str(Path(__file__).parent))  # for the bare _qt_subprocess_helper import below
 
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
+from shiboken6 import isValid
 
 from samsara.ui import qt_runtime
 from samsara.ui.numbers_overlay_qt import NumbersOverlayWindow
@@ -54,11 +57,34 @@ def _wait(fn, timeout: float = 3.0, interval: float = 0.05) -> bool:
 def _post_wait(cb, timeout: float = 3.0) -> bool:
     """Post cb to the Qt thread and block until it fires."""
     done = threading.Event()
+    errors = []
     def _wrapped():
-        cb()
-        done.set()
+        try:
+            cb()
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            done.set()
     qt_runtime.post(_wrapped)
-    return done.wait(timeout=timeout)
+    completed = done.wait(timeout=timeout)
+    if errors:
+        raise errors[0]
+    return completed
+
+
+def _qt_value(fn):
+    """Read Qt state on its owner thread; return only a plain snapshot."""
+    values = []
+    assert _post_wait(lambda: values.append(fn())), "Qt thread did not respond"
+    return values[0]
+
+
+def _delete_widget(widget):
+    """Destroy an owned widget synchronously on the Qt thread."""
+    widget.hide()
+    widget.deleteLater()
+    QCoreApplication.sendPostedEvents(widget, QEvent.Type.DeferredDelete)
+    assert not isValid(widget), "owned widget survived deferred deletion"
 
 
 # ---------------------------------------------------------------------------
@@ -77,13 +103,8 @@ def check_numbers_overlay_no_prior_window() -> None:
     qt_runtime.ensure_started()
 
     # Verify no top-level widgets exist yet (clean slate).
-    check = {}
-    assert _post_wait(lambda: check.update(
-        before=list(QApplication.instance().topLevelWidgets())
-    )), "Qt thread did not respond for pre-check"
-    assert check["before"] == [], (
-        f"Expected no windows before test; found {check['before']}"
-    )
+    before = _qt_value(lambda: len(QApplication.instance().topLevelWidgets()))
+    assert before == 0, f"Expected no windows before test; found {before}"
     print("  pre-condition: 0 top-level widgets — OK")
 
     # Hardcoded test labels (same coords used in the existing diagnostic).
@@ -103,17 +124,19 @@ def check_numbers_overlay_no_prior_window() -> None:
         win.show()
         window_holder.append(win)
 
-    qt_runtime.post(_create)
-    assert _wait(lambda: bool(window_holder)), "NumbersOverlayWindow not created within 3 s"
-    win = window_holder[0]
-    assert _wait(lambda: win.isVisible()), "NumbersOverlayWindow not visible within 3 s"
+    assert _post_wait(_create), "NumbersOverlayWindow not created within 3 s"
+    assert _wait(lambda: _qt_value(lambda: window_holder[0].isVisible())), (
+        "NumbersOverlayWindow not visible within 3 s"
+    )
     print(f"  NumbersOverlayWindow visible with {len(labels)} labels — OK")
 
     # Tear down for subsequent tests.
-    assert _post_wait(lambda: win.close()), "close() did not fire"
-    assert _post_wait(lambda: win.deleteLater()), "deleteLater() did not fire"
-    # Give Qt one cycle to process deleteLater.
-    time.sleep(0.1)
+    def _close_and_delete():
+        win = window_holder.pop()
+        win.close()
+        _delete_widget(win)
+
+    assert _post_wait(_close_and_delete), "close/delete did not fire"
     print("PASS: show_numbers overlay shows with no prior Qt window")
 
 
@@ -134,31 +157,29 @@ def check_task_overlay_reopen_regression() -> None:
         # Trigger show (posts _init_window on first cycle).
         overlay.show(tasks=[])
 
-        assert _wait(lambda: overlay._window is not None), (
-            f"cycle {cycle}: window not created within 3 s"
-        )
-        assert _wait(lambda: overlay._window is not None and overlay._window.isVisible()), (
+        assert _wait(lambda: _qt_value(
+            lambda: overlay._window is not None and overlay._window.isVisible())), (
             f"cycle {cycle}: window not visible within 3 s"
         )
 
         # Simulate close-button: fires closeEvent -> hide() (not destroy).
-        closed = threading.Event()
-        def _close(ev=closed):
-            overlay._window.close()
-            ev.set()
-        qt_runtime.post(_close)
-        assert closed.wait(timeout=3.0), f"cycle {cycle}: close post timed out"
+        def _close():
+            window = overlay._window
+            window.close()
+            assert overlay._window is window and isValid(window), (
+                f"cycle {cycle}: window reference lost after close (destroy happened)"
+            )
+            assert not window.isVisible(), f"cycle {cycle}: window not hidden"
 
-        assert _wait(lambda: overlay._window is not None and not overlay._window.isVisible()), (
-            f"cycle {cycle}: window not hidden within 3 s"
-        )
-
-        # Window reference MUST survive close (HIDE, not destroy).
-        assert overlay._window is not None, (
-            f"cycle {cycle}: window reference lost after close (destroy happened)"
-        )
+        assert _post_wait(_close), f"cycle {cycle}: close post timed out"
 
     print(f"PASS: task_overlay reopened {REOPEN_CYCLES} times without restart")
+
+    def _cleanup():
+        window, overlay._window = overlay._window, None
+        _delete_widget(window)
+
+    assert _post_wait(_cleanup), "task overlay cleanup timed out"
 
 
 # ---------------------------------------------------------------------------
@@ -176,12 +197,11 @@ def check_startup_shutdown_lifecycle() -> None:
     assert qt_runtime.is_alive(), "runtime should still be alive at check-3 start"
 
     # Confirm QApplication is healthy.
-    app_check: list = []
-    assert _post_wait(lambda: app_check.append(QApplication.instance())), (
-        "Qt thread unresponsive before shutdown"
+    assert _qt_value(lambda: QApplication.instance() is not None), (
+        "QApplication.instance() is None mid-run"
     )
-    assert app_check[0] is not None, "QApplication.instance() is None mid-run"
-    print(f"  QApplication alive: {app_check[0]} — OK")
+    assert _qt_value(lambda: len(QApplication.instance().topLevelWidgets())) == 0
+    print("  QApplication alive; owned windows deleted — OK")
 
     # Fire a last batch of callbacks to stress the pre-shutdown queue.
     order: list = []
@@ -220,12 +240,16 @@ def check_startup_shutdown_lifecycle() -> None:
 # Isolated-subprocess pytest entry point
 # ---------------------------------------------------------------------------
 
-def test_phase4_in_isolated_subprocess():
+def test_phase4_in_isolated_subprocess(monkeypatch):
     """Run this file's own __main__ checks in a clean subprocess.
 
     See _qt_subprocess_helper.py for why success is judged by the printed
     completion marker rather than the subprocess's own exit code.
     """
+    for key in tuple(os.environ):
+        if key.startswith("SAMSARA_TEST_SHARD_"):
+            monkeypatch.delenv(key)
+    monkeypatch.setenv("PYTHONFAULTHANDLER", "1")
     run_isolated(Path(__file__), "All Phase 4 regression tests PASSED.")
 
 
@@ -234,20 +258,24 @@ def test_phase4_in_isolated_subprocess():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("--- Phase 4: Regression tests ---\n")
+    try:
+        print("--- Phase 4: Regression tests ---\n")
 
-    print("Test 1: show_numbers overlay renders with no prior Qt window")
-    check_numbers_overlay_no_prior_window()
-    print()
+        print("Test 1: show_numbers overlay renders with no prior Qt window")
+        check_numbers_overlay_no_prior_window()
+        print()
 
-    print(f"Test 2: task_overlay reopens repeatably ({REOPEN_CYCLES} cycles)")
-    check_task_overlay_reopen_regression()
-    print()
+        print(f"Test 2: task_overlay reopens repeatably ({REOPEN_CYCLES} cycles)")
+        check_task_overlay_reopen_regression()
+        print()
 
-    print("Test 3: startup/shutdown lifecycle")
-    check_startup_shutdown_lifecycle()
-    print()
+        print("Test 3: startup/shutdown lifecycle")
+        check_startup_shutdown_lifecycle()
+        print()
 
-    print("All Phase 4 regression tests PASSED.")
+        print("All Phase 4 regression tests PASSED.")
+    finally:
+        # An assertion failure must not leave the non-daemon Qt thread alive.
+        qt_runtime.shutdown(timeout=5.0)
     # qt_runtime.shutdown() was called inside check 3; do not call again.
     sys.exit(0)

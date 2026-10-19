@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import subprocess
 import sys
 import zipfile
@@ -78,6 +79,14 @@ def local_release(tmp_path):
             "app_root": app_root, "downloads": downloads, "home": tmp_path / "home"}
 
 
+def _child_env(world):
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith("SAMSARA_TEST_SHARD_")}
+    # Never the real profile, and never the running session's.
+    env["SAMSARA_HOME_DIR"] = str(world["home"])
+    return env
+
+
 def _run(world, ids="wake-word-models", *, extra=()):
     """Launch the entry point the way installer/samsara.iss does."""
     argv = [sys.executable, str(ENTRY),
@@ -87,12 +96,8 @@ def _run(world, ids="wake-word-models", *, extra=()):
             "--app-root", str(world["app_root"]),
             "--downloads-dir", str(world["downloads"]),
             *extra]
-    import os
-    env = os.environ.copy()
-    # Never the real profile, and never the running session's.
-    env["SAMSARA_HOME_DIR"] = str(world["home"])
     return subprocess.run(argv, capture_output=True, text=True,
-                          timeout=CHILD_TIMEOUT_S, cwd=str(REPO), env=env)
+                          timeout=CHILD_TIMEOUT_S, cwd=str(REPO), env=_child_env(world))
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +163,7 @@ def _hold_instance_lock(world, seconds=90):
     The lock identity is derived from SAMSARA_HOME_DIR when it is set
     (samsara/boot.py _check_single_instance), so this holds a lock for the
     test's temp profile and never collides with a real running Samsara."""
-    import os
-
-    env = os.environ.copy()
-    env["SAMSARA_HOME_DIR"] = str(world["home"])
+    env = _child_env(world)
     proc = subprocess.Popen(
         [sys.executable, "-c", _HOLD_LOCK.format(repo=str(REPO), seconds=seconds)],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, cwd=str(REPO), env=env)
@@ -178,10 +180,16 @@ def test_the_lock_really_would_claim_a_second_launch(local_release):
         second = subprocess.run(
             [sys.executable, "-c",
              "import sys; sys.path.insert(0, %r);"
+             # The synthetic holder has no activation receiver. Keep the real
+             # mutex/refusal path, but do not wait on its failure dialog.
+             "import samsara.single_instance as si;"
+             "si.bring_existing_forward = lambda name: print('ACTIVATION', flush=True);"
              "import samsara.boot as b; b.lock_single_instance();"
              "print('ACQUIRED')" % str(REPO)],
             capture_output=True, text=True, timeout=60, cwd=str(REPO), env=env)
         assert second.returncode == 0
+        if sys.platform == "win32":
+            assert "ACTIVATION" in second.stdout, "the real mutex collision path was not reached"
         assert "ACQUIRED" not in second.stdout, (
             "the lock did not refuse the second launch, so the next test proves nothing"
         )

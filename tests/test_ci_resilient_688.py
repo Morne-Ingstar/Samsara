@@ -37,7 +37,10 @@ def test_ci_uses_restartable_file_scoped_workers_and_windows_timeout():
         assert len(checks) == 1 and checks[0]['if'] == 'matrix.shard == 0'
         assert not checks[0].get('continue-on-error', False)
     args = shlex.split(main['run'])
-    assert args[:3] == ['python', '-m', 'pytest']
+    assert args[:7] == ['python', '-u', 'tools/ci_hang_reporter.py',
+                        '--state-dir', 'ci-hang-report', '--', 'pytest']
+    # Check pytest's own arguments, after the supervisor's separator.
+    args = args[7:]
     assert args[args.index('-n') + 1] == '2'
     assert args[args.index('--dist') + 1] == 'loadfile'
     assert int(next(arg.split('=', 1)[1] for arg in args if arg.startswith('--max-worker-restart='))) >= 10

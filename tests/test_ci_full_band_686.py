@@ -2,11 +2,12 @@
 from time import monotonic
 from unittest.mock import patch
 
-from PySide6.QtCore import QObject, QPropertyAnimation, QRect, QTimer
+from PySide6.QtCore import QAbstractAnimation, QObject, QPropertyAnimation, QRect, QTimer
 from PySide6.QtWidgets import QWidget
 from shiboken6 import isValid
 
 from samsara.ui import theme
+from samsara.live_surface.controller import LiveSurfaceController
 from tests.test_full_display_band_456 import surface
 
 
@@ -48,10 +49,22 @@ def test_owned_delete_does_not_dispatch_unrelated_deletes_or_timers(qapp, qt_def
             qt_deferred_delete(other)
 
 
-def test_surface_stops_activity_and_deletes_before_patches_end(qapp, monkeypatch, qt_deferred_delete):
+def test_surface_stops_activity_and_deletes_before_patches_end(qapp, monkeypatch, qt_widget_scope):
     previous = theme.active_theme()
+    close = LiveSurfaceController.close
+    observed = []
+
+    def checked_close(controller):
+        widget = controller.widget
+        observed.append((all(not timer.isActive() for timer in widget.findChildren(QTimer)),
+                         all(animation.state() == QAbstractAnimation.State.Stopped
+                             for animation in widget.findChildren(QAbstractAnimation))))
+        close(controller)
+
+    # The scope captures c.close on entry, so install the spy before next().
+    monkeypatch.setattr(LiveSurfaceController, 'close', checked_close)
     with patch('samsara.live_surface.controller.qt_runtime.post'):
-        fixture = surface.__wrapped__(qapp, monkeypatch, qt_deferred_delete)
+        fixture = surface.__wrapped__(qapp, monkeypatch, qt_widget_scope)
         controller, _, _ = next(fixture)
         widget = controller.widget
         timers = widget.findChildren(QTimer)
@@ -62,15 +75,6 @@ def test_surface_stops_activity_and_deletes_before_patches_end(qapp, monkeypatch
         animation.setEndValue(QRect(widget.x(), widget.y(), widget.width() + 1, widget.height()))
         animation.setDuration(10000)
         animation.start()
-        close = controller.close
-        observed = []
-
-        def checked_close():
-            observed.append((all(not timer.isActive() for timer in timers),
-                             animation.state() == QPropertyAnimation.State.Stopped))
-            close()
-
-        monkeypatch.setattr(controller, 'close', checked_close)
         destroyed = []
         widget.destroyed.connect(lambda *_: destroyed.append(theme.active_theme()))
         theme.set_theme('light' if previous == 'dark' else 'dark')

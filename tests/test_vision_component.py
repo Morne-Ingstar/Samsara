@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from samsara import components
 from samsara.vision import camera_service
 from tools import gen_release_manifest as manifest
@@ -19,12 +21,15 @@ def test_camera_refuses_before_touching_hardware_when_component_is_absent(monkey
     monkeypatch.setattr(camera_service, "cv2", None)
     service = camera_service.CameraService()
 
-    try:
+    def unexpected_open(*_):
+        raise AssertionError("missing gesture component touched camera hardware")
+
+    monkeypatch.setattr(service, "_open_cap", unexpected_open)
+    # Other files reload components. The service raises the class it imported,
+    # which can differ from components' newly defined exception class.
+    with pytest.raises(camera_service.ComponentNotInstalled) as caught:
         service.start()
-    except components.ComponentNotInstalled as exc:
-        assert str(exc) == components.GESTURE_COMPONENT_MESSAGE
-    else:
-        raise AssertionError("missing gesture component opened the camera")
+    assert str(caught.value) == components.GESTURE_COMPONENT_MESSAGE
 
 
 def test_component_message_names_the_existing_install_surface():
