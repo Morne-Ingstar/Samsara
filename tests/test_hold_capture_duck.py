@@ -48,14 +48,21 @@ class Timer:
 @pytest.fixture
 def app(monkeypatch):
     from samsara import speech_presence
-    monkeypatch.setattr(speech_presence, 'perf_counter', lambda: time.perf_counter())
+    import samsara.audio_engine.dictation_consumer as module
+    # Patch this fixture's clock, never the shared stdlib time module: pytest,
+    # its watchdog and other threads must keep their real clocks and sleeps.
+    clock = SimpleNamespace(perf_counter=time.perf_counter,
+                            perf_counter_ns=time.perf_counter_ns,
+                            monotonic=time.monotonic, sleep=time.sleep)
+    monkeypatch.setattr(module, 'time', clock)
+    monkeypatch.setattr(speech_presence, 'perf_counter', lambda: clock.perf_counter())
     source = ast.parse((ROOT / 'dictation.py').read_text(encoding='utf-8'))
     cls = next(n for n in source.body if isinstance(n, ast.ClassDef)
                and n.name == 'DictationApp')
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in METHODS]
     ns = dict(describe_text=describe_text, safe_exception=safe_exception,
               StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
-              reset_current_stage_timing=reset_current_stage_timing, time=time, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
+              reset_current_stage_timing=reset_current_stage_timing, time=clock, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
               audio_ducking=SimpleNamespace(SessionDucker=None, start_recording_media=Mock()),
               thread_registry=SimpleNamespace(timer=Timer),
               _HANDS_FREE_CAPTURE_DUCK_RESTORE_DELAY_S=0.5,

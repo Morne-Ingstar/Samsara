@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from time import monotonic as _watchdog_monotonic_701
 from unittest.mock import Mock, MagicMock, patch
 
 # Add parent directory to path for imports
@@ -34,6 +35,7 @@ def _hard_timeout_seconds_700():
 def _rearm_hard_watchdog_700(item):
     import faulthandler
     from time import monotonic
+    monotonic = _watchdog_monotonic_701
 
     state = item.stash.get(_HARD_WATCHDOG_700, None)
     if state is not None:
@@ -47,6 +49,7 @@ def pytest_runtest_protocol(item):
     """A C watchdog can retire a worker even while native code holds the GIL."""
     import faulthandler
     from time import monotonic
+    monotonic = _watchdog_monotonic_701
 
     seconds = _hard_timeout_seconds_700()
     if seconds == 0:
@@ -103,6 +106,52 @@ def pytest_xdist_make_scheduler(config, log):
             return super().remove_node(node)
 
     return HardWatchdogLoadFileScheduling(config, log)
+
+
+def _blocked_process_exit_701(code=0):
+    # The soft timeout must still kill a wedged worker. Its timer's intentional
+    # nonzero exit is separate from application/test code ending the session.
+    caller = sys._getframe(1)
+    if (caller.f_globals.get('__name__') == 'pytest_timeout'
+            and caller.f_code.co_name == 'timeout_timer' and code == 1):
+        _real_process_exit_701(code)
+    raise RuntimeError('blocked os._exit: tests must not end a pytest worker')
+
+
+_real_process_exit_701 = os._exit
+
+
+def _blocked_collection_exit_701(code=None):
+    raise RuntimeError('blocked sys.exit during collection: tests must not end a pytest worker')
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_make_collect_report(collector):
+    # Main-thread test SystemExit is already a pytest failure. Collection is
+    # different: pytest re-raises it and xdist aborts unless we contain it here.
+    with pytest.MonkeyPatch.context() as guard:
+        guard.setattr(os, '_exit', _blocked_process_exit_701)
+        guard.setattr(sys, 'exit', _blocked_collection_exit_701)
+        outcome = yield
+        if outcome.excinfo is not None and issubclass(outcome.excinfo[0], SystemExit):
+            outcome.force_result(pytest.CollectReport(
+                collector.nodeid, outcome='failed', result=[],
+                longrepr='SystemExit during collection: tests must not end a pytest worker'))
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True, specname='pytest_runtest_protocol')
+def pytest_exit_guard_protocol_701(item):
+    with pytest.MonkeyPatch.context() as guard:
+        guard.setattr(os, '_exit', _blocked_process_exit_701)
+        yield
+
+
+def pytest_itemcollected(item):
+    # Repository-wide UserWarning suppression otherwise hides exits escaping
+    # background threads and callbacks. Preserve unrelated warning policies.
+    for category in ('PytestUnhandledThreadExceptionWarning', 'PytestUnraisableExceptionWarning'):
+        item.add_marker(pytest.mark.filterwarnings(
+            f'error:(?s).*(SystemExit|blocked os\\._exit):pytest.{category}'))
 
 
 @pytest.fixture(autouse=True)
