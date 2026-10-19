@@ -18,8 +18,8 @@ def settle(qapp):
         qapp.processEvents()
 
 
-@pytest.fixture(scope='module', params=('dark', 'light'))
-def settings(request, qapp):
+@pytest.fixture(params=('dark', 'light'))
+def settings(request, qapp, qt_widget_scope):
     from samsara import autostart
     from samsara.ui.first_run_qt import ComponentsPage
     from samsara.ui.settings_qt import _SettingsWindow
@@ -33,14 +33,20 @@ def settings(request, qapp):
         config['ducking'] = {'level': .10, 'hands_free_level': .15, 'hands_free_idle_level': .80,
                              'hands_free_enabled': True, 'recording_mode': 'duck'}
         window = _SettingsWindow(_StubApp(config))
-        window.resize(1160, 900)
-        window.show()
-        settle(qapp)
-        yield window
-        window.hide()
-        window.deleteLater()
-        settle(qapp)
-        theme.set_theme('dark', refresh=False)
+        try:
+            # Lazy source controls can be parentless. Keep their entire visit
+            # within one test, and destroy the window while its patches exist.
+            with qt_widget_scope(window):
+                window.resize(1160, 900)
+                window.show()
+                settle(qapp)
+                # Every geometry case starts from the same complete visit;
+                # iterating lazy pages can otherwise grow the page dictionary.
+                tuple(window._destination_rows)
+                settle(qapp)
+                yield window
+        finally:
+            theme.set_theme('dark', refresh=False)
 
 
 def reveal(window, name, qapp):

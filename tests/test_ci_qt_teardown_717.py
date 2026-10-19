@@ -1,5 +1,6 @@
 """717: test windows must not outlive their callbacks or reach the next palette."""
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPropertyAnimation, QRect, QTimer, Qt
@@ -145,6 +146,28 @@ def test_non_qt_tests_do_not_import_or_create_an_application(monkeypatch):
     monkeypatch.delitem(support.sys.modules, 'PySide6.QtWidgets')
     assert support._qt_windows_717() == ()
     support._qt_cleanup_windows_717(())
+
+
+@pytest.mark.parametrize('replace_class', (False, True))
+def test_inventory_tolerates_a_non_qt_application(qapp, monkeypatch, replace_class):
+    import PySide6.QtWidgets as widgets
+    if replace_class:
+        monkeypatch.setattr(widgets, 'QApplication', SimpleNamespace(instance=lambda: object()))
+    else:
+        monkeypatch.setattr(QApplication, 'instance', lambda: SimpleNamespace())
+    assert support._qt_windows_717() == ()
+    support._qt_cleanup_windows_717(())
+
+
+def test_cleanup_keeps_new_tool_windows_owned_by_a_retained_fixture(shared_window):
+    previous = support._qt_windows_717()
+    child = QWidget(shared_window, Qt.WindowType.Tool)
+    owned = QWidget()
+    support._qt_cleanup_windows_717(previous)
+    assert isValid(shared_window) and isValid(child)
+    assert not isValid(owned)
+    child.deleteLater()
+    QCoreApplication.sendPostedEvents(child, QEvent.Type.DeferredDelete)
 
 
 @pytest.fixture

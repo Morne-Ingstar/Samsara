@@ -1130,9 +1130,15 @@ def qapp():
 def _qt_windows_717():
     # Do not import Qt or create an application for tests that never use it.
     widgets = sys.modules.get('PySide6.QtWidgets')
-    if widgets is None or widgets.QApplication.instance() is None:
+    if widgets is None:
         return ()
-    return tuple(widgets.QApplication.topLevelWidgets())
+    inventory = getattr(widgets.QApplication, 'topLevelWidgets', None)
+    if not callable(inventory):  # Some tests replace the class with a stand-in.
+        return ()
+    from PySide6.QtCore import QCoreApplication
+    if not isinstance(widgets.QApplication.instance(), QCoreApplication):
+        return ()
+    return tuple(inventory())
 
 
 def _qt_cleanup_windows_717(previous):
@@ -1144,11 +1150,18 @@ def _qt_cleanup_windows_717(previous):
     from shiboken6 import isValid
 
     retained = {id(widget) for widget in previous}
+    def retained_owner(widget):
+        while widget is not None:
+            if id(widget) in retained:
+                return True
+            widget = widget.parentWidget()
+        return False
+
     # A close handler may create another window. Bound those follow-up rounds;
     # never pump the event loop (which would dispatch unrelated timer callbacks).
     for _ in range(8):
         windows = [widget for widget in _qt_windows_717()
-                   if id(widget) not in retained and isValid(widget)]
+                   if isValid(widget) and not retained_owner(widget)]
         if not windows:
             return
         # Tool windows also appear in topLevelWidgets(). Retire their owner
