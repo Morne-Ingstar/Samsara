@@ -9,11 +9,11 @@ loads each plugin ONCE under its canonical package name, so a later canonical
 import is the very same module, with the very same pending state.
 """
 import importlib
-import json
-import os
-import subprocess
+import inspect
 import sys
 import textwrap
+import time
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -22,6 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from samsara import plugin_commands  # noqa: E402
+
+# Capture the production loader before conftest's per-test fixture suppresses
+# discovery of the real command directory. The real-plugin test opts in here.
+_load_real_plugins = plugin_commands.load_plugins
 
 
 @pytest.fixture
@@ -172,67 +176,96 @@ class TestServicesAreExplicit:
         sys.modules.pop("samsara_plugin_with_service", None)
 
 
-_REAL_DISCOVERY_PROBE = textwrap.dedent('''
-    import json, sys, threading, time
-    sys.path.insert(0, ROOT)
-    from samsara import plugin_commands
+@pytest.fixture
+def cold_real_plugins(clean_registry, monkeypatch):
+    """Cold plugin imports without a subprocess or changes to cached plugins."""
+    def is_plugin(name):
+        return (name == "plugins" or name.startswith("plugins.")
+                or name.startswith("samsara_plugin_"))
 
-    def health_threads():
-        return sum(1 for t in threading.enumerate() if t.name.startswith("ollama-health"))
+    with monkeypatch.context() as patch:
+        for name in list(sys.modules):
+            if is_plugin(name):
+                patch.delitem(sys.modules, name)
+        try:
+            yield
+        finally:
+            # Drop this test's new package objects before restoring the originals,
+            # including their parent-package attributes and legacy aliases.
+            for name in list(sys.modules):
+                if is_plugin(name):
+                    sys.modules.pop(name)
 
-    plugin_commands.load_plugins(ROOT + "/plugins/commands")
+
+def test_real_discovery_then_canonical_import_shares_ask_ollama_state(
+        cold_real_plugins, monkeypatch):
+    """Real discovery and canonical imports share pending state and lifecycle."""
+    from samsara import ai_preferences, ava_readiness
+    from samsara.runtime import thread_registry
+
+    spawned = []
+
+    def record_spawn(name, target, **kwargs):
+        token = object()
+        spawned.append((name, target, kwargs, token))
+        return token
+
+    # Exercise real service registration without starting perpetual pollers or
+    # contacting Ollama. Reset readiness independently of earlier test imports.
+    monkeypatch.setattr(thread_registry, "spawn", record_spawn)
+    monkeypatch.setattr(ava_readiness, "_monitor", None)
+    commands = ROOT / "plugins" / "commands"
+    loaded = _load_real_plugins(commands)
+    assert loaded == sum(not path.name.startswith("_") for path in commands.glob("*.py"))
     handler = plugin_commands._REGISTRY["ask ava"]["func"]
     confirm = plugin_commands._REGISTRY["yes"]["func"]
-    discovered = sys.modules.get(handler.__module__)
+    discovered = sys.modules[handler.__module__]
+    implementation = inspect.unwrap(handler)
 
-    # Stage a pending action through the module discovery executed.
-    with handler.__globals__["_pending_action_lock"]:
-        handler.__globals__["_pending_action"] = {
+    with implementation.__globals__["_pending_action_lock"]:
+        implementation.__globals__["_pending_action"] = {
             "type": "action", "command": "probe", "expires": time.time() + 60}
 
     import plugins.commands.ask_ollama as canonical
     from plugins.commands import ask_ollama as canonical_from
 
-    after_import = health_threads()
-    plugin_commands.load_plugins(ROOT + "/plugins/commands")
-    plugin_commands.start_plugin_services(object())
-    plugin_commands.start_plugin_services(object())
+    assert handler.__module__ == "plugins.commands.ask_ollama"
+    assert discovered is canonical_from is canonical
+    assert handler is canonical.handle_ask_ava
+    # own_turn uses functools.wraps: its globals belong to ava_turn_queue.
+    # The underlying implementation must still own the canonical state.
+    assert implementation.__globals__ is canonical.__dict__
+    assert confirm is canonical.handle_ava_confirm
+    assert confirm.__globals__ is canonical.__dict__
+    assert canonical.get_pending_action()["command"] == "probe"
+    assert sys.modules["samsara_plugin_ask_ollama"] is canonical
+    assert _load_real_plugins(commands) == loaded
+    assert plugin_commands._REGISTRY["ask ava"]["func"] is handler
+    assert canonical.get_pending_action()["command"] == "probe"
+    assert spawned == []
+    assert canonical._health_monitor_thread is None
 
-    print("PROBE " + json.dumps({
-        "handler_module": handler.__module__,
-        "same_module": discovered is canonical and canonical_from is canonical,
-        "same_globals": handler.__globals__ is canonical.__dict__,
-        "confirm_same_globals": confirm.__globals__ is canonical.__dict__,
-        "canonical_pending": (canonical.get_pending_action() or {}).get("command"),
-        "legacy_alias_same": sys.modules.get("samsara_plugin_ask_ollama") is canonical,
-        "handler_stable": plugin_commands._REGISTRY["ask ava"]["func"] is handler,
-        "health_threads_after_discovery_and_import": after_import,
-        "health_threads_after_explicit_start": health_threads(),
-    }))
-''')
+    config = {"ollama": {"host": "http://127.0.0.1:11434", "model": "test-model"}}
+    consent = ai_preferences.accept_consent(
+        config, provider=ai_preferences.provider_for(config, "local"),
+        accepted_at="test-acceptance")
+    app = SimpleNamespace(config=ai_preferences.apply_preferences(
+        config, policy="local", ava=True, consent=consent, local_model="test-model"))
+    assert canonical._ai_state(app).allowed
 
+    # Only this plugin's lifecycle is under test. Other real hooks mutate alias
+    # metadata or start servers and must not run against this synthetic app.
+    plugin_commands._STARTED_SERVICES.update(
+        id(module) for module in plugin_commands._LOADED_MODULES.values()
+        if module is not canonical)
+    plugin_commands.start_plugin_services(app)
+    plugin_commands.start_plugin_services(app)
+    canonical.start_services(app)
 
-def test_real_discovery_then_canonical_import_shares_ask_ollama_state():
-    """Astra's PLUGIN_MODULE_IDENTITY probe, inverted, on the REAL plugin set
-    in an isolated interpreter (no shared sys.modules with this test run)."""
-    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", PYTHONIOENCODING="utf-8")
-    proc = subprocess.run(
-        [sys.executable, "-c", f"ROOT = {str(ROOT)!r}\n" + _REAL_DISCOVERY_PROBE],
-        cwd=str(ROOT), env=env, capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=180,
-    )
-    lines = [l for l in proc.stdout.splitlines() if l.startswith("PROBE ")]
-    assert lines, f"probe produced no result\nstdout:\n{proc.stdout[-3000:]}\nstderr:\n{proc.stderr[-3000:]}"
-    result = json.loads(lines[-1][len("PROBE "):])
-
-    assert result == {
-        "handler_module": "plugins.commands.ask_ollama",
-        "same_module": True,
-        "same_globals": True,
-        "confirm_same_globals": True,
-        "canonical_pending": "probe",
-        "legacy_alias_same": True,
-        "handler_stable": True,
-        "health_threads_after_discovery_and_import": 0,
-        "health_threads_after_explicit_start": 1,
-    }
+    assert [name for name, *_ in spawned] == ["ollama-health", "ava-readiness"]
+    assert spawned[0][1] is canonical._health_monitor_loop
+    assert spawned[0][2] == {"daemon": True}
+    assert canonical._health_monitor_thread is spawned[0][3]
+    assert spawned[1][1].__self__ is ava_readiness._monitor
+    assert plugin_commands._REGISTRY["ask ava"]["func"] is handler
+    assert canonical.get_pending_action()["command"] == "probe"
