@@ -26,6 +26,25 @@ KNOWN = ROOT / "tests" / "command_catalog_known_collisions.txt"
 ONE_WORD = ROOT / "tests" / "command_catalog_one_word_canonical.txt"
 
 
+def test_test_plugin_claims_end_with_their_registry_scope(tmp_path):
+    from samsara import plugin_commands
+    from tests.conftest import _isolate_plugin_registry
+
+    phrase = 'synthetic catalog probe'
+    with pytest.MonkeyPatch.context() as patch:
+        scope = _isolate_plugin_registry.__wrapped__(tmp_path, patch)
+        next(scope)
+        try:
+            plugin_commands.command(phrase)(lambda app, remainder: True)
+            assert phrase in cc.raw_phrase_claims()
+            assert plugin_commands.find_command(phrase)[0] is not None
+        finally:
+            with pytest.raises(StopIteration):
+                next(scope)
+    assert phrase not in cc.raw_phrase_claims()
+    assert plugin_commands.find_command(phrase)[0] is None
+
+
 @pytest.fixture(scope="module")
 def registry():
     from tools.dump_command_metadata import build_executor

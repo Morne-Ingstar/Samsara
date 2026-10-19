@@ -73,7 +73,7 @@ def voice_executor():
 def live_voice_registry(voice_executor, monkeypatch):
     """Restore the production metadata removed by the test registry fixture."""
     executor, entries, registry = voice_executor
-    monkeypatch.setattr(plugin_commands, "_REGISTRY", registry)
+    monkeypatch.setattr(plugin_commands, "_REGISTRY", dict(registry))
     executor._matcher.set_enabled_packs({entry.pack for entry in entries.values()})
     return executor, entries
 
@@ -119,6 +119,7 @@ def test_bare_playlist_is_denied_as_a_missing_required_remainder(live_voice_regi
 def test_send_with_a_spoken_monitor_satisfies_its_required_slot(live_voice_registry, monkeypatch):
     """A named monitor reaches policy using synthetic screens, without effects."""
     from plugins.commands import windows
+    from samsara import arg_types
 
     executor, _entries = live_voice_registry
     captured = {}
@@ -133,6 +134,9 @@ def test_send_with_a_spoken_monitor_satisfies_its_required_slot(live_voice_regis
     monkeypatch.setattr(windows, 'get_monitors', lambda: monitors)
     monkeypatch.setattr(windows.win32api, 'EnumDisplayMonitors',
                         lambda: [(m['handle'], None, m['rect']) for m in monitors])
+    # A prior module reload may leave the static validator bound to its old
+    # module globals. Validate through the same module whose screens we fake.
+    monkeypatch.setitem(arg_types._ARG_TYPE_VALIDATORS, 'monitor', windows._validate_monitor)
 
     def capture(command_id, app_instance=None, **kwargs):
         captured.update(command_id=command_id, **kwargs)

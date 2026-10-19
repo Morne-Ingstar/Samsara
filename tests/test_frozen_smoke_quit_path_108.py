@@ -42,7 +42,7 @@ boot.begin_session(log_dir)
 print("UP", flush=True)
 {tail}
 """
-_QUIT_TAIL = 'boot.end_session(log_dir)\nprint("QUIT", flush=True)'
+_QUIT_TAIL = 'assert sys.stdin.readline().strip() == "QUIT"\nboot.end_session(log_dir)\nprint("QUIT", flush=True)'
 _BLOCK_TAIL = "time.sleep(120)"
 
 
@@ -50,7 +50,7 @@ def _spawn(log_dir: Path, tail: str) -> subprocess.Popen:
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     proc = subprocess.Popen(
         [sys.executable, "-c", _CHILD.format(repo=str(REPO), log_dir=str(log_dir), tail=tail)],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(REPO))
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(REPO))
     assert proc.stdout.readline().strip() == "UP", "the child never opened a session"
     return proc
 
@@ -100,9 +100,17 @@ def test_a_real_quit_clears_the_completion_marker(tmp_path):
     marker = profile / "logs" / frozen_smoke.SESSION_MARKER
 
     proc = _spawn(profile / "logs", _QUIT_TAIL)
-    assert marker.exists(), "begin_session should have written the marker"
+    try:
+        assert marker.exists(), "begin_session should have written the marker"
+    finally:
+        # Hold the child at UP until the parent has observed the live marker.
+        # Always release it, including when the existence assertion fails.
+        proc.stdin.write("QUIT\n")
+        proc.stdin.flush()
+        proc.stdin.close()
+        proc.wait(timeout=30)
     assert proc.stdout.readline().strip() == "QUIT"
-    assert proc.wait(timeout=30) == 0
+    assert proc.returncode == 0
 
     assert not marker.exists()
     assert frozen_smoke.quit_path_completed(profile) is True

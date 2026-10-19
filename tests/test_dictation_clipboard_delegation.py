@@ -17,6 +17,8 @@ def _no_real_sendinput(monkeypatch):
     monkeypatch.setattr(dictation, 'type_text_unicode', lambda text: False)
     from samsara import paste
     monkeypatch.setattr(paste, '_editor_snapshot', lambda: None)
+    # Undo checks this module seam separately from the fake app's recorder.
+    monkeypatch.setattr(paste, 'flight_foreground_process_name', lambda: 'notepad.exe')
 
 
 

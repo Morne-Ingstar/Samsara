@@ -839,6 +839,18 @@ def _shutdown_live_tts_engines():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_cli_shutdown():
+    """A registry shutdown in one test must not close later CLI conversations."""
+    module = sys.modules.get('samsara.agent_channel.cli_agents')
+    if module is not None:
+        module._closing.clear()
+    yield
+    module = sys.modules.get('samsara.agent_channel.cli_agents')
+    if module is not None:
+        module._closing.clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_plugin_registry(tmp_path, monkeypatch):
     """Keep the real plugins/ directory from leaking into tests.
 
@@ -847,6 +859,8 @@ def _isolate_plugin_registry(tmp_path, monkeypatch):
     """
     from samsara import plugin_commands as _plugin_commands
     saved = dict(_plugin_commands._REGISTRY)
+    saved_modules = {name: dict(entries)
+                     for name, entries in _plugin_commands._MODULE_ENTRIES.items()}
     saved_matcher = _plugin_commands._shared_matcher
     _plugin_commands._REGISTRY.clear()
     _plugin_commands._shared_matcher = None
@@ -867,6 +881,13 @@ def _isolate_plugin_registry(tmp_path, monkeypatch):
         _plugin_commands._REGISTRY.clear()
         _plugin_commands._REGISTRY.update(saved)
         _plugin_commands._shared_matcher = saved_matcher
+        # Discovery reuses imported modules. Keep newly imported shipped
+        # declarations, but retire test decorators and temporary plugins from
+        # the cache used by raw_phrase_claims() and command reinstallation.
+        for name in list(_plugin_commands._MODULE_ENTRIES):
+            if name not in saved_modules and not name.startswith('plugins.commands.'):
+                del _plugin_commands._MODULE_ENTRIES[name]
+        _plugin_commands._MODULE_ENTRIES.update(saved_modules)
 
 
 # ============================================================================

@@ -56,6 +56,15 @@ def _agent(name, script):
         [sys.executable, str(script)])
 
 
+def test_shutdown_refuses_new_requests_in_its_own_test(fake):
+    script, home = fake
+    assert not cli_agents._closing.is_set()
+    cli_agents.shutdown_all()
+    with pytest.raises(RuntimeError, match="Samsara is shutting down"):
+        _agent("gpt", script).ask("wait", home=home)
+    # The following real fake-CLI conversations must start in a fresh lifecycle.
+
+
 @pytest.mark.parametrize("name", ["gpt", "claude"])
 def test_success_resume_and_read_only(fake, monkeypatch, name):
     script, home = fake
