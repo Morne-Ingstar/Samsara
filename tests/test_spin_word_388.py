@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontMetrics
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QStyle, QStyleOptionButton, QWidget
 
 from samsara import config_schema
@@ -68,8 +68,10 @@ def test_one_word_changes_and_lands_exactly(labels, qapp, width):
     if right < mid.width():
         assert mid.copy(right, 0, mid.width()-right, mid.height()) == rest.copy(right, 0, rest.width()-right, rest.height())
     assert spin.accessibleName() == home_qt.SUPPORT_LINE
+    finished = QSignalSpy(spin._animation.finished)
     spin._animation.resume()
-    QTest.qWait(70)
+    # A loaded worker may deliver the animation tick after a fixed 70 ms nap.
+    assert finished.wait(1000), 'spin animation did not finish'
     assert spin.grab().toImage() == rest
 
 

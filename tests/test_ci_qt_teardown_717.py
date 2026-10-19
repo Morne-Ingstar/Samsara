@@ -187,3 +187,58 @@ def test_03_leave_window_with_a_test_owned_close_callback(patched_window):
 def test_04_cleanup_precedes_monkeypatch_restoration():
     widget, calls = LEAKED[-1]
     assert not isValid(widget) and calls == [True]
+
+
+def test_cleanup_keeps_new_parentless_controls_in_a_retained_cache(shared_window):
+    previous = support._qt_windows_717()
+
+    class LazyDict(dict):
+        def values(self):
+            raise AssertionError('cleanup must not materialize cached pages')
+
+    class LazyList(list):
+        def __iter__(self):
+            raise AssertionError('cleanup must not materialize cached rows')
+
+    control = QWidget()
+    tool = QWidget(control, Qt.WindowType.Tool)
+    owned = QWidget()
+    cache = LazyDict(controls=LazyList([control]))
+    cache['cycle'] = cache
+    shared_window._test_cache = SimpleNamespace(rows=cache)
+    try:
+        support._qt_cleanup_windows_717(previous)
+        assert isValid(control) and isValid(tool)
+        assert not isValid(owned)
+    finally:
+        del shared_window._test_cache
+        control.deleteLater()
+        QCoreApplication.sendPostedEvents(control, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(scope='module')
+def shared_cache(qapp):
+    owner = SimpleNamespace(widgets={})
+    yield owner
+    for widget in owner.widgets.values():
+        widget.deleteLater()
+        QCoreApplication.sendPostedEvents(widget, QEvent.Type.DeferredDelete)
+
+
+def test_05_cache_fixture_adopts_a_widget_created_during_the_test(shared_cache):
+    shared_cache.widgets['editor'] = QWidget()
+
+
+def test_06_cache_fixture_keeps_its_editor_between_tests(shared_cache):
+    assert isValid(shared_cache.widgets['editor'])
+
+
+def test_cleanup_does_not_retain_caches_of_a_deleted_owner(qapp):
+    owner = QWidget()
+    previous = support._qt_windows_717()
+    control = QWidget()
+    owner._cache = {'control': control}
+    owner.deleteLater()
+    QCoreApplication.sendPostedEvents(owner, QEvent.Type.DeferredDelete)
+    support._qt_cleanup_windows_717(previous)
+    assert not isValid(control)

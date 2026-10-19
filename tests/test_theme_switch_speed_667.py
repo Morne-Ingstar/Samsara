@@ -100,11 +100,11 @@ def test_changed_class_still_repolishes(qapp, monkeypatch, qt_widget_scope):
             assert calls == [('unpolish', 'tipFrame'), ('polish', 'tipFrame')]
 
 
-def test_full_fixture_delivers_delete_before_patches_end(qapp, qt_deferred_delete):
+def test_full_fixture_delivers_delete_before_patches_end(qapp, qt_widget_scope):
     from tests.test_full_display_band_456 import surface
     from samsara.live_surface import controller
     with pytest.MonkeyPatch.context() as patch:
-        fixture = surface.__wrapped__(qapp, patch, qt_deferred_delete)
+        fixture = surface.__wrapped__(qapp, patch, qt_widget_scope)
         c, indicator, _ = next(fixture)
         indicator.show_outcome('Synthetic result', 'success', 1800)
         c.drain()
@@ -136,7 +136,8 @@ def test_settings_fixture_delivers_delete_inside_patch_context(qapp, qt_deferred
     assert widget not in qapp.topLevelWidgets()
 
 
-def test_ui_shaped_switch_has_generous_six_second_budget(qapp, monkeypatch, tmp_path, qt_widget_scope):
+def test_ui_shaped_switch_has_generous_six_second_budget(qapp, monkeypatch, tmp_path, qt_widget_scope,
+                                                      record_property):
     from samsara import autostart, cuda_detect
     from samsara.runtime import thread_registry
     from samsara.ui import home_qt, main_window_qt, settings_qt
@@ -184,6 +185,7 @@ def test_ui_shaped_switch_has_generous_six_second_budget(qapp, monkeypatch, tmp_
                     for _ in range(3):
                         qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 5)
                     elapsed.append(time.perf_counter() - started)
+                record_property('theme_switch_seconds', elapsed)
                 assert max(elapsed) < 6.0, elapsed
     finally:
         theme.set_theme(previous, refresh=False)

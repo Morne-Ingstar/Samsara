@@ -1141,7 +1141,45 @@ def _qt_windows_717():
     return tuple(inventory())
 
 
-def _qt_cleanup_windows_717(previous):
+def _qt_cached_widgets_722(owners):
+    """Find existing widget references without invoking lazy cache lookups."""
+    from types import ModuleType
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QWidget
+    from shiboken6 import isValid
+
+    pending, seen, widgets = list(owners), set(), []
+    while pending:
+        owner = pending.pop()
+        if isinstance(owner, (str, bytes, int, float, bool, type(None), type, ModuleType)):
+            continue
+        if id(owner) in seen or callable(owner):
+            continue
+        seen.add(id(owner))
+        if isinstance(owner, QObject):
+            if not isValid(owner):
+                continue
+            if isinstance(owner, QWidget):
+                widgets.append(owner)
+            pending.extend(QObject.children(owner))
+        # Settings' dict/list subclasses materialize pages from values()/iter().
+        # Inspect their stored contents only; teardown must never build UI.
+        if isinstance(owner, dict):
+            pending.extend(dict.keys(owner))
+            pending.extend(dict.values(owner))
+        elif isinstance(owner, list):
+            pending.extend(list.__iter__(owner))
+        elif isinstance(owner, (tuple, set, frozenset)):
+            pending.extend(owner)
+        try:
+            attributes = object.__getattribute__(owner, '__dict__')
+        except AttributeError:
+            continue
+        pending.extend(dict.values(attributes))
+    return widgets
+
+
+def _qt_cleanup_windows_717(previous, *, owners=()):
     """Retire this test's windows without delivering another owner's events."""
     if not _qt_windows_717():
         return
@@ -1149,7 +1187,9 @@ def _qt_cleanup_windows_717(previous):
     from PySide6.QtWidgets import QWidget
     from shiboken6 import isValid
 
-    retained = {id(widget) for widget in previous}
+    # Wider-scoped fixtures may cache new parentless controls during the test.
+    # A Python reference from their live owner is as real as a Qt parent link.
+    retained = {id(widget) for widget in _qt_cached_widgets_722((*previous, *owners))}
     def retained_owner(widget):
         while widget is not None:
             if id(widget) in retained:
@@ -1191,14 +1231,17 @@ def _qt_cleanup_windows_717(previous):
 
 
 @pytest.fixture(autouse=True)
-def _qt_test_windows_717(monkeypatch):
+def _qt_test_windows_717(monkeypatch, request):
     # Wider-scoped fixtures have already been set up. Keep their windows alive;
     # delete function-owned windows before this test's monkeypatch is undone.
     previous = _qt_windows_717()
     try:
         yield
     finally:
-        _qt_cleanup_windows_717(previous)
+        owners = [fixture.cached_result[0] for fixture in request._fixture_defs.values()
+                  if fixture.scope != 'function' and fixture.cached_result is not None
+                  and fixture.cached_result[2] is None]
+        _qt_cleanup_windows_717(previous, owners=owners)
 
 
 @pytest.fixture(scope="session")
