@@ -857,12 +857,23 @@ def _isolate_plugin_registry(tmp_path, monkeypatch):
     Tests that want plugin behavior can register via the @command decorator
     after this fixture clears the global registry.
     """
+    from copy import deepcopy
     from samsara import plugin_commands as _plugin_commands
     saved = dict(_plugin_commands._REGISTRY)
     saved_modules = {name: dict(entries)
                      for name, entries in _plugin_commands._MODULE_ENTRIES.items()}
+    entries = {id(entry): entry for entry in saved.values()}
+    for module_entries in saved_modules.values():
+        entries.update((id(entry), entry) for entry in module_entries.values())
+    saved_entries = [(entry, deepcopy(entry)) for entry in entries.values()]
+    saved_loaded = dict(_plugin_commands._LOADED_MODULES)
+    saved_started = set(_plugin_commands._STARTED_SERVICES)
     saved_matcher = _plugin_commands._shared_matcher
     _plugin_commands._REGISTRY.clear()
+    # A sentinel app in a dispatch test must not start hooks discovered by an
+    # earlier test (including the runtime Claude alias handoff).
+    _plugin_commands._LOADED_MODULES.clear()
+    _plugin_commands._STARTED_SERVICES.clear()
     _plugin_commands._shared_matcher = None
 
     original_load = _plugin_commands.load_plugins
@@ -878,8 +889,17 @@ def _isolate_plugin_registry(tmp_path, monkeypatch):
     try:
         yield
     finally:
+        # Restore entry contents as well as mappings: service hooks can replace
+        # alias lists or mutate nested metadata on these shared dictionaries.
+        for entry, contents in saved_entries:
+            entry.clear()
+            entry.update(contents)
         _plugin_commands._REGISTRY.clear()
         _plugin_commands._REGISTRY.update(saved)
+        _plugin_commands._LOADED_MODULES.clear()
+        _plugin_commands._LOADED_MODULES.update(saved_loaded)
+        _plugin_commands._STARTED_SERVICES.clear()
+        _plugin_commands._STARTED_SERVICES.update(saved_started)
         _plugin_commands._shared_matcher = saved_matcher
         # Discovery reuses imported modules. Keep newly imported shipped
         # declarations, but retire test decorators and temporary plugins from

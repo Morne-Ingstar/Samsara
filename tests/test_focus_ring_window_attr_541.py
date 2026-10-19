@@ -4,7 +4,9 @@ Daily log, 12 Oct 02:09: thirty uncaught TypeErrors at focus_ring.py line 65 - `
 attribute instead of QWidget.window on a control in Settings. The ring now asks Qt for the window, not the instance."""
 from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QFocusEvent, QMouseEvent
-from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget
+import pytest
+from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+from shiboken6 import delete
 from samsara.ui.focus_ring import FocusRings
 
 
@@ -14,11 +16,16 @@ class _Shadowed(QPushButton):
         self.window = owner     # not callable: the shape behind the log's TypeError
 
 
-def _rings():
-    app = QApplication.instance() or QApplication([])
-    if not hasattr(app, '_samsara_focus_rings'):
-        app._samsara_focus_rings = FocusRings(app)
-    return app._samsara_focus_rings
+@pytest.fixture
+def rings(qapp):
+    # A prior shutdown test may have stopped the application's installed ring.
+    # Each regression owns a fresh controller and retires its filter afterward.
+    controller = FocusRings(qapp)
+    try:
+        yield controller
+    finally:
+        controller.stop()
+        delete(controller)
 
 
 def _button():
@@ -29,8 +36,7 @@ def _button():
     return top, button
 
 
-def test_mark_sets_and_clears_the_ring_on_a_widget_that_shadows_window():
-    rings = _rings()
+def test_mark_sets_and_clears_the_ring_on_a_widget_that_shadows_window(rings):
     top, button = _button()
     rings.mark(button, True)
     assert button.property('keyboardFocus') is True
@@ -40,8 +46,7 @@ def test_mark_sets_and_clears_the_ring_on_a_widget_that_shadows_window():
     top.deleteLater()
 
 
-def test_every_event_path_survives_a_widget_that_shadows_window():
-    rings = _rings()
+def test_every_event_path_survives_a_widget_that_shadows_window(rings):
     top, button = _button()
     rings.eventFilter(button, QFocusEvent(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason))
     assert button.property('keyboardFocus') is True

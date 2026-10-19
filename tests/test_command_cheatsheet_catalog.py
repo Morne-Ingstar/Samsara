@@ -99,6 +99,33 @@ def test_live_rows_build_exactly_the_checked_in_catalog(catalog, live_rows):
             [a for a in frozen[cid]["args"] if a["required"]], cid
 
 
+def test_runtime_alias_handoff_ends_with_its_registry_scope(live_rows, tmp_path):
+    from plugins.commands import ask_agent, message_claude
+    from samsara import plugin_commands
+    from tests.conftest import _isolate_plugin_registry
+
+    desktop = plugin_commands._MODULE_ENTRIES[message_claude.__name__]["claude message prepare"]
+    aliases = list(desktop["aliases"])
+    loaded = dict(plugin_commands._LOADED_MODULES)
+    started = set(plugin_commands._STARTED_SERVICES)
+    assert "ask claude" in aliases
+    with pytest.MonkeyPatch.context() as patch:
+        scope = _isolate_plugin_registry.__wrapped__(tmp_path, patch)
+        next(scope)
+        try:
+            assert not plugin_commands._LOADED_MODULES
+            assert not plugin_commands._STARTED_SERVICES
+            ask_agent.start_services(None)
+            assert "ask claude" not in desktop["aliases"]
+            assert plugin_commands._REGISTRY["ask claude"]["func"] is ask_agent.ask_claude
+        finally:
+            with pytest.raises(StopIteration):
+                next(scope)
+    assert desktop["aliases"] == aliases
+    assert plugin_commands._LOADED_MODULES == loaded
+    assert plugin_commands._STARTED_SERVICES == started
+
+
 def test_guidance_catalog_prefers_live_rows_and_falls_back_to_json(catalog, live_rows, tmp_path):
     assert {r["canonical_id"] for r in cc.guidance_catalog(live_rows)} == {r["canonical_id"] for r in catalog}
     assert cc.guidance_catalog(None) == catalog

@@ -30,6 +30,14 @@ from samsara import session_modes
 from samsara.session_modes import SessionMode
 
 
+@pytest.fixture(autouse=True)
+def _configured_commit_word(monkeypatch):
+    """Model boot's configured default without inheriting another test's app."""
+    monkeypatch.setattr(session_modes, "DICTATE_COMMIT_PHRASE", session_modes.DEFAULT_DICTATE_COMMIT_PHRASE)
+    monkeypatch.setattr(session_modes, "_DICTATE_COMMIT_HOMOPHONES",
+                        frozenset({session_modes.DEFAULT_DICTATE_COMMIT_PHRASE}))
+
+
 def _make_app(config=None):
     return types.SimpleNamespace(config=config if config is not None else {})
 
@@ -88,8 +96,16 @@ class TestResolveSessionPhrases:
         assert state["wake"]["enabled"] is False
         assert "over" in state["send_word"]["words"]
         assert state["lane_switches"]["enabled"] is False
-        assert state["dictate_commit"]["phrase"] == "end"
+        assert state["dictate_commit"]["phrase"] == session_modes.DEFAULT_DICTATE_COMMIT_PHRASE
         assert state["scratch_that"]["phrase"] == "scratch that"
+
+    def test_commit_word_follows_runtime_configuration_on_recall(self):
+        app = _make_app()
+        for word in ("end", "deliver", session_modes.DEFAULT_DICTATE_COMMIT_PHRASE):
+            session_modes.set_commit_phrase(word)
+            state = qr._resolve_session_phrases(app)
+            assert state["dictate_commit"]["phrase"] == word
+            assert state["dictate_commit"]["homophones"] == []
 
     def test_reflects_changed_wake_phrase_on_recall(self):
         app = _make_app({"wake_word_enabled": True,
