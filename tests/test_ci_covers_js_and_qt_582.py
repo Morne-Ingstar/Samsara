@@ -39,7 +39,15 @@ def test_workflow_runs_both_js_suites_and_offscreen_qt_check(workflow, job):
         if step.get("run", "").strip() == "python tools/check_qt_discipline.py"
     )
     assert qt_step["env"]["QT_QPA_PLATFORM"] == "offscreen"
+    if workflow == "ci.yml":
+        assert doc["jobs"][job]["strategy"] == {
+            "fail-fast": False, "matrix": {"shard": [0, 1, 2, 3]},
+        }
+    for step in (node_setup, js_step, qt_step):
+        if workflow == "ci.yml":
+            assert step["if"] == "matrix.shard == 0"
+        else:
+            assert "if" not in step
     for step in (js_step, qt_step):
         assert step["shell"] == "pwsh"
         assert not step.get("continue-on-error", False)
-        assert "if" not in step

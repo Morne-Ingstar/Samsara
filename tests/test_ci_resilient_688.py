@@ -19,8 +19,24 @@ def _steps():
 
 
 def test_ci_uses_restartable_file_scoped_workers_and_windows_timeout():
-    run = next(step['run'] for step in _steps() if step.get('name') == 'Run tests with coverage')
-    args = shlex.split(run)
+    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+    job = workflow['jobs']['test']
+    assert job['strategy'] == {'fail-fast': False, 'matrix': {'shard': [0, 1, 2, 3]}}
+    assert job['timeout-minutes'] == 120
+    main = next(step for step in job['steps'] if step.get('name') == 'Run tests with coverage')
+    assert 'if' not in main and not main.get('continue-on-error', False)
+    assert main['timeout-minutes'] == 100
+    assert main['env']['SAMSARA_TEST_SHARD_INDEX'] == '${{ matrix.shard }}'
+    assert str(main['env']['SAMSARA_TEST_SHARD_TOTAL']) == '4'
+    # Every shard inherits conftest's hard watchdog; CI must not disable it.
+    for scope in (workflow, job, main):
+        assert 'SAMSARA_TEST_HARD_TIMEOUT' not in scope.get('env', {})
+    for name in ('Verify embedded version identity', 'Check thread discipline',
+                 'Report plugin imports'):
+        checks = [step for step in job['steps'] if step.get('name') == name]
+        assert len(checks) == 1 and checks[0]['if'] == 'matrix.shard == 0'
+        assert not checks[0].get('continue-on-error', False)
+    args = shlex.split(main['run'])
     assert args[:3] == ['python', '-m', 'pytest']
     assert args[args.index('-n') + 1] == '2'
     assert args[args.index('--dist') + 1] == 'loadfile'
@@ -49,10 +65,14 @@ def test_ci_routes_desktop_tests_to_a_bounded_native_step():
 
     desktop = steps[steps.index(main) + 1]
     assert desktop['name'] == 'Run native desktop tests'
-    assert desktop['shell'] == 'pwsh' and desktop['if'] == 'always()'
+    assert desktop['shell'] == 'pwsh' and desktop['if'] == 'always() && matrix.shard == 0'
     assert desktop['continue-on-error'] is True
     assert desktop['timeout-minutes'] == 15
     assert 'QT_QPA_PLATFORM' not in desktop.get('env', {})
+    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+    for scope in (workflow, workflow['jobs']['test'], desktop):
+        assert 'SAMSARA_TEST_SHARD_INDEX' not in scope.get('env', {})
+        assert 'SAMSARA_TEST_SHARD_TOTAL' not in scope.get('env', {})
     unset, command = desktop['run'].strip().splitlines()
     assert unset == 'Remove-Item Env:\\QT_QPA_PLATFORM -ErrorAction SilentlyContinue'
     assert shlex.split(command) == [
@@ -68,9 +88,12 @@ def test_ci_preserves_coverage_and_uploads_junit_even_on_failure():
     upload = next(step for step in steps if step.get('name') == 'Upload test reports')
     assert upload['if'] == 'always()'
     assert upload['uses'].startswith('actions/upload-artifact@')
+    assert upload['with']['name'] == 'test-reports-${{ matrix.shard }}'
     assert set(upload['with']['path'].splitlines()) == {'junit.xml', 'coverage.xml'}
     codecov = next(step for step in steps if step.get('name') == 'Upload coverage report')
     assert codecov['if'] == 'always()' and codecov['with']['files'] == './coverage.xml'
+    assert codecov['with']['name'] == 'test-coverage-${{ matrix.shard }}'
+    assert codecov['with']['flags'] == 'shard-${{ matrix.shard }}'
 
 
 def test_capture_callbacks_drain_followup_work_in_order():

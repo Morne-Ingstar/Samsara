@@ -20,6 +20,10 @@ jobs:
     # supported runtime and fails before the meaningful suites can run.
     runs-on: windows-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
 
     steps:
       - name: Checkout code
@@ -35,19 +39,23 @@ jobs:
             requirements-test.txt
 
       - name: Verify embedded version identity
+        if: matrix.shard == 0
         shell: pwsh
         run: python tools\check_release_version.py
 
       - name: Set up Node.js for browser-extension tests
+        if: matrix.shard == 0
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Test Show Numbers browser extension
+        if: matrix.shard == 0
         shell: pwsh
         run: node --test browser_extension/content-core.test.js browser_extension/bridge-auth-core.test.js
 
       - name: Check Qt discipline
+        if: matrix.shard == 0
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -65,10 +73,12 @@ jobs:
       # tree undetected. It needs no dependencies -- stdlib only -- so it runs
       # before the suite and fails fast.
       - name: Check thread discipline
+        if: matrix.shard == 0
         shell: pwsh
         run: python tools\check_thread_discipline.py
 
       - name: Report plugin imports
+        if: matrix.shard == 0
         shell: pwsh
         run: python tools/ci_plugin_import_report.py
 
@@ -77,13 +87,15 @@ jobs:
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
+          SAMSARA_TEST_SHARD_INDEX: ${{ matrix.shard }}
+          SAMSARA_TEST_SHARD_TOTAL: '4'
         # A thread timeout/native crash retires one worker; the controller
         # reports that test as failed and continues with replacement workers.
         # Keep each file together so its module/session state stays local.
         run: python -m pytest -m "not requires_desktop" -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
 
       - name: Run native desktop tests
-        if: always()
+        if: always() && matrix.shard == 0
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 15
@@ -95,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-reports
+          name: test-reports-${{ matrix.shard }}
           path: |
             junit.xml
             coverage.xml
@@ -105,5 +117,7 @@ jobs:
         if: always()
         with:
           files: ./coverage.xml
+          name: test-coverage-${{ matrix.shard }}
+          flags: shard-${{ matrix.shard }}
           fail_ci_if_error: false
         continue-on-error: true

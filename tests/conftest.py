@@ -609,6 +609,35 @@ def pytest_collection_modifyitems(config, items):
             if item.get_closest_marker('real_audio'):
                 item.add_marker(skip)
 
+    # CRC32 gave 7527/3496/4701/4134 tests on the real collection. Pack largest
+    # files first instead; relative POSIX paths break ties on every CI runner.
+    index = os.environ.get('SAMSARA_TEST_SHARD_INDEX')
+    total = os.environ.get('SAMSARA_TEST_SHARD_TOTAL')
+    if index is None or total is None:
+        return
+    try:
+        index, total = int(index), int(total)
+    except ValueError:
+        raise pytest.UsageError('test shard index and total must be integers') from None
+    if total < 1 or not 0 <= index < total:
+        raise pytest.UsageError('test shard requires total > 0 and 0 <= index < total')
+    counts = {}
+    for item in items:
+        path = item.path.relative_to(config.rootpath).as_posix()
+        counts[path] = counts.get(path, 0) + 1
+    loads, assignments = [0] * total, {}
+    for path in sorted(counts, key=lambda path: (-counts[path], path)):
+        target = min(range(total), key=lambda shard: loads[shard])
+        assignments[path] = target
+        loads[target] += counts[path]
+    kept, deselected = [], []
+    for item in items:
+        path = item.path.relative_to(config.rootpath).as_posix()
+        (kept if assignments[path] == index else deselected).append(item)
+    items[:] = kept
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item):
