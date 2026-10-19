@@ -22,6 +22,10 @@ from samsara.message_durations import message_duration_ms
 
 @pytest.fixture
 def surface(qapp, monkeypatch, qt_widget_scope):
+    from samsara import execution_policy as policy
+    # Synthetic command receipts own their question; another test's pending
+    # operation must not give it a different, process-global policy owner.
+    monkeypatch.setattr(policy, 'pending_operation', lambda: None)
     previous = theme.active_theme()
     monkeypatch.setattr('samsara.live_surface.controller.qt_runtime.post', lambda *_: None)
     clock = [0.0]

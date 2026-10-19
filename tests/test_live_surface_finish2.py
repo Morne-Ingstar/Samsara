@@ -6,7 +6,6 @@ from types import SimpleNamespace, MethodType
 from unittest.mock import Mock
 import ast
 import threading
-from time import monotonic
 
 import pytest
 from PySide6.QtCore import Qt
@@ -38,15 +37,13 @@ def surface(qapp, monkeypatch, qt_widget_scope):
 
 
 def settle(controller):
-    """Let the real resize animation finish before inspecting its controls."""
+    """Finish the real resize deterministically before testing its controls."""
     from PySide6.QtCore import QAbstractAnimation
-    deadline = monotonic() + 2
-    while (controller.widget._animation is not None
-           and controller.widget._animation.state() is QAbstractAnimation.State.Running
-           and monotonic() < deadline):
-        QTest.qWait(10)
-    assert (controller.widget._animation is None
-            or controller.widget._animation.state() is QAbstractAnimation.State.Stopped)
+    animation = controller.widget._animation
+    if animation is not None:
+        animation.setCurrentTime(animation.duration())
+        assert animation.state() is QAbstractAnimation.State.Stopped
+        assert controller.widget.geometry() == animation.endValue()
 
 
 def flush(posted):

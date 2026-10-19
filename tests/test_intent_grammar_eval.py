@@ -43,6 +43,7 @@ report (both coverages over both corpora, by phrasing kind, the 20 worst
 commands with an example failure, negatives, tier 1+2 latency).
 """
 
+import ast
 import contextlib
 import hashlib
 import importlib.util
@@ -55,6 +56,9 @@ import pytest
 
 from samsara.intent import resolve as rs
 from samsara.command_scope import MatchContext
+from samsara import plugin_commands
+
+_load_real_plugins = plugin_commands.load_plugins
 
 REPO = Path(__file__).resolve().parent.parent
 FIXTURE = REPO / "tests" / "fixtures" / "426" / "intent_eval_sha256.json"
@@ -98,12 +102,39 @@ def gen():
     return module
 
 
-@pytest.fixture(scope="module")
-def catalog(gen):
-    with contextlib.redirect_stdout(io.StringIO()):
-        records, reserved = gen.load_catalog()
+def _declared_catalog(gen):
+    """Measure shipped declarations before the runtime Claude alias handoff."""
+    from plugins.commands import message_claude
+    tree = ast.parse(Path(message_claude.__file__).read_text(encoding="utf-8"))
+    handler = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name == "handle_claude_message_prepare")
+    declaration = next(node for node in handler.decorator_list if isinstance(node, ast.Call)
+                       and isinstance(node.func, ast.Name) and node.func.id == "command")
+    aliases = ast.literal_eval(next(kw.value for kw in declaration.keywords if kw.arg == "aliases"))
+    entry = plugin_commands._MODULE_ENTRIES[message_claude.__name__]["claude message prepare"]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(entry, "aliases", aliases)
+        patch.setattr(plugin_commands, "load_plugins", _load_real_plugins)
+        with contextlib.redirect_stdout(io.StringIO()):
+            records, reserved = gen.load_catalog()
     # Ignored owner-local demo commands cannot be included in portable data.
     return [r for r in records if r["plugin"] != "demo_commands"], reserved
+
+
+@pytest.fixture(scope="module")
+def catalog(gen):
+    return _declared_catalog(gen)
+
+
+def test_catalog_keeps_declared_alias_after_runtime_handoff(gen, monkeypatch):
+    from plugins.commands import message_claude
+    entry = plugin_commands._MODULE_ENTRIES[message_claude.__name__]["claude message prepare"]
+    handed_off = [alias for alias in entry["aliases"] if alias != "ask claude"]
+    monkeypatch.setitem(entry, "aliases", handed_off)
+    records, _ = _declared_catalog(gen)
+    desktop = next(r for r in records if r["canonical_id"] == "message_claude.claude_message_prepare")
+    assert "ask claude" in desktop["aliases"]
+    assert entry["aliases"] == handed_off
 
 
 @pytest.fixture(scope="module")

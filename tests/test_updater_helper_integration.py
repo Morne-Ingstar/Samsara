@@ -94,7 +94,9 @@ def _write_rollback_source_missing_runner(
         "    $j.message = 'healthy staged test startup'\n"
         "    $j | ConvertTo-Json -Compress | "
         "Set-Content -LiteralPath $p -Encoding UTF8\n"
-        "    exit 0\n"
+        # A real staged app stays alive until the helper stops it. Exiting
+        # here races the helper's status read against its HasExited check.
+        "    while ($true) { Start-Sleep -Seconds 1 }\n"
         "}\n"
         "if ([IO.Path]::GetFullPath($PSScriptRoot) -ieq [IO.Path]::GetFullPath($install)) {\n"
         "    Remove-Item -LiteralPath $rollback -Recurse -Force\n"
@@ -109,6 +111,21 @@ def _write_rollback_source_missing_runner(
         "exit /b %ERRORLEVEL%\r\n",
         encoding="utf-8",
     )
+
+
+def _direct_handshake_processes(script):
+    """Launch the fake PowerShell app itself so preflight owns its lifetime."""
+    powershell = "'" + str(_system_powershell_path()).replace("'", "''") + "'"
+    for location in ("$staged", "$install"):
+        original = (f"Start-Process -FilePath (Join-Path {location} $executable) "
+                    f"-WorkingDirectory {location} -PassThru")
+        replacement = (f"Start-Process -FilePath {powershell} -ArgumentList "
+                       "@('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', "
+                       f"'-File', ('\"' + (Join-Path {location} 'handshake.ps1') + '\"')) "
+                       f"-WorkingDirectory {location} -WindowStyle Hidden -PassThru")
+        assert script.count(original) == 1
+        script = script.replace(original, replacement)
+    return script
 
 
 def _write_relaunch_marker_runner(path, marker_path):
@@ -221,7 +238,7 @@ def test_missing_rollback_source_preserves_current_installation(tmp_path):
         executable_name="runner.cmd",
     )
     helper.write_text(
-        _helper_script(prepared, current_pid=2_000_000_000),
+        _direct_handshake_processes(_helper_script(prepared, current_pid=2_000_000_000)),
         encoding="utf-8-sig",
     )
 
@@ -250,7 +267,10 @@ def test_missing_rollback_source_preserves_current_installation(tmp_path):
 
     # _helper_script documents exit 3 for a failed rollback. The guard runs
     # before Remove-Item $install, so the failing current tree is preserved.
-    assert completed.returncode == 3, completed.stdout
+    receipt = json.loads(status.read_text(encoding="utf-8-sig"))
+    assert completed.returncode == 3, (completed.stdout, receipt)
+    assert receipt["state"] == "failed"
+    assert "known-good rollback directory is missing" in receipt["message"]
     assert (install / "new-version.txt").read_text(encoding="utf-8") == "new"
     assert not (install / "old-version.txt").exists()
     assert not rollback.exists()

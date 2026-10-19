@@ -103,10 +103,10 @@ def test_staged_draft_survives_sleep_and_returns_on_the_next_session():
     rig.open_session()
     assert rig.manager.dictate_pending_buffer == staged
     assert rig.manager.retained_draft == ""
-    # The restored draft is a normal pending thought: scratch pops a chunk, end commits.
+    # The restored draft follows the configured commit word, just like a new draft.
     assert rig.say("scratch that").kind == "scratch_success"
     assert rig.manager.dictate_pending_buffer == "First half of the thought."
-    assert rig.say("end").kind == "dictate_committed"
+    assert rig.say(sm.DICTATE_COMMIT_PHRASE).kind == "dictate_committed"
     assert rig.injected == ["First half of the thought."]
 
 
