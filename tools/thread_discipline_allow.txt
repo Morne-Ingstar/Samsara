@@ -2,10 +2,6 @@
 # One "relative/path.py:lineno" per line. Add a comment above each entry
 # explaining why it isn't routed through samsara.runtime.thread_registry.
 
-# Explicitly out of scope per the thread-registry migration task: a small
-# standalone subprocess helper, not part of the app's own thread lifecycle.
-plugins/assets/sleep_overlay.py:79
-
 # Standalone throwaway architecture spike -- docstring says "Does NOT import
 # Samsara modules"; not part of the shipped app.
 tools/qt_threading_spike.py:456
