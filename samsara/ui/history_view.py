@@ -1077,7 +1077,7 @@ class _DetailCard(QFrame):
         body = copy_text(row) or list_text(row)
         self.text.setPlainText(body)
         self.fit_text()
-        QTimer.singleShot(0, self.fit_text)   # again once the card has its real width
+        QTimer.singleShot(0, self, self.fit_text)   # cancel if the card is destroyed
 
         corrected = is_corrected(row)
         self.heard_as.setVisible(corrected)
@@ -1507,7 +1507,7 @@ class HistoryView(QWidget):
         if self._relayout_pending:
             return
         self._relayout_pending = True
-        QTimer.singleShot(0, self._relayout_rows)
+        QTimer.singleShot(0, self, self._relayout_rows)
 
     def _relayout_rows(self):
         self._relayout_pending = False
