@@ -2,6 +2,31 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.9] - 2026-10-20
+
+Steadier: a History crash, the Ava PC check and Home at higher scaling are fixed, and hands-free drafts get Clean up.
+
+### Hands-free
+
+- The hands-free draft has a Clean up button (or say "clean up"). It proposes an edit, Clean up turns into Accept? and Clear draft into Cancel, so you can take or drop the change without saying "apply".
+
+### Fixes
+
+- Closing or reopening the History page can no longer crash Samsara.
+- The PC check in the Ava setup guide no longer fails on every PC. Graphics adapters that report missing or odd details are skipped instead of stopping the check.
+- Home no longer cuts off at 100-150% Windows scaling with larger text.
+- "Snap <app> left" (and right) moves that app, not the window in front.
+- The four workflow capture commands are available even when Windows' WMI module fails to load.
+- A command Samsara did not recognise now shows on Home as a miss.
+- Going back to the previous version after an update keeps the details needed to restore your customisations.
+- Quitting no longer trips over the keyboard focus outline.
+
+### Settings
+
+- Add Alarm dialogs follow the light or dark theme.
+- The agent typing and approval settings save and load correctly.
+- An internal speech-decoding setting no longer shows in Settings.
+
 ## [0.30.0-beta.8] - 2026-10-17
 
 Lighter and faster: no idle CPU drain, quicker theme switching, and a way back to the previous version after an update.
