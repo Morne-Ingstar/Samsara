@@ -41,6 +41,14 @@ def run_child(tmp_path, source, *, hard='5', soft='1', extra=(), conftest_extra=
     """Use the real shared hooks in an isolated, bounded child pytest process."""
     shutil.copyfile(Path(__file__).with_name('conftest.py'), tmp_path / 'conftest.py')
     with (tmp_path / 'conftest.py').open('a', encoding='utf-8') as handle:
+        handle.write(textwrap.dedent('''
+
+            @pytest.fixture(autouse=True)
+            def _speech_presence_unknown_for_decoder_fixtures():
+                # Watchdog probes have no decoders. Keep cold numpy imports
+                # out of their sub-second budgets, including replacement workers.
+                pass
+        '''))
         handle.write('\n' + textwrap.dedent(conftest_extra))
     (tmp_path / 'test_probe.py').write_text(textwrap.dedent(source), encoding='utf-8')
     (tmp_path / 'pytest.ini').write_text('[pytest]\n', encoding='utf-8')
@@ -171,7 +179,8 @@ def test_native_gil():
     native_block(60)
 
 def test_after_crash():
-    assert True
+    assert 'samsara.speech_presence' not in sys.modules
+    assert 'numpy' not in sys.modules
 ''', hard='0.5', soft='0', extra=(
         '-p', 'xdist.plugin', '-n', '1', '--dist', 'loadfile', '--max-worker-restart=2'))
     assert result.returncode == 1, result.stdout + result.stderr
