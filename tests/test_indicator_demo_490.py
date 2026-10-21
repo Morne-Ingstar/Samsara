@@ -1,5 +1,6 @@
 """Hermetic Qt-thread checks of illustrative state, geometry and input."""
 import pytest
+from time import monotonic
 from PySide6.QtCore import Qt, QTimer, QCoreApplication, QEvent, QAbstractAnimation
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
@@ -95,16 +96,23 @@ def test_timer_visibility_and_restart(ui):
 
 def test_timer_drives_real_transition(ui):
     # Use the production timeout slot and real elapsed clock with short beats.
+    seen = []
     def check():
         widget = IndicatorDemo(reduced_motion=False)
         widget.BEAT_MS, widget.LOOP_MS = 80, 400
+        widget.beat_changed.connect(seen.append)
         widget.show()
         return widget
     widget = ui(check)
-    seen = []
-    ui(lambda: widget.beat_changed.connect(seen.append))
-    QTest.qWait(450)
-    assert seen[:5] == [1, 2, 3, 4, 0]
+    deadline = monotonic() + 5.0
+    while len(seen) < 5 and monotonic() < deadline:
+        QTest.qWait(10)
+    # Showing the widget may process events, so observe the cycle contract
+    # without assuming which beat is first when control returns.
+    assert len(seen) >= 5, seen
+    assert 0 in seen, seen
+    assert all(current == (previous + 1) % 5
+               for previous, current in zip(seen, seen[1:])), seen
     ui(lambda: (widget.hide(), widget.deleteLater()))
 
 

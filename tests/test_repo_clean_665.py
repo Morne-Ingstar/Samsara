@@ -53,6 +53,7 @@ def source_files(root):
     for parent, dirs, files in os.walk(root, followlinks=False):
         dirs[:] = sorted(name for name in dirs
                          if name not in LOCAL_DIRS
+                         and not name.startswith("ci-")
                          and not name.startswith(".pytest_tmp")
                          and not (Path(parent) / name).is_symlink()
                          and (Path(parent) / name).relative_to(root).as_posix()
@@ -126,10 +127,11 @@ def test_guard_retains_public_and_synthetic_terms(tmp_path):
 
 
 def test_guard_skips_local_artifacts_without_leaving_source_exempt(tmp_path):
-    local = tmp_path / "build"
-    local.mkdir()
     private = "C:" + "/Users/" + OWNER + "/file.txt"
-    (local / "output.txt").write_text(private, encoding="utf-8")
+    for directory in ("build", "ci-hang-report", "ci-scratch"):
+        local = tmp_path / directory
+        local.mkdir()
+        (local / "output.txt").write_text(private, encoding="utf-8")
     (tmp_path / "binary.png").write_bytes(b"\0" + private.encode())
     assert findings(tmp_path) == []
     (tmp_path / "new_source.txt").write_text(private, encoding="utf-8")

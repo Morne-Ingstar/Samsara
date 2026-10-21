@@ -201,7 +201,11 @@ def test_silence_warnings_follow_the_value(qapp):
     ("go to sleep", "already built in"),
     ("um", "ignored"),
 ])
-def test_abort_phrase_that_breaks_a_built_in_is_warned(qapp, phrase, fragment):
+def test_abort_phrase_that_breaks_a_built_in_is_warned(qapp, monkeypatch, phrase, fragment):
+    # This case chooses the legacy paste word; boot or a previous manager may
+    # have configured "finish". Restore both runtime values after each case.
+    monkeypatch.setattr(sm, "DICTATE_COMMIT_PHRASE", "end")
+    monkeypatch.setattr(sm, "_DICTATE_COMMIT_HOMOPHONES", frozenset({"end"}))
     _app, win, _save = _win({})
     win._widgets['cmd_abort_phrases'].setPlainText(f"over and out\n{phrase}")
     warn = win._widgets['cmd_abort_phrases_warn']
