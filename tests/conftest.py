@@ -349,6 +349,16 @@ def pytest_xdist_make_scheduler(config, log):
     from xdist.scheduler.loadfile import LoadFileScheduling
 
     class HardWatchdogLoadFileScheduling(LoadFileScheduling):
+        def _reschedule(self, node):
+            super()._reschedule(node)
+            # A crash requeues completed file scopes too. Empty assignments
+            # cannot satisfy remote.run_one_test's blocking lookahead read.
+            while (not node.shutting_down and self.workqueue
+                   and self._pending_of(self.assigned_work[node]) < 2):
+                super()._reschedule(node)
+            if not self.workqueue and not node.shutting_down:
+                node.shutdown()
+
         def remove_node(self, node):
             # xdist 3.8 requeues the entire unfinished file, including the
             # crashed item. Mark that item complete before it reassigns work,

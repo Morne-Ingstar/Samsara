@@ -15,6 +15,24 @@ from tests import conftest as support
 from tests.test_ci_hard_watchdog_700 import run_child
 
 
+@pytest.mark.parametrize('completed_scopes', [0, 3])
+def test_replacement_singleton_gets_lookahead_or_shutdown(completed_scopes):
+    config = SimpleNamespace(option=SimpleNamespace(dist='loadfile'),
+                             getvalue=lambda name: ['popen', 'popen'])
+    scheduler = support.pytest_xdist_make_scheduler(config, None)
+    node = Mock(shutting_down=False)
+    scheduler.add_node(node)
+    scheduler.registered_collections[node] = ['last.py::test_last']
+    scheduler.workqueue['last.py'] = {'last.py::test_last': False}
+    for number in range(completed_scopes):
+        scope = f'done{number}.py'
+        scheduler.workqueue[scope] = {scope + '::test_done': True}
+    scheduler._reschedule(node)
+    assert node.send_runtest_some.call_args_list[0].args == ([0],)
+    assert not scheduler.workqueue
+    node.shutdown.assert_called_once()
+
+
 @pytest.mark.parametrize('config', [SimpleNamespace(),
                                    SimpleNamespace(option=SimpleNamespace(numprocesses=2))])
 def test_guard_never_runs_in_controller_or_plain_pytest(monkeypatch, config):
