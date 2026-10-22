@@ -169,6 +169,20 @@ SETTINGS_SCHEMA = {
         "tab": "general", "settings_ui": False,
         "ui_less_reason": "Maximum seconds to wait for a CLI answer.",
     },
+    "agent_voice.digest": {
+        "type": "enum", "default": "auto", "options": ["auto", "off"],
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Local spoken digest of agent replies; off uses the word cut.",
+    },
+    "agent_voice.digest_budget_s": {
+        "type": "float", "min": 0.1, "max": 30.0, "default": 6.0,
+        "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Maximum seconds to wait for a local spoken digest.",
+    },
+    "agent_voice.digest_model": {
+        "type": "str", "default": "", "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Optional digest model override; empty uses Ava's Ollama model.",
+    },
     "claude_voice.enabled": {
         "type": "bool", "default": True, "tab": "general",
         "settings_ui": False,

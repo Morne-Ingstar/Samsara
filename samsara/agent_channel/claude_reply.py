@@ -323,9 +323,12 @@ def start_after_send(app, context: SendContext | None) -> None:
             reply = watch_for_reply(context.hwnd, context.after_message_index, timeout)
             if _state(app)["token"] is not token:
                 return
-            first, rest = spoken_form(reply, _word_cap(app.config))
-            state["rest"] = rest
-            _speak(app, first or "Claude answered on screen.", token, on_done=resume)
+            from .spoken_digest import first_reply
+            first = first_reply(app, reply, source="claude")
+            if _state(app)["token"] is not token:
+                return
+            state["rest"] = reply
+            _speak(app, first.spoken, token, on_done=resume)
         except WindowGone:
             _speak(app, "I lost the Claude window", token, on_done=resume)
         except (ReplyTimeout, NoNewNode):

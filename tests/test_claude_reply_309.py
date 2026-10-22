@@ -8,6 +8,15 @@ from unittest.mock import Mock
 import pytest
 
 from samsara.agent_channel import claude_reply as reply
+from samsara.agent_channel import spoken_digest
+
+
+@pytest.fixture(autouse=True)
+def mock_digest(monkeypatch):
+    def first(app, text, *, source):
+        return spoken_digest.Digest(reply.spoken_form(text, reply._word_cap(app.config))[0],
+                                    [], "cut")
+    monkeypatch.setattr(spoken_digest, "first_reply", first)
 
 
 class FakeControl:
@@ -194,7 +203,36 @@ def test_watcher_uses_registered_thread_and_conversation_speech(monkeypatch):
     spawned[0][1]()
     text, kwargs = current.audio_coordinator.calls[-1]
     assert text == "Hello from Claude."
+    assert reply._state(current)["rest"] == "Hello from Claude."
     assert kwargs["category"] == "conversation" and kwargs["interruptible"] is True
+
+
+def test_digest_first_speech_keeps_entire_reply_for_read_rest(monkeypatch):
+    current = app(cap=3)
+    full = "The full answer has several details on screen."
+    monkeypatch.setattr(reply.thread_registry, "spawn", lambda name, target: target())
+    monkeypatch.setattr(reply, "watch_for_reply", lambda *args: full)
+    monkeypatch.setattr(spoken_digest, "first_reply", lambda *args, **kw:
+                        spoken_digest.Digest("A short digest.", [], "local"))
+    reply.start_after_send(current, reply.SendContext(123, 2, "Project - Claude"))
+    assert current.audio_coordinator.calls[-1][0] == "A short digest."
+    assert reply._state(current)["rest"] == full
+    assert reply.followup(current, "read the rest")
+    assert current.audio_coordinator.calls[-1][0] == "The full answer"
+
+
+def test_reply_replaced_during_digest_is_not_spoken(monkeypatch):
+    current = app()
+    monkeypatch.setattr(reply.thread_registry, "spawn", lambda name, target: target())
+    monkeypatch.setattr(reply, "watch_for_reply", lambda *args: "Original answer.")
+
+    def first(*args, **kwargs):
+        reply._state(current)["token"] = object()
+        return spoken_digest.Digest("Old digest.", [], "local")
+
+    monkeypatch.setattr(spoken_digest, "first_reply", first)
+    reply.start_after_send(current, reply.SendContext(123, 2, "Project - Claude"))
+    assert not current.audio_coordinator.calls
 
 
 @pytest.mark.parametrize("failure,spoken", [(reply.NoNewNode, "Claude didn't answer"),

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from samsara.agent_channel.claude_reply import spoken_form
+from samsara.agent_channel.spoken_digest import first_reply
 from samsara.config_defaults import DEFAULTS
 from samsara.paths import samsara_home_dir
 from samsara.runtime import thread_registry

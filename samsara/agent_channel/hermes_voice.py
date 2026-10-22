@@ -7,6 +7,7 @@ from samsara.config_defaults import cfg_get
 from samsara.runtime import thread_registry
 from . import cli_agents
 from .claude_reply import spoken_form
+from .spoken_digest import first_reply
 from .hermes import BusyError, Cancelled, EFFORTS, permitted
 
 
@@ -155,13 +156,13 @@ def ask(app, question):
             if not valid():
                 return
             waiting(app, False, turn)
-            first, rest = spoken_form(result.text, 60)
+            first = first_reply(app, result.text, source="hermes").spoken
             with agent._state_lock:
                 if not valid():
                     return
                 app._cli_agent_last = result
                 app._cli_agent_voice_state = {"agent": "hermes", "turn": turn,
-                    "last": first, "rest": rest, "expires": time.monotonic() + 60}
+                    "last": first, "rest": result.text, "expires": time.monotonic() + 60}
             chip(app, first[:220] or "Answered", valid=valid)
             play(app, first, result=True, valid=valid)
         except Cancelled:

@@ -4,7 +4,6 @@ from __future__ import annotations
 import time
 
 from samsara.agent_channel import cli_agents
-from samsara.agent_channel.claude_reply import spoken_form
 from samsara.command_registry import DispatchState
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
@@ -53,8 +52,8 @@ def ask_cli(app, name: str, question: str):
         try:
             config = (getattr(app, "config", {}) or {}).get("agent_channel", {}) or {}
             result = cli_agents.agent(name).ask(question, config)
-            first, rest = spoken_form(result.text, 60)
-            app._cli_agent_voice_state = {"last": first, "rest": rest,
+            first = cli_agents.first_reply(app, result.text, source=name).spoken
+            app._cli_agent_voice_state = {"last": first, "rest": result.text,
                                           "expires": time.monotonic() + 60}
             app._cli_agent_last = result
             _say(app, first or f"{name} answered on screen")
