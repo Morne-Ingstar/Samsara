@@ -35,7 +35,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
+    QListWidgetItem, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 from PySide6.QtGui import QDesktopServices
 
@@ -60,6 +60,7 @@ OPEN_FILE = "Open the raw file"
 CATEGORY_LABEL = "Category"
 UNCATEGORISED = "Uncategorised"
 NO_MEMOS = "No memos yet. Hold Ctrl+Alt+M, or say \"take a memo\", and talk."
+EMPTY_MEMOS = "Record a voice or video memo with the buttons above."
 NO_MATCHES = "No memo matches that search."
 NO_AUDIO = "No audio kept for this one."
 NO_VIDEO = "This video's file is missing."
@@ -179,6 +180,43 @@ class MemosPage(QWidget):
         lay.setContentsMargins(GRID, GRID, GRID, GRID)
         lay.setSpacing(GRID)
 
+        record_row = QHBoxLayout()
+        record_row.setSpacing(GRID)
+        self._record_voice_btn = self._button("Record voice memo (Alt+R)", self.record_voice_memo)
+        self._record_video_btn = self._button("Record video memo (Alt+V)", self.record_video_memo)
+        for button in (self._record_voice_btn, self._record_video_btn):
+            button.setFixedWidth(button.sizeHint().width())
+        record_row.addWidget(self._record_voice_btn)
+        record_row.addWidget(self._record_video_btn)
+        record_row.addStretch(1)
+        lay.addLayout(record_row)
+
+        memo_help_row = QHBoxLayout()
+        memo_help_row.setSpacing(0)
+        self._memo_keys = QLabel("")
+        self._memo_keys.setAccessibleName("Memo recording keys")
+        self._memo_keys.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
+            " background: transparent;")
+        memo_help_row.addWidget(self._memo_keys)
+        self._settings_link = QPushButton("Settings")
+        self._settings_link.setAccessibleName("Settings (Alt+S)")
+        self._settings_link.setMinimumHeight(MIN_TARGET)
+        self._settings_link.setMinimumWidth(MIN_TARGET)
+        self._settings_link.setFlat(True)
+        self._settings_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._settings_link.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._settings_link.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: 1px solid transparent; padding: 0 6px;"
+            f" color: {theme.TEXT_SECONDARY}; text-decoration: none; font-weight: 700;"
+            f" font-size: {theme.TYPE_BODY}px; text-align: left; }}"
+            f"QPushButton:hover {{ color: {theme.ACCENT}; }}"
+            f"QPushButton:focus {{ color: {theme.ACCENT}; border: 1px solid {theme.ACCENT}; border-radius: 3px; }}")
+        self._settings_link.clicked.connect(self.open_memo_settings)
+        memo_help_row.addWidget(self._settings_link)
+        memo_help_row.addStretch(1)
+        lay.addLayout(memo_help_row)
+
         # Search row. The label carries the shortcut, so the shortcut is
         # never something the user had to be told somewhere else.
         search_row = QHBoxLayout()
@@ -187,15 +225,20 @@ class MemosPage(QWidget):
         label.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
             " background: transparent;")
+        label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         search_row.addWidget(label)
         self._search = QLineEdit()
         self._search.setPlaceholderText(SEARCH_PLACEHOLDER)
         self._search.setAccessibleName(SEARCH_LABEL)
         self._search.setClearButtonEnabled(True)
         self._search.setMinimumHeight(MIN_TARGET)
+        # Fit the placeholder plus padding and clear affordance; don't let
+        # the search control stretch across the content column.
+        search_width = self._search.fontMetrics().horizontalAdvance(SEARCH_PLACEHOLDER) + 72
+        self._search.setFixedWidth(max(220, search_width))
         self._search.textChanged.connect(self._apply_filter)
         label.setBuddy(self._search)
-        search_row.addWidget(self._search, stretch=1)
+        search_row.addWidget(self._search, alignment=Qt.AlignmentFlag.AlignLeft)
         lay.addLayout(search_row)
 
         self._list = QListWidget()
@@ -209,6 +252,15 @@ class MemosPage(QWidget):
         self._list.currentRowChanged.connect(self._on_selection)
         self._list.itemActivated.connect(lambda _item: self.play_selected())
         lay.addWidget(self._list, stretch=1)
+        self._empty = QLabel(EMPTY_MEMOS)
+        self._empty.setWordWrap(True)
+        self._empty.setAccessibleName(EMPTY_MEMOS)
+        self._empty.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
+            f" background: {theme.BG0}; border: 1px solid {theme.BORDER};"
+            " border-radius: 8px; padding: 16px;")
+        self._empty.setMinimumHeight(MIN_TARGET + GRID)
+        lay.insertWidget(lay.indexOf(self._list), self._empty, stretch=1)
 
         # The full transcript of the selected memo, at reading size.
         self._detail = QLabel("")
@@ -269,7 +321,8 @@ class MemosPage(QWidget):
         footer.addWidget(self._raw_btn)
         lay.addLayout(footer)
 
-        chain = [self._search, self._list, self._play_btn, self._copy_btn,
+        chain = [self._record_voice_btn, self._record_video_btn, self._settings_link,
+                 self._search, self._list, self._play_btn, self._copy_btn,
                  self._delete_btn, self._confirm_btn, self._cancel_btn,
                  self._category, self._raw_btn]
         for first, second in zip(chain, chain[1:]):
@@ -300,6 +353,7 @@ class MemosPage(QWidget):
 
     def reload(self):
         """Re-read the store. Cheap enough to call whenever the page opens."""
+        self._refresh_memo_keys()
         try:
             self._records = list(reversed(quick_memo.load_memos(self._home)))
         except Exception as exc:
@@ -307,6 +361,68 @@ class MemosPage(QWidget):
             self._records = []
         self._reload_categories()
         self._apply_filter()
+
+    def _config(self):
+        config = getattr(self._app, "config", {})
+        return config if isinstance(config, dict) else {}
+
+    @staticmethod
+    def _pretty_hotkey(raw):
+        if not raw:
+            return "(not set)"
+        from samsara.ui.quick_reference_qt import _pretty_key_combo
+        return _pretty_key_combo(str(raw))
+
+    def _refresh_memo_keys(self):
+        config = self._config()
+        self._memo_hotkey = str(config.get("memo_hotkey", "ctrl+alt+m"))
+        self._cancel_hotkey = str(config.get("cancel_hotkey", "escape"))
+        self._memo_keys.setText(
+            f'Voice memo: {self._pretty_hotkey(self._memo_hotkey)}  {MIDDLE_DOT}  '
+            f'Video memo: say "record video memo"  {MIDDLE_DOT}  ')
+
+    def record_voice_memo(self):
+        self._refresh_memo_keys()
+        start = getattr(self._app, "start_memo_capture", None)
+        if not callable(start):
+            self._status.setText("Voice memo recording is unavailable.")
+            return False
+        try:
+            started = start()
+        except Exception as exc:
+            logger.warning("[MEMO] Capture start failed: %s", exc)
+            self._status.setText("Voice memo recording could not start.")
+            return False
+        if started is False:
+            self._status.setText("Voice memo recording could not start.")
+            return False
+        self._status.setText(
+            f"Say 'finish' or press {self._pretty_hotkey(self._memo_hotkey)} again to stop.")
+        return True
+
+    def record_video_memo(self):
+        self._refresh_memo_keys()
+        executor = getattr(self._app, "command_executor", None)
+        dispatch = getattr(executor, "process_text", None)
+        if not callable(dispatch):
+            self._status.setText("Video memo recording is unavailable.")
+            return False
+        try:
+            result = dispatch("record video memo", self._app, force_commands=True)
+        except Exception as exc:
+            logger.warning("[MEMO] Video capture start failed: %s", exc)
+            self._status.setText("Video memo recording could not start.")
+            return False
+        if result is False or getattr(result, "succeeded", True) is False:
+            self._status.setText("Video memo recording could not start.")
+            return False
+        self._status.setText(
+            f"Press {self._pretty_hotkey(self._cancel_hotkey)} to finish the video.")
+        return True
+
+    def open_memo_settings(self):
+        from samsara.ui.home_qt import open_settings_tab
+        return open_settings_tab(self._app, "Modes")
 
     def _reload_categories(self):
         try:
@@ -335,6 +451,9 @@ class MemosPage(QWidget):
             item.setData(Qt.ItemDataRole.AccessibleTextRole, self._spoken(record))
             self._list.addItem(item)
         self._list.blockSignals(False)
+        is_empty = not self._records and not self._search.text().strip()
+        self._empty.setVisible(is_empty)
+        self._list.setVisible(not is_empty)
         if self._filtered:
             self._list.setCurrentRow(0)
         self.cancel_delete()
@@ -371,7 +490,7 @@ class MemosPage(QWidget):
         self._category.setEnabled(has)
         if not has:
             self._detail.setText("")
-            self._status.setText(NO_MATCHES if self._records else NO_MEMOS)
+            self._status.setText(NO_MATCHES if self._records else "")
             return
         detail = record.get("text", "")
         if has_video:
@@ -531,6 +650,18 @@ class MemosPage(QWidget):
         test can exercise them without a window manager."""
         key = event.key()
         modifiers = event.modifiers()
+        if modifiers & Qt.KeyboardModifier.AltModifier and key == Qt.Key.Key_S:
+            self.open_memo_settings()
+            event.accept()
+            return
+        if modifiers & Qt.KeyboardModifier.AltModifier and key == Qt.Key.Key_R:
+            self.record_voice_memo()
+            event.accept()
+            return
+        if modifiers & Qt.KeyboardModifier.AltModifier and key == Qt.Key.Key_V:
+            self.record_video_memo()
+            event.accept()
+            return
         if key == Qt.Key.Key_F and modifiers & Qt.KeyboardModifier.ControlModifier:
             self._search.setFocus()
             self._search.selectAll()

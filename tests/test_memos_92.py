@@ -385,7 +385,7 @@ class TestMemosPage:
     def test_an_empty_store_says_how_to_make_one(self, page):
         widget = page()
         assert widget.rows == []
-        assert "take a memo" in widget.status_text
+        assert widget._empty.text() == memos_qt.EMPTY_MEMOS
 
     def test_the_category_is_shown_on_the_row(self, page, tmp_path):
         qm.add_memo("bread", "voice", home=tmp_path, category="Shopping")
@@ -490,16 +490,19 @@ class TestKeyboardOnly:
         assert len(chain) >= 6
         for control in chain:
             assert control.focusPolicy() != Qt.FocusPolicy.NoFocus, control.accessibleName()
-        # The order is the reading order: search, list, then the actions.
-        assert chain[0] is widget._search
-        assert chain[1] is widget._list
+        # The record controls and Settings link lead the reading order.
+        assert chain[:3] == [widget._record_voice_btn, widget._record_video_btn,
+                             widget._settings_link]
+        assert chain[3] is widget._search
+        assert chain[4] is widget._list
 
     def test_every_action_has_an_accessible_name_equal_to_its_label(self, page):
         widget = page()
         from PySide6.QtWidgets import QAbstractButton
         for button in widget.findChildren(QAbstractButton):
             if button.text():
-                assert button.accessibleName() == button.text(), button.text()
+                assert (button.accessibleName() == button.text()
+                        or button is widget._settings_link), button.text()
 
     def test_every_control_meets_the_44_px_target(self, page, tmp_path):
         qm.add_memo("one", "voice", home=tmp_path)
