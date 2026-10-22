@@ -1,0 +1,7126 @@
+{
+  "source": "740 recorded privacy-filtered live capture",
+  "elapsed_s": 0.594,
+  "truncated": false,
+  "nodes": [
+    {
+      "parent": -1,
+      "type": "WindowControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": "ChatGPT",
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 0,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 0,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": "ChatGPT",
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 2,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 3,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 19,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 4,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 20,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 5,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 4,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 6,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 7,
+      "type": "PaneControl",
+      "automation_id_chars": 2,
+      "class_chars": 27,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 8,
+      "type": "DocumentControl",
+      "automation_id_chars": 11,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 9,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "GroupControl",
+      "automation_id_chars": 4,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 11,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 107,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 12,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 13,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 93,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 14,
+      "type": "HyperlinkControl",
+      "automation_id_chars": 0,
+      "class_chars": 478,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 15,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 12,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 17,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 384,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 18,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 12,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 20,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 384,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 21,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 12,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 12,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 23,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 406,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 12,
+      "type": "MenuBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 35,
+      "label": null,
+      "name_chars": 16,
+      "name_words": 2
+    },
+    {
+      "parent": 25,
+      "type": "MenuItemControl",
+      "automation_id_chars": 34,
+      "class_chars": 224,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 25,
+      "type": "MenuItemControl",
+      "automation_id_chars": 34,
+      "class_chars": 224,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 25,
+      "type": "MenuItemControl",
+      "automation_id_chars": 34,
+      "class_chars": 224,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 25,
+      "type": "MenuItemControl",
+      "automation_id_chars": 34,
+      "class_chars": 224,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 12,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 46,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 30,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 119,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 31,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 109,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 32,
+      "type": "GroupControl",
+      "automation_id_chars": 17,
+      "class_chars": 207,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 33,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 650,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 2
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 298,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 298,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 298,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 1
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 298,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 298,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 309,
+      "label": null,
+      "name_chars": 11,
+      "name_words": 2
+    },
+    {
+      "parent": 34,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 309,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 34,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 21,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 42,
+      "type": "ProgressBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 194,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 2
+    },
+    {
+      "parent": 42,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 130,
+      "label": null,
+      "name_chars": 17,
+      "name_words": 3
+    },
+    {
+      "parent": 33,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 109,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 45,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 19,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 46,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 311,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 47,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 152,
+      "label": null,
+      "name_chars": 32,
+      "name_words": 5
+    },
+    {
+      "parent": 47,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 384,
+      "label": null,
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 47,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 50,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 384,
+      "label": null,
+      "name_chars": 6,
+      "name_words": 1
+    },
+    {
+      "parent": 47,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 1153,
+      "label": "New chat",
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 47,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 1147,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 46,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 318,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 54,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 35,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 55,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 239,
+      "label": null,
+      "name_chars": 6,
+      "name_words": 1
+    },
+    {
+      "parent": 55,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 754,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 57,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 2
+    },
+    {
+      "parent": 55,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 59,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 60,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 61,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 62,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 63,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 62,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 65,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 66,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 65,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 68,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 60,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 37,
+      "name_words": 5
+    },
+    {
+      "parent": 70,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 37,
+      "name_words": 5
+    },
+    {
+      "parent": 71,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 72,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 37,
+      "name_words": 5
+    },
+    {
+      "parent": 71,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 74,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 75,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 74,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 77,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 60,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 36,
+      "name_words": 4
+    },
+    {
+      "parent": 79,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 36,
+      "name_words": 4
+    },
+    {
+      "parent": 80,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 81,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 36,
+      "name_words": 4
+    },
+    {
+      "parent": 80,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 83,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 84,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 83,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 86,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 60,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 84,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 88,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 89,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 90,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 89,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 92,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 93,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 92,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 95,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 54,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 35,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 97,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 239,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 1
+    },
+    {
+      "parent": 97,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 754,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 99,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 3
+    },
+    {
+      "parent": 99,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 101,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 97,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 103,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 153,
+      "name_words": 18
+    },
+    {
+      "parent": 105,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 106,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 106,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 108,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 109,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 110,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 109,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 112,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 113,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 112,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 5
+    },
+    {
+      "parent": 106,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 116,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 117,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 4
+    },
+    {
+      "parent": 118,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 119,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 4
+    },
+    {
+      "parent": 120,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 120,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 122,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 4
+    },
+    {
+      "parent": 120,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 124,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 125,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 124,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 127,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 117,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 129,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 130,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 131,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 131,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 133,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 131,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 135,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 136,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 135,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 138,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 117,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 140,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 141,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 142,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 142,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 144,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 142,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 146,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 147,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 146,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 149,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 117,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 30,
+      "name_words": 4
+    },
+    {
+      "parent": 151,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 152,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 30,
+      "name_words": 4
+    },
+    {
+      "parent": 153,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 153,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 155,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 30,
+      "name_words": 4
+    },
+    {
+      "parent": 153,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 157,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 158,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 157,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 160,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 117,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 73,
+      "label": null,
+      "name_chars": 33,
+      "name_words": 4
+    },
+    {
+      "parent": 162,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 163,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 33,
+      "name_words": 4
+    },
+    {
+      "parent": 164,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 164,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 166,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 33,
+      "name_words": 4
+    },
+    {
+      "parent": 164,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 168,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 169,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 168,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 171,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 117,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 80,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 173,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 122,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 147,
+      "name_words": 18
+    },
+    {
+      "parent": 175,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 176,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 176,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 178,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 179,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 180,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 179,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 182,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 183,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 182,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 5
+    },
+    {
+      "parent": 176,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 186,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 4
+    },
+    {
+      "parent": 187,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 188,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 189,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 565,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 190,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 190,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 192,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 190,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 415,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 194,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 195,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 16,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 190,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 197,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 198,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 197,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 200,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 187,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 202,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 203,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 204,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 204,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 206,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 204,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 208,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 209,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 208,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 211,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 187,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 213,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 214,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 215,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 215,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 217,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 215,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 219,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 220,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 219,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 222,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 187,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 224,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 225,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 226,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 226,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 228,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 226,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 230,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 231,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 230,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 233,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 187,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 73,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 235,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 236,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 237,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 237,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 239,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 237,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 241,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 242,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 241,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 244,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 187,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 80,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 246,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 122,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 164,
+      "name_words": 22
+    },
+    {
+      "parent": 248,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 1
+    },
+    {
+      "parent": 249,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 249,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 251,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 1
+    },
+    {
+      "parent": 252,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 253,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 1
+    },
+    {
+      "parent": 252,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 255,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 256,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 34,
+      "name_words": 4
+    },
+    {
+      "parent": 255,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 32,
+      "name_words": 5
+    },
+    {
+      "parent": 249,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 259,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 33,
+      "name_words": 4
+    },
+    {
+      "parent": 260,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 6
+    },
+    {
+      "parent": 261,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 262,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 6
+    },
+    {
+      "parent": 263,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 263,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 265,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 6
+    },
+    {
+      "parent": 263,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 267,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 268,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 267,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 270,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 260,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 31,
+      "name_words": 7
+    },
+    {
+      "parent": 272,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 273,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 31,
+      "name_words": 7
+    },
+    {
+      "parent": 274,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 274,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 276,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 31,
+      "name_words": 7
+    },
+    {
+      "parent": 274,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 278,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 279,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 278,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 281,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 260,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 283,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 284,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 285,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 285,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 287,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 285,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 289,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 290,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 289,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 292,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 260,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 4
+    },
+    {
+      "parent": 294,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 295,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 4
+    },
+    {
+      "parent": 296,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 296,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 298,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 4
+    },
+    {
+      "parent": 296,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 300,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 301,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 300,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 303,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 260,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 73,
+      "label": null,
+      "name_chars": 32,
+      "name_words": 3
+    },
+    {
+      "parent": 305,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 306,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 32,
+      "name_words": 3
+    },
+    {
+      "parent": 307,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 307,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 309,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 32,
+      "name_words": 3
+    },
+    {
+      "parent": 307,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 311,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 312,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 311,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 314,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 260,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 80,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 316,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 122,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 2
+    },
+    {
+      "parent": 318,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 319,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 319,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 321,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 322,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 323,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 322,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 325,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 326,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 325,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 5
+    },
+    {
+      "parent": 319,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 329,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 330,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 6,
+      "name_words": 1
+    },
+    {
+      "parent": 332,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 6,
+      "name_words": 1
+    },
+    {
+      "parent": 333,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 333,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 335,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 6,
+      "name_words": 1
+    },
+    {
+      "parent": 336,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 337,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 6,
+      "name_words": 1
+    },
+    {
+      "parent": 336,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 339,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 340,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 4
+    },
+    {
+      "parent": 339,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 5
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 343,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 344,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 344,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 346,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 347,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 348,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 347,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 350,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 351,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 350,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 5
+    },
+    {
+      "parent": 104,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 84,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 3
+    },
+    {
+      "parent": 354,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 1
+    },
+    {
+      "parent": 355,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 83,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 355,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 357,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 474,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 1
+    },
+    {
+      "parent": 358,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 40,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 359,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 1
+    },
+    {
+      "parent": 358,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 463,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 361,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 461,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 362,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 361,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 5
+    },
+    {
+      "parent": 355,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 365,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 366,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 73,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 367,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 368,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 369,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 369,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 371,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 369,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 373,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 374,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 373,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 376,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 54,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 35,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 378,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 239,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 378,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 754,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 380,
+      "type": "ButtonControl",
+      "automation_id_chars": 12,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 380,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": "New chat",
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 378,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 383,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 385,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 386,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 387,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 388,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 387,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 415,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 390,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 70,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 391,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 16,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 387,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 393,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 394,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 393,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 396,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 398,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 399,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 400,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 401,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 28,
+      "name_words": 4
+    },
+    {
+      "parent": 400,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 403,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 404,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 403,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 406,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 408,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 409,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 410,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 411,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 410,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 413,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 414,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 413,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 416,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 418,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 419,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 420,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 421,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 25,
+      "name_words": 4
+    },
+    {
+      "parent": 420,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 423,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 424,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 423,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 426,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 428,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 429,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 430,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 431,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 430,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 433,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 434,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 433,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 436,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 438,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 439,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 440,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 441,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 4
+    },
+    {
+      "parent": 440,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 443,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 444,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 443,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 446,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 448,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 449,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 450,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 451,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 27,
+      "name_words": 4
+    },
+    {
+      "parent": 450,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 453,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 454,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 453,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 456,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 3
+    },
+    {
+      "parent": 458,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 459,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 3
+    },
+    {
+      "parent": 460,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 461,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 3
+    },
+    {
+      "parent": 460,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 463,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 464,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 463,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 466,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 59,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 468,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 469,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 470,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 471,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 3
+    },
+    {
+      "parent": 470,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 473,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 474,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 473,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 476,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 73,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 478,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 479,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 542,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 480,
+      "type": "GroupControl",
+      "automation_id_chars": 6,
+      "class_chars": 94,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 481,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 4
+    },
+    {
+      "parent": 480,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 483,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 484,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 2
+    },
+    {
+      "parent": 483,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 486,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 15,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 384,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 75,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 45,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 489,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 43,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 31,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 122,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 491,
+      "type": "SeparatorControl",
+      "automation_id_chars": 0,
+      "class_chars": 161,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 30,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 30,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 406,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 494,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 88,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 495,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 146,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 494,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 274,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 497,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 183,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 498,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 499,
+      "type": "ToolBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 28,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 500,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 107,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 2
+    },
+    {
+      "parent": 500,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 76,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 502,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 5
+    },
+    {
+      "parent": 500,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 504,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 558,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 500,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 506,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 507,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 524,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 2
+    },
+    {
+      "parent": 508,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 494,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 65,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 510,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 218,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 511,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 38,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 494,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 201,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 513,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 78,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 514,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 43,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 515,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 516,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 524,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 30,
+      "type": "GroupControl",
+      "automation_id_chars": 7,
+      "class_chars": 71,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 518,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 46,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 518,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 99,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 520,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 28,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 521,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 34,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 522,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 249,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 523,
+      "type": "GroupControl",
+      "automation_id_chars": 18,
+      "class_chars": 56,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 524,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 525,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 86,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 526,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 122,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 527,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 17,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 527,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 52,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 529,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 107,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 530,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 659,
+      "label": "Conversation",
+      "name_chars": 12,
+      "name_words": 1
+    },
+    {
+      "parent": 531,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 411,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 532,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 118,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 533,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 17,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 535,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 222,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 537,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 54,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 538,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 539,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 221,
+      "name_words": 34
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 542,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 596,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 543,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 29,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 545,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 17,
+      "name_words": 4
+    },
+    {
+      "parent": 546,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 17,
+      "name_words": 4
+    },
+    {
+      "parent": 546,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 549,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 552,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 552,
+      "type": "HyperlinkControl",
+      "automation_id_chars": 0,
+      "class_chars": 61,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 3
+    },
+    {
+      "parent": 554,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 36,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 554,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 3
+    },
+    {
+      "parent": 552,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 2,
+      "name_words": 1
+    },
+    {
+      "parent": 552,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 558,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 31,
+      "name_words": 5
+    },
+    {
+      "parent": 552,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 44,
+      "name_words": 9
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 561,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 534,
+      "type": "ListControl",
+      "automation_id_chars": 0,
+      "class_chars": 36,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 563,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 17,
+      "label": null,
+      "name_chars": 81,
+      "name_words": 12
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 2,
+      "name_words": 1
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 567,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 2,
+      "name_words": 1
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 570,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 18,
+      "name_words": 3
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 26,
+      "name_words": 3
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 573,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 564,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 9,
+      "name_words": 1
+    },
+    {
+      "parent": 563,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 17,
+      "label": null,
+      "name_chars": 76,
+      "name_words": 14
+    },
+    {
+      "parent": 576,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 2,
+      "name_words": 1
+    },
+    {
+      "parent": 576,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 54,
+      "name_words": 11
+    },
+    {
+      "parent": 576,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 579,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 3,
+      "name_words": 1
+    },
+    {
+      "parent": 576,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 19,
+      "name_words": 3
+    },
+    {
+      "parent": 563,
+      "type": "ListItemControl",
+      "automation_id_chars": 0,
+      "class_chars": 17,
+      "label": null,
+      "name_chars": 36,
+      "name_words": 5
+    },
+    {
+      "parent": 582,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 2,
+      "name_words": 1
+    },
+    {
+      "parent": 582,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 36,
+      "name_words": 5
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 585,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 586,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 64,
+      "name_words": 10
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 588,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 19,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 590,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Copy",
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 591,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 593,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Read aloud",
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 13,
+      "class_chars": 42,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 595,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": null,
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 596,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 600,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 222,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 602,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 54,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 603,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 604,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 30,
+      "name_words": 7
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 607,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 596,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 608,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 29,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 610,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 3
+    },
+    {
+      "parent": 611,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 3
+    },
+    {
+      "parent": 611,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 614,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 617,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 617,
+      "type": "HyperlinkControl",
+      "automation_id_chars": 0,
+      "class_chars": 61,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 619,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 36,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 619,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 29,
+      "name_words": 5
+    },
+    {
+      "parent": 617,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 86,
+      "name_words": 15
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 623,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 20,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 625,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Copy",
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 626,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 628,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Read aloud",
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 13,
+      "class_chars": 42,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 630,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": null,
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 631,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 635,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 222,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 637,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 54,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 638,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 639,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 117,
+      "name_words": 24
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 642,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 596,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 643,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 29,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 645,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 519,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 3
+    },
+    {
+      "parent": 646,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 3
+    },
+    {
+      "parent": 646,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 649,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 652,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    },
+    {
+      "parent": 652,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 654,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 2
+    },
+    {
+      "parent": 652,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 90,
+      "name_words": 15
+    },
+    {
+      "parent": 652,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 657,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 16,
+      "name_words": 3
+    },
+    {
+      "parent": 652,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 38,
+      "name_words": 8
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 660,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 149,
+      "name_words": 26
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 662,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 664,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Copy",
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 665,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 667,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Read aloud",
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 13,
+      "class_chars": 42,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 669,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": null,
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 670,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 674,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 222,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 676,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 54,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 677,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 678,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 151,
+      "name_words": 28
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 681,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 596,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 682,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 684,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 687,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 3
+    },
+    {
+      "parent": 687,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 13,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 689,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 24,
+      "name_words": 5
+    },
+    {
+      "parent": 687,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 40,
+      "name_words": 7
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 692,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 173,
+      "name_words": 28
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 694,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 23,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 696,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Copy",
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 697,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 699,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": "Read aloud",
+      "name_chars": 10,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 13,
+      "class_chars": 42,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 701,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 523,
+      "label": null,
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 702,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 706,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "You said:",
+      "name_chars": 9,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 222,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 708,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 54,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 709,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 710,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 67,
+      "name_words": 13
+    },
+    {
+      "parent": 534,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 713,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 596,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 714,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 716,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 27,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 718,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 719,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 718,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 718,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 722,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 76,
+      "name_words": 12
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 12,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 724,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 725,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 106,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 726,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 186,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 726,
+      "type": "GroupControl",
+      "automation_id_chars": 7,
+      "class_chars": 211,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 728,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 12,
+      "name_words": 2
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 27,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 730,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 114,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 731,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": "ChatGPT said:",
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 730,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 7,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 730,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 18,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 734,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 180,
+      "name_words": 26
+    },
+    {
+      "parent": 534,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 12,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 736,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 53,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 737,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 106,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 738,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 186,
+      "label": null,
+      "name_chars": 962,
+      "name_words": 84
+    },
+    {
+      "parent": 738,
+      "type": "GroupControl",
+      "automation_id_chars": 7,
+      "class_chars": 211,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 740,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 962,
+      "name_words": 84
+    },
+    {
+      "parent": 531,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 130,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 742,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 357,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 743,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 12,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 743,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 2
+    },
+    {
+      "parent": 745,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 2
+    },
+    {
+      "parent": 743,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 11,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 743,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 748,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 35,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 749,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 750,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 27,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 751,
+      "type": "EditControl",
+      "automation_id_chars": 0,
+      "class_chars": 31,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 752,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 11,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 753,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 754,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 15,
+      "name_words": 3
+    },
+    {
+      "parent": 753,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 25,
+      "label": null,
+      "name_chars": 1,
+      "name_words": 0
+    },
+    {
+      "parent": 751,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 757,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 670,
+      "label": null,
+      "name_chars": 18,
+      "name_words": 4
+    },
+    {
+      "parent": 751,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 562,
+      "label": null,
+      "name_chars": 18,
+      "name_words": 2
+    },
+    {
+      "parent": 759,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 30,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 759,
+      "type": "GroupControl",
+      "automation_id_chars": 7,
+      "class_chars": 44,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 761,
+      "type": "TextControl",
+      "automation_id_chars": 0,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 14,
+      "name_words": 3
+    },
+    {
+      "parent": 751,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 763,
+      "type": "ButtonControl",
+      "automation_id_chars": 13,
+      "class_chars": 491,
+      "label": null,
+      "name_chars": 18,
+      "name_words": 3
+    },
+    {
+      "parent": 751,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 765,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 670,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 766,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 25,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 751,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 210,
+      "label": null,
+      "name_chars": 4,
+      "name_words": 1
+    },
+    {
+      "parent": 768,
+      "type": "ImageControl",
+      "automation_id_chars": 0,
+      "class_chars": 41,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 530,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 61,
+      "label": null,
+      "name_chars": 13,
+      "name_words": 2
+    },
+    {
+      "parent": 770,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 68,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 5
+    },
+    {
+      "parent": 770,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 68,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 5
+    },
+    {
+      "parent": 770,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 68,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 5
+    },
+    {
+      "parent": 770,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 68,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 5
+    },
+    {
+      "parent": 770,
+      "type": "ButtonControl",
+      "automation_id_chars": 0,
+      "class_chars": 68,
+      "label": null,
+      "name_chars": 22,
+      "name_words": 5
+    },
+    {
+      "parent": 30,
+      "type": "StatusBarControl",
+      "automation_id_chars": 15,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 19,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 50,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 778,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 49,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "StatusBarControl",
+      "automation_id_chars": 15,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "StatusBarControl",
+      "automation_id_chars": 15,
+      "class_chars": 0,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "StatusBarControl",
+      "automation_id_chars": 0,
+      "class_chars": 19,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 10,
+      "type": "GroupControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 2,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 8,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 785,
+      "type": "PaneControl",
+      "automation_id_chars": 0,
+      "class_chars": 32,
+      "label": null,
+      "name_chars": 0,
+      "name_words": 0
+    },
+    {
+      "parent": 786,
+      "type": "ButtonControl",
+      "automation_id_chars": 6,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 1
+    },
+    {
+      "parent": 786,
+      "type": "ButtonControl",
+      "automation_id_chars": 6,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 8,
+      "name_words": 1
+    },
+    {
+      "parent": 786,
+      "type": "ButtonControl",
+      "automation_id_chars": 6,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 7,
+      "name_words": 1
+    },
+    {
+      "parent": 786,
+      "type": "ButtonControl",
+      "automation_id_chars": 6,
+      "class_chars": 23,
+      "label": null,
+      "name_chars": 5,
+      "name_words": 1
+    }
+  ]
+}

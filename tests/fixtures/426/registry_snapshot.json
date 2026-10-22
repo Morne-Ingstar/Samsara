@@ -4227,6 +4227,49 @@
   },
   {
     "aliases": [
+      "chatgpt message submit"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "required": true,
+        "type": "text"
+      }
+    ],
+    "canonical_id": "message_chatgpt.chatgpt_message_submit",
+    "risk": "destructive",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "ask chat gpt",
+      "ask chatgpt",
+      "message chat gpt",
+      "message chatgpt"
+    ],
+    "args": [
+      {
+        "name": "text",
+        "required": false,
+        "type": "text"
+      }
+    ],
+    "canonical_id": "message_chatgpt.message_chat_gpt",
+    "risk": "write",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "stop chat gpt",
+      "stop chatgpt"
+    ],
+    "args": [],
+    "canonical_id": "message_chatgpt.stop_chat_gpt",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
       "ask claude",
       "claude message prepare",
       "message claude",

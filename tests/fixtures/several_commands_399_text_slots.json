@@ -313,6 +313,18 @@
     "state": "rejected",
     "text": "interact snap alpha and volume down"
   },
+  "message_chatgpt.chatgpt_message_submit": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "chatgpt message submit alpha and volume down"
+  },
+  "message_chatgpt.message_chat_gpt": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "message chat gpt alpha and volume down"
+  },
   "message_claude.claude_message_prepare": {
     "calls": [],
     "detail": {},

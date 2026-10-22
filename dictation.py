@@ -8662,7 +8662,7 @@ class DictationApp(CommandFastPathMixin):
                         else ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
                     )
                     _tokens = text.strip().split()
-                    if getattr(self, '_wake_session_target_process', '') == 'claude.exe':
+                    if getattr(self, '_wake_session_target_process', '') in ('claude.exe', 'chatgpt.exe'):
                         from samsara.agent_channel import claude_reply
                         if claude_reply.is_followup_phrase(text) and claude_reply.followup(self, text.strip().lower()):
                             return
@@ -8704,10 +8704,13 @@ class DictationApp(CommandFastPathMixin):
                                 self._show_outcome_chip(_label, 'error')
                                 self._emit_wake_trace({"stage": "utterance_end", "result": "send_refused"})
                                 return
-                            if getattr(self, '_wake_session_target_process', '') == 'claude.exe':
+                            if getattr(self, '_wake_session_target_process', '') in ('claude.exe', 'chatgpt.exe'):
                                 from samsara.agent_channel import claude_reply
                                 import win32gui
                                 from plugins.commands.message_claude import ClaudeUiaAdapter
+                                if _target_process == 'chatgpt.exe':
+                                    from samsara.agent_channel import chatgpt_reply as claude_reply
+                                    from plugins.commands.message_chatgpt import ChatGPTUiaAdapter as ClaudeUiaAdapter
                                 try:
                                     _adapter = ClaudeUiaAdapter()
                                     _composer = _adapter.find_composer(_target_hwnd)

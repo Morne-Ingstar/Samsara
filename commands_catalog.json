@@ -7332,6 +7332,73 @@
     },
     {
       "aliases": [
+        "chatgpt message submit"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "message_chatgpt.chatgpt_message_submit",
+      "description": "Sends a confirmed ChatGPT draft once and starts reading its reply.",
+      "kind": "plugin",
+      "object": "message_submit",
+      "pack": "ai",
+      "plugin": "message_chatgpt",
+      "risk": "destructive",
+      "source": "plugins/commands/message_chatgpt.py:149",
+      "undoable": false,
+      "verb": "chatgpt",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "ask chat gpt",
+        "ask chatgpt",
+        "message chat gpt",
+        "message chatgpt"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "message_chatgpt.message_chat_gpt",
+      "description": "Prepares a message for the running ChatGPT desktop app and asks to send it.",
+      "kind": "plugin",
+      "object": "chat_gpt",
+      "pack": "ai",
+      "plugin": "message_chatgpt",
+      "risk": "write",
+      "source": "plugins/commands/message_chatgpt.py:111",
+      "undoable": false,
+      "verb": "message",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "stop chat gpt",
+        "stop chatgpt"
+      ],
+      "args": [],
+      "canonical_id": "message_chatgpt.stop_chat_gpt",
+      "description": "Stops reading the latest agent reply aloud.",
+      "kind": "plugin",
+      "object": "chat_gpt",
+      "pack": "ai",
+      "plugin": "message_chatgpt",
+      "risk": "ui",
+      "source": "plugins/commands/message_chatgpt.py:204",
+      "undoable": true,
+      "verb": "stop",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "ask claude",
         "claude message prepare",
         "message claude",

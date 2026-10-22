@@ -198,6 +198,22 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Advanced config-only timeout for a desktop Claude reply.",
     },
+    "chatgpt_voice.enabled": {
+        "type": "bool", "default": True, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Advanced override for desktop ChatGPT reply reading.",
+    },
+    "chatgpt_voice.spoken_word_cap": {
+        "type": "int", "min": 1, "max": 500, "default": 60, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Maximum words in each spoken ChatGPT reply chunk.",
+    },
+    "chatgpt_voice.reply_timeout_s": {
+        "type": "int", "min": 5, "max": 120, "default": 120, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Maximum wait for a desktop ChatGPT reply.",
+    },
+    "chatgpt_voice.settle_s": {
+        "type": "float", "min": 0.1, "max": 30.0, "default": 1.5, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Seconds of unchanged ChatGPT reply text before completion.",
+    },
     "commands.grammar_tier": {
         "type": "bool", "default": True, "tab": "commands",
         "settings_ui": False,

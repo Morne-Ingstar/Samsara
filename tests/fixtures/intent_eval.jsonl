@@ -436,7 +436,7 @@
 {"accept": ["ask_agent.ask_gpt"], "id": "ask_agent.ask_gpt", "kind": "filler", "polarity": "positive", "text": "ask codex water the plants thanks"}
 {"accept": ["ask_agent.ask_gpt"], "id": "ask_agent.ask_gpt", "kind": "filler", "polarity": "positive", "text": "ask gpt the build is green now"}
 {"id": "ask_agent.ask_gpt", "kind": "sentence", "polarity": "negative", "reject": "ask_agent.ask_gpt", "text": "during the lecture she explained how to ask codex without breaking anything"}
-{"id": "ask_agent.ask_gpt", "kind": "other_command", "polarity": "negative", "reject": "ask_agent.ask_gpt", "text": "ask"}
+{"id": "ask_agent.ask_gpt", "kind": "other_command", "polarity": "negative", "reject": "ask_agent.ask_gpt", "text": "ask chat gpt"}
 {"id": "ask_agent.ask_gpt", "kind": "nonsense", "polarity": "negative", "reject": "ask_agent.ask_gpt", "text": "lantern noodle codex octopus purple"}
 {"accept": ["ask_agent.ask_hermes"], "id": "ask_agent.ask_hermes", "kind": "alias", "polarity": "positive", "text": "ask hermes"}
 {"accept": ["ask_agent.ask_hermes"], "id": "ask_agent.ask_hermes", "kind": "determiner", "polarity": "positive", "text": "tell the hermes"}
@@ -15318,6 +15318,126 @@
 {"id": "media_keys.toggle_this", "kind": "sentence", "polarity": "negative", "reject": "media_keys.toggle_this", "text": "honestly the whole point of the meeting was to toggle focused and nobody did"}
 {"id": "media_keys.toggle_this", "kind": "other_command", "polarity": "negative", "reject": "media_keys.toggle_this", "text": "toggle the build is green"}
 {"id": "media_keys.toggle_this", "kind": "nonsense", "polarity": "negative", "reject": "media_keys.toggle_this", "text": "marmalade saxophone focused glimmer thunderous"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "determiner", "polarity": "positive", "text": "chatgpt the message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "can you chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "punct", "polarity": "positive", "text": "Chatgpt message submit the build is green."}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "slot", "polarity": "positive", "text": "chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "determiner", "polarity": "positive", "text": "chatgpt the message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "hey chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "punct", "polarity": "positive", "text": "Chatgpt, message submit water the plants?"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "slot", "polarity": "positive", "text": "chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit water the plants now"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "punct", "polarity": "positive", "text": "Chatgpt, message submit the build is green?"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "could you just chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "punct", "polarity": "positive", "text": "Chatgpt message submit water the plants."}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "okay chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "uh chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "hey chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit the build is green right now"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "so chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit water the plants please"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "okay chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "so chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "um chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "i need you to chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit water the plants thanks"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "uh chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "please chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit the build is green for me please"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "would you please chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "go ahead and chatgpt message submit the build is green"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit the build is green please"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit water the plants for me please"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit the build is green thanks"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit water the plants right now"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "um chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "chatgpt message submit the build is green for me"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "please chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "can you please chatgpt message submit water the plants"}
+{"accept": ["message_chatgpt.chatgpt_message_submit"], "id": "message_chatgpt.chatgpt_message_submit", "kind": "filler", "polarity": "positive", "text": "go ahead and chatgpt message submit water the plants"}
+{"id": "message_chatgpt.chatgpt_message_submit", "kind": "sentence", "polarity": "negative", "reject": "message_chatgpt.chatgpt_message_submit", "text": "honestly the whole point of the meeting was to chatgpt message submit water the plants and nobody did"}
+{"id": "message_chatgpt.chatgpt_message_submit", "kind": "other_command", "polarity": "negative", "reject": "message_chatgpt.chatgpt_message_submit", "text": "message chatgpt"}
+{"id": "message_chatgpt.chatgpt_message_submit", "kind": "nonsense", "polarity": "negative", "reject": "message_chatgpt.chatgpt_message_submit", "text": "saxophone pickle chatgpt zeppelin wobble"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "alias", "polarity": "positive", "text": "ask chatgpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "message the chatgpt check the oven"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "could you ask chat gpt water the plants"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "numeral", "polarity": "positive", "text": "message chat gpt call mom at 5"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Message chat gpt."}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "reorder", "polarity": "positive", "text": "chatgpt ask"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "slot", "polarity": "positive", "text": "ask chatgpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "message chat gpt water the plants"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "alias", "polarity": "positive", "text": "ask chat gpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "ask the chat gpt water the plants"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "uh message chat gpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "numeral", "polarity": "positive", "text": "ask chatgpt call mom at 5"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Ask chatgpt call mom at five."}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "reorder", "polarity": "positive", "text": "chatgpt message"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "slot", "polarity": "positive", "text": "message chatgpt check the oven"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "message chat gpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "ask the chatgpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "okay message chat gpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Message chat gpt call mom at five."}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "slot", "polarity": "positive", "text": "message chat gpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "message chatgpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "message the chatgpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "ask chat gpt water the plants please"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Ask chat gpt water the plants."}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "slot", "polarity": "positive", "text": "ask chat gpt water the plants"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "message chatgpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "message the chat gpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "ask chat gpt for me please"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Ask chatgpt."}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "message the chat gpt call mom at five"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "hey ask chat gpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Message, chat gpt?"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "ask the chatgpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "message chatgpt please"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Message, chat gpt call mom at five?"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "ask the chat gpt"}
+{"accept": ["message_chatgpt.message_chat_gpt"], "id": "message_chatgpt.message_chat_gpt", "kind": "filler", "polarity": "positive", "text": "message chat gpt call mom at five please"}
+{"id": "message_chatgpt.message_chat_gpt", "kind": "sentence", "polarity": "negative", "reject": "message_chatgpt.message_chat_gpt", "text": "last night he wrote in the notes that you can ask chat gpt whenever it feels right"}
+{"id": "message_chatgpt.message_chat_gpt", "kind": "other_command", "polarity": "negative", "reject": "message_chatgpt.message_chat_gpt", "text": "ask gpt"}
+{"id": "message_chatgpt.message_chat_gpt", "kind": "nonsense", "polarity": "negative", "reject": "message_chatgpt.message_chat_gpt", "text": "zeppelin velvet chat glimmer wobble"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "alias", "polarity": "positive", "text": "stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "stop the chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "so stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Stop chat gpt."}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "reorder", "polarity": "positive", "text": "chatgpt stop"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "halt chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym_unknown", "polarity": "positive", "text": "knock off chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "alias", "polarity": "positive", "text": "stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "determiner", "polarity": "positive", "text": "stop the chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "hey stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Stop, chat gpt?"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "finish chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym_unknown", "polarity": "positive", "text": "knock off chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "stop chat gpt now"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Stop chatgpt."}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "halt chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "i need you to stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "punct", "polarity": "positive", "text": "Stop, chatgpt?"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "end chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "would you please stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "finish chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "okay stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "synonym", "polarity": "positive", "text": "end chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "stop chatgpt right now"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "stop chatgpt please"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "stop chat gpt for me"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "could you just stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "can you please stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "please stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "okay stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "um stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "stop chat gpt for me please"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "can you stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "uh stop chat gpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "stop chatgpt now"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "go ahead and stop chatgpt"}
+{"accept": ["message_chatgpt.stop_chat_gpt"], "id": "message_chatgpt.stop_chat_gpt", "kind": "filler", "polarity": "positive", "text": "hey stop chatgpt"}
+{"id": "message_chatgpt.stop_chat_gpt", "kind": "sentence", "polarity": "negative", "reject": "message_chatgpt.stop_chat_gpt", "text": "during the lecture she explained how to stop chat gpt without breaking anything"}
+{"id": "message_chatgpt.stop_chat_gpt", "kind": "other_command", "polarity": "negative", "reject": "message_chatgpt.stop_chat_gpt", "text": "ask chat gpt"}
+{"id": "message_chatgpt.stop_chat_gpt", "kind": "nonsense", "polarity": "negative", "reject": "message_chatgpt.stop_chat_gpt", "text": "thunderous pickle stop velvet glimmer"}
 {"accept": ["message_claude.claude_message_prepare"], "id": "message_claude.claude_message_prepare", "kind": "alias", "polarity": "positive", "text": "send claude"}
 {"accept": ["message_claude.claude_message_prepare"], "id": "message_claude.claude_message_prepare", "kind": "determiner", "polarity": "positive", "text": "message the claude"}
 {"accept": ["message_claude.claude_message_prepare"], "id": "message_claude.claude_message_prepare", "kind": "filler", "polarity": "positive", "text": "could you tell claude call mom at five"}

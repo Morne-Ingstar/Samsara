@@ -13,6 +13,10 @@
 | `agent_voice.digest` | settings/#agent_voice.digest |
 | `agent_voice.digest_budget_s` | settings/#agent_voice.digest_budget_s |
 | `agent_voice.digest_model` | settings/#agent_voice.digest_model |
+| `chatgpt_voice.enabled` | config.json only | Advanced override for reading desktop ChatGPT replies aloud. |
+| `chatgpt_voice.spoken_word_cap` | config.json only | Maximum words per spoken ChatGPT reply chunk. |
+| `chatgpt_voice.reply_timeout_s` | config.json only | Maximum wait for a desktop ChatGPT reply. |
+| `chatgpt_voice.settle_s` | config.json only | Duration of unchanged ChatGPT reply text before completion. |
 | `alarms.complete_hotkey` | settings/#alarms.complete_hotkey |
 | `alarms.dismiss_hotkey` | settings/#alarms.dismiss_hotkey |
 | `alarms.enabled` | settings/#alarms.enabled |

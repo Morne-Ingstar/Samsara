@@ -22,6 +22,10 @@
 | `claude_voice.enabled` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `claude_voice.spoken_word_cap` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `claude_voice.reply_timeout_s` | DROP | The setting is self-explanatory or configured outside Settings. |
+| `chatgpt_voice.enabled` | DROP | Config-only override for reading desktop ChatGPT replies aloud. |
+| `chatgpt_voice.spoken_word_cap` | DROP | Config-only maximum words per spoken ChatGPT reply chunk. |
+| `chatgpt_voice.reply_timeout_s` | DROP | Config-only maximum wait for a desktop ChatGPT reply. |
+| `chatgpt_voice.settle_s` | DROP | Config-only duration of unchanged ChatGPT reply text before completion. |
 | `tasks.todoist.enabled` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `tasks.todoist.api_token` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `wake_profiles` | KEEP | Contextual help is expected for this setting. |

@@ -172,9 +172,9 @@ def watch_for_reply(window, after_message_index: int, timeout_s: float) -> str:
     raise ReplyTimeout() if saw_new else NoNewNode()
 
 
-def _word_cap(config) -> int:
+def _word_cap(config, *, source="claude") -> int:
     try:
-        return max(1, min(500, int(config.get("claude_voice", {}).get("spoken_word_cap", 60))))
+        return max(1, min(500, int(config.get(f"{source}_voice", {}).get("spoken_word_cap", 60))))
     except (TypeError, ValueError, AttributeError):
         return 60
 
@@ -198,13 +198,8 @@ def spoken_form(reply: str, word_cap: int = 60) -> tuple[str, str]:
 
 
 def _state(app):
-    state = getattr(app, "_claude_voice_state", None)
-    if state is None:
-        state = {"token": None, "last": "", "rest": "", "handle": None,
-                 "expires": 0.0, "speaking": False, "resume": None,
-                 "sections": [], "code_blocks": [], "section_cursor": -1}
-        app._claude_voice_state = state
-    return state
+    from .agent_reply import state
+    return state(app)
 
 
 def _speak(app, text: str, token, on_done=None):
@@ -268,7 +263,7 @@ def followup(app, action: str) -> bool:
 def is_followup_phrase(action: str) -> bool:
     action = action.strip().lower().rstrip(".!?")
     return (action in {"read the rest", "repeat that", "stop", "stop claude", "stop claude reply",
-                       "stop the reply", "quiet claude", "read the whole thing", "read the code",
+                       "stop the reply", "quiet claude", "stop chat gpt", "stop chatgpt", "read the whole thing", "read the code",
                        "read the first code block", "read code block two", "next section",
                        "previous section", "how long is it", "what's in it"}
             or action.startswith("read section ") or action.startswith("read code block ")
@@ -279,7 +274,8 @@ def _drill_followup(app, action: str, state, *, cli=False) -> bool:
     coordinator = getattr(app, "audio_coordinator", None)
     if coordinator is None:
         return False
-    stop_phrases = {"stop", "stop claude", "stop claude reply", "stop the reply", "quiet claude"}
+    stop_phrases = {"stop", "stop claude", "stop claude reply", "stop the reply", "quiet claude",
+                    "stop chat gpt", "stop chatgpt"}
     if action in stop_phrases:
         app.audio_coordinator.cancel_speech()
         state["speaking"] = False
@@ -291,7 +287,8 @@ def _drill_followup(app, action: str, state, *, cli=False) -> bool:
     if action == "repeat that":
         text = state.get("last", "")
     elif action == "read the rest":
-        cap = 60 if cli else _word_cap(getattr(app, "config", {}) or {})
+        cap = 60 if cli else _word_cap(getattr(app, "config", {}) or {},
+                                         source=state.get("source", "claude"))
         text, remainder = spoken_form(state.get("rest", ""), cap)
         state["rest"] = remainder
     elif action in {"read the whole thing", "how long is it", "what's in it",
@@ -303,7 +300,8 @@ def _drill_followup(app, action: str, state, *, cli=False) -> bool:
     else:
         return False
     if not text:
-        text = "That's all of Claude's reply." if not cli else "That's all of the reply."
+        text = ("That's all of Claude's reply." if not cli and state.get("source", "claude") == "claude"
+                else "That's all of the reply.")
     state["expires"] = time.monotonic() + _FOLLOWUP_S
     if action == "read the whole thing":
         _speak_chunks(app, text, state, cli=cli)
@@ -433,47 +431,6 @@ def before_send(app, hwnd: int, *, send_word=None) -> SendContext | None:
 
 
 def start_after_send(app, context: SendContext | None) -> None:
-    if context is None:
-        return
-    state = _state(app)
-    token = object()
-    state["token"] = token
-    state["expires"] = 0.0
-    logger.info("[CLAUDE-VOICE] watcher start hwnd=%s after=%s", context.hwnd,
-                context.after_message_index)
-
-    def resume():
-        if context.send_word and getattr(app, "app_state", None) == "asleep":
-            try:
-                import win32gui
-                if win32gui.GetForegroundWindow() == context.hwnd:
-                    app._start_wake_session(mode="focus_dictate", send_word=context.send_word)
-            except Exception:
-                logger.exception("[CLAUDE-VOICE] wake resume failed")
-
-    state["resume"] = resume
-
-    def run():
-        try:
-            timeout = _reply_timeout(app.config)
-            reply = watch_for_reply(context.hwnd, context.after_message_index, timeout)
-            if _state(app)["token"] is not token:
-                return
-            from .spoken_digest import first_reply
-            first = first_reply(app, reply, source="claude")
-            if _state(app)["token"] is not token:
-                return
-            state["rest"] = reply
-            state["full"] = reply
-            state["sections"] = first.sections
-            state["code_blocks"] = [m.group(2) for m in re.finditer(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n(.*?)^\s*\1\s*$", reply)]
-            _speak(app, first.spoken, token, on_done=resume)
-        except WindowGone:
-            _speak(app, "I lost the Claude window", token, on_done=resume)
-        except (ReplyTimeout, NoNewNode):
-            _speak(app, "Claude didn't answer", token, on_done=resume)
-
-    try:
-        thread_registry.spawn("claude.reply", run)
-    except Exception:
-        logger.exception("[CLAUDE-VOICE] watcher could not start")
+    from .agent_reply import start
+    start(app, context, source="claude", watch=watch_for_reply,
+          timeout_s=_reply_timeout(app.config), failures=(WindowGone, ReplyTimeout, NoNewNode))
