@@ -131,22 +131,25 @@ def test_native_gil():
 
 
 def test_fast_tests_rearm_and_cancel_before_session_finish(tmp_path):
+    # CI descheduling can turn the 0.2s sleep into >0.5s. Keep the same
+    # ratios: the combined tests and session finish each exceed one budget.
+    budget = 2.0 if os.environ.get('CI') else 0.5
     result, _ = run_child(tmp_path, '''
 import time
 import pytest
 
 @pytest.mark.parametrize('number', range(3))
 def test_fast(number):
-    time.sleep(0.2)
-''', hard='0.5', soft='0', conftest_extra='''
+    time.sleep(TEST_DELAY)
+'''.replace('TEST_DELAY', str(budget * 0.4)), hard=str(budget), soft='0', conftest_extra='''
 def pytest_sessionfinish(session, exitstatus):
     import time
-    time.sleep(0.7)  # Longer than a test's budget, after its timer was cancelled.
+    time.sleep(FINISH_DELAY)  # Longer than a test's budget, after its timer was cancelled.
     print('SESSION_FINISHED')
-''')
+'''.replace('FINISH_DELAY', str(budget + 0.2)))
     assert result.returncode == 0, result.stdout + result.stderr
     assert '3 passed' in result.stdout and 'SESSION_FINISHED' in result.stdout
-    assert result.stderr.count('[hard watchdog 0.5s] test_probe.py::test_fast') == 3
+    assert result.stderr.count(f'[hard watchdog {budget:g}s] test_probe.py::test_fast') == 3
     assert 'Timeout (' not in result.stderr
 
 

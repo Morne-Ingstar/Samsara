@@ -325,6 +325,30 @@
     "state": "miss",
     "text": "claude message submit alpha and volume down"
   },
+  "message_claude.read_code_block": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "read code block alpha and volume down"
+  },
+  "message_claude.read_section": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "read section alpha and volume down"
+  },
+  "message_claude.read_the": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "read the alpha and volume down"
+  },
+  "message_claude.read_the_code": {
+    "calls": [],
+    "detail": {},
+    "state": "miss",
+    "text": "read the code alpha and volume down"
+  },
   "music.play": {
     "calls": [
       [

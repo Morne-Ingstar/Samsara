@@ -432,7 +432,10 @@ def test_native_input_desktop_probe_is_fake_and_closes_handle(monkeypatch, deskt
     'Yesterday Bot', 'Yes Terday', 'YesTerday', 'YES TERDAY', 'Yes-terday Bot',
     'Calendar Assistantss Yesterday', 'Aaaaaaaaaaaaaaaaaa B Yesterday',
     'Justsayit', 'Pleasesay', 'Autoallow'])
-def test_agent_name_cannot_supply_confirmation_instructions(rig, name):
+def test_agent_name_cannot_supply_confirmation_instructions(rig, name, monkeypatch):
+    # Name sanitization needs a successful confirmation, not a subsecond CI race.
+    if os.environ.get('CI'):
+        monkeypatch.setattr(agents, 'TYPE_TIMEOUT', 2.0)
     _, _, headers = post(rig.service, 'initialize', {'clientInfo': {'name': name}})
     assert call(rig.service, headers={'Mcp-Session-Id': headers['Mcp-Session-Id']})['reason'] == 'delivered'
     assert rig.prompts[0][0].startswith('An AI app wants')

@@ -16,6 +16,9 @@
 | `agent_channel.allow_writes` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `agent_channel.voice_preamble` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `agent_channel.timeout_s` | DROP | The setting is self-explanatory or configured outside Settings. |
+| `agent_voice.digest` | DROP | Config-only choice of a local spoken digest or a word cut for long agent replies. |
+| `agent_voice.digest_budget_s` | DROP | Config-only maximum wait for the local spoken digest before using the word cut. |
+| `agent_voice.digest_model` | DROP | Config-only local digest model override; empty uses Ava's Ollama model. |
 | `claude_voice.enabled` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `claude_voice.spoken_word_cap` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `claude_voice.reply_timeout_s` | DROP | The setting is self-explanatory or configured outside Settings. |

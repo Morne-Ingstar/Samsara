@@ -51,6 +51,7 @@ def fake(tmp_path, monkeypatch):
     monkeypatch.setattr(hermes.shutil, "which", lambda name: r"C:\fake install\hermes.cmd")
     config = {"agent_channel": {"cwd": str(tmp_path), "timeout_s": 240},
               "command_packs": {"hermes": True}, "hermes": {"notice_accepted": True},
+              "agent_voice": {"digest": "off"},
               "tts": {"feedback_level": "full"}}
     state = SimpleNamespace(output=events(), errors="session_id: " + SID, code=0,
                             calls=[], processes=[], workers=[], after_wait=None)
@@ -293,20 +294,62 @@ def test_reset_discards_answer_deferred_during_capture(fake, monkeypatch, action
 
 @pytest.mark.parametrize("level", ["silent", "brief", "full"])
 def test_followups_respect_current_level_and_paging(fake, level):
-    fake.output = events(" ".join(["Word."] * 180))
+    pages = [" ".join([word] * 60) for word in ("First.", "Second.", "Third.")]
+    fake.output = events(" ".join(pages))
     voice.ask(fake.app, "question")
     run_worker(fake)
     fake.spoken.clear()
     fake.sounds.clear()
     fake.app.config["tts"]["feedback_level"] = level
+    # A digest keeps the complete reply; paging starts at its first page.
+    state = fake.app._cli_agent_voice_state
+    for index, page in enumerate(pages):
+        for action in ("read the rest", "repeat that"):
+            fake.spoken.clear()
+            fake.sounds.clear()
+            assert cli_agents.followup(fake.app, action)
+            assert not fake.spoken and not fake.sounds  # Delivery stays off the caller.
+            run_worker(fake, "hermes.readback")
+            assert state["last"] == page
+            assert state["rest"] == " ".join(pages[index + 1:])
+            assert fake.spoken == ([page] if level == "full" else [])
+            assert fake.sounds == (["agent_response"] if level == "brief" else [])
     assert cli_agents.followup(fake.app, "read the rest")
     run_worker(fake, "hermes.readback")
-    assert bool(fake.spoken) == (level == "full")
-    assert bool(fake.sounds) == (level == "brief")
-    assert cli_agents.followup(fake.app, "repeat that")
-    run_worker(fake, "hermes.readback")
+    assert state["last"] == "That's all of the Hermes reply."
     voice.stop(fake.app)
     assert not cli_agents.followup(fake.app, "repeat that")
+
+
+def test_followup_waits_for_capture_and_rechecks_level(fake, monkeypatch):
+    voice.ask(fake.app, "question")
+    run_worker(fake)
+    fake.spoken.clear()
+    fake.sounds.clear()
+    assert cli_agents.followup(fake.app, "repeat that")
+    fake.app.recording = True
+    waited = []
+
+    def release(_):
+        assert not fake.spoken and not fake.sounds
+        waited.append(True)
+        fake.app.config["tts"]["feedback_level"] = "brief"
+        fake.app.recording = False
+
+    monkeypatch.setattr(voice.time, "sleep", release)
+    run_worker(fake, "hermes.readback")
+    assert waited and not fake.spoken and fake.sounds == ["agent_response"]
+
+
+def test_stop_discards_queued_followup(fake):
+    voice.ask(fake.app, "question")
+    run_worker(fake)
+    fake.spoken.clear()
+    fake.sounds.clear()
+    assert cli_agents.followup(fake.app, "repeat that")
+    voice.stop(fake.app)
+    run_worker(fake, "hermes.readback")
+    assert not fake.spoken and not fake.sounds
 
 
 @pytest.mark.parametrize("mode", ["missing", "timeout", "nonzero", "no_result", "approval"])

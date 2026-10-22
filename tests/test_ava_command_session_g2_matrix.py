@@ -1,7 +1,15 @@
 """Closed-world resolver safety matrix after retirement of the Ava session."""
 from types import SimpleNamespace
 
+import pytest
+
 from samsara import ava_command_session as resolver
+
+
+@pytest.fixture(autouse=True)
+def isolated_cancellations(monkeypatch):
+    # A stop in another test must not cancel this test's synthetic request.
+    monkeypatch.setattr(resolver, "_CANCELLED", set())
 
 
 class _Executor:

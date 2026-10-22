@@ -276,11 +276,13 @@ def followup(app, action: str) -> bool:
         return False
     from .claude_reply import _drill_followup
     if state.get("agent") == "hermes":
-        from .hermes_voice import channel
-        if channel(app).valid(state["turn"]) and _drill_followup(app, action, state, cli=True):
+        from .hermes_voice import channel, followup as hermes_followup
+        if not channel(app).valid(state["turn"]):
+            return False
+        # Hermes paging owns capture waiting and the current feedback level.
+        if hermes_followup(app, action, state):
             return True
-        from .hermes_voice import followup as hermes_followup
-        return hermes_followup(app, action, state)
+        return _drill_followup(app, action, state, cli=True)
     if _drill_followup(app, action, state, cli=True):
         return True
     return False

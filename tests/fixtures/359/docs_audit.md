@@ -10,6 +10,9 @@
 | `agent_channel.cwd` | settings/#agent_channel.cwd |
 | `agent_channel.timeout_s` | settings/#agent_channel.timeout_s |
 | `agent_channel.voice_preamble` | settings/#agent_channel.voice_preamble |
+| `agent_voice.digest` | settings/#agent_voice.digest |
+| `agent_voice.digest_budget_s` | settings/#agent_voice.digest_budget_s |
+| `agent_voice.digest_model` | settings/#agent_voice.digest_model |
 | `alarms.complete_hotkey` | settings/#alarms.complete_hotkey |
 | `alarms.dismiss_hotkey` | settings/#alarms.dismiss_hotkey |
 | `alarms.enabled` | settings/#alarms.enabled |
@@ -233,6 +236,9 @@
 | `agent_channel.cwd` | config.json only |
 | `agent_channel.timeout_s` | config.json only |
 | `agent_channel.voice_preamble` | config.json only |
+| `agent_voice.digest` | config.json only |
+| `agent_voice.digest_budget_s` | config.json only |
+| `agent_voice.digest_model` | config.json only |
 | `audio.input_sensitivity` | config.json only |
 | `ava.catalog_answers` | config.json only |
 | `ava_command_session.shortlist_size` | config.json only |

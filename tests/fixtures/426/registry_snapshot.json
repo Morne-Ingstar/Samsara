@@ -4261,10 +4261,107 @@
   },
   {
     "aliases": [
+      "how long is it"
+    ],
+    "args": [],
+    "canonical_id": "message_claude.how_long_is_it",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "next section"
+    ],
+    "args": [],
+    "canonical_id": "message_claude.next_section",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "previous section"
+    ],
+    "args": [],
+    "canonical_id": "message_claude.previous_section",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "read code block"
+    ],
+    "args": [
+      {
+        "name": "text",
+        "required": false,
+        "type": "text"
+      }
+    ],
+    "canonical_id": "message_claude.read_code_block",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "read section"
+    ],
+    "args": [
+      {
+        "name": "text",
+        "required": false,
+        "type": "text"
+      }
+    ],
+    "canonical_id": "message_claude.read_section",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "read the"
+    ],
+    "args": [
+      {
+        "name": "text",
+        "required": false,
+        "type": "text"
+      }
+    ],
+    "canonical_id": "message_claude.read_the",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "read the code",
+      "read the first code block"
+    ],
+    "args": [
+      {
+        "name": "text",
+        "required": false,
+        "type": "text"
+      }
+    ],
+    "canonical_id": "message_claude.read_the_code",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
       "read the rest"
     ],
     "args": [],
     "canonical_id": "message_claude.read_the_rest",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "read the whole thing"
+    ],
+    "args": [],
+    "canonical_id": "message_claude.read_the_whole_thing",
     "risk": "ui",
     "scope": null
   },
@@ -4286,6 +4383,15 @@
     ],
     "args": [],
     "canonical_id": "message_claude.stop_claude",
+    "risk": "ui",
+    "scope": null
+  },
+  {
+    "aliases": [
+      "whats in it"
+    ],
+    "args": [],
+    "canonical_id": "message_claude.whats_in_it",
     "risk": "ui",
     "scope": null
   },

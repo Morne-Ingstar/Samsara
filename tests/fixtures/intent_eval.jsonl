@@ -8436,7 +8436,7 @@
 {"accept": ["builtin.read_aloud"], "id": "builtin.read_aloud", "kind": "filler", "polarity": "positive", "text": "can you read aloud right now"}
 {"accept": ["builtin.read_aloud"], "id": "builtin.read_aloud", "kind": "filler", "polarity": "positive", "text": "Can you read aloud right now."}
 {"id": "builtin.read_aloud", "kind": "sentence", "polarity": "negative", "reject": "builtin.read_aloud", "text": "honestly the whole point of the meeting was to read aloud and nobody did"}
-{"id": "builtin.read_aloud", "kind": "other_command", "polarity": "negative", "reject": "builtin.read_aloud", "text": "read tasks"}
+{"id": "builtin.read_aloud", "kind": "other_command", "polarity": "negative", "reject": "builtin.read_aloud", "text": "read the"}
 {"id": "builtin.read_aloud", "kind": "nonsense", "polarity": "negative", "reject": "builtin.read_aloud", "text": "sideways octopus aloud pickle velvet"}
 {"accept": ["builtin.read_next_sentence"], "id": "builtin.read_next_sentence", "kind": "alias", "polarity": "positive", "text": "read next sentence"}
 {"accept": ["builtin.read_next_sentence"], "id": "builtin.read_next_sentence", "kind": "determiner", "polarity": "positive", "text": "read the next sentence"}
@@ -8556,7 +8556,7 @@
 {"accept": ["builtin.read_this"], "id": "builtin.read_this", "kind": "punct", "polarity": "positive", "text": "... Read this..."}
 {"accept": ["builtin.read_this"], "id": "builtin.read_this", "kind": "punct", "polarity": "positive", "text": "... Read this!!"}
 {"id": "builtin.read_this", "kind": "sentence", "polarity": "negative", "reject": "builtin.read_this", "text": "honestly the whole point of the meeting was to read this and nobody did"}
-{"id": "builtin.read_this", "kind": "other_command", "polarity": "negative", "reject": "builtin.read_this", "text": "type this"}
+{"id": "builtin.read_this", "kind": "other_command", "polarity": "negative", "reject": "builtin.read_this", "text": "read the"}
 {"id": "builtin.read_this", "kind": "nonsense", "polarity": "negative", "reject": "builtin.read_this", "text": "marmalade pickle read quartz wobble"}
 {"accept": ["builtin.reading_mode"], "id": "builtin.reading_mode", "kind": "alias", "polarity": "positive", "text": "reading mode"}
 {"accept": ["builtin.reading_mode"], "id": "builtin.reading_mode", "kind": "determiner", "polarity": "positive", "text": "reading the mode"}
@@ -15398,6 +15398,286 @@
 {"id": "message_claude.claude_message_submit", "kind": "sentence", "polarity": "negative", "reject": "message_claude.claude_message_submit", "text": "during the lecture she explained how to claude message submit water the plants without breaking anything"}
 {"id": "message_claude.claude_message_submit", "kind": "other_command", "polarity": "negative", "reject": "message_claude.claude_message_submit", "text": "message claude"}
 {"id": "message_claude.claude_message_submit", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.claude_message_submit", "text": "sideways thunderous message saxophone wobble"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "alias", "polarity": "positive", "text": "how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "determiner", "polarity": "positive", "text": "how the long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "would you please how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "punct", "polarity": "positive", "text": "How long is it."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "how long is it right now"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "punct", "polarity": "positive", "text": "How, long is it?"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you please how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "how long is it please"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "go ahead and how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "please how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "hey how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "how long is it for me"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "so how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "could you just how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "um how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "okay how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "could you how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "how long is it thanks"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "how long is it now"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "uh how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "i need you to how long is it"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "how long is it for me please"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it please"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Can you how long is it please."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it for me"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Can you how long is it for me."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it now"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Can you how long is it now."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it thanks"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Can you how long is it thanks."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it right now"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Can you how long is it right now."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "can you how long is it for me please"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Can you how long is it for me please."}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "could you how long is it please"}
+{"accept": ["message_claude.how_long_is_it"], "id": "message_claude.how_long_is_it", "kind": "filler", "polarity": "positive", "text": "Could you how long is it please."}
+{"id": "message_claude.how_long_is_it", "kind": "sentence", "polarity": "negative", "reject": "message_claude.how_long_is_it", "text": "in the story the old captain decides to how long is it as the storm arrives"}
+{"id": "message_claude.how_long_is_it", "kind": "other_command", "polarity": "negative", "reject": "message_claude.how_long_is_it", "text": "is it okay to"}
+{"id": "message_claude.how_long_is_it", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.how_long_is_it", "text": "marmalade banana long sideways wobble"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "alias", "polarity": "positive", "text": "next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "determiner", "polarity": "positive", "text": "next the section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "next section please"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "punct", "polarity": "positive", "text": "Next, section?"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "reorder", "polarity": "positive", "text": "section next"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "please next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "punct", "polarity": "positive", "text": "Next section."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "next section for me please"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "next section now"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "go ahead and next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "i need you to next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "next section thanks"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "would you please next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "uh next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you please next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "um next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "so next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "next section right now"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "could you just next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "next section for me"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "hey next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "could you next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "okay next section"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section please"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "Can you next section please."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section for me"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "Can you next section for me."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section now"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "Can you next section now."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section thanks"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "Can you next section thanks."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section right now"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "Can you next section right now."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "can you next section for me please"}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "Can you next section for me please."}
+{"accept": ["message_claude.next_section"], "id": "message_claude.next_section", "kind": "filler", "polarity": "positive", "text": "could you next section please"}
+{"id": "message_claude.next_section", "kind": "sentence", "polarity": "negative", "reject": "message_claude.next_section", "text": "honestly the whole point of the meeting was to next section and nobody did"}
+{"id": "message_claude.next_section", "kind": "other_command", "polarity": "negative", "reject": "message_claude.next_section", "text": "next"}
+{"id": "message_claude.next_section", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.next_section", "text": "zeppelin noodle section thunderous purple"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "alias", "polarity": "positive", "text": "previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "determiner", "polarity": "positive", "text": "previous the section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "previous section right now"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "punct", "polarity": "positive", "text": "Previous, section?"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "reorder", "polarity": "positive", "text": "section previous"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "could you previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "punct", "polarity": "positive", "text": "Previous section."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "um previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "okay previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "hey previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "previous section thanks"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "could you just previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "i need you to previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "previous section for me"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "so previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "would you please previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "uh previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "please previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "previous section now"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "go ahead and previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "previous section please"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "previous section for me please"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you please previous section"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section please"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "Can you previous section please."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section for me"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "Can you previous section for me."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section now"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "Can you previous section now."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section thanks"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "Can you previous section thanks."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section right now"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "Can you previous section right now."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "can you previous section for me please"}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "Can you previous section for me please."}
+{"accept": ["message_claude.previous_section"], "id": "message_claude.previous_section", "kind": "filler", "polarity": "positive", "text": "could you previous section please"}
+{"id": "message_claude.previous_section", "kind": "sentence", "polarity": "negative", "reject": "message_claude.previous_section", "text": "in the story the old captain decides to previous section as the storm arrives"}
+{"id": "message_claude.previous_section", "kind": "other_command", "polarity": "negative", "reject": "message_claude.previous_section", "text": "previous"}
+{"id": "message_claude.previous_section", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.previous_section", "text": "wobble octopus previous cobalt glimmer"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "alias", "polarity": "positive", "text": "read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "determiner", "polarity": "positive", "text": "read the code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "i need you to read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "mishear", "polarity": "positive", "text": "red code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "numeral", "polarity": "positive", "text": "read code block call mom at 5"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "punct", "polarity": "positive", "text": "Read, code block?"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "slot", "polarity": "positive", "text": "read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "synonym", "polarity": "positive", "text": "say code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "determiner", "polarity": "positive", "text": "read the code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block right now"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "mishear", "polarity": "positive", "text": "red code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "punct", "polarity": "positive", "text": "Read code block."}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "synonym", "polarity": "positive", "text": "read out code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "so read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "punct", "polarity": "positive", "text": "Read, code block call mom at five?"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "synonym", "polarity": "positive", "text": "read out code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "um read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "punct", "polarity": "positive", "text": "Read code block call mom at five."}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "synonym", "polarity": "positive", "text": "say code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "hey read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "could you read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block call mom at five now"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "would you please read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "could you just read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block call mom at five right now"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "um read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block call mom at five for me please"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "i need you to read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "go ahead and read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block call mom at five thanks"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "okay read code block call mom at five"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block for me"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "could you just read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "can you read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "hey read code block"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block call mom at five for me"}
+{"accept": ["message_claude.read_code_block"], "id": "message_claude.read_code_block", "kind": "filler", "polarity": "positive", "text": "read code block call mom at five please"}
+{"id": "message_claude.read_code_block", "kind": "sentence", "polarity": "negative", "reject": "message_claude.read_code_block", "text": "during the lecture she explained how to read code block without breaking anything"}
+{"id": "message_claude.read_code_block", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_code_block", "text": "read the first code block"}
+{"id": "message_claude.read_code_block", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.read_code_block", "text": "sideways cobalt block pickle saxophone"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "alias", "polarity": "positive", "text": "read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "determiner", "polarity": "positive", "text": "read the section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "hey read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "mishear", "polarity": "positive", "text": "red section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "numeral", "polarity": "positive", "text": "read section call mom at 5"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "punct", "polarity": "positive", "text": "Read, section?"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "reorder", "polarity": "positive", "text": "section read"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "slot", "polarity": "positive", "text": "read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "synonym", "polarity": "positive", "text": "say section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "determiner", "polarity": "positive", "text": "read the section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "please read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "mishear", "polarity": "positive", "text": "red section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "punct", "polarity": "positive", "text": "Read section call mom at five."}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "synonym", "polarity": "positive", "text": "say section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "would you please read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "punct", "polarity": "positive", "text": "Read section."}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "synonym", "polarity": "positive", "text": "read out section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "go ahead and read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "punct", "polarity": "positive", "text": "Read, section call mom at five?"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "synonym", "polarity": "positive", "text": "read out section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "i need you to read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "could you read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "so read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "read section thanks"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "can you please read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "uh read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "read section call mom at five thanks"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "okay read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "hey read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "read section call mom at five for me please"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "could you just read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "read section call mom at five please"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "can you please read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "read section call mom at five right now"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "um read section call mom at five"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "uh read section"}
+{"accept": ["message_claude.read_section"], "id": "message_claude.read_section", "kind": "filler", "polarity": "positive", "text": "can you read section"}
+{"id": "message_claude.read_section", "kind": "sentence", "polarity": "negative", "reject": "message_claude.read_section", "text": "in the story the old captain decides to read section as the storm arrives"}
+{"id": "message_claude.read_section", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_section", "text": "read the"}
+{"id": "message_claude.read_section", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.read_section", "text": "saxophone glimmer section octopus purple"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "alias", "polarity": "positive", "text": "read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "hey read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "mishear", "polarity": "positive", "text": "red the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "punct", "polarity": "positive", "text": "Read, the the build is green?"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "reorder", "polarity": "positive", "text": "the read"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "slot", "polarity": "positive", "text": "read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "synonym", "polarity": "positive", "text": "say the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "could you read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "mishear", "polarity": "positive", "text": "red the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "punct", "polarity": "positive", "text": "Read, the?"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "synonym", "polarity": "positive", "text": "say the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "okay read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "punct", "polarity": "positive", "text": "Read the."}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "synonym", "polarity": "positive", "text": "read out the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the now"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "punct", "polarity": "positive", "text": "Read the the build is green."}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "synonym", "polarity": "positive", "text": "read out the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "so read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the for me please"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "would you please read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "uh read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "i need you to read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "could you read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "please read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the the build is green for me"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the right now"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "uh read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the please"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "can you read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "could you just read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "can you read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the the build is green thanks"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "um read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "please read the the build is green"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "read the the build is green for me please"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "could you just read the"}
+{"accept": ["message_claude.read_the"], "id": "message_claude.read_the", "kind": "filler", "polarity": "positive", "text": "okay read the the build is green"}
+{"id": "message_claude.read_the", "kind": "sentence", "polarity": "negative", "reject": "message_claude.read_the", "text": "during the lecture she explained how to read the without breaking anything"}
+{"id": "message_claude.read_the", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_the", "text": "read the code"}
+{"id": "message_claude.read_the", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.read_the", "text": "pickle quartz read octopus banana"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "alias", "polarity": "positive", "text": "read the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "would you please read the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "mishear", "polarity": "positive", "text": "red the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "numeral", "polarity": "positive", "text": "read the code call mom at 5"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read the code call mom at five."}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "slot", "polarity": "positive", "text": "read the first code block buy milk"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "say the first code block buy milk"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "alias", "polarity": "positive", "text": "read the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "so read the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "mishear", "polarity": "positive", "text": "red the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read, the code call mom at five?"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "slot", "polarity": "positive", "text": "read the code call mom at five"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "read out the code call mom at five"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "read the first code block now"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "mishear", "polarity": "positive", "text": "red the code call mom at five"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read, the first code block?"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "read out the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "hey read the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "mishear", "polarity": "positive", "text": "red the first code block buy milk"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read, the first code block buy milk?"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "say the code call mom at five"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "so read the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read, the code?"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "read out the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "could you just read the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read the first code block."}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "say the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "please read the code call mom at five"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read the first code block buy milk."}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "read out the first code block buy milk"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "read the first code block buy milk please"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "punct", "polarity": "positive", "text": "Read the code."}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "synonym", "polarity": "positive", "text": "say the first code block"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "uh read the code"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "so read the first code block buy milk"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "read the code call mom at five please"}
+{"accept": ["message_claude.read_the_code"], "id": "message_claude.read_the_code", "kind": "filler", "polarity": "positive", "text": "uh read the first code block buy milk"}
+{"id": "message_claude.read_the_code", "kind": "sentence", "polarity": "negative", "reject": "message_claude.read_the_code", "text": "last night he wrote in the notes that you can read the code whenever it feels right"}
+{"id": "message_claude.read_the_code", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_the_code", "text": "read code block"}
+{"id": "message_claude.read_the_code", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.read_the_code", "text": "quartz pickle read purple cobalt"}
 {"accept": ["message_claude.read_the_rest"], "id": "message_claude.read_the_rest", "kind": "alias", "polarity": "positive", "text": "read the rest"}
 {"accept": ["message_claude.read_the_rest"], "id": "message_claude.read_the_rest", "kind": "filler", "polarity": "positive", "text": "could you read the rest"}
 {"accept": ["message_claude.read_the_rest"], "id": "message_claude.read_the_rest", "kind": "mishear", "polarity": "positive", "text": "red the rest"}
@@ -15436,8 +15716,48 @@
 {"accept": ["message_claude.read_the_rest"], "id": "message_claude.read_the_rest", "kind": "filler", "polarity": "positive", "text": "can you read the rest for me please"}
 {"accept": ["message_claude.read_the_rest"], "id": "message_claude.read_the_rest", "kind": "filler", "polarity": "positive", "text": "Can you read the rest for me please."}
 {"id": "message_claude.read_the_rest", "kind": "sentence", "polarity": "negative", "reject": "message_claude.read_the_rest", "text": "our manager keeps asking whether anyone remembered to read the rest last week"}
-{"id": "message_claude.read_the_rest", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_the_rest", "text": "read aloud"}
+{"id": "message_claude.read_the_rest", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_the_rest", "text": "read the"}
 {"id": "message_claude.read_the_rest", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.read_the_rest", "text": "saxophone lantern read octopus pickle"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "alias", "polarity": "positive", "text": "read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "please read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "mishear", "polarity": "positive", "text": "red the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "punct", "polarity": "positive", "text": "Read, the whole thing?"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "synonym", "polarity": "positive", "text": "read out the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "read the whole thing please"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "punct", "polarity": "positive", "text": "Read the whole thing."}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "synonym", "polarity": "positive", "text": "say the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "could you just read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "uh read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "um read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "go ahead and read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "read the whole thing thanks"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "read the whole thing now"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "okay read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "hey read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "could you read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you please read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "so read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "i need you to read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "read the whole thing right now"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "read the whole thing for me"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "read the whole thing for me please"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "would you please read the whole thing"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing please"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "Can you read the whole thing please."}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing for me"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "Can you read the whole thing for me."}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing now"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "Can you read the whole thing now."}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing thanks"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "Can you read the whole thing thanks."}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing right now"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "Can you read the whole thing right now."}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "can you read the whole thing for me please"}
+{"accept": ["message_claude.read_the_whole_thing"], "id": "message_claude.read_the_whole_thing", "kind": "filler", "polarity": "positive", "text": "Can you read the whole thing for me please."}
+{"id": "message_claude.read_the_whole_thing", "kind": "sentence", "polarity": "negative", "reject": "message_claude.read_the_whole_thing", "text": "yesterday afternoon we argued for an hour about who would read the whole thing first"}
+{"id": "message_claude.read_the_whole_thing", "kind": "other_command", "polarity": "negative", "reject": "message_claude.read_the_whole_thing", "text": "read the"}
+{"id": "message_claude.read_the_whole_thing", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.read_the_whole_thing", "text": "quartz pickle whole octopus zeppelin"}
 {"accept": ["message_claude.repeat_that"], "id": "message_claude.repeat_that", "kind": "alias", "polarity": "positive", "text": "repeat that"}
 {"accept": ["message_claude.repeat_that"], "id": "message_claude.repeat_that", "kind": "determiner", "polarity": "positive", "text": "repeat the that"}
 {"accept": ["message_claude.repeat_that"], "id": "message_claude.repeat_that", "kind": "filler", "polarity": "positive", "text": "repeat that for me"}
@@ -15518,6 +15838,46 @@
 {"id": "message_claude.stop_claude", "kind": "sentence", "polarity": "negative", "reject": "message_claude.stop_claude", "text": "in the story the old captain decides to quiet claude as the storm arrives"}
 {"id": "message_claude.stop_claude", "kind": "other_command", "polarity": "negative", "reject": "message_claude.stop_claude", "text": "stop the video"}
 {"id": "message_claude.stop_claude", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.stop_claude", "text": "cobalt banana claude glimmer thunderous"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "alias", "polarity": "positive", "text": "whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "determiner", "polarity": "positive", "text": "whats the in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "whats in it thanks"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "punct", "polarity": "positive", "text": "Whats, in it?"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "okay whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "punct", "polarity": "positive", "text": "Whats in it."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "go ahead and whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "could you just whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "whats in it for me"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "would you please whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "whats in it right now"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "so whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "could you whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "whats in it for me please"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you please whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "whats in it now"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "hey whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "i need you to whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "um whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "uh whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "please whats in it"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "whats in it please"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it please"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Can you whats in it please."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it for me"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Can you whats in it for me."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it now"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Can you whats in it now."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it thanks"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Can you whats in it thanks."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it right now"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Can you whats in it right now."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "can you whats in it for me please"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Can you whats in it for me please."}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "could you whats in it please"}
+{"accept": ["message_claude.whats_in_it"], "id": "message_claude.whats_in_it", "kind": "filler", "polarity": "positive", "text": "Could you whats in it please."}
+{"id": "message_claude.whats_in_it", "kind": "sentence", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "our manager keeps asking whether anyone remembered to whats in it last week"}
+{"id": "message_claude.whats_in_it", "kind": "other_command", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "do it"}
+{"id": "message_claude.whats_in_it", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "marmalade purple whats pickle wobble"}
 {"accept": ["music.import_my_spotify_playlists"], "id": "music.import_my_spotify_playlists", "kind": "alias", "polarity": "positive", "text": "import my spotify playlists"}
 {"accept": ["music.import_my_spotify_playlists"], "id": "music.import_my_spotify_playlists", "kind": "determiner", "polarity": "positive", "text": "import the spotify playlists"}
 {"accept": ["music.import_my_spotify_playlists"], "id": "music.import_my_spotify_playlists", "kind": "filler", "polarity": "positive", "text": "import spotify playlists for me please"}
@@ -17276,7 +17636,7 @@
 {"accept": ["selection_edit.capitalise_selection"], "id": "selection_edit.capitalise_selection", "kind": "punct", "polarity": "positive", "text": "capitalise, selection"}
 {"accept": ["selection_edit.capitalise_selection"], "id": "selection_edit.capitalise_selection", "kind": "punct", "polarity": "positive", "text": "capitalise, highlighted text"}
 {"id": "selection_edit.capitalise_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.capitalise_selection", "text": "my grandmother never understood why people would capitalise highlighted text on a sunday"}
-{"id": "selection_edit.capitalise_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.capitalise_selection", "text": "text size"}
+{"id": "selection_edit.capitalise_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.capitalise_selection", "text": "read the"}
 {"id": "selection_edit.capitalise_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.capitalise_selection", "text": "marmalade pickle highlighted noodle octopus"}
 {"accept": ["selection_edit.capitalise_this"], "id": "selection_edit.capitalise_this", "kind": "punct", "polarity": "positive", "text": "capitalise, it"}
 {"accept": ["selection_edit.capitalise_this"], "id": "selection_edit.capitalise_this", "kind": "punct", "polarity": "positive", "text": "Capitalise this"}
@@ -17356,7 +17716,7 @@
 {"accept": ["selection_edit.capitalize_selection"], "id": "selection_edit.capitalize_selection", "kind": "punct", "polarity": "positive", "text": "capitalize, selected word"}
 {"accept": ["selection_edit.capitalize_selection"], "id": "selection_edit.capitalize_selection", "kind": "punct", "polarity": "positive", "text": "Capitalize the selected text."}
 {"id": "selection_edit.capitalize_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.capitalize_selection", "text": "during the lecture she explained how to capitalize highlighted text without breaking anything"}
-{"id": "selection_edit.capitalize_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.capitalize_selection", "text": "text size"}
+{"id": "selection_edit.capitalize_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.capitalize_selection", "text": "read the"}
 {"id": "selection_edit.capitalize_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.capitalize_selection", "text": "marmalade noodle highlighted wobble cobalt"}
 {"accept": ["selection_edit.capitalize_this"], "id": "selection_edit.capitalize_this", "kind": "punct", "polarity": "positive", "text": "capitalize, it"}
 {"accept": ["selection_edit.capitalize_this"], "id": "selection_edit.capitalize_this", "kind": "punct", "polarity": "positive", "text": "Capitalize that."}
@@ -17436,7 +17796,7 @@
 {"accept": ["selection_edit.change_selection"], "id": "selection_edit.change_selection", "kind": "punct", "polarity": "positive", "text": "change selection!"}
 {"accept": ["selection_edit.change_selection"], "id": "selection_edit.change_selection", "kind": "punct", "polarity": "positive", "text": "CHANGE THE SELECTED WORD"}
 {"id": "selection_edit.change_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.change_selection", "text": "in the story the old captain decides to change highlighted text as the storm arrives"}
-{"id": "selection_edit.change_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.change_selection", "text": "text size"}
+{"id": "selection_edit.change_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.change_selection", "text": "read the"}
 {"id": "selection_edit.change_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.change_selection", "text": "quartz zeppelin highlighted lantern velvet"}
 {"accept": ["selection_edit.change_this"], "id": "selection_edit.change_this", "kind": "punct", "polarity": "positive", "text": "CHANGE THAT"}
 {"accept": ["selection_edit.change_this"], "id": "selection_edit.change_this", "kind": "punct", "polarity": "positive", "text": "Change this."}
@@ -17676,7 +18036,7 @@
 {"accept": ["selection_edit.correct_selection"], "id": "selection_edit.correct_selection", "kind": "punct", "polarity": "positive", "text": "Correct highlighted word."}
 {"accept": ["selection_edit.correct_selection"], "id": "selection_edit.correct_selection", "kind": "punct", "polarity": "positive", "text": "correct selected word!"}
 {"id": "selection_edit.correct_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.correct_selection", "text": "my grandmother never understood why people would correct highlighted text on a sunday"}
-{"id": "selection_edit.correct_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.correct_selection", "text": "text size"}
+{"id": "selection_edit.correct_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.correct_selection", "text": "read the"}
 {"id": "selection_edit.correct_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.correct_selection", "text": "thunderous saxophone highlighted noodle quartz"}
 {"accept": ["selection_edit.correct_this"], "id": "selection_edit.correct_this", "kind": "punct", "polarity": "positive", "text": "Correct it"}
 {"accept": ["selection_edit.correct_this"], "id": "selection_edit.correct_this", "kind": "punct", "polarity": "positive", "text": "correct, this"}
@@ -18036,7 +18396,7 @@
 {"accept": ["selection_edit.formalise_selection"], "id": "selection_edit.formalise_selection", "kind": "punct", "polarity": "positive", "text": "formalise, the highlighted text"}
 {"accept": ["selection_edit.formalise_selection"], "id": "selection_edit.formalise_selection", "kind": "punct", "polarity": "positive", "text": "Formalise the highlighted word."}
 {"id": "selection_edit.formalise_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.formalise_selection", "text": "in the story the old captain decides to formalise highlighted text as the storm arrives"}
-{"id": "selection_edit.formalise_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.formalise_selection", "text": "text size"}
+{"id": "selection_edit.formalise_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.formalise_selection", "text": "read the"}
 {"id": "selection_edit.formalise_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.formalise_selection", "text": "cobalt octopus highlighted wobble quartz"}
 {"accept": ["selection_edit.formalise_this"], "id": "selection_edit.formalise_this", "kind": "punct", "polarity": "positive", "text": "formalise, it"}
 {"accept": ["selection_edit.formalise_this"], "id": "selection_edit.formalise_this", "kind": "punct", "polarity": "positive", "text": "FORMALISE IT"}
@@ -18116,7 +18476,7 @@
 {"accept": ["selection_edit.formalize_selection"], "id": "selection_edit.formalize_selection", "kind": "punct", "polarity": "positive", "text": "formalize highlighted text!"}
 {"accept": ["selection_edit.formalize_selection"], "id": "selection_edit.formalize_selection", "kind": "punct", "polarity": "positive", "text": "formalize highlighted word!"}
 {"id": "selection_edit.formalize_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.formalize_selection", "text": "yesterday afternoon we argued for an hour about who would formalize highlighted text first"}
-{"id": "selection_edit.formalize_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.formalize_selection", "text": "text size"}
+{"id": "selection_edit.formalize_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.formalize_selection", "text": "read the"}
 {"id": "selection_edit.formalize_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.formalize_selection", "text": "thunderous sideways highlighted octopus zeppelin"}
 {"accept": ["selection_edit.formalize_this"], "id": "selection_edit.formalize_this", "kind": "punct", "polarity": "positive", "text": "Formalize it"}
 {"accept": ["selection_edit.formalize_this"], "id": "selection_edit.formalize_this", "kind": "punct", "polarity": "positive", "text": "FORMALIZE THIS"}
@@ -18196,7 +18556,7 @@
 {"accept": ["selection_edit.lengthen_selection"], "id": "selection_edit.lengthen_selection", "kind": "punct", "polarity": "positive", "text": "lengthen the selected text!"}
 {"accept": ["selection_edit.lengthen_selection"], "id": "selection_edit.lengthen_selection", "kind": "punct", "polarity": "positive", "text": "LENGTHEN THE HIGHLIGHTED TEXT"}
 {"id": "selection_edit.lengthen_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.lengthen_selection", "text": "honestly the whole point of the meeting was to lengthen highlighted text and nobody did"}
-{"id": "selection_edit.lengthen_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.lengthen_selection", "text": "text size"}
+{"id": "selection_edit.lengthen_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.lengthen_selection", "text": "read the"}
 {"id": "selection_edit.lengthen_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.lengthen_selection", "text": "wobble velvet highlighted glimmer thunderous"}
 {"accept": ["selection_edit.lengthen_this"], "id": "selection_edit.lengthen_this", "kind": "punct", "polarity": "positive", "text": "lengthen, it"}
 {"accept": ["selection_edit.lengthen_this"], "id": "selection_edit.lengthen_this", "kind": "punct", "polarity": "positive", "text": "Lengthen this"}
@@ -18356,7 +18716,7 @@
 {"accept": ["selection_edit.polish_selection"], "id": "selection_edit.polish_selection", "kind": "punct", "polarity": "positive", "text": "polish, the selected word"}
 {"accept": ["selection_edit.polish_selection"], "id": "selection_edit.polish_selection", "kind": "punct", "polarity": "positive", "text": "Polish the selected word"}
 {"id": "selection_edit.polish_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.polish_selection", "text": "our manager keeps asking whether anyone remembered to polish highlighted text last week"}
-{"id": "selection_edit.polish_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.polish_selection", "text": "text size"}
+{"id": "selection_edit.polish_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.polish_selection", "text": "read the"}
 {"id": "selection_edit.polish_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.polish_selection", "text": "noodle wobble highlighted quartz purple"}
 {"accept": ["selection_edit.polish_this"], "id": "selection_edit.polish_this", "kind": "punct", "polarity": "positive", "text": "Polish that."}
 {"accept": ["selection_edit.polish_this"], "id": "selection_edit.polish_this", "kind": "punct", "polarity": "positive", "text": "Polish that"}
@@ -18436,7 +18796,7 @@
 {"accept": ["selection_edit.punctuate_selection"], "id": "selection_edit.punctuate_selection", "kind": "punct", "polarity": "positive", "text": "PUNCTUATE HIGHLIGHTED WORD"}
 {"accept": ["selection_edit.punctuate_selection"], "id": "selection_edit.punctuate_selection", "kind": "punct", "polarity": "positive", "text": "Punctuate highlighted word"}
 {"id": "selection_edit.punctuate_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.punctuate_selection", "text": "honestly the whole point of the meeting was to punctuate highlighted text and nobody did"}
-{"id": "selection_edit.punctuate_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.punctuate_selection", "text": "text size"}
+{"id": "selection_edit.punctuate_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.punctuate_selection", "text": "read the"}
 {"id": "selection_edit.punctuate_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.punctuate_selection", "text": "octopus purple highlighted cobalt velvet"}
 {"accept": ["selection_edit.punctuate_this"], "id": "selection_edit.punctuate_this", "kind": "punct", "polarity": "positive", "text": "punctuate this!"}
 {"accept": ["selection_edit.punctuate_this"], "id": "selection_edit.punctuate_this", "kind": "punct", "polarity": "positive", "text": "punctuate, that"}
@@ -18516,7 +18876,7 @@
 {"accept": ["selection_edit.read_selection"], "id": "selection_edit.read_selection", "kind": "punct", "polarity": "positive", "text": "Read the highlighted word"}
 {"accept": ["selection_edit.read_selection"], "id": "selection_edit.read_selection", "kind": "punct", "polarity": "positive", "text": "read highlighted word!"}
 {"id": "selection_edit.read_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.read_selection", "text": "our manager keeps asking whether anyone remembered to read highlighted text last week"}
-{"id": "selection_edit.read_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.read_selection", "text": "read the rest"}
+{"id": "selection_edit.read_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.read_selection", "text": "read the"}
 {"id": "selection_edit.read_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.read_selection", "text": "sideways saxophone highlighted marmalade lantern"}
 {"accept": ["selection_edit.reformat_selection"], "id": "selection_edit.reformat_selection", "kind": "punct", "polarity": "positive", "text": "reformat, the selected text"}
 {"accept": ["selection_edit.reformat_selection"], "id": "selection_edit.reformat_selection", "kind": "punct", "polarity": "positive", "text": "Reformat highlighted text"}
@@ -18556,7 +18916,7 @@
 {"accept": ["selection_edit.reformat_selection"], "id": "selection_edit.reformat_selection", "kind": "punct", "polarity": "positive", "text": "Reformat highlighted word"}
 {"accept": ["selection_edit.reformat_selection"], "id": "selection_edit.reformat_selection", "kind": "punct", "polarity": "positive", "text": "Reformat selected word."}
 {"id": "selection_edit.reformat_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.reformat_selection", "text": "last night he wrote in the notes that you can reformat highlighted text whenever it feels right"}
-{"id": "selection_edit.reformat_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.reformat_selection", "text": "text size"}
+{"id": "selection_edit.reformat_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.reformat_selection", "text": "read the"}
 {"id": "selection_edit.reformat_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.reformat_selection", "text": "thunderous lantern highlighted velvet sideways"}
 {"accept": ["selection_edit.reformat_this"], "id": "selection_edit.reformat_this", "kind": "punct", "polarity": "positive", "text": "REFORMAT THAT"}
 {"accept": ["selection_edit.reformat_this"], "id": "selection_edit.reformat_this", "kind": "punct", "polarity": "positive", "text": "Reformat it."}
@@ -18636,7 +18996,7 @@
 {"accept": ["selection_edit.rephrase_selection"], "id": "selection_edit.rephrase_selection", "kind": "punct", "polarity": "positive", "text": "rephrase, the selected word"}
 {"accept": ["selection_edit.rephrase_selection"], "id": "selection_edit.rephrase_selection", "kind": "punct", "polarity": "positive", "text": "Rephrase the highlighted text"}
 {"id": "selection_edit.rephrase_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.rephrase_selection", "text": "in the story the old captain decides to rephrase highlighted text as the storm arrives"}
-{"id": "selection_edit.rephrase_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.rephrase_selection", "text": "text size"}
+{"id": "selection_edit.rephrase_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.rephrase_selection", "text": "read the"}
 {"id": "selection_edit.rephrase_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.rephrase_selection", "text": "wobble thunderous highlighted glimmer lantern"}
 {"accept": ["selection_edit.rephrase_this"], "id": "selection_edit.rephrase_this", "kind": "punct", "polarity": "positive", "text": "rephrase this!"}
 {"accept": ["selection_edit.rephrase_this"], "id": "selection_edit.rephrase_this", "kind": "punct", "polarity": "positive", "text": "REPHRASE IT"}
@@ -18716,7 +19076,7 @@
 {"accept": ["selection_edit.reword_selection"], "id": "selection_edit.reword_selection", "kind": "punct", "polarity": "positive", "text": "REWORD SELECTION"}
 {"accept": ["selection_edit.reword_selection"], "id": "selection_edit.reword_selection", "kind": "punct", "polarity": "positive", "text": "reword the highlighted text!"}
 {"id": "selection_edit.reword_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.reword_selection", "text": "yesterday afternoon we argued for an hour about who would reword highlighted text first"}
-{"id": "selection_edit.reword_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.reword_selection", "text": "text size"}
+{"id": "selection_edit.reword_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.reword_selection", "text": "read the"}
 {"id": "selection_edit.reword_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.reword_selection", "text": "velvet cobalt highlighted pickle lantern"}
 {"accept": ["selection_edit.reword_this"], "id": "selection_edit.reword_this", "kind": "punct", "polarity": "positive", "text": "REWORD IT"}
 {"accept": ["selection_edit.reword_this"], "id": "selection_edit.reword_this", "kind": "punct", "polarity": "positive", "text": "reword, that"}
@@ -18796,7 +19156,7 @@
 {"accept": ["selection_edit.rewrite_selection"], "id": "selection_edit.rewrite_selection", "kind": "punct", "polarity": "positive", "text": "rewrite, selected text"}
 {"accept": ["selection_edit.rewrite_selection"], "id": "selection_edit.rewrite_selection", "kind": "punct", "polarity": "positive", "text": "REWRITE THE SELECTION"}
 {"id": "selection_edit.rewrite_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.rewrite_selection", "text": "during the lecture she explained how to rewrite highlighted text without breaking anything"}
-{"id": "selection_edit.rewrite_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.rewrite_selection", "text": "text size"}
+{"id": "selection_edit.rewrite_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.rewrite_selection", "text": "read the"}
 {"id": "selection_edit.rewrite_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.rewrite_selection", "text": "pickle cobalt highlighted sideways quartz"}
 {"accept": ["selection_edit.rewrite_this"], "id": "selection_edit.rewrite_this", "kind": "punct", "polarity": "positive", "text": "REWRITE THAT"}
 {"accept": ["selection_edit.rewrite_this"], "id": "selection_edit.rewrite_this", "kind": "punct", "polarity": "positive", "text": "Rewrite that."}
@@ -18876,7 +19236,7 @@
 {"accept": ["selection_edit.shorten_selection"], "id": "selection_edit.shorten_selection", "kind": "punct", "polarity": "positive", "text": "shorten the selected word!"}
 {"accept": ["selection_edit.shorten_selection"], "id": "selection_edit.shorten_selection", "kind": "punct", "polarity": "positive", "text": "shorten, selected text"}
 {"id": "selection_edit.shorten_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.shorten_selection", "text": "my grandmother never understood why people would shorten highlighted text on a sunday"}
-{"id": "selection_edit.shorten_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.shorten_selection", "text": "text size"}
+{"id": "selection_edit.shorten_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.shorten_selection", "text": "read the"}
 {"id": "selection_edit.shorten_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.shorten_selection", "text": "saxophone velvet highlighted marmalade sideways"}
 {"accept": ["selection_edit.shorten_this"], "id": "selection_edit.shorten_this", "kind": "punct", "polarity": "positive", "text": "SHORTEN IT"}
 {"accept": ["selection_edit.shorten_this"], "id": "selection_edit.shorten_this", "kind": "punct", "polarity": "positive", "text": "shorten this!"}
@@ -18956,7 +19316,7 @@
 {"accept": ["selection_edit.simplify_selection"], "id": "selection_edit.simplify_selection", "kind": "punct", "polarity": "positive", "text": "Simplify the selected word."}
 {"accept": ["selection_edit.simplify_selection"], "id": "selection_edit.simplify_selection", "kind": "punct", "polarity": "positive", "text": "SIMPLIFY THE SELECTION"}
 {"id": "selection_edit.simplify_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.simplify_selection", "text": "our manager keeps asking whether anyone remembered to simplify highlighted text last week"}
-{"id": "selection_edit.simplify_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.simplify_selection", "text": "text size"}
+{"id": "selection_edit.simplify_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.simplify_selection", "text": "read the"}
 {"id": "selection_edit.simplify_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.simplify_selection", "text": "marmalade purple highlighted wobble sideways"}
 {"accept": ["selection_edit.simplify_this"], "id": "selection_edit.simplify_this", "kind": "punct", "polarity": "positive", "text": "Simplify it."}
 {"accept": ["selection_edit.simplify_this"], "id": "selection_edit.simplify_this", "kind": "punct", "polarity": "positive", "text": "Simplify it"}
@@ -19036,7 +19396,7 @@
 {"accept": ["selection_edit.summarize_and_replace"], "id": "selection_edit.summarize_and_replace", "kind": "punct", "polarity": "positive", "text": "SUMMARIZE THE SELECTED TEXT AND REPLACE"}
 {"accept": ["selection_edit.summarize_and_replace"], "id": "selection_edit.summarize_and_replace", "kind": "punct", "polarity": "positive", "text": "summarize, the highlighted word and replace"}
 {"id": "selection_edit.summarize_and_replace", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.summarize_and_replace", "text": "yesterday afternoon we argued for an hour about who would summarize and replace first"}
-{"id": "selection_edit.summarize_and_replace", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.summarize_and_replace", "text": "text size"}
+{"id": "selection_edit.summarize_and_replace", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.summarize_and_replace", "text": "read the"}
 {"id": "selection_edit.summarize_and_replace", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.summarize_and_replace", "text": "velvet octopus summarize zeppelin pickle"}
 {"accept": ["selection_edit.summarize_selection"], "id": "selection_edit.summarize_selection", "kind": "punct", "polarity": "positive", "text": "summarize highlighted text!"}
 {"accept": ["selection_edit.summarize_selection"], "id": "selection_edit.summarize_selection", "kind": "punct", "polarity": "positive", "text": "summarize, the selected word"}
@@ -19196,7 +19556,7 @@
 {"accept": ["selection_edit.tighten_selection"], "id": "selection_edit.tighten_selection", "kind": "punct", "polarity": "positive", "text": "TIGHTEN HIGHLIGHTED TEXT"}
 {"accept": ["selection_edit.tighten_selection"], "id": "selection_edit.tighten_selection", "kind": "punct", "polarity": "positive", "text": "tighten the selected text!"}
 {"id": "selection_edit.tighten_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.tighten_selection", "text": "in the story the old captain decides to tighten highlighted text as the storm arrives"}
-{"id": "selection_edit.tighten_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.tighten_selection", "text": "text size"}
+{"id": "selection_edit.tighten_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.tighten_selection", "text": "read the"}
 {"id": "selection_edit.tighten_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.tighten_selection", "text": "banana octopus highlighted quartz marmalade"}
 {"accept": ["selection_edit.tighten_this"], "id": "selection_edit.tighten_this", "kind": "punct", "polarity": "positive", "text": "tighten this!"}
 {"accept": ["selection_edit.tighten_this"], "id": "selection_edit.tighten_this", "kind": "punct", "polarity": "positive", "text": "Tighten that"}
@@ -19276,7 +19636,7 @@
 {"accept": ["selection_edit.translate_selection"], "id": "selection_edit.translate_selection", "kind": "punct", "polarity": "positive", "text": "translate, the selected text"}
 {"accept": ["selection_edit.translate_selection"], "id": "selection_edit.translate_selection", "kind": "punct", "polarity": "positive", "text": "translate, selection"}
 {"id": "selection_edit.translate_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.translate_selection", "text": "yesterday afternoon we argued for an hour about who would translate highlighted text first"}
-{"id": "selection_edit.translate_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.translate_selection", "text": "text size"}
+{"id": "selection_edit.translate_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.translate_selection", "text": "read the"}
 {"id": "selection_edit.translate_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.translate_selection", "text": "pickle marmalade highlighted zeppelin purple"}
 {"accept": ["selection_edit.translate_selection_to_arabic"], "id": "selection_edit.translate_selection_to_arabic", "kind": "punct", "polarity": "positive", "text": "translate the highlighted word to arabic!"}
 {"accept": ["selection_edit.translate_selection_to_arabic"], "id": "selection_edit.translate_selection_to_arabic", "kind": "punct", "polarity": "positive", "text": "TRANSLATE THE HIGHLIGHTED TEXT TO ARABIC"}
@@ -19836,7 +20196,7 @@
 {"accept": ["selection_edit.trim_selection"], "id": "selection_edit.trim_selection", "kind": "punct", "polarity": "positive", "text": "trim highlighted text!"}
 {"accept": ["selection_edit.trim_selection"], "id": "selection_edit.trim_selection", "kind": "punct", "polarity": "positive", "text": "trim, selection"}
 {"id": "selection_edit.trim_selection", "kind": "sentence", "polarity": "negative", "reject": "selection_edit.trim_selection", "text": "yesterday i told my sister we should trim highlighted text before dinner"}
-{"id": "selection_edit.trim_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.trim_selection", "text": "text size"}
+{"id": "selection_edit.trim_selection", "kind": "other_command", "polarity": "negative", "reject": "selection_edit.trim_selection", "text": "read the"}
 {"id": "selection_edit.trim_selection", "kind": "nonsense", "polarity": "negative", "reject": "selection_edit.trim_selection", "text": "velvet pickle highlighted quartz octopus"}
 {"accept": ["selection_edit.trim_this"], "id": "selection_edit.trim_this", "kind": "punct", "polarity": "positive", "text": "TRIM THAT"}
 {"accept": ["selection_edit.trim_this"], "id": "selection_edit.trim_this", "kind": "punct", "polarity": "positive", "text": "Trim that."}
@@ -23236,7 +23596,7 @@
 {"accept": ["window_switcher.read_windows"], "id": "window_switcher.read_windows", "kind": "filler", "polarity": "positive", "text": "read windows thanks"}
 {"accept": ["window_switcher.read_windows"], "id": "window_switcher.read_windows", "kind": "filler", "polarity": "positive", "text": "what windows right now"}
 {"id": "window_switcher.read_windows", "kind": "sentence", "polarity": "negative", "reject": "window_switcher.read_windows", "text": "last night he wrote in the notes that you can list all windows whenever it feels right"}
-{"id": "window_switcher.read_windows", "kind": "other_command", "polarity": "negative", "reject": "window_switcher.read_windows", "text": "memo list"}
+{"id": "window_switcher.read_windows", "kind": "other_command", "polarity": "negative", "reject": "window_switcher.read_windows", "text": "read the"}
 {"id": "window_switcher.read_windows", "kind": "nonsense", "polarity": "negative", "reject": "window_switcher.read_windows", "text": "pickle saxophone windows sideways octopus"}
 {"accept": ["window_switcher.show_windows"], "id": "window_switcher.show_windows", "kind": "alias", "polarity": "positive", "text": "show windows"}
 {"accept": ["window_switcher.show_windows"], "id": "window_switcher.show_windows", "kind": "determiner", "polarity": "positive", "text": "show the windows"}
