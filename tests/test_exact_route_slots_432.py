@@ -32,6 +32,7 @@ VOICE_SLOTS = {
     'line spacing': ('two', {'remainder': 'two'}),
     'set font': ('Arial', {'remainder': 'Arial'}),
     'claude message submit': ('Foo', {'remainder': 'Foo'}),
+    'chatgpt message submit': ('Foo', {'remainder': 'Foo'}),
     # 604 adds named-control actions and selection-scoped disambiguation.
     'choose control': ('two', {'remainder': 'two'}),
     'toggle': ('Foo', {'remainder': 'Foo'}),

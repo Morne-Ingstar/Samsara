@@ -80,6 +80,7 @@
 | `command_mode.cancel_window_all_commands` | settings/#command_mode.cancel_window_all_commands |
 | `command_mode.cancel_window_s` | settings/#command_mode.cancel_window_s |
 | `command_mode.command_matching_enabled` | settings/#command_mode.command_matching_enabled |
+| `command_mode.dictate_commit_redecode_max_s` | settings/#command_mode.dictate_commit_redecode_max_s |
 | `command_mode.dictate_commit_word` | settings/#command_mode.dictate_commit_word |
 | `command_mode.dictate_utterance_silence_s` | settings/#command_mode.dictate_utterance_silence_s |
 | `command_mode.enabled` | settings/#command_mode.enabled |
@@ -265,6 +266,7 @@
 | `command.button` | config.json only |
 | `command.trigger_mode` | config.json only |
 | `command_mode.ava_tts_half_duplex` | config.json only |
+| `command_mode.dictate_commit_redecode_max_s` | config.json only |
 | `command_mode.dictate_commit_word` | config.json only |
 | `command_mode.personal_alias_offer_timeout_s` | config.json only |
 | `command_mode.preview_position` | config.json only |

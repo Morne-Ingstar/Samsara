@@ -30,6 +30,7 @@ REQUIRED_VOICE_PHRASES = {
     "line spacing",
     "set font",
     "claude message submit",
+    "chatgpt message submit",
     "choose control",
     "collapse",
     "expand",

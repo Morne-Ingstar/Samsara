@@ -63,6 +63,7 @@
 | `command_mode.suppress_button` | KEEP | Contextual help is expected for this setting. |
 | `command_mode.enter_debounce_ms` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `command_mode.abort_phrases` | KEEP | Contextual help is expected for this setting. |
+| `command_mode.dictate_commit_redecode_max_s` | DROP | Config-only cap for optional draft stitching; zero removes the cap. |
 | `command_mode.dictate_commit_word` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `command_mode.stop_phrases` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `command_mode.inactivity_timeout_s` | DROP | The setting is self-explanatory or configured outside Settings. |
