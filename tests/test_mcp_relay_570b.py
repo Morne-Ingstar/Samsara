@@ -357,7 +357,7 @@ def test_release_paths_require_relay_existence_and_help_success():
 
 
 def test_desktop_docs_match_panel_and_explain_restart_and_errors():
-    doc = (ROOT / 'Docs' / 'agents' / 'samsara' / 'SKILL.md').read_text()
+    doc = (ROOT / 'Docs' / 'agents' / 'samsara' / 'SKILL.md').read_text(encoding='utf-8')
     assert 'support is coming' not in doc
     for text in ('Copy Claude Desktop JSON', 'Settings > Developer > Edit Config',
                  'claude_desktop_config.json', 'mcpServers', 'restart Claude Desktop',
