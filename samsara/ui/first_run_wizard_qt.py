@@ -19,7 +19,7 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QRadioButton, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QComboBox, QPushButton, QButtonGroup,
-    QFrame, QProgressBar,
+    QFrame, QProgressBar, QSizePolicy, QStyle, QStyleOptionComboBox, QStylePainter,
 )
 
 from samsara import config_defaults, listening_display
@@ -35,6 +35,8 @@ from samsara.ui.tutorial_display_qt import setup_placement_page, TITLE as PLACEM
 from samsara.onboarding.display_placement import seed_fresh
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 from samsara.audio_devices import force_rescan, list_microphones, pick_index_by_name
+
+from samsara.microphone_recovery import capture_endpoints, register_notifications
 
 from samsara.log import get_logger
 
@@ -480,6 +482,78 @@ class FirstRunWizardQt:
 # Wizard window
 # ---------------------------------------------------------------------------
 
+class _MicComboBox(QComboBox):
+    """Keep the native chooser, with an ellipsis for capped device names."""
+
+    def paintEvent(self, event):
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        field = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, option,
+            QStyle.SubControl.SC_ComboBoxEditField, self)
+        if self.width() < self.sizeHint().width():
+            option.currentText = self.fontMetrics().elidedText(
+                option.currentText, Qt.TextElideMode.ElideRight, max(0, field.width() - 4))
+        painter = QStylePainter(self)
+        painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, option)
+        painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, option)
+
+
+class _MicHotplugPage(QWidget):
+    """Own notifications only while this page is visible; marshal callbacks to Qt."""
+
+    changed = Signal()
+
+    def __init__(self, refresh):
+        super().__init__()
+        self._close_notifications = None
+        self._snapshot = None
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(350)
+        self._debounce.timeout.connect(lambda: refresh() if self.isVisible() else None)
+        self.changed.connect(self._probe, Qt.ConnectionType.QueuedConnection)
+        self._poll = QTimer(self)
+        self._poll.setInterval(2000)
+        self._poll.timeout.connect(self._probe)
+
+    def _inputs(self):
+        try:
+            return capture_endpoints()
+        except Exception:
+            return None
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._snapshot = self._inputs()
+        try:
+            self._close_notifications = register_notifications(self.changed.emit)
+        except Exception:
+            logger.debug("Setup endpoint notifications unavailable; polling inputs")
+            self._poll.start()
+        # Catch changes since construction or since leaving this step.
+        self._debounce.start()
+
+    def hideEvent(self, event):
+        self._poll.stop()
+        self._debounce.stop()
+        close, self._close_notifications = self._close_notifications, None
+        if close is not None:
+            try:
+                close()
+            except Exception:
+                logger.debug("Setup endpoint notification cleanup failed", exc_info=True)
+        super().hideEvent(event)
+
+    def _probe(self):
+        if not self.isVisible():
+            return
+        current = self._inputs()
+        if current is None or current != self._snapshot:
+            self._snapshot = current
+            self._debounce.start()
+
+
 class _WizardWindow(QMainWindow):
     _mic_result = Signal(str, str)   # (message, hex-color)
     _finished   = Signal(object)     # emits result just before close
@@ -494,6 +568,7 @@ class _WizardWindow(QMainWindow):
         from samsara.ui.tutorial_display_qt import placement_monitor
         seed_fresh(self._config, fresh=not Path(config_path).exists(), monitor=placement_monitor(self._config))
         self._mics: list[dict] = []
+        self._mic_scan_busy = True
         self._mic_result.connect(self._on_mic_result)
         self._mic_announcer = LiveSurfaceAnnouncer(self)
 
@@ -714,7 +789,12 @@ class _WizardWindow(QMainWindow):
         return self._components_page.widget
 
     def _build_microphone(self) -> QWidget:
-        w, lay = self._padded()
+        w = _MicHotplugPage(self._auto_refresh_mics)
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(28, 16, 28, 16)
+        lay.setSpacing(12)
+        self._known_mic_names = None
+        self._offered_mic = None
         self._mic_page = w  # saved for _on_mic_result lookup
         sub = QLabel("Choose the microphone Samsara will listen on.")
         sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
@@ -722,16 +802,35 @@ class _WizardWindow(QMainWindow):
         lay.addSpacing(4)
 
         mic_row = QHBoxLayout()
-        self._mic_combo = QComboBox()
+        self._mic_combo = _MicComboBox()
+        self._mic_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._mic_combo.setMaximumWidth(420)
+        self._mic_combo.setMinimumWidth(0)
+        self._mic_combo.currentTextChanged.connect(self._mic_combo.setToolTip)
         self._mic_combo.addItem("Scanning for microphones…")
         self._mic_combo.setEnabled(False)
         self._mic_combo.currentIndexChanged.connect(self._on_mic_device_changed)
-        mic_row.addWidget(self._mic_combo, 1)
+        mic_row.addWidget(self._mic_combo)
         mic_refresh_btn = QPushButton("Refresh")
-        mic_refresh_btn.setFixedWidth(80)
+        mic_refresh_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         mic_refresh_btn.clicked.connect(self._on_refresh_mics_clicked)
         mic_row.addWidget(mic_refresh_btn)
+        mic_row.addStretch()
         lay.addLayout(mic_row)
+
+        self._mic_notice = QFrame()
+        theme.style_card(self._mic_notice)
+        notice_row = QHBoxLayout(self._mic_notice)
+        notice_row.setContentsMargins(12, 8, 12, 8)
+        self._mic_notice_text = QLabel()
+        self._mic_notice_text.setTextFormat(Qt.TextFormat.PlainText)
+        self._mic_notice_text.setWordWrap(True)
+        notice_row.addWidget(self._mic_notice_text, 1)
+        self._mic_use_btn = QPushButton("Use it")
+        self._mic_use_btn.clicked.connect(self._use_new_mic)
+        notice_row.addWidget(self._mic_use_btn)
+        self._mic_notice.hide()
+        lay.addWidget(self._mic_notice)
 
         lay.addSpacing(8)
         meter_lbl = QLabel("Input Level")
@@ -916,6 +1015,9 @@ class _WizardWindow(QMainWindow):
         (_enumerate_mics(), a plain sd.query_devices() read with no engine
         involved) still runs on a background thread -- unaffected by any
         of this."""
+        if getattr(self, '_mic_scan_busy', False):
+            return
+        self._mic_scan_busy = True
         self._stop_meter()
         if self._mic_status:
             self._mic_status.setText("Refreshing devices…")
@@ -926,6 +1028,14 @@ class _WizardWindow(QMainWindow):
             thread_registry.spawn(
                 "first_run_wizard_qt._refresh_mics", self._refresh_mics, daemon=True,
             )
+
+    def _auto_refresh_mics(self):
+        if not self._mic_page.isVisible():
+            return
+        if self._mic_scan_busy:
+            self._mic_page._debounce.start(350)
+            return
+        self._on_refresh_mics_clicked()
 
     def _refresh_mics_via_app(self):
         """Qt-thread counterpart of _on_refresh_mics_clicked() when a live
@@ -990,6 +1100,9 @@ class _WizardWindow(QMainWindow):
         return None
 
     def _on_mic_device_changed(self, _index: int):
+        if getattr(self, '_offered_mic', None) == self._mic_combo.currentText():
+            self._offered_mic = None
+            self._mic_notice.hide()
         if _STEPS[self._step][0] == "Microphone":
             self._start_meter()
 
@@ -1012,7 +1125,7 @@ class _WizardWindow(QMainWindow):
         from samsara.audio_engine.guide_capture import RingLevelMeter, running_engine
         ace = running_engine(self._samsara_app)
 
-        if ace is not None:
+        if ace is not None and ace.capture_name == self._mic_combo.currentText():
             self._meter_ace_reader = RingLevelMeter(ace, "wizard-meter")
             self._mic_capture_ready = True
             print("[WIZARD] Meter: ACE ring consumer")
@@ -1136,6 +1249,8 @@ class _WizardWindow(QMainWindow):
             )
 
     def _on_mic_result(self, msg: str, color: str):
+        if msg in ("_load_done_", "_load_error_", "_refresh_done_", "__refresh_skipped__"):
+            self._mic_scan_busy = False
         if msg == "_load_done_":
             self._populate_mic_combo()
             return
@@ -1146,6 +1261,8 @@ class _WizardWindow(QMainWindow):
             self._populate_mic_combo(preserve_selection=True)
             return
         if msg == "__refresh_skipped__":
+            if self._mic_page is not None and self._mic_page.isVisible():
+                self._mic_page._debounce.start(2000)
             if self._mic_status:
                 self._mic_status.setText("Stop dictation elsewhere to refresh devices.")
                 self._mic_status.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;")
@@ -1166,6 +1283,19 @@ class _WizardWindow(QMainWindow):
         if self._mic_combo is None:
             return
         preserved_name = self._mic_combo.currentText() if preserve_selection else None
+        old_names = getattr(self, '_known_mic_names', None)
+        if preserve_selection and self._mic_scan_error and old_names is not None:
+            # An enumeration error is not evidence that an input was unplugged.
+            self._mics = list(self._last_mic_list)
+            if self._mic_page.isVisible():
+                self._start_meter()
+            if self._mic_status:
+                self._mic_status.setText("Couldn't scan audio devices — press Refresh")
+            return
+        self._last_mic_list = list(self._mics)
+        current_names = {m['name'] for m in self._mics}
+        removed = (preserve_selection and old_names is not None
+                   and preserved_name in old_names and preserved_name not in current_names)
         self._mic_combo.blockSignals(True)
         self._mic_combo.clear()
         if self._mics:
@@ -1175,6 +1305,8 @@ class _WizardWindow(QMainWindow):
                 idx = pick_index_by_name(self._mics, preserved_name)
                 if idx is not None:
                     self._mic_combo.setCurrentIndex(idx)
+                elif removed:
+                    self._mic_combo.setCurrentIndex(self._default_mic_index())
             if self._mic_status:
                 self._mic_status.setText("Speak to test your microphone")
                 self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
@@ -1194,6 +1326,56 @@ class _WizardWindow(QMainWindow):
                     self._mic_status.setText("")
             self._mic_combo.setEnabled(False)
         self._mic_combo.blockSignals(False)
+        self._known_mic_names = {m['name'] for m in self._mics}
+        self._last_mic_list = list(self._mics)
+        if hasattr(self, '_mic_notice'):
+            if removed:
+                self._offered_mic = None
+                if self._get_current_mic_id() is not None:
+                    message = f"{preserved_name} was disconnected. Using the system default microphone."
+                else:
+                    message = f"{preserved_name} was disconnected. Select a working microphone to continue."
+                self._show_mic_notice(message)
+            elif old_names is not None and current_names - old_names:
+                self._offered_mic = next(m['name'] for m in self._mics
+                                         if m['name'] not in old_names)
+                self._show_mic_notice(f"{self._offered_mic} was plugged in.")
+            elif self._offered_mic not in current_names:
+                self._offered_mic = None
+                self._mic_notice.hide()
         # Restart meter now that device list is ready
         if _STEPS[self._step][0] == "Microphone":
             self._start_meter()
+
+    def _default_mic_index(self):
+        """Select Windows' default input, never whichever device happens to be first."""
+        try:
+            import sounddevice as sd
+            info = sd.query_devices(kind='input')
+            index = pick_index_by_name(self._mics, info['name'])
+            if index is not None:
+                return index
+            device_id = int(sd.default.device[0])
+            if device_id >= 0:
+                self._mics.append({'id': device_id, 'name': info['name']})
+                self._mic_combo.addItem(info['name'])
+                return len(self._mics) - 1
+        except Exception:
+            logger.debug("No system default input available", exc_info=True)
+        return -1
+
+    def _show_mic_notice(self, message):
+        self._mic_notice_text.setText(message)
+        self._mic_use_btn.setVisible(self._offered_mic is not None)
+        self._mic_notice.show()
+        self._mic_announcer.announce_transition(('mic-hotplug', message), message)
+
+    def _use_new_mic(self):
+        index = pick_index_by_name(self._mics, self._offered_mic)
+        if index is not None:
+            if self._mic_combo.currentIndex() == index:
+                self._start_meter()
+            else:
+                self._mic_combo.setCurrentIndex(index)
+        self._offered_mic = None
+        self._mic_notice.hide()
