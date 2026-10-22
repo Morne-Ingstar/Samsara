@@ -34,18 +34,37 @@ def test_standard_is_identity_for_present_and_missing_values(value):
                            "command_mode.dictate_utterance_silence_s", 2.0) == 2.0
 
 
-def test_profiles_scale_all_five_and_custom_key_wins():
+def test_profiles_keep_internal_chunk_gap_and_scale_accessibility_keys():
     relaxed, unhurried = _config(RELAXED), _config(UNHURRIED)
     for key, baseline in KEYS.items():
         relaxed_value = effective_value(relaxed, key, baseline)
         unhurried_value = effective_value(unhurried, key, baseline)
-        if key == "min_speech_duration":
+        if key == "command_mode.dictate_utterance_silence_s":
+            assert unhurried_value == relaxed_value == baseline
+        elif key == "min_speech_duration":
             assert unhurried_value <= relaxed_value < baseline
         else:
             assert unhurried_value > relaxed_value > baseline
     custom = _config("custom")
     custom["accessibility"]["speech_pace_custom"] = {"silence_threshold": 9.0}
     assert effective_value(custom, "silence_threshold", 2.0) == 9.0
+
+
+@pytest.mark.parametrize("pace", (STANDARD, RELAXED, UNHURRIED, "custom"))
+def test_manual_clear_gap_uses_chunk_gap_not_pace(pace):
+    config = _config(pace)
+    assert clear_gap_s(config) == 1.0
+    config["command_mode"]["dictate_utterance_silence_s"] = 1.2
+    assert clear_gap_s(config) == pytest.approx(1.8)
+
+
+def test_custom_chunk_and_clear_gap_win():
+    config = _config("custom")
+    config["accessibility"]["speech_pace_custom"] = {
+        "command_mode.dictate_utterance_silence_s": 2.0, "fragment_clear_gap_s": 4.0,
+    }
+    assert effective_value(config, "command_mode.dictate_utterance_silence_s", 0.65) == 2.0
+    assert clear_gap_s(config) == 4.0
 
 
 def test_slow_fragment_cannot_execute_a_command_but_clear_gap_can():

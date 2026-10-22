@@ -3161,26 +3161,12 @@ class DictatePreviewSession:
                 if callable(resume):
                     resume()
                 self._render("")
-            # DEFECT 1 (2026-09-11): captured BEFORE the (slow, model-lock-
-            # bound) decode below. If a commit lands on the cmd-utt thread
-            # while this tick is mid-decode, on_utterance_final bumps
-            # _generation; the partial this tick just produced belongs to
-            # audio from BEFORE that commit, so rendering it now would
-            # paint stale text right back over the transcript
-            # on_utterance_final just correctly cleared/updated.
+            # Reject a decode that crossed a final/commit generation boundary.
             generation = self._generation
             text = self._transcribe_partial()
             if self._stop_event.is_set() or self._closed:
                 return
-            # A hold can start WHILE the decode above is running -- and this
-            # loop is single-threaded, so it cannot notice the suspension (or
-            # bump _generation) until that decode returns. `text` was decoded
-            # from audio captured BEFORE the hold, which WakeConsumer has by
-            # now already discarded (discard_stale_wake_utterance, called at
-            # the instant _hotkey_recording flips True), so emitting it here
-            # would paint pre-hold words over a box that must read "Paused
-            # (hold)" -- the exact half-utterance the suspension contract
-            # says to drop. Re-check after the decode and discard it.
+            # A hold may have started during decoding; discard pre-hold words.
             if self._suspended_for_hold():
                 was_suspended = self._enter_hold_pause(was_suspended)
                 continue
@@ -3214,20 +3200,31 @@ class DictatePreviewSession:
             return None
         try:
             from samsara.speech_presence import skip_decode
+            consumer = getattr(app, "_wake_consumer", None)
+            chunk = getattr(consumer, "_utterance_frames", None)
+            last_voice = getattr(consumer, "_last_voice_ns", None)
             audio = self._snapshot_audio()
             if audio is None or skip_decode(audio, app, final=False, path='handsfree_preview'):
                 return None
             params = self._partial_params()
             segments, info = app.model.transcribe(audio, **params)
             text = "".join(seg.text for seg in segments).strip()
-            # Partials are provisional: validate before display, but only the
-            # final accepted decode learns languages or plays refusal feedback.
-            return app._filter_dictation_language(text, info, remember=False, feedback=False)
+            text = app._filter_dictation_language(text, info, remember=False, feedback=False)
+            # A hint only: final decoding and the commit gate remain authoritative.
+            self._commit_partial = (chunk, last_voice, bool(text and is_dictate_commit(text.split()[-1])))
+            return text
         except Exception as e:
             logger.exception(f"[DICTATE-PREVIEW] Partial transcribe failed: {e}")
             return None
         finally:
             lock.release()
+
+    def commit_partial_ready(self, consumer) -> bool:
+        """Only a terminal commit token from this exact, unchanged chunk is usable."""
+        chunk, last_voice, commit = getattr(self, "_commit_partial", (None, None, False))
+        return bool(commit and not self._closed and not self._suspended_for_hold()
+                    and chunk is consumer._utterance_frames
+                    and last_voice is not None and last_voice == consumer._last_voice_ns)
 
     def _snapshot_audio(self):
         app = self.app

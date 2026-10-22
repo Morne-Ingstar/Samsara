@@ -502,6 +502,11 @@ SETTINGS_SCHEMA = {
         "tab": "commands",
         "help": {"why": "These phrases leave the current hands-free session. Add words you can say reliably without using them in ordinary dictation. An accidental match can end a session early, so keep the list short.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.abort_phrases"},
     },
+    "command_mode.dictate_commit_redecode_max_s": {
+        "type": "float", "default": 20.0, "min": 0.0, "max": 120.0,
+        "tab": "commands", "settings_ui": False,
+        "ui_less_reason": "Config-only cap for optional draft stitching; zero removes the cap.",
+    },
     "command_mode.dictate_commit_word": {
         # Queue 142. The single word that pastes a staged dictation thought.
         # Configurable because the old default, "end", is a homophone of the

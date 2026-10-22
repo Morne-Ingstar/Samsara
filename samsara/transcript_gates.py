@@ -191,15 +191,23 @@ _TRAILING_GARBAGE_RUN_RE = re.compile(r'([_\-.])\1{5,}\s*$')
 
 
 def _trim_trailing_garbage_run(text):
-    """Strip a trailing run of 6+ repeated underscore/dash/period characters
-    from text. Real words consistently precede the run in every observed
-    case, so this trims rather than discarding the whole string -- callers
-    that need whole-utterance rejection (e.g. no real words at all) should
-    check whether the result is empty."""
+    """Trim trailing punctuation garbage or 3+ identical, normalised words.
+
+    Preserve the real prefix; callers decide whether an empty result is refused.
+    """
     match = _TRAILING_GARBAGE_RUN_RE.search(text)
-    if not match:
+    if match:
+        text = text[:match.start()].rstrip()
+    words = list(re.finditer(r'\S+', text))
+    if not words:
         return text
-    return text[:match.start()].rstrip()
+    last = words[-1].group().strip(string.punctuation + '…—–“”‘’').casefold()
+    run = 0
+    for word in reversed(words):
+        if not last or word.group().strip(string.punctuation + '…—–“”‘’').casefold() != last:
+            break
+        run += 1
+    return text[:words[-run].start()].rstrip() if run >= 3 else text
 
 
 def _drop_trailing_garbage_segments(seg_list):

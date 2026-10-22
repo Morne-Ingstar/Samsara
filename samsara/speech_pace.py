@@ -18,11 +18,11 @@ PROFILES = (STANDARD, RELAXED, UNHURRIED, CUSTOM)
 
 # Long pauses need room; a one-word utterance needs a lower admission floor.
 _RULES = {
-    RELAXED: {"silence": 2.5, "wake": 2.0, "minimum": 2 / 3, "clear_gap": 3.75},
-    UNHURRIED: {"silence": 4.0, "wake": 3.0, "minimum": 1 / 3, "clear_gap": 6.0},
+    RELAXED: {"chunk": 1.0, "silence": 2.5, "wake": 2.0, "minimum": 2 / 3},
+    UNHURRIED: {"chunk": 1.0, "silence": 4.0, "wake": 3.0, "minimum": 1 / 3},
 }
 _KIND = {
-    "command_mode.dictate_utterance_silence_s": "silence",
+    "command_mode.dictate_utterance_silence_s": "chunk",
     "silence_threshold": "silence",
     "wake_word_config.quick_silence_timeout": "silence",
     "wake_word_config.audio.wake_command_timeout": "wake",
@@ -81,9 +81,13 @@ def effective_value(config: dict, key: str, fallback: float) -> float:
 
 
 def clear_gap_s(config: dict) -> float:
-    """A command is alone only after this silence under paced profiles."""
-    selected = profile(config)
-    return _RULES.get(selected, {}).get("clear_gap", 0.0)
+    """Manual DICTATE chunks stage internally; pace must not delay controls."""
+    chunk = effective_value(config, "command_mode.dictate_utterance_silence_s", 0.65)
+    gap = max(1.0, 1.5 * chunk)
+    if profile(config) == CUSTOM:
+        custom = (config.get("accessibility", {}) or {}).get("speech_pace_custom", {}) or {}
+        gap = _get(custom, "fragment_clear_gap_s", gap)
+    return max(0.0, gap)
 
 
 def measured_interword_pauses(samples, sample_rate: int, *, speech_threshold: float = 0.02) -> list[float]:

@@ -370,9 +370,22 @@ def test_unavailable_ring_only_offers_manual_pace(build):
 def test_pace_seconds_follow_real_profile_and_current_baseline(build):
     _, page, _ = build(config={'silence_threshold': 3})
     select(page.pace, 'relaxed')
-    assert '7.5 seconds' in page.pace_description.text() and '3.75 seconds' in page.pace_description.text()
+    assert page.pace_description.text() == ('Continuous dictation waits 7.5 seconds after speech.'
+                                            ' Commands need a clear gap of 1 second.')
     select(page.pace, 'unhurried')
-    assert '12 seconds' in page.pace_description.text() and '6 seconds' in page.pace_description.text()
+    assert page.pace_description.text() == ('Continuous dictation waits 12 seconds after speech.'
+                                            ' Commands need a clear gap of 1 second.')
+
+
+@pytest.mark.parametrize('config,expected', [
+    ({'silence_threshold': 1}, 'Continuous dictation waits 1 second after speech.'
+                              ' Commands need a clear gap of 1 second.'),
+    ({'command_mode': {'dictate_utterance_silence_s': 1.5}},
+     'Continuous dictation waits 2 seconds after speech. Commands need a clear gap of 2.25 seconds.'),
+])
+def test_pace_description_formats_singular_and_fractional_seconds(build, config, expected):
+    _, page, _ = build(config=config)
+    assert page.pace_description.text() == expected
 
 
 @pytest.mark.parametrize('scale', [1, 1.5])

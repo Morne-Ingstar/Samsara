@@ -1205,17 +1205,10 @@ class WakeConsumer:
                                      audio_config.get('min_speech_duration', DEFAULT_MIN_SPEECH_DURATION))
 
         if self._is_toggle_cmd(app):
-            # Per-utterance silence gap for the unified session. Distinct
-            # from inactivity_timeout_s (30s), which ends the whole session.
-            # DICTATE gets a longer gap (mid-sentence pauses shouldn't cut
-            # a chunk short); COMMAND keeps the tighter default.
+            # Internal DICTATE chunks stage without pasting; keep the gap short.
             cm_cfg = app.config.get('command_mode', {})
             session_mgr = getattr(app, '_session_mode_manager', None)
             if session_mgr is not None and session_mgr.mode is SessionMode.DICTATE:
-                # Manual-commit DICTATE uses silence only to produce internal
-                # transcript chunks; it no longer pastes on this boundary. A
-                # short gap therefore makes the sole-word "end" commit fast
-                # without forcing the speaker to race natural pauses.
                 baseline = cm_cfg.get('dictate_utterance_silence_s', 0.65)
                 silence_threshold = effective_value(app.config, 'command_mode.dictate_utterance_silence_s', baseline)
             else:
@@ -1493,6 +1486,13 @@ class WakeConsumer:
                 self._utterance_frames.append(raw_chunk)
                 self._buffer_rms_history.append(rms)
 
+                preview = getattr(app, '_dictate_preview', None)
+                manager = getattr(app, '_session_mode_manager', None)
+                if (self._is_toggle_dictate(app) and getattr(manager, 'buffer_dictate_until_commit', False)
+                        and preview is not None and preview.commit_partial_ready(self)):
+                    # Reuse the hold-tail setting, with a 400ms floor for provisional text.
+                    silence_threshold = min(silence_threshold, max(
+                        0.4, float(app.config.get('recording_tail_silence_ms', 300)) / 1000.0))
                 if app.silence_start is None:
                     app.silence_start = time.time()
                 elif time.time() - app.silence_start >= silence_threshold:

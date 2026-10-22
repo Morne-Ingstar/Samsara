@@ -178,8 +178,9 @@ class _TryPage(QScrollArea):
         cfg.setdefault('accessibility', {})['speech_pace'] = self.pace.currentData()
         silence = effective_value(cfg, 'silence_threshold', DEFAULT_SILENCE_TIMEOUT)
         gap = clear_gap_s(cfg)
-        self.pace_description.setText(f'Continuous dictation waits {silence:g} seconds after speech.' +
-                                     (f' Commands need a clear gap of {gap:g} seconds.' if gap else ''))
+        self.pace_description.setText(
+            f'Continuous dictation waits {silence:g} {"second" if silence == 1 else "seconds"} after speech.' +
+            (f' Commands need a clear gap of {gap:g} {"second" if gap == 1 else "seconds"}.' if gap else ''))
     def pace_choice(self):
         self._pace_ready = True
         self.describe_pace()

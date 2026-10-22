@@ -46,6 +46,7 @@ import re
 import string
 import threading
 import time
+import weakref
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -2802,17 +2803,7 @@ class SessionModeManager(UtteranceUndoMixin):
     def _stage_dictate_chunk(
         self, chunk_raw: str, audio_ref: Any = None,
     ) -> DispatchOutcome:
-        """Append one silence-bounded transcript without touching the editor.
-
-        Deliberately does NOT call self._format_dictate_fn here. Formatting
-        tokens (like every other pipeline step -- process_transcription,
-        clean_text, smart_correct) must run exactly once, over the complete
-        joined thought, at commit -- never per staged fragment. Running
-        formatting_tokens.apply_formatting_tokens() here would both violate
-        that module's own documented contract ("must run AFTER any LLM
-        correction pass and immediately before delivery") and risk embedding
-        control characters (e.g. a "new line" token's literal \\n) into text
-        that clean_text/smart_correct haven't seen yet."""
+        """Stage a chunk; formatting and pasting run once at commit."""
         stripped_suffix = ""
         ellipsis_seam = None
         if self._last_dictate_ended_terminal is not None:
@@ -2833,10 +2824,7 @@ class SessionModeManager(UtteranceUndoMixin):
             if ellipsis_seam.join:
                 stripped_suffix = ellipsis_seam.stripped
                 self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(stripped_suffix)]
-            # The NEW chunk's leading ellipsis is a decoder artifact either way:
-            # on a join it would land mid-sentence, and on a separate it would
-            # open the next sentence with dots. The speaker's own trailing
-            # ellipsis on the previous fragment is what survives a separate.
+            # Remove decoder-leading dots; preserve a spoken trailing ellipsis.
             chunk_body = chunk_raw
             if ellipsis_seam.lead_stripped:
                 chunk_body = chunk_raw[len(ellipsis_seam.lead_stripped):]
@@ -2845,9 +2833,7 @@ class SessionModeManager(UtteranceUndoMixin):
                       ellipsis_seam.clause, ellipsis_seam.join, ellipsis_seam.lead_stripped)
         else:
             if _is_continuation_chunk(chunk_raw):
-                # Continuation path strips only one prior full stop and any
-                # trailing whitespace, preserving !/? and keeping insertion
-                # one-way and forward-only.
+                # Continuations strip one prior full stop, preserving !/?.
                 stripped_terminal_period = False
                 if self._dictate_pending_buffer.rstrip().endswith("."):
                     self._dictate_pending_buffer = self._dictate_pending_buffer.rstrip()[:-1]
@@ -2862,6 +2848,14 @@ class SessionModeManager(UtteranceUndoMixin):
 
         self._clear_draft_undo.drop()
         self._dictate_pending_audio.append(audio_ref)
+        models = {key: value for key, value in getattr(self, '_dictate_audio_models', {}).items()
+                  if value[0]() is not None}
+        owner = getattr(self._commit_redecode_fn, '__self__', None)
+        try:
+            models[id(audio_ref)] = (weakref.ref(audio_ref), weakref.ref(owner.model))
+        except (AttributeError, TypeError):
+            pass  # Missing provenance keeps the optional re-decode path.
+        self._dictate_audio_models = models
         self._draft.append(to_stage)
         self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)
         self._stack.push(StackItem(
@@ -2895,7 +2889,6 @@ class SessionModeManager(UtteranceUndoMixin):
                    and self._hands_free_delivery.enabled(self) else {}),
             })
 
-        # Choose the current destination for each explicit or immediate send.
         foreground = self._foreground_exe_resolver()
         current_hwnd = self._foreground_hwnd_resolver()
         self._dictate_target_process = foreground
@@ -2940,8 +2933,19 @@ class SessionModeManager(UtteranceUndoMixin):
         final_text = text
         if "  " in final_text:
             final_text = re.sub(r" {2,}", " ", final_text)
-
-        if (self._commit_redecode_fn is not None and not self._draft.edited
+        owner = getattr(self._commit_redecode_fn, '__self__', None)
+        refs = self._dictate_pending_audio
+        models = getattr(self, '_dictate_audio_models', {})
+        try:
+            stable_chunks = bool(refs) and all(
+                ref is not None and len(ref) / owner.model_rate >= 1.5
+                and models[id(ref)][0]() is ref and models[id(ref)][1]() is owner.model
+                for ref in refs)
+        except (AttributeError, KeyError, TypeError, ZeroDivisionError):
+            stable_chunks = False
+        if stable_chunks:
+            log.info('[SESSION] Skipping commit re-decode: same_model_no_short_fragments')
+        if (not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
                 and not self._parked_hold):
             try:
                 redecode_text = self._commit_redecode_fn(
@@ -2950,10 +2954,6 @@ class SessionModeManager(UtteranceUndoMixin):
                 if redecode_text and consumed_trailing_commit_word:
                     redecode_text = strip_redecoded_commit_word(redecode_text)
                 if redecode_text:
-                    # Queue 88: a re-decode that comes back as a run-on is
-                    # worse than the fragments it replaces -- keep the staged
-                    # text then. See redecode_is_poorer for the measurement
-                    # and the 2026-09-15 16:23:58 commit it was taken from.
                     if redecode_is_poorer(final_text, redecode_text):
                         log.warning(
                             "[SESSION] DICTATE commit kept the staged text: the re-decode is a "

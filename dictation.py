@@ -4605,14 +4605,12 @@ class DictationApp(CommandFastPathMixin):
         refs = [np.asarray(ref, dtype=np.float32) for ref in audio_refs if ref is not None]
         if not refs:
             return None
-        # Each float32 mono stream is model-rate (16 kHz), so one second is
-        # about 64 KB — this 120 s default cap keeps a worst-case staged
-        # thought under ~7.7 MB for a single re-decode.
+        # Bound optional stitching to 20s (~1.3 MB at 16 kHz float32).
         total_s = (sum(len(r) for r in refs) / float(self.model_rate)) if self.model_rate else 0.0
         try:
-            max_s = float(cm_cfg.get("dictate_commit_redecode_max_s", 120.0))
+            max_s = float(cm_cfg.get("dictate_commit_redecode_max_s", 20.0))
         except (TypeError, ValueError):
-            max_s = 120.0
+            max_s = 20.0
         if max_s and max_s > 0 and total_s > max_s:
             logger.info(
                 "[SESSION] Skipping commit re-decode because stitched duration %.2fs exceeds "
