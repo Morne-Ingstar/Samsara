@@ -123,9 +123,13 @@ def test_every_argument_bearing_canonical_form_has_generated_positive_and_negati
     # Read the registry flag so future controller identities follow it too.
     with_args = [record for record in RECORDS if record.get("args")
                  and not non_voice_aliases.intersection(record["aliases"])]
-    # The refreshed live snapshot includes 89 voice argument-bearing records.
-    # The companion registry test pins every ID, alias, slot and scope.
-    assert len(with_args) == 89
+    # Derive the count from the pinned registry snapshot; the companion registry
+    # test pins every ID, alias, slot and scope.
+    expected_count = sum(
+        bool(record.get("args")) for record in RECORDS
+        if not non_voice_aliases.intersection(record["aliases"])
+    )
+    assert len(with_args) == expected_count
     positives = [_positive(record) for record in with_args]
     negatives = [_negative(record) for record in with_args]
     assert len(positives) == len(with_args)

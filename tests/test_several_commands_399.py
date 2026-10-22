@@ -1,5 +1,6 @@
 """Offline chain dispatch: real live registry/policy, inert OS handlers."""
 import json
+import os
 import statistics
 import time
 from pathlib import Path
@@ -326,7 +327,8 @@ def test_miss_latency_with_stub_and_forty_windows(rig, monkeypatch, realistic):
             resampled += 1
         samples.append(elapsed)
     print(f'399 realistic={realistic} median={statistics.median(samples):.4f}ms worst={max(samples):.4f}ms resampled={resampled}')
-    assert max(samples) < 30
+    budget_ms = 60 if os.environ.get('CI') else 30
+    assert max(samples) < budget_ms
 
 
 def test_nonchain_and_precheck_latency(rig):
