@@ -37,6 +37,7 @@ MAX_BODY = 16384
 # Discard larger refused bodies in small chunks, without growing the body buffer.
 MAX_DRAIN = 4 * 1024 * 1024
 MAX_TEXT = 400
+MAX_FULL_TEXT = 12000
 REQUEST_TIMEOUT = 2.0
 UI_TIMEOUT = 2.0
 SPEAK_INTERVAL = 2.0
@@ -75,7 +76,8 @@ TOOLS = [
      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
     {"name": "speak", "description": "Speak a short plain-text reply at the user's feedback level.",
      "inputSchema": {"type": "object", "properties": {
-         "text": {"type": "string", "minLength": 1, "maxLength": MAX_TEXT}},
+         "text": {"type": "string", "minLength": 1, "maxLength": MAX_TEXT},
+         "full_text": {"type": "string", "minLength": 1, "maxLength": MAX_FULL_TEXT}},
          "required": ["text"], "additionalProperties": False},
      "annotations": {"readOnlyHint": False, "destructiveHint": False,
                      "idempotentHint": False, "openWorldHint": False}},
@@ -680,14 +682,14 @@ class AgentServer:
                                      or tts.get("enabled") is False or feedback == "silent"),
                 "ava_route": route if route in {"off", "local", "cloud"} else "off"}
 
-    def _speak(self, text):
+    def _speak(self, text, *, caption_text=None, allow_silent=False):
         with self._state_lock:
             if self._typing_lock.locked() or self._clock() < self._typing_quiet_until:
                 return {"status": "busy", "reason": "busy"}
         state = self._get_status()
-        if state["feedback_level"] == "silent":
+        if state["feedback_level"] == "silent" and not allow_silent:
             return {"status": "suppressed", "reason": "silent"}
-        if state["speech_muted"]:
+        if state["speech_muted"] and state["feedback_level"] != "silent":
             return {"status": "suppressed", "reason": "muted"}
         coordinator = getattr(self.app, "audio_coordinator", None)
         if coordinator is None:
@@ -712,6 +714,11 @@ class AgentServer:
                     self._pending.pop(slot, None)
 
         try:
+            if state["feedback_level"] == "silent":
+                # The coordinator's Silent decision displays a caption without audio.
+                coordinator.speak(caption_text or text, category="conversation", interruptible=True)
+                done()
+                return {"status": "suppressed", "reason": "silent"}
             handle = coordinator.speak(text, category="conversation", interruptible=True, on_done=done)
         except Exception:
             done()
@@ -1046,13 +1053,44 @@ class AgentServer:
                 return 200, {**response, "result": result}
             if name == "get_status" and not args:
                 callback = self._get_status
-            elif name == "speak" and set(args) == {"text"}:
+            elif name == "speak" and set(args).issubset({"text", "full_text"}) and "text" in args:
                 text = args["text"]
+                full_text = args.get("full_text")
                 if (not isinstance(text, str) or not 1 <= len(text) <= MAX_TEXT or not text.strip()
                         or any(unicodedata.category(c) in {"Cc", "Cf", "Cs"} for c in text)
                         or re.search(r"<[^>]*>|```", text)):
                     return fail(-32602, "Expected plain text of 1 to 400 characters")
-                callback = lambda: self._speak(text)
+                if full_text is not None and (not isinstance(full_text, str)
+                        or not 1 <= len(full_text) <= MAX_FULL_TEXT or not full_text.strip()
+                        or any(unicodedata.category(c) in {"Cf", "Cs"}
+                               or (unicodedata.category(c) == "Cc" and c not in "\n\r\t")
+                               for c in full_text)):
+                    return fail(-32602, f"Expected full_text to contain 1 to {MAX_FULL_TEXT} printable characters")
+                spoken = text
+                words = spoken.split()
+                if len(words) > 60:
+                    spoken = " ".join(words[:60])
+                    logger.warning("[AGENTS] speak text capped at 60 words client=%s",
+                                   self._client_name(params, headers))
+
+                def speak_agent_reply():
+                    result = self._speak(spoken, caption_text=full_text, allow_silent=full_text is not None)
+                    if full_text is None:
+                        return result
+                    import time as _time
+                    if full_text is not None:
+                        rest = full_text
+                        if full_text.startswith(spoken):
+                            rest = full_text[len(spoken):].lstrip()
+                        self.app._cli_agent_voice_state = {
+                            "agent": "mcp", "last": spoken, "rest": rest,
+                            "expires": _time.monotonic() + 60,
+                        }
+                    return {"spoken": result.get("status") in {"spoken", "queued"},
+                            "full_text_kept": full_text is not None,
+                            "follow_ups": ["repeat that", "read the rest"]}
+
+                callback = speak_agent_reply
             else:
                 return fail(-32602, "Unknown tool or invalid arguments")
             try:

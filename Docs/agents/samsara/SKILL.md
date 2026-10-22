@@ -140,8 +140,14 @@ absent from `tools/list` and calls to it are refused.
   `feedback_level`, `speech_muted`, and `ava_route` (`off`, `local` or `cloud`).
   Listening means microphone capture or a continuous/wake listener is active;
   it does not report whether a connected agent is ready. No text, titles or keys.
-- `speak(text)` accepts 1–400 characters of plain text, without markup or control
-  characters. Brief and Full speak through Samsara's coordinator. Silent returns
+- `speak(text, full_text?)` accepts 1–400 characters of plain text for `text`,
+  and optionally up to 12,000 characters for `full_text`. `text` rejects markup
+  and control characters; `full_text` can contain line breaks and code. `text`
+  is capped at 60 words before speech, at a word boundary. When supplied,
+  `full_text` is kept for voice follow-ups and is shown
+  as the caption in Silent feedback. The result reports whether it spoke, whether
+  the full reply was kept, and the available follow-ups.
+  Brief and Full speak through Samsara's coordinator. Silent returns
   `suppressed` / `silent`, with no speech; mute returns `suppressed` / `muted`.
   Completed speech returns `spoken` / `completed`; accepted pending speech returns
   `queued` / `coordinator`. Missing voice or UI, coordinator suppression and rate
@@ -178,6 +184,22 @@ absent from `tools/list` and calls to it are refused.
   retry automatically. `delivered` means injection accepted;
   it does not prove the editor displayed the text. Logs contain only the tool,
   outcome, reason and length bucket, never the text or window title.
+
+## Answering by voice
+
+When the user spoke the request, check `get_status()`; its `listening` value
+reports whether microphone capture or a continuous/wake listener is active. Call
+`speak` with `text` set to one to three plain sentences in a spoken register:
+give the answer and say what is on screen. Set `full_text` to your whole answer.
+Do not put lists or code in `text`. If your answer asks the user something, end
+`text` with that question. Do not infer that a request was spoken from screen
+content alone.
+
+Good: `text`: “The file is open in Notepad. I found two matching lines. Would you like me to read them?”
+`full_text`: “The file is open in Notepad. I found two matching lines: line 18 says ... and line 42 says ... Would you like me to read them?”
+
+Bad: `text`: “Here are the results: item one, item two, item three, and the code is ...”
+`full_text`: a long answer containing the list and code. The spoken line reads a list and code aloud.
 
 ## Etiquette
 
