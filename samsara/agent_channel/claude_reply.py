@@ -189,7 +189,7 @@ def _reply_timeout(config) -> float:
 
 def spoken_form(reply: str, word_cap: int = 60) -> tuple[str, str]:
     """Replace unreadable material and split the first spoken chunk from the rest."""
-    safe = _CODE.sub(" there's a code block on screen ", reply)
+    safe = _CODE.sub(" There's a code block on screen. ", reply)
     safe = _TABLE.sub(" there's a table on screen ", safe)
     safe = _PATH.sub(" there's a file path on screen ", safe)
     safe = re.sub(r"\s+", " ", safe).strip()
@@ -201,7 +201,8 @@ def _state(app):
     state = getattr(app, "_claude_voice_state", None)
     if state is None:
         state = {"token": None, "last": "", "rest": "", "handle": None,
-                 "expires": 0.0, "speaking": False, "resume": None}
+                 "expires": 0.0, "speaking": False, "resume": None,
+                 "sections": [], "code_blocks": [], "section_cursor": -1}
         app._claude_voice_state = state
     return state
 
@@ -242,6 +243,7 @@ def _active(app):
 
 
 def followup(app, action: str) -> bool:
+    action = action.strip().lower().rstrip(".!?")
     if not _active(app):
         from samsara.agent_channel import cli_agents
         if cli_agents.followup(app, action):
@@ -260,23 +262,157 @@ def followup(app, action: str) -> bool:
             return True
         return False
     state = _state(app)
-    if action in ("stop claude", "stop claude reply", "stop the reply", "quiet claude"):
+    return _drill_followup(app, action, state)
+
+
+def is_followup_phrase(action: str) -> bool:
+    action = action.strip().lower().rstrip(".!?")
+    return (action in {"read the rest", "repeat that", "stop", "stop claude", "stop claude reply",
+                       "stop the reply", "quiet claude", "read the whole thing", "read the code",
+                       "read the first code block", "read code block two", "next section",
+                       "previous section", "how long is it", "what's in it"}
+            or action.startswith("read section ") or action.startswith("read code block ")
+            or action.startswith("read the "))
+
+
+def _drill_followup(app, action: str, state, *, cli=False) -> bool:
+    coordinator = getattr(app, "audio_coordinator", None)
+    if coordinator is None:
+        return False
+    stop_phrases = {"stop", "stop claude", "stop claude reply", "stop the reply", "quiet claude"}
+    if action in stop_phrases:
         app.audio_coordinator.cancel_speech()
         state["speaking"] = False
-        if state["resume"]:
+        state["whole_generation"] = state.get("whole_generation", 0) + 1
+        if state.get("resume"):
             state["resume"]()
+        state["expires"] = time.monotonic() + _FOLLOWUP_S
         return True
     if action == "repeat that":
-        _speak(app, state["last"], state["token"], on_done=state["resume"])
-        return True
-    if action == "read the rest" and state["rest"]:
-        chunk, state["rest"] = spoken_form(state["rest"], _word_cap(app.config))
-        _speak(app, chunk, state["token"], on_done=state["resume"])
-        return True
-    if action == "read the rest":
-        _speak(app, "That's all of Claude's reply.", state["token"], on_done=state["resume"])
-        return True
-    return False
+        text = state.get("last", "")
+    elif action == "read the rest":
+        cap = 60 if cli else _word_cap(getattr(app, "config", {}) or {})
+        text, remainder = spoken_form(state.get("rest", ""), cap)
+        state["rest"] = remainder
+    elif action in {"read the whole thing", "how long is it", "what's in it",
+                    "read the code", "read the first code block", "read code block two"}:
+        text = _select_drill_text(app, state, action)
+    elif (action in {"next section", "previous section"} or action.startswith("read section ")
+          or action.startswith("read code block ") or action.startswith("read the ")):
+        text = _select_drill_text(app, state, action)
+    else:
+        return False
+    if not text:
+        text = "That's all of Claude's reply." if not cli else "That's all of the reply."
+    state["expires"] = time.monotonic() + _FOLLOWUP_S
+    if action == "read the whole thing":
+        _speak_chunks(app, text, state, cli=cli)
+    else:
+        _deliver(app, text, state, cli=cli)
+    return True
+
+
+def _select_drill_text(app, state, action):
+    full = state.get("full", state.get("rest", ""))
+    sections = state.get("sections", [])
+    if not sections:
+        from .spoken_digest import sections as map_sections
+        sections = map_sections(full)
+    grouped = []
+    for section in sections:
+        if getattr(section, "kind", "") == "heading":
+            grouped.append({"title": section.title, "text": "", "index": len(grouped)})
+        elif grouped:
+            grouped[-1]["text"] += ("\n" if grouped[-1]["text"] else "") + section.text
+    if not grouped:
+        grouped = [{"title": "", "text": section.text, "index": i}
+                   for i, section in enumerate(sections)]
+    if action in {"how long is it", "what's in it"}:
+        words = len(re.findall(r"\b\w+\b", full))
+        headings = [s.title for s in sections if getattr(s, "kind", "") == "heading" and s.title]
+        title = ", ".join(headings) if headings else "no named sections"
+        code_count = len(re.findall(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1\s*$", full))
+        return f"About {words} words, {len(headings)} sections: {title}; {code_count} code blocks."
+    if action == "read the whole thing":
+        return spoken_form(full, max(1, len(full.split())))[0]
+    if action in {"next section", "previous section"}:
+        if not grouped:
+            return spoken_form(full, 60)[0]
+        step = 1 if action == "next section" else -1
+        cursor = state.get("section_cursor", -1)
+        index = max(0, min(len(grouped) - 1, cursor + step if cursor >= 0 else (0 if step > 0 else len(grouped) - 1)))
+        state["section_cursor"] = index
+        section = grouped[index]
+    elif action.startswith("read section "):
+        try:
+            index = int(action.removeprefix("read section ")) - 1
+            section = grouped[index]
+            state["section_cursor"] = index
+        except (ValueError, IndexError):
+            return "I couldn't find that section."
+    elif action in {"read the code", "read the first code block"} or action.startswith("read code block "):
+        number = 1 if action != "read code block two" else 2
+        found = re.findall(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n(.*?)^\s*\1\s*$", full)
+        blocks = [body for _, body in found]
+        if action.startswith("read code block "):
+            name = action.removeprefix("read code block ").strip()
+            number = {"one": 1, "two": 2, "three": 3}.get(name, int(name) if name.isdigit() else 0)
+        if not 1 <= number <= len(blocks):
+            return "There isn't a code block by that number."
+        block = blocks[number - 1].rstrip()
+        from samsara.clipboard import copy_text
+        if not copy_text(block):
+            return "I couldn't copy that code block."
+        lines = block.splitlines()
+        return f"Code block {number}, {len(lines)} lines, starts with: {lines[0] if lines else 'empty'}. It's on your clipboard."
+    elif action.startswith("read the "):
+        query = action.removeprefix("read the ").strip()
+        section = next((s for s in grouped if s["title"] and query in s["title"].lower()), None)
+        if section is None:
+            return "I couldn't find that section."
+        state["section_cursor"] = section["index"]
+    else:
+        return "That's all of the reply."
+    body = section["text"] if isinstance(section, dict) else getattr(section, "text", "")
+    body = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", body)
+    return spoken_form(body, 60)[0]
+
+
+def _deliver(app, text, state, *, cli=False):
+    if cli:
+        state["last"] = text
+        app.audio_coordinator.speak(text, category="ava_response", interruptible=True)
+    else:
+        _speak(app, text, state["token"], on_done=state.get("resume"))
+
+
+def _speak_chunks(app, text, state, *, cli=False):
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", text)
+    chunks = [" ".join(text.split()[i:i + 60]) for i in range(0, len(text.split()), 60)] or [""]
+    silent = str((getattr(app, "config", {}) or {}).get("tts", {}).get("feedback_level", "")).lower() == "silent"
+    generation = state.get("whole_generation", 0) + 1
+    state["whole_generation"] = generation
+    if silent:
+        for chunk in chunks:
+            if state.get("whole_generation") != generation:
+                break
+            if cli:
+                state["last"] = chunk
+                app.audio_coordinator.speak(chunk, category="ava_response", interruptible=True)
+            else:
+                _speak(app, chunk, state["token"])
+        return
+    def next_chunk(index=0):
+        if index >= len(chunks) or state.get("whole_generation") != generation:
+            return
+        if cli:
+            state["last"] = chunks[index]
+            app.audio_coordinator.speak(chunks[index], category="ava_response", interruptible=True,
+                                        on_done=lambda: next_chunk(index + 1))
+        else:
+            _speak(app, chunks[index], state["token"],
+                   on_done=lambda: next_chunk(index + 1) if index + 1 < len(chunks) else state.get("resume", lambda: None)())
+    next_chunk()
 
 
 def before_send(app, hwnd: int, *, send_word=None) -> SendContext | None:
@@ -328,6 +464,9 @@ def start_after_send(app, context: SendContext | None) -> None:
             if _state(app)["token"] is not token:
                 return
             state["rest"] = reply
+            state["full"] = reply
+            state["sections"] = first.sections
+            state["code_blocks"] = [m.group(2) for m in re.finditer(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n(.*?)^\s*\1\s*$", reply)]
             _speak(app, first.spoken, token, on_done=resume)
         except WindowGone:
             _speak(app, "I lost the Claude window", token, on_done=resume)

@@ -8662,12 +8662,9 @@ class DictationApp(CommandFastPathMixin):
                         else ww_config.get('send_words', _WAKE_SESSION_SEND_WORDS)
                     )
                     _tokens = text.strip().split()
-                    if (getattr(self, '_wake_session_target_process', '') == 'claude.exe'
-                            and text.strip().lower() in ('read the rest', 'repeat that',
-                                                         'stop claude', 'stop claude reply',
-                                                         'stop the reply', 'quiet claude')):
+                    if getattr(self, '_wake_session_target_process', '') == 'claude.exe':
                         from samsara.agent_channel import claude_reply
-                        if claude_reply.followup(self, text.strip().lower()):
+                        if claude_reply.is_followup_phrase(text) and claude_reply.followup(self, text.strip().lower()):
                             return
                     _matched_sw = None
                     if _tokens:

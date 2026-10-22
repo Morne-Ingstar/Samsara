@@ -516,3 +516,63 @@ def handle_claude_repeat(app, remainder):
 def handle_claude_stop(app, remainder):
     """Stops reading Claude's reply aloud."""  # PLACEHOLDER COPY (531)
     return claude_reply.followup(app, "stop claude")
+
+
+def _drill(app, action):
+    return claude_reply.followup(app, action)
+
+
+@command("read the whole thing", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_read_whole_reply(app, remainder):
+    """Reads the full agent reply in short, interruptible chunks."""
+    return _drill(app, "read the whole thing")
+
+
+@command("read the code", aliases=["read the first code block"], pack="ai", risk_class="safe",
+         reversible=True, side_effects=["audio", "clipboard"])
+def handle_read_code(app, remainder):
+    """Copies a reply's code block and tells you its line count and first line."""
+    return _drill(app, "read the code" if not remainder else "read the first code block")
+
+
+@command("read code block", pack="ai", risk_class="safe", reversible=True,
+         side_effects=["audio", "clipboard"])
+def handle_read_code_block(app, remainder):
+    """Copies the numbered code block from the latest reply."""
+    return _drill(app, "read code block " + remainder.strip().lower())
+
+
+@command("next section", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_next_section(app, remainder):
+    """Reads the next section of the latest reply."""
+    return _drill(app, "next section")
+
+
+@command("previous section", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_previous_section(app, remainder):
+    """Reads the previous section of the latest reply."""
+    return _drill(app, "previous section")
+
+
+@command("read section", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_read_section(app, remainder):
+    """Reads a numbered section of the latest reply."""
+    return _drill(app, "read section " + remainder.strip().lower())
+
+
+@command("read the", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_read_named_section(app, remainder):
+    """Reads a reply section whose heading matches the words you say."""
+    return _drill(app, "read the " + remainder.strip().lower())
+
+
+@command("how long is it", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_reply_length(app, remainder):
+    """Says the reply's approximate word, section, and code-block counts."""
+    return _drill(app, "how long is it")
+
+
+@command("what's in it", pack="ai", risk_class="safe", reversible=True, side_effects=["audio"])
+def handle_reply_contents(app, remainder):
+    """Summarizes the reply's sections and code blocks by count."""
+    return _drill(app, "what's in it")

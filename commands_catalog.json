@@ -239,7 +239,7 @@
       "pack": "core",
       "plugin": "ask_agent",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:70",
+      "source": "plugins/commands/ask_agent.py:69",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -263,7 +263,7 @@
       "pack": "hermes",
       "plugin": "ask_agent",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:100",
+      "source": "plugins/commands/ask_agent.py:99",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -286,7 +286,7 @@
       "pack": "core",
       "plugin": "ask_agent",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:84",
+      "source": "plugins/commands/ask_agent.py:83",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -310,7 +310,7 @@
       "pack": "hermes",
       "plugin": "ask_agent",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:108",
+      "source": "plugins/commands/ask_agent.py:107",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -327,7 +327,7 @@
       "pack": "hermes",
       "plugin": "ask_agent",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:116",
+      "source": "plugins/commands/ask_agent.py:115",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -7382,6 +7382,150 @@
     },
     {
       "aliases": [
+        "how long is it"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.how_long_is_it",
+      "description": "Says the reply's approximate word, section, and code-block counts.",
+      "kind": "plugin",
+      "object": "long_is_it",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:569",
+      "undoable": true,
+      "verb": "how",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "next section"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.next_section",
+      "description": "Reads the next section of the latest reply.",
+      "kind": "plugin",
+      "object": "section",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:545",
+      "undoable": true,
+      "verb": "next",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "previous section"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.previous_section",
+      "description": "Reads the previous section of the latest reply.",
+      "kind": "plugin",
+      "object": "section",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:551",
+      "undoable": true,
+      "verb": "previous",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read code block"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "message_claude.read_code_block",
+      "description": "Copies the numbered code block from the latest reply.",
+      "kind": "plugin",
+      "object": "code_block",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:538",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read section"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "message_claude.read_section",
+      "description": "Reads a numbered section of the latest reply.",
+      "kind": "plugin",
+      "object": "section",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:557",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read the"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "message_claude.read_the",
+      "description": "Reads a reply section whose heading matches the words you say.",
+      "kind": "plugin",
+      "object": "the",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:563",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read the code",
+        "read the first code block"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "message_claude.read_the_code",
+      "description": "Copies a reply's code block and tells you its line count and first line.",
+      "kind": "plugin",
+      "object": "the_code",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:531",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "read the rest"
       ],
       "args": [],
@@ -7393,6 +7537,23 @@
       "plugin": "message_claude",
       "risk": "ui",
       "source": "plugins/commands/message_claude.py:499",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read the whole thing"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.read_the_whole_thing",
+      "description": "Reads the full agent reply in short, interruptible chunks.",
+      "kind": "plugin",
+      "object": "the_whole_thing",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:525",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -7432,6 +7593,23 @@
       "source": "plugins/commands/message_claude.py:513",
       "undoable": true,
       "verb": "stop",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "whats in it"
+      ],
+      "args": [],
+      "canonical_id": "message_claude.whats_in_it",
+      "description": "Summarizes the reply's sections and code blocks by count.",
+      "kind": "plugin",
+      "object": "in_it",
+      "pack": "ai",
+      "plugin": "message_claude",
+      "risk": "ui",
+      "source": "plugins/commands/message_claude.py:575",
+      "undoable": true,
+      "verb": "whats",
       "whole_utterance": false
     },
     {

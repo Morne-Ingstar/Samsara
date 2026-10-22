@@ -274,24 +274,13 @@ def followup(app, action: str) -> bool:
     state = getattr(app, "_cli_agent_voice_state", None)
     if not state or time.monotonic() > state["expires"]:
         return False
+    from .claude_reply import _drill_followup
     if state.get("agent") == "hermes":
+        from .hermes_voice import channel
+        if channel(app).valid(state["turn"]) and _drill_followup(app, action, state, cli=True):
+            return True
         from .hermes_voice import followup as hermes_followup
         return hermes_followup(app, action, state)
-    coordinator = getattr(app, "audio_coordinator", None)
-    if coordinator is None:
-        return False
-    if action in {"stop claude", "stop claude reply", "stop the reply", "quiet claude"}:
-        coordinator.cancel_speech()
-        state["rest"] = ""
+    if _drill_followup(app, action, state, cli=True):
         return True
-    if action == "repeat that":
-        text = state["last"]
-    elif action == "read the rest":
-        text, state["rest"] = spoken_form(state["rest"], 60)
-        text = text or "That's all of the reply."
-        state["last"] = text
-    else:
-        return False
-    coordinator.speak(text, category="ava_response", interruptible=True)
-    state["expires"] = time.monotonic() + 60
-    return True
+    return False

@@ -130,7 +130,7 @@ def test_spoken_form_skips_code_tables_and_paths():
                "| Name | Value |\n| --- | --- |\n| a | b |\n"
                "Open C:\\work\\answer.py for details.")
     spoken, rest = reply.spoken_form(message)
-    assert "there's a code block on screen" in spoken
+    assert "There's a code block on screen." in spoken
     assert "there's a table on screen" in spoken
     assert "there's a file path on screen" in spoken
     assert "secret" not in spoken + rest and "|" not in spoken + rest
