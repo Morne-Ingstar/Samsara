@@ -34,14 +34,15 @@ valid and re-showing is always reliable (same contract as task_overlay.py).
 from __future__ import annotations
 
 import ctypes
+import math
 import weakref
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, Qt, Signal, Slot
-from PySide6.QtGui import QKeySequence, QPainter, QShortcut
+from PySide6.QtCore import QEvent, QRect, Qt, Signal, Slot
+from PySide6.QtGui import QCursor, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QAbstractButton, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
-    QStyle, QStyleOption,
+    QScrollArea, QStyle, QStyleOption,
 )
 
 from samsara.ui import qt_runtime
@@ -102,6 +103,91 @@ def default_position(monitor_rect, panel_size) -> tuple:
     x = right - width - EDGE_MARGIN
     y = bottom - height - EDGE_MARGIN
     return (max(left, x), max(top, y))
+
+
+def _clamp_rect(rect: QRect, available: QRect) -> QRect:
+    """All coordinates are Qt logical pixels; available excludes the taskbar."""
+    width = min(rect.width(), available.width())
+    height = min(rect.height(), available.height())
+    return QRect(
+        max(available.x(), min(rect.x(), available.x() + available.width() - width)),
+        max(available.y(), min(rect.y(), available.y() + available.height() - height)),
+        width, height,
+    )
+
+
+def _finite_pair(value):
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+               and math.isfinite(v) for v in value):
+        return None
+    return value
+
+
+def resolve_position(position, screens, preferred, panel_size, occupied=()):
+    """Resolve a saved anchor or valid legacy point, else use the cursor screen.
+
+    screens contains (name, available QRect) pairs. Return (name, panel QRect),
+    using exclusive right/bottom arithmetic to avoid QRect's inclusive edges.
+    """
+    screens = [(name, rect) for name, rect in screens if not rect.isEmpty()]
+    if not screens:
+        return None
+    width, height = panel_size
+    legacy = _finite_pair(position)
+    if legacy is not None:
+        rect = QRect(round(legacy[0]), round(legacy[1]), width, height)
+        for name, available in screens:
+            if available.contains(rect):
+                return name, rect
+    elif isinstance(position, dict):
+        anchor = position.get("anchor")
+        offsets = _finite_pair(position.get("offset"))
+        if anchor in ("top-left", "top-right", "bottom-left", "bottom-right") and offsets:
+            for name, available in screens:
+                if name != position.get("screen"):
+                    continue
+                dx, dy = (round(offsets[0] * available.width()),
+                          round(offsets[1] * available.height()))
+                x = available.x() + dx if anchor.endswith("left") else (
+                    available.x() + available.width() - width - dx)
+                y = available.y() + dy if anchor.startswith("top") else (
+                    available.y() + available.height() - height - dy)
+                rect = QRect(x, y, width, height)
+                if available.contains(rect):
+                    return name, rect
+    name, available = next(((n, r) for n, r in screens if n == preferred), screens[0])
+    x, y = default_position(
+        (available.x(), available.y(), available.x() + available.width(),
+         available.y() + available.height()), (width, height),
+    )
+    rect = _clamp_rect(QRect(x, y, width, height), available)
+    if any(rect.intersects(other) for other in occupied):
+        rect.moveLeft(available.x() + EDGE_MARGIN)
+    return name, _clamp_rect(rect, available)
+
+
+def remember_position(screen_name, available: QRect, rect: QRect):
+    """Represent the nearest corner's inward offsets as screen fractions."""
+    rect = _clamp_rect(rect, available)
+    right = rect.center().x() > available.center().x()
+    bottom = rect.center().y() > available.center().y()
+    dx = (available.x() + available.width() - rect.x() - rect.width()
+          if right else rect.x() - available.x())
+    dy = (available.y() + available.height() - rect.y() - rect.height()
+          if bottom else rect.y() - available.y())
+    return {"screen": screen_name,
+            "anchor": ("bottom" if bottom else "top") + ("-right" if right else "-left"),
+            "offset": [dx / available.width(), dy / available.height()]}
+
+
+def _listening_rects():
+    # Inspect only widgets already owned by this Qt application. No imports
+    # that instantiate displays and no live config or native desktop reads.
+    return [widget.frameGeometry() for widget in QApplication.topLevelWidgets()
+            if widget.isVisible() and type(widget).__name__ in
+            ("ListeningIndicator", "LiveSurfaceWidget")]
 
 
 @dataclass(frozen=True)
@@ -233,6 +319,9 @@ class _CubeWindow(QWidget):
         self._review_shortcut.activated.connect(self.focus_review)
         self._on_click = on_click
         self._requested_position = position
+        self._position_snapshot = None
+        self._placement_screen = None
+        self._placing = False
         self.setWindowOpacity(opacity)
         self.setFixedWidth(PANEL_WIDTH)
 
@@ -248,7 +337,15 @@ class _CubeWindow(QWidget):
             f"QWidget#cubeCard{{background:{theme.BG1};"
             f"border:1px solid {theme.BORDER};border-radius:10px;}}"
         )
-        outer.addWidget(self._card)
+        # Short logical desktops (including 200% scaling) must retain access
+        # to all rows without growing underneath the taskbar.
+        self._scroll = QScrollArea()
+        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        self._scroll.setWidget(self._card)
+        outer.addWidget(self._scroll)
 
         self._rows_layout = QVBoxLayout(self._card)
         self._rows_layout.setContentsMargins(6, 8, 6, 8)
@@ -282,7 +379,8 @@ class _CubeWindow(QWidget):
                 button.setFocusPolicy(Qt.FocusPolicy.StrongFocus if self._reviewing
                                       else Qt.FocusPolicy.NoFocus)
                 self._rows_layout.addWidget(button)
-        self.adjustSize()
+        self._rows_layout.activate()
+        self._card.adjustSize()
         self._place()
         if self.isVisible():
             self._announce_rows()
@@ -376,26 +474,52 @@ class _CubeWindow(QWidget):
         return result
 
     def _place(self):
-        from PySide6.QtGui import QCursor
-        from PySide6.QtWidgets import QApplication
+        if self._placing:
+            return
+        screens = QApplication.screens()
+        if not screens:
+            return
+        cursor_screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+        layout = [(screen.name(), screen.availableGeometry()) for screen in screens]
+        preferred = (self._placement_screen if any(name == self._placement_screen for name, _ in layout)
+                     else cursor_screen.name() if cursor_screen else None)
+        result = resolve_position(self._requested_position, layout, preferred,
+                                  (PANEL_WIDTH, self._card.sizeHint().height()),
+                                  _listening_rects())
+        if result is None:
+            return
+        name, rect = result
+        self._placement_screen = name
+        self._placing = True
+        try:
+            self.setFixedSize(rect.size())
+            self.move(rect.topLeft())
+        finally:
+            self._placing = False
+        available = next(geo for screen_name, geo in layout if screen_name == name)
+        self._position_snapshot = remember_position(name, available, rect)
 
-        if self._requested_position is not None:
-            self.move(int(self._requested_position[0]), int(self._requested_position[1]))
-            return
-        screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
-        if screen is None:
-            return
-        geo = screen.availableGeometry()
-        x, y = default_position(
-            (geo.left(), geo.top(), geo.right(), geo.bottom()),
-            (self.width(), self.height()),
-        )
-        self.move(x, y)
+    def _screen_geometry_changed(self, *_):
+        if self.isVisible():
+            self._place()
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._place()
+        if not getattr(self, "_screens_connected", False):
+            app = QApplication.instance()
+            app.screenAdded.connect(self._connect_screen)
+            app.screenRemoved.connect(self._screen_geometry_changed)
+            for screen in QApplication.screens():
+                self._connect_screen(screen)
+            self._screens_connected = True
         apply_toolwindow_exstyle(int(self.winId()), review=self._reviewing)
         self._announce_rows()
+
+    def _connect_screen(self, screen):
+        screen.availableGeometryChanged.connect(self._screen_geometry_changed)
+        screen.geometryChanged.connect(self._screen_geometry_changed)
+        self._screen_geometry_changed()
 
     def closeEvent(self, event):
         # Hide, never destroy -- keeps the reference valid so re-showing the
@@ -421,15 +545,12 @@ class CubePanel:
             self._on_click = on_click
         if opacity is not None:
             self._opacity = float(opacity)
-        if position is not None:
-            self._position = position
+        self._position = position
 
     def show(self, rows: list):
         self._pending_rows = list(rows)
         if self._window is not None:
-            self._window._render_sig.emit(list(rows))
-            qt_runtime.post(self._window.show)
-            qt_runtime.post(self._window.raise_)
+            qt_runtime.post(self._show_rows)
         elif not self._init_posted:
             self._init_posted = True
             qt_runtime.ensure_started()
@@ -453,16 +574,24 @@ class CubePanel:
         """Where the panel actually sits, for persisting across sessions."""
         if self._window is None:
             return None
-        try:
-            return (self._window.x(), self._window.y())
-        except Exception:
-            return None
+        # Written only on the Qt thread. Do not read QWidget geometry from
+        # the voice-command thread when hide cube remembers the position.
+        snapshot = self._window._position_snapshot
+        return dict(snapshot, offset=list(snapshot["offset"])) if snapshot else None
+
+    def _show_rows(self):
+        self._window._requested_position = self._position
+        self._window._placement_screen = None  # choose cursor monitor on each show
+        self._window._on_click = self._on_click
+        self._window.setWindowOpacity(self._opacity)
+        self._window._on_render(list(self._pending_rows))
+        self._window.show()
+        self._window.raise_()
 
     def _init_window(self):
         """Runs on the Qt thread via qt_runtime.post()."""
         self._window = _CubeWindow(self._on_click, self._opacity, self._position)
-        self._window._render_sig.emit(list(self._pending_rows))
-        self._window.show()
+        self._show_rows()
 
 
 _panel: "CubePanel | None" = None

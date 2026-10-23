@@ -225,9 +225,9 @@ def _remember_position(app):
         if pos is None:
             return
         updates = dict(app.config.get("window_cube", {}) or {})
-        if updates.get("position") == list(pos):
+        if updates.get("position") == pos:
             return
-        updates["position"] = list(pos)
+        updates["position"] = pos
         app.update_config_and_save({"window_cube": updates})
     except Exception as exc:
         print(f"[CUBE] position not remembered: {exc}")
