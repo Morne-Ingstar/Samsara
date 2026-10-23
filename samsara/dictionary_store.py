@@ -16,6 +16,10 @@ from typing import List
 
 from samsara.languages import is_boundaryless_script_char
 from samsara.paths import quarantine_corrupt_file
+from samsara.builtin_vocabulary import (
+    BuiltinPreferences, builtin_entries, command_word_enabled, prompt_words, word_key,
+    fit_decoder_prompt, relevant_words,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,19 @@ class DictionaryStore:
         self._load_failed = False
         self._quarantine_path = None
         self._loaded_bytes = None
+        self._builtin_preferences = BuiltinPreferences(app.config_path)
         self.load_training_data()
+
+    def get_builtin_words(self):
+        """UI rows stay separate from custom_vocab and dictionary exports."""
+        disabled = self._builtin_preferences.disabled
+        return [dict(entry, enabled=word_key(entry['word']) not in disabled)
+                for entry in builtin_entries(self.app.config)]
+
+    def set_builtin_word_enabled(self, word, enabled):
+        if word_key(word) not in {word_key(entry['word']) for entry in self.get_builtin_words()}:
+            return False
+        return self._builtin_preferences.set_enabled(word, enabled)
 
     def load_training_data(self):
         self._loaded_bytes = None
@@ -264,17 +280,17 @@ class DictionaryStore:
             )
         return True
 
-    # Whisper's initial_prompt budget is ~224 tokens; 800 chars is a safe
-    # character-based proxy that keeps well clear of that limit.
+    # Legacy character cap; 801 also enforces 223 tokens with the loaded
+    # recognizer's tokenizer because 800 characters can exceed that limit.
     _PROMPT_CHAR_BUDGET = 800
 
     def get_initial_prompt(self, include_vocabulary: bool = True) -> "str | None":
-        """Build the Whisper initial_prompt from up to three layered parts.
+        """Build the Whisper initial_prompt from prioritized layered parts.
 
         include_vocabulary=False omits Priority 2 (genuine user vocabulary
         -- names, jargon, technical terms added via add_vocab_word, the
         "Common terms:" layer) AND Priority 3 (the auto-derived command
-        vocabulary) entirely, returning Priority 1 (explicit custom prompt)
+        vocabulary) and 801's built-in hints, returning Priority 1 (explicit custom prompt)
         alone or None. This is for decode paths that are pure free-form
         prose and never matched against the command registry -- the hotkey
         hold-to-record path (non-command press), the toggle-session DICTATE/
@@ -313,19 +329,44 @@ class DictionaryStore:
                 parts.append(custom_prompt)
                 remaining -= len(custom_prompt)
 
+            # Reserve the enabled wake hint before fitting a whole user list.
+            # Explicit initial_prompt remains the user's unbounded override.
+            wake_reserve = 0
+            covered_words = []
+            if include_vocabulary:
+                hints = relevant_words(self.app.config, self.custom_vocab,
+                                       self._builtin_preferences.disabled)
+                wake = builtin_entries(self.app.config)[0]['word']
+                if hints and word_key(hints[0]) == word_key(wake):
+                    wake_reserve = len('Built-in words: ' + hints[0]) + 1
+
             # Priority 2: custom vocabulary -- included whole or not at all
             # (never truncate mid-phrase).
             if include_vocabulary and self.custom_vocab and remaining > 0:
                 vocab_part = f"Common terms: {', '.join(self.custom_vocab)}"
                 needed = len(vocab_part) + (1 if parts else 0)
-                if needed <= remaining:
+                if needed + wake_reserve <= remaining:
                     parts.append(vocab_part)
                     remaining -= needed
+                    covered_words = self.custom_vocab
+
+            # 801: built-ins are hints only on vocabulary-enabled paths. Keep
+            # the existing free-form guard and the user's higher priority.
+            if include_vocabulary and remaining > 0:
+                builtins = prompt_words(self.app.config, self.custom_vocab,
+                                        self._builtin_preferences.disabled,
+                                        min(360, remaining - (1 if parts else 0)),
+                                        covered_words=covered_words)
+                if builtins:
+                    parts.append(builtins)
+                    remaining -= len(builtins) + (1 if len(parts) > 1 else 0)
 
             # Priority 3: command vocabulary -- lowest priority, so it's the
             # one truncated (item-by-item, never mid-word) to fit what's left.
             if include_vocabulary and remaining > 0:
-                cmd_words = self._get_command_vocabulary_words()
+                cmd_words = [word for word in self._get_command_vocabulary_words()
+                             if command_word_enabled(word, self.custom_vocab,
+                                                     self._builtin_preferences.disabled)]
                 kept: List[str] = []
                 for word in cmd_words:
                     candidate = f"Voice commands: {', '.join(kept + [word])}"
@@ -336,7 +377,7 @@ class DictionaryStore:
                 if kept:
                     parts.append(f"Voice commands: {', '.join(kept)}")
 
-            return " ".join(parts) if parts else None
+            return fit_decoder_prompt(parts, getattr(self.app, 'model', None), custom_prompt)
         except Exception as exc:
             logger.error(f"Error building initial prompt: {exc}", exc_info=True)
             return None

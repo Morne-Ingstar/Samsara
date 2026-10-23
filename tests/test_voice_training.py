@@ -208,7 +208,8 @@ class TestInitialPrompt:
 
         result = vt.get_initial_prompt()
 
-        assert result is None
+        # 801: a fresh dictionary still has separate shipped decoder hints.
+        assert 'Built-in words: ' in result
 
     def test_get_prompt_respects_char_budget(self, tmp_path):
         """With an oversized command vocabulary, the prompt must stay within

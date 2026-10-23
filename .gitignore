@@ -20,6 +20,7 @@ training_data.json
 history.json
 config.json*
 *vocabulary*.json
+!/samsara/data/builtin_vocabulary.json
 messages.html
 messages.json
 telegram_export*.html

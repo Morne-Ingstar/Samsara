@@ -15,14 +15,17 @@ label update so the Qt event loop is never blocked.
 """
 
 from samsara.dictionary_store import get_dictionary_store
+from samsara.config_defaults import cfg_get
 
 import logging
+from contextlib import nullcontext
 
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListWidget, QMessageBox, QPushButton,
-    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QScrollArea, QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from samsara.runtime import thread_registry
@@ -95,6 +98,7 @@ def _ss() -> str:
 
 class _Signals(QObject):
     status = Signal(str, str)   # (message, color)
+    builtin_saved = Signal(object, bool, bool)  # word (None = master), enabled, saved
 
 
 # ---------------------------------------------------------------------------
@@ -165,13 +169,14 @@ class DictionaryPanelQt(QWidget):
         lay.setSpacing(8)
 
         desc = QLabel(
-            "Words injected into Whisper's initial_prompt.  Add proper nouns, "
-            "technical terms, or anything Whisper consistently mishears.  "
-            "Changes take effect on the next dictation — no restart needed."
+            "Add names, technical terms, or words Samsara often mishears. "
+            "Your words stay separate from the built-in list."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(desc)
+
+        self._build_builtin_words(lay)
 
         # Input row
         add_row = QHBoxLayout()
@@ -232,6 +237,113 @@ class DictionaryPanelQt(QWidget):
         )
 
         return page
+
+    def _build_builtin_words(self, layout):
+        from samsara.ui.settings.calm_controls import switch
+
+        master_row = QHBoxLayout()
+        self._builtin_enabled = switch(QCheckBox())
+        self._builtin_enabled.setObjectName("builtinVocabularyEnabled")
+        label = QLabel("Use Samsara's built-in words")
+        label.setBuddy(self._builtin_enabled)
+        self._builtin_enabled.setAccessibleName(label.text())
+        self._builtin_enabled.setChecked(cfg_get(self._app.config, "builtin_vocabulary_enabled"))
+        self._builtin_enabled.setEnabled(callable(getattr(self._app, "update_config_and_save", None)))
+        master_row.addWidget(label)
+        master_row.addWidget(self._builtin_enabled)
+        master_row.addStretch()
+        layout.addLayout(master_row)
+
+        self._builtin_expander = QToolButton()
+        self._builtin_expander.setText("Built-in words")
+        self._builtin_expander.setAccessibleName("Show built-in words")
+        self._builtin_expander.setCheckable(True)
+        self._builtin_expander.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._builtin_expander.setArrowType(Qt.ArrowType.RightArrow)
+        self._builtin_expander.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self._builtin_expander)
+
+        self._builtin_scroll = QScrollArea()
+        self._builtin_scroll.setWidgetResizable(True)
+        self._builtin_scroll.setMaximumHeight(220)
+        self._builtin_scroll.setMinimumHeight(132)
+        self._builtin_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        rows = QVBoxLayout(content)
+        rows.setContentsMargins(8, 4, 8, 4)
+        rows.setSpacing(2)
+        self._builtin_switches = {}
+        service = self._vt
+        entries = service.get_builtin_words() if callable(getattr(service, "get_builtin_words", None)) else []
+        for entry in entries:
+            word = entry["word"]
+            row = QHBoxLayout()
+            control = switch(QCheckBox())
+            control.setAccessibleName(f"Use built-in word {word}")
+            control.setChecked(entry["enabled"])
+            control.toggled.connect(lambda enabled, word=word: self._builtin_save(word, enabled))
+            text = QLabel(word)
+            text.setBuddy(control)
+            text.setToolTip(entry["why"])
+            row.addWidget(control)
+            row.addWidget(text)
+            row.addStretch()
+            rows.addLayout(row)
+            self._builtin_switches[word] = control
+        rows.addStretch()
+        self._builtin_scroll.setWidget(content)
+        self._builtin_scroll.setVisible(False)
+        self._builtin_scroll.setEnabled(self._builtin_enabled.isChecked())
+        layout.addWidget(self._builtin_scroll)
+        self._builtin_expander.toggled.connect(self._builtin_expand)
+        self._builtin_enabled.toggled.connect(lambda enabled: self._builtin_save(None, enabled))
+        self._sigs.builtin_saved.connect(self._builtin_save_finished)
+
+    def _builtin_expand(self, expanded):
+        self._builtin_expander.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self._builtin_expander.setAccessibleName("Hide built-in words" if expanded else "Show built-in words")
+        self._builtin_scroll.setVisible(expanded)
+
+    def _builtin_save(self, word, enabled):
+        # Serialize preference writes and keep all disk work off the Qt thread.
+        self._builtin_enabled.setEnabled(False)
+        self._builtin_scroll.setEnabled(False)
+        self._vocab_status.setText("Saving...")
+
+        def save():
+            saved = False
+            had_key = "builtin_vocabulary_enabled" in self._app.config
+            previous = self._app.config.get("builtin_vocabulary_enabled")
+            try:
+                if word is None:
+                    if not getattr(self._app, "_config_load_failed", False):
+                        saved = self._app.update_config_and_save({"builtin_vocabulary_enabled": enabled}) is not False
+                else:
+                    saved = self._vt.set_builtin_word_enabled(word, enabled)
+            except Exception:
+                logger.exception("Could not save built-in vocabulary preference")
+            if word is None and not saved:
+                with getattr(self._app, "_config_lock", None) or nullcontext():
+                    if had_key:
+                        self._app.config["builtin_vocabulary_enabled"] = previous
+                    else:
+                        self._app.config.pop("builtin_vocabulary_enabled", None)
+            if self._alive:
+                self._sigs.builtin_saved.emit(word, enabled, saved)
+
+        thread_registry.spawn("dictionary_panel_qt.builtin_save", save, daemon=True)
+
+    def _builtin_save_finished(self, word, enabled, saved):
+        if not self._alive or not _qt_widget_is_valid(self):
+            return
+        control = self._builtin_enabled if word is None else self._builtin_switches[word]
+        if not saved:
+            control.blockSignals(True)
+            control.setChecked(not enabled)
+            control.blockSignals(False)
+        self._builtin_enabled.setEnabled(callable(getattr(self._app, "update_config_and_save", None)))
+        self._builtin_scroll.setEnabled(self._builtin_enabled.isChecked())
+        self._vocab_status.setText("" if saved else "Could not save built-in words. Try again.")
 
     def _vocab_add(self):
         word = self._vocab_input.text().strip()

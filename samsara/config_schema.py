@@ -64,6 +64,10 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "builtin_vocabulary_enabled": {
+        "type": "bool", "default": True, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Immediate switch in Dictionary > Vocabulary, outside the Settings preference pages.",
+    },
     "mouth_sounds.experiment_shadow": {
         "type": "bool", "default": False, "tab": "general", "settings_ui": False,
         "ui_less_reason": "Offline-calibrated mouth-sound experiment; shadow telemetry only.",

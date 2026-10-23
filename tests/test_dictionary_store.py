@@ -51,7 +51,9 @@ def test_prompt_output_and_include_vocabulary_contract_are_preserved(tmp_path):
     app = _app(tmp_path, b'{"vocabulary": ["TensorFlow", "NumPy"], "corrections": {}}')
     app.config.update(initial_prompt="Technical context.", web_shortcuts={"alpha tools": "unused"})
     store = app.dictionary_store
-    assert store.get_initial_prompt() == "Technical context. Common terms: TensorFlow, NumPy Voice commands: alpha tools"
+    # 801 adds shipped hints between personal words and command phrases.
+    assert store.get_initial_prompt().startswith("Technical context. Common terms: TensorFlow, NumPy Built-in words: ")
+    assert store.get_initial_prompt().endswith("Voice commands: alpha tools")
     assert store.get_initial_prompt(include_vocabulary=False) == "Technical context."
     app.config["initial_prompt"] = ""
     assert store.get_initial_prompt(include_vocabulary=False) is None

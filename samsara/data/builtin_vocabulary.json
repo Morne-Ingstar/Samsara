@@ -1,0 +1,325 @@
+[
+  {
+    "word": "Samsara",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "Ava",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "Hermes",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "hermes"
+    ]
+  },
+  {
+    "word": "Claude",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "GPT",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "ChatGPT",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "Codex",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "Ollama",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "OpenRouter",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "DeepSeek",
+    "why": "Product or assistant name used in voice requests and assistant settings.",
+    "packs": [
+      "ai",
+      "agents",
+      "smart-actions"
+    ]
+  },
+  {
+    "word": "chrome",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "firefox",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "edge",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "brave",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "stremio",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "discord",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "spotify",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "vscode",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "vs code",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "code",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "notepad",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "word",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "excel",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "vlc",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "obs",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "terminal",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "warp",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "powershell",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "netflix",
+    "why": "Accepted launch name: plugins/commands/app_verbs.py LAUNCH_OVERRIDES; open <app>.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "mail",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "email",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "youtube",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "amazon",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "my orders",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "github",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "reddit",
+    "why": "Shipped site shortcut: samsara/config_seed.py web_shortcuts; go to <site>.",
+    "packs": [
+      "utilities"
+    ]
+  },
+  {
+    "word": "hands-free",
+    "why": "Hands-free listening and dictation mode.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "show numbers",
+    "why": "Accessibility command: show clickable number labels.",
+    "packs": [
+      "accessibility"
+    ]
+  },
+  {
+    "word": "cube",
+    "why": "Window cube commands and window selection.",
+    "packs": [
+      "window-management",
+      "window-cube-numbers"
+    ]
+  },
+  {
+    "word": "scratch that",
+    "why": "Session command: discard the last draft segment.",
+    "packs": [
+      "session"
+    ]
+  },
+  {
+    "word": "Command Reference",
+    "why": "Help surface listing spoken commands.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "dictation",
+    "why": "Start/stop dictation and choose session mode.",
+    "packs": [
+      "session"
+    ]
+  },
+  {
+    "word": "wake word",
+    "why": "Configure hands-free wake detection.",
+    "packs": [
+      "core"
+    ]
+  },
+  {
+    "word": "retype that",
+    "why": "Session command: repair the last insertion.",
+    "packs": [
+      "session"
+    ]
+  }
+]
