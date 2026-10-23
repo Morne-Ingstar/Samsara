@@ -43,6 +43,11 @@ def accepts_dictation(executor, text, app, entry=None, context=None):
     if cfg_get(getattr(app, 'config', {}), KEY) is False or command_payload(text, app) is not None:
         return True
     context = context if context is not None else executor._matcher.current_context()
+    from .numbered_picks import pick_remainder
+    pick = pick_remainder(text, allow_grid=True)
+    if pick is not None:
+        click, _ = executor._matcher.match('click ' + pick, context)
+        return click is not None and click.phrase == 'click'
     literal, remainder = executor._matcher.match(text, context)
     return (literal is not None and (entry is None or literal is entry)
             and not remainder and not executor._takes_argument(literal))

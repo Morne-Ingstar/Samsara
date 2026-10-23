@@ -474,6 +474,7 @@ _COMMAND_HELP = {
     "remind me to": (["remind me to stretch at two pm", "remind me to stretch every thirty minutes"], "The reminder service must be available."),
     "record my screen": (["record my screen for five seconds"], "Records your whole screen as a GIF after confirmation."),
     "record this window": (["record this window for five seconds"], "Focus the window you want to record. Confirmation is required."),
+    "pick number": (["pick seven", "number twelve"], "Say show numbers first and keep the numbered label visible."),
     "click": (["click seven", "click save"], "Say show numbers first for numbered labels. For a name, keep that control visible. A number refines an active mouse grid."),
     "double click": (["double click seven"], "Say show numbers first and keep label 7 visible."),
     "left click": (["left click seven"], "Say show numbers first and keep label 7 visible."),

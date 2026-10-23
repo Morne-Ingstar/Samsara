@@ -812,12 +812,12 @@ class CommandExecutor:
             return self.execute_canonical(
                 "choose control", effective_app, route=route,
                 generation=generation, args={"remainder": str(number)}, source_text=text)
-        from plugins.commands.show_numbers import selection_number as overlay_number
-        number = overlay_number(text)
-        if number is not None and not literals_only:
+        from .numbered_picks import pick_remainder
+        pick = pick_remainder(text)
+        if pick is not None and text.lower().split()[0] not in {'pick', 'number'}:
             return self.execute_canonical(
                 "click", effective_app, route=route, generation=generation,
-                args={"remainder": str(number)}, source_text=text)
+                args={"remainder": pick}, source_text=text)
         from .phonetic_wash import repair_command_near_miss
         near = repair_command_near_miss(text, self) if command_lane(effective_app, force_commands) else None
         match_text = near or apply_phonetic_wash(text)

@@ -263,6 +263,13 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
         monkeypatch.setattr(module, '_start_recording', start)
     elif stem == 'show_numbers':
         monkeypatch.setattr(module, 'grid_active', lambda: False)
+        if phrase == 'pick number':
+            # Populate the real plugin's label state: scope tags alone do not
+            # satisfy the handler's independent visibility check.
+            from plugins.commands import show_numbers
+            assert module is show_numbers
+            assert entry.handler.__globals__ is vars(show_numbers)
+            monkeypatch.setattr(module, '_elements', [object() for _ in range(12)])
         for name in ('_click_number', '_click_text', '_click_at_cursor', '_grid_show', '_grid_apply'):
             stub(name)
         stub('_grid_area', ((0, 0, 1920, 1080), 'sample screen'))

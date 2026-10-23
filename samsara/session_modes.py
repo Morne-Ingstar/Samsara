@@ -2497,6 +2497,7 @@ class SessionModeManager(UtteranceUndoMixin):
     def _dispatch_in_mode(
         self, text: str, signals: Optional[UtteranceSignals] = None,
     ) -> DispatchOutcome:
+        from samsara.numbered_picks import dispatch_session_pick
         from samsara.ava_edit import intent, session as edits
         app = getattr(self._agent_dispatch_fn, "__self__", None)
         if app is not None and passes_switch_anti_hallucination_gate(signals) and (intent.draft_cleanup_scope(text) is not None
@@ -2507,10 +2508,9 @@ class SessionModeManager(UtteranceUndoMixin):
         if self.mode is SessionMode.COMMAND:
             return self._dispatch_command(text)
         if self.mode is SessionMode.DICTATE:
-            audio_ref = signals.audio_ref if signals is not None else None
-            return self._dispatch_dictate(text, audio_ref=audio_ref)
+            return dispatch_session_pick(self, text, signals) or self._dispatch_dictate(text, audio_ref=getattr(signals, 'audio_ref', None))
         if self.mode is SessionMode.AVA:
-            return self._dispatch_ava(text)
+            return dispatch_session_pick(self, text, signals) or self._dispatch_ava(text)
         raise AssertionError(f"unhandled SessionMode {self.mode!r}")  # pragma: no cover
 
     def _answer_pending_command_suggestion(self, text: str) -> Optional[DispatchOutcome]:

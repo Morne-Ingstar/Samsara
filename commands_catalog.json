@@ -11380,7 +11380,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1921",
+      "source": "plugins/commands/show_numbers.py:1924",
       "undoable": false,
       "verb": "double",
       "whole_utterance": false
@@ -11490,7 +11490,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1907",
+      "source": "plugins/commands/show_numbers.py:1910",
       "undoable": false,
       "verb": "left",
       "whole_utterance": false
@@ -11576,6 +11576,41 @@
     },
     {
       "aliases": [
+        "number",
+        "pick",
+        "pick number"
+      ],
+      "args": [
+        {
+          "name": "label",
+          "required": false,
+          "type": "int"
+        }
+      ],
+      "canonical_id": "show_numbers.pick_number",
+      "description": "Chooses a numbered label while Show Numbers is visible.",
+      "examples": [
+        "pick seven",
+        "number twelve"
+      ],
+      "kind": "plugin",
+      "object": "number",
+      "pack": "accessibility",
+      "plugin": "show_numbers",
+      "precondition": "Say show numbers first and keep the numbered label visible.",
+      "risk": "write",
+      "scope": {
+        "tags": [
+          "show_numbers.visible"
+        ]
+      },
+      "source": "plugins/commands/show_numbers.py:1936",
+      "undoable": false,
+      "verb": "pick",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "refresh",
         "refresh numbers",
         "refresh the numbers",
@@ -11623,7 +11658,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1914",
+      "source": "plugins/commands/show_numbers.py:1917",
       "undoable": false,
       "verb": "right",
       "whole_utterance": false
@@ -11641,7 +11676,7 @@
       ],
       "args": [],
       "canonical_id": "show_numbers.show_numbers",
-      "description": "Numbers everything clickable in the focused window so you can name one.",
+      "description": "Numbers everything clickable in the focused window; then say the number, or 'click 5'.",
       "examples": [],
       "kind": "plugin",
       "object": "numbers",

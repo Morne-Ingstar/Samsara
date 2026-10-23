@@ -4034,18 +4034,12 @@ class DictationApp(CommandFastPathMixin):
         elif any(normalized.startswith(prefix) for prefix in _HANDS_FREE_COMMIT_PREFIXES):
             policy = PendingTextPolicy.PRESERVE
         else:
-            # While Show Numbers owns the screen, a sole spoken number is an
-            # implicit "click <number>" and then control returns here.
+            # Visible numbered labels own only the bounded whole-pick grammar.
             try:
-                from plugins.commands import show_numbers as _show_numbers
-                tokens = normalized.split()
-                number_only = bool(tokens) and all(
-                    token.isdigit() or token in _show_numbers._WORD_TO_NUM
-                    for token in tokens
-                )
-                if (_show_numbers.is_overlay_active() and number_only
-                        and _show_numbers._parse_spoken_number(normalized) is not None):
-                    dispatch_text = f"click {normalized}"
+                from samsara.numbered_picks import pick_remainder
+                pick = pick_remainder(text, allow_grid=True)
+                if pick is not None:
+                    dispatch_text = f"click {pick}"
                     policy = PendingTextPolicy.PRESERVE
             except Exception as exc:
                 logger.debug(f"[SESSION] Show Numbers command probe unavailable: {exc}")

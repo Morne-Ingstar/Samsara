@@ -1664,7 +1664,7 @@ def handle_taskbar_numbers(app, remainder):
          aliases=["show clickable", "show labels", "label things", "show", "show the labels", "show the numbers", "show the clickable"],
          pack="accessibility", risk_class="read")
 def handle_show_numbers(app, remainder):
-    """Numbers everything clickable in the focused window so you can name one.
+    """Numbers everything clickable in the focused window; then say the number, or 'click 5'.
 
     Tries the DOM (browser-extension) path first when Brave is the foreground
     window -- native UI Automation sees Brave's own tabs/ bookmarks and the
@@ -1841,6 +1841,8 @@ def _click_at_cursor(modifier: str) -> bool:
 
 def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = frozenset()) -> bool:
     """ONE label-resolution path for left, right, and double click."""
+    if is_overlay_active():
+        _schedule_dismiss_timer(app)
     with _dom_lock:
         dom_active = _dom_active
         dom_count = _dom_hint_count
@@ -1868,6 +1870,7 @@ def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = froz
         # content.js already clears its own hints on a successful selection;
         # this only clears the Python-side flags (a redundant dismiss to an
         # already-cleared content script is a harmless no-op there).
+        _cancel_dismiss_timer()
         _clear_dom_session()
         return True
 
@@ -1928,6 +1931,16 @@ def handle_double_click(app, remainder):
 def enumerate_clickable_elements() -> list:
     """Public alias for _enumerate_foreground_clickables."""
     return _enumerate_foreground_clickables()
+
+
+@command("pick number", aliases=["number", "pick"], pack="accessibility",
+         risk_class="write", scope={"tags": [_NUMBERS_TAG]},
+         param_schema={"label": {"type": "int", "required": False}})
+def handle_pick_number(app, remainder):
+    """Chooses a numbered label while Show Numbers is visible."""
+    from samsara.numbered_picks import pick_remainder
+    pick = pick_remainder(remainder)
+    return handle_click(app, pick) if pick is not None else False
 
 
 def is_overlay_active() -> bool:
