@@ -1,5 +1,6 @@
 """Recover a short command-lane join only at complete, unambiguous boundaries."""
 from samsara import grammar
+from functools import lru_cache
 
 JOIN_WORDS = frozenset({'and', 'then', 'in', 'an', 'end', 'n', 'than'})
 
@@ -9,16 +10,82 @@ def _has_text_slot(parsed, by_id):
                for cid, values, _span, _confidence in parsed for a in by_id[cid].get('args', ()))
 
 
+def _explicit_chain(text, records):
+    """806: cut arguments only where a complete known command follows.
+
+    A joiner inside an app/control name remains content unless its suffix
+    parses completely. Exact catalog aliases containing 'and' stay intact.
+    Original token spans are returned so execution keeps argument spelling.
+    """
+    words = grammar._tokens(text)
+    if not records or not any(word in {'and', 'then'} for word in words):
+        return []
+    index = grammar._catalog_index(records, records)
+
+    @lru_cache(None)
+    def one(start, end):
+        part = words[start:end]
+        parsed = grammar._parse_one(part, index, start)
+        if parsed:
+            return parsed
+        polite = 1 if part[:1] == ['please'] else 0
+        part = part[polite:]
+        candidates = []
+        for record, alias, order in index.get(part[0] if part else '', ()):
+            args = record.get('args') or []
+            if (len(args) != 1 or args[0].get('type', 'text') not in {'text', 'app_name'}
+                    or part[:len(alias)] != alias):
+                continue
+            rest = part[len(alias):]
+            if not rest or (args[0].get('type') == 'app_name' and len(rest) > 4):
+                continue
+            candidates.append((len(alias), -order,
+                               (record['canonical_id'], {args[0]['name']: ' '.join(rest)},
+                                (start, end), .97)))
+        return [max(candidates, key=lambda item: item[:2])[2]] if candidates else []
+
+    @lru_cache(None)
+    def search(start):
+        whole = one(start, len(words))
+        # Named apps such as "open Salt and Pepper" are indivisible aliases.
+        if whole and not next(r for r in records if r['canonical_id'] == whole[0][0]).get('args'):
+            return whole
+        for cut in range(start + 1, len(words) - 1):
+            if words[cut] not in {'and', 'then'}:
+                continue
+            skip = 2 if words[cut:cut + 2] == ['and', 'then'] else 1
+            if cut + skip >= len(words):
+                continue
+            # Avoid parsing arbitrary prose to the right of every 'and'.
+            first = cut + skip
+            if words[first] == 'please' and first + 1 < len(words):
+                first += 1
+            if words[first] not in index:
+                continue
+            left = one(start, cut)
+            if left:
+                right = search(cut + skip)
+                if right:
+                    return left + right
+        return whole
+
+    result = search(0)
+    return result if len(result) > 1 else []
+
+
 def parse_command_chain(text, records):
     """Called only from the executor's explicit command-lane precheck.
 
-    Never split a free-text slot. A recovered application argument must be
-    an existing named-app alias, not arbitrary words that merely fit app_name.
+    Explicit joiners can end argument slots at complete command boundaries.
+    A phonetically recovered application argument must still be a named alias.
     The original parser and original token offsets remain authoritative.
     """
     original = grammar.parse(text, records)
     if len(original) > 1:
         return original
+    explicit = _explicit_chain(text, records)
+    if explicit:
+        return explicit
     words = grammar._tokens(text)
     if not (any(word in JOIN_WORDS - {'and', 'then'} for word in words)
             or any(words[i:i+2] == ['and', 'then'] for i in range(len(words)-1))):
@@ -82,3 +149,25 @@ def align_named_app_prefix(parsed, by_id, prefix):
     exact = next((key for key, (record, phrase) in by_id.items()
                   if phrase == prefix.phrase and not record.get('args')), None)
     return [(exact, {}, span, confidence), *parsed[1:]] if exact else parsed
+
+
+def align_exact_steps(text, parsed, by_id, matcher, context):
+    """Use the same exact command alone and inside a chain (e.g. tab one).
+
+    Only replace a generic argument reading when the registry recognizes the
+    complete segment as an argument-free command. Conflicting fixed commands
+    still reach the executor's original conflict check.
+    """
+    tokens = list(grammar._TOKEN_RE.finditer(text))
+    aligned = []
+    for cid, values, (start, end), confidence in parsed:
+        if values:
+            segment = text[tokens[start].start():tokens[end - 1].end()]
+            entry, remainder = matcher.match(segment, context)
+            if entry is not None and not remainder:
+                exact = next((key for key, (record, phrase) in by_id.items()
+                              if phrase == entry.phrase and not record.get('args')), None)
+                if exact:
+                    cid, values = exact, {}
+        aligned.append((cid, values, (start, end), confidence))
+    return aligned

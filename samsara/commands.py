@@ -951,6 +951,7 @@ class CommandExecutor:
                 return []
             # Keep the user's original argument, including case and punctuation.
             segment = text[tokens[start].start():tokens[end].start() if end < len(tokens) else len(text)]
+            segment = segment.rstrip(' ,;')  # 806: punctuation before a joiner is not an argument.
             segment = re.sub(r'^please\s+', '', segment, flags=re.I).strip()
             matched, remainder = self._matcher.match(segment, context)
             if matched is None or matched.phrase != phrase:
@@ -970,6 +971,11 @@ class CommandExecutor:
                 args['repeat'] = values['repeat']
             if entry.source == 'plugin' and remainder:
                 args['remainder'] = remainder
+            # 806: "it" in a window move refers to the settled foreground app.
+            if entry.phrase in {'snap', 'maximize', 'restore', 'move'} and values.get('app_name') == 'it':
+                args.pop('app_name', None)
+                args['remainder'] = re.sub(r'^it\s+', '', remainder, flags=re.I)
+                values = {key: value for key, value in values.items() if key != 'app_name'}
             steps.append((entry, args, segment, record, values))
         return steps
 
@@ -998,13 +1004,11 @@ class CommandExecutor:
         parsed = parse_command_chain(text, records)
         if len(parsed) < 2:
             return None  # R2: partial understanding retains the existing prefix path.
-        # R3: a text slot makes the entire sentence legacy user content.
-        if any(any(a.get('type', 'text') == 'text' and a['name'] in p[1]
-                   for a in by_id[p[0]][0]['args']) for p in parsed):
-            return None
+        # 806: argument boundaries have already been checked by chain_recovery.
         prefix, _remainder = self._matcher.match(match_text, context)
-        from .chain_recovery import align_named_app_prefix
+        from .chain_recovery import align_named_app_prefix, align_exact_steps
         parsed = align_named_app_prefix(parsed, by_id, prefix)
+        parsed = align_exact_steps(text, parsed, by_id, self._matcher, context)
         first_phrase = by_id[parsed[0][0]][1]
         if prefix is not None and prefix.phrase != first_phrase:
             logger.info('[GRAMMAR] conflicting first commands: prefix=%s grammar=%s', prefix.phrase, first_phrase)
@@ -1064,10 +1068,7 @@ class CommandExecutor:
             if getattr(app, 'command_mode_active', False) is True and self._matcher.should_suppress(entry):
                 return self._grammar_finish(app, text, DispatchState.REJECTED, done,
                                             entry.phrase, 'debounce', len(steps))
-            follows = (index < len(steps) - 1 and
-                       ((entry.data or {}).get('type') == 'launch' or
-                        entry.phrase.split()[0] in {'open', 'focus', 'bring', 'switch', 'activate'}))
-            before = self._grammar_foreground() if follows else None
+            before = self._grammar_chain_target(entry, args, values) if index < len(steps) - 1 else None
             if host is not None:
                 host.labels.clear()
             result = self.execute_canonical(entry.phrase, host, route=route,
@@ -1085,31 +1086,33 @@ class CommandExecutor:
             elif entry.phrase == 'set volume' and 'level' in values:
                 label = f"Windows volume {values['level']}%"
             done.append(label)
-            if follows and not self._grammar_wait_target(before, app, generation, request_serial):
-                state = DispatchState.FAILED if self._grammar_is_fresh(app, generation, request_serial) else DispatchState.CANCELLED
-                return self._grammar_finish(app, text, state, done, steps[index + 1][0].phrase,
-                                            'target_timeout' if state is DispatchState.FAILED else 'stale', len(steps))
+            if before is not None and not self._grammar_wait_target(before, app, generation, request_serial):
+                if not self._grammar_is_fresh(app, generation, request_serial):
+                    return self._grammar_finish(app, text, DispatchState.CANCELLED, done,
+                                                steps[index + 1][0].phrase, 'stale', len(steps))
+                logger.warning('[CHAIN] window settle timed out after %s; continuing', entry.phrase)
+                done[-1] += ' (window wait timed out; continued)'
         return self._grammar_finish(app, text, DispatchState.COMPLETED, done, '', '', len(steps))
 
     @staticmethod
     def _grammar_foreground():
-        from .handlers import _get_foreground_hwnd
-        return _get_foreground_hwnd()
+        # Keep the existing observer seam for lightweight executor hosts.
+        from . import handlers
+        observe = getattr(handlers, '_get_foreground_hwnd', None)
+        return observe() if callable(observe) else None
+
+    @staticmethod
+    def _grammar_chain_target(entry, args, values):
+        from .chain_settle import prepare
+        return prepare(entry, args, values)
 
     def _grammar_is_fresh(self, app, generation, request_serial):
         return (execution_policy.is_fresh(app, generation) and
                 (request_serial is None or request_serial == getattr(self, '_grammar_request_serial', 0)))
 
     def _grammar_wait_target(self, before, app, generation, request_serial=None):
-        deadline = time.monotonic() + 1.5
-        while self._grammar_is_fresh(app, generation, request_serial):
-            current = self._grammar_foreground()
-            if before and current and current != before:
-                return True
-            if time.monotonic() >= deadline:
-                break
-            time.sleep(.025)
-        return False
+        from .chain_settle import wait
+        return wait(before, lambda: self._grammar_is_fresh(app, generation, request_serial))
 
     @staticmethod
     def _grammar_finish(app, text, state, done, stopped, reason, count):

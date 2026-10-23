@@ -56,7 +56,9 @@ def rig(monkeypatch):
     monkeypatch.setattr(executor, '_build_context', lambda app: app)
     monkeypatch.setattr(executor, '_stage_confirmation', Mock())
     # Never query the real foreground, even on the regression before this method exists.
-    monkeypatch.setattr(executor, '_grammar_foreground', lambda: 10, raising=False)
+    # 806: capture target identity before effects, with no real desktop reads.
+    monkeypatch.setattr(executor, '_grammar_chain_target',
+                        lambda entry, args, values: 10 if entry.phrase == 'open' else None)
     monkeypatch.setattr(executor, '_grammar_wait_target', lambda *args: True, raising=False)
     return executor, app, calls
 
@@ -185,10 +187,11 @@ def test_target_wait_precedes_next_step_and_timeout_stops(rig, monkeypatch):
         return False
     monkeypatch.setattr(executor, '_grammar_wait_target', wait)
     result = executor.process_text('open notepad then volume down', force_commands=True)
-    assert events == ['open', 'wait']
-    assert result.state is State.FAILED
-    assert result.detail['reason'] == 'target_timeout'
-    assert result.detail['chain_done'] == ['opened Notepad']
+    # 806: timeout now continues with a short note in the aggregate feedback.
+    assert events == ['open', 'wait', 'volume down']
+    assert result.state is State.COMPLETED
+    assert result.detail['reason'] == ''
+    assert result.detail['chain_done'] == ['opened Notepad (window wait timed out; continued)', 'volume down']
 
 
 def test_new_generation_cancels_unrun_steps(rig, monkeypatch):
@@ -242,15 +245,43 @@ def test_ambiguous_first_reading_keeps_prefix(rig, monkeypatch, caplog):
 TEXT_SLOT_FIXTURE = json.loads(
     (ROOT/'tests/fixtures/several_commands_399_text_slots.json').read_text(encoding='utf-8'))
 
+# 806: these newly understood chains fail quiet policy before any effect.
+REFUSED_ARGUMENT_CHAINS = frozenset({
+    'ask_agent.ask_hermes', 'ask_agent.new_hermes_session', 'ask_ollama.hey_ava',
+    'ask_ollama.is_it_safe_to', 'click_by_name.choose_control', 'comfy.make_an_image_of',
+    'hyperion_lights.light_effect', 'hyperion_lights.lights', 'interact.interact_close',
+    'message_chatgpt.chatgpt_message_submit', 'message_chatgpt.message_chat_gpt',
+    'message_claude.claude_message_prepare', 'message_claude.claude_message_submit',
+    'message_claude.read_code_block', 'message_claude.read_section',
+    'message_claude.read_the', 'message_claude.read_the_code', 'quick_ask.ask',
+    'reminders.remind_me_to', 'screen_gif.record_my_screen', 'screen_gif.record_this_window',
+    'timer.set_a_timer', 'web_shortcuts.go_to', 'windows.delete_layout',
+})
+
 
 @pytest.mark.parametrize('canonical_id', sorted(TEXT_SLOT_FIXTURE))
 def test_every_text_slot_keeps_head_behavior(rig, canonical_id):
     executor, app, calls = rig
     expected = TEXT_SLOT_FIXTURE[canonical_id]
     result = executor.process_text(expected['text'], force_commands=True)
-    assert result.state.value == expected['state']
-    assert result.detail == expected['detail']
-    assert [list(call) for call in calls] == expected['calls']
+    # 806: explicit known command suffixes now end free-text arguments.
+    if canonical_id in REFUSED_ARGUMENT_CHAINS:
+        assert result.state is State.REJECTED
+        assert result.detail['chain_count'] == 2
+        assert result.detail['chain_done'] == []
+        assert result.detail['reason'] in {'out_of_scope', 'pack_disabled', 'invalid_args', 'confirmation_required'}
+        assert calls == []
+    elif ((expected['state'] == 'completed' and expected['calls'] and
+           canonical_id not in {'flashforge_printer.start_print', 'windows.snap'}) or
+          canonical_id in {'interact.interact_focus', 'interact.interact_maximize', 'interact.interact_minimize'}):
+        first = expected['calls'][0][0] if expected['calls'] else expected['text'].split(' alpha')[0]
+        assert result.state is State.COMPLETED
+        assert result.detail['chain_done'] == [first, 'volume down']
+        assert [list(call) for call in calls] == [[first, 'alpha'], ['volume down', '']]
+    else:
+        assert result.state.value == expected['state']
+        assert result.detail == expected['detail']
+        assert [list(call) for call in calls] == expected['calls']
 
 
 def test_text_slot_fixture_covers_catalog():
@@ -345,18 +376,21 @@ def test_nonchain_and_precheck_latency(rig):
 
 
 def test_foreground_wait_real_loop_has_deadline_and_cancellation(rig, monkeypatch):
+    from samsara import chain_settle
     executor, app, calls = rig
     clock = [0.0]
     monkeypatch.setattr(commands.time, 'monotonic', lambda: clock[0])
     monkeypatch.setattr(commands.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
     wait = commands.CommandExecutor._grammar_wait_target.__get__(executor)
-    monkeypatch.setattr(executor, '_grammar_foreground', lambda: 10)
-    assert wait(10, app, 0) is False
-    assert 1.5 <= clock[0] < 1.55
-    monkeypatch.setattr(executor, '_grammar_foreground', lambda: 11)
-    assert wait(10, app, 0) is True
+    # 806: wait for the expected process, capped at three seconds.
+    desktop = SimpleNamespace(foreground=lambda: chain_settle.Window(10, 1, 'brave.exe', (0, 0, 100, 100)))
+    target = chain_settle.Target(desktop, frozenset({'notepad.exe'}))
+    assert wait(target, app, 0) is False
+    assert 3 <= clock[0] < 3.05
+    desktop.foreground = lambda: chain_settle.Window(11, 2, 'notepad.exe', (0, 0, 100, 100))
+    assert wait(target, app, 0) is True
     app._ava_cmd_generation = 1
-    assert wait(10, app, 0) is False
+    assert wait(target, app, 0) is False
 
 
 def test_four_steps_allowed_and_reload_invalidates_catalog(rig):
