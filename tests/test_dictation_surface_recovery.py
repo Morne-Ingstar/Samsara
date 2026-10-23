@@ -275,14 +275,13 @@ def test_correction_editor_replaces_choices_and_survives_refresh(qapp):
         widget.show()
         # 263: production correction selections carry document identity as well as revision.
         widget.show_candidates({"word": "two", "document_id": "d", "revision": 1}, [])
-        widget._open_editor("edit")
-        widget._editor.setText("replacement")
+        menu = widget._word_menu
+        widget._open_editor()
+        menu._editor.setText("replacement")
         widget.refresh(animate=False); qapp.processEvents()
-        assert widget._editor.isVisible() and widget._editor.text() == "replacement"
-        assert not any(c.isVisible() for c in (*widget._picker_buttons, widget._keep, widget._spell, widget._edit))
-        assert not widget._editor.geometry().intersects(widget._apply.geometry())
-        assert widget.card_content_rect.contains(widget._cancel.geometry())
-        widget._cancel_editor()
-        assert widget._keep.isVisible() and not widget._editor.isVisible()
+        assert menu.isVisible() and menu._editor.isVisible()
+        assert menu._editor.text() == "replacement"
+        assert menu.apply.isVisible() and menu.dismiss.isVisible()
+        assert not menu._editor.geometry().intersects(menu.apply.geometry())
     finally:
         widget.deleteLater()

@@ -1671,25 +1671,29 @@ class HomePage(QWidget):
             f" border: none; max-height: 1px; min-height: 1px; }}"
             f"QScrollArea {{ border: none; background: transparent; }}"
         )
-        outer = QVBoxLayout(self)
+        outer = QGridLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         version = _label(f"v{__version__}", role="note", color=theme.TEXT_SECONDARY)
         version.setObjectName("runningVersion")
-        outer.addWidget(build_version_row(version, GRID))
+        version_row = build_version_row(version, GRID)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.viewport().installEventFilter(self)
-        outer.addWidget(self._scroll, 1)
+        outer.addWidget(self._scroll, 0, 0)
+        # Overlay the version in the scroll area's unused top gutter. This
+        # preserves its position while giving the Home content the old row's
+        # height back in the visible viewport.
+        outer.addWidget(version_row, 0, 0, alignment=Qt.AlignmentFlag.AlignTop)
 
         host = QWidget()
         host.setStyleSheet("background: transparent;")
         host_lay = QHBoxLayout(host)
         # Keep horizontal gutters; save vertical room for the conditional slot.
-        host_lay.setContentsMargins(GRID, 0, GRID, 0)
+        host_lay.setContentsMargins(GRID, version_row.sizeHint().height(), GRID, 0)
         host_lay.setSpacing(0)
         self._content = _ContentColumn()
         self._content.setObjectName("homeContent")

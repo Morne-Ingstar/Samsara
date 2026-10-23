@@ -110,15 +110,22 @@ def test_spoken_replacement_still_shares_the_apply_and_capture_route(preview):
 
 def test_tooltip_shows_tappable_original_candidate_and_dismiss(qapp):
     widget = st._StreamingWidget(False, st.IdleSettings(5.0, 0.25), lambda: False)
+    chosen, dismissed = Mock(), Mock()
     try:
+        widget.set_correction_choice_callbacks(chosen, dismissed)
         widget.show_overlay()
         qapp.processEvents()
         widget._w.show_correction_choices("Morn", ["Morn", "Morne"], False)
         qapp.processEvents()
-        assert widget._w._choices.isVisible()
-        assert widget._w.height() >= 170, "the choice list must not be clipped by the preview"
-        assert [button.text() for button in widget._w._choice_buttons] == [
-            "Morn", "Morne", "Dismiss — change nothing"]
+        menu = widget._w._choices
+        assert menu.isVisible()
+        assert [button.text() for button in menu.buttons] == ["Morne"]
+        assert menu.dismiss.text() == "Keep original"
+        menu.buttons[0].click()
+        assert chosen.call_args.args == ("Morne",)
+        widget._w.show_correction_choices("Morn", ["Morn", "Morne"], False)
+        menu.dismiss.click()
+        dismissed.assert_called_once_with()
     finally:
         widget.stop_life()
         widget._w.hide()

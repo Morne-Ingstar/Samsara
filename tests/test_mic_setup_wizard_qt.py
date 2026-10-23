@@ -1,6 +1,7 @@
 """Focused regression tests for the microphone setup/runtime handoff."""
 
 import threading
+import time as _time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -260,8 +261,12 @@ def test_audio_worker_debounces_adjacent_positive_frames_until_silence(
     # 67: the fake blocks are 16 kHz frames; do not let the real device's
     # rate decide the stream's block size.
     monkeypatch.setattr(wizard, "_detect_capture_rate", lambda device: 16000)
+    # Keep the assertion local to this worker module. Patching time.sleep on
+    # the shared time module races with unrelated xdist tests in this process.
     sleep = Mock()
-    monkeypatch.setattr(wizard.time, "sleep", sleep)
+    monkeypatch.setattr(
+        wizard, "time", SimpleNamespace(sleep=sleep, monotonic=_time.monotonic)
+    )
     hits = []
     window._oww_hit_sig.connect(lambda: hits.append(True))
     window._current_step = window._STEP_WAKE
