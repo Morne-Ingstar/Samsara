@@ -74,9 +74,6 @@ def ask_gpt(app, remainder=""):
 
 
 def ask_claude(app, remainder=""):
-    from plugins.commands.message_claude import ClaudeUiaAdapter, handle_claude_message_prepare
-    if ClaudeUiaAdapter().resolve_window() is not None:
-        return handle_claude_message_prepare(app, remainder)
     return ask_cli(app, "claude", remainder)
 
 

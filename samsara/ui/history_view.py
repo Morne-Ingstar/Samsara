@@ -52,6 +52,7 @@ from samsara import history_export
 from samsara import outcome_ring
 from samsara.message_durations import ReceiptDwell, message_duration_ms, restore_receipt_text as _safe_set_text
 from samsara.ui import theme
+from samsara.ui.history_source import _elide_plain, row_context
 from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
@@ -260,15 +261,10 @@ def copy_text(row: dict) -> str:
     return _row_text(row)
 
 
-def _elide_plain(text: str, limit: int) -> str:
-    text = " ".join(str(text or "").split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "\u2026"
-
-
 def meta_text(row: dict) -> str:
     """Secondary line: the window it went to and how it was captured."""
     parts = []
-    context = str(row.get('app_context') or '').strip()
+    context = row_context(row)
     if context and context.casefold() != 'unknown':
         parts.append(_elide_plain(context, _APP_CONTEXT_MAX))
     mode_label = _MODE_LABELS.get(str(row.get('mode') or ''))
@@ -1060,7 +1056,7 @@ class _DetailCard(QFrame):
         parts = []
         if dt is not None:
             parts.append(f"{day_label(dt)}, {dt.strftime('%H:%M')}")
-        context = str(row.get('app_context') or '').strip()
+        context = row_context(row)
         if context and context.casefold() != 'unknown':
             parts.append(context)
         mode_label = _MODE_LABELS.get(str(row.get('mode') or ''))

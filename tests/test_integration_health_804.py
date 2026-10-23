@@ -222,7 +222,8 @@ def test_connected_cli_checks_only_help_and_version(tmp_path, monkeypatch, name)
     def cli(argv):
         calls.append(argv)
         assert argv[-1] in {"--help", "--version"}
-        return "1 --json --skip-git-repo-check -C --sandbox -c -p --output-format --verbose --restricted --tools --permission-mode --resume"
+        # 805: Claude is now run with --safe-mode (verified in the real CLI 2.1.309 help).
+        return "1 --json --skip-git-repo-check -C --sandbox -c -p --safe-mode --output-format --verbose --restricted --tools --permission-mode --resume"
     monkeypatch.setattr(health, "_cli", cli)
     assert health.run_checks(tmp_path, [health.cli_integration(name)]) == []
     assert len(calls) == (3 if name == "gpt" else 2)

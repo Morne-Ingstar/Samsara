@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -51,17 +52,19 @@ def resolve_executable(name: str) -> list[str]:
 def codex_argv(exe: list[str], prompt: str, session: str | None, cwd: Path,
                allow_writes: bool) -> list[str]:
     sandbox = "workspace-write" if allow_writes else "read-only"
+    isolation = ["-c", "project_doc_max_bytes=0"]
     if session:
         # resume does not expose -s or -C; --config carries the same sandbox.
         return [*exe, "exec", "resume", "--json", "--skip-git-repo-check",
-                "-c", f"sandbox_mode={sandbox}", session, "-"]
+                *isolation, "-c", f"sandbox_mode={sandbox}", session, "-"]
     return [*exe, "exec", "--json", "--skip-git-repo-check", "-C", str(cwd),
-            "--sandbox", sandbox, "-"]
+            *isolation, "--sandbox", sandbox, "-"]
 
 
 def claude_argv(exe: list[str], prompt: str, session: str | None, cwd: Path,
                 allow_writes: bool) -> list[str]:
-    argv = [*exe, "-p", "--output-format", "stream-json", "--verbose"]
+    # Unlike --bare, safe mode retains subscription authentication.
+    argv = [*exe, "-p", "--safe-mode", "--output-format", "stream-json", "--verbose"]
     if not allow_writes:
         argv += ["--restricted", "--tools", "Read,Glob,Grep,WebSearch",
                  "--permission-mode", "plan"]
@@ -102,12 +105,69 @@ def parse_claude(lines: list[str]) -> tuple[str, str | None]:
     return answer, session
 
 
+def clean_reply(text: str) -> str:
+    """Remove only terminal, uppercase agent-task metadata outside code fences."""
+    lines = text.splitlines(keepends=True)
+    fence = None
+    fenced = []
+    for line in lines:
+        fenced.append(fence is not None)
+        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if marker:
+            if fence is None:
+                fence = marker[1]
+            elif re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}", line.strip()):
+                fence = None
+    end = len(lines)
+    while end and not lines[end - 1].strip():
+        end -= 1
+    removed = False
+    while end:
+        line = lines[end - 1].strip()
+        if fenced[end - 1] or line != line.upper() or not re.fullmatch(
+                r"(?:PROMPT:?[ \t]+|FINAL LINE:[ \t]*|MODEL:[ \t]*)\S[^\r\n]*", line):
+            break
+        removed = True
+        end -= 1
+        while end and not lines[end - 1].strip():
+            end -= 1
+    return "".join(lines[:end]).rstrip("\r\n") if removed else text
+
+
+def _codex_env(home: Path) -> dict[str, str]:
+    """Reuse only file authentication in a separate, persistent Codex profile.
+
+    CODEX_HOME controls global AGENTS discovery; project_doc_max_bytes=0
+    separately disables cwd/ancestor instruction discovery. Never copy config,
+    rules, skills or personal instructions into this profile.
+    """
+    env = os.environ.copy()
+    personal = Path(env.get("CODEX_HOME") or Path.home() / ".codex")
+    isolated = home / "agent_codex"
+    isolated.mkdir(parents=True, exist_ok=True, mode=0o700)
+    source, target = personal / "auth.json", isolated / "auth.json"
+    # Keep refreshed credentials from the child unless the main CLI signed in
+    # more recently. No credential contents go into logs or transcripts.
+    if source.is_file() and (not target.is_file() or source.stat().st_mtime_ns > target.stat().st_mtime_ns):
+        temp = target.with_suffix(".tmp")
+        with temp.open("wb") as stream:
+            os.chmod(temp, 0o600)
+            stream.write(source.read_bytes())
+        os.replace(temp, target)
+    env["CODEX_HOME"] = str(isolated)
+    return env
+
+
 @dataclass(frozen=True)
 class AgentReply:
     text: str
     session_id: str | None
     argv: tuple[str, ...]
     elapsed_s: float
+
+    def __post_init__(self):
+        # Also covers Hermes, which constructs this same reply envelope.
+        object.__setattr__(self, "text", clean_reply(self.text))
 
 
 def _kill_tree(process: subprocess.Popen) -> None:
@@ -191,13 +251,17 @@ class CliAgent:
         if not cwd.is_dir():
             raise FileNotFoundError(cwd)
         with _sessions_lock:
-            session = self._sessions(home).get(self.name)
+            saved = self._sessions(home)
+            # Old histories may already contain personal instructions. Start
+            # clean once, then keep the usual follow-up/resume behaviour.
+            session = saved.get(self.name) if self.name in saved.get("_instruction_isolation", []) else None
         exe = self.executable or resolve_executable(self.name)
         argv = self.argv_builder(exe, prompt, session, cwd, allow_writes)
         started = time.monotonic()
         process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, encoding="utf-8", errors="replace")
+                                   text=True, encoding="utf-8", errors="replace",
+                                   env=_codex_env(home) if self.name == "gpt" else os.environ.copy())
         with _active_lock:
             _active.add(process)
         events: queue.Queue = queue.Queue()
@@ -237,12 +301,14 @@ class CliAgent:
             if code:
                 raise RuntimeError(errors[-1] if errors else f"{self.name} exited {code}")
             answer, new_session = self.parse_reply(output)
+            answer = clean_reply(answer)
             if not answer.strip():
                 raise RuntimeError(f"{self.name} returned no answer")
             if new_session:
                 with _sessions_lock:
                     data = self._sessions(home)
                     data[self.name] = new_session
+                    data["_instruction_isolation"] = sorted(set(data.get("_instruction_isolation", [])) | {self.name})
                     self._save_sessions(home, data)
             transcript = home / "agent_transcripts" / f"{self.name}.md"
             transcript.parent.mkdir(parents=True, exist_ok=True)
