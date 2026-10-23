@@ -1672,7 +1672,7 @@ class StreamingWorker(threading.Thread):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
-            from samsara.decode_recovery import stream_final, LOST
+            from samsara.speech_regions import stream_final, LOST
             if getattr(consumer, 'capture_loss', False) is True:
                 self._session._decode_failure = LOST
                 self._session.on_final(None, duration_s=len(audio) / app.model_rate if audio is not None else 0)

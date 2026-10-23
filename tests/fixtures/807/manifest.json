@@ -1,0 +1,16 @@
+{
+  "rate": 16000,
+  "source": "LibriSpeech test-clean/1089/134686/1089-134686-0007.flac",
+  "attribution": "LibriSpeech ASR corpus, OpenSLR 12, CC BY 4.0; https://www.openslr.org/12",
+  "reference": "A COLD LUCID INDIFFERENCE REIGNED IN HIS SOUL",
+  "speech_samples": 68400,
+  "seed": 807,
+  "room_rms": 0.0003,
+  "chirp_hz": 4500,
+  "chirp_peak": 0.08,
+  "chirp_s": 0.12,
+  "chirp_period_s": 3,
+  "hold_s": 60,
+  "speech_at_s": 28,
+  "quiet_gain": 0.04
+}
