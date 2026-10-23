@@ -213,6 +213,7 @@ class LiveSurfaceModel:
         self._last_activity = now
         kind = event.kind
         if kind is EventKind.CAPTURE_STARTED:
+            self.dismiss_error()
             if self.document is DocumentState.DELIVERED:
                 self.text = ""
                 self.document = DocumentState.EMPTY
@@ -225,6 +226,8 @@ class LiveSurfaceModel:
             self.provisional_text = ""
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.CAPTURE_CHANGED:
+            if event.capture is CaptureState.RECORDING and self.capture is not CaptureState.RECORDING:
+                self.dismiss_error()
             self.capture = event.capture or self.capture
             self.lane = event.lane or self.lane
         elif kind is EventKind.CAPTURE_STOPPED:
@@ -353,7 +356,7 @@ class LiveSurfaceModel:
             self._feedback_event = candidate
         if message_should_wait(self._notice.feedback, feedback, protected=self._message_protected(now),
                                current_purpose=self._notice.purpose, current_owner=self._notice.owner,
-                               incoming_purpose=purpose, incoming_owner=event.owner):
+                               incoming_purpose=purpose, incoming_owner=event.owner, replace=True):
             self._waiting_notice = event
             return
         if purpose is FeedbackPurpose.QUESTION:
@@ -363,9 +366,13 @@ class LiveSurfaceModel:
         elif self._question is not None:
             if feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING):
                 self._notice = candidate
-        elif (self._notice.expires_at is not None or self._notice.purpose is FeedbackPurpose.RUNNING
-              or self._notice_priority(candidate.kind) >= self._notice_priority(self._notice.kind)):
+        else:
             self._notice = candidate
+
+    def dismiss_error(self) -> None:
+        """A click/new utterance dismisses result errors, never device state."""
+        if self._notice.feedback is FeedbackKind.ERROR and self._notice.purpose is FeedbackPurpose.RESULT:
+            self._notice = Notice(NoticeKind.NONE, '', None)
 
     def _advance_notice(self, now: float) -> None:
         if self._notice.expires_at is not None and now >= self._notice.expires_at:

@@ -75,6 +75,7 @@ from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 from samsara.message_durations import message_duration_ms, message_protected, message_should_wait
+from samsara.ui.indicator_message_layout import MessageHoverWindow, message_lines, message_height, message_line_spacing
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +387,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._state_changed()
 
     def hide(self):
+        self.dismiss_error()
         self._thinking = False
         self._pulse_timer.stop()
         self._cancel_idle()
@@ -448,6 +450,8 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         if active == self._listening:
             return
         self._listening = active
+        if active:
+            self.dismiss_error()
         self._state_changed()
         if not self.isVisible():
             return
@@ -713,6 +717,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             self._start_flash(_flash_error_bg(), theme.ERROR)
 
     def flash_wake(self):
+        self.dismiss_error()
         if self.isVisible():
             # The glyph plays the heard frame (red eye, bright ring) while
             # this flash runs -- see tray_qt.HEARD_KEYFRAMES.
@@ -929,7 +934,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
     def show_outcome(self, label: str, kind: str, ttl_ms: "int | None" = _CHIP_DEFAULT_TTL_MS, *, _feedback=None):
         """Show a short chip saying what just happened.
 
-        Equal/lower priority messages coalesce behind a timed result.
+        New messages replace the previous result immediately.
         Numeric TTLs use the shared reading-time rule.
         Explicit persistent messages keep their producer-owned lifetime.
 
@@ -949,7 +954,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
                                current_purpose=getattr(self._chip_feedback, 'purpose', 'result'),
                                current_owner=getattr(self._chip_feedback, 'owner', ''),
                                incoming_purpose=getattr(_feedback, 'purpose', 'result'),
-                               incoming_owner=getattr(_feedback, 'owner', '')):
+                               incoming_owner=getattr(_feedback, 'owner', ''), replace=True):
             self._waiting_outcome = (label, kind, ttl_ms, _feedback)
             return False
         ttl_ms = message_duration_ms(label, kind, ttl_ms)
@@ -1009,9 +1014,10 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
 
     def clear_outcome(self):
         """Remove the transient chip (the device-lost chip is unaffected)."""
-        if self._protected_outcome():
+        if self._protected_outcome() and self._chip_kind != 'error':
             return
         self._chip_feedback = None
+        self._chip_deadline = None
         self._chip_timer.stop()
         self._clear_outcome()
 
@@ -1059,6 +1065,9 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         if self._question_alive():
             if self._chip_feedback.alive is not None:
                 self._chip_timer.start(100)
+            return
+        if (self._chip_feedback and self._chip_feedback.purpose.value == 'running'
+                and self._chip_feedback.alive is None):
             return
         if self._protected_outcome():
             self._chip_timer.start(max(1, round((self._chip_deadline - self._now_ms() / 1000) * 1000)))
@@ -1217,12 +1226,15 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
     def _chip_font(self) -> QFont:
         f = QFont("Segoe UI")
         f.setPixelSize(theme.TYPE_MIN)
-        f.setBold(True)
+        f.setBold(self._chip_kind not in ('success', 'accent', None) or
+                  getattr(getattr(self._chip_feedback, 'kind', None), 'value', '') == 'running')
         return f
 
     def _chip_width(self, label: str) -> int:
         from samsara.ui.result_message_rendering import result_width
-        return result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X
+        screen = self._resolve_custom_screen()
+        limit = max(1, screen.availableGeometry().width()-16) if screen else 820
+        return min(820, limit, result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X)
 
     def _layout(self):
         """(total_w, total_h, pill_rect|None, chip_rect|None) in widget coords.
@@ -1235,14 +1247,15 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         pill_w = self._pill_width(label, show_dot)
         chip = self._active_chip()
         chip_w = self._chip_width(chip[0]) if chip else 0
+        chip_h = max(_CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X, padding=6)) if chip else 0
 
         if chip is None:
             return pill_w, _PILL_H, QRectF(0, 0, pill_w, _PILL_H), None
         if self._chip_only:
-            return chip_w, _CHIP_H, None, QRectF(0, 0, chip_w, _CHIP_H)
+            return chip_w, chip_h, None, QRectF(0, 0, chip_w, chip_h)
 
         total_w = max(pill_w, chip_w)
-        total_h = _PILL_H + _CHIP_GAP + _CHIP_H
+        total_h = _PILL_H + _CHIP_GAP + chip_h
         # Align both to the edge the pill is anchored to. Centring a chip
         # wider than the pill would make the widget overhang the screen at a
         # left/right corner, and the clamp would then drag the pill inward.
@@ -1258,11 +1271,11 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             pill_x = float((total_w - pill_w) // 2)
             chip_x = float((total_w - chip_w) // 2)
         if self._chip_goes_above():
-            chip_rect = QRectF(chip_x, 0, chip_w, _CHIP_H)
-            pill_rect = QRectF(pill_x, _CHIP_H + _CHIP_GAP, pill_w, _PILL_H)
+            chip_rect = QRectF(chip_x, 0, chip_w, chip_h)
+            pill_rect = QRectF(pill_x, chip_h + _CHIP_GAP, pill_w, _PILL_H)
         else:
             pill_rect = QRectF(pill_x, 0, pill_w, _PILL_H)
-            chip_rect = QRectF(chip_x, _PILL_H + _CHIP_GAP, chip_w, _CHIP_H)
+            chip_rect = QRectF(chip_x, _PILL_H + _CHIP_GAP, chip_w, chip_h)
         return total_w, total_h, pill_rect, chip_rect
 
     def _resize_to_label(self):
@@ -1319,12 +1332,53 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             painter.drawPath(outline_path)
 
     def _paint_chip(self, painter, rect, label, kind):
-        radius = rect.height() / 2.0
+        radius = min(13, rect.height() / 2.0)
         path = QPainterPath()
         path.addRoundedRect(rect, radius, radius)
         from samsara.ui.result_message_rendering import is_ava_chain_result, paint_result
-        painter.fillPath(path, QColor(theme.AVA if is_ava_chain_result(label) else _chip_fill().get(kind, theme.WARNING)))
-        paint_result(painter, rect, label, self._chip_font(), QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT))
+        running = getattr(getattr(self._chip_feedback, 'kind', None), 'value', '') == 'running'
+        fill = theme.AVA if is_ava_chain_result(label) else theme.WARNING if running else theme.TEXT_SECONDARY if kind == 'accent' else _chip_fill().get(kind, theme.WARNING)
+        painter.fillPath(path, theme.qcolor(fill))
+        font = self._chip_font()
+        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X)
+        height = message_line_spacing(label, font)
+        for index, line in enumerate(lines):
+            line_rect = QRectF(rect.x()+_CHIP_PAD_X, rect.center().y()-len(lines)*height/2+index*height,
+                               rect.width()-2*_CHIP_PAD_X, height)
+            paint_result(painter, line_rect, line, font, QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT))
+
+    def dismiss_error(self):
+        if self._chip_kind == 'error' and getattr(getattr(self._chip_feedback, 'purpose', None), 'value', 'result') == 'result':
+            self._chip_deadline = None
+            self.clear_outcome()
+
+    def _end_pointer(self, *, cancel=False):
+        clicked = self._press_origin is not None and not self._dragging and not cancel
+        result = super()._end_pointer(cancel=cancel)
+        if clicked:
+            self.dismiss_error()
+        return result
+
+    def _sync_receipt(self):
+        super()._sync_receipt()
+        chip = self._active_chip()
+        window = getattr(self, '_message_window', None)
+        if chip and self.isVisible():
+            if window is None:
+                window = self._message_window = MessageHoverWindow(self)
+            rect = self._layout()[3].toRect().translated(self.pos())
+            window.setGeometry(rect)
+            window.setToolTip(chip[0]); window.setAccessibleName(chip[0])
+            window.show(); window.update()
+        elif window is not None:
+            window.hide()
+
+    def _retire_input_window(self):
+        window = getattr(self, '_message_window', None)
+        if window is not None:
+            from shiboken6 import delete
+            window.hide(); self._message_window = None; delete(window)
+        super()._retire_input_window()
 
     # ------------------------------------------------------------------
     # Pulse animation — Qt timer on main event loop (no background thread)

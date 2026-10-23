@@ -2,10 +2,10 @@
 from __future__ import annotations
 from time import monotonic
 
-MIN_MESSAGE_MS = 1500
-MESSAGE_BASE_MS = 350
+MIN_MESSAGE_MS = 2500
+MESSAGE_BASE_MS = 0
 MESSAGE_CHAR_MS = 60
-MAX_MESSAGE_MS = 5000
+MAX_MESSAGE_MS = 8000
 
 
 def routine_receipt(label: str, kind: str) -> bool:
@@ -21,11 +21,12 @@ def routine_progress(purpose, owner) -> bool:
 def message_duration_ms(label: str, kind: str, requested_ms=1800, *, purpose='result'):
     """Normalize legacy numeric TTLs; preserve explicit persistent lifecycles.
 
-    Questions/running work belong to their producer, as do explicitly untimed
-    faults. Every timed receipt, including typed/Captured, gets reading time.
+    Questions/running work belong to their producer. Result errors get reading
+    time even when a legacy caller requests an untimed fault; device state is
+    handled separately by each display.
     """
     kind, purpose = getattr(kind, 'value', kind), getattr(purpose, 'value', purpose)
-    if purpose != 'result' or kind in ('pending', 'live') or requested_ms is None:
+    if purpose != 'result' or kind in ('pending', 'live') or (requested_ms is None and kind != 'error'):
         return None
     return max(MIN_MESSAGE_MS, min(MAX_MESSAGE_MS, MESSAGE_BASE_MS + MESSAGE_CHAR_MS * len(str(label))))
 
@@ -55,9 +56,9 @@ def message_priority(kind, *, purpose='result', owner='') -> int:
 
 def message_should_wait(current_kind, incoming_kind, *, protected,
                         current_purpose='result', current_owner='',
-                        incoming_purpose='result', incoming_owner='') -> bool:
+                        incoming_purpose='result', incoming_owner='', replace=False) -> bool:
     """Shared replacement rule; each display retains only its latest waiter."""
-    return protected and message_priority(incoming_kind, purpose=incoming_purpose, owner=incoming_owner) <= message_priority(
+    return not replace and protected and message_priority(incoming_kind, purpose=incoming_purpose, owner=incoming_owner) <= message_priority(
         current_kind, purpose=current_purpose, owner=current_owner)
 
 

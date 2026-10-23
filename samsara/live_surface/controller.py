@@ -193,6 +193,7 @@ class LiveSurfaceController:
         for name, callback in (("commit_requested", self._commit),
                                ("clean_up_requested", self._clean_up),
                                ("clear_requested", self._clear),
+                               ("dismiss_feedback_requested", self.dismiss_error),
                                ("pause_requested", self._pause),
                                ("correct_word_requested", self._correct),
                                ("correction_apply_requested", self._apply_correction),
@@ -204,6 +205,12 @@ class LiveSurfaceController:
             signal = getattr(self.widget, name, None)
             if signal is not None:
                 signal.connect(callback)
+
+    def dismiss_error(self) -> None:
+        self.model.dismiss_error()
+        if self.widget is not None:
+            self.widget.refresh(self.model.view(), animate=False)
+            self._place_widget()
 
     def _placement_config(self) -> tuple[dict, dict]:
         ui = (getattr(self.app, "config", {}) or {}).get("ui", {}) or {}
