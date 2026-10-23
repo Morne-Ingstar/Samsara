@@ -91,7 +91,7 @@ ctranslate2==4.7.1
 opencv-contrib-python==4.13.0.92
 
 # Cloud-fallback TTS voice
-edge-tts==7.2.8
+edge-tts==7.3.1
 
 # Gesture lane (webcam hand-tracking)
 mediapipe==0.10.9

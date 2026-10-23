@@ -2,6 +2,14 @@
 
 All notable changes to Samsara are documented here.
 
+## [0.30.0-beta.10] - 2026-10-23
+
+Spoken replies work again: Microsoft changed how its online voices sign in, and this update follows.
+
+### Fixes
+
+- The online voices (Ava, Aria and the other Microsoft voices) speak again. Microsoft changed the voice service's sign-in, so every earlier version got refused and fell back to the basic Windows voice with "Network voice unavailable". Samsara now uses edge-tts 7.3.1, which signs in the new way.
+
 ## [0.30.0-beta.9] - 2026-10-20
 
 Steadier: a History crash, the Ava PC check and Home at higher scaling are fixed, and hands-free drafts get Clean up.

@@ -9,7 +9,7 @@ Hands-free dictation lets you speak a thought, then send it to the text box you'
 Samsara is free. No word limits, subscriptions, or paid feature tiers—and no email address or username required.
 
 **[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
-· [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.9)
+· [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.10)
 · [Website](https://morneis.com/samsara)
 · [Discord](https://discord.gg/tPYvf369hQ)
 
@@ -47,7 +47,7 @@ or **“double click 7.”**
 
 | Download | Who it is for |
 | --- | --- |
-| [**v0.30.0-beta.9 — tester build**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.9) | Try newer hands-free and command workflows and report rough edges. |
+| [**v0.30.0-beta.10 — tester build**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.10) | Try newer hands-free and command workflows and report rough edges. |
 
 Samsara is still evolving; “public release” does not mean every workflow is
 finished. The screenshot above comes from beta/development work, and features

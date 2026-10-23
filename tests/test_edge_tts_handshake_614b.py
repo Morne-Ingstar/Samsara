@@ -1,5 +1,4 @@
 """Exercise the pinned client's real handshake and Samsara's refusal path offline."""
-import hashlib
 import importlib
 import re
 import threading
@@ -94,13 +93,11 @@ def test_pinned_client_builds_authenticated_handshake(handshake):
     assert url.path == '/consumer/speech/synthesize/readaloud/edge/v1'
     assert params['TrustedClientToken'] == [constants.TRUSTED_CLIENT_TOKEN]
     assert re.fullmatch(r'[a-fA-F0-9]{32}', params['ConnectionId'][0])
-    # Independent reference calculation: Windows epoch, five-minute buckets,
-    # 100ns ticks, trusted client value, uppercase SHA256.
-    seconds = int(_CLIENT_TIME) + 11644473600
-    ticks = (seconds - seconds % 300) * 10000000
-    expected = hashlib.sha256(f'{ticks}{constants.TRUSTED_CLIENT_TOKEN}'.encode()).hexdigest().upper()
-    assert params['Sec-MS-GEC'] == [expected]
-    assert params['Sec-MS-GEC-Version'] == [f'1-{constants.CHROMIUM_FULL_VERSION}']
+    # edge-tts 7.3.1 (2026-10-23 hotfix): Microsoft changed the token. It is now a
+    # 16-hex nonce, a dash and a 64-hex keyed digest; the nonce is random, so the test
+    # pins the shape the service accepts rather than recomputing the value.
+    assert re.fullmatch(r'[0-9A-F]{16}-[0-9A-F]{64}', params['Sec-MS-GEC'][0])
+    assert params['Sec-MS-GEC-Version'] == [f'2-{constants.CHROMIUM_FULL_VERSION}']
     headers = kwargs['headers']
     assert headers['User-Agent'] == constants.BASE_HEADERS['User-Agent']
     assert f'Edg/{constants.CHROMIUM_MAJOR_VERSION}.0.0.0' in headers['User-Agent']
