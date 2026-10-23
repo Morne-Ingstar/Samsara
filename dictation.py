@@ -3800,6 +3800,11 @@ class DictationApp(CommandFastPathMixin):
             logger.info(f"[INIT] Startup complete. (wake: {self.wake_ready_state()})")
             _boot_log("async: startup complete")
             try:
+                from samsara.integration_health import schedule_on_startup
+                schedule_on_startup(self)
+            except Exception:
+                logger.warning("[INTEGRATION-HEALTH] could not schedule startup checks")
+            try:
                 from samsara import ai_preferences, ava_readiness
                 if ai_preferences.runtime_state(self.config, "ava").allowed:
                     ava_readiness.schedule_warm_on_boot(
