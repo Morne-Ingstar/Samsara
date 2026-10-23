@@ -1,7 +1,7 @@
 """Record managers and integrations opened independently of Settings."""
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget, QHBoxLayout
 from PySide6.QtCore import Qt
-from .presentation import Page, Disclosure, SettingRow
+from .presentation import Page, SettingRow
 from .calm_controls import switch
 from .calm_layout import RowLayout
 from samsara.ui import theme
@@ -14,6 +14,7 @@ def _tool_row(title, description, controls):
     return row
 
 TOOLS = ('Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations')
+LABELS = {name: 'Commands' if name == 'Command library' else name for name in TOOLS}
 
 
 def build(owner, name=None):
@@ -49,17 +50,18 @@ def build(owner, name=None):
         token_group.setVisible(enabled.isChecked())
         enabled.toggled.connect(token_group.setVisible)
         tools['Integrations'] = integration
+        hermes = owner._widgets.get('hermes_section')
+        if hermes is not None:
+            integration.base.addWidget(hermes)
+            hermes.show()
     if name is None or name == 'Command library':
         commands = owner._source_pages['commands']
-        packs = owner._widgets['_pack_scroll']
-        pack_parent = packs.parentWidget().layout()
-        pack_parent.removeWidget(packs)
-        disclosure = Disclosure('Command packs')
-        disclosure.rows.addWidget(packs)
-        pack_parent.insertWidget(0, disclosure)
+        heading = QLabel('Commands')
+        heading.setProperty('role', 'title')
+        commands.widget().layout().insertWidget(0, heading)
         for label in commands.findChildren(QLabel):
-            if label.text() == 'Command Packs' or label.text().startswith('Enable the packs you use.'):
-                label.hide()
+            if label.text() == 'Command Packs':
+                label.setText('Command packs')
         tools['Command library'] = commands
         # Ava's effective master is the single editor for the AI pack.
         ai_pack = owner._widgets['_pack_checkboxes'].get('ai')
@@ -77,6 +79,7 @@ def build(owner, name=None):
         actions = QHBoxLayout(toolbar)
         for text in ('Add Alarm', 'Edit', 'Toggle', 'Test', 'Delete'):
             actions.addWidget(owner._source_button(text, 'alarms'))
+        actions.addStretch()
         alarms.base.addWidget(toolbar)
         alarms.advanced.rows.addWidget(owner._source_button('Reset Stats', 'alarms'))
         shortcuts = QPushButton('Alarm shortcuts…')

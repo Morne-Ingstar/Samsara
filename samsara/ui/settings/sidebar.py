@@ -109,6 +109,15 @@ class SidebarDelegate(QStyledItemDelegate):
         return theme.qfont(theme.TYPE_NAV, weight=weight)
 
     def paint(self, painter: QPainter, option, index):
+        if index.data(Qt.ItemDataRole.UserRole) == 'heading':
+            painter.save()
+            painter.setPen(label_colour())
+            painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.DemiBold))
+            painter.drawText(option.rect.adjusted(ICON_INSET, 0, 0, 0),
+                             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                             index.data(Qt.ItemDataRole.DisplayRole))
+            painter.restore()
+            return
         view = option.widget
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)

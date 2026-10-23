@@ -92,6 +92,10 @@ class PageAssembly:
             self._widgets['_todoist_section'] = section
             section.setParent(self._source_store)
             section.hide()
+            hermes = page.findChild(QWidget, 'hermesSection')
+            if hermes is not None:
+                hermes.setParent(self._source_store)
+                hermes.hide()
 
     @assembling
     def _ensure_destination(self, index):
@@ -147,7 +151,8 @@ class PageAssembly:
                 from .agents_section import AgentsControls
                 controls = page.findChild(AgentsControls)
                 pack_row = controls.parentWidget()
-                page.widget().layout().insertWidget(0, controls)
+                layout = page.widget().layout()
+                layout.insertWidget(layout.indexOf(self._widgets['_pack_restart_lbl']) + 1, controls)
                 controls.enable_row.addWidget(controls.enabled)
                 controls.enabled.setAccessibleName('Let AI apps use Samsara')
                 # Setup uses the destination's scroll area, not the small pack
@@ -503,7 +508,8 @@ class PageAssembly:
                 bindings.append((key, row.page_name, row))
         for pack_id, control in self._widgets['_pack_checkboxes'].items():
             if pack_id != 'ai':
-                bindings.append(('command_packs.' + pack_id, 'Command library', control))
+                bindings.append(('command_packs.' + pack_id,
+                                 'Integrations' if pack_id == 'hermes' else 'Command library', control))
         from .agents_section import AgentsControls
         agents = self._tool_pages['Command library'].findChild(AgentsControls)
         bindings.extend((key, 'Command library', control) for key, control in (
@@ -512,7 +518,7 @@ class PageAssembly:
         ))
         for key in ('profile', 'model', 'effort'):
             if 'hermes_' + key in self._widgets:
-                bindings.append(('hermes.' + key, 'Command library', self._widgets['hermes_' + key]))
+                bindings.append(('hermes.' + key, 'Integrations', self._widgets['hermes_' + key]))
         for key, tool, widget in (
             ('tasks.todoist.enabled', 'Integrations', 'todoist_enabled'),
             ('tasks.todoist.api_token', 'Integrations', 'todoist_token'),

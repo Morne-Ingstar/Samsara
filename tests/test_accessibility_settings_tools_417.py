@@ -86,9 +86,10 @@ def test_audit_pack_name_role_and_checked_state(tools_window, qapp, row, pack):
 
     window = tools_window
     window._select_tool("Command library")
-    disclosure = next(d for d in window._tool_pages["Command library"].findChildren(Disclosure)
-                      if d.toggle.accessibleName() == "Command packs")
-    disclosure.toggle.setChecked(True)
+    # 785: packs are always visible on Commands, without a collapsed disclosure.
+    packs = window._widgets["_pack_scroll"]
+    assert not any(d.isAncestorOf(packs)
+                   for d in window._tool_pages["Command library"].findChildren(Disclosure))
     qapp.processEvents()
     checkbox = window._widgets["_pack_checkboxes"][pack]
     assert checkbox.isVisible() and checkbox.isEnabled(), row

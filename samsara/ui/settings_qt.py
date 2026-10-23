@@ -17,7 +17,7 @@ from samsara.ui.settings.health_qt import HealthPage
 from samsara.ui.settings.advanced_qt import AdvancedPage
 from samsara.ui.settings.help_qt import HelpPage
 from samsara.ui.settings.music_qt import MusicPage
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QListWidgetItem
 from pathlib import Path
 from shiboken6 import isValid
 from samsara.ui.settings.lazy_access import LookupMap, LookupRows, assembling
@@ -42,6 +42,7 @@ class SettingsQt:
         self._window.show_tab(page)
 
     def show_tool(self, name):
+        name = _ALIASES.get(name, name)
         if name not in tools_page.TOOLS:
             raise ValueError(name)
         qt_runtime.post(lambda: self._show_tool(name))
@@ -121,6 +122,14 @@ class _SettingsWindow(
         for index, name in enumerate(_TAB_NAMES):
             self._sidebar.addItem(name)
             self._sidebar_row_to_stack_index[index] = index
+        heading = QListWidgetItem('Tools')
+        heading.setData(Qt.ItemDataRole.UserRole, 'heading')
+        heading.setFlags(Qt.ItemFlag.NoItemFlags)
+        self._sidebar.addItem(heading)
+        self._tool_sidebar_rows = {}
+        for name in tools_page.TOOLS:
+            self._tool_sidebar_rows[name] = self._sidebar.count()
+            self._sidebar.addItem(tools_page.LABELS[name])
         # Heading, search and page list share one surface (360); a tool window has no search.
         sidebar_panel = settings_sidebar.build_panel(_SIDEBAR_GROUPS[0][0], None if tool else self._search_edit, self._sidebar)
         # Tools and preferences share the shell and retain their controls.
@@ -136,13 +145,6 @@ class _SettingsWindow(
         footer_strip = QFrame()
         footer_strip.setObjectName('footer')
         footer = QHBoxLayout(footer_strip)
-        tools = QPushButton("Tools")
-        theme.prepare_menu_button(tools)
-        menu = QMenu(tools)
-        for name in tools_page.TOOLS:
-            menu.addAction(name).triggered.connect(lambda checked=False, n=name: self.open_tool(n))
-        tools.setMenu(menu)
-        footer.addWidget(tools)
         footer.addStretch()
         cancel = QPushButton("Close" if tool else "Cancel")
         self._close_button = cancel
@@ -284,6 +286,10 @@ class _SettingsWindow(
                 self._sidebar.setCurrentRow(next(i for i, name in enumerate(_TAB_NAMES) if name in best_pages))
 
     def _on_sidebar_row_changed(self, row):
+        for name, tool_row in self._tool_sidebar_rows.items():
+            if row == tool_row:
+                self._select_tool(name)
+                return
         if row in self._sidebar_row_to_stack_index:
             self._tool_name = None
             self.setWindowTitle("Samsara — Settings")
@@ -299,22 +305,32 @@ class _SettingsWindow(
         if name in tools_page.TOOLS:
             self.open_tool(name)
             return
-        self._sidebar.setCurrentRow(_TAB_NAMES.index(name))
         window_activation.surface_requested(self)
+        self._sidebar.setCurrentRow(_TAB_NAMES.index(name))
 
     def _select_tool(self, name):
+        name = _ALIASES.get(name, name)
         if name not in tools_page.TOOLS:
             raise ValueError(name)
         self._ensure_tool(name)
-        self._sidebar.setCurrentRow(-1)
+        self._sidebar.blockSignals(True)
+        self._sidebar.setCurrentRow(self._tool_sidebar_rows[name])
+        self._sidebar.blockSignals(False)
         self._tool_name = name
-        self._stack.setCurrentWidget(self._tool_pages[name])
+        page = self._tool_pages[name]
+        self._stack.setCurrentWidget(page)
+        page.verticalScrollBar().setValue(0)
+        page.horizontalScrollBar().setValue(0)
+        # Qt can scroll a newly shown page to its first focused editor.
+        # Land at the heading after those layout/focus events as well.
+        QTimer.singleShot(0, self._visit_callback(
+            lambda: page.verticalScrollBar().setValue(0), page))
         self._close_button.setText('Close')
-        self.setWindowTitle('Samsara — ' + name)
+        self.setWindowTitle('Samsara — ' + tools_page.LABELS[name])
 
     def open_tool(self, name):
-        self._select_tool(name)
         window_activation.surface_requested(self)
+        self._select_tool(name)
 
     def open_preferences(self, name):
         self.show_tab(name)
@@ -336,8 +352,8 @@ class _SettingsWindow(
         updates = {}
         if self._tool_name:
             source, allowed = {
-                'Command library': ('commands', {'command_packs', 'hermes'}),
-                'Integrations': ('commands', {'tasks'}),
+                'Command library': ('commands', {'command_packs'}),
+                'Integrations': ('commands', {'tasks', 'hermes', 'command_packs'}),
                 'Alarms': ('alarms', {'alarms'}),
                 'Music': ('music', {'music_library'}),
                 'Components': ('advanced', {'gesture'}),
@@ -352,8 +368,19 @@ class _SettingsWindow(
                         updates['alarms'][key] = current[key]
             if 'command_packs' in updates:
                 current = self.app.config.get('command_packs', {}) or {}
-                if 'ai' in current:
-                    updates['command_packs']['ai'] = current['ai']
+                if self._tool_name == 'Integrations':
+                    hermes = self._widgets.get('hermes_section')
+                    if hermes is not None:
+                        updates['command_packs'] = dict(current)
+                        updates['command_packs']['hermes'] = hermes.enabled.isChecked()
+                    else:
+                        updates.pop('command_packs')
+                else:
+                    for key in ('ai', 'hermes'):
+                        if key in current:
+                            updates['command_packs'][key] = current[key]
+                        else:
+                            updates['command_packs'].pop(key, None)
             return updates
         self._ensure_preferences()
         for source in ('general', 'modes', 'sounds', 'tts', 'ava', 'advanced', 'help'):
@@ -383,7 +410,7 @@ class _SettingsWindow(
     def _apply_and_close(self):
         previous_sound = self.app.config.get('sound_theme', 'cute')
         super()._apply_and_close()
-        if self._tool_name == 'Command library':
+        if self._tool_name in ('Command library', 'Integrations'):
             rebuild = getattr(getattr(self.app, 'command_executor', None), 'rebuild_matcher', None)
             if callable(rebuild):
                 rebuild()

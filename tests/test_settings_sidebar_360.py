@@ -121,12 +121,17 @@ def test_items_names_and_navigation_unchanged(window):
     from samsara.ui import settings_qt
 
     pages = window._sidebar
-    assert [pages.item(i).text() for i in range(pages.count())] == settings_qt._TAB_NAMES
+    # 785: tools are sidebar destinations after the preferences and group heading.
+    assert [pages.item(i).text() for i in range(pages.count())] == [
+        *settings_qt._TAB_NAMES, 'Tools', 'Commands', 'Alarms', 'Health', 'Music', 'Components', 'Integrations']
     assert pages.accessibleName() == "Settings pages"
     assert window._search_edit.accessibleName() == "Search settings"
-    for row in range(pages.count()):
+    for row in range(len(settings_qt._TAB_NAMES)):
         pages.setCurrentRow(row)
         assert window._stack.currentIndex() == row
+    for name, row in window._tool_sidebar_rows.items():
+        pages.setCurrentRow(row)
+        assert window._stack.currentWidget() is window._tool_pages[name]
 
 
 def test_footer_has_air(window):

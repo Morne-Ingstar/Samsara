@@ -572,9 +572,10 @@ def test_hermes_controls_rebuild_from_live_config_and_apply_in_tool(fake, settin
     win.app.config.setdefault('command_packs', {})['hermes'] = True
     win.show_tab('Audio')
     qapp.processEvents()
-    win.open_tool('Command library')
+    # 785: Hermes setup and its scoped apply now belong to Integrations.
+    win.open_tool('Integrations')
     qapp.processEvents()
-    assert win._tool_name == 'Command library'
+    assert win._tool_name == 'Integrations'
     section = win._widgets['hermes_section']
     assert section.accepted and section.enabled.isChecked()
     assert section.profile.text() == 'current'

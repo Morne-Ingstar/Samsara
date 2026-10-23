@@ -208,7 +208,9 @@ class TestSettingsWindowConstruction:
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES
         win = _SettingsWindow(_StubApp())
         assert _TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
-        assert [win._sidebar.item(i).text() for i in range(win._sidebar.count())] == _TAB_NAMES
+        # 785: tools follow the six preferences as ordinary sidebar entries.
+        assert [win._sidebar.item(i).text() for i in range(win._sidebar.count())] == [
+            *_TAB_NAMES, 'Tools', 'Commands', 'Alarms', 'Health', 'Music', 'Components', 'Integrations']
 
 
     def test_modes_tab_save_fn_key_union(self, qapp):
@@ -351,8 +353,10 @@ class TestSidebarGrouping:
             else:
                 headers.append(item.text())
 
-        assert headers == []
-        assert selectable == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
+        # 785: one nonselectable Tools heading separates preferences from tools.
+        assert headers == ['Tools']
+        assert selectable == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help',
+                              'Commands', 'Alarms', 'Health', 'Music', 'Components', 'Integrations']
 
     def test_sidebar_matches_new_page_registry(self, qapp):
         from samsara.ui.settings_qt import _SettingsWindow, _TAB_NAMES

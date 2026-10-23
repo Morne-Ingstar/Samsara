@@ -52,11 +52,11 @@ def test_tools_menu_reuses_current_window_and_preserves_drafts(window, qapp):
     original_config = copy.deepcopy(window.app.config)
     volume = window._widgets['sound_volume_slider']
     volume.setValue(37)
-    menu = next(button.menu() for button in window.findChildren(QPushButton)
-                if button.text() == 'Tools')
+    # 785: sidebar navigation replaces the Tools drop-up and keeps draft editors.
+    assert not any(button.text() == 'Tools' for button in window.findChildren(QPushButton))
     for name in ('Integrations', 'Music', 'Command library', 'Alarms', 'Health',
                  'Components', 'Integrations'):
-        next(action for action in menu.actions() if action.text() == name).trigger()
+        window._sidebar.setCurrentRow(window._tool_sidebar_rows[name])
         qapp.processEvents()
         visible = [w for w in qapp.topLevelWidgets()
                    if isinstance(w, settings_qt._SettingsWindow) and w.isVisible()]

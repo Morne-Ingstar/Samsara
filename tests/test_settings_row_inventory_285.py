@@ -246,7 +246,10 @@ def test_integration_apply_cannot_change_preferences(window):
     window._widgets['launch_at_login'].setChecked(True)
     window._widgets['todoist_enabled'].setChecked(True)
     updates = window._collect_destination_updates({})
-    assert set(updates) == {'tasks'}
+    # 785: Hermes (and its command-pack switch) moved into Integrations, so Apply writes them too;
+    # the point stands - a General preference such as launch_at_login never leaks through here.
+    assert set(updates) == {'tasks', 'hermes', 'command_packs'}
+    assert 'launch_at_login' not in updates
     assert updates['tasks']['todoist']['enabled'] is True
 
 

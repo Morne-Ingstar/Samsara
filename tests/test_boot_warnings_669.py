@@ -246,7 +246,8 @@ def test_settings_menu_buttons_all_use_pixel_safe_style(qapp, monkeypatch, qt_de
         for name in ("General", "Audio", "Help"):
             window.show_tab(name)
         buttons = [button for button in window.findChildren(QPushButton) if button.menu()]
-        assert {button.text() for button in buttons} >= {"Tools", "Recover window", "Preview", "Get help"}
+        # 785: Tools is a sidebar group; the remaining menus keep their safe style.
+        assert {button.text() for button in buttons} >= {"Recover window", "Preview", "Get help"}
         for button in buttons:
             # Inherited QSS wraps the base style; exercise its metrics/paint.
             button.ensurePolished()
