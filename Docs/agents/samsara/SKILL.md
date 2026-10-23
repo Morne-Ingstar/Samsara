@@ -76,6 +76,8 @@ Never paste a token into Desktop's config or include error bodies in logs.
 
 In Samsara, open Settings > Tools > Command library > Command packs and turn on
 **Let AI apps use Samsara**.
+When available, Samsara speaks a short line and shows the rest of its reply on
+screen. You may hand over your own spoken line with `speak(text, full_text)`.
 **Copy connection details** copies the URL and Authorization header together.
 The default URL is `http://127.0.0.1:47832/mcp`; use the copied port if customized.
 **New token** invalidates the old token immediately; update every connected

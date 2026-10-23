@@ -132,6 +132,7 @@ class AgentsControls(QWidget):
         heading = QLabel("Connect an AI app")
         heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(heading)
+        self._add_spoken_replies(layout)
         self.enable_row = QHBoxLayout()
         self.enable_row.addWidget(QLabel("Let AI apps use Samsara"))
         self.enable_row.addStretch()
@@ -165,6 +166,8 @@ class AgentsControls(QWidget):
         self.app_selector.setAccessibleName("AI app to connect")
         self.app_selector.addItems(["Claude Code", "Claude Desktop"])
         self.app_selector.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.app_selector.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.app_selector.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.app_selector)
         self.routes = _RouteStack()
         self.routes.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
@@ -269,6 +272,102 @@ class AgentsControls(QWidget):
         self.approval_style.currentIndexChanged.connect(guard(self.toggle_approval_style, self))
         self.refresh()
 
+    def _add_spoken_replies(self, layout):
+        """Controls for the local spoken digest, beside the AI-app controls."""
+        from samsara import ava_readiness, hardware_check
+
+        title = QLabel("Spoken replies")
+        title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600;")
+        layout.addWidget(title)
+        self.digest_choice = QComboBox()
+        self.digest_choice.setAccessibleName("Spoken replies")
+        self.digest_choice.addItem("Auto", "auto")
+        self.digest_choice.addItem("Off", "off")
+        self.digest_choice.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.digest_choice.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.digest_choice.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.digest_choice)
+        note = QLabel("A local model can make spoken replies shorter and smarter. Without it, Samsara speaks up to 60 words.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(note)
+        self.digest_status = QLabel()
+        self.digest_status.setWordWrap(True)
+        self.digest_status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(self.digest_status)
+        self.digest_guide = QPushButton("Set it up in the Ava guide")
+        self.digest_guide.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.digest_guide.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.digest_guide.clicked.connect(lambda: getattr(self.owner.app, "open_ava_guide", lambda: None)())
+        self.digest_try = QPushButton("Try it")
+        self.digest_try.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.digest_try.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.digest_try.clicked.connect(self.try_digest)
+        digest_actions = QHBoxLayout()
+        digest_actions.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        digest_actions.addWidget(self.digest_guide)
+        digest_actions.addWidget(self.digest_try)
+        layout.addLayout(digest_actions)
+        self.digest_choice.currentIndexChanged.connect(self._save_digest_choice)
+        self._digest_ava_readiness = ava_readiness
+        self._digest_hardware_check = hardware_check
+        self._refresh_digest_status()
+
+    def _refresh_digest_status(self):
+        app = self.owner.app
+        config = app.config
+        local_model = (config.get("ollama", {}) or {}).get("model")
+        configured = bool(local_model and (config.get("ollama", {}) or {}).get("enabled", True))
+        readiness = self._digest_ava_readiness.readiness_for(app)
+        # Only report a hardware recommendation when the user has already
+        # explicitly checked this PC and the facts remain available in memory.
+        facts = getattr(app, "_hardware_facts", None)
+        recommendation = self._digest_hardware_check.recommend(facts) if facts is not None else None
+        if configured and readiness.ready and self._digest_ava_readiness.configured_provider(app) == "ollama":
+            status = "Ready - local model on this PC"
+        elif not configured:
+            status = "Local model not set up - replies are cut to 60 words. Set it up in the Ava guide"
+        else:
+            status = "Local model is set up, but not ready yet. Check its setup in the Ava guide."
+        if recommendation is not None and recommendation.route != "local":
+            status += " " + recommendation.reason
+        self.digest_status.setText(status)
+        self.digest_guide.setVisible(not configured or not readiness.ready)
+        choice = (config.get("agent_voice", {}) or {}).get("digest", "auto")
+        self.digest_choice.blockSignals(True)
+        self.digest_choice.setCurrentIndex(max(0, self.digest_choice.findData(choice)))
+        self.digest_choice.blockSignals(False)
+
+    def _save_digest_choice(self, index):
+        app = self.owner.app
+        config = app.config.setdefault("agent_voice", {})
+        old = config.get("digest", "auto")
+        config["digest"] = self.digest_choice.itemData(index)
+        try:
+            app.save_config()
+        except Exception:
+            config["digest"] = old
+            self.digest_choice.blockSignals(True)
+            self.digest_choice.setCurrentIndex(max(0, self.digest_choice.findData(old)))
+            self.digest_choice.blockSignals(False)
+
+    def try_digest(self):
+        """Speak one canned long reply through the same router as tutorial preview."""
+        from samsara.agent_channel.spoken_digest import first_reply
+
+        sentence = ("Samsara keeps the full answer on screen while it speaks a short summary. "
+                    "You can ask to read the rest whenever you want. This example shows how a long answer "
+                    "can be easier to follow by voice, while the details remain available to read.")
+        reply = " ".join((sentence.split() * 20)[:400])
+        app = self.owner.app
+        result = first_reply(app, reply, source="gpt")
+        coordinator = getattr(app, "audio_coordinator", None)
+        if coordinator is None:
+            return False
+        cfg = app.config.get("tts", {}) or {}
+        return coordinator.speak(result.spoken, voice_id=cfg.get("voice_id"), speed=cfg.get("speed", 1),
+                                 volume=cfg.get("volume", .8), category="readback")
+
     @staticmethod
     def _setting_link(text, key):
         return f'<a href="{key}" style="color: {theme.ACCENT}; text-decoration: none;">{text}</a>'
@@ -333,6 +432,7 @@ class AgentsControls(QWidget):
         self.approval_style.blockSignals(True)
         self.approval_style.setCurrentIndex(int((self.owner.app.config.get("agent_server") or {}).get("command_key_only", False) is True))
         self.approval_style.blockSignals(False)
+        self._refresh_digest_status()
 
     def _typing_enabled(self):
         config = self.owner.app.config
