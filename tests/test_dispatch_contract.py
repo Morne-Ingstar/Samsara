@@ -39,6 +39,15 @@ ASTRA_UTTERANCE = 'ask ava Tell Claude: "Don\'t rename Foo.py to foo.py".'
 ASTRA_PAYLOAD = 'Tell Claude: "Don\'t rename Foo.py to foo.py"'
 
 
+# 800: restore the process-global commit word (set_commit_phrase in the app setup leaked 'finish' into later test files).
+@pytest.fixture(autouse=True)
+def _restore_commit_phrase(monkeypatch):
+    from samsara import session_modes as _sm
+    monkeypatch.setattr(_sm, "DICTATE_COMMIT_PHRASE", _sm.DICTATE_COMMIT_PHRASE)
+    monkeypatch.setattr(_sm, "_DICTATE_COMMIT_HOMOPHONES", _sm._DICTATE_COMMIT_HOMOPHONES)
+    yield
+
+
 def _enabled_local_ava_config():
     """Real preference/consent contract; no provider calls or persistence."""
     from samsara import ai_preferences

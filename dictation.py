@@ -4475,8 +4475,8 @@ class DictationApp(CommandFastPathMixin):
         )
         tutorial_capture.install(self._session_mode_manager)
         self._session_mode_manager._require_unit_undo = True
-        from samsara.hands_free_delivery import HandsFreeDelivery
-        self._session_mode_manager._hands_free_delivery = HandsFreeDelivery(self)
+        from samsara.handsfree_wake_prefix import install as install_handsfree_wake
+        install_handsfree_wake(self, self._session_mode_manager)
         from samsara.config_schema import spoken_notices_for_level
         self._session_mode_manager.set_spoken_notices(
             spoken_notices_for_level((self.config.get("tts", {}) or {}).get("feedback_level")))
@@ -6017,7 +6017,9 @@ class DictationApp(CommandFastPathMixin):
             from samsara.ava_pending import consume
             if consume(self, text, capture_path='toggle_command'): return
             outcome = manager.dispatch_utterance(text, signals, onset_context=onset_context)
-            outcome = self._resolve_command_miss(outcome, text)
+            from samsara.handsfree_wake_prefix import command_text, preview_text
+            _preview_text = preview_text(outcome, text)
+            outcome = self._resolve_command_miss(outcome, command_text(outcome, text))
             _timing_outcome = outcome_label(outcome.kind)
             _dispatched = True
             logger.info(f'[SESSION] mode={manager.mode.value} outcome={outcome.kind} detail={describe_text(outcome.detail)}')
@@ -6049,7 +6051,7 @@ class DictationApp(CommandFastPathMixin):
                 # see DictatePreviewSession.on_utterance_final's docstring.
                 try:
                     from samsara.kept_session_draft import on_session_final
-                    on_session_final(self._dictate_preview, text,
+                    on_session_final(self._dictate_preview, _preview_text,
                         scratch_success=(outcome.kind == 'scratch_success'),
                         dictate_committed=(outcome.kind == 'dictate_committed' and
                                           not self._session_mode_manager.dictate_pending_buffer),

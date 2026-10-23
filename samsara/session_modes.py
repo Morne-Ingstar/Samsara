@@ -1808,6 +1808,10 @@ class SessionModeManager(UtteranceUndoMixin):
         text = (raw_text or "").strip()
         if not text:
             return DispatchOutcome(kind="empty")
+        from samsara.handsfree_wake_prefix import dispatch_wake_prefix
+        wake = dispatch_wake_prefix(self, text, signals)
+        if wake is not None:
+            return wake
         if normalize_utterance(text) not in ('redo that',):
             self._scratch_redo = None
         # Queue 99: "again" means "scratch once more" only when the PREVIOUS
