@@ -497,9 +497,9 @@ class SettingsServices:
         was_sc_enabled = bool(
             self.app.config.get('smart_corrections', {}).get('enabled', False)
         )
-        was_ai_pack_enabled = bool(
-            (self.app.config.get('command_packs', {}) or {}).get('ai', False)
-        )
+        from samsara.command_packs import get_enabled_packs
+        from samsara.ui.command_pack_actions import refresh_runtime
+        previous_packs = get_enabled_packs(self.app.config)
 
         from samsara.tts.runtime import tts_runtime_lock
         with tts_runtime_lock(self.app):
@@ -530,15 +530,9 @@ class SettingsServices:
             if callable(setter):
                 setter(spoken_notices_for_level((updates["tts"] or {}).get("feedback_level")))
 
-        now_ai_pack_enabled = bool(
-            (self.app.config.get('command_packs', {}) or {}).get('ai', False)
-        )
-        if now_ai_pack_enabled and not was_ai_pack_enabled:
-            rebuild = getattr(
-                getattr(self.app, 'command_executor', None), 'rebuild_matcher', None
-            )
-            if callable(rebuild):
-                rebuild()
+        # 785's window wrapper already rebuilds tool packs after this returns.
+        refresh_runtime(self.app, previous_packs, rebuild_matcher=
+                        getattr(self, '_tool_name', None) not in ('Command library', 'Integrations'))
 
         if 'ui' in updates:
             theme.set_theme(updates['ui'].get('theme'), refresh=True)

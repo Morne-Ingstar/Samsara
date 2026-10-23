@@ -17,6 +17,19 @@ TOOLS = ('Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrat
 LABELS = {name: 'Commands' if name == 'Command library' else name for name in TOOLS}
 
 
+def open_packs(controller):
+    """Open Settings > Commands at the visible pack inventory on the Qt thread."""
+    from samsara.ui import qt_runtime
+    def show():
+        controller._show_tool('Command library')
+        owner = controller._window
+        page = owner._tool_pages['Command library']
+        packs = owner._widgets['_pack_scroll']
+        packs.verticalScrollBar().setValue(0)
+        page.ensureWidgetVisible(packs)
+    qt_runtime.post(show)
+
+
 def build(owner, name=None):
     tools = {}
     if name is None or name == 'Integrations':
@@ -63,6 +76,7 @@ def build(owner, name=None):
             if label.text() == 'Command Packs':
                 label.setText('Command packs')
         tools['Command library'] = commands
+        owner._widgets['_pack_restart_lbl'].setText('Apply to use these commands immediately.')
         # Ava's effective master is the single editor for the AI pack.
         ai_pack = owner._widgets['_pack_checkboxes'].get('ai')
         if ai_pack is not None:

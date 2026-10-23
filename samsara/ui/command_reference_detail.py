@@ -90,6 +90,14 @@ class CommandDetailCard(QFrame):
             self.labels.append(label)
         self.scroll.setWidget(self.body)
         layout.addWidget(self.scroll, 1)
+        self.pack_status = QLabel()
+        self.pack_status.setWordWrap(True)
+        layout.addWidget(self.pack_status)
+        self.enable_button = _RunButton()
+        self.enable_button.setStyleSheet(theme.primary_button_qss())
+        self.enable_button.setMinimumHeight(theme.HIT_TARGET_MIN)
+        self.enable_button.clicked.connect(self.enable_pack)
+        layout.addWidget(self.enable_button, 0, Qt.AlignmentFlag.AlignLeft)
         actions = QHBoxLayout()
         actions.setSpacing(theme.SPACE_1)
         self.run_button = _RunButton('Run it')  # owner-editable stand-in
@@ -116,6 +124,16 @@ class CommandDetailCard(QFrame):
     def open(self, command, origin, anchor):
         self.origin = origin
         self.phrase = command['phrase']
+        self._pack_id = command.get('pack', 'core')
+        self._anchor = anchor
+        disabled = bool(command.get('pack_disabled'))
+        from samsara.command_packs import PACKS
+        pack_name = PACKS.get(self._pack_id, {}).get('label', self._pack_id)
+        self.pack_status.setText("This command's pack is off" if disabled else '')
+        self.pack_status.setVisible(disabled)
+        self.enable_button.setText('Turn on ' + pack_name)
+        self.enable_button.setVisible(disabled and callable(getattr(self.window, '_enable_pack_cb', None)))
+        self.run_button.setVisible(not disabled)
         aliases = [str(a) for a in command.get('aliases', ()) if a != self.phrase]
         arguments = command.get('args', ())
         fields = [self.phrase, 'Also: ' + ', '.join(aliases) if aliases else '',
@@ -140,17 +158,25 @@ class CommandDetailCard(QFrame):
             self._filter_installed = True
         self.scroll.verticalScrollBar().setValue(0)
         origin.setFocus(Qt.FocusReason.OtherFocusReason)
-        QWidget.setTabOrder(origin, self.run_button)
+        first_action = self.enable_button if disabled else self.run_button
+        QWidget.setTabOrder(origin, first_action)
+        QWidget.setTabOrder(self.enable_button, self.close_button)
         QWidget.setTabOrder(self.run_button, self.close_button)
         QAccessible.updateAccessibility(QAccessibleAnnouncementEvent(self, description))
 
     def place(self, anchor):
         area = self.parentWidget().rect().adjusted(theme.SPACE_2, theme.SPACE_1, -theme.SPACE_2, -theme.SPACE_1)
+        if not self.pack_status.isHidden():
+            area.setTop(max(area.top(), self.window._list.mapTo(self.parentWidget(), self.window._list.rect().topLeft()).y()))
         width = area.width()
         text_width = max(1, width - 2 * theme.SPACE_2 - 2)
         body_height = sum(label.heightForWidth(text_width) for label in self.labels if not label.isHidden())
         body_height += theme.SPACE_1 * (sum(not label.isHidden() for label in self.labels) - 1)
         height = min(area.height(), body_height + 2 * theme.SPACE_2 + theme.SPACE_1 + theme.HIT_TARGET_MIN + 4)
+        if not self.pack_status.isHidden():
+            height = min(area.height(), height + self.pack_status.heightForWidth(text_width) + theme.SPACE_1)
+        if not self.enable_button.isHidden():
+            height = min(area.height(), height + self.enable_button.sizeHint().height() + theme.SPACE_1)
         y = anchor.bottom() + theme.SPACE_1
         if y + height > area.bottom() + 1:
             y = anchor.top() - theme.SPACE_1 - height
@@ -173,6 +199,18 @@ class CommandDetailCard(QFrame):
         if phrase:
             self.window._execute(phrase)
 
+    def enable_pack(self):
+        phrase, anchor = self.phrase, self._anchor
+        try:
+            if self.window._enable_pack_cb(self._pack_id, self.window):
+                self.window.refresh_commands()
+            self.window._show_details(phrase, self.window._list, anchor)
+        except Exception:
+            self.window._show_details(phrase, self.window._list, anchor)
+            page = {'hermes': 'Integrations', 'ai': 'Ava'}.get(self._pack_id, 'Commands')
+            self.pack_status.setText(f'Could not turn on this pack. Try again in Settings > {page}.')
+            self.pack_status.show()
+
     def eventFilter(self, watched, event):
         if not self.isVisible():
             return False
@@ -182,7 +220,8 @@ class CommandDetailCard(QFrame):
                 self.dismiss(True)
                 return True
             if watched is self.origin and event.key() == Qt.Key.Key_Tab:
-                self.run_button.setFocus(Qt.FocusReason.TabFocusReason)
+                action = self.enable_button if self.enable_button.isVisible() else self.run_button
+                action.setFocus(Qt.FocusReason.TabFocusReason)
                 return True
             if watched is self.origin and event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down):
                 self.dismiss()

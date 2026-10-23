@@ -260,8 +260,6 @@ def _annotate_disabled(rows, disabled: set) -> list:
     """Copy rows, flagging those whose pack is off so the UI can say so."""
     out = []
     for row in rows:
-        if row.get("pack") == "hermes" and "hermes" in disabled:
-            continue
         row = dict(row)
         row["pack_disabled"] = row.get("pack", "core") in disabled
         out.append(row)
@@ -350,9 +348,11 @@ class CommandCheatSheetQt:
         execute_cb: Callable = None,
         commands_cb: Callable = None,
         palette_path: Path = None,
+        *, open_packs_cb=None, enable_pack_cb=None, config_cb=None,
     ):
         self._execute_cb  = execute_cb  or (lambda p: None)
         self._commands_cb = commands_cb or (lambda: [])
+        self._pack_callbacks = dict(open_packs_cb=open_packs_cb, enable_pack_cb=enable_pack_cb, config_cb=config_cb)
         self._palette_path = _palette_state_path(palette_path)
         self._window: "_CheatSheetWindow | None" = None
         self._init_posted = False
@@ -416,6 +416,7 @@ class CommandCheatSheetQt:
         self._window = _CheatSheetWindow(
             self._execute_cb, self._commands_cb, self._palette_path,
             initial_scope=self._pending_pack_scope, initial_view=self._pending_view,
+            **self._pack_callbacks,
         )
         self._window.show()
 
@@ -448,6 +449,14 @@ class _TitleBar(QWidget):
             f"font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
         self._title_label.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
         lay.addWidget(self._title_label, stretch=1)
+
+        self._packs_button = QPushButton('Command packs')
+        self._packs_button.setStyleSheet(theme.secondary_button_qss())
+        self._packs_button.setFixedHeight(theme.HIT_TARGET_MIN)
+        self._packs_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._packs_button.setVisible(callable(win._open_packs_cb))
+        self._packs_button.clicked.connect(lambda: win._open_packs_cb())
+        lay.addWidget(self._packs_button)
 
         self._opacity_label = QLabel("Opacity")
         self._opacity_label.setStyleSheet(
@@ -754,10 +763,14 @@ class _CheatSheetWindow(QMainWindow):
         commands_cb: Callable,
         palette_path: Path,
         *, initial_scope=None, initial_view=None,
+        open_packs_cb=None, enable_pack_cb=None, config_cb=None,
     ):
         super().__init__()
         self._execute_cb  = execute_cb
         self._commands_cb = commands_cb
+        self._open_packs_cb = open_packs_cb
+        self._enable_pack_cb = enable_pack_cb
+        self._config_cb = config_cb
         self._palette_path = palette_path
         self._all: List[dict] = []
         self._pack_scope = initial_scope
@@ -955,7 +968,8 @@ class _CheatSheetWindow(QMainWindow):
             logger.warning(f"[CHEATSHEET] command catalog unavailable: {exc}")
             rows = None
         self._catalog_available = rows is not None
-        annotated = annotate_scope(_annotate_disabled(rows or [], _disabled_packs()), _scope_context())
+        disabled = _disabled_packs(self._config_cb()) if self._config_cb else _disabled_packs()
+        annotated = annotate_scope(_annotate_disabled(rows or [], disabled), _scope_context())
         self._all = rows_for_packs(annotated, self._pack_scope)
         self._unavailable.setVisible(not self._catalog_available)
         self._list.setVisible(self._catalog_available)

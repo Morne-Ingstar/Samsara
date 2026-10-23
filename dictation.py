@@ -1945,6 +1945,7 @@ class DictationApp(CommandFastPathMixin):
         # Command cheat sheet overlay
         palette_path = Path(__file__).parent / "command_palette.json"
         from samsara.ui.command_cheatsheet_qt import CommandCheatSheetQt
+        from samsara.ui.command_pack_actions import open_packs, enable_pack
         # Command cheat sheet — create on Qt thread
         self.cheat_sheet = None
         def _init_cheatsheet():
@@ -1954,6 +1955,9 @@ class DictationApp(CommandFastPathMixin):
                 ),
                 commands_cb=lambda: self.command_executor._matcher.list_commands(),
                 palette_path=palette_path,
+                open_packs_cb=lambda: open_packs(self),
+                enable_pack_cb=lambda pack, parent: enable_pack(self, pack, parent),
+                config_cb=lambda: self.config,
             )
         self._schedule_ui(_init_cheatsheet)
 

@@ -400,7 +400,8 @@ def test_pack_off_commands_absent_and_reference_hidden(fake):
     matcher.freeze()
     assert matcher.match("ask hermes question")[0] is None
     rows = [{"phrase": "ask hermes", "pack": "hermes"}, {"phrase": "ask gpt", "pack": "core"}]
-    assert [r["phrase"] for r in _annotate_disabled(rows, {"hermes"})] == ["ask gpt"]
+    # 784: off-pack commands remain discoverable and offer consent-aware enablement.
+    assert [r["phrase"] for r in _annotate_disabled(rows, {"hermes"})] == ["ask hermes", "ask gpt"]
 
 
 def test_pack_requires_path_and_consent(fake, monkeypatch):

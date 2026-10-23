@@ -1413,7 +1413,7 @@ class _CapabilityCard(QPushButton):
         m = self.layout().contentsMargins()
         head = self.layout().itemAt(0).minimumSize().width()
         need = max(head, self._value.sizeHint().width()) + m.left() + m.right() + 4
-        self.setMinimumWidth(max(MIN_TARGET, need))
+        self.setMinimumWidth(max(MIN_TARGET, need, self.layout().minimumSize().width()))
 
     def sizeHint(self):
         return self.layout().sizeHint().expandedTo(QSize(MIN_TARGET, MIN_TARGET))
@@ -1730,7 +1730,7 @@ class HomePage(QWidget):
         chain = [self._notice_btn,
                  self._hint_action_btn, self._hint_details_btn,
                  self._hint_next_btn, self._hint_hide_btn,
-                 *self._cards, *self._guide_btns.values(),
+                 *(w for c in self._cards for w in (c, *c.findChildren(QPushButton))), *self._guide_btns.values(),
                  *(self._links[name] for name, _url in
                    (*IDENTITY_LINKS, (KOFI_LINK, KOFI_URL)))]
         for a, b in zip(chain, chain[1:]):
@@ -1847,6 +1847,15 @@ class HomePage(QWidget):
             card = _CapabilityCard(spec["title"], spec["value"], spec["description"],
                                    glyph=spec["glyph"])
             card.clicked.connect(lambda _=False, s=spec: self._on_card(s))
+            if spec['title'] == 'Commands':
+                from samsara.ui.command_pack_actions import open_packs
+                packs = _button('Command packs')
+                packs.setStyleSheet(theme.secondary_button_qss() + f'QPushButton{{font-family:{theme.FONT_FAMILY};font-size:{_px(theme.TYPE_MIN)}px;padding:0 {_px(8)}px;}}')
+                packs.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+                packs.ensurePolished()
+                packs.clicked.connect(lambda: open_packs(self._app))
+                card.layout().addWidget(packs, 0, Qt.AlignmentFlag.AlignLeft)
+                card._fit_width()
             self._cards.append(card)
         self._cards_cols = 0
         self._relayout_cards(CONTENT_MAX_W)
@@ -2355,6 +2364,7 @@ class HomePage(QWidget):
 
     def _destinations_base(self) -> dict:
         table = {
+            'Command packs': ('settings', 'Commands'),
             OPEN_VOICE_HELP: ("page", VOICE_HELP),
             ANOTHER_SUGGESTION: ("inline", SUGGESTION),
             HIDE_SUGGESTION: ("inline", SUGGESTION),
