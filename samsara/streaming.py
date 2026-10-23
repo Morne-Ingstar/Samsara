@@ -614,26 +614,9 @@ class _StreamingWidget:
                 self._prompt.hide()
                 cLay.addWidget(self._prompt)
 
-                # Queue 161: a click opens a tap-first choice list.  It is a
-                # child of the preview rather than a separate window, so it
-                # cannot steal focus from the document being dictated into.
-                self._choices = QWidget()
-                self._choices.setStyleSheet(
-                    f"background:{control_bg()};border:1px solid {theme.ACCENT};border-radius:6px;"
-                )
-                choice_lay = QVBoxLayout(self._choices)
-                choice_lay.setContentsMargins(8, 6, 8, 6)
-                choice_lay.setSpacing(4)
-                self._choice_notice = QLabel("")
-                self._choice_notice.setWordWrap(True)
-                self._choice_notice.setStyleSheet(
-                    f"color:{theme.TEXT_SECONDARY};font-size:{HINT_FONT_SIZE}px;"
-                    f"font-family:'{FONT_FAMILY}';background:transparent;border:none;"
-                )
-                choice_lay.addWidget(self._choice_notice)
-                self._choice_buttons = []
-                self._choice_lay = choice_lay
-                self._choices.hide()
+                from samsara.ui.correction_picker_qt import WordCorrectionMenu
+                self._choices = WordCorrectionMenu(self, None, self._choose_correction,
+                    self._dismiss_correction_choices, self._position)
                 cLay.addWidget(self._choices)
 
                 self._controls = QWidget()
@@ -848,59 +831,29 @@ class _StreamingWidget:
                 self._on_choice_dismiss = on_dismiss
 
             def show_correction_choices(self, word: str, candidates, no_match: bool = False) -> None:
-                """Show large, focusless choices; the original is always safe."""
-                while self._choice_buttons:
-                    button = self._choice_buttons.pop()
-                    self._choice_lay.removeWidget(button)
-                    button.deleteLater()
-                notice = ("Choose what you meant:" if not no_match else
-                          "No similar word is in your vocabulary yet. You can keep the original or say a replacement.")
-                self._choice_notice.setText(notice)
-                for candidate in candidates:
-                    button = QPushButton(candidate)
-                    button.setCursor(Qt.CursorShape.PointingHandCursor)
-                    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                    button.setMinimumHeight(36)
-                    button.setStyleSheet(
-                        f"QPushButton{{background:{theme.BG1};color:{theme.TEXT_PRIMARY};"
-                        f"border:1px solid {theme.BORDER};border-radius:5px;padding:5px 10px;"
-                        f"font-size:{HINT_FONT_SIZE + 1}px;font-family:'{FONT_FAMILY}';text-align:left;}}"
-                        f"QPushButton:hover{{border-color:{theme.ACCENT};}}"
-                    )
-                    button.clicked.connect(lambda _checked=False, choice=candidate: self._choose_correction(choice))
-                    self._choice_lay.addWidget(button)
-                    self._choice_buttons.append(button)
-                dismiss = QPushButton("Dismiss — change nothing")
-                dismiss.setCursor(Qt.CursorShape.PointingHandCursor)
-                dismiss.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                dismiss.setMinimumHeight(32)
-                dismiss.setStyleSheet(
-                    f"QPushButton{{background:transparent;color:{theme.TEXT_SECONDARY};border:none;"
-                    f"padding:4px;font-size:{HINT_FONT_SIZE}px;font-family:'{FONT_FAMILY}';text-align:left;}}"
-                    f"QPushButton:hover{{color:{theme.TEXT_PRIMARY};}}"
-                )
-                dismiss.clicked.connect(self._dismiss_correction_choices)
-                self._choice_lay.addWidget(dismiss)
-                self._choice_buttons.append(dismiss)
-                self._choices.show()
+                owner = getattr(self._on_choice, "__self__", None)
+                self._choices.app = getattr(owner, "app", None)
+                self._choices.open(word, candidates)
+                self.set_prompt("")
                 self._position()
 
             def hide_correction_choices(self) -> None:
-                if self._choices.isVisible():
-                    self._choices.hide()
-                    self._position()
+                if self._choices.learning or self._choices.awaiting:
+                    return
+                self._choices.finish()
+                self._position()
 
             def _choose_correction(self, choice: str) -> None:
-                callback = self._on_choice
-                self.hide_correction_choices()
-                if callback is not None:
-                    callback(choice)
+                if self._on_choice is not None:
+                    self._on_choice(choice)
 
             def _dismiss_correction_choices(self) -> None:
-                callback = self._on_choice_dismiss
-                self.hide_correction_choices()
-                if callback is not None:
-                    callback()
+                self._choices.finish()
+                if self._on_choice_dismiss is not None:
+                    self._on_choice_dismiss()
+                self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, True)
+                self.show()
+                self._position()
 
             def _refresh_controls(self) -> None:
                 """The controls are visible exactly when the box takes clicks:
@@ -1171,6 +1124,8 @@ class _StreamingWidget:
                 fixed_h += layout.spacing()*max(0, len(rows)-1) + 20
                 max_h = OVERLAY_MAX_H if self._idle is None else DICTATE_OVERLAY_MAX_H
                 req_h = max(OVERLAY_MIN_H, min(max_h, hint_h+fixed_h), fixed_h+24)
+                if not self._choices.isHidden():
+                    req_h = max(req_h, layout.minimumSize().height())
                 self.setFixedHeight(req_h)
                 placement = self._preview_position
                 if isinstance(placement, tuple):
@@ -1280,6 +1235,9 @@ class _StreamingWidget:
         # Queue 161 installs these during construction. Keep the wrapper
         # surface complete so entering Hands-Free cannot crash.
         self._w.set_correction_choice_callbacks(on_choice, on_dismiss)
+    def show_correction_choices(self, word, candidates, no_match=False):
+        self._w.show_correction_choices(word, candidates, no_match)
+    def hide_correction_choices(self): self._w.hide_correction_choices()
     def set_prompt(self, text):  self._w.set_prompt(text)
     def scroll_draft(self, where): self._w.scroll_draft(where)
 
@@ -2755,6 +2713,9 @@ class DictatePreviewSession:
             return
         outcome = manager.choose_word_correction(candidate)
         self._correction_armed = manager.pending_word_correction() is not None
+        if getattr(outcome, "kind", "") != "dictate_word_corrected":
+            from samsara.ui.correction_picker_qt import cancel_pending_menu
+            cancel_pending_menu(self.app)
         self._resync_from_draft(manager)
         self._refresh_prompt()
         self._hide_correction_choices()

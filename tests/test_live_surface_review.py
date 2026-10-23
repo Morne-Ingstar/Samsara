@@ -108,12 +108,12 @@ def test_no_match_keeps_spell_and_edit_and_picker_targets_are_large(qapp, surfac
     assert widget._picker_buttons[0].minimumHeight() >= MARK_SIZE
     selection = {"document_id": "d", "revision": 1, "segment_id": "s", "start": 0, "end": 12, "word": "unusualtoken"}
     widget.show(); widget.show_candidates(selection, []); qapp.processEvents()
-    assert widget._keep.isVisible() and widget._spell.isVisible() and widget._edit.isVisible()
-    widget._open_editor("spell")
+    assert widget._keep.isVisible() and widget._editor.isVisible()
+    widget._open_editor()
     widget._editor.setText("A1-b'")
-    assert widget._editor.text() == "A-b'"
+    assert widget._editor.text() == "A1-b'"
     applied = []; widget.correction_apply_requested.connect(lambda item, text: applied.append(text))
-    widget._apply_editor(); assert applied == ["A-b'"]
+    widget._apply_editor(); assert applied == ["A1-b'"]
 
 
 def test_scroll_back_stays_pinned_while_new_text_arrives_and_latest_resumes(qapp, surface_owner):
@@ -178,7 +178,7 @@ def test_correction_survives_queued_draft_sync_and_cancel_closes_it(qapp, surfac
         'revision': subject.draft_document.revision, 'segment_id': segment.id, 'start': 0, 'end': 4})
     c.sync_draft(subject); c.drain(); QTest.qWait(150)
     assert c.view().presentation is PresentationState.CORRECTION
-    assert c.widget._keep.isVisible() and c.widget._spell.isVisible() and c.widget._edit.isVisible()
+    assert c.widget._keep.isVisible() and c.widget._editor.isVisible()
     QTest.keyClick(c.widget, Qt.Key.Key_Escape); c.drain()
     assert c.widget._selection is None
     assert c.view().presentation is not PresentationState.CORRECTION
@@ -193,19 +193,18 @@ def test_candidate_and_empty_panes_remain_visible_in_every_source_form(qapp, sur
         for candidates in ([], [SimpleNamespace(replacement=f'choice {n}') for n in range(6)]):
             w = surface_owner(LiveSurfaceWidget(replace(review(), form=form)))
             w.show(); w.show_candidates(selection, candidates); qapp.processEvents()
-            assert w._more.isVisible() is (len(candidates) > 4)
-            controls = (w._keep, w._spell, w._edit) + ((w._more,) if len(candidates) > 4 else ())
-            for control in controls:
-                assert control.isVisible() and w.rect().contains(control.geometry())
+            assert not w._more.isVisible()
+            for control in (w._keep, w._editor, w._apply):
+                assert control.isVisible()
+                assert w.rect().contains(control.mapTo(w, control.rect().bottomRight()))
                 assert control.width() >= 44 and control.height() >= 44
             if candidates:
-                assert all(b.isVisible() for b in w._candidate_buttons)
-                w._more.click(); assert w._candidate_buttons[0].text().startswith('5.')
-                w._more.click(); assert w._candidate_buttons[0].text().startswith('1.')
+                assert len(w._word_menu.buttons) == len(candidates)
+                assert all(b.isVisible() for b in w._word_menu.buttons)
             else:
-                assert 'no suggestions' in w._correction_hint.text().lower()
+                assert 'no suggestions' in w._word_menu.status.text().lower()
                 assert not any(b.isVisible() for b in w._picker_buttons)
-                assert not any(b.isVisible() for b in w._candidate_buttons)
+                assert not w._word_menu.buttons
             w._keep.click(); assert w._selection is None
             w.show_word_picker(); qapp.processEvents()
             assert w._picker_buttons[0].isVisible() and w._cancel.isVisible()
@@ -218,7 +217,7 @@ def test_finishing_keyboard_correction_restores_passive_window(qapp, surface_own
     from PySide6.QtCore import Qt
     w = surface_owner(LiveSurfaceWidget(review()))
     w.show(); w.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'two'}, [])
-    w._open_editor('edit')
+    w._open_editor()
     assert not (w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus)
     w._cancel_editor(); w._keep.click()
     assert w.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
@@ -230,7 +229,7 @@ def test_changed_document_closes_editor_and_restores_passive_capture(qapp, surfa
     from PySide6.QtCore import Qt
     w = surface_owner(LiveSurfaceWidget(review()))
     w.show(); w.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'two'}, [])
-    w._open_editor('edit')
+    w._open_editor()
     cancelled = []; w.correction_cancel_requested.connect(lambda: cancelled.append(True))
     w.refresh(replace(review(), revision=2), animate=False)
     assert w._selection is None and not w._editor.isVisible() and cancelled == [True]

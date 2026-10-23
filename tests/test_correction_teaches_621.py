@@ -127,8 +127,8 @@ def test_spell_owns_command_speech_and_closing_invalidates_queued_input(qapp, ap
         'start': 0, 'end': 6, 'word': 'scrawl'}, [])
     widget.show()
     posted = []; monkeypatch.setattr(qt_runtime, 'post', posted.append)
-    widget._open_editor('spell')
-    assert 'Command-only key' in widget._editor.placeholderText()
+    widget._open_editor()
+    assert widget._editor.placeholderText() == 'Type it'
     assert executor.process_text('sierra charlie romeo oscar lima lima', force_commands=True).claimed
     posted.pop(0)()
     assert widget._editor.text() == 'scroll' and not calls
@@ -139,9 +139,10 @@ def test_spell_owns_command_speech_and_closing_invalidates_queued_input(qapp, ap
     executor.process_text('lima', force_commands=True)
     widget._cancel_editor(); posted.pop(0)()
     assert widget._editor.text() == 'scrol' and host._draft_spelling_input is None
-    widget._open_editor('edit')
-    assert widget._editor.placeholderText() == 'Type or paste a replacement'
-    assert host._draft_spelling_input is None
+    widget.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'scrawl'}, [])
+    widget._open_editor()
+    assert widget._editor.placeholderText() == 'Type it'
+    assert host._draft_spelling_input is not None
     widget.hide()
 
 
@@ -150,15 +151,21 @@ def test_more_only_exists_with_another_page_and_wraps(qapp):
     from samsara.ui.live_surface_qt import LiveSurfaceWidget
     widget = LiveSurfaceWidget(Source(review('scrawl up'), [('s', 'scrawl up')]))
     selection = {'document_id': 'd', 'revision': 1, 'word': 'scrawl'}
-    candidates = [CorrectionCandidate(f'choice{i}', (0, 6), 'test', 1) for i in range(9)]
+    candidates = [CorrectionCandidate(f'choice{i}', (0, 6), 'test', 1) for i in range(12)]
     widget.show(); widget.show_candidates(selection, candidates[:2])
     assert not widget._more.isVisible()
     widget.show_candidates(selection, candidates)
-    assert widget._more.isVisible()
-    for page in (1, 2, 0):
-        widget._more.click()
-        assert widget._candidate_page == page
-        assert f'choice{page * 4}' in widget._candidate_buttons[0].text()
+    qapp.processEvents()
+    menu = widget._word_menu
+    assert [b.text() for b in menu.buttons] == [f'choice{i}' for i in range(12)]
+    assert menu.buttons[0].y() == menu.buttons[1].y()
+    assert menu.buttons[1].x() > menu.buttons[0].geometry().right()
+    assert menu.buttons[-1].y() > menu.buttons[0].y()
+    assert menu.choices.verticalScrollBar().maximum() > 0
+    assert menu.choices.horizontalScrollBar().maximum() == 0
+    assert not widget._more.isVisible()
+    assert not any(b.isVisible() and b.text() in {'Spell', 'Edit', 'More'}
+                   for b in widget.findChildren(__import__('PySide6').QtWidgets.QPushButton))
     widget.hide()
 
 
@@ -227,7 +234,7 @@ def test_proof_full_and_compact(qapp, app, on_qt):
     source = Source(review('scrawl up'), [('s', 'scrawl up')]); source.app = app
     widget = LiveSurfaceWidget(source); widget.show()
     widget.show_candidates({'document_id': 'd', 'revision': 1, 'word': 'scrawl'}, [])
-    widget._open_editor('spell'); qapp.processEvents()
+    widget._open_editor(); qapp.processEvents()
     widget.grab().save(str(output / 'Full-spell.png'))
     widget._cancel_editor(); widget.hide()
     for display in ('Full', 'Compact'):

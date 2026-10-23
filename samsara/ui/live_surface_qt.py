@@ -321,8 +321,7 @@ class LiveSurfaceWidget(QWidget):
         self._picker_active = False
         self._candidates: list[object] = []
         self._sent_receipts: list[str] = []
-        self._picker_page = self._candidate_page = 0
-        self._editor_mode = ""
+        self._picker_page = 0
         self._dragging = False
         self._drag_offset = None
         self._drag_restore = QRect()
@@ -379,18 +378,13 @@ class LiveSurfaceWidget(QWidget):
         self._controls = (self._clear, self._clean_up, self._pause, self._correct, self._edit_receipt, self._collapse)
         self._picker_buttons = [self._button("Draft word", "", lambda n=n: self._choose_picker(n))
                                 for n in range(4)]
-        self._candidate_buttons = [self._button("Correction candidate", "", lambda n=n: self._choose_candidate(n))
-                                   for n in range(4)]
-        self._keep = self._button("Keep original word", "Keep original", self._cancel_correction)
-        self._spell = self._button("Spell replacement", "Spell", lambda: self._open_editor("spell"))
-        self._edit = self._button("Edit replacement", "Edit", lambda: self._open_editor("edit"))
-        self._more = self._button("More correction choices", "More", self._more_clicked)
-        self._apply = self._button("Apply replacement", "Apply", self._apply_editor)
+        from samsara.ui.correction_picker_qt import WordCorrectionMenu
+        self._word_menu = WordCorrectionMenu(self, getattr(controller, "app", None),
+            self._apply_word_choice, self._cancel_correction,
+            lambda: self._apply_view(self._view, animate=False))
+        self._editor, self._apply, self._keep = self._word_menu._editor, self._word_menu.apply, self._word_menu.dismiss
+        self._more = self._button("Next draft words", "Next words", self._more_clicked)
         self._cancel = self._button("Cancel replacement", "Cancel", self._cancel_editor)
-        self._editor = QLineEdit(self); self._editor.setAccessibleName("Replacement text")
-        self._editor.setPlaceholderText("Type or paste a replacement")
-        self._editor.setMaxLength(120)
-        self._editor.textChanged.connect(self._sanitize_spelling)
         self._apply_view(self._view, animate=False)
         self._expiry_timer = QTimer(self)
         self._expiry_timer.setInterval(100)
@@ -511,7 +505,7 @@ class LiveSurfaceWidget(QWidget):
     def _display_form(self) -> VisibleForm:
         # Correction is local UI intent; queued producer updates must never
         # leave its header visible without the body or a way to dismiss it.
-        return VisibleForm.REVIEW if self._selection is not None or self._picker_active else self._view.form
+        return VisibleForm.REVIEW if self._selection is not None or self._picker_active or self._word_menu.learning else self._view.form
 
     def focus_review(self) -> None:
         self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False); self.show()
@@ -568,21 +562,21 @@ class LiveSurfaceWidget(QWidget):
                 self._announce("word-missing", "That word number is not in the draft")
 
     def show_word_picker(self) -> None:
-        self._close_spelling()
-        self._editor_mode = ""
+        self._word_menu.finish()
         self._selection = None; self._picker_active = True; self._picker_page = 0; self._candidates = []
         self._apply_view(self._view, animate=False); self._announce("picker", "Choose a word to correct")
 
     def show_candidates(self, selection: dict[str, object], candidates: list[object]) -> None:
         self._close_spelling()
-        self._editor_mode = ""
-        self._selection, self._picker_active, self._candidates, self._candidate_page = dict(selection), False, list(candidates)[:12], 0
+        self._selection, self._picker_active, self._candidates = dict(selection), False, list(candidates)[:12]
+        self._word_menu.open(str(selection.get("word", "")), self._candidates)
         self._apply_view(self._view, animate=False); self._announce(("correction", selection.get("revision")), "Correction choices ready")
 
     def correction_refused(self, message: str = "That word changed. Select it again.") -> None:
         self._close_spelling()
-        self._editor_mode = ""
         self._selection = None; self._picker_active = False; self._candidates = []
+        if message != "Correction applied":
+            self._word_menu.finish()
         self._restore_passive()
         self._apply_view(self._view, animate=False); self._announce("stale", message)
 
@@ -609,7 +603,9 @@ class LiveSurfaceWidget(QWidget):
         if self._selection is not None and (view.document_id != self._selection.get("document_id")
                 or view.revision != self._selection.get("revision")):
             self._close_spelling()
-            self._selection = None; self._candidates = []; self._editor_mode = ""
+            if not self._word_menu.awaiting:
+                self._word_menu.finish()
+            self._selection = None; self._candidates = []
             self._restore_passive()
             self.correction_cancel_requested.emit()
         self._view = view
@@ -711,11 +707,11 @@ class LiveSurfaceWidget(QWidget):
                               self._state.fontMetrics().horizontalAdvance(self._state_text(self._view)))
             width = max(width, 2*CARD_INSET+MARK_SIZE+12+actions_width+title_width+4*REGION_GAP
                         + (min(200, self._chip.desired_width()) if self._chip is not None else 0))
-        if self._selection is not None or self._picker_active:
-            source = self._candidates if self._selection is not None else self._word_targets
-            page = self._candidate_page if self._selection is not None else self._picker_page
-            rows = 1 if self._editor_mode else ceil(min(4, max(0, len(source)-page*4))/2)
+        if self._selection is not None or self._picker_active or self._word_menu.learning:
+            rows = ceil(min(4, max(0, len(self._word_targets)-self._picker_page*4))/2)
             height = 2*CARD_INSET + 2*(MARK_SIZE+REGION_GAP) + rows*(MARK_SIZE+REGION_GAP) + MARK_SIZE
+            if self._selection is not None or self._word_menu.learning:
+                height = 2*CARD_INSET + HEADER_HEIGHT + REGION_GAP + self._band_height + 12 + self._word_menu.sizeHint().height()
         else:
             # 492: use the rendered document, including explicit newlines and
             # actual font wrapping; no minimum envelope or empty notice band.
@@ -749,8 +745,10 @@ class LiveSurfaceWidget(QWidget):
     def _hide_children(self) -> None:
         if self._chip is not None: self._chip.hide()
         for child in (self._lane, self._band, self._secondary_band, self._state, self._correction_hint, self._transcript, self._provisional, self._badge, self._latest, self._insert,
-                      *self._controls, *self._picker_buttons, *self._candidate_buttons,
-                      self._keep, self._spell, self._edit, self._more, self._apply, self._cancel, self._editor): child.hide()
+                      *self._controls, *self._picker_buttons,
+                      self._more, self._cancel): child.hide()
+        if self._selection is None and not self._word_menu.learning:
+            self._word_menu.hide()
 
     def _layout_children(self) -> None:
         bar = self._transcript.verticalScrollBar()
@@ -767,7 +765,7 @@ class LiveSurfaceWidget(QWidget):
                 or self._view.capture is CaptureState.HANDS_FREE_LISTENING)
 
     def _cleanup_row_height(self) -> int:
-        correcting = self._selection is not None or self._picker_active
+        correcting = self._selection is not None or self._picker_active or self._word_menu.learning
         occupied = bool(self._view.text.strip()) or self._chip is not None
         return 34 if self._cleanup_visible() and occupied and not correcting else 0
 
@@ -822,7 +820,7 @@ class LiveSurfaceWidget(QWidget):
                 self._state.setGeometry(state_x, content.y()+HEADER_HEIGHT//2, max(1, right-state_x), HEADER_HEIGHT//2)
             self._layout_chip(right)
             return
-        if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active):
+        if form is VisibleForm.REVIEW and (self._selection is not None or self._picker_active or self._word_menu.learning):
             self._layout_chip(content.right()+1)
             self._layout_correction(content); return
         # Reserve each action's space once. Pending-text recovery is separate
@@ -900,37 +898,23 @@ class LiveSurfaceWidget(QWidget):
 
     def _layout_correction(self, content: QRect) -> None:
         y=content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+12
-        hint = (f'Correct “{self._selection.get("word", "") }” — choose a replacement'
-                if self._selection is not None else "Choose a word to correct")
-        if self._selection is not None and not self._candidates:
-            hint = f'No suggestions for “{self._selection.get("word", "") }”. Keep original, spell or edit.'
-        self._correction_hint.setText(hint)
+        if self._selection is not None or self._word_menu.learning:
+            self._word_menu.setGeometry(content.x(), y, content.width(), self._word_menu.sizeHint().height())
+            self._word_menu.show()
+            return
+        self._correction_hint.setText("Choose a word to correct")
         self._correction_hint.setGeometry(content.x(), y, content.width(), MARK_SIZE)
         self._correction_hint.show(); y += MARK_SIZE + REGION_GAP
-        if self._editor_mode:
-            self._editor.setGeometry(content.x(), y, content.width(), MARK_SIZE)
-            self._editor.show()
-            self._layout_row((self._apply, self._cancel), content.x(), y+MARK_SIZE+REGION_GAP, content.width())
-            return
-        selecting = self._selection is not None
-        buttons = self._candidate_buttons if selecting else self._picker_buttons
-        page = self._candidate_page if selecting else self._picker_page
-        source = self._candidates if selecting else self._word_targets
-        start=page*4
-        for index, button in enumerate(buttons):
-            choice = source[start+index] if start+index < len(source) else None
-            if choice is None: button.hide(); continue
-            label = getattr(choice, "replacement", None) if selecting else choice["word"]
-            button.setText(f"{start+index+1}. {label}"); button.setAccessibleName(f"Choice {start+index+1}: {label}")
-            button.setGeometry(content.x()+(index%2)*(content.width()//2+REGION_GAP//2), y+(index//2)*(MARK_SIZE+REGION_GAP), self._button_width(button, content.width()//2-REGION_GAP//2), MARK_SIZE); button.show()
-        y += (MARK_SIZE+REGION_GAP) * ceil(min(4, max(0, len(source)-start))/2)
-        if self._selection is not None:
-            controls = (self._keep,self._spell,self._edit) + ((self._more,) if len(source) > 4 else ())
-            self._layout_row(controls, content.x(), y, content.width())
-        else:
-            self._cancel.setText("Cancel")
-            self._layout_row((self._cancel,) + ((self._more,) if len(source) > 4 else ()), content.x(), y, content.width())
-        self._more.setEnabled(len(source)>4)
+        start = self._picker_page * 4
+        for index, button in enumerate(self._picker_buttons):
+            if start + index >= len(self._word_targets):
+                continue
+            label = self._word_targets[start + index]["word"]
+            button.setText(f"{start+index+1}. {label}")
+            button.setGeometry(content.x()+(index%2)*(content.width()//2+REGION_GAP//2), y+(index//2)*(MARK_SIZE+REGION_GAP), self._button_width(button, content.width()//2-REGION_GAP//2), MARK_SIZE)
+            button.show()
+        y += (MARK_SIZE+REGION_GAP) * ceil(min(4, max(0, len(self._word_targets)-start))/2)
+        self._layout_row((self._cancel,) + ((self._more,) if len(self._word_targets) > 4 else ()), content.x(), y, content.width())
 
     def _update_mask(self) -> None:
         if self._display_form() is VisibleForm.MARK:
@@ -1025,8 +1009,7 @@ class LiveSurfaceWidget(QWidget):
         if event.key()==Qt.Key.Key_Escape:
             if self._dragging:
                 self._dragging=False; self.setGeometry(self._drag_restore); event.accept(); return
-            if self._editor_mode:self._cancel_editor()
-            elif self._selection is not None or self._picker_active:self._cancel_correction()
+            if self._selection is not None or self._picker_active or self._word_menu.learning:self._cancel_correction()
             else:self._transcript.setFocus()
             event.accept(); return
         if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and event.modifiers() & Qt.KeyboardModifier.ControlModifier: self.commit_requested.emit(); event.accept(); return
@@ -1056,12 +1039,8 @@ class LiveSurfaceWidget(QWidget):
     def _choose_picker(self,index:int)->None:
         number=self._picker_page*4+index
         if number<len(self._word_targets):self.correct_word_requested.emit(dict(self._word_targets[number]))
-    def _choose_candidate(self,index:int)->None:
-        number=self._candidate_page*4+index
-        if self._selection is not None and number<len(self._candidates):self.correction_apply_requested.emit(dict(self._selection),str(getattr(self._candidates[number],"replacement","")))
     def _more_clicked(self)->None:
-        if self._selection is not None:self._candidate_page=(self._candidate_page+1)%max(1,ceil(len(self._candidates)/4))
-        else:self._picker_page=(self._picker_page+1)%max(1,ceil(len(self._word_targets)/4))
+        self._picker_page=(self._picker_page+1)%max(1,ceil(len(self._word_targets)/4))
         self._apply_view(self._view,animate=False)
     def _latest_clicked(self)->None:self._follow_latest=True; self._unread_segments=0; self._scroll_to_latest(); self._layout_children()
     def _scroll_value_changed(self,value:int)->None:
@@ -1082,35 +1061,20 @@ class LiveSurfaceWidget(QWidget):
             self._scroll_to_latest()
         else:
             bar.setValue(self._scroll_position)
-    def _open_editor(self,mode:str)->None:
-        self._close_spelling()
-        self._editor_mode=mode; self._editor.clear(); self._editor.setAccessibleName("Spelled replacement" if mode=="spell" else "Edit replacement")
-        self._editor.setPlaceholderText("Use the Command-only key to say letters; Apply to finish." if mode == "spell" else "Type or paste a replacement")
-
-        self._apply_view(self._view, animate=False)
-        self.focus_review(); self._editor.setFocus(); self._announce("editor", "Enter a replacement, then apply")
-        if mode == "spell" and getattr(self._controller, "app", None) is not None:
-            from samsara.ui.correction_picker_qt import SpellingInput
-            self._spelling_input = SpellingInput(self, self._controller.app)
+    def _apply_word_choice(self, text: str) -> None:
+        if self._selection is not None:
+            self.correction_apply_requested.emit(dict(self._selection), text)
+    def _open_editor(self) -> None:
+        self.focus_review(); self._editor.setFocus(); self._word_menu.begin_input()
     def _close_spelling(self) -> None:
-        spelling = getattr(self, "_spelling_input", None)
-        if spelling is not None:
-            spelling.close()
-            self._spelling_input = None
-    def _sanitize_spelling(self,value:str)->None:
-        if self._editor_mode=="spell":
-            cleaned="".join(ch for ch in value if ch.isalpha() or ch in " '-")
-            if cleaned!=value:self._editor.blockSignals(True); self._editor.setText(cleaned); self._editor.blockSignals(False)
-    def _apply_editor(self)->None:
-        text=self._editor.text().strip()
-        if text and self._selection is not None:self.correction_apply_requested.emit(dict(self._selection),text)
-    def _cancel_editor(self)->None:
-        if not self._editor_mode:self._cancel_correction(); return
-        self._close_spelling()
-        self._editor_mode=""; self._apply_view(self._view,animate=False)
-    def _cancel_correction(self)->None:
-        self._close_spelling()
-        self._selection=None; self._picker_active=False; self._candidates=[]; self._editor_mode=""
+        self._word_menu.close_input()
+    def _apply_editor(self) -> None:
+        self._word_menu._apply_editor()
+    def _cancel_editor(self) -> None:
+        self._cancel_correction()
+    def _cancel_correction(self) -> None:
+        self._word_menu.finish()
+        self._selection=None; self._picker_active=False; self._candidates=[]
         self._restore_passive()
         self.correction_cancel_requested.emit(); self._apply_view(self._view,animate=False)
     def _announce(self,key:object,message:str)->None:self._announcer.announce_transition(key,message)
