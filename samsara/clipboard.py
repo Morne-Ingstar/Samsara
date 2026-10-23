@@ -56,6 +56,7 @@ from samsara.constants import (
     CLIPBOARD_READY_TIMEOUT, CLIPBOARD_READY_POLL,
 )
 from samsara.log import get_logger
+from samsara import clipboard_recovery as recovery
 
 logger = get_logger(__name__)
 
@@ -213,6 +214,12 @@ def _setup_win32_api():
     # OpenClipboard
     user32.OpenClipboard.argtypes = [HWND]
     user32.OpenClipboard.restype = BOOL
+    user32.CreateWindowExW.argtypes = [ctypes.c_ulong, ctypes.c_wchar_p, ctypes.c_wchar_p,
+        ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        HWND, HANDLE, HANDLE, LPVOID]
+    user32.CreateWindowExW.restype = HWND
+    user32.DestroyWindow.argtypes = [HWND]
+    user32.DestroyWindow.restype = BOOL
 
     # CloseClipboard
     user32.CloseClipboard.argtypes = []
@@ -298,6 +305,7 @@ def _open_clipboard_with_retry(
     max_retries: int = _OPEN_CLIPBOARD_MAX_RETRIES,
     initial_delay: float = _OPEN_CLIPBOARD_INITIAL_DELAY,
     max_delay: float = _OPEN_CLIPBOARD_MAX_DELAY,
+    *, hwnd=None,
 ) -> bool:
     """OpenClipboard with retry -- the clipboard is contended (another app,
     or Windows itself briefly after a copy/paste) and OpenClipboard fails
@@ -305,7 +313,7 @@ def _open_clipboard_with_retry(
     there's exactly one retry policy, not two copies of it."""
     delay = initial_delay
     for _ in range(max_retries):
-        if _user32.OpenClipboard(None):
+        if _user32.OpenClipboard(hwnd):
             return True
         time.sleep(delay)
         delay = min(delay * 1.5, max_delay)
@@ -503,6 +511,7 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
                 not_saved[fmt] = "read error"
                 _log_error(f"Could not read clipboard format {fmt}", e)
     finally:
+        saved.source_seq = get_clipboard_sequence_number()
         _user32.CloseClipboard()
 
     elapsed = time.monotonic() - started
@@ -992,6 +1001,58 @@ def wait_for_clipboard_ready(expected_seq, settle) -> str:
         time.sleep(min(pause, deadline - now))
 
 
+def _copy_with_image_consent(text, receipt):
+    """Check consent under OpenClipboard, before the destructive operation."""
+    if not receipt.sequence or sys.platform != 'win32':
+        recovery.fail("Clipboard version unavailable. Copy a word, then say finish again.")
+        return False
+    raw = (text + '\0').encode('utf-16-le')
+    handle = _kernel32.GlobalAlloc(0x0002, len(raw))
+    if not handle:
+        recovery.fail("Couldn't prepare clipboard text. Draft kept.")
+        return False
+    opened = False
+    window = None
+    try:
+        ptr = _kernel32.GlobalLock(handle)
+        if not ptr:
+            recovery.fail("Couldn't prepare clipboard text. Draft kept.")
+            return False
+        try:
+            ctypes.memmove(ptr, raw, len(raw))
+        finally:
+            _kernel32.GlobalUnlock(handle)
+        # EmptyClipboard needs a window owned by this process: opening with
+        # NULL would leave a NULL owner and can make SetClipboardData fail.
+        window = _user32.CreateWindowExW(0, 'STATIC', None, 0, 0, 0, 0, 0,
+                                       None, None, None, None)
+        if not window:
+            recovery.fail("Couldn't prepare clipboard access. Draft kept.")
+            return False
+        opened = _open_clipboard_with_retry(hwnd=window)
+        if not opened:
+            recovery.fail(recovery.clipboard_failure_message())
+            return False
+        if get_clipboard_sequence_number() != receipt.sequence:
+            recovery.fail("Clipboard changed. Say finish again. Draft kept.")
+            return False
+        if not _user32.EmptyClipboard():
+            recovery.fail("Clipboard couldn't be replaced. Draft kept.")
+            return False
+        receipt.replaced = True
+        if not _user32.SetClipboardData(CF_UNICODETEXT, handle):
+            return False
+        handle = None  # ownership transferred to Windows
+        return True
+    finally:
+        if opened:
+            _user32.CloseClipboard()
+        if window:
+            _user32.DestroyWindow(window)
+        if handle:
+            _kernel32.GlobalFree(handle)
+
+
 def paste_with_preservation(
     text: str,
     paste_delay: float = CLIPBOARD_PASTE_DELAY,
@@ -1028,6 +1089,7 @@ def paste_with_preservation(
         return False
 
     with clipboard_lock:
+        receipt = recovery.current_attempt()
         # The clipboard is user data, not a disposable transport buffer. Do
         # not overwrite a snapshot that cannot be restored exactly.
         try:
@@ -1040,16 +1102,34 @@ def paste_with_preservation(
         if isinstance(saved, ClipboardSnapshot) and not saved.complete:
             _log_error("clipboard paste refused because the original content cannot be restored: "
                        + saved.describe_lost())
-            if incomplete_snapshot_fallback is not None:
+            image = bool(saved.lost) and set(saved.lost) <= {CF_BITMAP, CF_DIB, CF_DIBV5}
+            image_reason = recovery.IMAGE_MESSAGE if any('cap' in r for r in saved.lost.values()) else recovery.BITMAP_MESSAGE
+            recovery.fail(image_reason if image else
+                          "Clipboard content couldn't be preserved: " + saved.describe_lost(),
+                          image=image, sequence=getattr(saved, 'source_seq', None))
+            # An image always needs an explicit answer; the process allowlist
+            # is not consent to pick a recovery route for the user.
+            if receipt is not None and receipt.mode == 'paste':
+                pass
+            elif incomplete_snapshot_fallback is not None and not image:
                 try:
                     return bool(incomplete_snapshot_fallback())
                 except Exception as e:
                     _log_error("typed fallback after incomplete clipboard snapshot failed", e)
-            return False
+                return False
+            else:
+                return False
 
         try:
             # Copy the text to paste
-            pyperclip.copy(text)
+            if receipt is not None and receipt.mode == 'paste':
+                if before_paste is not None and not before_paste():
+                    return False
+                saved = None  # explicit consent: never restore a partial image
+                if not _copy_with_image_consent(text, receipt):
+                    return False
+            else:
+                pyperclip.copy(text)
 
             # Capture the clipboard sequence number right after our own
             # copy -- if it's different by the time restore_clipboard()
@@ -1065,9 +1145,11 @@ def paste_with_preservation(
             if readiness != 'ready':
                 if readiness == 'changed':
                     logger.warning('[CLIP] Paste cancelled: clipboard changed during preparation')
+                    recovery.fail("Clipboard changed during paste preparation. Draft kept.")
                     return False
                 if incomplete_snapshot_fallback is not None:
                     return bool(incomplete_snapshot_fallback())
+                recovery.fail(recovery.clipboard_failure_message())
                 return False
 
             if before_paste is not None and not before_paste():
@@ -1096,6 +1178,7 @@ def paste_with_preservation(
 
         except Exception as e:
             _log_error("Paste failed", e)
+            recovery.fail("Clipboard paste failed. Draft kept.")
             return False
 
         finally:

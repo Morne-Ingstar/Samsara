@@ -55,6 +55,7 @@ from typing import Any, Callable, Optional, Union
 from samsara.draft_document import DraftDocument
 from samsara.utterance_undo import UtteranceUndoMixin
 from samsara.draft_clear_undo import ClearDraftUndo
+from samsara import clipboard_recovery
 from samsara.hands_free_entry import HANDS_FREE_ENTRY_PHRASES, dispatch_dictate_hands_free_entry
 from samsara.stage_timing import current_stage_timing as _current_stage_timing
 from samsara.session_text import (
@@ -1274,6 +1275,7 @@ class SessionModeManager(UtteranceUndoMixin):
         # One model-free command correction at a time. It shares the ordinary
         # pending-answer stage below, so a stray follow-up is never swallowed.
         self._pending_command_suggestion: Optional[dict] = None
+        self._clipboard_choice = None
         # Queue 85: {"word", "occurrence", "expected_count", "expires", "source"}
         # while a word clicked in the preview is waiting for its replacement.
         self._pending_correction: Optional[dict] = None
@@ -1459,6 +1461,7 @@ class SessionModeManager(UtteranceUndoMixin):
         self._dictate_pending_audio = []
         self._clear_draft_undo.drop()
         self._pending_command_suggestion = None
+        self._clipboard_choice = None
         # Queue 99: a new session never inherits an armed "again".
         self._last_scratch_at = None
         self._scratch_redo = None
@@ -1939,6 +1942,12 @@ class SessionModeManager(UtteranceUndoMixin):
                     log.warning("[SESSION] draft scroll failed: %s", exc)
                 return DispatchOutcome(kind="draft_scrolled", detail={"where": where})
 
+        # 776: only an explicit, gated reply to this draft's image refusal.
+        clipboard_reply = clipboard_recovery.answer(
+            self, text, allowed=passes_switch_anti_hallucination_gate(signals))
+        if clipboard_reply is not None:
+            return clipboard_reply
+
         # 1b. A complete-utterance answer to THE pending question has priority
         # over every lane's interpretation ("yes" / "no" / "wait").
         if self._pending_reply_fn is not None:
@@ -2240,6 +2249,7 @@ class SessionModeManager(UtteranceUndoMixin):
         Nothing is pasted or typed."""
         with self._dispatch_lock:
             removed = len(self._dictate_pending_buffer)
+            self._clipboard_choice = None
             self._dictate_pending_buffer = ""
             self._dictate_pending_audio = []
             self._last_dictate_ended_terminal = None
@@ -2971,36 +2981,11 @@ class SessionModeManager(UtteranceUndoMixin):
                     exc_info=True,
                 )
 
-        delivered = self._inject_fn(final_text, commit_target_still_focused)
+        # Preserve the legacy injection callback and formatting/history path.
+        # The scoped receipt carries refusal/consent through its bool result.
+        delivered = clipboard_recovery.inject_commit(self, final_text, commit_target_still_focused, target_mode)
         if delivered is False:
-            after_process = self._foreground_exe_resolver()
-            after_hwnd = self._foreground_hwnd_resolver()
-            focus_changed = (
-                not check_focus_lock(foreground, after_process)
-                or after_hwnd != current_hwnd
-            )
-            if focus_changed:
-                log.warning(
-                    "[SESSION] DICTATE commit retained: focus changed during injection "
-                    "(target_process=%r current_process=%r target_hwnd=%r current_hwnd=%r)",
-                    foreground, after_process, current_hwnd, after_hwnd,
-                )
-                if self._on_focus_lock_revert:
-                    self._on_focus_lock_revert()
-                return DispatchOutcome(kind="dictate_commit_blocked_focus_lock", detail={
-                    "pending_chars": len(text),
-                    "target_process": foreground,
-                    "foreground": after_process,
-                    "target_hwnd": current_hwnd,
-                    "foreground_hwnd": after_hwnd,
-                })
-            error = RuntimeError("Paste blocked - clipboard held by another app")
-            log.error("[SESSION] DICTATE commit retained: paste callback reported failure")
-            if self._on_switch_dispatch_error:
-                self._on_switch_dispatch_error(error)
-            return DispatchOutcome(kind="dictate_commit_failed", detail={
-                "pending_chars": len(text), "error": str(error),
-            })
+            return clipboard_recovery.failed_commit(self, text, foreground, current_hwnd)
 
         # Record the delivered bytes for undo; legacy callbacks retain text.
         delivery_confirmed = True
@@ -3040,6 +3025,7 @@ class SessionModeManager(UtteranceUndoMixin):
             detail["integrity"] = self._describe_verdict(verdict)
             if not delivery_confirmed:
                 detail["delivery"] = "shortcut_sent_without_target_acknowledgement"
+        clipboard_recovery.complete_commit(self, detail)
         return DispatchOutcome(kind="dictate_committed", detail=detail)
 
     def _dispatch_ava(self, text: str) -> DispatchOutcome:

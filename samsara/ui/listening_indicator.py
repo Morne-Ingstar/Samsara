@@ -1348,6 +1348,11 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             paint_result(painter, line_rect, line, font, QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT))
 
     def dismiss_error(self):
+        from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices
+        app = getattr(self, '_clipboard_recovery_app', None)
+        if (self._chip_label or '').startswith((IMAGE_MESSAGE, BITMAP_MESSAGE)) and app is not None:
+            if open_choices(self, app):
+                return
         if self._chip_kind == 'error' and getattr(getattr(self._chip_feedback, 'purpose', None), 'value', 'result') == 'result':
             self._chip_deadline = None
             self.clear_outcome()

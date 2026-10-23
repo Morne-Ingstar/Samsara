@@ -16,6 +16,11 @@ GOLDEN["producer_kinds"].append("ava_edit_handled")
 GOLDEN["cases"].append({"id": "ava-edit-handled", "kind": "ava_edit_handled",
                       "detail": {}, "expected": None, "mapped": True,
                       "canonical_id": "", "ttl": 0})
+# 776: preserve the old matrix and extend its producer pin for the new image offer.
+GOLDEN["producer_kinds"].append("dictate_clipboard_choice")
+GOLDEN["cases"].append({"id": "clipboard-image-choice", "kind": "dictate_clipboard_choice",
+    "detail": {}, "expected": ["Clipboard has a large image Samsara can't put back.", "warning"],
+    "mapped": True, "canonical_id": "", "ttl": None})
 
 
 def test_every_original_name_is_the_same_export():
@@ -44,6 +49,9 @@ def test_outcomes_match_pre_move_results_without_mutating_inputs():
         before = deepcopy(detail)
         actual = feedback.outcome_chip(case["kind"], detail)
         expected = tuple(case["expected"]) if case["expected"] is not None else None
+        # 776: an unknown failure cannot diagnose another process holding the clipboard.
+        if case["kind"] == "dictate_commit_failed" and not detail:
+            expected = (facade.CHIP_CROSS + " Text wasn't inserted. Draft kept.", "error")
         assert actual == expected, case["id"]
         assert detail == before, case["id"]
         assert feedback.is_mapped_outcome(case["kind"]) == case["mapped"], case["id"]

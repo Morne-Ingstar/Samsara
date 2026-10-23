@@ -207,6 +207,10 @@ class LiveSurfaceController:
                 signal.connect(callback)
 
     def dismiss_error(self) -> None:
+        from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices
+        if self.widget is not None and self.model.view().notice.message.startswith((IMAGE_MESSAGE, BITMAP_MESSAGE)):
+            if open_choices(self.widget, self.app):
+                return
         self.model.dismiss_error()
         if self.widget is not None:
             self.widget.refresh(self.model.view(), animate=False)

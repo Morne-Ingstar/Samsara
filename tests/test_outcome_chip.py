@@ -37,6 +37,8 @@ _SOURCE = pathlib.Path(sm.__file__)
 
 _INTERACT_SOURCE = _SOURCE.with_name("interact.py")
 _CORRECTIONS_SOURCE = _SOURCE.with_name("session_corrections.py")
+# 776: independent source path, like corrections, survives facade mutation tests.
+_RECOVERY_SOURCE = _SOURCE.with_name("clipboard_recovery.py")
 
 
 def _literal_kinds(node):
@@ -74,7 +76,8 @@ def _dispatch_outcome_kinds() -> set:
     Any other computed kind still fails the original collection guard.
     """
     trees = []
-    for source in (_SOURCE, _CORRECTIONS_SOURCE):
+    # 776: clipboard outcome producers moved to the dedicated recovery module.
+    for source in (_SOURCE, _CORRECTIONS_SOURCE, _RECOVERY_SOURCE):
         assert source.is_file(), f"Missing outcome producer: {source}"
         trees.append(ast.parse(source.read_text(encoding="utf-8")))
     tree = trees[0]  # Interact binding analysis belongs to the facade only.
@@ -251,8 +254,9 @@ class TestLabels:
         assert label == f"{CHIP_CROSS} paste lost"
 
     def test_dictate_commit_failure_without_detail_uses_clipboard_fallback(self):
+        # 776: an unknown failure cannot assert that another app owns the clipboard.
         assert outcome_chip("dictate_commit_failed", {}) == (
-            f"{CHIP_CROSS} Paste blocked - clipboard held by another app", "error")
+            f"{CHIP_CROSS} Text wasn't inserted. Draft kept.", "error")
 
     def test_failure_reason_is_capped_at_24_chars(self):
         label, _ = outcome_chip("ava_entry_failed",

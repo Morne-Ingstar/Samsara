@@ -10,6 +10,7 @@ import logging
 import time
 from samsara.log import describe_text, safe_exception
 from samsara import flight_recorder, injection_safety
+from samsara import clipboard_recovery as recovery
 from samsara.clipboard import (
     DeliveryOutcome,
     paste_with_preservation,
@@ -219,6 +220,11 @@ def paste_preserving_clipboard(
     app._unit_before = None
     app._undo_unit = None
     app._redo_unit = None
+    attempt = recovery.current_attempt()
+    if attempt is not None:
+        schedule = getattr(app, '_schedule_ui', None)
+        if callable(schedule):
+            schedule(lambda: recovery.bind_compact(app))
     # Queue 50: the single delivery chokepoint (hold, wake, session commit)
     # refuses a window Windows will not let us type into. Callers with
     # their own announcement (session outcome, hold path) check earlier;
@@ -243,8 +249,10 @@ def paste_preserving_clipboard(
     # nothing for the target to double. Clipboard-paste remains for long
     # texts where atomic delivery matters.
     threshold = app.config.get('paste_min_chars', 300)
-    _typed_wanted = (not clipboard_only and len(text) < threshold
-                     and app._foreground_wants_typed_injection())
+    explicit_type = attempt is not None and attempt.mode == 'type'
+    _typed_wanted = explicit_type or (not clipboard_only and len(text) < threshold
+                     and app._foreground_wants_typed_injection()
+                     and not (attempt is not None and attempt.mode == 'paste'))
     _typed_failed = False
     if _typed_wanted:
         if before_paste is not None and not before_paste():
@@ -271,6 +279,9 @@ def paste_preserving_clipboard(
                 chars=len(text), result='ok',
             )
             return _result(True, True, DeliveryOutcome.SENT)
+        if explicit_type:
+            recovery.fail("Typing failed. Draft kept; clipboard unchanged.")
+            return _result(False, False)
         logger.warning(
             "[TYPE] Typed injection failed; falling back to clipboard paste"
         )
@@ -313,7 +324,7 @@ def paste_preserving_clipboard(
         paste_delay=CLIPBOARD_PASTE_DELAY,
         restore_delay=delay,
         before_paste=_capture_target_before_paste,
-        incomplete_snapshot_fallback=None if clipboard_only else _typed_fallback_without_clipboard,
+        incomplete_snapshot_fallback=None if clipboard_only or (attempt is not None and attempt.mode == 'paste') else _typed_fallback_without_clipboard,
         delivery_observer=lambda outcome: receipt.update(outcome=outcome),
     )
     outcome = receipt["outcome"]

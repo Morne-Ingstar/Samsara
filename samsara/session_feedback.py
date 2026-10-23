@@ -23,6 +23,7 @@ CHIP_TTL_MS = 1800
 _CHIP_TTL_OVERRIDES = {
     "dictate_committed": 900,
     "dictate_injected": 900,
+    "dictate_clipboard_choice": None,
     # A miss or a suggested correction must remain long enough to read.
     "command_miss": 4000,
     "command_suggestion_pending": 8000,
@@ -303,10 +304,14 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if detail.get('saved_to_history'):
         label, severity = outcome_chip(kind, {k: v for k, v in detail.items() if k != 'saved_to_history'})
         return (f'{label} - saved to History', severity)
+    if kind == "dictate_clipboard_choice":
+        return (detail.get("reason", "Clipboard has a large image Samsara can't put back."), "warning")
     if kind == "dictate_commit_failed":
         detail = detail or {}
-        reason = _reason(kind, detail) if detail.get("reason") or detail.get("error") \
-            else "Paste blocked - clipboard held by another app"
+        reason = (_reason(kind, detail) if detail.get("error") or detail.get("reason")
+                  else "Text wasn't inserted. Draft kept.")
+        if detail.get("clipboard_reason"):
+            reason = detail.get("error") or detail.get("reason") or reason
         return (f"{CHIP_CROSS} {reason}", "error")
 
     if kind in ("ava_entry_failed", "hands_free_command_failed",
@@ -317,6 +322,8 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return (text, "error")
 
     if kind in ("dictate_commit_blocked_focus_lock", "dictate_suppressed_focus_lock"):
+        if detail.get("clipboard_image_removed"):
+            return ("Image removed from clipboard. Focus changed; draft kept.", "error")
         return ("refused: focus lock", "warning")
     if kind == "dictate_blocked_elevated":
         # Queue 50: the window runs as administrator; Windows would drop the
@@ -379,6 +386,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return ("nothing to take back", "warning")
 
     if kind in ("dictate_committed", "dictate_injected"):
+        if detail.get('clipboard_image_removed'):
+            sent = 'Sent, unconfirmed.' if detail.get('delivery_unverified') else 'Text inserted.'
+            return (f"{sent} Image removed from clipboard.", 'warning')
         if detail.get('copied_to_clipboard'):
             return ('copied to clipboard', 'success')
         if detail.get('empty') and detail.get('immediate'):
