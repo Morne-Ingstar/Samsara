@@ -66,7 +66,8 @@ def test_highlighted_example_copies_exact_json_without_markup(field):
 def test_private_previews_are_masked_and_copy_real_command(panel):
     controls, state, clipboard, timers = panel
     blocks = controls.findChildren(snippet.CodeSnippet)
-    assert len(blocks) == 7
+    # 786: Hermes has a profile token block and an MCP configuration block.
+    assert len(blocks) == 9
     assert controls.command_preview.preview.textInteractionFlags() == Qt.TextInteractionFlag.NoTextInteraction
     assert all(state.token not in block.text() for block in blocks)
     controls.code_copy.click()

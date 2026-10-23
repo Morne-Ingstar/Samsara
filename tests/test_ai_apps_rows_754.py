@@ -24,8 +24,9 @@ def test_ai_app_settings_rows_keep_controls_with_titles_and_dividers(qapp, monke
     qapp.processEvents()
 
     rows = panel.findChildren(SettingRow)
-    assert [row.title for row in rows] == ["Let AI apps use Samsara", "Spoken replies"]
-    assert panel.status.text() == ""
+    # 786: capabilities follow connection setup and typing uses shared rows too.
+    assert [row.title for row in rows] == ["Let AI apps use Samsara", "Spoken replies", "Typing", "How I approve typing"]
+    assert panel.status.text() == "Connection is off."
     page_divider = panel.findChild(QWidget, "settingsPageDivider")
     assert page_divider is not None
     assert page_divider.findChild(QWidget, "settingsPageHairline").height() == 1
@@ -40,7 +41,8 @@ def test_ai_app_settings_rows_keep_controls_with_titles_and_dividers(qapp, monke
 
     dividers = RowDividers(panel.layout())
     qapp.processEvents()
-    assert dividers.groups == [[panel.enable_row, panel.digest_row]]
+    # 786: the setup and guide separate the connection/reply rows.
+    assert dividers.groups == [[panel.enable_row], [panel.digest_row], [panel.typing_row, panel.approval_row]]
     assert len(dividers.dividers) == 1
     hairline = dividers.dividers[0][3]
     assert hairline.objectName() == "settingsRowHairline" and hairline.height() == 1

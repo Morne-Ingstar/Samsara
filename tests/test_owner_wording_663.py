@@ -34,9 +34,10 @@ def plain_labels(widget):
 
 def test_setup_instructions_keep_actions_and_setting_links(controls):
     labels = plain_labels(controls)
+    # 786: ordered setup copy replaces repeated introductions and inline links.
     for text in (
-        'Sign in to the app you choose below.',
-        'Keep Samsara open and turn on Let AI apps use Samsara.',
+        "Connect Claude Code, Claude Desktop or Hermes to use Samsara's spoken replies and optional typing.",
+        'Keep Samsara open while using a connected app.',
         '3. After signing in, open a new PowerShell window.',
         'Select Copy beside the connection command below. Right-click in PowerShell '
         'to paste it, then press Enter. This connection works across your Claude Code projects.',
@@ -45,15 +46,15 @@ def test_setup_instructions_keep_actions_and_setting_links(controls):
         "If you connected Samsara for one project before, open PowerShell in that project's folder and run this command first.",
         'After choosing New token, quit and reopen Claude Desktop.',
         '3. Quit and reopen Claude Desktop to load the connection. Keep Samsara open.',
-        'Samsara asks before typing. Say yes after it finishes asking.',
+        'Let AI apps type for me. Samsara asks before typing; say yes after it finishes asking.',
     ):
         assert text in labels
     assert '--scope user' in agents_section.claude_code_command(
         'http://127.0.0.1:47832/mcp\nAuthorization: Bearer ' + 'x' * 48)
     links = [label.text() for label in controls.findChildren(QLabel) if '<a ' in label.text()]
-    assert any('href="agents"' in text for text in links)
-    assert sum('href="agent_token"' in text for text in links) == 2
-    assert all('text-decoration: none' in text for text in links)
+    assert links == []
+    assert controls.command_key_button.text() == 'Command key settings'
+    assert controls.rotate.text() == 'New token'
 
 
 def test_ready_means_server_ready_and_approval_waits_for_question(controls):
@@ -62,8 +63,9 @@ def test_ready_means_server_ready_and_approval_waits_for_question(controls):
     assert controls.approval_style.itemData(0) is False
     assert controls.approval_style.itemText(1) == 'Hold the Command key and say yes'
     assert controls.approval_style.itemData(1) is True
-    assert plain_labels(controls.illustration) == [
-        '', 'Open Start', '', 'Open PowerShell', '', 'Paste, then press Enter']
+    # 786: readable numbered instructions replace the tiny thumbnails.
+    assert not controls.findChildren(agents_section.SetupIllustration)
+    assert any(text.startswith('1. Open Start, type PowerShell') for text in plain_labels(controls))
 
 
 @pytest.mark.parametrize('pending, expected', (

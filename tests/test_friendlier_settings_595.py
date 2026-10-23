@@ -97,23 +97,23 @@ def test_links_land_on_named_lazy_row_without_changing_value(window, qapp):
     window._select_tool('Command library')
     controls = window._tool_pages['Command library'].findChild(agents_section.AgentsControls)
     before = controls.enabled.isChecked()
-    link = next(label for label in controls.findChildren(QLabel) if 'href="agents"' in label.text())
-    link.linkActivated.emit('agents')
+    # 786: connection is directly visible; retain the lazy navigation contract.
+    window.focus_setting('agents')
     qapp.processEvents()
     assert QApplication.focusWidget() is controls.enabled
     assert controls.enabled.isChecked() is before
     assert controls.enabled.visibleRegion().boundingRect().height() > 0
     assert not window._widgets['_pack_scroll'].isAncestorOf(controls)
     assert 'Shortcuts' not in set(window._pages)
-    key_link = next(label for label in controls.findChildren(QLabel) if 'href="command_hotkey"' in label.text())
-    key_link.linkActivated.emit('command_hotkey')
+    # 786: command-key navigation is an ordinary button instead of inline text.
+    controls.command_key_button.click()
     qapp.processEvents()
     row = window._rows_by_widget['command_hotkey']
     assert window._stack.currentWidget() is window._pages['Shortcuts']
     assert row.title == 'Command-only key'
     assert QApplication.focusWidget() is window._widgets['command_hotkey']
     assert row.visibleRegion().boundingRect().height() > 0
-    assert 'text-decoration: none' in key_link.text()
+    assert not any('<a ' in label.text() for label in controls.findChildren(QLabel))
 
 
 def test_selected_route_only_is_visible_and_accessible(window, qapp):

@@ -144,7 +144,9 @@ def test_unavailable_preview_does_not_ask_to_enable_again(panel):
     state.status = 'off'
     controls.refresh()
     assert 'Turn on ' in controls.connection_hint.text()
-    assert '>Let AI apps use Samsara</a>' in controls.connection_hint.text()
+    # 786: setting references are plain text; no inline teal links.
+    assert 'Let AI apps use Samsara' in controls.connection_hint.text()
+    assert '<a ' not in controls.connection_hint.text()
     assert controls.command_preview.text() == ''
 
 
