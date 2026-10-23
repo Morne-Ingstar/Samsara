@@ -43,6 +43,29 @@ from samsara.ui.settings.calm_layout import ScrollEdges
 logger = get_logger(__name__)
 
 
+class _ExampleDetailCard(CommandDetailCard):
+    """Add spoken help at the reference's detail-card seam (774)."""
+
+    def open(self, command, origin, anchor):
+        command = dict(command)
+        command['aliases'] = command_catalog.display_aliases(
+            command, limit=len(command.get('aliases', ())))
+        examples = command.get('examples', ())
+        precondition = command.get('precondition', '')
+        if precondition:
+            command['description'] = '\n\n'.join(
+                part for part in (command.get('description', '').strip(), precondition) if part)
+        super().open(command, origin, anchor)
+        if examples:
+            self.labels[3].setText('Say it like this:\n' + '\n'.join(examples))
+        elif precondition:
+            self.labels[3].hide()
+        description = '\n'.join(label.text() for label in self.labels if not label.isHidden())
+        self.setAccessibleDescription(description)
+        self.run_button.setAccessibleDescription(description)
+        self.place(anchor)
+
+
 def _migrate_palette_state(legacy_path: Path, target_path: Path) -> None:
     """Move the former cwd state file into the per-user app directory once."""
     marker = target_path.parent / ".command-palette-migrated"
@@ -887,7 +910,7 @@ class _CheatSheetWindow(QMainWindow):
             f'text-align:left;padding:0;min-height:{theme.HIT_TARGET_MIN}px;max-height:{theme.HIT_TARGET_MIN}px;'
             f'font-size:{theme.TYPE_BODY}px;font-weight:600;}}'
             f'QPushButton:hover{{background:{theme.BG2};color:{theme.TEXT_PRIMARY};}}')
-        self._detail_card = CommandDetailCard(self, inner)
+        self._detail_card = _ExampleDetailCard(self, inner)
         self.refresh_commands()
 
     # ----------------------------------------------------------------

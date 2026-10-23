@@ -92,6 +92,8 @@ CATALOG_SCHEMA = {
                     },
                     "aliases": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
                     "description": {"type": "string", "minLength": 1},
+                    "examples": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                    "precondition": {"type": "string"},
                     "risk": {"type": "string", "enum": list(RISKS)},
                     "undoable": {"type": "boolean"},
                     "source": {"type": "string", "minLength": 1},
@@ -139,6 +141,8 @@ class CommandSpec:
     pack: str = "core"
     kind: str = "plugin"
     scope: Optional[dict] = None
+    examples: list = field(default_factory=list)
+    precondition: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -402,8 +406,8 @@ _ARG_HINTS = {
     "window unmute": [("label", "nato_letter", True)],
     "window copy": [("label", "nato_letter", True)],
     "window tile": [("labels", "nato_letter", True)],
-    "cube copy": [("label", "nato_letter", True)],
-    "cube tile": [("labels", "nato_letter", True)],
+    "cube copy": [("numbers", "int", True)],
+    "cube tile": [("numbers", "int", True)],
     "cube page": [("page", "int", False)],
     "play music": [("playlist", "playlist", False)],
     "set volume": [("level", "int", True)],
@@ -415,6 +419,135 @@ _ARG_HINTS = {
 _SCHEMA_TYPE = {"int": "int", "integer": "int", "float": "int", "str": "text", "string": "text",
                 "bool": "text", "nato_letter": "nato_letter", "app_name": "app_name", "monitor": "monitor",
                 "side": "side", "playlist": "playlist", "text": "text"}
+
+# Spoken help is shared by the generated catalog and the packaged live view.
+# Examples name sample items; the precondition tells people what must exist.
+# Keep these explicit: synthesizing a suffix from an argument type produces
+# plausible sentences that a handler may not actually understand.
+_COMMAND_HELP = {
+    "disable alarm": (["disable alarm morning"], "Create an alarm named morning first."),
+    "enable alarm": (["enable alarm morning"], "Create an alarm named morning first."),
+    "close": (["close firefox"], "Firefox must be running. It may ask you to save your work."),
+    "desk": (["desk two"], "Create desktop 2 in Windows Task View first."),
+    "focus": (["focus firefox"], "Firefox must be running."),
+    "open": (["open thunderbird"], "Thunderbird must be installed and known to Samsara."),
+    "ask gpt": (["ask gpt explain how rainbows form"], "Set up the GPT agent and sign in first."),
+    "ask hermes": (["ask hermes explain how rainbows form"], "Set up your Hermes connection first."),
+    "new conversation with": (["new conversation with gpt", "new conversation with claude"], "Set up the agent you name first."),
+    "new hermes session": (["new hermes session with high effort"], "Set up your Hermes connection first."),
+    "hey ava": (["hey ava explain how rainbows form"], "Enable Ava and set up an AI provider first."),
+    "is it safe to": (["is it safe to unplug a running computer"], "Enable Ava and set up an AI provider first."),
+    "switch audio to": (["switch audio to headset"], "Connect a sound output whose name or saved alias contains headset."),
+    "switch mic to": (["switch mic to headset"], "Connect a microphone whose name or saved alias contains headset."),
+    "choose control": (["choose control two"], "First request a control by name and wait for numbered matches."),
+    "collapse": (["collapse downloads"], "The focused window must contain an expandable control named Downloads."),
+    "expand": (["expand downloads"], "The focused window must contain an expandable control named Downloads."),
+    "focus control": (["focus control search"], "The focused window must contain a control named Search."),
+    "toggle": (["toggle word wrap"], "The focused window must contain a toggle named Word wrap."),
+    "make an image of": (["make an image of a red fox in the snow"], "Set up ComfyUI first."),
+    "make it again but": (["make it again but with a blue sky"], "Make an image first. Your change is added to its description."),
+    "save alias": (["save alias", "remove alias my window list"], "Save only after an alias offer. To remove one, say remove alias and its exact wording."),
+    "what can i say": (["what can i say search window"], "Searches the command reference for window."),
+    "start print": (["start print benchy"], "Set up your Flashforge printer and upload benchy.gcode first. Confirmation is required."),
+    "search for a gif of": (["search for a gif of a dancing cat"], "Opens Giphy in your browser."),
+    "health summary": (["health summary this week", "health summary this month"], "Uses entries you have logged in Samsara."),
+    "pain level": (["pain level six knees", "pain level three"], "Saves a reading in your health log. The level is from 1 to 10."),
+    "symptom": (["symptom my knees feel stiff"], "Saves your words in your health log."),
+    "took": (["took ibuprofen 400mg"], "Records what you took in your health log."),
+    "light effect": (["light effect rainbow"], "Set up Hyperion and an effect named rainbow first."),
+    "lights": (["lights blue"], "Set up your Hyperion lights first."),
+    "message chat gpt": (["message chatgpt explain how rainbows form"], "Open the ChatGPT desktop app. Samsara asks before sending."),
+    "claude message prepare": (["message claude explain how rainbows form"], "Open the Claude desktop app. Samsara asks before sending."),
+    "chatgpt message submit": (["yes"], "Only after Samsara asks whether to send your prepared ChatGPT message."),
+    "claude message submit": (["yes"], "Only after Samsara asks whether to send your prepared Claude message."),
+    "read code block": (["read code block two"], "A recent agent reply must contain a second code block. Copies that block to the clipboard."),
+    "read section": (["read section 2"], "A recent agent reply must contain a second section. The transcript must contain the digit 2."),
+    "read the": (["read the installation"], "A recent agent reply must have a heading containing installation."),
+    "read the code": (["read the code"], "A recent agent reply must contain code. Copies the first code block to the clipboard."),
+    "play": (["play Nick Cave"], "Set up Spotify and include the artist in your Music library."),
+    "play album": (["play album Abbey Road"], "Add Abbey Road to your Music library and set up Spotify first."),
+    "play artist": (["play artist Nick Cave"], "Add Nick Cave to your Music library and set up Spotify first."),
+    "play music": (["play music Nick Cave"], "Add Nick Cave to your Music library and set up Spotify first."),
+    "play playlist": (["play playlist Favourites"], "Add a playlist named Favourites to your Music library and set up Spotify first."),
+    "ask": (["ask explain how rainbows form"], "Set up the browser AI shortcut first."),
+    "cancel reminder": (["cancel reminder two", "cancel reminder stretch"], "List your reminders first; use a reminder's number or name. Confirmation may be required."),
+    "remind me to": (["remind me to stretch at two pm", "remind me to stretch every thirty minutes"], "The reminder service must be available."),
+    "record my screen": (["record my screen for five seconds"], "Records your whole screen as a GIF after confirmation."),
+    "record this window": (["record this window for five seconds"], "Focus the window you want to record. Confirmation is required."),
+    "click": (["click seven", "click save"], "Say show numbers first for numbered labels. For a name, keep that control visible. A number refines an active mouse grid."),
+    "double click": (["double click seven"], "Say show numbers first and keep label 7 visible."),
+    "left click": (["left click seven"], "Say show numbers first and keep label 7 visible."),
+    "right click": (["right click seven"], "Say show numbers first and keep label 7 visible."),
+    "mouse grid": (["mouse grid window", "mouse grid five three eight click"], "The first example covers the focused window. The second refines cells 5, 3, then 8 and clicks."),
+    "brain dump": (["brain dump buy groceries on Saturday"], "Set up a note destination in Smart Actions first."),
+    "note": (["note buy groceries on Saturday"], "Set up a note destination in Smart Actions first."),
+    "insert": (["insert sign off"], "Save a snippet named sign off first, then focus where its text should go."),
+    "save snippet": (["save snippet sign off"], "Dictate and deliver the text first. This saves that last dictation under the name sign off."),
+    "find tab": (["find tab github"], "Open a supported browser with a tab whose title contains github."),
+    "find text": (["find text installation"], "Focus the page or document to search. Opens its Find box and types installation."),
+    "tab number": (["tab number two"], "Focus a browser with at least two tabs. Numbers 1 through 9 are supported; 9 selects the last tab."),
+    "add to list": (["add to list buy groceries"], "Adds an item to your task list."),
+    "complete task": (["complete task two"], "Show your task list first and use a number from the active list."),
+    "remove task": (["remove task two"], "Show your task list first. Deletes that active task after confirmation."),
+    "set a timer": (["set a timer for five minutes", "set a timer for two minutes thirty seconds"], "Starts a countdown; Samsara alerts you when it ends."),
+    "set volume": (["set volume fifty", "set volume 25"], "Sets Windows sound volume as a percentage from 0 to 100."),
+    "go to": (["go to example dot com"], "Opens the website in your browser."),
+    "search for": (["search for easy bread recipes"], "Opens a Google search in your browser."),
+    "choose": (["choose three"], "First say list all windows or show window cube. Use a number from that list."),
+    "cube copy": (["cube copy two into four", "cube copy 2 into 4"], "First say show window cube. Select the source text in window 2 and put the caret in window 4. Copies the selection from 2 into 4."),
+    "cube page": (["cube page two", "cube page"], "First say show window cube. Name an existing page, or say cube page alone for the next page."),
+    "cube tile": (["cube tile 3 and 4", "cube tile three and four", "cube tile two and three and four"], "First say show window cube. Use the numbers on the window cards. Places those windows side by side on the screen containing your pointer."),
+    "window bring": (["window bring bravo"], "First say show windows. Use a letter from that list. Brings that window to the front."),
+    "window close": (["window close bravo"], "First say show windows. Use a letter from that list. The app may ask you to save."),
+    "window copy": (["window copy alpha into bravo"], "First say show windows. Select text in A and put the caret in B. Copies the selection from A into B."),
+    "window move": (["window move bravo to monitor two"], "First say show windows. Use a letter from that list and an existing monitor number."),
+    "window mute": (["window mute bravo"], "First say show windows. Use a letter from that list."),
+    "window switch": (["window switch bravo"], "First say show windows. Use a letter from that list."),
+    "window tile": (["window tile alpha and bravo"], "First say show windows. Use letters from that list. Places those windows side by side on the screen containing your pointer."),
+    "window unmute": (["window unmute bravo"], "First say show windows. Use a letter from that list."),
+    "bring": (["bring firefox here"], "Firefox must be running. Moves it to the screen containing your pointer."),
+    "cursor to": (["cursor to monitor two"], "Connect a second monitor first. Monitor numbers run from left to right."),
+    "delete layout": (["delete layout writing"], "Save a layout named writing first. Confirmation may be required."),
+    "find window": (["find window firefox"], "Firefox must be running. Reports matching window positions in the log."),
+    "restore layout": (["restore layout writing"], "Save a layout named writing first and keep its apps open."),
+    "save layout": (["save layout writing"], "Arrange your windows first. Saves their positions as writing."),
+    "send": (["send firefox to monitor two", "send to monitor two"], "Connect a second monitor first. Name a running app, or omit the app to move the focused window."),
+    "snap": (["snap firefox top left"], "Firefox must be running. Places its window in the top-left quarter of its screen."),
+    "font size": (["font size twelve"], "Focus Microsoft Word and select the text to change. Sizes 6 through 72 are supported."),
+    "line spacing": (["line spacing two"], "Focus Microsoft Word and select the paragraphs to change. Use 1, 1.5, or 2."),
+    "set font": (["set font Arial"], "Focus Microsoft Word and select the text to change. The font must be installed."),
+}
+
+# These handlers inspect/forward the tail only to reject or ignore it. They
+# do not have spoken arguments despite the old source-text heuristic.
+_NO_ARGUMENT_PHRASES = frozenset({
+    "hands free", "move preview to this screen", "reset floating windows",
+    "refresh cube", "refresh numbers",
+})
+
+# Grammar/policy identities, not voice commands. Never invent spoken tokens
+# for the controller's private subject reference.
+_INTERNAL_HELP = {
+    "interact " + verb: "Used by Interact after you select a window; this is not a spoken command."
+    for verb in ("close", "focus", "maximize", "minimize", "move", "snap")
+}
+
+# Compatibility aliases remain matchable, but are misleading as instructions.
+_HIDDEN_HELP_ALIASES = frozenset({"cube tile and", "cube copy into"})
+
+# These older summaries contradict the handlers inspected for this inventory.
+_DESCRIPTION_OVERRIDES = {
+    "find text": "Opens Find in the focused page or document and enters your search words.",
+    "find window": "Reports where matching app windows are positioned.",
+    "window bring": "Brings the lettered window you name to the front.",
+    "play music": "Plays the item you name from your Music library on Spotify.",
+}
+
+
+def spoken_help(phrase: str) -> tuple[list, str]:
+    phrase = normalize_phrase(phrase)
+    examples, precondition = _COMMAND_HELP.get(phrase, ((), _INTERNAL_HELP.get(phrase, "")))
+    return list(examples), precondition
 
 
 def _handler_reads_remainder(func) -> bool:
@@ -439,9 +572,15 @@ def infer_args(kind: str, phrase: str, param_schema: Optional[dict], func) -> li
     if kind == "builtin":
         return []
     norm = normalize_phrase(phrase)
+    if norm in _NO_ARGUMENT_PHRASES:
+        return []
     if norm in _ARG_HINTS:
         return [ArgSpec(n, t, r) for n, t, r in _ARG_HINTS[norm]]
     if func is not None and _handler_reads_remainder(func):
+        return [ArgSpec("text", "text", False)]
+    if norm in _COMMAND_HELP:
+        # Packaged builds cannot inspect handler source. The reviewed help
+        # table also identifies the handlers that consume a spoken suffix.
         return [ArgSpec("text", "text", False)]
     return []
 
@@ -570,7 +709,7 @@ def build_catalog(executor=None) -> list:
             declared = None
         risk = classify_risk(kind, phrase, declared, data)
         description = _first_sentence(getattr(func, "__doc__", None)) if func is not None else ""
-        description = description or _first_sentence(entry.description) or phrase
+        description = _DESCRIPTION_OVERRIDES.get(phrase) or description or _first_sentence(entry.description) or phrase
         if kind == "builtin":
             source = f"commands.json:{builtin_lines.get(entry.phrase, 0)}"
         else:
@@ -588,6 +727,7 @@ def build_catalog(executor=None) -> list:
             undoable=guess_undoable(risk, phrase), source=source,
             whole_utterance=phrase in reserved, pack=entry.pack or "core", kind=kind,
             scope=entry.scope.to_json() if getattr(entry, "scope", None) is not None else None,
+            examples=spoken_help(phrase)[0], precondition=spoken_help(phrase)[1],
         ))
     specs.sort(key=lambda s: s.canonical_id)
     return specs
@@ -690,6 +830,11 @@ def validate_catalog(doc: dict) -> list:
             problems.append(f"{c['canonical_id']}: no alias")
         if not c["description"]:
             problems.append(f"{c['canonical_id']}: empty description")
+        examples = c.get("examples", [])
+        if not isinstance(examples, list) or any(not isinstance(e, str) or not e.strip() for e in examples):
+            problems.append(f"{c['canonical_id']}: examples must be nonempty spoken strings")
+        if not isinstance(c.get("precondition", ""), str):
+            problems.append(f"{c['canonical_id']}: precondition must be a string")
         for a in c["args"]:
             if a.get("type") not in ARG_TYPES:
                 problems.append(f"{c['canonical_id']}: arg type {a.get('type')!r}")
@@ -794,12 +939,14 @@ def catalog_from_registry_rows(rows, builtin_commands: Optional[dict] = None,
             # Declared param_schema, else the phrase hints; the remainder-in-
             # handler-body inference needs source text and is skipped here.
             "args": [asdict(a) for a in infer_args(kind, phrase, row.get("param_schema") or None, None)],
-            "description": _first_sentence(row.get("description")) or canonical,
+            "description": _DESCRIPTION_OVERRIDES.get(canonical) or _first_sentence(row.get("description")) or canonical,
             "risk": classify_risk(kind, phrase, declared, data),
             "whole_utterance": canonical in reserved,
             "pack": row.get("pack") or "core",
             "kind": kind,
             "scope": row.get("scope") or None,
+            "examples": spoken_help(canonical)[0],
+            "precondition": spoken_help(canonical)[1],
         })
     records.sort(key=lambda r: r["canonical_id"])
     return records
@@ -864,7 +1011,8 @@ def canonical_phrase(record: dict) -> str:
 def display_aliases(record: dict, limit: int = 3) -> list:
     """Up to `limit` other phrases for a record, shortest first."""
     canonical = canonical_phrase(record)
-    others = [a for a in record.get("aliases", []) if a != canonical]
+    others = [a for a in record.get("aliases", [])
+              if a != canonical and a not in _HIDDEN_HELP_ALIASES]
     personal = {alias for alias, target in load_user_aliases().items() if target == canonical}
     return [
         f"{alias} (yours)" if alias in personal else alias
@@ -1057,6 +1205,7 @@ def render_markdown(specs: list) -> str:
         f"{len(specs)} commands, {n_alias} phrases, {len(by_plugin)} sources.",
         "",
         "Columns: canonical id; every phrase the registry maps to it; args as name:type (* = required); "
+        "spoken examples and prerequisites; "
         "risk (read / ui / write / destructive); undoable; whole-utterance control word (session_modes); source. "
         "A scoped command's description ends with when it is live (samsara.command_scope); every other command "
         "is live everywhere.",
@@ -1065,8 +1214,8 @@ def render_markdown(specs: list) -> str:
     for plugin in sorted(by_plugin):
         group = by_plugin[plugin]
         lines += [f"## {plugin} ({len(group)})", "",
-                  "| canonical id | phrases | args | risk | undo | whole | description | source |",
-                  "|---|---|---|---|---|---|---|---|"]
+                  "| canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
         for s in group:
             args = ", ".join(f"{a.name}:{a.type}{'*' if a.required else ''}" for a in s.args) or "-"
             phrases = ", ".join(f"`{a}`" for a in sorted(set(s.aliases)))
@@ -1074,7 +1223,9 @@ def render_markdown(specs: list) -> str:
             if s.scope:
                 from samsara.command_scope import parse_scope  # noqa: PLC0415
                 desc += f" *(Live {parse_scope(s.scope).describe()}.)*".replace("|", "\\|")
-            lines.append(f"| `{s.canonical_id}` | {phrases} | {args} | {s.risk} | {'yes' if s.undoable else 'no'} | "
+            examples = "<br>".join(f"`{e}`" for e in s.examples).replace("|", "\\|") or "-"
+            precondition = s.precondition.replace("|", "\\|") or "-"
+            lines.append(f"| `{s.canonical_id}` | {phrases} | {args} | {examples} | {precondition} | {s.risk} | {'yes' if s.undoable else 'no'} | "
                          f"{'yes' if s.whole_utterance else ''} | {desc} | `{s.source}` |")
         lines.append("")
     return "\n".join(lines)
