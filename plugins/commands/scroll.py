@@ -1,10 +1,11 @@
 """Mouse-wheel scroll plugin.
 
-Sends WM_MOUSEWHEEL via SendInput at the current cursor position.
+Sends wheel input over the foreground app by default.
 Works universally — browsers, Electron apps, Discord, editors — unlike
 PageUp/PageDown which many apps intercept or ignore.
 
 Config (optional, under config["scroll"]):
+  target_foreground   : True -- move to the foreground app when needed
   slow_clicks         : 3   -- "a little" scroll
   default_clicks      : 8   -- plain "scroll up/down"
   medium_clicks       : 15
@@ -18,6 +19,7 @@ import ctypes
 import ctypes.wintypes as wintypes
 
 from samsara.plugin_commands import command
+from samsara.scroll_target import prepare_scroll_target
 
 # ── Win32 constants ───────────────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ class INPUT(ctypes.Structure):
 
 # ── Core scroll helper ────────────────────────────────────────────────────────
 
-def _scroll(clicks: int, up: bool) -> bool:
+def _scroll(clicks: int, up: bool, app=None) -> bool:
     """Send a wheel event of `clicks` detents at the current cursor position.
 
     Args:
@@ -85,6 +87,8 @@ def _scroll(clicks: int, up: bool) -> bool:
     Returns:
         True if SendInput reported at least one event sent.
     """
+    if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {}):
+        return False
     delta = clicks * WHEEL_DELTA * (1 if up else -1)
 
     inp = INPUT()
@@ -109,66 +113,68 @@ def _clicks(app, key: str, default: int) -> int:
 
 @command("scroll up a little", pack="core", risk_class="ui")
 def scroll_up_slow(app, remainder):
-    """Scrolls up a few lines wherever the pointer is."""
-    return _scroll(_clicks(app, "slow_clicks", 3), up=True)
+    """Scrolls up a few lines in the app you are using."""
+    return _scroll(_clicks(app, "slow_clicks", 3), up=True, app=app)
 
 
 @command("scroll down a little", pack="core", risk_class="ui")
 def scroll_down_slow(app, remainder):
-    """Scrolls down a few lines wherever the pointer is."""
-    return _scroll(_clicks(app, "slow_clicks", 3), up=False)
+    """Scrolls down a few lines in the app you are using."""
+    return _scroll(_clicks(app, "slow_clicks", 3), up=False, app=app)
 
 
 @command("scroll up", pack="core", risk_class="ui")
 def scroll_up(app, remainder):
-    """Scrolls up a page's worth wherever the pointer is."""
-    return _scroll(_clicks(app, "default_clicks", 8), up=True)
+    """Scrolls up a page's worth in the app you are using."""
+    return _scroll(_clicks(app, "default_clicks", 8), up=True, app=app)
 
 
 @command("scroll down", pack="core", risk_class="ui")
 def scroll_down(app, remainder):
-    """Scrolls down a page's worth wherever the pointer is."""
-    return _scroll(_clicks(app, "default_clicks", 8), up=False)
+    """Scrolls down a page's worth in the app you are using."""
+    return _scroll(_clicks(app, "default_clicks", 8), up=False, app=app)
 
 
 @command("scroll up medium", pack="core", risk_class="ui")
 def scroll_up_medium(app, remainder):
     """Scrolls up about twice as far as plain scroll up."""
-    return _scroll(_clicks(app, "medium_clicks", 15), up=True)
+    return _scroll(_clicks(app, "medium_clicks", 15), up=True, app=app)
 
 
 @command("scroll down medium", pack="core", risk_class="ui")
 def scroll_down_medium(app, remainder):
     """Scrolls down about twice as far as plain scroll down."""
-    return _scroll(_clicks(app, "medium_clicks", 15), up=False)
+    return _scroll(_clicks(app, "medium_clicks", 15), up=False, app=app)
 
 
 @command("scroll up high", pack="core", risk_class="ui")
 def scroll_up_high(app, remainder):
     """Scrolls a long way up, for skimming back through a page."""
-    return _scroll(_clicks(app, "medium_high_clicks", 25), up=True)
+    return _scroll(_clicks(app, "medium_high_clicks", 25), up=True, app=app)
 
 
 @command("scroll down high", pack="core", risk_class="ui")
 def scroll_down_high(app, remainder):
     """Scrolls a long way down, for skimming forward through a page."""
-    return _scroll(_clicks(app, "medium_high_clicks", 25), up=False)
+    return _scroll(_clicks(app, "medium_high_clicks", 25), up=False, app=app)
 
 
 @command("scroll up fast", pack="core", risk_class="ui")
 def scroll_up_fast(app, remainder):
     """Scrolls up as far as one command goes, for very long pages."""
-    return _scroll(_clicks(app, "fast_clicks", 40), up=True)
+    return _scroll(_clicks(app, "fast_clicks", 40), up=True, app=app)
 
 
 @command("scroll down fast", pack="core", risk_class="ui")
 def scroll_down_fast(app, remainder):
     """Scrolls down as far as one command goes, for very long pages."""
-    return _scroll(_clicks(app, "fast_clicks", 40), up=False)
+    return _scroll(_clicks(app, "fast_clicks", 40), up=False, app=app)
 
 
-def _hscroll(clicks: int, right: bool) -> bool:
+def _hscroll(clicks: int, right: bool, app=None) -> bool:
     """Send a horizontal wheel event at the current cursor position."""
+    if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {}):
+        return False
     delta = clicks * WHEEL_DELTA * (1 if right else -1)
 
     inp = INPUT()
@@ -255,7 +261,7 @@ def page_down(app, remainder):
 )
 def scroll_left(app, remainder):
     """Scrolls sideways to the left, for wide tables and timelines."""
-    return _hscroll(_clicks(app, "slow_clicks", 3), right=False)
+    return _hscroll(_clicks(app, "slow_clicks", 3), right=False, app=app)
 
 
 @command(
@@ -266,4 +272,4 @@ def scroll_left(app, remainder):
 )
 def scroll_right(app, remainder):
     """Scrolls sideways to the right, for wide tables and timelines."""
-    return _hscroll(_clicks(app, "slow_clicks", 3), right=True)
+    return _hscroll(_clicks(app, "slow_clicks", 3), right=True, app=app)

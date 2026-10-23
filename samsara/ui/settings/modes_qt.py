@@ -555,6 +555,17 @@ class ModesPage:
             width=260,
         )
 
+        scroll_target_cb = QCheckBox()
+        scroll_target_cb.setChecked(bool(cfg.get('scroll', {}).get('target_foreground', True)))
+        self._widgets['scroll_target_foreground'] = scroll_target_cb
+        _add_row(
+            hands_free_layout,
+            "Scroll the app you're using, not the one under the mouse",
+            "Move the pointer into the active app before voice scrolling when needed.",
+            scroll_target_cb,
+            width=44,
+        )
+
         wake_heading = QLabel("Wake activation")
         wake_heading.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600; margin-top: 4px;"
@@ -1157,6 +1168,11 @@ class ModesPage:
                 cmd_cfg['button'] = self._widgets['cmd_tab_button'].combo
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
+
+            if 'scroll_target_foreground' in self._widgets:
+                scroll_cfg = dict(self.app.config.get('scroll', {}) or {})
+                scroll_cfg['target_foreground'] = self._widgets['scroll_target_foreground'].isChecked()
+                updates['scroll'] = scroll_cfg
 
             if 'ava_cmd_backend' in self._widgets:
                 session_cfg = dict(self.app.config.get('ava_command_session', {}) or {})

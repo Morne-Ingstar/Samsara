@@ -192,7 +192,7 @@ def test_commands_key_matches_and_executes_regardless_of_dictation_setting(tmp_p
     assert record['registry_matches']>=1
     assert record['executions']==1
     assert spies.hand.call_args.args==(8,)
-    assert spies.hand.call_args.kwargs=={'up':False}
+    assert {k: v for k, v in spies.hand.call_args.kwargs.items() if k != 'app'}=={'up':False}  # 790 passes the app
     assert record['pastes']==[]
 
 

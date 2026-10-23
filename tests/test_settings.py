@@ -235,6 +235,7 @@ class TestSettingsWindowConstruction:
             'continuous_commit_trigger',
             'mode', 'wake_word_enabled', 'wake_word_config', 'command_mode',
             'ava_command_session', 'accessibility',
+            'scroll',  # 790: voice scroll follows the active app
         }
         assert set(produced.keys()) == expected_keys
 
@@ -695,6 +696,7 @@ class TestApplyAndCloseSnapshot:
         expected['ducking'].pop('enabled', None)
         expected['launch_at_login'] = False
         expected['start_hidden'] = False
+        expected['scroll'] = {'target_foreground': True}  # 790: new Shortcuts toggle, default on
         expected['tasks'] = {'todoist': {'enabled': False, 'api_token': ''}}        # 284: dead controls are deliberately not persisted.
         for key in ('pitch', 'use_for_agent_responses', 'use_for_confirmations',
                     'use_for_warnings', 'use_for_status_updates',
