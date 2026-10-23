@@ -6660,6 +6660,32 @@
     },
     {
       "aliases": [
+        "hands free",
+        "hands free mode",
+        "handsfree",
+        "start hands free"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "hands_free_voice.hands_free",
+      "description": "Starts hands-free dictation: talk in whole thoughts, say 'finish' to send.",
+      "kind": "plugin",
+      "object": "free",
+      "pack": "core",
+      "plugin": "hands_free_voice",
+      "risk": "ui",
+      "source": "plugins/commands/hands_free_voice.py:14",
+      "undoable": true,
+      "verb": "hands",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "clear health log",
         "delete health log",
         "reset health log",

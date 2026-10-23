@@ -2,6 +2,10 @@
 
 All notable changes to Samsara are documented here.
 
+## [Unreleased]
+
+- **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
+
 ## [0.30.0-beta.10] - 2026-10-23
 
 Spoken replies work again: Microsoft changed how its online voices sign in, and this update follows.

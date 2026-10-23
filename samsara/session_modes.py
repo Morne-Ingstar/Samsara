@@ -120,6 +120,12 @@ class SessionMode(Enum):
 # Switch-word matching: PREFIX-OR-WHOLE, normalized
 # ---------------------------------------------------------------------------
 
+HANDS_FREE_ENTRY_PHRASES = frozenset({
+    "hands free", "hands-free", "start hands free", "hands free mode",
+    "dictate mode", "dictation mode", "dictate",
+})
+
+
 _WHOLE_UTTERANCE_SWITCHES: dict[str, SessionMode] = {
     "command mode": SessionMode.COMMAND,
     "dictate mode": SessionMode.DICTATE,
@@ -2031,6 +2037,12 @@ class SessionModeManager(UtteranceUndoMixin):
                 # staged as prose, exactly as before this path existed.
                 log.info("[SESSION] trailing commit word refused by the commit gate for %r; "
                          "staging it as dictation", describe_text(text))
+        if (self.mode is SessionMode.DICTATE
+                and match_whole_utterance(text, HANDS_FREE_ENTRY_PHRASES)
+                and passes_switch_anti_hallucination_gate(signals)):
+            entry = self._dispatch_command("hands free", allow_suggestion=False)
+            if entry.kind != "command_miss":
+                return entry
         switch = None if (scratch or commit) else match_switch_word(text, current_mode=self.mode)
         if (switch is None and not (scratch or commit)
                 and match_ava_invocation(text, self._ava_invocations)):

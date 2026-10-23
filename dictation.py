@@ -9005,6 +9005,11 @@ class DictationApp(CommandFastPathMixin):
 
     def _process_wake_command(self, text):
         """Route a wake word command based on parsed intent (4-state machine)."""
+        from samsara.session_modes import HANDS_FREE_ENTRY_PHRASES, match_whole_utterance
+        if match_whole_utterance(text, HANDS_FREE_ENTRY_PHRASES):
+            from plugins.commands.hands_free_voice import handle_hands_free
+            handle_hands_free(self)
+            return
         # Transition to command_window while we parse
         old_state = self.app_state
         self.app_state = 'command_window'

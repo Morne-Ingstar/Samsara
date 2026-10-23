@@ -42,6 +42,7 @@ NOT_COMMAND_PHRASES = {
 }
 NON_SPOKEN_LABELS = {
     "command reference": "title of the command reference window",
+    "hands free": "mode NAME label in the quick reference (764 made it a phrase too)",
 }
 
 
