@@ -533,6 +533,47 @@ class TestAvaInTheHeader:
 # ---------------------------------------------------------------------------
 
 class TestProblemNotice:
+    @pytest.mark.parametrize("scale", [1.0, 1.5])
+    def test_problem_notice_uses_body_type_and_stays_compact(self, qapp, monkeypatch, scale):
+        _ready(None, home_signals.READY, monkeypatch=monkeypatch)
+        font = qapp.font()
+        old_size = font.pointSizeF()
+        font.setPointSizeF(old_size * scale)
+        qapp.setFont(font)
+        try:
+            win = _hub(qapp, app=_app(available_mics=[]))
+            home = win._panel_cache["Home"]
+            line_height = home._notice_text.fontMetrics().height()
+            assert home._notice_text.property("typeRole") == "note"
+            assert home._notice_text.height() <= 2 * line_height + 2
+            assert home._notice_card.height() <= (
+                2 * line_height + home._notice_btn.height() +
+                3 * home_qt.GRID + 4)
+        finally:
+            font.setPointSizeF(old_size)
+            qapp.setFont(font)
+            if "win" in locals():
+                win.close()
+
+    @pytest.mark.parametrize("scale", [1.0, 1.5])
+    def test_version_label_stays_inside_home(self, qapp, page, scale):
+        font = qapp.font()
+        old_size = font.pointSizeF()
+        font.setPointSizeF(old_size * scale)
+        qapp.setFont(font)
+        try:
+            home = page()
+            version = home.findChild(QWidget, "runningVersion")
+            assert version is not None
+            top_left = version.mapTo(home, version.rect().topLeft())
+            assert top_left.x() >= 0
+            assert top_left.x() + version.width() <= home.width()
+            assert top_left.y() >= 0
+            assert top_left.y() + version.height() <= home.height()
+        finally:
+            font.setPointSizeF(old_size)
+            qapp.setFont(font)
+
     def test_a_healthy_app_shows_no_notice_and_no_status_row(self, page, monkeypatch):
         _ready(None, home_signals.READY, monkeypatch=monkeypatch)
         home = page()
@@ -548,6 +589,9 @@ class TestProblemNotice:
         assert notice.text == (
             "Your selected device is unavailable. Choose another in Settings > "
             "General > Microphone. Dictation cannot hear you.")
+        assert home._notice_text.text() == (
+            "Mic unavailable. Choose another in Settings > General > "
+            "Microphone. Dictation unavailable.")
         assert home._notice_card.isVisibleTo(home)
 
     def test_ava_offline_does_not_declare_dictation_broken(self, page, monkeypatch):

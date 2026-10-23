@@ -63,6 +63,9 @@ from samsara.ui.command_cheatsheet_qt import UNAVAILABLE_TEXT
 # One wrapping row layout, shared with the History view that introduced it
 # (queue 79): controls wrap to the next line instead of clipping.
 from samsara.ui.history_view import _FlowLayout as FlowLayout
+from samsara.ui.home_notice_qt import (
+    build_problem_notice, build_version_row, refresh_problem_notice,
+)
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 
 logger = get_logger(__name__)
@@ -808,7 +811,8 @@ def catalog_records(app) -> Optional[list]:
 
 
 def matching_records(records, needle: str) -> list:
-    """The records the cheat sheet's text filter would show for `needle`."""
+    """The records the cheat sheet's text filter would show for
+eedle`."""
     needle = needle.strip().lower()
     out = []
     for r in records or []:
@@ -1667,25 +1671,25 @@ class HomePage(QWidget):
             f" border: none; max-height: 1px; min-height: 1px; }}"
             f"QScrollArea {{ border: none; background: transparent; }}"
         )
-        outer = QGridLayout(self)
+        outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         version = _label(f"v{__version__}", role="note", color=theme.TEXT_SECONDARY)
         version.setObjectName("runningVersion")
+        outer.addWidget(build_version_row(version, GRID))
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.viewport().installEventFilter(self)
-        outer.addWidget(self._scroll, 0, 0)
-        outer.addWidget(version, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        outer.addWidget(self._scroll, 1)
 
         host = QWidget()
         host.setStyleSheet("background: transparent;")
         host_lay = QHBoxLayout(host)
         # Keep horizontal gutters; save vertical room for the conditional slot.
-        host_lay.setContentsMargins(GRID, _px(8), GRID, _px(8))
+        host_lay.setContentsMargins(GRID, 0, GRID, 0)
         host_lay.setSpacing(0)
         self._content = _ContentColumn()
         self._content.setObjectName("homeContent")
@@ -1700,7 +1704,7 @@ class HomePage(QWidget):
         col = QVBoxLayout(self._content)
         col.setContentsMargins(0, 0, 0, 0)
         # Compact section gaps keep all three conditional slots above the fold.
-        col.setSpacing(_px(6))
+        col.setSpacing(_px(5))
 
         col.addWidget(self._build_title())
         col.addWidget(self._build_notice())
@@ -1759,30 +1763,11 @@ class HomePage(QWidget):
         self._tagline_box.setVisible(bool(text))
 
     def _build_notice(self) -> QWidget:
-        """Shown ONLY for a known fault on an enabled capability. It states
-        the consequence, offers the route to help, and never replaces the
-        page or moves focus."""
-        card = _card()
-        card.setObjectName("homeNotice")
-        card.setAccessibleName(PROBLEM_NOTICE)
-        lay = QHBoxLayout(card)
-        lay.setContentsMargins(GRID, GRID, GRID, GRID)
-        lay.setSpacing(GRID)
-        self._notice_text = _label("", role="state line", color=theme.WARNING, wrap=True)
-        self._notice_text.setAccessibleName("Problem")
-        # Ignored horizontally: the sentence wraps to whatever width is left
-        # instead of demanding its unwrapped width and widening the page.
-        self._notice_text.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        lay.addWidget(self._notice_text, stretch=1)
-        # The notice's ONE action. Voice help by default; a fault that has a
-        # repair of its own names it instead (queue 109) -- the only one so
-        # far is a stopped wake listener, whose repair is a restart. Same
-        # button, same place in the tab order, so the recovery is reachable
-        # without a mouse, which is the whole point for this user.
-        self._notice_btn = _button(OPEN_VOICE_HELP, primary=True)
-        self._notice_btn.clicked.connect(self._on_notice_action)
-        lay.addWidget(self._notice_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
-        self._notice_card = card; card.setVisible(False)
+        card, self._notice_text, self._notice_btn = build_problem_notice(
+            GRID, _card, lambda text, **kwargs: _label(
+                text, color=theme.WARNING, **kwargs), _button,
+            self._on_notice_action)
+        self._notice_card = card
         return card
 
     def _build_hint(self) -> QWidget:
@@ -2137,17 +2122,9 @@ class HomePage(QWidget):
     def _refresh_notice(self):
         notice = home_signals.problem_notice(self._app)
         self._notice = notice
-        if notice is None:
-            self._notice_card.setVisible(False)
-            self._notice_text.setText("")
-            self._notice_card.setAccessibleDescription("")
-            return
-        self._notice_text.setText(notice.text)
-        self._notice_card.setAccessibleDescription(f"{notice.text} Evidence: {notice.evidence}.")
-        label = notice.action_label or OPEN_VOICE_HELP
-        self._notice_btn.setText(label)
-        self._notice_btn.setAccessibleName(label)
-        self._notice_card.setVisible(True)
+        refresh_problem_notice(
+            self._notice_card, self._notice_text, self._notice_btn, notice,
+            home_signals.DICTATION, OPEN_VOICE_HELP)
 
     def _on_notice_action(self):
         """The notice's one button. A repair runs and the page re-reads state
@@ -2333,7 +2310,7 @@ class HomePage(QWidget):
     def _relayout(self):
         """Re-flow the two grids for the room the VIEWPORT has now."""
         avail = max(1, min(CONTENT_MAX_W, self._scroll.viewport().width() - 2 * GRID))
-        notice = self._notice_card.layout(); stack = avail < self._notice_btn.sizeHint().width() + _px(120) + 3 * GRID
+        notice = self._notice_card.layout(); stack = avail < 2 * self._notice_btn.sizeHint().width() + 6 * GRID
         notice.setDirection(QBoxLayout.Direction.TopToBottom if stack else QBoxLayout.Direction.LeftToRight); notice.setAlignment(self._notice_btn, Qt.AlignmentFlag.AlignRight if stack else Qt.AlignmentFlag(0))
         actions, grid = self._hint_action_btn.parentWidget(), self._hint_card.layout(); stacked = bool(self._whats_new and avail < self._hint_heading.minimumSizeHint().width() + self._hint_action_btn.parentWidget().minimumWidth() + 3 * GRID)
         if self._whats_new and (grid.getItemPosition(grid.indexOf(actions))[1] == 0) != stacked: grid.removeWidget(actions); grid.addWidget(actions, 3 if stacked else 0, 0 if stacked else 1, 1 if stacked else 3, 1, Qt.AlignmentFlag.AlignVCenter)
@@ -2436,7 +2413,8 @@ class HomePage(QWidget):
 
 
 def find_by_accessible_name(root: QWidget, name: str) -> Optional[QWidget]:
-    """The first descendant (or root) whose accessible name is `name` -- the
+    """The first descendant (or root) whose accessible name is
+ame` -- the
     way a voice or screen-reader user reaches a control."""
     if root.accessibleName() == name:
         return root
