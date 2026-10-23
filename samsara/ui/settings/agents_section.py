@@ -10,11 +10,11 @@ import sys
 
 from PySide6.QtCore import QBuffer, QIODevice, QMimeData, Qt, QTimer
 from PySide6.QtGui import QMovie
-from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from samsara.agent_server import for_app
 from samsara.ui import theme
-from .presentation import Disclosure
+from .presentation import Disclosure, SettingRow
 from samsara.ui.widgets.code_snippet import CodeSnippet
 from assets.anim.connect_ai import GIF_DATA
 
@@ -130,17 +130,32 @@ class AgentsControls(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         # 663: delegated copy; external-client setup still awaits owner review.
         heading = QLabel("Connect an AI app")
-        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
+        heading.setProperty("role", "title")
         layout.addWidget(heading)
-        self._add_spoken_replies(layout)
-        self.enable_row = QHBoxLayout()
-        self.enable_row.addWidget(QLabel("Let AI apps use Samsara"))
-        self.enable_row.addStretch()
-        self.enable_row.addWidget(enabled)
-        layout.addLayout(self.enable_row)
+        subtitle = QLabel("Connect Claude Code or Claude Desktop to Samsara.")
+        subtitle.setWordWrap(True)
+        subtitle.setProperty("role", "description")
+        layout.addWidget(subtitle)
+        divider = QWidget(self)
+        divider.setObjectName("settingsPageDivider")
+        divider_layout = QVBoxLayout(divider)
+        divider_layout.setContentsMargins(0, theme.SPACE_1 // 2, 0, theme.SPACE_1 // 2)
+        divider_layout.setSpacing(0)
+        hairline = QFrame(divider)
+        hairline.setObjectName("settingsPageHairline")
+        hairline.setFixedHeight(1)
+        divider_layout.addWidget(hairline)
+        layout.addWidget(divider)
+        self.enable_row = SettingRow(
+            "Let AI apps use Samsara", "AI apps can connect to Samsara while this is on.", [enabled]
+        )
+        self.enable_row.setMaximumWidth(500)
+        self.enable_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        layout.addWidget(self.enable_row)
         self.status = QLabel()
         self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+        self.enable_row.grid.addWidget(self.status, 1, 0, 1, 3)
+        self._add_spoken_replies(layout)
 
         def note(text, target=layout):
             label = QLabel()
@@ -276,9 +291,6 @@ class AgentsControls(QWidget):
         """Controls for the local spoken digest, beside the AI-app controls."""
         from samsara import ava_readiness, hardware_check
 
-        title = QLabel("Spoken replies")
-        title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; font-weight: 600;")
-        layout.addWidget(title)
         self.digest_choice = QComboBox()
         self.digest_choice.setAccessibleName("Spoken replies")
         self.digest_choice.addItem("Auto", "auto")
@@ -287,14 +299,10 @@ class AgentsControls(QWidget):
         self.digest_choice.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.digest_choice.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.digest_choice)
-        note = QLabel("A local model can make spoken replies shorter and smarter. Without it, Samsara speaks up to 60 words.")
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(note)
+        self.digest_description = "A local model can make spoken replies shorter and smarter. Without it, Samsara speaks up to 60 words."
         self.digest_status = QLabel()
         self.digest_status.setWordWrap(True)
         self.digest_status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self.digest_status)
         self.digest_guide = QPushButton("Set it up in the Ava guide")
         self.digest_guide.setMinimumHeight(theme.HIT_TARGET_MIN)
         self.digest_guide.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -303,11 +311,19 @@ class AgentsControls(QWidget):
         self.digest_try.setMinimumHeight(theme.HIT_TARGET_MIN)
         self.digest_try.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.digest_try.clicked.connect(self.try_digest)
-        digest_actions = QHBoxLayout()
-        digest_actions.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        digest_actions.addWidget(self.digest_guide)
-        digest_actions.addWidget(self.digest_try)
-        layout.addLayout(digest_actions)
+        self.digest_controls = QWidget()
+        self.digest_controls.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self.digest_controls_layout = QHBoxLayout(self.digest_controls)
+        self.digest_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self.digest_controls_layout.setSpacing(theme.SPACE_1)
+        self.digest_controls_layout.addWidget(self.digest_choice)
+        self.digest_controls_layout.addWidget(self.digest_guide)
+        self.digest_controls_layout.addWidget(self.digest_try)
+        self.digest_row = SettingRow("Spoken replies", self.digest_description,
+                                     [self.digest_controls])
+        self.digest_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.digest_row.grid.addWidget(self.digest_status, 1, 0, 1, 3)
+        layout.addWidget(self.digest_row)
         self.digest_choice.currentIndexChanged.connect(self._save_digest_choice)
         self._digest_ava_readiness = ava_readiness
         self._digest_hardware_check = hardware_check
@@ -386,15 +402,15 @@ class AgentsControls(QWidget):
     def showEvent(self, event):
         # The source pack factory appends this SAME checkbox after constructing
         # us. Move it back from that row only when the lazy tool is exposed.
-        if self.enabled.parentWidget() is not self:
-            self.enable_row.addWidget(self.enabled)
+        if not self.isAncestorOf(self.enabled):
+            self.enable_row.values.addWidget(self.enabled)
             self.enabled.setAccessibleName("Let AI apps use Samsara")
             self.enabled.show()
         super().showEvent(event)
 
     def refresh(self, token_failed=False):
         # STAND-IN COPY (564)
-        labels = {"off": "Off.", "listening": "Ready for an AI app to connect.",
+        labels = {"off": "", "listening": "Ready for an AI app to connect.",
                   "unavailable": "Could not start. The port or saved token may be unavailable."}
         self.status.setText("Could not save a new token." if token_failed else labels[self.server.status])
         self.copy.setEnabled(self.server.status == "listening")
