@@ -1,7 +1,7 @@
 """Settings-only plain row treatment, applied after the shared guide scale."""
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QPainter, QLinearGradient
-from PySide6.QtWidgets import QCheckBox, QLabel, QHBoxLayout, QVBoxLayout, QFrame, QWidget, QSlider, QLineEdit, QSizePolicy, QScrollArea
+from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton, QComboBox, QHBoxLayout, QVBoxLayout, QFrame, QWidget, QSlider, QLineEdit, QSizePolicy, QScrollArea
 from shiboken6 import isValid
 from samsara.ui import theme
 from .calm_controls import switch, SegmentedChoice
@@ -9,6 +9,8 @@ from .presentation import SettingRow
 
 
 def stylesheet():
+    field_height = theme.TYPE_BODY + theme.SPACE_2
+    field_margin = max(0, (theme.HIT_TARGET_MIN - field_height) // 2)
     return f"""
     QFrame[role='row'], QFrame[role='row']:hover {{
         background: transparent; border: none; border-radius: 0; margin: 0; padding: 0;
@@ -16,8 +18,14 @@ def stylesheet():
     QFrame[role='row'] QLabel[role='label'] {{
         font-size: {theme.TYPE_EMPHASIS}px; font-weight: {theme.WEIGHT_SCALE['regular']};
     }}
+    QFrame[role='row'] QPushButton[settingsRowButton="true"] {{
+        margin: {field_margin}px 0; padding: 0 {theme.SPACE_1}px;
+        min-height: {field_height - 2}px; max-height: {field_height - 2}px;
+        border-radius: 8px;
+    }}
     QLabel[role='settingsGroup'] {{ font-size: {theme.TYPE_HEADING}px;
         font-weight: {theme.WEIGHT_SCALE['semibold']}; color: {theme.TEXT_PRIMARY}; }}
+    QFrame#settingsPageHairline {{ background: {theme.BORDER_FAINT}; border: none; }}
     QComboBox, QAbstractSpinBox, QLineEdit, QPlainTextEdit {{
         font-weight: {theme.WEIGHT_SCALE['regular']}; }}
     QFrame#settingsSegments {{ background: {theme.BG1}; border: 1px solid {theme.BORDER};
@@ -37,6 +45,21 @@ def stylesheet():
     QSlider::handle:horizontal:focus {{ border-color: {theme.ACCENT}; }}
     QSlider::handle:horizontal:disabled {{ background: {theme.TEXT_DISABLED}; }}
     """
+
+
+def _style_row_button(button):
+    field_height = theme.TYPE_BODY + theme.SPACE_2
+    margin = max(0, (theme.HIT_TARGET_MIN - field_height) // 2)
+    qss = (
+        "\n/* Settings row button face */\nQPushButton { "
+        f"margin: {margin}px 0; padding: 0 {theme.SPACE_1}px; "
+        f"min-height: {field_height - 2}px; max-height: {field_height - 2}px; "
+        f"border-width: 1px; border-radius: 8px; background: {theme.BG2}; "
+        f"border-color: {theme.BORDER}; }}"
+    )
+    original = button.styleSheet().split("/* Settings row button face */")[0].rstrip()
+    if button.styleSheet() != original + qss:
+        button.setStyleSheet(original + qss)
 
 
 class RowLayout(QObject):
@@ -63,6 +86,17 @@ class RowLayout(QObject):
             item = row.values.itemAt(index)
             if item.widget():
                 row.values.setAlignment(item.widget(), Qt.AlignmentFlag.AlignVCenter)
+        # Preserve the 44 DIP target while matching the original 32 DIP field
+        # face used by Settings dropdowns at the base commit.
+        for control in (*row.value.findChildren(QPushButton), *row.value.findChildren(QComboBox)):
+            control.setFixedHeight(theme.HIT_TARGET_MIN)
+        for button in row.value.findChildren(QPushButton):
+            button.setProperty("settingsRowButton", True)
+            # theme.style_field() attaches input geometry directly to the
+            # widget, which outranks the page stylesheet. Reassert the same
+            # compact painted face used by dropdowns at widget specificity;
+            # the widget itself remains a 44 DIP hit target.
+            _style_row_button(button)
         if row.help:
             row.grid.removeWidget(row.help)
             row.text.layout().removeWidget(row.heading)
@@ -129,6 +163,14 @@ class RowLayout(QObject):
             for label in (row.heading, row.detail):
                 if label.width() > 0:
                     label.setMinimumHeight(max(label.fontMetrics().height(), label.heightForWidth(label.width())))
+            if not narrow:
+                row.grid.activate()
+                row.text.layout().activate()
+                row.heading.parentWidget().layout().activate()
+                anchor = row.heading.mapTo(row, QPoint(0, 0))
+                control_height = row.value.sizeHint().height()
+                control_y = anchor.y() + (row.heading.height() - control_height) // 2
+                row.value.setGeometry(row.value.x(), control_y, row.value.width(), control_height)
             if row.help:
                 row.grid.activate()
                 row.text.layout().activate()
@@ -195,6 +237,9 @@ def apply_settings(window):
         if not hasattr(row, '_calm_layout'):
             row._calm_layout = RowLayout(row)
         row._calm_layout.reflow()
+        for button in row.value.findChildren(QPushButton):
+            if button.property("settingsRowButton"):
+                _style_row_button(button)
         for checkbox in row.findChildren(QCheckBox):
             switch(checkbox)
         for choice in row.findChildren(SegmentedChoice):
@@ -206,8 +251,12 @@ def apply_settings(window):
             slider.setStyleSheet(stylesheet())
         row.update()
     for row in window.findChildren(SettingRow):
-        if hasattr(row, '_calm_layout'):
-            row._calm_layout.reflow()
+        if not hasattr(row, '_calm_layout'):
+            row._calm_layout = RowLayout(row)
+        row._calm_layout.reflow()
+        for button in row.value.findChildren(QPushButton):
+            if button.property("settingsRowButton"):
+                _style_row_button(button)
     if not hasattr(window, '_component_rows'):
         window._component_rows = ComponentRows(window._components_page)
     window._component_rows.refresh()

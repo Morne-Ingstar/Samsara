@@ -82,11 +82,6 @@ class SoundsPage:
         layout.addSpacing(10)
 
         # Volume row: label + slider + percentage label + test button
-        vol_row = QHBoxLayout()
-        vol_row.setSpacing(12)
-        vol_lbl = QLabel("Volume:")
-        vol_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;")
-        vol_lbl.setFixedWidth(70)
 
         raw_vol = float(cfg.get('sound_volume', 0.5))
         vol_slider = QSlider(Qt.Orientation.Horizontal)
@@ -119,12 +114,8 @@ class SoundsPage:
         test_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         test_btn.clicked.connect(lambda: self._play(sounds_dir, 'success'))
 
-        vol_row.addWidget(vol_lbl)
-        vol_row.addWidget(vol_slider)
-        vol_row.addWidget(vol_pct)
-        vol_row.addWidget(test_btn)
-        vol_row.addStretch()
-        layout.addLayout(vol_row)
+        from .presentation import SettingRow
+        layout.addWidget(SettingRow("Volume", "", [vol_slider, vol_pct, test_btn]))
         layout.addSpacing(20)
 
         # ---- Section: Sound Theme ----------------------------------------------

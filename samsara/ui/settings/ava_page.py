@@ -181,25 +181,17 @@ def _conversation_log_control(owner):
 
 def _add_setup_guide(owner, page):
     import weakref
-    from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
+    from PySide6.QtWidgets import QPushButton
+    from .presentation import SettingRow
 
-    row = QFrame(page.container)
-    row.setProperty("role", "row")
-    layout = QHBoxLayout(row)
-    layout.setContentsMargins(0, 10, 0, 10)
-    layout.setSpacing(12)
-    line = QLabel()
-    line.setWordWrap(True)
-    line.setProperty("role", "description")
     button = QPushButton("Set up Ava...")
-    button.setMinimumHeight(44)
     button.clicked.connect(
         lambda: getattr(owner.app, "open_ava_guide", lambda: None)()
     )
-    layout.addWidget(line, 1)
-    layout.addWidget(button, 0)
-    page.base.insertWidget(0, row)
-    page.base_rows.insert(0, row)
+    row = SettingRow("Ava setup", "", [button], parent=page.container)
+    line = row.detail
+    page.base.addWidget(row)
+    page.base_rows.append(row)
     owner._widgets["ava_setup_guide_line"] = line
     owner._widgets["ava_setup_guide_button"] = button
 
