@@ -234,6 +234,10 @@ class SettingRow(QFrame):
         self.help_panel = None
         self._narrow = False
 
+    def addWidget(self, widget):
+        """Retain the control-layout API used when a lazy tool moves its editor."""
+        self.values.addWidget(widget)
+
     def show_help(self):
         """Overlay a compact panel without changing the page's row layout."""
         window = self.window()

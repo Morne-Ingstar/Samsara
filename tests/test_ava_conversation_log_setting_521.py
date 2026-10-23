@@ -151,7 +151,9 @@ def test_advanced_row_search_and_save_preserve_ava_siblings(qapp, monkeypatch, m
             control = window._widgets[key]
             title_bottom = shared_row.heading.mapTo(shared_row, QPoint()).y() + shared_row.heading.height()
             gap = shared_row.detail.mapTo(shared_row, QPoint()).y() - title_bottom
-            offset = control.mapTo(shared_row, QPoint()).y() + control.height() / 2 - shared_row.height() / 2
+            # 745 aligns controls to the title, independently of wrapped detail.
+            title_center = title_bottom - shared_row.heading.height() / 2
+            offset = control.mapTo(shared_row, QPoint()).y() + control.height() / 2 - title_center
             return gap, offset, shared_row.detail.width()
         for query in ("", "Editing", "Keep a conversation log"):
             window._search_edit.setText(query)

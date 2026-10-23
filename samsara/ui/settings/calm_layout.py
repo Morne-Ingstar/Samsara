@@ -57,7 +57,9 @@ def _style_row_button(button):
         f"border-width: 1px; border-radius: 8px; background: {theme.BG2}; "
         f"border-color: {theme.BORDER}; }}"
     )
-    original = button.styleSheet().split("/* Settings row button face */")[0].rstrip()
+    # Input restyling retains only the prefix before its own geometry suffix.
+    # Keep the row face in that prefix, including on repeated scale passes.
+    original = button.styleSheet().split("/* Settings input geometry */")[0].split("/* Settings row button face */")[0].rstrip()
     if button.styleSheet() != original + qss:
         button.setStyleSheet(original + qss)
 
