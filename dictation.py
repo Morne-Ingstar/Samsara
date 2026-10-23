@@ -3347,14 +3347,8 @@ class DictationApp(CommandFastPathMixin):
         )
 
     def _build_hotkey_transcribe_params(self):
-        """Apply hotkey overrides to this app's dynamically resolved base params."""
-        from samsara.transcription_params import build_hotkey_transcribe_params
-
-        is_command = getattr(self, 'command_mode_recording', False)
-        base_params = self.get_transcription_params(include_vocabulary=is_command)
-        return build_hotkey_transcribe_params(
-            base_params, command_mode_recording=is_command,
-        )
+        from samsara.command_clip_trim import build_params
+        return build_params(self)
 
     def _filter_dictation_language(self, text, info, *, remember=True, feedback=True):
         """Return empty on unexpected low-confidence language or script mismatch."""
@@ -10615,7 +10609,8 @@ class DictationApp(CommandFastPathMixin):
                 # Get transcription parameters based on performance mode,
                 # with the hotkey-path overrides (VAD off, clean-slate reset)
                 # applied -- see _build_hotkey_transcribe_params.
-                transcribe_params = self._build_hotkey_transcribe_params()
+                from samsara.command_clip_trim import build_params, decode
+                transcribe_params = build_params(self, is_command=ownership.is_command)
                 perf_mode = self.config.get('performance_mode', config_defaults.DEFAULTS['performance_mode'])
 
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
@@ -10701,8 +10696,8 @@ class DictationApp(CommandFastPathMixin):
                 # only -- initial_prompt is NOT cleared there; command-hotkey
                 # vocabulary still biases every chunk (free-form hold-to-
                 # dictate already has none to bias with, per #1 above).
-                _decode_result = self._decode_hotkey_audio(
-                    audio_faded, transcribe_params, audio_duration, free_form=not ownership.is_command)
+                _decode_result = decode(self, audio_faded, transcribe_params, audio_duration,
+                                        is_command=ownership.is_command, capture=presence_capture)
 
                 # Fail-loud backstop for silent mid-decode data loss (see
                 # module comment above _SANITY_MIN_DURATION_S), with the
