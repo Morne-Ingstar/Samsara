@@ -868,14 +868,9 @@ class _StreamingWidget:
                     self._position()
 
             def _on_link(self, href: str) -> None:
-                if self._on_word_clicked is None or not href.startswith(WORD_LINK_PREFIX):
-                    return
+                from samsara.draft_selection import compact_link_clicked
                 try:
-                    index = int(href[len(WORD_LINK_PREFIX):])
-                except ValueError:
-                    return
-                try:
-                    self._on_word_clicked(index)
+                    compact_link_clicked(self, href, WORD_LINK_PREFIX)
                 except Exception as exc:
                     logger.warning(f"[DICTATE-PREVIEW] word click failed: {exc}")
 
@@ -2649,29 +2644,17 @@ class DictatePreviewSession:
         except Exception as exc:
             logger.debug("[DICTATE-PREVIEW] placement save failed: %s", exc)
 
-    def _on_word_clicked(self, index: int) -> None:
-        """A word in the preview was clicked (Qt thread). Arms the correction;
-        the NEXT utterance is its replacement. Nothing is changed yet."""
-        if self._closed or index < 0 or index >= len(self._words):
-            return
-        word, occurrence = self._words[index]
-        expected = sum(1 for w, _o in self._words if w == word)
-        manager = self._manager()
-        if manager is None:
-            return
+    def _on_word_clicked(self, index: int, extend: bool = False) -> None:
+        """Select a word or extend the original anchor (Qt thread).
+
+        Nothing is changed until the replacement is accepted. The helper
+        binds a phrase to the document revision rather than guessing from text.
+        """
+        from samsara.draft_selection import compact_word_clicked
         try:
-            result = manager.request_word_correction(
-                word, occurrence, expected_count=expected, source="preview_click")
+            compact_word_clicked(self, index, extend)
         except Exception as exc:
             logger.warning(f"[DICTATE-PREVIEW] could not arm a correction: {exc}")
-            return
-        if result.get("ok"):
-            self._correction_armed = True
-            self._set_prompt(CORRECTION_PROMPT.format(word=word))
-            candidates = self._correction_candidates(word)
-            self._show_correction_choices(word, [word] + candidates, no_match=not candidates)
-        else:
-            logger.info("[DICTATE-PREVIEW] correction refused: %s", result.get("reason"))
 
     def _correction_candidates(self, word: str) -> list[str]:
         """Only suggest this person's taught words/corrections, never a
@@ -2724,6 +2707,8 @@ class DictatePreviewSession:
                     getattr(outcome, "kind", outcome))
 
     def _on_candidates_dismissed(self) -> None:
+        from samsara.draft_selection import clear_compact_selection
+        clear_compact_selection(self)
         manager = self._manager()
         if manager is not None:
             manager.cancel_word_correction("dismissed")

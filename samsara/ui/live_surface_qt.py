@@ -24,6 +24,7 @@ from samsara.live_surface.feedback import (FILL_TOKENS, KIND_WORDS,
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer, system_reduced_motion
 from samsara.ui.tray_qt import paint_mark
 from samsara.ui.indicator_message_layout import message_lines, message_height
+from samsara.draft_selection import select_range, highlighted
 
 
 MARK_SIZE = 44
@@ -695,7 +696,8 @@ class LiveSurfaceWidget(QWidget):
                 self._word_targets.append({"document_id": self._view.document_id, "revision": self._view.revision,
                                            "segment_id": segment_id, "start": match.start(), "end": match.end(),
                                            "word": word, "occurrence": occurrence[folded] - 1})
-                parts.append(f'<a href="word:{index}">{escape(word)}</a>'); at = match.end()
+                fill = f' style="background-color:{theme.ACCENT_DIM};"' if highlighted(index, self._selection) else ''
+                parts.append(f'<a href="word:{index}"{fill}>{escape(word)}</a>'); at = match.end()
             parts.append(escape(text[at:]))
         if self._view.provisional_text:
             if self._view.text:
@@ -735,7 +737,12 @@ class LiveSurfaceWidget(QWidget):
             rows = ceil(min(4, max(0, len(self._word_targets)-self._picker_page*4))/2)
             height = 2*CARD_INSET + 2*(MARK_SIZE+REGION_GAP) + rows*(MARK_SIZE+REGION_GAP) + MARK_SIZE
             if self._selection is not None or self._word_menu.learning:
-                height = 2*CARD_INSET + HEADER_HEIGHT + REGION_GAP + self._band_height + 12 + self._word_menu.sizeHint().height()
+                doc = self._transcript.document().clone()
+                doc.setTextWidth(width - 2*CARD_INSET - 10)
+                self._correction_transcript_height = min(120, max(52, ceil(doc.size().height()) + 4))
+                doc.deleteLater()
+                height = (2*CARD_INSET + HEADER_HEIGHT + REGION_GAP + self._band_height + 12
+                          + self._correction_transcript_height + REGION_GAP + self._word_menu.sizeHint().height())
         else:
             # 492: use the rendered document, including explicit newlines and
             # actual font wrapping; no minimum envelope or empty notice band.
@@ -924,6 +931,9 @@ class LiveSurfaceWidget(QWidget):
     def _layout_correction(self, content: QRect) -> None:
         y=content.y()+HEADER_HEIGHT+REGION_GAP+self._band_height+12
         if self._selection is not None or self._word_menu.learning:
+            height = getattr(self, '_correction_transcript_height', 80)
+            self._transcript.setGeometry(content.x(), y, content.width(), height)
+            self._transcript.show(); y += height + REGION_GAP
             self._word_menu.setGeometry(content.x(), y, content.width(), self._word_menu.sizeHint().height())
             self._word_menu.show()
             return
@@ -1054,7 +1064,10 @@ class LiveSurfaceWidget(QWidget):
     def _anchor_clicked(self,url:QUrl)->None:
         try:index=int(url.toString().split(":",1)[1])
         except (ValueError,IndexError):return
-        if 0<=index<len(self._word_targets): self.correct_word_requested.emit(dict(self._word_targets[index]))
+        selection = select_range(self._word_targets, index, self._segments(), self._selection,
+            extend=bool(QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier))
+        if selection is not None:
+            self.correct_word_requested.emit(selection)
     def _request_correct(self)->None:
         if self._selection is not None:self.correct_word_requested.emit(dict(self._selection))
         else:self.show_word_picker()

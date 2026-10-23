@@ -34,6 +34,7 @@ class _Transaction:
     kind: str
     segment_id: str
     before: str = ""
+    segments_before: tuple[DraftSegment, ...] = ()
 
 
 class DraftDocument:
@@ -91,11 +92,26 @@ class DraftDocument:
         self.revision += 1
 
     def edit(self, document_id: str, revision: int, segment_id: str,
-             start: int, end: int, replacement: str) -> EditResult:
+             start: int, end: int, replacement: str, *, end_segment_id: str | None = None) -> EditResult:
         if document_id != self.document_id:
             return EditResult(False, "wrong_document", self.revision, self.chars)
         if revision != self.revision:
             return EditResult(False, "stale_revision", self.revision, self.chars)
+        if end_segment_id is not None and end_segment_id != segment_id:
+            indices = {s.id: i for i, s in enumerate(self._segments)}
+            first, last = indices.get(segment_id, -1), indices.get(end_segment_id, -1)
+            if (first < 0 or last <= first or start < 0 or end < 0
+                    or start > len(self._segments[first].text) or end > len(self._segments[last].text)):
+                return EditResult(False, "invalid_span", self.revision, self.chars)
+            self._transactions.append(_Transaction('edit', segment_id, segments_before=self.segments))
+            for index in range(first, last + 1):
+                segment = self._segments[index]
+                text = (segment.text[:start] + replacement if index == first else
+                        segment.text[end:] if index == last else '')
+                self._segments[index] = DraftSegment(segment.id, text)
+            self.edited = True
+            self.revision += 1
+            return EditResult(True, "edited", self.revision, self.chars)
         for index, segment in enumerate(self._segments):
             if segment.id != segment_id:
                 continue
@@ -115,6 +131,8 @@ class DraftDocument:
         transaction = self._transactions.pop()
         if transaction.kind == "append":
             self._segments = [s for s in self._segments if s.id != transaction.segment_id]
+        elif transaction.segments_before:
+            self._segments = list(transaction.segments_before)
         else:
             for index, segment in enumerate(self._segments):
                 if segment.id == transaction.segment_id:

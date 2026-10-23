@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QLayout, QLabel, QLineEdit, QPushButton,
 from samsara.dictionary_store import get_dictionary_store
 from samsara.letter_spelling import parse_letters
 from samsara.ui import qt_runtime, theme
+from samsara.draft_selection import common_phrase
 
 
 NATO = dict(zip(
@@ -200,6 +201,12 @@ class WordCorrectionMenu(QWidget):
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        self.span_hint = QLabel('Shift-click another word to select a phrase.')
+        self.span_hint.setWordWrap(True)
+        layout.addWidget(self.span_hint)
+        self.phrase_warning = QLabel('Common words: this correction may change other sentences too.')
+        self.phrase_warning.setWordWrap(True)
+        layout.addWidget(self.phrase_warning)
         self.choices = QScrollArea()
         self.choices.setWidgetResizable(True)
         self.choices.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -243,6 +250,10 @@ class WordCorrectionMenu(QWidget):
         self.close_input()
         self.learning = self.awaiting = False
         self.wrong, self.right = wrong, ""
+        self.phrase = len(wrong.split()) > 1
+        self.apply.setText('Save correction' if self.phrase else 'Apply')
+        self.span_hint.show()
+        self.phrase_warning.setVisible(common_phrase(wrong))
         if self.app is not None:
             previous = active_menu(self.app)
             if previous is not None and previous is not self:
@@ -311,6 +322,7 @@ class WordCorrectionMenu(QWidget):
         self.awaiting, self.learning = False, True
         self.wrong, self.right = wrong, right
         self.status.setText(f'Changed “{wrong}” to “{right}”.')
+        self.span_hint.hide(); self.phrase_warning.hide()
         self.choices.hide(); self._editor.hide(); self.apply.hide()
         self.dismiss.setText("Done")
         self.vocabulary.setText(f'Add “{right}” to my words')
@@ -319,6 +331,14 @@ class WordCorrectionMenu(QWidget):
         self.vocabulary.setEnabled(store is not None and not any(
             word.casefold() == right.casefold() for word in store.custom_vocab))
         self.always.show(); self.vocabulary.show()
+        if getattr(self, 'phrase', False):
+            # Only reached after the document accepted the exact selected span.
+            # If disk saving fails, the visible button retries without re-editing.
+            self.vocabulary.hide()
+            self.always.setText('Save correction')
+            self._save(False)
+        else:
+            self.always.setText('Always fix this')
         self._fit_rows()
         self.show()
         self.restore_passive()

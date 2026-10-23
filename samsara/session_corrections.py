@@ -36,7 +36,7 @@ def _undo_last_correction_outcome(self) -> DispatchOutcome:
 
 def request_word_correction(self, word: str, occurrence: int = 0, *,
                             expected_count: int = 0,
-                            source: str = "preview_click") -> dict:
+                            source: str = "preview_click", selection: dict | None = None) -> dict:
     """Arm a correction for one word of the staged draft: the NEXT
     utterance replaces it instead of being dictated. Returns
     {"ok": bool, ...}; a refusal never changes anything."""
@@ -48,6 +48,9 @@ def request_word_correction(self, word: str, occurrence: int = 0, *,
             return {"ok": False, "reason": "no_word"}
         if not self._dictate_pending_buffer:
             return {"ok": False, "reason": "no_draft"}
+        if selection is not None:
+            if _selection_text(self._draft, selection) != word:
+                return {"ok": False, "reason": "stale"}
         if self._live_surface_enabled:
             self._parked_hold = True
             self._draft.mark_manual_commit()
@@ -57,11 +60,39 @@ def request_word_correction(self, word: str, occurrence: int = 0, *,
             "expires": self._clock() + WORD_CORRECTION_TTL_S,
             "source": source,
         }
+        if selection is not None:
+            self._pending_correction['selection'] = dict(selection, revision=self._draft.revision)
     log.info("[SESSION] word correction armed for %r (occurrence %d, source %s)",
              describe_text(word), occurrence, source)
     self._speak(f'Say the replacement for "{word}".', QUESTION)
     return {"ok": True, "word": word, "occurrence": occurrence,
             "ttl_s": WORD_CORRECTION_TTL_S}
+
+
+def _selection_text(document, selection):
+    """Validate both endpoints and identity before returning any selected text."""
+    try:
+        if (str(selection['document_id']) != document.document_id
+                or int(selection['revision']) != document.revision):
+            return None
+        first = str(selection['segment_id'])
+        last = str(selection.get('end_segment_id', first))
+        start = int(selection['start'])
+        end = int(selection.get('end_segment_offset', selection['end']))
+        segments = list(document.segments)
+        ids = [s.id for s in segments]
+        low, high = ids.index(first), ids.index(last)
+        if (high < low or start < 0 or end < 0 or start > len(segments[low].text)
+                or end > len(segments[high].text) or (low == high and end <= start)):
+            return None
+        if low == high:
+            return segments[low].text[start:end]
+        text = segments[low].text[start:] + ''.join(s.text for s in segments[low+1:high]) + segments[high].text[:end]
+        if 'end_segment_offset' in selection and int(selection['end']) != start + len(text):
+            return None
+        return text
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def select_live_surface_word(self, selection: object) -> dict:
@@ -85,10 +116,7 @@ def select_live_surface_word(self, selection: object) -> dict:
             return {"ok": False, "reason": "invalid_selection"}
         if document_id != self._draft.document_id or revision != self._draft.revision:
             return {"ok": False, "reason": "stale"}
-        segment = next((item for item in self._draft.segments if item.id == segment_id), None)
-        if segment is None or start < 0 or end <= start or end > len(segment.text):
-            return {"ok": False, "reason": "stale"}
-        word = segment.text[start:end]
+        word = _selection_text(self._draft, selection)
         if not word:
             return {"ok": False, "reason": "stale"}
         self._parked_hold = True
@@ -113,9 +141,16 @@ def apply_live_surface_correction(self, selection: object, replacement: str) -> 
         return {"ok": False, "reason": "empty"}
     with self._dispatch_lock:
         try:
+            if str(selection['document_id']) != self._draft.document_id:
+                return {"ok": False, "reason": "wrong_document"}
+            if int(selection['revision']) != self._draft.revision:
+                return {"ok": False, "reason": "stale_revision"}
+            if not _selection_text(self._draft, selection):
+                return {"ok": False, "reason": "invalid_span"}
             result = self._draft.edit(str(selection["document_id"]), int(selection["revision"]),
                                       str(selection["segment_id"]), int(selection["start"]),
-                                      int(selection["end"]), replacement)
+                                      int(selection.get('end_segment_offset', selection["end"])), replacement,
+                                      end_segment_id=selection.get('end_segment_id'))
         except (KeyError, TypeError, ValueError):
             return {"ok": False, "reason": "invalid_selection"}
         if not result.accepted:
@@ -216,10 +251,22 @@ def choose_word_correction(self, replacement: str) -> DispatchOutcome:
 
 def _apply_pending_word_correction(self, pending: dict, replacement: str) -> DispatchOutcome:
     """The one apply/capture route shared by spoken and clicked answers."""
-    result = self.replace_draft_word(
-        pending["word"], pending["occurrence"], replacement,
-        expected_count=pending.get("expected_count") or 0,
-    )
+    selection = pending.get('selection')
+    if selection is not None:
+        with self._dispatch_lock:
+            valid = _selection_text(self._draft, selection) == pending['word']
+            edit = self._draft.edit(selection['document_id'], selection['revision'],
+                selection['segment_id'], selection['start'],
+                selection.get('end_segment_offset', selection['end']), replacement,
+                end_segment_id=selection.get('end_segment_id')) if valid else None
+            result = {'ok': bool(edit and edit.accepted), 'replacement': replacement, 'reason': 'stale'}
+            if result['ok']:
+                self._last_dictate_ended_terminal = chunk_ends_terminal(self._draft.text)
+    else:
+        result = self.replace_draft_word(
+            pending["word"], pending["occurrence"], replacement,
+            expected_count=pending.get("expected_count") or 0,
+        )
     if not result.get("ok"):
         self._speak("I could not find that word any more.", ACKNOWLEDGEMENT)
         return DispatchOutcome(kind="dictate_correction_failed", detail={
