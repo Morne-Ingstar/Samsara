@@ -33,7 +33,8 @@ def _parse_duration(text):
     if not text:
         return None, "no duration specified"
     
-    text = text.lower().strip()
+    from samsara.spoken_numbers import number_words_to_digits
+    text = number_words_to_digits(text.lower().strip())
     
     # Handle "a half" / "half a" / "and a half"
     text = text.replace("and a half", "30 seconds")

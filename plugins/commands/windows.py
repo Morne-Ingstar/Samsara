@@ -537,13 +537,11 @@ def _parse_destination(dest_text, app, monitors=None, *, strict=False):
     if 'here' in words:
         m = _strict_cursor_monitor(monitors) if strict else get_monitor_under_cursor(monitors)
         return m if m else UnresolvedDestination(dest_text, 'no monitor under the cursor')
-    for word in words:
-        if word.isdigit():
-            m = get_monitor_by_index(int(word), monitors)
-            return m if m else UnresolvedDestination(dest_text, f'no monitor {word} (have {len(monitors)})')
-        if word in _ORDINALS:
-            m = get_monitor_by_index(_ORDINALS[word], monitors)
-            return m if m else UnresolvedDestination(dest_text, f'no {word} monitor (have {len(monitors)})')
+    from samsara.spoken_numbers import parse_spoken_number
+    numeric = parse_spoken_number(" ".join(w for w in words if w not in _SCREEN_NOUNS and w != 'the'))
+    if numeric is not None:
+        m = get_monitor_by_index(numeric, monitors)
+        return m if m else UnresolvedDestination(dest_text, f'no monitor {numeric} (have {len(monitors)})')
     if 'other' in words:
         if len(monitors) != 2:
             return UnresolvedDestination(dest_text, f"'other' is ambiguous with {len(monitors)} monitors")
@@ -564,6 +562,9 @@ def _is_destination_text(text):
     words = _strip_leading_the((text or '').lower().strip()).split()
     if not words:
         return False
+    from samsara.spoken_numbers import parse_spoken_number
+    if parse_spoken_number(" ".join(w for w in words if w not in _SCREEN_NOUNS and w != 'the')) is not None:
+        return True
     return all(w in _DESTINATION_WORDS or w in _SCREEN_NOUNS or w.isdigit() or w == 'the' for w in words) \
         and any(w in _DESTINATION_WORDS or w.isdigit() for w in words)
 

@@ -44,12 +44,18 @@ def _parse_pain_level(text):
     # Match "level 6", "6", "level6", "a 7" etc
     m = re.search(r'(?:level\s*)?(\d{1,2})\b', text, re.IGNORECASE)
     if m:
-        level = int(m.group(1))
+        from samsara.spoken_numbers import parse_spoken_number
+        level = parse_spoken_number(m.group(1))
         if 1 <= level <= 10:
             remainder = (text[:m.start()] + text[m.end():]).strip()
             # Clean up leftover "level" word
             remainder = re.sub(r'\blevel\b', '', remainder, flags=re.IGNORECASE).strip()
             return level, remainder
+    from samsara.spoken_numbers import spoken_number_matches
+    for start, end, level in spoken_number_matches(text):
+        if 1 <= level <= 10:
+            remainder = (text[:start] + text[end:]).strip()
+            return level, re.sub(r'\blevel\b', '', remainder, flags=re.IGNORECASE).strip()
     return None, text
 
 
@@ -58,6 +64,11 @@ def _parse_medication(text):
     if not text:
         return None, None, None
     text = text.strip()
+    from samsara.spoken_numbers import spoken_number_matches
+    for start, end, dose in spoken_number_matches(text):
+        if not text[:start].strip() or re.match(r'\s*(?:mg|ml|mcg|g|iu|units?|tablets?|caps?|capsules?|drops?|puffs?)\b', text[end:], re.I):
+            text = text[:start] + str(dose) + text[end:]
+            break
     # Try to find a dose pattern: number + optional unit
     dose_pattern = r'(\d+\s*(?:mg|ml|mcg|g|iu|units?|tablets?|caps?|capsules?|drops?|puffs?)?)'
     m = re.search(dose_pattern, text, re.IGNORECASE)

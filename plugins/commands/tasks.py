@@ -50,8 +50,8 @@ def _parse_position(remainder):
     """Extract a 1-based position number from a remainder string."""
     if not remainder:
         return None
-    m = re.search(r"\d+", remainder)
-    return int(m.group()) if m else None
+    from samsara.spoken_numbers import parse_spoken_number
+    return parse_spoken_number(remainder.strip().rstrip('.!?'))
 
 
 def _todoist_token(app):

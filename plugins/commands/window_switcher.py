@@ -135,19 +135,14 @@ def _parse_letters(text: str) -> list:
 def _parse_monitor_index(text: str):
     """Return a 1-based monitor index from text, or None."""
     t = text.lower()
-    if any(w in t for w in ('left', 'main', 'primary', 'monitor 1', '1st', 'first')):
+    if any(w in t for w in ('left', 'main', 'primary')):
         return 1
-    if any(w in t for w in ('right', 'second', 'monitor 2', '2nd')):
+    if any(w in t for w in ('right',)):
         return 2
-    if any(w in t for w in ('middle', 'center', 'third', 'monitor 3', '3rd')):
+    if any(w in t for w in ('middle', 'center')):
         return 3
-    m = re.search(r'monitor\s*(\d+)', t)
-    if m:
-        return int(m.group(1))
-    m = re.search(r'\b(\d)\b', t)
-    if m:
-        return int(m.group(1))
-    return None
+    from samsara.spoken_numbers import spoken_number_matches
+    return next((number for _start, _end, number in spoken_number_matches(t)), None)
 
 # ---------------------------------------------------------------------------
 # Window enumeration

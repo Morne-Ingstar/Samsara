@@ -101,7 +101,7 @@ ADVANCED = [
     ],
     [
         "Number formatting",
-        "Format spoken numbers as digits.",
+        "Writes numbers you dictate as digits (twenty -> 20). Commands understand both either way.",
         "format_numbers",
         "format_numbers"
     ],

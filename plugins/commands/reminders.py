@@ -35,7 +35,8 @@ def _get_manager(app):
 
 def _parse_time(text):
     """Parse '9 AM', '2:30 PM', '14:00' -> 'HH:MM', or None on failure."""
-    text = text.strip().lower()
+    from samsara.spoken_numbers import number_words_to_digits
+    text = number_words_to_digits(text.strip().lower())
 
     m = re.match(r'^(\d{1,2}):(\d{2})\s*(am|pm)?$', text)
     if m:
@@ -162,7 +163,7 @@ def handle_remind_me_to(app, remainder="", **kwargs):
 
     # "remind me to [task] at [time]"
     at_match = re.search(
-        r'\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*$',
+        r'\bat\s+(.+?)\s*$',
         remainder,
         re.IGNORECASE,
     )
@@ -243,8 +244,9 @@ def handle_cancel_reminder(app, remainder="", **kwargs):
         return True
 
     # Position number (e.g. "cancel reminder 2")
-    if re.match(r'^\d+$', remainder):
-        pos = int(remainder)
+    from samsara.spoken_numbers import parse_spoken_number
+    pos = parse_spoken_number(remainder)
+    if pos is not None:
         if 1 <= pos <= len(reminders):
             r = reminders[pos - 1]
             nm.remove_reminder(r["id"])

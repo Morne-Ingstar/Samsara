@@ -28,18 +28,9 @@ def _browser_tab_number(value):
     Firefox.  Keep this small and explicit: a phrase such as ``tab twelve``
     must never silently select a different tab.
     """
-    words = {
-        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-        "six": 6, "seven": 7, "eight": 8, "nine": 9,
-    }
-    cleaned = _clean(value).lower()
-    if cleaned in words:
-        return words[cleaned]
-    try:
-        number = int(cleaned)
-    except (TypeError, ValueError):
-        return None
-    return number if 1 <= number <= 9 else None
+    from samsara.spoken_numbers import parse_spoken_number
+    number = parse_spoken_number(_clean(value))
+    return number if number is not None and 1 <= number <= 9 else None
 
 
 def _focus_browser():

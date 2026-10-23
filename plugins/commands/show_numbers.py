@@ -993,40 +993,14 @@ def _destroy_overlay_completely() -> None:
 # Spoken number parsing
 # ---------------------------------------------------------------------------
 
-_WORD_TO_NUM = {
-    'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-    'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14,
-    'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18,
-    'nineteen': 19, 'twenty': 20, 'thirty': 30, 'forty': 40,
-    'fifty': 50, 'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
-}
+from samsara.spoken_numbers import NUMBER_WORDS as _WORD_TO_NUM, parse_spoken_number
 
 
 def _parse_spoken_number(text: str) -> "int | None":
-    """Parse a spoken number 0-99 from text. Returns None if not found.
-
-    Handles:
-      - Digits:   "7", "37"
-      - Words:    "seven", "twelve"
-      - Compound: "thirty seven", "ninety nine"
-    """
-    text = text.lower().strip()
-    if not text:
-        return None
-
-    m = re.search(r'\b(\d{1,2})\b', text)
-    if m:
-        n = int(m.group(1))
-        return n if 0 <= n <= 99 else None
-
-    total = 0
-    found = False
-    for token in text.split():
-        if token in _WORD_TO_NUM:
-            total += _WORD_TO_NUM[token]
-            found = True
-    return total if found and 0 <= total <= 99 else None
+    """Parse a whole label number, preserving the overlay's 0--99 range."""
+    text = re.sub(r'^(?:number|num)\s+', '', text.strip().lower())
+    number = parse_spoken_number(text)
+    return number if number is not None and 0 <= number <= 99 else None
 
 
 def _parse_click_target(text: str):
@@ -1092,7 +1066,7 @@ def _is_label_number(text: str) -> bool:
     toks = tokens(text)
     if len(toks) > 1 and toks[0] in ("number", "num"):
         toks = toks[1:]
-    return 1 <= len(toks) <= 2 and all(t.isdigit() or t in _WORD_TO_NUM for t in toks)
+    return _parse_spoken_number(" ".join(toks)) is not None
 
 
 class _OcrTarget:

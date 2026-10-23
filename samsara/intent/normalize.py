@@ -205,22 +205,20 @@ def parse_number(toks: list):
     toks = list(toks)
     if toks and toks[0] in ("number", "no", "num"):
         toks = toks[1:]
-    if not toks or len(toks) > 2:
-        return None
-    words = _word_to_num()
-    look_alike = {"won": "one", "to": "two", "too": "two", "for": "four", "fore": "four"}
-    fixed = [look_alike.get(t, t) if len(toks) == 1 else t for t in toks]
-    if not all(t.isdigit() or t in words for t in fixed):
-        return None
-    if len(fixed) == 2 and not (fixed[0] in words and words[fixed[0]] >= 20 and words.get(fixed[1], 10) < 10):
-        return None
-    from plugins.commands.show_numbers import _parse_spoken_number  # noqa: PLC0415
-    return _parse_spoken_number(" ".join(fixed))
+    from samsara.spoken_numbers import parse_spoken_number
+    value = parse_spoken_number(" ".join(toks), homophones={
+        "won": 1, "to": 2, "too": 2, "for": 4, "fore": 4})
+    return value if value is not None and 0 <= value <= 99 else None
 
 
 def parse_ordinal(token: str):
     """first..sixth (windows._ORDINALS) and 1st..6th -> int, else None."""
-    return ordinals().get(token) or _ORDINAL_SUFFIX.get(token)
+    import re
+    from samsara.spoken_numbers import ORDINAL_WORDS, parse_spoken_number
+    if token in ORDINAL_WORDS or re.fullmatch(r"[0-9]+(?:st|nd|rd|th)", token):
+        value = parse_spoken_number(token)
+        return value if value is not None and 1 <= value <= 6 else None
+    return None
 
 
 def numerals_to_words(text: str) -> str:

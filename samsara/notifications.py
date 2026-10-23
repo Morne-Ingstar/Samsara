@@ -397,9 +397,9 @@ class NotificationManager:
         """
         # Pattern: "remind me in X minutes [to Y]"
         patterns = [
-            r"remind me in (\d+) minutes?(?: to (.+))?",
-            r"set (?:a )?reminder (?:for )?(\d+) minutes?(?: to (.+))?",
-            r"(\d+) minute reminder(?: to (.+))?",
+            r"remind me in (.+?) minutes?(?: to (.+))?",
+            r"set (?:a )?reminder (?:for )?(.+?) minutes?(?: to (.+))?",
+            r"(.+?) minute reminder(?: to (.+))?",
         ]
 
         text_lower = text.lower().strip()
@@ -407,7 +407,10 @@ class NotificationManager:
         for pattern in patterns:
             match = re.search(pattern, text_lower)
             if match:
-                minutes = int(match.group(1))
+                from samsara.spoken_numbers import parse_spoken_number
+                minutes = parse_spoken_number(match.group(1))
+                if minutes is None:
+                    continue
                 task = match.group(2) if match.lastindex >= 2 else None
                 return (minutes, task)
 

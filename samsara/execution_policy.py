@@ -1939,9 +1939,9 @@ def _spoken_number(text: str) -> Optional[int]:
     for prefix in ("number ", "option "):
         if norm.startswith(prefix):
             norm = norm[len(prefix):]
-    if norm.isdigit() and len(norm) == 1:
-        return int(norm)
-    return _NUMBER_WORDS.get(norm)
+    from samsara.spoken_numbers import parse_spoken_number
+    number = parse_spoken_number(norm, homophones=_NUMBER_WORDS)
+    return number if number is not None and 0 <= number <= 9 else None
 
 
 def answer_cancel_window(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[str]:

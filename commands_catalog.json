@@ -5877,7 +5877,7 @@
           "click_by_name.pending"
         ]
       },
-      "source": "plugins/commands/click_by_name.py:202",
+      "source": "plugins/commands/click_by_name.py:197",
       "undoable": false,
       "verb": "choose",
       "whole_utterance": false
@@ -5900,7 +5900,7 @@
       "pack": "accessibility",
       "plugin": "click_by_name",
       "risk": "write",
-      "source": "plugins/commands/click_by_name.py:233",
+      "source": "plugins/commands/click_by_name.py:228",
       "undoable": false,
       "verb": "collapse",
       "whole_utterance": false
@@ -5923,7 +5923,7 @@
       "pack": "accessibility",
       "plugin": "click_by_name",
       "risk": "write",
-      "source": "plugins/commands/click_by_name.py:226",
+      "source": "plugins/commands/click_by_name.py:221",
       "undoable": false,
       "verb": "expand",
       "whole_utterance": false
@@ -5946,7 +5946,7 @@
       "pack": "accessibility",
       "plugin": "click_by_name",
       "risk": "write",
-      "source": "plugins/commands/click_by_name.py:240",
+      "source": "plugins/commands/click_by_name.py:235",
       "undoable": false,
       "verb": "focus",
       "whole_utterance": false
@@ -5969,7 +5969,7 @@
       "pack": "accessibility",
       "plugin": "click_by_name",
       "risk": "write",
-      "source": "plugins/commands/click_by_name.py:219",
+      "source": "plugins/commands/click_by_name.py:214",
       "undoable": false,
       "verb": "toggle",
       "whole_utterance": false
@@ -6699,7 +6699,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "destructive",
-      "source": "plugins/commands/health_tracker.py:343",
+      "source": "plugins/commands/health_tracker.py:354",
       "undoable": false,
       "verb": "clear",
       "whole_utterance": false
@@ -6720,7 +6720,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "write",
-      "source": "plugins/commands/health_tracker.py:308",
+      "source": "plugins/commands/health_tracker.py:319",
       "undoable": false,
       "verb": "export",
       "whole_utterance": false
@@ -6751,7 +6751,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "read",
-      "source": "plugins/commands/health_tracker.py:207",
+      "source": "plugins/commands/health_tracker.py:218",
       "undoable": true,
       "verb": "health",
       "whole_utterance": false
@@ -6778,7 +6778,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "write",
-      "source": "plugins/commands/health_tracker.py:113",
+      "source": "plugins/commands/health_tracker.py:124",
       "undoable": false,
       "verb": "pain",
       "whole_utterance": false
@@ -6800,7 +6800,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "read",
-      "source": "plugins/commands/health_tracker.py:281",
+      "source": "plugins/commands/health_tracker.py:292",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -6827,7 +6827,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "write",
-      "source": "plugins/commands/health_tracker.py:184",
+      "source": "plugins/commands/health_tracker.py:195",
       "undoable": false,
       "verb": "symptom",
       "whole_utterance": false
@@ -6857,7 +6857,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "write",
-      "source": "plugins/commands/health_tracker.py:150",
+      "source": "plugins/commands/health_tracker.py:161",
       "undoable": false,
       "verb": "took",
       "whole_utterance": false
@@ -6878,7 +6878,7 @@
       "pack": "health",
       "plugin": "health_tracker",
       "risk": "destructive",
-      "source": "plugins/commands/health_tracker.py:323",
+      "source": "plugins/commands/health_tracker.py:334",
       "undoable": false,
       "verb": "undo",
       "whole_utterance": false
@@ -8110,7 +8110,7 @@
       "pack": "utilities",
       "plugin": "reminders",
       "risk": "destructive",
-      "source": "plugins/commands/reminders.py:267",
+      "source": "plugins/commands/reminders.py:269",
       "undoable": false,
       "verb": "cancel",
       "whole_utterance": false
@@ -8135,7 +8135,7 @@
       "pack": "utilities",
       "plugin": "reminders",
       "risk": "destructive",
-      "source": "plugins/commands/reminders.py:223",
+      "source": "plugins/commands/reminders.py:224",
       "undoable": false,
       "verb": "cancel",
       "whole_utterance": false
@@ -8154,7 +8154,7 @@
       "pack": "utilities",
       "plugin": "reminders",
       "risk": "read",
-      "source": "plugins/commands/reminders.py:191",
+      "source": "plugins/commands/reminders.py:192",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -8179,7 +8179,7 @@
       "pack": "utilities",
       "plugin": "reminders",
       "risk": "write",
-      "source": "plugins/commands/reminders.py:128",
+      "source": "plugins/commands/reminders.py:129",
       "undoable": false,
       "verb": "remind",
       "whole_utterance": false
@@ -8198,7 +8198,7 @@
       "pack": "utilities",
       "plugin": "reminders",
       "risk": "read",
-      "source": "plugins/commands/reminders.py:291",
+      "source": "plugins/commands/reminders.py:293",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -8225,7 +8225,7 @@
       "pack": "screen-capture",
       "plugin": "screen_gif",
       "risk": "destructive",
-      "source": "plugins/commands/screen_gif.py:328",
+      "source": "plugins/commands/screen_gif.py:330",
       "undoable": false,
       "verb": "record",
       "whole_utterance": false
@@ -8251,7 +8251,7 @@
       "pack": "screen-capture",
       "plugin": "screen_gif",
       "risk": "destructive",
-      "source": "plugins/commands/screen_gif.py:341",
+      "source": "plugins/commands/screen_gif.py:343",
       "undoable": false,
       "verb": "record",
       "whole_utterance": false
@@ -8274,7 +8274,7 @@
       "pack": "screen-capture",
       "plugin": "screen_gif",
       "risk": "destructive",
-      "source": "plugins/commands/screen_gif.py:354",
+      "source": "plugins/commands/screen_gif.py:356",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -10235,7 +10235,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "write",
-      "source": "plugins/commands/show_numbers.py:1791",
+      "source": "plugins/commands/show_numbers.py:1765",
       "undoable": false,
       "verb": "click",
       "whole_utterance": false
@@ -10263,7 +10263,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1947",
+      "source": "plugins/commands/show_numbers.py:1921",
       "undoable": false,
       "verb": "double",
       "whole_utterance": false
@@ -10287,7 +10287,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1647",
+      "source": "plugins/commands/show_numbers.py:1621",
       "undoable": true,
       "verb": "grid",
       "whole_utterance": false
@@ -10312,7 +10312,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1634",
+      "source": "plugins/commands/show_numbers.py:1608",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -10335,7 +10335,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1754",
+      "source": "plugins/commands/show_numbers.py:1728",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -10363,7 +10363,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1933",
+      "source": "plugins/commands/show_numbers.py:1907",
       "undoable": false,
       "verb": "left",
       "whole_utterance": false
@@ -10389,7 +10389,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1604",
+      "source": "plugins/commands/show_numbers.py:1578",
       "undoable": true,
       "verb": "mouse",
       "whole_utterance": false
@@ -10414,7 +10414,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1662",
+      "source": "plugins/commands/show_numbers.py:1636",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -10433,7 +10433,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1314",
+      "source": "plugins/commands/show_numbers.py:1288",
       "undoable": true,
       "verb": "overlay",
       "whole_utterance": false
@@ -10459,7 +10459,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1767",
+      "source": "plugins/commands/show_numbers.py:1741",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -10487,7 +10487,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1940",
+      "source": "plugins/commands/show_numbers.py:1914",
       "undoable": false,
       "verb": "right",
       "whole_utterance": false
@@ -10511,7 +10511,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1689",
+      "source": "plugins/commands/show_numbers.py:1663",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -10528,7 +10528,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1683",
+      "source": "plugins/commands/show_numbers.py:1657",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -10547,7 +10547,7 @@
       "pack": "accessibility",
       "plugin": "show_numbers",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1203",
+      "source": "plugins/commands/show_numbers.py:1177",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -10891,7 +10891,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "plugins/commands/tab_finder.py:80",
+      "source": "plugins/commands/tab_finder.py:71",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -10925,7 +10925,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "plugins/commands/tab_finder.py:115",
+      "source": "plugins/commands/tab_finder.py:106",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -10959,7 +10959,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "plugins/commands/tab_finder.py:130",
+      "source": "plugins/commands/tab_finder.py:121",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -11242,7 +11242,7 @@
       "pack": "utilities",
       "plugin": "timer",
       "risk": "write",
-      "source": "plugins/commands/timer.py:123",
+      "source": "plugins/commands/timer.py:124",
       "undoable": false,
       "verb": "set",
       "whole_utterance": false
@@ -11523,7 +11523,7 @@
           "window_cube.selection"
         ]
       },
-      "source": "plugins/commands/window_cube.py:422",
+      "source": "plugins/commands/window_cube.py:412",
       "undoable": true,
       "verb": "choose",
       "whole_utterance": false
@@ -11547,16 +11547,14 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "write",
-      "source": "plugins/commands/window_cube.py:529",
+      "source": "plugins/commands/window_cube.py:513",
       "undoable": false,
       "verb": "cube",
       "whole_utterance": false
     },
     {
       "aliases": [
-        "cube page",
-        "cube page one",
-        "cube page two"
+        "cube page"
       ],
       "args": [
         {
@@ -11572,7 +11570,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:364",
+      "source": "plugins/commands/window_cube.py:365",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -11596,7 +11594,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:544",
+      "source": "plugins/commands/window_cube.py:528",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -11619,7 +11617,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "eight",
       "whole_utterance": false
@@ -11642,7 +11640,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "five",
       "whole_utterance": false
@@ -11665,7 +11663,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "four",
       "whole_utterance": false
@@ -11684,7 +11682,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:331",
+      "source": "plugins/commands/window_cube.py:332",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -11707,7 +11705,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "nine",
       "whole_utterance": false
@@ -11730,7 +11728,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "one",
       "whole_utterance": false
@@ -11755,7 +11753,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:350",
+      "source": "plugins/commands/window_cube.py:351",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -11778,7 +11776,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "seven",
       "whole_utterance": false
@@ -11798,7 +11796,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:315",
+      "source": "plugins/commands/window_cube.py:316",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -11821,7 +11819,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "six",
       "whole_utterance": false
@@ -11844,7 +11842,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "three",
       "whole_utterance": false
@@ -11867,7 +11865,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:449",
+      "source": "plugins/commands/window_cube.py:439",
       "undoable": true,
       "verb": "two",
       "whole_utterance": false
@@ -11885,7 +11883,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -11903,7 +11901,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -11921,7 +11919,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -11939,7 +11937,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -11957,7 +11955,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -11975,7 +11973,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -11993,7 +11991,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12011,7 +12009,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12029,7 +12027,7 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:464",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12048,7 +12046,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:999",
+      "source": "plugins/commands/window_switcher.py:994",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -12068,7 +12066,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:1016",
+      "source": "plugins/commands/window_switcher.py:1011",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -12087,7 +12085,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:659",
+      "source": "plugins/commands/window_switcher.py:654",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -12112,7 +12110,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:723",
+      "source": "plugins/commands/window_switcher.py:718",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12135,7 +12133,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:850",
+      "source": "plugins/commands/window_switcher.py:845",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -12160,7 +12158,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:881",
+      "source": "plugins/commands/window_switcher.py:876",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -12189,7 +12187,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:749",
+      "source": "plugins/commands/window_switcher.py:744",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12213,7 +12211,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:801",
+      "source": "plugins/commands/window_switcher.py:796",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12239,7 +12237,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:696",
+      "source": "plugins/commands/window_switcher.py:691",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12263,7 +12261,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:936",
+      "source": "plugins/commands/window_switcher.py:931",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12287,7 +12285,7 @@
       "pack": "window-management",
       "plugin": "window_switcher",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:824",
+      "source": "plugins/commands/window_switcher.py:819",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -12314,7 +12312,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:685",
+      "source": "plugins/commands/windows.py:686",
       "undoable": true,
       "verb": "bring",
       "whole_utterance": false
@@ -12345,7 +12343,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1200",
+      "source": "plugins/commands/windows.py:1201",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -12370,7 +12368,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:1115",
+      "source": "plugins/commands/windows.py:1116",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -12389,7 +12387,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1134",
+      "source": "plugins/commands/windows.py:1135",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -12412,7 +12410,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1169",
+      "source": "plugins/commands/windows.py:1170",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -12431,7 +12429,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1100",
+      "source": "plugins/commands/windows.py:1101",
       "undoable": true,
       "verb": "list",
       "whole_utterance": false
@@ -12451,7 +12449,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:811",
+      "source": "plugins/commands/windows.py:812",
       "undoable": true,
       "verb": "movie",
       "whole_utterance": false
@@ -12470,7 +12468,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1151",
+      "source": "plugins/commands/windows.py:1152",
       "undoable": true,
       "verb": "rescue",
       "whole_utterance": false
@@ -12495,7 +12493,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1085",
+      "source": "plugins/commands/windows.py:1086",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -12520,7 +12518,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "write",
-      "source": "plugins/commands/windows.py:1070",
+      "source": "plugins/commands/windows.py:1071",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -12551,7 +12549,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:764",
+      "source": "plugins/commands/windows.py:765",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -12580,7 +12578,7 @@
       "pack": "window-management",
       "plugin": "windows",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1342",
+      "source": "plugins/commands/windows.py:1343",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -12796,7 +12794,7 @@
       "pack": "word",
       "plugin": "word",
       "risk": "ui",
-      "source": "plugins/commands/word.py:290",
+      "source": "plugins/commands/word.py:287",
       "undoable": true,
       "verb": "line",
       "whole_utterance": false
@@ -12864,7 +12862,7 @@
       "pack": "word",
       "plugin": "word",
       "risk": "ui",
-      "source": "plugins/commands/word.py:345",
+      "source": "plugins/commands/word.py:344",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -12898,7 +12896,7 @@
       "pack": "word",
       "plugin": "word",
       "risk": "ui",
-      "source": "plugins/commands/word.py:338",
+      "source": "plugins/commands/word.py:337",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -12915,7 +12913,7 @@
       "pack": "word",
       "plugin": "word",
       "risk": "ui",
-      "source": "plugins/commands/word.py:352",
+      "source": "plugins/commands/word.py:351",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -12938,7 +12936,7 @@
       "pack": "word",
       "plugin": "word",
       "risk": "ui",
-      "source": "plugins/commands/word.py:305",
+      "source": "plugins/commands/word.py:304",
       "undoable": true,
       "verb": "set",
       "whole_utterance": false
@@ -13006,7 +13004,7 @@
       "pack": "word",
       "plugin": "word",
       "risk": "ui",
-      "source": "plugins/commands/word.py:359",
+      "source": "plugins/commands/word.py:358",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false

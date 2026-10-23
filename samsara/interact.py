@@ -51,11 +51,12 @@ def parse_action(text: str) -> tuple[str, dict, bool] | None:
         return "snap", {"side": body}, pointer
     if body.startswith("snap ") and body[5:] in _SIDES:
         return "snap", {"side": body[5:]}, pointer
-    match = re.fullmatch(r"move to monitor (\d+|one|two|three|four)", body)
+    match = re.fullmatch(r"move to monitor (.+)", body)
     if match:
         raw = match.group(1)
-        monitor = int(raw) if raw.isdigit() else _MONITOR_WORDS[raw]
-        if monitor > 0:
+        from samsara.spoken_numbers import parse_spoken_number
+        monitor = parse_spoken_number(raw)
+        if monitor is not None and monitor > 0:
             return "move", {"monitor": monitor}, pointer
     return None
 

@@ -278,6 +278,8 @@ def _parse_duration(text):
     import re
     if not text:
         return None
+    from samsara.spoken_numbers import number_words_to_digits
+    text = number_words_to_digits(text.lower().strip())
     match = re.search(r'(\d+)\s*(?:seconds?|secs?|s)\b', text.lower())
     if match:
         return int(match.group(1))

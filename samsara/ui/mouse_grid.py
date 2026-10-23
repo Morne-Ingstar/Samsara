@@ -93,7 +93,9 @@ _SCOPE_WORDS = {
 
 def word_to_digit(token: str) -> Optional[int]:
     """1-9 for one spoken number word or digit, else None."""
-    return _NUMBER_WORDS.get(token.strip().lower())
+    from samsara.spoken_numbers import parse_spoken_number
+    number = parse_spoken_number(token, homophones=_NUMBER_WORDS)
+    return number if number is not None and 1 <= number <= 9 else None
 
 
 def cell_rect(rect: tuple, digit: int) -> tuple:

@@ -272,12 +272,9 @@ def numbered_list(app, remainder=""):
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def font_size(app, remainder=""):
     """Sets selected Word text to a font size from 6 through 72."""
-    try:
-        size = int(str(remainder).strip())
-    except (TypeError, ValueError):
-        _report(app, "Font size must be from 6 to 72")
-        return False
-    if not 6 <= size <= 72:
+    from samsara.spoken_numbers import parse_spoken_number
+    size = parse_spoken_number(str(remainder).strip())
+    if size is None or not 6 <= size <= 72:
         _report(app, "Font size must be from 6 to 72")
         return False
     ok, _ = _selection_call(app, lambda selection: setattr(selection.Font, "Size", size))
@@ -293,7 +290,9 @@ _SPACING_RULES = {"1": 0, "1.0": 0, "1.5": 1, "2": 2, "2.0": 2}
 def line_spacing(app, remainder=""):
     """Sets selected Word paragraphs to 1, 1.5, or 2 line spacing."""
     raw = str(remainder).strip()
-    rule = _SPACING_RULES.get(raw)
+    from samsara.spoken_numbers import parse_spoken_number
+    number = parse_spoken_number(raw)
+    rule = _SPACING_RULES.get(str(number) if number is not None else raw)
     if rule is None:
         _report(app, "Line spacing must be 1, 1.5, or 2")
         return False

@@ -475,10 +475,10 @@ def _switch_desktop(number):
          param_schema={'number': {'type': 'int', 'required': False}})
 def handle_desk(app, remainder):
     """Switches to an existing virtual desktop by its Task View number."""
-    from plugins.commands.window_cube import _NUMBER_WORDS
+    from samsara.spoken_numbers import parse_spoken_number
     from samsara.command_registry import DispatchResult, DispatchState
     text = (remainder or '').strip().lower()
-    number = int(text) if text.isascii() and text.isdigit() else _NUMBER_WORDS.get(text)
+    number = parse_spoken_number(text)
     try:
         if number is not None and _switch_desktop(number):
             return True

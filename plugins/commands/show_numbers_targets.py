@@ -38,16 +38,9 @@ def selection_number(text, overlay):
     """A whole bare label belongs to numbers only while its overlay is active."""
     if overlay.grid_active() or not overlay.is_overlay_active():
         return None
-    text = text.strip().lower().rstrip('.!?')
-    if re.fullmatch(r'[0-9]{1,2}', text):
-        return int(text)
-    words = text.split()
-    if (len(words) == 1 and words[0] in overlay._WORD_TO_NUM or
-            len(words) == 2 and overlay._WORD_TO_NUM.get(words[0], 0) >= 20 and
-            overlay._WORD_TO_NUM.get(words[0], 0) % 10 == 0 and
-            1 <= overlay._WORD_TO_NUM.get(words[1], 0) <= 9):
-        return overlay._parse_spoken_number(text)
-    return None
+    from samsara.spoken_numbers import parse_spoken_number
+    number = parse_spoken_number(text.strip().lower().rstrip('.!?'))
+    return number if number is not None and 0 <= number <= 99 else None
 
 
 def show_taskbar_numbers(app, overlay):

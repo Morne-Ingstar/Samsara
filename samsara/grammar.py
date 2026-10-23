@@ -92,21 +92,9 @@ def _ordinals() -> dict[str, int]:
 
 def _number(words: list[str]) -> int | None:
     """Parse one 0--99 number, including digits, compounds, and ordinals."""
-    if not words:
-        return None
-    if len(words) == 1:
-        word = words[0]
-        if word.isdigit() and int(word) <= 99:
-            return int(word)
-        ordinal = _ordinals().get(word)
-        if ordinal is not None:
-            return ordinal
-    numeric = _number_words()
-    if len(words) <= 2 and all(word in numeric for word in words):
-        value = sum(numeric[word] for word in words)
-        if 0 <= value <= 99:
-            return value
-    return None
+    from samsara.spoken_numbers import parse_spoken_number
+    value = parse_spoken_number(" ".join(words))
+    return value if value is not None and 0 <= value <= 99 else None
 
 
 def _letter_map() -> dict[str, str]:
@@ -185,6 +173,10 @@ def _monitor(words: list[str]) -> str | None:
     while words and words[0] in {"to", "on", "onto"}:
         words.pop(0)
     words = [word for word in words if word not in {"the", "a"}]
+    from samsara.spoken_numbers import parse_spoken_number
+    numeric = [word for word in words if word not in {"screen", "monitor", "display"}]
+    if parse_spoken_number(" ".join(numeric)) is not None:
+        return " ".join(words)
     if not words or any(word not in _MONITOR_WORDS for word in words):
         return None
     return " ".join(words)

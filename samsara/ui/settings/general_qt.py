@@ -485,7 +485,7 @@ class GeneralPage:
         _add_row(
             text_layout,
             "Format numbers",
-            "Convert spoken numbers to digits (e.g. 'three' to '3')",
+            "Writes numbers you dictate as digits (twenty -> 20). Commands understand both either way.",
             format_numbers,
         )
 

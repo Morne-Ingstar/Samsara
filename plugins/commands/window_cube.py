@@ -32,6 +32,7 @@ import threading
 import time
 
 from samsara.plugin_commands import command
+from samsara.spoken_numbers import parse_spoken_number, spoken_number_matches
 
 # Reuse -- never fork. Enumeration, ordering, focus, NATO parsing and the
 # letter mapping all come from the existing switcher.
@@ -361,7 +362,7 @@ def handle_refresh_cube(app, remainder):
     return True
 
 
-@command("cube page", aliases=["cube page two", "cube page one"],
+@command("cube page",
          pack="window-management",
          risk_class="ui", param_schema={"page": {"type": "int", "required": False}},
 )
@@ -369,22 +370,16 @@ def handle_cube_page(app, remainder):
     """Shows the next page of the numbered window grid, or the page you name."""
     global _page
     text = (remainder or "").strip().lower()
-    page = None
-    for word, value in _NUMBER_WORDS.items():
-        if word in text:
-            page = value
-            break
-    if page is None:
-        for token in text.split():
-            if token.isdigit():
-                page = int(token)
-                break
-    if page is None:
-        total = max(1, (len(_slots) + _max_rows(app) - 1) // _max_rows(app))
-        _speak(app, "Which page? Say cube page two." if total > 1
-               else "There is only one cube page.")
-        return True
     total = max(1, (len(_slots) + _max_rows(app) - 1) // _max_rows(app))
+    page = parse_spoken_number(text)
+    if not text:
+        if total == 1:
+            _speak(app, "There is only one cube page.")
+            return True
+        page = _page % total + 1
+    elif page is None:
+        _speak(app, "Which page? Say cube page two.")
+        return True
     if page < 1 or page > total:
         _speak(app, f"There {'is' if total == 1 else 'are'} only {total} cube page{'s' if total != 1 else ''}.")
         return True
@@ -396,12 +391,7 @@ def handle_cube_page(app, remainder):
 
 def _number_from(phrase: str, remainder: str):
     text = f"{phrase} {remainder or ''}".strip().lower()
-    for token in text.split():
-        if token.isdigit():
-            return int(token)
-        if token in _NUMBER_WORDS:
-            return _NUMBER_WORDS[token]
-    return None
+    return next((value for _start, _end, value in spoken_number_matches(text)), None)
 
 
 def read_numbered_windows(app):
@@ -427,7 +417,7 @@ def handle_choose(app, remainder):
     if app is not _app_ref or not _selection_available():
         return False
     text = (remainder or "").strip().lower()
-    number = int(text) if text.isascii() and text.isdigit() else _NUMBER_WORDS.get(text)
+    number = parse_spoken_number(text)
     if number is None or number < 1:
         _speak(app, "Choose a window number from the list.")
         return True
@@ -517,13 +507,7 @@ def _letters_for_numbers(app, numbers) -> list:
 
 
 def _numbers_in(text: str) -> list:
-    out = []
-    for token in (text or "").lower().replace(",", " ").split():
-        if token.isdigit():
-            out.append(int(token))
-        elif token in _NUMBER_WORDS:
-            out.append(_NUMBER_WORDS[token])
-    return out
+    return [value for _start, _end, value in spoken_number_matches(text)]
 
 
 @command("cube copy", aliases=["cube copy into"], pack="window-management",

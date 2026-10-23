@@ -121,13 +121,8 @@ def selection_number(text, app):
     """Only a whole bare number, and only in this app's live selection."""
     if not active(app):
         return None
-    from plugins.commands.show_numbers import _parse_spoken_number, _WORD_TO_NUM
-    text = text.strip().lower().rstrip('.!?')
-    if text.isascii() and text.isdigit():
-        return int(text)
-    if not text or any(word not in _WORD_TO_NUM for word in text.split()):
-        return None
-    return _parse_spoken_number(text)
+    from samsara.spoken_numbers import parse_spoken_number
+    return parse_spoken_number(text.strip().lower().rstrip('.!?'))
 
 
 def _act(app, service, node, verb, hwnd):
