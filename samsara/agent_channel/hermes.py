@@ -53,8 +53,9 @@ def hermes_argv(exe: list[str], session: str | None, settings: dict, timeout: fl
     argv = list(exe)
     if values["profile"]:
         argv += ["-p", values["profile"]]
-    argv += ["chat", "--source", "samsara", "--format", "stream-json", "--query-file", "-",
-             "--run-budget", str(max(1, int(timeout)))]
+    # The gateway rejects custom sources and --run-budget (Hermes 0.22).
+    # ask() enforces the process deadline itself, including pipe I/O.
+    argv += ["chat", "--format", "stream-json", "--query-file", "-"]
     if session:
         if not isinstance(session, str) or not SESSION.fullmatch(session):
             raise ValueError("Hermes session ID is invalid. Start a new Hermes session.")
@@ -82,7 +83,13 @@ def parse_hermes(lines: list[str], errors: list[str] = ()) -> tuple[str, str | N
         elif event.get("type") == "result":
             result = event
     # A result event is the completion contract; text chunks alone are incomplete.
-    if result is None or result.get("exit_code", 0):
+    if result is not None and result.get("exit_code", 0):
+        detail = result.get("error")
+        message = (detail.strip().splitlines()[0][:200]
+                   if isinstance(detail, str) and detail.strip()
+                   else first_error(errors, f"Hermes exited with code {result['exit_code']}."))
+        raise HermesFailure(message, result["exit_code"])
+    if result is None:
         raise RuntimeError(first_error(errors, "Hermes returned no completed result."))
     session = result.get("session_id") or system_id
     if not session:
@@ -110,6 +117,12 @@ class BusyError(RuntimeError):
 
 class Cancelled(RuntimeError):
     pass
+
+
+class HermesFailure(RuntimeError):
+    def __init__(self, message, exit_code):
+        super().__init__(message)
+        self.exit_code = exit_code
 
 
 @dataclass
@@ -183,6 +196,7 @@ class HermesAgent(cli.CliAgent):
     def ask(self, question: str, config=None, *, home=None, progress=None, turn=None):
         turn = turn or self.begin()
         process = None
+        code = -1  # No process exit code for launch/configuration/timeout errors.
         started = time.monotonic()
         try:
             config = config or {}
@@ -261,9 +275,11 @@ class HermesAgent(cli.CliAgent):
                     if system_id is None and line.strip().startswith("session_id:"):
                         self._remember_session(line.partition(":")[2].strip(), home, turn)
             code = process.wait(timeout=max(.01, timeout - (time.monotonic() - started)))
+            if code and not errors:
+                errors.append(f"Hermes exited with code {code}.")
+            answer, new_session = parse_hermes(output, errors)
             if code:
                 raise RuntimeError(first_error(errors, f"Hermes exited with code {code}."))
-            answer, new_session = parse_hermes(output, errors)
             with self._state_lock:
                 if not self.valid(turn):
                     raise Cancelled()
@@ -273,11 +289,21 @@ class HermesAgent(cli.CliAgent):
                         data[self.name] = new_session
                         self._save_sessions(home, data)
             elapsed = time.monotonic() - started
+            logger.info("[HERMES] answered in %d ms", round(elapsed * 1000))
             logger.info("Hermes completed input_chars=%d output_chars=%d session=%s elapsed_s=%.2f exit=%d",
                         len(question), len(answer), new_session or session, elapsed, code)
             return cli.AgentReply(answer, new_session or session, tuple(argv), elapsed)
         except subprocess.TimeoutExpired:
+            logger.error("[HERMES] failed exit=-1 error=Hermes timed out.")
             raise TimeoutError() from None
+        except Cancelled:
+            raise
+        except Exception as exc:
+            detail = str(exc).splitlines()[0][:200] if str(exc) else (
+                "Hermes timed out." if isinstance(exc, TimeoutError) else type(exc).__name__)
+            logger.error("[HERMES] failed exit=%s error=%s",
+                         getattr(exc, "exit_code", code), detail)
+            raise
         finally:
             if process is not None:
                 cli._kill_tree(process)

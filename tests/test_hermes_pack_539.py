@@ -106,8 +106,8 @@ def test_stdin_cmd_shim_and_flags(fake):
     argv, kwargs = fake.calls[0]
     assert argv[0].endswith("hermes.cmd")
     assert message not in argv
-    assert "--source" in argv and argv[argv.index("--source") + 1] == "samsara"
-    assert argv[argv.index("--run-budget") + 1] == "240"
+    # 802: Hermes 0.22 refuses a custom --source and --run-budget, so neither is sent.
+    assert "--source" not in argv and "--run-budget" not in argv
     assert fake.processes[0].stdin.sent == hermes.PREAMBLE + "\n\n" + message
     assert reply.text == "Four."
     assert not (fake.home / "agent_transcripts").exists()
