@@ -345,7 +345,43 @@ _samsara_boot.check_vc_redistributable()
 
 def _create_whisper_model(*args, **kwargs):
     from faster_whisper import WhisperModel
-    return WhisperModel(*args, **kwargs)
+    from faster_whisper.utils import download_model
+
+    on_download = kwargs.pop("_on_download", None)
+    model = args[0] if args else kwargs.get("model_size_or_path")
+    if model is None or os.path.isdir(model):
+        kwargs["local_files_only"] = True
+        return WhisperModel(*args, **kwargs)
+
+    # Resolve cached snapshots without allowing snapshot_download to contact
+    # the Hub, then construct faster-whisper from the local model directory.
+    cache_options = {
+        "local_files_only": True,
+        "cache_dir": kwargs.get("download_root"),
+        "revision": kwargs.get("revision"),
+        "use_auth_token": kwargs.get("use_auth_token"),
+    }
+    try:
+        model_path = download_model(model, **cache_options)
+    except Exception:
+        if on_download is not None:
+            on_download()
+        return WhisperModel(*args, **kwargs)
+
+    cached_args = (model_path, *args[1:]) if args else args
+    cached_kwargs = dict(kwargs)
+    if not args:
+        cached_kwargs["model_size_or_path"] = model_path
+    cached_kwargs["local_files_only"] = True
+    try:
+        return WhisperModel(*cached_args, **cached_kwargs)
+    except Exception:
+        # A snapshot can exist but be incomplete or corrupt. Announce the
+        # repair/download before permitting faster-whisper to use the Hub.
+        if on_download is not None:
+            on_download()
+        return WhisperModel(*args, **kwargs)
+
 
 
 if sys.stdout is not None:
@@ -3658,6 +3694,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 compute_type=compute_type,
                 cpu_threads=4,  # Use multiple CPU threads if on CPU
                 num_workers=2,  # Parallel workers for preprocessing
+                _on_download=lambda: self.update_splash(
+                    "Downloading the speech model...", 68,
+                    "A network connection is needed for this model",
+                ),
             )
             load_time = time.time() - load_start
             

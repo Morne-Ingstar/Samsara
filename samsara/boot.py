@@ -32,6 +32,9 @@ import threading
 import time
 from pathlib import Path
 
+# Suppress Hub software-version telemetry before faster-whisper imports it.
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
 logger = logging.getLogger("Samsara")
 
 
