@@ -758,7 +758,16 @@
         "left"
       ],
       "description": "Goes back one page in the browser.",
-      "pack": "browsers"
+      "pack": "browsers",
+      "aliases": [
+        "back",
+        "back page",
+        "page back",
+        "previous page",
+        "return page",
+        "go to the previous page",
+        "last page"
+      ]
     },
     "go forward": {
       "type": "hotkey",
@@ -767,7 +776,12 @@
         "right"
       ],
       "description": "Goes forward one page in the browser.",
-      "pack": "browsers"
+      "pack": "browsers",
+      "aliases": [
+        "forward page",
+        "page forward",
+        "next page"
+      ]
     },
     "select all": {
       "type": "hotkey",
