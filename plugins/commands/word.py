@@ -11,7 +11,15 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-import pyautogui
+class _PyAutoGUIProxy:
+    """Resolve the optional desktop controller only when a Word action runs."""
+
+    def __getattr__(self, name):
+        import pyautogui  # noqa: PLC0415
+        return getattr(pyautogui, name)
+
+
+pyautogui = _PyAutoGUIProxy()
 
 from samsara.command_scope import capture_context
 from samsara.plugin_commands import command

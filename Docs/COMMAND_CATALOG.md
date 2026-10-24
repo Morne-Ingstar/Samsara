@@ -532,12 +532,12 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `macros.break_time` | `break time`, `stretch break`, `take a break` | - | - | - | write | no |  | Pauses media and locks the screen, for a break. | `plugins/commands/macros.py:68` |
-| `macros.clear_my_desk` | `clean desktop`, `clear my desk`, `hide everything` | - | - | - | ui | yes |  | Minimises every window. | `plugins/commands/macros.py:121` |
-| `macros.focus_mode` | `focus mode`, `lets work`, `time to work` | - | - | - | write | no |  | Turns the volume down, opens your editor and clears distractions. | `plugins/commands/macros.py:50` |
-| `macros.going_dark` | `end of day`, `going dark`, `goodnight`, `shut it down` | - | - | - | destructive | no |  | Mutes the sound, minimises everything and locks the screen. | `plugins/commands/macros.py:33` |
-| `macros.morning_routine` | `good morning`, `morning routine`, `start my day` | - | - | - | write | no |  | Runs your morning routine. | `plugins/commands/macros.py:81` |
-| `macros.presentation_mode` | `demo mode`, `presentation mode` | - | - | - | write | no |  | Maximises the focused window and turns the volume up. | `plugins/commands/macros.py:105` |
+| `macros.break_time` | `break time`, `stretch break`, `take a break` | - | - | - | write | no |  | Pauses media and locks the screen, for a break. | `plugins/commands/macros.py:86` |
+| `macros.clear_my_desk` | `clean desktop`, `clear my desk`, `hide everything` | - | - | - | ui | yes |  | Minimises every window. | `plugins/commands/macros.py:139` |
+| `macros.focus_mode` | `focus mode`, `lets work`, `time to work` | - | - | - | write | no |  | Turns the volume down, opens your editor and clears distractions. | `plugins/commands/macros.py:68` |
+| `macros.going_dark` | `end of day`, `going dark`, `goodnight`, `shut it down` | - | - | - | destructive | no |  | Mutes the sound, minimises everything and locks the screen. | `plugins/commands/macros.py:51` |
+| `macros.morning_routine` | `good morning`, `morning routine`, `start my day` | - | - | - | write | no |  | Runs your morning routine. | `plugins/commands/macros.py:99` |
+| `macros.presentation_mode` | `demo mode`, `presentation mode` | - | - | - | write | no |  | Maximises the focused window and turns the volume up. | `plugins/commands/macros.py:123` |
 
 ## media_keys (5)
 
@@ -1088,30 +1088,30 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `word.align_center` | `align center` | - | - | - | ui | yes |  | Centers the current Word paragraph. | `plugins/commands/word.py:207` |
-| `word.align_left` | `align left` | - | - | - | ui | yes |  | Aligns the current Word paragraph left. | `plugins/commands/word.py:200` |
-| `word.align_right` | `align right` | - | - | - | ui | yes |  | Aligns the current Word paragraph right. | `plugins/commands/word.py:214` |
-| `word.bold_that` | `bold that` | - | - | - | ui | yes |  | Toggles bold for the selected Word text. | `plugins/commands/word.py:158` |
-| `word.bullet_list` | `bullet list` | - | - | - | ui | yes |  | Toggles the selected Word paragraphs as a bulleted list. | `plugins/commands/word.py:228` |
-| `word.double_spacing` | `double spacing` | - | - | - | ui | yes |  | Applies double line spacing in Word. | `plugins/commands/word.py:193` |
-| `word.font_bigger` | `font bigger` | - | - | - | ui | yes |  | Increases the selected Word text's font size. | `plugins/commands/word.py:144` |
-| `word.font_size` | `font size` | remainder:text* | `font size twelve` | Focus Microsoft Word and select the text to change. Sizes 6 through 72 are supported. | ui | yes |  | Sets selected Word text to a font size from 6 through 72. | `plugins/commands/word.py:270` |
-| `word.font_smaller` | `font smaller` | - | - | - | ui | yes |  | Decreases the selected Word text's font size. | `plugins/commands/word.py:151` |
-| `word.italic_that` | `italic that` | - | - | - | ui | yes |  | Toggles italics for the selected Word text. | `plugins/commands/word.py:165` |
-| `word.justify_text` | `justify text` | - | - | - | ui | yes |  | Justifies the current Word paragraph. | `plugins/commands/word.py:221` |
-| `word.line_spacing` | `line spacing` | remainder:text* | `line spacing two` | Focus Microsoft Word and select the paragraphs to change. Use 1, 1.5, or 2. | ui | yes |  | Sets selected Word paragraphs to 1, 1.5, or 2 line spacing. | `plugins/commands/word.py:287` |
-| `word.numbered_list` | `numbered list` | - | - | - | ui | yes |  | Toggles numbering on the current Word selection. | `plugins/commands/word.py:256` |
-| `word.one_and_a_half_spacing` | `one and a half spacing` | - | - | - | ui | yes |  | Applies one-and-a-half line spacing in Word. | `plugins/commands/word.py:186` |
-| `word.redo_in_word` | `redo in word` | - | - | - | ui | yes |  | Redoes the last Word edit without invoking Samsara dictation history. | `plugins/commands/word.py:249` |
-| `word.select_line` | `select line` | - | - | - | ui | yes |  | Selects the current line; Word uses COM, other editors use keyboard/readback conventions. | `plugins/commands/word.py:348` |
-| `word.select_paragraph_in_word` | `select paragraph in word` | - | - | - | ui | yes |  | Extends the Word selection through the current paragraph. | `plugins/commands/word.py:235` |
-| `word.select_sentence` | `select sentence` | - | - | - | ui | yes |  | Selects the current sentence; Word uses COM, other editors use keyboard/readback conventions. | `plugins/commands/word.py:341` |
-| `word.select_word` | `select word` | - | - | - | ui | yes |  | Selects the current word; Word uses COM, other editors use keyboard/readback conventions. | `plugins/commands/word.py:355` |
-| `word.set_font` | `set font` | remainder:text* | `set font Arial` | Focus Microsoft Word and select the text to change. The font must be installed. | ui | yes |  | Sets selected Word text to an installed font by name. | `plugins/commands/word.py:304` |
-| `word.single_spacing` | `single spacing` | - | - | - | ui | yes |  | Applies single line spacing in Word. | `plugins/commands/word.py:179` |
-| `word.underline_that` | `underline that` | - | - | - | ui | yes |  | Toggles underline for the selected Word text. | `plugins/commands/word.py:172` |
-| `word.undo_in_word` | `undo in word` | - | - | - | ui | yes |  | Undoes the last Word edit without invoking Samsara dictation history. | `plugins/commands/word.py:242` |
-| `word.word_count` | `word count` | - | - | - | ui | yes |  | Speaks the word count of the current Word selection. | `plugins/commands/word.py:362` |
+| `word.align_center` | `align center` | - | - | - | ui | yes |  | Centers the current Word paragraph. | `plugins/commands/word.py:215` |
+| `word.align_left` | `align left` | - | - | - | ui | yes |  | Aligns the current Word paragraph left. | `plugins/commands/word.py:208` |
+| `word.align_right` | `align right` | - | - | - | ui | yes |  | Aligns the current Word paragraph right. | `plugins/commands/word.py:222` |
+| `word.bold_that` | `bold that` | - | - | - | ui | yes |  | Toggles bold for the selected Word text. | `plugins/commands/word.py:166` |
+| `word.bullet_list` | `bullet list` | - | - | - | ui | yes |  | Toggles the selected Word paragraphs as a bulleted list. | `plugins/commands/word.py:236` |
+| `word.double_spacing` | `double spacing` | - | - | - | ui | yes |  | Applies double line spacing in Word. | `plugins/commands/word.py:201` |
+| `word.font_bigger` | `font bigger` | - | - | - | ui | yes |  | Increases the selected Word text's font size. | `plugins/commands/word.py:152` |
+| `word.font_size` | `font size` | remainder:text* | `font size twelve` | Focus Microsoft Word and select the text to change. Sizes 6 through 72 are supported. | ui | yes |  | Sets selected Word text to a font size from 6 through 72. | `plugins/commands/word.py:278` |
+| `word.font_smaller` | `font smaller` | - | - | - | ui | yes |  | Decreases the selected Word text's font size. | `plugins/commands/word.py:159` |
+| `word.italic_that` | `italic that` | - | - | - | ui | yes |  | Toggles italics for the selected Word text. | `plugins/commands/word.py:173` |
+| `word.justify_text` | `justify text` | - | - | - | ui | yes |  | Justifies the current Word paragraph. | `plugins/commands/word.py:229` |
+| `word.line_spacing` | `line spacing` | remainder:text* | `line spacing two` | Focus Microsoft Word and select the paragraphs to change. Use 1, 1.5, or 2. | ui | yes |  | Sets selected Word paragraphs to 1, 1.5, or 2 line spacing. | `plugins/commands/word.py:295` |
+| `word.numbered_list` | `numbered list` | - | - | - | ui | yes |  | Toggles numbering on the current Word selection. | `plugins/commands/word.py:264` |
+| `word.one_and_a_half_spacing` | `one and a half spacing` | - | - | - | ui | yes |  | Applies one-and-a-half line spacing in Word. | `plugins/commands/word.py:194` |
+| `word.redo_in_word` | `redo in word` | - | - | - | ui | yes |  | Redoes the last Word edit without invoking Samsara dictation history. | `plugins/commands/word.py:257` |
+| `word.select_line` | `select line` | - | - | - | ui | yes |  | Selects the current line; Word uses COM, other editors use keyboard/readback conventions. | `plugins/commands/word.py:356` |
+| `word.select_paragraph_in_word` | `select paragraph in word` | - | - | - | ui | yes |  | Extends the Word selection through the current paragraph. | `plugins/commands/word.py:243` |
+| `word.select_sentence` | `select sentence` | - | - | - | ui | yes |  | Selects the current sentence; Word uses COM, other editors use keyboard/readback conventions. | `plugins/commands/word.py:349` |
+| `word.select_word` | `select word` | - | - | - | ui | yes |  | Selects the current word; Word uses COM, other editors use keyboard/readback conventions. | `plugins/commands/word.py:363` |
+| `word.set_font` | `set font` | remainder:text* | `set font Arial` | Focus Microsoft Word and select the text to change. The font must be installed. | ui | yes |  | Sets selected Word text to an installed font by name. | `plugins/commands/word.py:312` |
+| `word.single_spacing` | `single spacing` | - | - | - | ui | yes |  | Applies single line spacing in Word. | `plugins/commands/word.py:187` |
+| `word.underline_that` | `underline that` | - | - | - | ui | yes |  | Toggles underline for the selected Word text. | `plugins/commands/word.py:180` |
+| `word.undo_in_word` | `undo in word` | - | - | - | ui | yes |  | Undoes the last Word edit without invoking Samsara dictation history. | `plugins/commands/word.py:250` |
+| `word.word_count` | `word count` | - | - | - | ui | yes |  | Speaks the word count of the current Word selection. | `plugins/commands/word.py:370` |
 
 ## workflow_capture (4)
 

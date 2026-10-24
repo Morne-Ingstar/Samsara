@@ -7,8 +7,30 @@ Supports:
 """
 import time
 import threading
-from pynput import keyboard
-from pynput.keyboard import Controller, Key
+class _KeyboardProxy:
+    """Keep the public keyboard seam while deferring pynput backend loading."""
+
+    def __getattr__(self, name):
+        from pynput import keyboard as _keyboard  # noqa: PLC0415
+        return getattr(_keyboard, name)
+
+
+class _KeyProxy:
+    """Resolve pynput key constants only when a macro uses a special key."""
+
+    def __getattr__(self, name):
+        from pynput.keyboard import Key as _Key  # noqa: PLC0415
+        return getattr(_Key, name)
+
+
+def Controller(*args, **kwargs):
+    """Construct pynput's controller at the first injection operation."""
+    from pynput.keyboard import Controller as _Controller  # noqa: PLC0415
+    return _Controller(*args, **kwargs)
+
+
+keyboard = _KeyboardProxy()
+Key = _KeyProxy()
 
 from samsara.log import get_logger
 
@@ -17,39 +39,13 @@ logger = get_logger(__name__)
 
 # Map string key names to pynput Key objects
 SPECIAL_KEYS = {
-    'ctrl': Key.ctrl,
-    'control': Key.ctrl,
-    'shift': Key.shift,
-    'alt': Key.alt,
-    'tab': Key.tab,
-    'enter': Key.enter,
-    'return': Key.enter,
-    'space': Key.space,
-    'backspace': Key.backspace,
-    'delete': Key.delete,
-    'escape': Key.esc,
-    'esc': Key.esc,
-    'up': Key.up,
-    'down': Key.down,
-    'left': Key.left,
-    'right': Key.right,
-    'home': Key.home,
-    'end': Key.end,
-    'page_up': Key.page_up,
-    'page_down': Key.page_down,
-    'caps_lock': Key.caps_lock,
-    'f1': Key.f1,
-    'f2': Key.f2,
-    'f3': Key.f3,
-    'f4': Key.f4,
-    'f5': Key.f5,
-    'f6': Key.f6,
-    'f7': Key.f7,
-    'f8': Key.f8,
-    'f9': Key.f9,
-    'f10': Key.f10,
-    'f11': Key.f11,
-    'f12': Key.f12,
+    'ctrl': 'ctrl', 'control': 'ctrl', 'shift': 'shift', 'alt': 'alt',
+    'tab': 'tab', 'enter': 'enter', 'return': 'enter', 'space': 'space',
+    'backspace': 'backspace', 'delete': 'delete', 'escape': 'esc', 'esc': 'esc',
+    'up': 'up', 'down': 'down', 'left': 'left', 'right': 'right',
+    'home': 'home', 'end': 'end', 'page_up': 'page_up', 'page_down': 'page_down',
+    'caps_lock': 'caps_lock',
+    **{f'f{i}': f'f{i}' for i in range(1, 13)},
 }
 
 
@@ -57,7 +53,7 @@ def get_key_object(key_name):
     """Convert a key name string to a pynput key object."""
     key_lower = key_name.lower()
     if key_lower in SPECIAL_KEYS:
-        return SPECIAL_KEYS[key_lower]
+        return getattr(Key, SPECIAL_KEYS[key_lower])
     # Single character keys
     if len(key_name) == 1:
         return key_name.lower()
@@ -87,7 +83,7 @@ class KeyMacroManager:
             config: Dict containing 'key_macros' configuration
         """
         self.config = config
-        self.keyboard = Controller()
+        self.keyboard = None
         self.tap_history = {}  # key -> list of timestamps
         self.held_keys = set()  # Keys currently held by macros
         self.current_modifiers = set()  # Currently pressed modifier keys
@@ -106,13 +102,28 @@ class KeyMacroManager:
         if self.running:
             return True
 
+        try:
+            self.keyboard = Controller()
+            listener = keyboard.Listener(
+                on_press=self._on_press,
+                on_release=self._on_release,
+                suppress=False  # Don't suppress keys, let them pass through
+            )
+        except Exception as exc:
+            self.keyboard = None
+            print(f"[MACROS] Desktop keyboard unavailable: {exc}")
+            return False
+
         self.running = True
-        self.listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release,
-            suppress=False  # Don't suppress keys, let them pass through
-        )
-        self.listener.start()
+        self.listener = listener
+        try:
+            self.listener.start()
+        except Exception as exc:
+            self.listener = None
+            self.keyboard = None
+            self.running = False
+            print(f"[MACROS] Desktop keyboard unavailable: {exc}")
+            return False
         print("[MACROS] Key macro listener started")
         return True
 
@@ -272,6 +283,12 @@ class KeyMacroManager:
 
         elif action_type == 'press':
             # Single key press
+            if self.keyboard is None:
+                try:
+                    self.keyboard = Controller()
+                except Exception as exc:
+                    print(f"[MACROS] Desktop keyboard unavailable: {exc}")
+                    return
             key_obj = get_key_object(key)
             self.keyboard.press(key_obj)
             self.keyboard.release(key_obj)
@@ -281,6 +298,12 @@ class KeyMacroManager:
 
         elif action_type == 'type':
             # Type a string
+            if self.keyboard is None:
+                try:
+                    self.keyboard = Controller()
+                except Exception as exc:
+                    print(f"[MACROS] Desktop keyboard unavailable: {exc}")
+                    return
             text = action.get('text', '')
             self.keyboard.type(text)
             print(f"[MACROS] '{macro_name}': Typed text")
@@ -289,6 +312,12 @@ class KeyMacroManager:
 
     def _hold_key(self, key):
         """Start holding a key."""
+        if self.keyboard is None:
+            try:
+                self.keyboard = Controller()
+            except Exception as exc:
+                print(f"[MACROS] Desktop keyboard unavailable: {exc}")
+                return
         with self._lock:
             self.held_keys.add(key)
         key_obj = get_key_object(key)

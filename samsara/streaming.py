@@ -34,7 +34,17 @@ import sys
 import threading
 import time
 import numpy as np
-import pyautogui
+
+
+class _PyAutoGUIProxy:
+    """Preserve the module seam without acquiring a desktop at import time."""
+
+    def __getattr__(self, name):
+        import pyautogui  # noqa: PLC0415
+        return getattr(pyautogui, name)
+
+
+pyautogui = _PyAutoGUIProxy()
 
 try:
     import pyperclip

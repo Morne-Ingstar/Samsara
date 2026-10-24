@@ -12,7 +12,25 @@ import subprocess
 import time
 import webbrowser
 
-import pyautogui
+class _PyAutoGUIProxy:
+    """Resolve the optional desktop controller only when a macro is run."""
+
+    def __getattr__(self, name):
+        import pyautogui  # noqa: PLC0415
+        return getattr(pyautogui, name)
+
+
+pyautogui = _PyAutoGUIProxy()
+
+
+def _desktop_action(method, *args):
+    """Run an optional desktop action and make backend absence explicit."""
+    try:
+        getattr(pyautogui, method)(*args)
+    except Exception as exc:
+        print(f"[MACRO] Desktop unavailable; action was not completed: {exc}")
+        return False
+    return True
 
 from samsara.plugin_commands import command
 
@@ -40,9 +58,9 @@ def going_dark(app, remainder):
     print("[MACRO] Going dark...")
     _nircmd(["mutesysvolume", "1"])       # mute system audio
     time.sleep(0.1)
-    pyautogui.hotkey('win', 'd')          # show desktop (minimize all)
+    if not _desktop_action('hotkey', 'win', 'd'): return False  # show desktop
     time.sleep(0.3)
-    pyautogui.hotkey('win', 'l')          # lock screen
+    if not _desktop_action('hotkey', 'win', 'l'): return False  # lock screen
     print("[MACRO] Goodnight.")
     return True
 
@@ -55,7 +73,7 @@ def focus_mode(app, remainder):
     print("[MACRO] Entering focus mode...")
     _nircmd(["setsysvolume", "13107"])     # ~20% volume
     time.sleep(0.1)
-    pyautogui.hotkey('win', 'd')          # clear the desktop
+    if not _desktop_action('hotkey', 'win', 'd'): return False
     time.sleep(0.3)
     try:
         subprocess.Popen(["code"], shell=True)
@@ -71,9 +89,9 @@ def focus_mode(app, remainder):
 def break_time(app, remainder):
     """Pauses media and locks the screen, for a break."""
     print("[MACRO] Break time...")
-    pyautogui.press('playpause')          # pause whatever is playing
+    if not _desktop_action('press', 'playpause'): return False
     time.sleep(0.2)
-    pyautogui.hotkey('win', 'l')          # lock screen
+    if not _desktop_action('hotkey', 'win', 'l'): return False
     print("[MACRO] Go stretch.")
     return True
 
@@ -110,7 +128,7 @@ def presentation_mode(app, remainder):
     print("[MACRO] Presentation mode...")
     _nircmd(["setsysvolume", "52428"])     # ~80% volume
     time.sleep(0.1)
-    pyautogui.hotkey('win', 'up')         # maximize current window
+    if not _desktop_action('hotkey', 'win', 'up'): return False
     time.sleep(0.2)
     # Win+N opens the notification center but there's no clean DND
     # toggle hotkey -- skip automating that for now.
@@ -124,5 +142,5 @@ def presentation_mode(app, remainder):
 def clear_desk(app, remainder):
     """Minimises every window."""
     print("[MACRO] Clearing desktop...")
-    pyautogui.hotkey('win', 'd')
+    if not _desktop_action('hotkey', 'win', 'd'): return False
     return True

@@ -9219,7 +9219,7 @@
       "plugin": "macros",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/macros.py:68",
+      "source": "plugins/commands/macros.py:86",
       "undoable": false,
       "verb": "break",
       "whole_utterance": false
@@ -9240,7 +9240,7 @@
       "plugin": "macros",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/macros.py:121",
+      "source": "plugins/commands/macros.py:139",
       "undoable": true,
       "verb": "clear",
       "whole_utterance": false
@@ -9261,7 +9261,7 @@
       "plugin": "macros",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/macros.py:50",
+      "source": "plugins/commands/macros.py:68",
       "undoable": false,
       "verb": "focus",
       "whole_utterance": false
@@ -9283,7 +9283,7 @@
       "plugin": "macros",
       "precondition": "",
       "risk": "destructive",
-      "source": "plugins/commands/macros.py:33",
+      "source": "plugins/commands/macros.py:51",
       "undoable": false,
       "verb": "going",
       "whole_utterance": false
@@ -9304,7 +9304,7 @@
       "plugin": "macros",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/macros.py:81",
+      "source": "plugins/commands/macros.py:99",
       "undoable": false,
       "verb": "morning",
       "whole_utterance": false
@@ -9324,7 +9324,7 @@
       "plugin": "macros",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/macros.py:105",
+      "source": "plugins/commands/macros.py:123",
       "undoable": false,
       "verb": "presentation",
       "whole_utterance": false
@@ -21116,7 +21116,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:207",
+      "source": "plugins/commands/word.py:215",
       "undoable": true,
       "verb": "align",
       "whole_utterance": false
@@ -21135,7 +21135,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:200",
+      "source": "plugins/commands/word.py:208",
       "undoable": true,
       "verb": "align",
       "whole_utterance": false
@@ -21154,7 +21154,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:214",
+      "source": "plugins/commands/word.py:222",
       "undoable": true,
       "verb": "align",
       "whole_utterance": false
@@ -21173,7 +21173,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:158",
+      "source": "plugins/commands/word.py:166",
       "undoable": true,
       "verb": "bold",
       "whole_utterance": false
@@ -21192,7 +21192,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:228",
+      "source": "plugins/commands/word.py:236",
       "undoable": true,
       "verb": "bullet",
       "whole_utterance": false
@@ -21211,7 +21211,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:193",
+      "source": "plugins/commands/word.py:201",
       "undoable": true,
       "verb": "double",
       "whole_utterance": false
@@ -21230,7 +21230,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:144",
+      "source": "plugins/commands/word.py:152",
       "undoable": true,
       "verb": "font",
       "whole_utterance": false
@@ -21257,7 +21257,7 @@
       "plugin": "word",
       "precondition": "Focus Microsoft Word and select the text to change. Sizes 6 through 72 are supported.",
       "risk": "ui",
-      "source": "plugins/commands/word.py:270",
+      "source": "plugins/commands/word.py:278",
       "undoable": true,
       "verb": "font",
       "whole_utterance": false
@@ -21276,7 +21276,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:151",
+      "source": "plugins/commands/word.py:159",
       "undoable": true,
       "verb": "font",
       "whole_utterance": false
@@ -21295,7 +21295,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:165",
+      "source": "plugins/commands/word.py:173",
       "undoable": true,
       "verb": "italic",
       "whole_utterance": false
@@ -21314,7 +21314,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:221",
+      "source": "plugins/commands/word.py:229",
       "undoable": true,
       "verb": "justify",
       "whole_utterance": false
@@ -21341,7 +21341,7 @@
       "plugin": "word",
       "precondition": "Focus Microsoft Word and select the paragraphs to change. Use 1, 1.5, or 2.",
       "risk": "ui",
-      "source": "plugins/commands/word.py:287",
+      "source": "plugins/commands/word.py:295",
       "undoable": true,
       "verb": "line",
       "whole_utterance": false
@@ -21360,7 +21360,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:256",
+      "source": "plugins/commands/word.py:264",
       "undoable": true,
       "verb": "numbered",
       "whole_utterance": false
@@ -21379,7 +21379,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:186",
+      "source": "plugins/commands/word.py:194",
       "undoable": true,
       "verb": "one",
       "whole_utterance": false
@@ -21398,7 +21398,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:249",
+      "source": "plugins/commands/word.py:257",
       "undoable": true,
       "verb": "redo",
       "whole_utterance": false
@@ -21417,7 +21417,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:348",
+      "source": "plugins/commands/word.py:356",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21436,7 +21436,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:235",
+      "source": "plugins/commands/word.py:243",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21455,7 +21455,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:341",
+      "source": "plugins/commands/word.py:349",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21474,7 +21474,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:355",
+      "source": "plugins/commands/word.py:363",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21501,7 +21501,7 @@
       "plugin": "word",
       "precondition": "Focus Microsoft Word and select the text to change. The font must be installed.",
       "risk": "ui",
-      "source": "plugins/commands/word.py:304",
+      "source": "plugins/commands/word.py:312",
       "undoable": true,
       "verb": "set",
       "whole_utterance": false
@@ -21520,7 +21520,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:179",
+      "source": "plugins/commands/word.py:187",
       "undoable": true,
       "verb": "single",
       "whole_utterance": false
@@ -21539,7 +21539,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:172",
+      "source": "plugins/commands/word.py:180",
       "undoable": true,
       "verb": "underline",
       "whole_utterance": false
@@ -21558,7 +21558,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:242",
+      "source": "plugins/commands/word.py:250",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -21577,7 +21577,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:362",
+      "source": "plugins/commands/word.py:370",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false
