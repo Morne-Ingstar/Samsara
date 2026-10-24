@@ -160,12 +160,14 @@ class _SettingsWindow(
         footer_strip.setObjectName('footer')
         footer = QHBoxLayout(footer_strip)
         footer.addStretch()
-        cancel = QPushButton("Close" if tool else "Cancel")
+        # PLACEHOLDER COPY (838a): one left footer label across every page.
+        cancel = QPushButton("Cancel")
         self._close_button = cancel
         cancel.clicked.connect(self.close)
         footer.addWidget(cancel)
         apply = QPushButton("Apply && Close")
         apply.setObjectName("apply")
+        self._apply_button = apply
         apply.clicked.connect(self._apply_and_close)
         footer.addWidget(apply)
         page_column.addWidget(footer_strip)
@@ -314,6 +316,7 @@ class _SettingsWindow(
                 self._close_button.setText('Cancel')
             self._ensure_destination(row)
             self._stack.setCurrentIndex(row)
+            self._refresh_apply_button()
             if _TAB_NAMES[row] == 'Ava':
                 self._refresh_sc_status()
 
@@ -336,14 +339,23 @@ class _SettingsWindow(
         self._tool_name = name
         page = self._tool_pages[name]
         self._stack.setCurrentWidget(page)
+        self._refresh_apply_button()
         page.verticalScrollBar().setValue(0)
         page.horizontalScrollBar().setValue(0)
         # Qt can scroll a newly shown page to its first focused editor.
         # Land at the heading after those layout/focus events as well.
         QTimer.singleShot(0, self._visit_callback(
             lambda: page.verticalScrollBar().setValue(0), page))
-        self._close_button.setText('Close')
+        # PLACEHOLDER COPY (838a): one left footer label across every page.
+        self._close_button.setText('Cancel')
         self.setWindowTitle('Samsara — ' + tools_page.LABELS[name])
+
+    def _refresh_apply_button(self):
+        apply_button = getattr(self, "_apply_button", None)
+        if apply_button is None:
+            return
+        page = self._stack.currentWidget()
+        apply_button.setVisible(not bool(page and page.property("settingsNoApply")))
 
     def open_tool(self, name):
         window_activation.surface_requested(self)

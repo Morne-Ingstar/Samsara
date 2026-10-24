@@ -52,7 +52,7 @@ class HealthPage:
         # this tab only builds the static command reference + table chrome.
 
         instant_note = QLabel(
-            "This tab is read-only — nothing here goes through Apply && Close. "
+            "This tab is read-only — nothing here goes through Apply & Close. "
             "Health entries are logged automatically by voice command."
         )
         instant_note.setWordWrap(True)
@@ -65,7 +65,7 @@ class HealthPage:
         reference = Disclosure('Voice command reference')
         main_layout.addWidget(reference)
         layout = reference.rows
-        layout.addWidget(self._section_title("Voice Commands"))
+        layout.addWidget(self._tool_section_title("Voice Commands"))
         layout.addSpacing(4)
 
         # Read the same effective command catalog used by Command library.
@@ -96,7 +96,7 @@ class HealthPage:
 
         # ---- Section: Today's Log ----
         layout = main_layout
-        log_title = self._section_title("Today's Log")
+        log_title = self._tool_section_title("Today's Log")
         layout.addWidget(log_title)
         layout.addSpacing(4)
 
@@ -136,7 +136,7 @@ class HealthPage:
         layout.addSpacing(20)
 
         # ---- Section: Summary ----
-        layout.addWidget(self._section_title("Summary"))
+        layout.addWidget(self._tool_section_title("Summary"))
         layout.addSpacing(4)
 
         self._health_summary_label = QLabel("")
@@ -148,7 +148,7 @@ class HealthPage:
         layout.addSpacing(20)
 
         # ---- Section: Export ----
-        layout.addWidget(self._section_title("Export"))
+        layout.addWidget(self._tool_section_title("Export"))
         layout.addSpacing(4)
 
         export_row = QHBoxLayout()
@@ -172,7 +172,7 @@ class HealthPage:
         layout.addSpacing(20)
 
         # ---- Section: Medication Dictionary ----
-        layout.addWidget(self._section_title("Medication Dictionary"))
+        layout.addWidget(self._tool_section_title("Medication Dictionary"))
         layout.addSpacing(4)
 
         dict_desc = QLabel(
@@ -199,6 +199,7 @@ class HealthPage:
 
         layout.addStretch()
         scroll.setWidget(container)
+        scroll.setProperty("settingsNoApply", True)
 
         # Populate on build
         self._refresh_health_log()

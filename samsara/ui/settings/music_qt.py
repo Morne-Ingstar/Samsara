@@ -46,7 +46,7 @@ class MusicPage:
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(12)
 
-        library_title = self._section_title("Music library")
+        library_title = self._tool_section_title("Music library")
         layout.addWidget(library_title)
         note = QLabel(
             "Name playlists, albums, artists, or tracks once, then say “playlist Morning”."

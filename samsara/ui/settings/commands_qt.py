@@ -64,7 +64,7 @@ class CommandsPage:
         cfg = self.app.config
 
         # ---- Section: Command Packs ----------------------------------------
-        layout.addWidget(self._section_title("Command Packs"))
+        layout.addWidget(self._tool_section_title("Command Packs"))
 
         desc1 = QLabel(
             "Enable the packs you use. Disabling unused packs improves recognition accuracy."
@@ -202,7 +202,7 @@ class CommandsPage:
         todoist_section.setObjectName('todoistSection')
         layout = QVBoxLayout(todoist_section)
         command_layout.addWidget(todoist_section)
-        layout.addWidget(self._section_title("Todoist"))
+        layout.addWidget(self._tool_section_title("Todoist"))
         todoist_cfg = (cfg.get("tasks", {}) or {}).get("todoist", {}) or {}
         todoist_note = QLabel("When on, tasks you add by voice are sent to Todoist's servers.")
         todoist_note.setWordWrap(True)
@@ -270,7 +270,7 @@ class CommandsPage:
 
         # ---- Section: Voice Commands ---------------------------------------
         cmd_header = QHBoxLayout()
-        commands_title = self._section_title("Voice Commands")
+        commands_title = self._tool_section_title("Voice Commands")
         cmd_header.addWidget(commands_title)
         cmd_header.addStretch()
         quick_reference_button = QPushButton("Command list...")
@@ -385,7 +385,7 @@ class CommandsPage:
 
         # Keep pack selection adjacent to the command list; profile management
         # follows the list and its Add / Edit / Delete controls.
-        layout.addWidget(self._section_title("Command Profiles"))
+        layout.addWidget(self._tool_section_title("Command Profiles"))
         profile_entry = QWidget()
         profile_entry.setObjectName("commandProfilesEntry")
         profile_row = QHBoxLayout(profile_entry)

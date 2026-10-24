@@ -338,6 +338,12 @@ class SettingsServices:
         label.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: bold;")
         return label
 
+    def _tool_section_title(self, text):
+        """Use Audio's calm, neutral heading style on Tools pages."""
+        from .calm_layout import GroupHeading
+
+        return GroupHeading(text, [])
+
     def _section_card(self, title: str, subtitle: str | None = None):
         # No per-card max-width: the cap lives once at each tab's shared
         # scroll-content container (_CONTENT_MAX_WIDTH). Expanding here lets

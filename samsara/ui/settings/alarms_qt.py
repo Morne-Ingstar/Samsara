@@ -57,7 +57,7 @@ class AlarmsPage:
         alarm_cfg = self.app.config.get('alarms', get_default_alarm_config()) or {}
 
         # ---- Section: Global Settings ---------------------------------------
-        layout.addWidget(self._section_title("Alarm Settings"))
+        layout.addWidget(self._tool_section_title("Alarm Settings"))
         layout.addSpacing(4)
 
         alarms_enabled = QCheckBox("Enable alarm reminders")
@@ -108,7 +108,7 @@ class AlarmsPage:
         layout.addSpacing(4)
 
         # ---- Section: Alarm List --------------------------------------------
-        alarms_title = self._section_title("Your Alarms")
+        alarms_title = self._tool_section_title("Your Alarms")
         layout.addWidget(alarms_title)
         instant_note = QLabel("Changes to alarms below apply immediately.")
         instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")

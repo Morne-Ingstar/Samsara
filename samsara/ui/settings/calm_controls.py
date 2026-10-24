@@ -148,8 +148,12 @@ class Segment(QRadioButton):
         self.cluster = cluster
         self.setFont(theme.qfont(theme.TYPE_BODY))
         self.setAccessibleName(text)
+        self.horizontal_padding = theme.SPACE_3
+        self.check_slot = theme.SPACE_2
+        self.selected_fill = theme.ACCENT_DIM
         self.setFixedSize(max(theme.HIT_TARGET_MIN,
-                             self.fontMetrics().horizontalAdvance(text) + theme.SPACE_4),
+                             self.fontMetrics().horizontalAdvance(text)
+                             + 2 * self.horizontal_padding + self.check_slot),
                           theme.HIT_TARGET_MIN)
 
     def hitButton(self, point):
@@ -160,18 +164,21 @@ class Segment(QRadioButton):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         inset = theme.SPACE_1 / 2
         box = QRectF(self.rect()).adjusted(inset, inset, -inset, -inset)
-        fill = theme.BG2 if self.isChecked() else (theme.HOVER_WASH if self.underMouse() else theme.BG1)
+        fill = self.selected_fill if self.isChecked() else (theme.HOVER_WASH if self.underMouse() else theme.BG1)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(theme.qcolor(fill))
         painter.drawRoundedRect(box, theme.CONTROL_RADIUS, theme.CONTROL_RADIUS)
         ink = theme.TEXT_PRIMARY if self.isEnabled() else theme.TEXT_DISABLED
         painter.setPen(theme.qcolor(ink))
         painter.setFont(self.font())
-        painter.drawText(self.rect().adjusted(0, 0, -theme.SPACE_2, 0),
+        painter.drawText(self.rect().adjusted(
+            self.horizontal_padding, 0, -(self.horizontal_padding + self.check_slot), 0),
                          Qt.AlignmentFlag.AlignCenter, self.text())
         if self.isChecked():
             painter.setPen(QPen(theme.qcolor(ink), 2))
-            _tick(painter, self.width() - theme.SPACE_1, self.height() / 2, theme.SPACE_1 / 2)
+            tick_unit = theme.SPACE_1 / 2
+            _tick(painter, self.width() - self.horizontal_padding - tick_unit * 1.25,
+                  self.height() / 2, tick_unit)
         if self.hasFocus():
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(theme.qcolor(theme.ACCENT), 2))
