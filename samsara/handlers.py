@@ -336,6 +336,12 @@ class MethodHandler(CommandHandler):
 
     def execute(self, cmd, ctx):
         method_name = cmd.get('method')
+        # 820: keep builtin.cancel and its recording behavior, while a visible
+        # overview owns cancellation. Import lazily, outside plugin discovery.
+        if method_name == 'cancel_recording':
+            from plugins.commands import window_switcher
+            if window_switcher.overview_active(ctx.app):
+                return window_switcher.handle_cancel_overview(ctx.app, '')
         if ctx.app and method_name and hasattr(ctx.app, method_name):
             try:
                 getattr(ctx.app, method_name)()

@@ -652,37 +652,11 @@ def get_window_by_letter(letter: str):
 # ---------------------------------------------------------------------------
 
 @command("show windows",
-         aliases=["label windows", "window labels"],
+         aliases=["label windows", "window labels", "window overview", "show all windows"],
          pack="window-management", risk_class="read")
 def handle_show_windows(app, remainder):
-    """Labels every open window with a letter so you can name one out loud."""
-    global _mapping, _active, _app_ref
-
-    exclude = _own_hwnd(app)
-    windows = _get_all_windows(exclude)
-    if not windows:
-        print("[WINSW] No windows found")
-        return True
-
-    new_mapping = _assign_letters(windows)
-
-    with _lock:
-        _mapping = new_mapping
-        _active  = True
-    _app_ref = app
-
-    mgr = _get_manager()
-    if mgr is not None:
-        mgr.request_show(new_mapping)
-    _reset_timer()
-
-    visible_count = sum(1 for _, _, m in new_mapping.values() if not m)
-    print(f"[WINSW] {len(new_mapping)} windows labeled "
-          f"({visible_count} visible, {len(new_mapping) - visible_count} minimized): "
-          + ", ".join(
-              f"{l}={t[:20]}{'(min)' if m else ''}"
-              for l, (_, t, m) in sorted(new_mapping.items())))
-    return True
+    """Shows live pictures, numbers and layout buttons for your open windows."""
+    return _show_overview(app, remainder)
 
 # ---------------------------------------------------------------------------
 # "window switch" — focus, dismiss overlays
@@ -997,9 +971,10 @@ def handle_window_tile(app, remainder):
          risk_class="ui",
 )
 def handle_hide_windows(app, remainder):
-    """Clears the window letters from the screen."""
+    """Closes the window overview and clears legacy window labels."""
     global _app_ref
     _app_ref = app
+    _hide_overview()
     _dismiss_all(clear_mapping=True)
     print("[WINSW] Dismissed window labels")
     return True
@@ -1014,9 +989,17 @@ def handle_hide_windows(app, remainder):
          risk_class="read",
 )
 def handle_read_windows(app, remainder):
-    """Reads numbered open windows; choose a number to switch to it."""
-    from plugins.commands.window_cube import read_numbered_windows
-    return read_numbered_windows(app)
+    """Shows the overview and reads one short app name per breath."""
+    if not overview_active(app):
+        if not _show_overview(app, remainder):
+            return False
+    for chunk in overview_read_chunks(_overview_rows):
+        coordinator = getattr(app, "audio_coordinator", None)
+        if coordinator is not None:
+            coordinator.speak(chunk, category="ava_response", queue_mode="append")
+        else:
+            _speak(app, chunk)
+    return True
 
 
 def _read_lettered_windows(app):
@@ -1045,3 +1028,306 @@ def _read_lettered_windows(app):
 
     _speak(app, ". ".join(parts) + ".")
     return True
+
+
+# Queue 820: one frozen snapshot owns thumbnails, speech and follow-up actions.
+_overview_rows = []
+_overview_app = None
+_overview_visible = False
+_overview_keep = False
+_overview_pending_close = None
+
+
+def overview_active(app=None):
+    return _overview_visible and (app is None or app is _overview_app)
+
+
+def short_window_title(title, app_name="", limit=40):
+    text = " ".join(str(title or "").split())
+    for separator in (" - ", " — ", " – "):
+        if app_name and text.casefold().endswith((separator + app_name).casefold()):
+            text = text[:-(len(separator) + len(app_name))]
+            break
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def order_overview_windows(windows, monitors, monitor_for_window):
+    """Monitor left-to-right, preserving EnumWindows' z-order within each one."""
+    ordered_monitors = sorted(monitors, key=lambda m: (m['rect'][0], m['rect'][1]))
+    def rank(window):
+        monitor = monitor_for_window(window[0], monitors)
+        return next((i for i, item in enumerate(ordered_monitors) if item == monitor),
+                    len(ordered_monitors))
+    return sorted(windows, key=rank)
+
+
+def overview_read_chunks(rows):
+    from collections import Counter
+    counts = Counter(row['app'].casefold() for row in rows)
+    if not rows:
+        return ["No windows found."]
+    chunks = [f"{len(rows)} window{'s' if len(rows) != 1 else ''}."]
+    for row in rows:
+        detail = f" - {row['short_title']}" if counts[row['app'].casefold()] > 1 else ""
+        chunks.append(f"{row['number']}: {row['app']}{detail}.")
+    return chunks
+
+
+def _overview_panel():
+    from samsara.ui.window_overview_qt import get_panel
+    return get_panel()
+
+
+def _overview_monitor(hwnd, monitors):
+    # MonitorFromWindow uses the pre-minimize rectangle; GetWindowRect does not.
+    if not monitors:
+        return None
+    try:
+        import win32api
+        handle = win32api.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        monitor = next((m for m in monitors if m.get('handle') == handle), None)
+        if monitor is not None:
+            return monitor
+    except Exception:
+        logger.debug("Window overview monitor lookup failed", exc_info=True)
+    from plugins.commands.windows import _get_monitor_for_window
+    return _get_monitor_for_window(hwnd, monitors)
+
+
+def _overview_closed():
+    global _overview_visible, _overview_pending_close
+    _overview_visible = False
+    _overview_pending_close = None
+
+
+def _hide_overview():
+    was_visible = _overview_visible
+    _overview_closed()
+    if was_visible:
+        _overview_panel().hide()
+
+
+def _show_overview(app, remainder=""):
+    global _overview_rows, _overview_app, _overview_visible, _overview_keep
+    global _overview_pending_close, _mapping
+    from plugins.commands import windows as mover, window_cube as cube
+    started = time.perf_counter()
+    windows = _get_all_windows(_own_hwnd(app))
+    monitors = mover.get_monitors()
+    ordered = order_overview_windows(windows, monitors, _overview_monitor)
+    names = {}
+    rows = []
+    for number, (hwnd, title, _rect, minimized) in enumerate(ordered, 1):
+        pid = _get_pid(hwnd)
+        if pid not in names:
+            names[pid] = cube._friendly_app_name(hwnd)
+        app_name = names[pid]
+        rows.append(dict(number=number, hwnd=hwnd, pid=pid, title=title,
+                         short_title=short_window_title(title, app_name),
+                         app=app_name, minimized=minimized))
+    # Legacy letter commands can still refer to the same enumerated windows.
+    with _lock:
+        _mapping = _assign_letters(windows)
+    _cancel_timer()
+    if _manager is not None:
+        _manager.request_hide()
+    _overview_rows, _overview_app = rows, app
+    _overview_pending_close = None
+    config = getattr(app, 'config', {}) or {}
+    _overview_keep = bool(config.get('window_overview', {}).get('keep_open', False))
+    if 'keep it open' in (remainder or '').lower():
+        _overview_keep = True
+    _overview_visible = True
+    try:
+        _overview_panel().show(rows,
+            lambda number, action, keep: overview_action(app, number, action, keep),
+            _overview_closed, _overview_keep)
+    except Exception:
+        _overview_closed()
+        logger.exception("Window overview could not open")
+        _speak(app, "Could not open the window overview.")
+        return False
+    logger.info("Window overview snapshot: windows=%d elapsed_ms=%.1f",
+                len(rows), (time.perf_counter() - started) * 1000)
+    return True
+
+
+_OVERVIEW_ACTIONS = frozenset({"go", "left", "right", "top left", "top right",
+    "bottom left", "bottom right", "maximize", "minimize", "next monitor", "cube", "close"})
+
+
+def parse_overview_action(text):
+    from samsara.spoken_numbers import parse_spoken_number
+    text = " ".join((text or "").lower().strip(' .,!?').split())
+    keep = text.endswith('keep it open')
+    if keep:
+        text = text[:-len('keep it open')].strip(' ,')
+    if text.startswith('close '):
+        number = parse_spoken_number(text[6:])
+        return (number, 'close', keep) if number and number > 0 else None
+    for action in sorted(_OVERVIEW_ACTIONS - {'close', 'go'}, key=len, reverse=True):
+        if text.endswith(' ' + action):
+            number = parse_spoken_number(text[:-len(action)].strip())
+            return (number, action, keep) if number and number > 0 else None
+    number = parse_spoken_number(text)
+    return (number, 'go', keep) if number and number > 0 else None
+
+
+def _overview_is_live(row):
+    import win32gui
+    # Keep the previous choose safety check when a document changes in its slot.
+    return bool(win32gui.IsWindow(row['hwnd']) and _get_pid(row['hwnd']) == row['pid']
+                and win32gui.GetWindowText(row['hwnd']) == row['title'])
+
+
+def overview_action(app, number, action='go', keep=None):
+    global _overview_pending_close, _overview_keep
+    if not overview_active(app):
+        return False
+    if keep is not None:
+        _overview_keep = keep
+        _overview_panel().keep_open(keep)
+    if action == 'keep open':
+        return True
+    if action == 'confirm close':
+        pending = _overview_pending_close
+        _overview_pending_close = None
+        if not pending or time.monotonic() > pending[1]:
+            _overview_panel().confirmation("")
+            _speak(app, "Close confirmation expired. Say close and the window number again.")
+            return True
+        number, action = pending[0], 'confirmed close'
+    else:
+        _overview_pending_close = None
+        _overview_panel().confirmation("")
+    row = next((r for r in _overview_rows if r['number'] == number), None)
+    if row is None or not _overview_is_live(row):
+        _speak(app, "That window is no longer available. Say show windows again.")
+        return True
+    if action == 'close':
+        _overview_pending_close = (number, time.monotonic() + 15)
+        text = f"Close {number}: {row['app']}? Say confirm close or cancel."
+        _overview_panel().confirmation(text)
+        _speak(app, text)
+        return True
+    from plugins.commands import windows as mover
+    import win32gui
+    import win32con
+    hwnd = row['hwnd']
+    ready = lambda: _overview_is_live(row)
+    success = True
+    try:
+        if action == 'go':
+            success = _force_focus(hwnd)
+        elif action in {'left', 'right', 'top left', 'top right', 'bottom left', 'bottom right'}:
+            success = mover.snap_window(hwnd, action, preflight=ready)
+        elif action in {'maximize', 'minimize'}:
+            win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE if action == 'maximize' else win32con.SW_MINIMIZE)
+        elif action == 'next monitor':
+            monitors = mover.get_monitors()
+            current = mover._get_monitor_for_window(hwnd, monitors)
+            if len(monitors) < 2 or current not in monitors:
+                _speak(app, "No next monitor is available.")
+                return True
+            target = monitors[(monitors.index(current) + 1) % len(monitors)]
+            success = mover.move_window_to_monitor(hwnd, target, preflight=ready)
+        elif action == 'cube':
+            from plugins.commands.window_cube import handle_show_cube
+            handle_show_cube(app, '')
+        elif action == 'confirmed close':
+            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+        else:
+            return False
+    except Exception:
+        logger.exception("Window overview action failed: %s", action)
+        success = False
+    if success is False:
+        _speak(app, "Could not change that window.")
+        return True
+    if not _overview_keep:
+        _hide_overview()
+    return True
+
+
+def handle_overview_number(app, value, remainder=""):
+    if not overview_active(app):
+        return False
+    parsed = parse_overview_action(f"{value} {remainder or ''}")
+    if parsed is None:
+        return False
+    number, action, keep = parsed
+    return overview_action(app, number, action, True if keep else None)
+
+
+@command("read window", pack="window-management", risk_class="read",
+         scope={"tags": ["window_overview.visible"]},
+         param_schema={"number": {"type": "int", "required": True}})
+def handle_read_window(app, remainder):
+    """Reads the full title of one window in the overview."""
+    from samsara.spoken_numbers import parse_spoken_number
+    if not overview_active(app):
+        return False
+    number = parse_spoken_number(remainder)
+    row = next((r for r in _overview_rows if r['number'] == number), None)
+    _speak(app, row['title'] if row else "Choose a window number from the overview.")
+    return True
+
+
+@command("confirm close", pack="window-management", risk_class="destructive",
+         ai_visible=False, scope={"tags": ["window_overview.visible"]})
+def handle_confirm_overview_close(app, remainder):
+    """Confirms the window close just requested in the overview."""
+    return overview_action(app, 0, 'confirm close') if not remainder else False
+
+
+@command("keep it open", pack="window-management", risk_class="ui",
+         scope={"tags": ["window_overview.visible"]})
+def handle_keep_overview_open(app, remainder):
+    """Keeps the overview open after window actions for this session."""
+    global _overview_keep
+    if not overview_active(app) or remainder:
+        return False
+    return overview_action(app, 0, 'keep open', True)
+
+
+def handle_cancel_overview(app, remainder):
+    """Closes the window overview, or cancels recording when no overview is open."""
+    if remainder:
+        return False
+    if overview_active(app):
+        _hide_overview()
+    else:
+        app.cancel_recording()
+    return True
+
+
+def _register_overview_numbers():
+    from samsara.spoken_numbers import NUMBER_WORDS
+    words = {value: word for word, value in NUMBER_WORDS.items()}
+    for number in range(1, 100):
+        word = words.get(number) or words[number // 10 * 10] + ' ' + words[number % 10]
+        def close(app, remainder, value=number):
+            if remainder:
+                return False
+            return overview_action(app, value, 'close')
+        close.__name__ = close.__qualname__ = f'handle_overview_close_{number}'
+        close.__doc__ = f'Asks before closing window {number} in the overview.'
+        command(f'close {number}', aliases=[f'close {word}'], pack='window-management',
+                risk_class='destructive', ai_visible=False,
+                scope={'tags': ['window_overview.visible']})(close)
+        # One through nine already belong to cube's shared number commands.
+        if number < 10:
+            continue
+        def pick(app, remainder, value=number):
+            return handle_overview_number(app, value, remainder)
+        pick.__name__ = pick.__qualname__ = f'handle_overview_number_{number}'
+        pick.__doc__ = f'Selects window {number} from the open overview.'
+        command(f'window {word}', aliases=[f'window {number}', word, str(number)],
+                pack='window-cube-numbers',
+                risk_class='ui', ai_visible=False,
+                scope={'tags': ['window_overview.visible']})(pick)
+
+
+from samsara import command_scope as _overview_scope
+_overview_scope.register_tag_source('window_overview.visible', overview_active)
+_register_overview_numbers()

@@ -19,12 +19,40 @@ from samsara.command_scope import MatchContext
 @pytest.fixture
 def app(monkeypatch):
     cube._reset_for_tests()
+    # 820: isolate the visible overview and replace its UI/OS seams as well.
+    for name, value in [('_overview_rows', []), ('_overview_app', None),
+                        ('_overview_visible', False), ('_overview_keep', False),
+                        ('_overview_pending_close', None), ('_mapping', {}),
+                        ('_manager', None)]:
+        monkeypatch.setattr(ws, name, value)
+    monkeypatch.setattr(ws, '_overview_panel', Mock(return_value=Mock()))
+    monkeypatch.setattr(ws, '_cancel_timer', Mock())
     app = SimpleNamespace(config={}, spoken=[], play_sound=Mock())
     monkeypatch.setattr(cube, '_speak', lambda a, t: a.spoken.append(t))
+    monkeypatch.setattr(ws, '_speak', lambda a, t: a.spoken.append(t))
     monkeypatch.setattr(av, '_speak', lambda a, t: a.spoken.append(t))
     monkeypatch.setattr(cube, '_render', Mock())
     yield app
     cube._reset_for_tests()
+
+
+@pytest.fixture
+def overview_windows(app, monkeypatch):
+    # 820: exercise real snapshot/revalidation logic against a fake desktop.
+    rows = [(11, 'Editor', 'Doc A'), (22, 'Browser', 'Doc B')]
+    monkeypatch.setattr(ws, '_get_all_windows', lambda exclude:
+                        [(h, title, SimpleNamespace(left=0, top=0), False)
+                         for h, _app, title in rows])
+    monkeypatch.setattr(ws, '_get_pid', lambda hwnd: hwnd + 100)
+    monkeypatch.setattr(cube, '_friendly_app_name', lambda hwnd:
+                        next(name for h, name, _title in rows if h == hwnd))
+    monkeypatch.setattr(win, 'get_monitors', lambda: [])
+    monkeypatch.setattr(win.win32gui, 'IsWindow', lambda hwnd:
+                        any(h == hwnd for h, _app, _title in rows))
+    monkeypatch.setattr(win.win32gui, 'GetWindowText', lambda hwnd:
+                        next((title for h, _app, title in rows if h == hwnd), ''))
+    monkeypatch.setattr(ws, '_force_focus', Mock(return_value=True))
+    return rows
 
 
 @pytest.fixture
@@ -73,29 +101,27 @@ def test_choose_is_scoped(matcher):
     assert entry.handler is cube.handle_choose and remainder == '3'
 
 
-def test_list_then_choose_uses_frozen_hwnd(app, monkeypatch):
-    rows = [(11, 'Editor', 'Doc A'), (22, 'Browser', 'Doc B')]
-    monkeypatch.setattr(cube, '_build_rows', lambda a: list(rows))
-    focus = Mock()
-    monkeypatch.setattr(cube, '_force_focus', focus)
+def test_list_then_choose_uses_frozen_hwnd(app, overview_windows):
     assert ws.handle_read_windows(app, '')
-    assert '1: Editor' in app.spoken[-1] and '2: Browser' in app.spoken[-1]
-    rows.reverse()
+    # 820: separate short utterances share the displayed frozen numbering.
+    assert app.spoken == ['2 windows.', '1: Editor.', '2: Browser.']
+    assert [row['hwnd'] for row in ws._overview_panel().show.call_args.args[0]] == [11, 22]
+    overview_windows.reverse()
     assert cube.handle_choose(app, 'two')
-    focus.assert_called_once_with(22)
+    ws._force_focus.assert_called_once_with(22)
+    ws._overview_panel().hide.assert_called_once()
+    assert not ws.overview_active(app)
     assert not cube._pinned
 
 
 @pytest.mark.parametrize('replacement', [[], [(22, 'Browser', 'Different document')]])
-def test_choose_refuses_closed_or_reused_slot(app, monkeypatch, replacement):
-    rows = [(22, 'Browser', 'Doc B')]
-    monkeypatch.setattr(cube, '_build_rows', lambda a: rows)
-    focus = Mock()
-    monkeypatch.setattr(cube, '_force_focus', focus)
+def test_choose_refuses_closed_or_reused_slot(app, overview_windows, replacement):
+    overview_windows[:] = [(22, 'Browser', 'Doc B')]
     ws.handle_read_windows(app, '')
-    rows = replacement
+    overview_windows[:] = replacement
     cube.handle_choose(app, '1')
-    focus.assert_not_called()
+    ws._force_focus.assert_not_called()
+    assert app.spoken[-1] == 'That window is no longer available. Say show windows again.'
 
 
 def test_switch_opens_existing_cube(app, monkeypatch):
@@ -224,11 +250,15 @@ def test_desktop_registry_validates_ids(monkeypatch):
         av._desktop_state()
 
 
-def test_choose_expiry(app, monkeypatch):
-    monkeypatch.setattr(cube, '_build_rows', lambda a: [(11, 'Editor', 'Doc')])
+def test_choose_expiry(app, monkeypatch, overview_windows):
     clock = [10.0]
     monkeypatch.setattr(cube, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
     ws.handle_read_windows(app, '')
     clock[0] = 41.0
+    # 820: visible numbers remain selectable; dismissal ends selection.
+    assert cube._selection_available()
+    assert ws.overview_active(app)
+    ws._overview_panel().show.call_args.args[2]()  # actual panel-close callback
     assert not cube._selection_available()
     assert cube.handle_choose(app, '1') is False
+    ws._force_focus.assert_not_called()

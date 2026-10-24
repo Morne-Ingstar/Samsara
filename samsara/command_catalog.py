@@ -532,7 +532,32 @@ _COMMAND_HELP = {
 _NO_ARGUMENT_PHRASES = frozenset({
     "hands free", "move preview to this screen", "reset floating windows",
     "refresh cube", "refresh numbers",
+    # 820: these controls reject tails; the window number is in the phrase.
+    "cancel", "confirm close", "keep it open",
+    *(f"close {number}" for number in range(1, 100)),
 })
+
+# 820: generated number commands share the overview's optional layout suffix.
+# Keep this separate from the older command examples: these require a visible
+# overview snapshot, rather than the older letter-map/cube selection fixtures.
+_OVERVIEW_HELP = {
+    "show windows": (["show windows", "show windows keep it open"],
+                     "Opens the window overview on the pointer's monitor."),
+    "read windows": (["read windows", "read windows keep it open"],
+                     "Shows the window overview and reads its numbered app names."),
+    "read window": (["read window three"],
+                    "Open the window overview first. Reads that window's full title."),
+}
+from samsara.spoken_numbers import NUMBER_WORDS as _OVERVIEW_NUMBER_WORDS
+_overview_words = {value: word for word, value in _OVERVIEW_NUMBER_WORDS.items()}
+for _number in range(1, 100):
+    _word = (_overview_words.get(_number) or
+             _overview_words[_number // 10 * 10] + " " + _overview_words[_number % 10])
+    for _phrase in ([_word, f"window {_word}"] if _number < 10 else [f"window {_word}"]):
+        _OVERVIEW_HELP[_phrase] = (
+            [_phrase, f"{_phrase} left", f"{_phrase} top right"],
+            "Open the window overview first. The number selects a window; an optional "
+            "layout action arranges it. A pinned cube also accepts selection without a layout action.")
 
 # Grammar/policy identities, not voice commands. Never invent spoken tokens
 # for the controller's private subject reference.
@@ -555,7 +580,8 @@ _DESCRIPTION_OVERRIDES = {
 
 def spoken_help(phrase: str) -> tuple[list, str]:
     phrase = normalize_phrase(phrase)
-    examples, precondition = _COMMAND_HELP.get(phrase, ((), _INTERNAL_HELP.get(phrase, "")))
+    examples, precondition = _OVERVIEW_HELP.get(
+        phrase, _COMMAND_HELP.get(phrase, ((), _INTERNAL_HELP.get(phrase, ""))))
     return list(examples), precondition
 
 
@@ -587,7 +613,7 @@ def infer_args(kind: str, phrase: str, param_schema: Optional[dict], func) -> li
         return [ArgSpec(n, t, r) for n, t, r in _ARG_HINTS[norm]]
     if func is not None and _handler_reads_remainder(func):
         return [ArgSpec("text", "text", False)]
-    if norm in _COMMAND_HELP:
+    if norm in _COMMAND_HELP or norm in _OVERVIEW_HELP:
         # Packaged builds cannot inspect handler source. The reviewed help
         # table also identifies the handlers that consume a spoken suffix.
         return [ArgSpec("text", "text", False)]

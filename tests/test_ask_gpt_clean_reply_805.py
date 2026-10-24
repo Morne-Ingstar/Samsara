@@ -131,7 +131,8 @@ def test_other_history_context_is_unchanged():
     for row in ({"entry_type": "dictation", "matched_command": "ask gpt"},
                 {"entry_type": "command", "matched_command": "focus claude"}):
         row["app_context"] = "Editor"
-        assert history.row_context(row) == "Editor"
+        # 820: foreground context now says where the command was spoken.
+        assert history.row_context(row) == "in Editor"
 
 
 def test_ask_claude_uses_cli_even_when_desktop_is_present(monkeypatch):

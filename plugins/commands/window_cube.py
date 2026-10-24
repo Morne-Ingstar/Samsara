@@ -101,6 +101,22 @@ def _friendly_app_name(hwnd: int) -> str:
         proc = ""
     if not proc:
         return "Window"
+    # 820: prefer a readable product name to an alias such as "explorer".
+    common = {"explorer.exe": "File Explorer", "brave.exe": "Brave",
+              "obsidian.exe": "Obsidian", "code.exe": "Visual Studio Code"}
+    if proc.lower() in common:
+        return common[proc.lower()]
+    try:
+        import win32api
+        path = psutil.Process(_get_pid(hwnd)).exe()
+        translations = win32api.GetFileVersionInfo(path, r'\VarFileInfo\Translation')
+        for language, codepage in translations:
+            description = win32api.GetFileVersionInfo(
+                path, rf'\StringFileInfo\{language:04x}{codepage:04x}\FileDescription')
+            if description:
+                return description.strip()
+    except Exception:
+        pass
     try:
         from plugins.commands.windows import APP_ALIASES
         for spoken, exe in APP_ALIASES.items():
@@ -395,18 +411,9 @@ def _number_from(phrase: str, remainder: str):
 
 
 def read_numbered_windows(app):
-    """Read a fresh snapshot using the cube's existing frozen numbering."""
-    global _selection_active, _selection_deadline, _app_ref
-    _app_ref = app
-    slots = _rebuild(app)
-    _selection_active = bool(slots)
-    _selection_deadline = time.monotonic() + 30.0
-    if _pinned:
-        _render(app, slots)
-    _speak(app, ". ".join(
-        f"{s['number']}: {s['app']}, {s['title'][:60]}" for s in slots
-    ) + "." if slots else "No windows found.")
-    return True
+    """Read the same short numbered snapshot that the overview displays."""
+    from plugins.commands.window_switcher import handle_read_windows
+    return handle_read_windows(app, '')
 
 
 @command("choose", pack="window-management", risk_class="ui",
@@ -414,6 +421,10 @@ def read_numbered_windows(app):
          param_schema={"number": {"type": "int", "required": False}})
 def handle_choose(app, remainder):
     """Switches to a number from the last window list or pinned grid."""
+    from plugins.commands import window_switcher as ws
+    if ws.overview_active(app):
+        parsed = ws.parse_overview_action(remainder)
+        return ws.overview_action(app, *parsed[:2], True if parsed[2] else None) if parsed else False
     if app is not _app_ref or not _selection_available():
         return False
     text = (remainder or "").strip().lower()
@@ -432,11 +443,15 @@ def handle_choose(app, remainder):
 
 
 def _selection_available():
-    return bool(_pinned or (_selection_active and time.monotonic() < _selection_deadline))
+    from plugins.commands.window_switcher import overview_active
+    return bool(overview_active() or _pinned or (_selection_active and time.monotonic() < _selection_deadline))
 
 
 def _make_bare_number_handler(word: str, value: int):
     def _handler(app, remainder):
+        from plugins.commands import window_switcher as ws
+        if ws.overview_active(app):
+            return ws.handle_overview_number(app, value, remainder)
         if not _numbers_active(app):
             # Not handled -- see _numbers_active for why this cannot stop the
             # phrase being consumed in the hands-free DICTATE lane.
@@ -444,20 +459,23 @@ def _make_bare_number_handler(word: str, value: int):
         return _switch_to_number(app, value)
     _handler.__name__ = f"handle_cube_number_{value}"
     _handler.__doc__ = (
-        f'Switches to window {value} in the numbered grid. '
-        f'Active only while the grid is pinned and you are in command mode.'
+        f'Selects window {value} from the overview or pinned cube. '
+        f'Also selects from the pinned cube in command mode.'
     )
     return _handler
 
 
 def _make_window_number_handler(value: int):
     def _handler(app, remainder):
+        from plugins.commands import window_switcher as ws
+        if ws.overview_active(app):
+            return ws.handle_overview_number(app, value, remainder)
         if not _pinned:
             return False
         return _switch_to_number(app, value)
     _handler.__name__ = f"handle_window_number_{value}"
-    _handler.__doc__ = (f'Switches to window {value} in the numbered grid. '
-                        f'Works in every mode while the grid is pinned.')
+    _handler.__doc__ = (f'Selects window {value} from the overview or pinned cube. '
+                        f'Also selects from the pinned cube in every mode.')
     return _handler
 
 
@@ -564,5 +582,10 @@ def _reset_for_tests():
 # panel has no close button and never takes focus, so "pinned" is "on screen".
 # Registered at the end of the file so no decorator line number moves.
 from samsara import command_scope as _command_scope  # noqa: E402
-_command_scope.register_tag_source("window_cube.visible", lambda: bool(_pinned))
+def _number_picker_visible():
+    from plugins.commands.window_switcher import overview_active
+    return bool(_pinned or overview_active())
+
+
+_command_scope.register_tag_source("window_cube.visible", _number_picker_visible)
 _command_scope.register_tag_source("window_cube.selection", _selection_available)

@@ -41,6 +41,7 @@ REQUIRED_VOICE_PHRASES = {
 # 345b's controller identities have required tokens, but are never voice slots.
 # 262b's send.monitor is a typed slot, not a required free-text remainder.
 REQUIRED_TYPED_PHRASES = {
+    "read window",
     'send', 'interact focus', 'interact minimize', 'interact maximize',
     'interact move', 'interact snap', 'interact close',
 }

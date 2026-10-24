@@ -13845,7 +13845,7 @@
           "window_cube.selection"
         ]
       },
-      "source": "plugins/commands/window_cube.py:412",
+      "source": "plugins/commands/window_cube.py:419",
       "undoable": true,
       "verb": "choose",
       "whole_utterance": false
@@ -13874,7 +13874,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Select the source text in window 2 and put the caret in window 4. Copies the selection from 2 into 4.",
       "risk": "write",
-      "source": "plugins/commands/window_cube.py:513",
+      "source": "plugins/commands/window_cube.py:531",
       "undoable": false,
       "verb": "cube",
       "whole_utterance": false
@@ -13902,7 +13902,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Name an existing page, or say cube page alone for the next page.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:365",
+      "source": "plugins/commands/window_cube.py:381",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -13932,7 +13932,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Use the numbers on the window cards. Places those windows side by side on the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:528",
+      "source": "plugins/commands/window_cube.py:546",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -13942,22 +13942,32 @@
         "8",
         "eight"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.eight",
-      "description": "Switches to window 8 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 8 from the overview or pinned cube.",
+      "examples": [
+        "eight",
+        "eight left",
+        "eight top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "eight",
       "whole_utterance": false
@@ -13967,22 +13977,32 @@
         "5",
         "five"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.five",
-      "description": "Switches to window 5 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 5 from the overview or pinned cube.",
+      "examples": [
+        "five",
+        "five left",
+        "five top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "five",
       "whole_utterance": false
@@ -13992,22 +14012,32 @@
         "4",
         "four"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.four",
-      "description": "Switches to window 4 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 4 from the overview or pinned cube.",
+      "examples": [
+        "four",
+        "four left",
+        "four top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "four",
       "whole_utterance": false
@@ -14028,7 +14058,7 @@
       "plugin": "window_cube",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:332",
+      "source": "plugins/commands/window_cube.py:348",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -14038,22 +14068,32 @@
         "9",
         "nine"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.nine",
-      "description": "Switches to window 9 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 9 from the overview or pinned cube.",
+      "examples": [
+        "nine",
+        "nine left",
+        "nine top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "nine",
       "whole_utterance": false
@@ -14063,22 +14103,32 @@
         "1",
         "one"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.one",
-      "description": "Switches to window 1 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 1 from the overview or pinned cube.",
+      "examples": [
+        "one",
+        "one left",
+        "one top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "one",
       "whole_utterance": false
@@ -14099,7 +14149,7 @@
       "plugin": "window_cube",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:351",
+      "source": "plugins/commands/window_cube.py:367",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -14109,22 +14159,32 @@
         "7",
         "seven"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.seven",
-      "description": "Switches to window 7 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 7 from the overview or pinned cube.",
+      "examples": [
+        "seven",
+        "seven left",
+        "seven top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "seven",
       "whole_utterance": false
@@ -14146,7 +14206,7 @@
       "plugin": "window_cube",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:316",
+      "source": "plugins/commands/window_cube.py:332",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -14156,22 +14216,32 @@
         "6",
         "six"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.six",
-      "description": "Switches to window 6 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 6 from the overview or pinned cube.",
+      "examples": [
+        "six",
+        "six left",
+        "six top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "six",
       "whole_utterance": false
@@ -14181,22 +14251,32 @@
         "3",
         "three"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.three",
-      "description": "Switches to window 3 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 3 from the overview or pinned cube.",
+      "examples": [
+        "three",
+        "three left",
+        "three top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "three",
       "whole_utterance": false
@@ -14206,22 +14286,32 @@
         "2",
         "two"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.two",
-      "description": "Switches to window 2 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 2 from the overview or pinned cube.",
+      "examples": [
+        "two",
+        "two left",
+        "two top right"
+      ],
       "kind": "plugin",
       "object": "",
       "pack": "window-cube-numbers",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
       "scope": {
         "tags": [
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:439",
+      "source": "plugins/commands/window_cube.py:451",
       "undoable": true,
       "verb": "two",
       "whole_utterance": false
@@ -14231,17 +14321,27 @@
         "window 8",
         "window eight"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_eight",
-      "description": "Switches to window 8 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 8 from the overview or pinned cube.",
+      "examples": [
+        "window eight",
+        "window eight left",
+        "window eight top right"
+      ],
       "kind": "plugin",
       "object": "eight",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14251,17 +14351,27 @@
         "window 5",
         "window five"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_five",
-      "description": "Switches to window 5 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 5 from the overview or pinned cube.",
+      "examples": [
+        "window five",
+        "window five left",
+        "window five top right"
+      ],
       "kind": "plugin",
       "object": "five",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14271,17 +14381,27 @@
         "window 4",
         "window four"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_four",
-      "description": "Switches to window 4 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 4 from the overview or pinned cube.",
+      "examples": [
+        "window four",
+        "window four left",
+        "window four top right"
+      ],
       "kind": "plugin",
       "object": "four",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14291,17 +14411,27 @@
         "window 9",
         "window nine"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_nine",
-      "description": "Switches to window 9 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 9 from the overview or pinned cube.",
+      "examples": [
+        "window nine",
+        "window nine left",
+        "window nine top right"
+      ],
       "kind": "plugin",
       "object": "nine",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14311,17 +14441,27 @@
         "window 1",
         "window one"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_one",
-      "description": "Switches to window 1 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 1 from the overview or pinned cube.",
+      "examples": [
+        "window one",
+        "window one left",
+        "window one top right"
+      ],
       "kind": "plugin",
       "object": "one",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14331,17 +14471,27 @@
         "window 7",
         "window seven"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_seven",
-      "description": "Switches to window 7 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 7 from the overview or pinned cube.",
+      "examples": [
+        "window seven",
+        "window seven left",
+        "window seven top right"
+      ],
       "kind": "plugin",
       "object": "seven",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14351,17 +14501,27 @@
         "window 6",
         "window six"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_six",
-      "description": "Switches to window 6 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 6 from the overview or pinned cube.",
+      "examples": [
+        "window six",
+        "window six left",
+        "window six top right"
+      ],
       "kind": "plugin",
       "object": "six",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14371,17 +14531,27 @@
         "window 3",
         "window three"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_three",
-      "description": "Switches to window 3 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 3 from the overview or pinned cube.",
+      "examples": [
+        "window three",
+        "window three left",
+        "window three top right"
+      ],
       "kind": "plugin",
       "object": "three",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14391,19 +14561,2528 @@
         "window 2",
         "window two"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_cube.window_two",
-      "description": "Switches to window 2 in the numbered grid.",
-      "examples": [],
+      "description": "Selects window 2 from the overview or pinned cube.",
+      "examples": [
+        "window two",
+        "window two left",
+        "window two top right"
+      ],
       "kind": "plugin",
       "object": "two",
       "pack": "window-management",
       "plugin": "window_cube",
-      "precondition": "",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:454",
+      "source": "plugins/commands/window_cube.py:469",
       "undoable": true,
       "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 1",
+        "close one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_1",
+      "description": "Asks before closing window 1 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "1",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 10",
+        "close ten"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_10",
+      "description": "Asks before closing window 10 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "10",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 11",
+        "close eleven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_11",
+      "description": "Asks before closing window 11 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "11",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 12",
+        "close twelve"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_12",
+      "description": "Asks before closing window 12 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "12",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 13",
+        "close thirteen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_13",
+      "description": "Asks before closing window 13 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "13",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 14",
+        "close fourteen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_14",
+      "description": "Asks before closing window 14 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "14",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 15",
+        "close fifteen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_15",
+      "description": "Asks before closing window 15 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "15",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 16",
+        "close sixteen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_16",
+      "description": "Asks before closing window 16 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "16",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 17",
+        "close seventeen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_17",
+      "description": "Asks before closing window 17 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "17",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 18",
+        "close eighteen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_18",
+      "description": "Asks before closing window 18 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "18",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 19",
+        "close nineteen"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_19",
+      "description": "Asks before closing window 19 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "19",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 2",
+        "close two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_2",
+      "description": "Asks before closing window 2 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "2",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 20",
+        "close twenty"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_20",
+      "description": "Asks before closing window 20 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "20",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 21",
+        "close twenty one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_21",
+      "description": "Asks before closing window 21 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "21",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 22",
+        "close twenty two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_22",
+      "description": "Asks before closing window 22 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "22",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 23",
+        "close twenty three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_23",
+      "description": "Asks before closing window 23 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "23",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 24",
+        "close twenty four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_24",
+      "description": "Asks before closing window 24 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "24",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 25",
+        "close twenty five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_25",
+      "description": "Asks before closing window 25 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "25",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 26",
+        "close twenty six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_26",
+      "description": "Asks before closing window 26 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "26",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 27",
+        "close twenty seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_27",
+      "description": "Asks before closing window 27 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "27",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 28",
+        "close twenty eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_28",
+      "description": "Asks before closing window 28 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "28",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 29",
+        "close twenty nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_29",
+      "description": "Asks before closing window 29 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "29",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 3",
+        "close three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_3",
+      "description": "Asks before closing window 3 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "3",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 30",
+        "close thirty"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_30",
+      "description": "Asks before closing window 30 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "30",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 31",
+        "close thirty one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_31",
+      "description": "Asks before closing window 31 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "31",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 32",
+        "close thirty two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_32",
+      "description": "Asks before closing window 32 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "32",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 33",
+        "close thirty three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_33",
+      "description": "Asks before closing window 33 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "33",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 34",
+        "close thirty four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_34",
+      "description": "Asks before closing window 34 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "34",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 35",
+        "close thirty five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_35",
+      "description": "Asks before closing window 35 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "35",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 36",
+        "close thirty six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_36",
+      "description": "Asks before closing window 36 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "36",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 37",
+        "close thirty seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_37",
+      "description": "Asks before closing window 37 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "37",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 38",
+        "close thirty eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_38",
+      "description": "Asks before closing window 38 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "38",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 39",
+        "close thirty nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_39",
+      "description": "Asks before closing window 39 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "39",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 4",
+        "close four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_4",
+      "description": "Asks before closing window 4 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "4",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 40",
+        "close forty"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_40",
+      "description": "Asks before closing window 40 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "40",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 41",
+        "close forty one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_41",
+      "description": "Asks before closing window 41 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "41",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 42",
+        "close forty two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_42",
+      "description": "Asks before closing window 42 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "42",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 43",
+        "close forty three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_43",
+      "description": "Asks before closing window 43 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "43",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 44",
+        "close forty four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_44",
+      "description": "Asks before closing window 44 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "44",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 45",
+        "close forty five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_45",
+      "description": "Asks before closing window 45 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "45",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 46",
+        "close forty six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_46",
+      "description": "Asks before closing window 46 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "46",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 47",
+        "close forty seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_47",
+      "description": "Asks before closing window 47 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "47",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 48",
+        "close forty eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_48",
+      "description": "Asks before closing window 48 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "48",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 49",
+        "close forty nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_49",
+      "description": "Asks before closing window 49 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "49",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 5",
+        "close five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_5",
+      "description": "Asks before closing window 5 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "5",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 50",
+        "close fifty"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_50",
+      "description": "Asks before closing window 50 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "50",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 51",
+        "close fifty one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_51",
+      "description": "Asks before closing window 51 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "51",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 52",
+        "close fifty two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_52",
+      "description": "Asks before closing window 52 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "52",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 53",
+        "close fifty three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_53",
+      "description": "Asks before closing window 53 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "53",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 54",
+        "close fifty four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_54",
+      "description": "Asks before closing window 54 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "54",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 55",
+        "close fifty five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_55",
+      "description": "Asks before closing window 55 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "55",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 56",
+        "close fifty six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_56",
+      "description": "Asks before closing window 56 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "56",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 57",
+        "close fifty seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_57",
+      "description": "Asks before closing window 57 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "57",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 58",
+        "close fifty eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_58",
+      "description": "Asks before closing window 58 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "58",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 59",
+        "close fifty nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_59",
+      "description": "Asks before closing window 59 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "59",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 6",
+        "close six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_6",
+      "description": "Asks before closing window 6 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "6",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 60",
+        "close sixty"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_60",
+      "description": "Asks before closing window 60 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "60",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 61",
+        "close sixty one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_61",
+      "description": "Asks before closing window 61 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "61",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 62",
+        "close sixty two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_62",
+      "description": "Asks before closing window 62 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "62",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 63",
+        "close sixty three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_63",
+      "description": "Asks before closing window 63 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "63",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 64",
+        "close sixty four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_64",
+      "description": "Asks before closing window 64 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "64",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 65",
+        "close sixty five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_65",
+      "description": "Asks before closing window 65 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "65",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 66",
+        "close sixty six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_66",
+      "description": "Asks before closing window 66 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "66",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 67",
+        "close sixty seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_67",
+      "description": "Asks before closing window 67 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "67",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 68",
+        "close sixty eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_68",
+      "description": "Asks before closing window 68 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "68",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 69",
+        "close sixty nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_69",
+      "description": "Asks before closing window 69 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "69",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 7",
+        "close seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_7",
+      "description": "Asks before closing window 7 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "7",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 70",
+        "close seventy"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_70",
+      "description": "Asks before closing window 70 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "70",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 71",
+        "close seventy one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_71",
+      "description": "Asks before closing window 71 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "71",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 72",
+        "close seventy two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_72",
+      "description": "Asks before closing window 72 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "72",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 73",
+        "close seventy three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_73",
+      "description": "Asks before closing window 73 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "73",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 74",
+        "close seventy four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_74",
+      "description": "Asks before closing window 74 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "74",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 75",
+        "close seventy five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_75",
+      "description": "Asks before closing window 75 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "75",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 76",
+        "close seventy six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_76",
+      "description": "Asks before closing window 76 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "76",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 77",
+        "close seventy seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_77",
+      "description": "Asks before closing window 77 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "77",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 78",
+        "close seventy eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_78",
+      "description": "Asks before closing window 78 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "78",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 79",
+        "close seventy nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_79",
+      "description": "Asks before closing window 79 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "79",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 8",
+        "close eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_8",
+      "description": "Asks before closing window 8 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "8",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 80",
+        "close eighty"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_80",
+      "description": "Asks before closing window 80 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "80",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 81",
+        "close eighty one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_81",
+      "description": "Asks before closing window 81 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "81",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 82",
+        "close eighty two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_82",
+      "description": "Asks before closing window 82 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "82",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 83",
+        "close eighty three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_83",
+      "description": "Asks before closing window 83 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "83",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 84",
+        "close eighty four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_84",
+      "description": "Asks before closing window 84 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "84",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 85",
+        "close eighty five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_85",
+      "description": "Asks before closing window 85 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "85",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 86",
+        "close eighty six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_86",
+      "description": "Asks before closing window 86 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "86",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 87",
+        "close eighty seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_87",
+      "description": "Asks before closing window 87 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "87",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 88",
+        "close eighty eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_88",
+      "description": "Asks before closing window 88 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "88",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 89",
+        "close eighty nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_89",
+      "description": "Asks before closing window 89 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "89",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 9",
+        "close nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_9",
+      "description": "Asks before closing window 9 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "9",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 90",
+        "close ninety"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_90",
+      "description": "Asks before closing window 90 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "90",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 91",
+        "close ninety one"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_91",
+      "description": "Asks before closing window 91 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "91",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 92",
+        "close ninety two"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_92",
+      "description": "Asks before closing window 92 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "92",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 93",
+        "close ninety three"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_93",
+      "description": "Asks before closing window 93 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "93",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 94",
+        "close ninety four"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_94",
+      "description": "Asks before closing window 94 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "94",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 95",
+        "close ninety five"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_95",
+      "description": "Asks before closing window 95 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "95",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 96",
+        "close ninety six"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_96",
+      "description": "Asks before closing window 96 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "96",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 97",
+        "close ninety seven"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_97",
+      "description": "Asks before closing window 97 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "97",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 98",
+        "close ninety eight"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_98",
+      "description": "Asks before closing window 98 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "98",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close 99",
+        "close ninety nine"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.close_99",
+      "description": "Asks before closing window 99 in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "99",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1309",
+      "undoable": true,
+      "verb": "close",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "confirm close"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.confirm_close",
+      "description": "Confirms the window close just requested in the overview.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "close",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "destructive",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1276",
+      "undoable": false,
+      "verb": "confirm",
       "whole_utterance": false
     },
     {
@@ -14414,7 +17093,7 @@
       ],
       "args": [],
       "canonical_id": "window_switcher.hide_windows",
-      "description": "Clears the window letters from the screen.",
+      "description": "Closes the window overview and clears legacy window labels.",
       "examples": [],
       "kind": "plugin",
       "object": "windows",
@@ -14422,9 +17101,65 @@
       "plugin": "window_switcher",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:994",
+      "source": "plugins/commands/window_switcher.py:968",
       "undoable": true,
       "verb": "hide",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "keep it open"
+      ],
+      "args": [],
+      "canonical_id": "window_switcher.keep_it_open",
+      "description": "Keeps the overview open after window actions for this session.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "it_open",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1283",
+      "undoable": true,
+      "verb": "keep",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read window"
+      ],
+      "args": [
+        {
+          "name": "number",
+          "required": true,
+          "type": "int"
+        }
+      ],
+      "canonical_id": "window_switcher.read_window",
+      "description": "Reads the full title of one window in the overview.",
+      "examples": [
+        "read window three"
+      ],
+      "kind": "plugin",
+      "object": "window",
+      "pack": "window-management",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. Reads that window's full title.",
+      "risk": "read",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1262",
+      "undoable": true,
+      "verb": "read",
       "whole_utterance": false
     },
     {
@@ -14434,17 +17169,26 @@
         "read windows",
         "what windows"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_switcher.read_windows",
-      "description": "Reads numbered open windows; choose a number to switch to it.",
-      "examples": [],
+      "description": "Shows the overview and reads one short app name per breath.",
+      "examples": [
+        "read windows",
+        "read windows keep it open"
+      ],
       "kind": "plugin",
       "object": "windows",
       "pack": "window-management",
       "plugin": "window_switcher",
-      "precondition": "",
+      "precondition": "Shows the window overview and reads its numbered app names.",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:1011",
+      "source": "plugins/commands/window_switcher.py:986",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -14452,18 +17196,29 @@
     {
       "aliases": [
         "label windows",
+        "show all windows",
         "show windows",
-        "window labels"
+        "window labels",
+        "window overview"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "window_switcher.show_windows",
-      "description": "Labels every open window with a letter so you can name one out loud.",
-      "examples": [],
+      "description": "Shows live pictures, numbers and layout buttons for your open windows.",
+      "examples": [
+        "show windows",
+        "show windows keep it open"
+      ],
       "kind": "plugin",
       "object": "windows",
       "pack": "window-management",
       "plugin": "window_switcher",
-      "precondition": "",
+      "precondition": "Opens the window overview on the pointer's monitor.",
       "risk": "read",
       "source": "plugins/commands/window_switcher.py:654",
       "undoable": true,
@@ -14494,7 +17249,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list. Brings that window to the front.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:718",
+      "source": "plugins/commands/window_switcher.py:692",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14521,7 +17276,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list. The app may ask you to save.",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:845",
+      "source": "plugins/commands/window_switcher.py:819",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -14550,8 +17305,1266 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Select text in A and put the caret in B. Copies the selection from A into B.",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:876",
+      "source": "plugins/commands/window_switcher.py:850",
       "undoable": false,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "18",
+        "eighteen",
+        "window 18",
+        "window eighteen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighteen",
+      "description": "Selects window 18 from the open overview.",
+      "examples": [
+        "window eighteen",
+        "window eighteen left",
+        "window eighteen top right"
+      ],
+      "kind": "plugin",
+      "object": "eighteen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "80",
+        "eighty",
+        "window 80",
+        "window eighty"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty",
+      "description": "Selects window 80 from the open overview.",
+      "examples": [
+        "window eighty",
+        "window eighty left",
+        "window eighty top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "88",
+        "eighty eight",
+        "window 88",
+        "window eighty eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_eight",
+      "description": "Selects window 88 from the open overview.",
+      "examples": [
+        "window eighty eight",
+        "window eighty eight left",
+        "window eighty eight top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "85",
+        "eighty five",
+        "window 85",
+        "window eighty five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_five",
+      "description": "Selects window 85 from the open overview.",
+      "examples": [
+        "window eighty five",
+        "window eighty five left",
+        "window eighty five top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "84",
+        "eighty four",
+        "window 84",
+        "window eighty four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_four",
+      "description": "Selects window 84 from the open overview.",
+      "examples": [
+        "window eighty four",
+        "window eighty four left",
+        "window eighty four top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "89",
+        "eighty nine",
+        "window 89",
+        "window eighty nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_nine",
+      "description": "Selects window 89 from the open overview.",
+      "examples": [
+        "window eighty nine",
+        "window eighty nine left",
+        "window eighty nine top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "81",
+        "eighty one",
+        "window 81",
+        "window eighty one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_one",
+      "description": "Selects window 81 from the open overview.",
+      "examples": [
+        "window eighty one",
+        "window eighty one left",
+        "window eighty one top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "87",
+        "eighty seven",
+        "window 87",
+        "window eighty seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_seven",
+      "description": "Selects window 87 from the open overview.",
+      "examples": [
+        "window eighty seven",
+        "window eighty seven left",
+        "window eighty seven top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "86",
+        "eighty six",
+        "window 86",
+        "window eighty six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_six",
+      "description": "Selects window 86 from the open overview.",
+      "examples": [
+        "window eighty six",
+        "window eighty six left",
+        "window eighty six top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "83",
+        "eighty three",
+        "window 83",
+        "window eighty three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_three",
+      "description": "Selects window 83 from the open overview.",
+      "examples": [
+        "window eighty three",
+        "window eighty three left",
+        "window eighty three top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "82",
+        "eighty two",
+        "window 82",
+        "window eighty two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eighty_two",
+      "description": "Selects window 82 from the open overview.",
+      "examples": [
+        "window eighty two",
+        "window eighty two left",
+        "window eighty two top right"
+      ],
+      "kind": "plugin",
+      "object": "eighty_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "11",
+        "eleven",
+        "window 11",
+        "window eleven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_eleven",
+      "description": "Selects window 11 from the open overview.",
+      "examples": [
+        "window eleven",
+        "window eleven left",
+        "window eleven top right"
+      ],
+      "kind": "plugin",
+      "object": "eleven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "15",
+        "fifteen",
+        "window 15",
+        "window fifteen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifteen",
+      "description": "Selects window 15 from the open overview.",
+      "examples": [
+        "window fifteen",
+        "window fifteen left",
+        "window fifteen top right"
+      ],
+      "kind": "plugin",
+      "object": "fifteen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "50",
+        "fifty",
+        "window 50",
+        "window fifty"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty",
+      "description": "Selects window 50 from the open overview.",
+      "examples": [
+        "window fifty",
+        "window fifty left",
+        "window fifty top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "58",
+        "fifty eight",
+        "window 58",
+        "window fifty eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_eight",
+      "description": "Selects window 58 from the open overview.",
+      "examples": [
+        "window fifty eight",
+        "window fifty eight left",
+        "window fifty eight top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "55",
+        "fifty five",
+        "window 55",
+        "window fifty five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_five",
+      "description": "Selects window 55 from the open overview.",
+      "examples": [
+        "window fifty five",
+        "window fifty five left",
+        "window fifty five top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "54",
+        "fifty four",
+        "window 54",
+        "window fifty four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_four",
+      "description": "Selects window 54 from the open overview.",
+      "examples": [
+        "window fifty four",
+        "window fifty four left",
+        "window fifty four top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "59",
+        "fifty nine",
+        "window 59",
+        "window fifty nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_nine",
+      "description": "Selects window 59 from the open overview.",
+      "examples": [
+        "window fifty nine",
+        "window fifty nine left",
+        "window fifty nine top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "51",
+        "fifty one",
+        "window 51",
+        "window fifty one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_one",
+      "description": "Selects window 51 from the open overview.",
+      "examples": [
+        "window fifty one",
+        "window fifty one left",
+        "window fifty one top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "57",
+        "fifty seven",
+        "window 57",
+        "window fifty seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_seven",
+      "description": "Selects window 57 from the open overview.",
+      "examples": [
+        "window fifty seven",
+        "window fifty seven left",
+        "window fifty seven top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "56",
+        "fifty six",
+        "window 56",
+        "window fifty six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_six",
+      "description": "Selects window 56 from the open overview.",
+      "examples": [
+        "window fifty six",
+        "window fifty six left",
+        "window fifty six top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "53",
+        "fifty three",
+        "window 53",
+        "window fifty three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_three",
+      "description": "Selects window 53 from the open overview.",
+      "examples": [
+        "window fifty three",
+        "window fifty three left",
+        "window fifty three top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "52",
+        "fifty two",
+        "window 52",
+        "window fifty two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fifty_two",
+      "description": "Selects window 52 from the open overview.",
+      "examples": [
+        "window fifty two",
+        "window fifty two left",
+        "window fifty two top right"
+      ],
+      "kind": "plugin",
+      "object": "fifty_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "40",
+        "forty",
+        "window 40",
+        "window forty"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty",
+      "description": "Selects window 40 from the open overview.",
+      "examples": [
+        "window forty",
+        "window forty left",
+        "window forty top right"
+      ],
+      "kind": "plugin",
+      "object": "forty",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "48",
+        "forty eight",
+        "window 48",
+        "window forty eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_eight",
+      "description": "Selects window 48 from the open overview.",
+      "examples": [
+        "window forty eight",
+        "window forty eight left",
+        "window forty eight top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "45",
+        "forty five",
+        "window 45",
+        "window forty five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_five",
+      "description": "Selects window 45 from the open overview.",
+      "examples": [
+        "window forty five",
+        "window forty five left",
+        "window forty five top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "44",
+        "forty four",
+        "window 44",
+        "window forty four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_four",
+      "description": "Selects window 44 from the open overview.",
+      "examples": [
+        "window forty four",
+        "window forty four left",
+        "window forty four top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "49",
+        "forty nine",
+        "window 49",
+        "window forty nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_nine",
+      "description": "Selects window 49 from the open overview.",
+      "examples": [
+        "window forty nine",
+        "window forty nine left",
+        "window forty nine top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "41",
+        "forty one",
+        "window 41",
+        "window forty one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_one",
+      "description": "Selects window 41 from the open overview.",
+      "examples": [
+        "window forty one",
+        "window forty one left",
+        "window forty one top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "47",
+        "forty seven",
+        "window 47",
+        "window forty seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_seven",
+      "description": "Selects window 47 from the open overview.",
+      "examples": [
+        "window forty seven",
+        "window forty seven left",
+        "window forty seven top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "46",
+        "forty six",
+        "window 46",
+        "window forty six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_six",
+      "description": "Selects window 46 from the open overview.",
+      "examples": [
+        "window forty six",
+        "window forty six left",
+        "window forty six top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "43",
+        "forty three",
+        "window 43",
+        "window forty three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_three",
+      "description": "Selects window 43 from the open overview.",
+      "examples": [
+        "window forty three",
+        "window forty three left",
+        "window forty three top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "42",
+        "forty two",
+        "window 42",
+        "window forty two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_forty_two",
+      "description": "Selects window 42 from the open overview.",
+      "examples": [
+        "window forty two",
+        "window forty two left",
+        "window forty two top right"
+      ],
+      "kind": "plugin",
+      "object": "forty_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "14",
+        "fourteen",
+        "window 14",
+        "window fourteen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_fourteen",
+      "description": "Selects window 14 from the open overview.",
+      "examples": [
+        "window fourteen",
+        "window fourteen left",
+        "window fourteen top right"
+      ],
+      "kind": "plugin",
+      "object": "fourteen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
       "verb": "window",
       "whole_utterance": false
     },
@@ -14583,7 +18596,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list and an existing monitor number.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:744",
+      "source": "plugins/commands/window_switcher.py:718",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14611,7 +18624,1228 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:796",
+      "source": "plugins/commands/window_switcher.py:770",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "19",
+        "nineteen",
+        "window 19",
+        "window nineteen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_nineteen",
+      "description": "Selects window 19 from the open overview.",
+      "examples": [
+        "window nineteen",
+        "window nineteen left",
+        "window nineteen top right"
+      ],
+      "kind": "plugin",
+      "object": "nineteen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "90",
+        "ninety",
+        "window 90",
+        "window ninety"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety",
+      "description": "Selects window 90 from the open overview.",
+      "examples": [
+        "window ninety",
+        "window ninety left",
+        "window ninety top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "98",
+        "ninety eight",
+        "window 98",
+        "window ninety eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_eight",
+      "description": "Selects window 98 from the open overview.",
+      "examples": [
+        "window ninety eight",
+        "window ninety eight left",
+        "window ninety eight top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "95",
+        "ninety five",
+        "window 95",
+        "window ninety five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_five",
+      "description": "Selects window 95 from the open overview.",
+      "examples": [
+        "window ninety five",
+        "window ninety five left",
+        "window ninety five top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "94",
+        "ninety four",
+        "window 94",
+        "window ninety four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_four",
+      "description": "Selects window 94 from the open overview.",
+      "examples": [
+        "window ninety four",
+        "window ninety four left",
+        "window ninety four top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "99",
+        "ninety nine",
+        "window 99",
+        "window ninety nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_nine",
+      "description": "Selects window 99 from the open overview.",
+      "examples": [
+        "window ninety nine",
+        "window ninety nine left",
+        "window ninety nine top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "91",
+        "ninety one",
+        "window 91",
+        "window ninety one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_one",
+      "description": "Selects window 91 from the open overview.",
+      "examples": [
+        "window ninety one",
+        "window ninety one left",
+        "window ninety one top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "97",
+        "ninety seven",
+        "window 97",
+        "window ninety seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_seven",
+      "description": "Selects window 97 from the open overview.",
+      "examples": [
+        "window ninety seven",
+        "window ninety seven left",
+        "window ninety seven top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "96",
+        "ninety six",
+        "window 96",
+        "window ninety six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_six",
+      "description": "Selects window 96 from the open overview.",
+      "examples": [
+        "window ninety six",
+        "window ninety six left",
+        "window ninety six top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "93",
+        "ninety three",
+        "window 93",
+        "window ninety three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_three",
+      "description": "Selects window 93 from the open overview.",
+      "examples": [
+        "window ninety three",
+        "window ninety three left",
+        "window ninety three top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "92",
+        "ninety two",
+        "window 92",
+        "window ninety two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ninety_two",
+      "description": "Selects window 92 from the open overview.",
+      "examples": [
+        "window ninety two",
+        "window ninety two left",
+        "window ninety two top right"
+      ],
+      "kind": "plugin",
+      "object": "ninety_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "17",
+        "seventeen",
+        "window 17",
+        "window seventeen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventeen",
+      "description": "Selects window 17 from the open overview.",
+      "examples": [
+        "window seventeen",
+        "window seventeen left",
+        "window seventeen top right"
+      ],
+      "kind": "plugin",
+      "object": "seventeen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "70",
+        "seventy",
+        "window 70",
+        "window seventy"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy",
+      "description": "Selects window 70 from the open overview.",
+      "examples": [
+        "window seventy",
+        "window seventy left",
+        "window seventy top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "78",
+        "seventy eight",
+        "window 78",
+        "window seventy eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_eight",
+      "description": "Selects window 78 from the open overview.",
+      "examples": [
+        "window seventy eight",
+        "window seventy eight left",
+        "window seventy eight top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "75",
+        "seventy five",
+        "window 75",
+        "window seventy five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_five",
+      "description": "Selects window 75 from the open overview.",
+      "examples": [
+        "window seventy five",
+        "window seventy five left",
+        "window seventy five top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "74",
+        "seventy four",
+        "window 74",
+        "window seventy four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_four",
+      "description": "Selects window 74 from the open overview.",
+      "examples": [
+        "window seventy four",
+        "window seventy four left",
+        "window seventy four top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "79",
+        "seventy nine",
+        "window 79",
+        "window seventy nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_nine",
+      "description": "Selects window 79 from the open overview.",
+      "examples": [
+        "window seventy nine",
+        "window seventy nine left",
+        "window seventy nine top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "71",
+        "seventy one",
+        "window 71",
+        "window seventy one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_one",
+      "description": "Selects window 71 from the open overview.",
+      "examples": [
+        "window seventy one",
+        "window seventy one left",
+        "window seventy one top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "77",
+        "seventy seven",
+        "window 77",
+        "window seventy seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_seven",
+      "description": "Selects window 77 from the open overview.",
+      "examples": [
+        "window seventy seven",
+        "window seventy seven left",
+        "window seventy seven top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "76",
+        "seventy six",
+        "window 76",
+        "window seventy six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_six",
+      "description": "Selects window 76 from the open overview.",
+      "examples": [
+        "window seventy six",
+        "window seventy six left",
+        "window seventy six top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "73",
+        "seventy three",
+        "window 73",
+        "window seventy three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_three",
+      "description": "Selects window 73 from the open overview.",
+      "examples": [
+        "window seventy three",
+        "window seventy three left",
+        "window seventy three top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "72",
+        "seventy two",
+        "window 72",
+        "window seventy two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_seventy_two",
+      "description": "Selects window 72 from the open overview.",
+      "examples": [
+        "window seventy two",
+        "window seventy two left",
+        "window seventy two top right"
+      ],
+      "kind": "plugin",
+      "object": "seventy_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "16",
+        "sixteen",
+        "window 16",
+        "window sixteen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixteen",
+      "description": "Selects window 16 from the open overview.",
+      "examples": [
+        "window sixteen",
+        "window sixteen left",
+        "window sixteen top right"
+      ],
+      "kind": "plugin",
+      "object": "sixteen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "60",
+        "sixty",
+        "window 60",
+        "window sixty"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty",
+      "description": "Selects window 60 from the open overview.",
+      "examples": [
+        "window sixty",
+        "window sixty left",
+        "window sixty top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "68",
+        "sixty eight",
+        "window 68",
+        "window sixty eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_eight",
+      "description": "Selects window 68 from the open overview.",
+      "examples": [
+        "window sixty eight",
+        "window sixty eight left",
+        "window sixty eight top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "65",
+        "sixty five",
+        "window 65",
+        "window sixty five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_five",
+      "description": "Selects window 65 from the open overview.",
+      "examples": [
+        "window sixty five",
+        "window sixty five left",
+        "window sixty five top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "64",
+        "sixty four",
+        "window 64",
+        "window sixty four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_four",
+      "description": "Selects window 64 from the open overview.",
+      "examples": [
+        "window sixty four",
+        "window sixty four left",
+        "window sixty four top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "69",
+        "sixty nine",
+        "window 69",
+        "window sixty nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_nine",
+      "description": "Selects window 69 from the open overview.",
+      "examples": [
+        "window sixty nine",
+        "window sixty nine left",
+        "window sixty nine top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "61",
+        "sixty one",
+        "window 61",
+        "window sixty one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_one",
+      "description": "Selects window 61 from the open overview.",
+      "examples": [
+        "window sixty one",
+        "window sixty one left",
+        "window sixty one top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "67",
+        "sixty seven",
+        "window 67",
+        "window sixty seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_seven",
+      "description": "Selects window 67 from the open overview.",
+      "examples": [
+        "window sixty seven",
+        "window sixty seven left",
+        "window sixty seven top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "66",
+        "sixty six",
+        "window 66",
+        "window sixty six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_six",
+      "description": "Selects window 66 from the open overview.",
+      "examples": [
+        "window sixty six",
+        "window sixty six left",
+        "window sixty six top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "63",
+        "sixty three",
+        "window 63",
+        "window sixty three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_three",
+      "description": "Selects window 63 from the open overview.",
+      "examples": [
+        "window sixty three",
+        "window sixty three left",
+        "window sixty three top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "62",
+        "sixty two",
+        "window 62",
+        "window sixty two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_sixty_two",
+      "description": "Selects window 62 from the open overview.",
+      "examples": [
+        "window sixty two",
+        "window sixty two left",
+        "window sixty two top right"
+      ],
+      "kind": "plugin",
+      "object": "sixty_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14641,7 +19875,451 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:691",
+      "source": "plugins/commands/window_switcher.py:665",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "10",
+        "ten",
+        "window 10",
+        "window ten"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_ten",
+      "description": "Selects window 10 from the open overview.",
+      "examples": [
+        "window ten",
+        "window ten left",
+        "window ten top right"
+      ],
+      "kind": "plugin",
+      "object": "ten",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "13",
+        "thirteen",
+        "window 13",
+        "window thirteen"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirteen",
+      "description": "Selects window 13 from the open overview.",
+      "examples": [
+        "window thirteen",
+        "window thirteen left",
+        "window thirteen top right"
+      ],
+      "kind": "plugin",
+      "object": "thirteen",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "30",
+        "thirty",
+        "window 30",
+        "window thirty"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty",
+      "description": "Selects window 30 from the open overview.",
+      "examples": [
+        "window thirty",
+        "window thirty left",
+        "window thirty top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "38",
+        "thirty eight",
+        "window 38",
+        "window thirty eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_eight",
+      "description": "Selects window 38 from the open overview.",
+      "examples": [
+        "window thirty eight",
+        "window thirty eight left",
+        "window thirty eight top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "35",
+        "thirty five",
+        "window 35",
+        "window thirty five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_five",
+      "description": "Selects window 35 from the open overview.",
+      "examples": [
+        "window thirty five",
+        "window thirty five left",
+        "window thirty five top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "34",
+        "thirty four",
+        "window 34",
+        "window thirty four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_four",
+      "description": "Selects window 34 from the open overview.",
+      "examples": [
+        "window thirty four",
+        "window thirty four left",
+        "window thirty four top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "39",
+        "thirty nine",
+        "window 39",
+        "window thirty nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_nine",
+      "description": "Selects window 39 from the open overview.",
+      "examples": [
+        "window thirty nine",
+        "window thirty nine left",
+        "window thirty nine top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "31",
+        "thirty one",
+        "window 31",
+        "window thirty one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_one",
+      "description": "Selects window 31 from the open overview.",
+      "examples": [
+        "window thirty one",
+        "window thirty one left",
+        "window thirty one top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "37",
+        "thirty seven",
+        "window 37",
+        "window thirty seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_seven",
+      "description": "Selects window 37 from the open overview.",
+      "examples": [
+        "window thirty seven",
+        "window thirty seven left",
+        "window thirty seven top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "36",
+        "thirty six",
+        "window 36",
+        "window thirty six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_six",
+      "description": "Selects window 36 from the open overview.",
+      "examples": [
+        "window thirty six",
+        "window thirty six left",
+        "window thirty six top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "33",
+        "thirty three",
+        "window 33",
+        "window thirty three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_three",
+      "description": "Selects window 33 from the open overview.",
+      "examples": [
+        "window thirty three",
+        "window thirty three left",
+        "window thirty three top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "32",
+        "thirty two",
+        "window 32",
+        "window thirty two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_thirty_two",
+      "description": "Selects window 32 from the open overview.",
+      "examples": [
+        "window thirty two",
+        "window thirty two left",
+        "window thirty two top right"
+      ],
+      "kind": "plugin",
+      "object": "thirty_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14669,7 +20347,414 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use letters from that list. Places those windows side by side on the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:931",
+      "source": "plugins/commands/window_switcher.py:905",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "12",
+        "twelve",
+        "window 12",
+        "window twelve"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twelve",
+      "description": "Selects window 12 from the open overview.",
+      "examples": [
+        "window twelve",
+        "window twelve left",
+        "window twelve top right"
+      ],
+      "kind": "plugin",
+      "object": "twelve",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "20",
+        "twenty",
+        "window 20",
+        "window twenty"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty",
+      "description": "Selects window 20 from the open overview.",
+      "examples": [
+        "window twenty",
+        "window twenty left",
+        "window twenty top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "28",
+        "twenty eight",
+        "window 28",
+        "window twenty eight"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_eight",
+      "description": "Selects window 28 from the open overview.",
+      "examples": [
+        "window twenty eight",
+        "window twenty eight left",
+        "window twenty eight top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_eight",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "25",
+        "twenty five",
+        "window 25",
+        "window twenty five"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_five",
+      "description": "Selects window 25 from the open overview.",
+      "examples": [
+        "window twenty five",
+        "window twenty five left",
+        "window twenty five top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_five",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "24",
+        "twenty four",
+        "window 24",
+        "window twenty four"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_four",
+      "description": "Selects window 24 from the open overview.",
+      "examples": [
+        "window twenty four",
+        "window twenty four left",
+        "window twenty four top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_four",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "29",
+        "twenty nine",
+        "window 29",
+        "window twenty nine"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_nine",
+      "description": "Selects window 29 from the open overview.",
+      "examples": [
+        "window twenty nine",
+        "window twenty nine left",
+        "window twenty nine top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_nine",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "21",
+        "twenty one",
+        "window 21",
+        "window twenty one"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_one",
+      "description": "Selects window 21 from the open overview.",
+      "examples": [
+        "window twenty one",
+        "window twenty one left",
+        "window twenty one top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_one",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "27",
+        "twenty seven",
+        "window 27",
+        "window twenty seven"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_seven",
+      "description": "Selects window 27 from the open overview.",
+      "examples": [
+        "window twenty seven",
+        "window twenty seven left",
+        "window twenty seven top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_seven",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "26",
+        "twenty six",
+        "window 26",
+        "window twenty six"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_six",
+      "description": "Selects window 26 from the open overview.",
+      "examples": [
+        "window twenty six",
+        "window twenty six left",
+        "window twenty six top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_six",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "23",
+        "twenty three",
+        "window 23",
+        "window twenty three"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_three",
+      "description": "Selects window 23 from the open overview.",
+      "examples": [
+        "window twenty three",
+        "window twenty three left",
+        "window twenty three top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_three",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
+      "undoable": true,
+      "verb": "window",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "22",
+        "twenty two",
+        "window 22",
+        "window twenty two"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "window_switcher.window_twenty_two",
+      "description": "Selects window 22 from the open overview.",
+      "examples": [
+        "window twenty two",
+        "window twenty two left",
+        "window twenty two top right"
+      ],
+      "kind": "plugin",
+      "object": "twenty_two",
+      "pack": "window-cube-numbers",
+      "plugin": "window_switcher",
+      "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
+      "risk": "ui",
+      "scope": {
+        "tags": [
+          "window_overview.visible"
+        ]
+      },
+      "source": "plugins/commands/window_switcher.py:1321",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14697,7 +20782,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:819",
+      "source": "plugins/commands/window_switcher.py:793",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false

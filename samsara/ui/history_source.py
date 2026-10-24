@@ -14,4 +14,7 @@ def row_context(row: dict) -> str:
                  "ask hermes": "Hermes", "tell hermes": "Hermes"}.get(phrase)
         if agent:
             return agent
-    return str(row.get("app_context") or "").strip()
+    context = str(row.get("app_context") or "").strip()
+    if context and context.casefold() != "unknown":
+        return "in " + context
+    return context

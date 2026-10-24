@@ -423,7 +423,8 @@ def test_outcomes_and_corrections_come_from_recorded_columns():
     assert hv.list_text({"entry_type": "failed", "display_text": "[FAILED] boom"}) == \
         "Transcription failed: boom"
     assert hv.copy_text({"entry_type": "failed", "status": "empty", "display_text": "(no speech detected)"}) == ""
-    assert hv.meta_text({"app_context": "Slack", "mode": "hold"}) == "Slack \u00b7 Hotkey"
+    # 820: distinguish foreground app context from an agent destination.
+    assert hv.meta_text({"app_context": "Slack", "mode": "hold"}) == "in Slack \u00b7 Hotkey"
     assert hv.meta_text({"app_context": "Unknown", "mode": "command"}) == ""
 
 
