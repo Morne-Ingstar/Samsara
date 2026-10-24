@@ -44,6 +44,7 @@ except ImportError:
 from samsara import kept_session_draft, listening_display, tutorial_capture
 from samsara.cleanup import clean_text
 from samsara.dictionary_store import get_dictionary_store
+from samsara.hold_decode_params import final_base_params, free_form_prompt
 from samsara.log import describe_text, get_logger
 from samsara.runtime import thread_registry
 from samsara.session_modes import (
@@ -1785,14 +1786,9 @@ class StreamingWorker(threading.Thread):
 
     def _partial_params(self):
         app = self._session.app
-        try:
-            prompt = get_dictionary_store(app).get_initial_prompt()
-        except Exception as e:
-            logger.debug(f"[STREAM] get_initial_prompt failed: {e}")
-            prompt = None
         return {
             'language': _languages.resolve_transcribe_language(app),
-            'initial_prompt': prompt,
+            'initial_prompt': free_form_prompt(app),  # 813: no vocabulary
             'beam_size': PARTIAL_BEAM,
             'vad_filter': False,
             'no_speech_threshold': NO_SPEECH_THRESHOLD,
@@ -1805,15 +1801,7 @@ class StreamingWorker(threading.Thread):
 
     def _final_params(self):
         app = self._session.app
-        try:
-            params = app.get_transcription_params()
-        except Exception as e:
-            logger.debug(f"[STREAM] get_transcription_params failed: {e}")
-            params = {
-                'language': _languages.resolve_transcribe_language(app),
-                'initial_prompt': None,
-            }
-        params = dict(params)
+        params = final_base_params(app, _languages.resolve_transcribe_language(app))  # 813
         params['beam_size'] = FINAL_BEAM
         params['vad_filter'] = False
         # 387: retain fast's single deterministic pass; other profiles get
