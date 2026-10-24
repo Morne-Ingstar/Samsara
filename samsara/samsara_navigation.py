@@ -16,6 +16,7 @@ class Place:
 
 PLACES = {
     "home": Place("Home", "hub", "Home"),
+    "command_list": Place("Commands", "hub", "Commands"),
     "history": Place("History", "hub", "History"),
     "dictionary": Place("Dictionary", "hub", "Dictionary"),
     "snippets": Place("Snippets", "hub", "Snippets"),
@@ -164,6 +165,9 @@ class SamsaraNavigationMixin:
 
     def open_samsara_home(self):
         open_place(self, "home")
+
+    def open_samsara_command_list(self):
+        open_place(self, "command_list")
 
     def open_samsara_history(self):
         open_place(self, "history")

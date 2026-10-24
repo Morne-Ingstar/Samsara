@@ -41,6 +41,7 @@ Runtime sources (the "what will happen when I speak" facts):
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import random
 import re
 import time
@@ -104,9 +105,9 @@ BASE_POINT_SIZE = 9.0   # Segoe UI 9 pt is Windows' 100% text size
 #: nouns: "Commands", "Guides & tutorials", "Voice troubleshooting". The
 #: destinations are unchanged; only the words are.
 CARD_ROUTES = (
-    ("Commands", "cheatsheet", None, "windows"),
+    ("Commands", "cheatsheet", None, "commands"),
     ("Guides & tutorials", "guides", None, "guides"),
-    ("Open Dictionary", "page", "Dictionary", "words"),
+    ("Open Dictionary", "page", "Dictionary", "dictionary"),
 )
 DESTINATION_VERBS = {"cheatsheet": "View", "settings": "Configure", "page": "Open", "guides": "Show"}
 #: Every verb a label could open with that PROMISES something. A label
@@ -308,8 +309,9 @@ CARD_DESCRIPTIONS = {
     "Open Dictionary": "Fix names and words it mishears, so they come out right.",
     # Hands-free moved here from its own card (86): it is information about
     # the wake word, and Guides is where information lives.
-    "Guides & tutorials": "Command list, quick reference, tutorial, support, "
-                          "and how to talk without holding a key.",
+    # PLACEHOLDER COPY (825)
+    "Guides & tutorials": "Learn commands and hands-free use. "
+                          "For microphone problems, open Voice help.",
 }
 AVA_WHERE = {
     (True, True): "Runs on your own machine, or your own API key.",
@@ -330,6 +332,7 @@ STOP_GRACE_MS = 3000
 # stays ASCII, painted in the theme's text tokens by glyph_icon().
 ICON_GLYPHS = {
     "home": chr(0x2302),        # house
+    "commands": chr(0x003E),    # terminal prompt
     "history": chr(0x21BA),     # anticlockwise arrow
     "dictionary": chr(0x2261),  # three lines
     "settings": chr(0x2699),    # gear
@@ -337,10 +340,10 @@ ICON_GLYPHS = {
     "hands_free": chr(0x25C9),  # fisheye
     "dictate": chr(0x270E),     # pencil
     "ava": chr(0x2726),         # four-pointed star
-    "words": chr(0x2261),       # three lines (same as dictionary)
-    "guides": chr(0x2139),      # information source
-    "memos": chr(0x266B),       # beamed eighth notes -- something recorded
-    "snippets": chr(0x2261),    # three lines -- a stored block of text (121)
+    "guides": chr(0x1F4D6),     # open book
+    "voice_help": chr(0x2139),  # information source
+    "memos": chr(0x1F4CC),      # pushpin
+    "snippets": chr(0x2702),    # scissors
 }
 CARD_GLYPHS = tuple(route[3] for route in CARD_ROUTES)
 WORDS_TODAY = "words today"
@@ -933,43 +936,55 @@ def card_description(title: str, cfg: dict, count: str = "") -> str:
                            count=count)
 
 
-def commands_card_example(records) -> Optional[str]:
-    """The phrase the Commands card shows instead of a count (111).
+# Ordered preferences, checked against the same strict catalog filter as fallback.
+COMMAND_CARD_PREFERENCES = ("open notepad", "show numbers", "snap right", "scratch that")
 
-    "487 commands" tells a new user the app is big. It does not tell them
-    one thing they could say, which is the only fact that gets them started.
-    The card's VALUE therefore becomes a real command and the figure moves
-    into the description, which is where breadth was already being claimed.
 
-    Two constraints shape the choice, and both come from the card itself:
+def commands_card_example(records, config=None) -> Optional[str]:
+    """A setup-free built-in phrase, using the status strip's safety pool (825).
 
-      * The value label does not wrap and is not elided, so a long phrase
-        would fail overflowing_widgets and clip the card. A SHORT safe phrase
-        is taken, which is what keeps it inside the 150 px the card can spare
-        at 900x650.
-      * Shortest alone was wrong and the render caught it: the shortest safe
-        phrase in the live catalog is "yes", which is a reply, not a command
-        anybody would think to try. The phrase must have at least two words
-        to read as an instruction; the shortest of THOSE is the pick. A pool
-        with nothing but single words falls back to the shortest of them,
-        because one real phrase still beats a number.
-      * It is drawn from command_marquee's pool, not a second filter, so the
-        card and the status strip can never advertise a phrase the other
-        considers unsafe. Deterministic: shortest, ties broken
-        alphabetically, so the card does not change under the user between
-        two refreshes of the same catalog.
+    The card is stricter than the strip: no plugin, scope, argument (even
+    optional), hidden record or setup precondition. Disabled packs are skipped.
+    Nothing is invented when the catalog is unavailable or has no safe example.
     """
+    from samsara.command_packs import get_enabled_packs
+    from samsara.ui import command_marquee
+
+    enabled = get_enabled_packs(config or {})
+    dependency_fields = (
+        "requires", "requires_ava", "needs_ava", "requires_provider", "provider",
+        "requires_integration", "integration", "requires_setup", "hidden",
+        "hidden_from_help", "precondition",
+    )
+    eligible = [r for r in records or []
+                if r.get("kind") == "builtin" and r.get("plugin") == "builtin"
+                and not r.get("scope") and not r.get("args")
+                and r.get("pack") in enabled
+                and not any(r.get(key) for key in dependency_fields)]
     try:
-        from samsara.ui import command_marquee  # noqa: PLC0415  (no cycle; see 111)
+        # Some built-in launchers (NVDA, Discord, etc.) still need an install,
+        # which the catalog does not currently describe as a precondition.
+        # Fail closed on those: native hotkeys or bundled Windows tools only.
+        builtins = json.loads((command_catalog.ROOT / 'commands.json').read_text(
+            encoding='utf-8')).get('commands', {})
+        native_launchers = {'notepad.exe', 'calc.exe', 'explorer.exe', 'mspaint.exe'}
+        setup_free = []
+        for row in eligible:
+            definition = builtins.get(command_catalog.canonical_phrase(row), {})
+            if (definition.get('type') == 'hotkey'
+                    or (definition.get('type') == 'launch'
+                        and str(definition.get('target', '')).lower() in native_launchers)):
+                setup_free.append(row)
         phrases = command_marquee.example_phrases(
-            records, count=len(records or []) + 1, rng=random.Random(0))
+            setup_free, count=len(setup_free) + 1, rng=random.Random(0))
     except Exception as exc:
         logger.debug(f"commands_card_example: {exc}")
         return None
-    if not phrases:
-        return None
+    for phrase in COMMAND_CARD_PREFERENCES:
+        if phrase in phrases:
+            return phrase
     instructions = [p for p in phrases if len(p.split()) >= 2]
-    return min(instructions or phrases, key=lambda p: (len(p), p))
+    return min(instructions or phrases, key=lambda p: (len(p), p), default=None)
 
 
 def capability_cards(app, records) -> list:
@@ -985,8 +1000,9 @@ def capability_cards(app, records) -> list:
         # moved into the description, which already claimed breadth. The
         # whole catalog, not the "window" subset: the card opens the
         # unfiltered list, so its figure must count the unfiltered list (89).
-        example = commands_card_example(records)
-        commands_value = quoted(example) if example else f"{format_count(len(records))} commands"
+        example = commands_card_example(records, cfg)
+        # PLACEHOLDER COPY (825)
+        commands_value = f"Try: {quoted(example)}" if example else f"{format_count(len(records))} commands"
         commands_count = f"{format_count(len(records))} phrases"
     phrase = wake_phrase(cfg)
     mode = str(_cfg_get(cfg, 'mode') or 'hold')
@@ -1446,6 +1462,7 @@ class _CapabilityCard(QPushButton):
         head.setSpacing(_px(8))
         if glyph:
             icon = QLabel()
+            icon.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
             icon.setPixmap(glyph_icon(glyph, theme.ACCENT).pixmap(QSize(_px(18), _px(18))))
             icon.setStyleSheet("background: transparent; border: none;")
             icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -1689,6 +1706,7 @@ class HomePage(QWidget):
                  parent=None):
         super().__init__(parent)
         self._app = app
+        self._has_hub_navigation = open_page is not None
         self._open_page = open_page or (lambda name: None)
         self._records = catalog_records(app)
         self._settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
@@ -2196,6 +2214,12 @@ class HomePage(QWidget):
     def refresh(self):
         self._refresh_notice()
         self._refresh_hint()
+        self._records = catalog_records(self._app)
+        self._catalog_note.setVisible(self._records is None)
+        for card, spec in zip(self._cards, capability_cards(self._app, self._records)):
+            card.set_value(spec['value'])
+            card._description.setText(spec['description'])
+            card._fit_width()
         # words today is a live figure; words remaining is the fixed
         # infinity glyph and never changes.
         self._words_val.setText(format_count(words_today(self._app)))
@@ -2371,7 +2395,12 @@ class HomePage(QWidget):
 
     def _route(self, action: str, arg):
         if action == "cheatsheet":
-            open_cheatsheet_filtered(self._app, arg)
+            if self._has_hub_navigation:
+                page = self._open_page("Commands")
+                if page is not None:
+                    page.set_view(None, ("All", arg or ""))
+            else:
+                open_cheatsheet_filtered(self._app, arg)
         elif action == "settings":
             open_settings_tab(self._app, arg)
         elif action == "page":

@@ -651,7 +651,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2657",
+      "source": "commands.json:2670",
       "undoable": true,
       "verb": "accessibility",
       "whole_utterance": false
@@ -670,7 +670,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1781",
+      "source": "commands.json:1794",
       "undoable": true,
       "verb": "action",
       "whole_utterance": false
@@ -699,7 +699,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1907",
+      "source": "commands.json:1920",
       "undoable": true,
       "verb": "address",
       "whole_utterance": false
@@ -718,7 +718,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2835",
+      "source": "commands.json:2848",
       "undoable": true,
       "verb": "again",
       "whole_utterance": false
@@ -737,7 +737,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1034",
+      "source": "commands.json:1047",
       "undoable": false,
       "verb": "apostrophe",
       "whole_utterance": false
@@ -756,7 +756,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:904",
+      "source": "commands.json:917",
       "undoable": true,
       "verb": "back",
       "whole_utterance": false
@@ -775,7 +775,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:913",
+      "source": "commands.json:926",
       "undoable": true,
       "verb": "back",
       "whole_utterance": false
@@ -794,7 +794,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1129",
+      "source": "commands.json:1142",
       "undoable": false,
       "verb": "backspace",
       "whole_utterance": false
@@ -813,7 +813,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2630",
+      "source": "commands.json:2643",
       "undoable": true,
       "verb": "bigger",
       "whole_utterance": false
@@ -832,7 +832,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2779",
+      "source": "commands.json:2792",
       "undoable": true,
       "verb": "bigger",
       "whole_utterance": false
@@ -851,7 +851,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1317",
+      "source": "commands.json:1330",
       "undoable": true,
       "verb": "bold",
       "whole_utterance": false
@@ -880,7 +880,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1958",
+      "source": "commands.json:1971",
       "undoable": false,
       "verb": "bookmark",
       "whole_utterance": false
@@ -899,7 +899,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2767",
+      "source": "commands.json:2780",
       "undoable": true,
       "verb": "cancel",
       "whole_utterance": false
@@ -918,7 +918,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2359",
+      "source": "commands.json:2372",
       "undoable": true,
       "verb": "capture",
       "whole_utterance": false
@@ -937,7 +937,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1441",
+      "source": "commands.json:1454",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -956,7 +956,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1483",
+      "source": "commands.json:1496",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -975,7 +975,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1453",
+      "source": "commands.json:1466",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -994,7 +994,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1426",
+      "source": "commands.json:1439",
       "undoable": true,
       "verb": "clipboard",
       "whole_utterance": false
@@ -1013,7 +1013,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1083",
+      "source": "commands.json:1096",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1032,7 +1032,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2455",
+      "source": "commands.json:2468",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1051,7 +1051,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1069",
+      "source": "commands.json:1082",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1070,7 +1070,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1055",
+      "source": "commands.json:1068",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1099,7 +1099,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:663",
+      "source": "commands.json:676",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1118,7 +1118,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1829",
+      "source": "commands.json:1842",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1137,7 +1137,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "destructive",
-      "source": "commands.json:576",
+      "source": "commands.json:589",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -1156,7 +1156,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1020",
+      "source": "commands.json:1033",
       "undoable": false,
       "verb": "colon",
       "whole_utterance": false
@@ -1175,7 +1175,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2534",
+      "source": "commands.json:2547",
       "undoable": true,
       "verb": "color",
       "whole_utterance": false
@@ -1194,7 +1194,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:992",
+      "source": "commands.json:1005",
       "undoable": false,
       "verb": "comma",
       "whole_utterance": false
@@ -1213,7 +1213,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1531",
+      "source": "commands.json:1544",
       "undoable": false,
       "verb": "command",
       "whole_utterance": false
@@ -1232,7 +1232,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:789",
+      "source": "commands.json:802",
       "undoable": true,
       "verb": "copy",
       "whole_utterance": false
@@ -1251,7 +1251,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2681",
+      "source": "commands.json:2694",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -1270,7 +1270,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:798",
+      "source": "commands.json:811",
       "undoable": false,
       "verb": "cut",
       "whole_utterance": false
@@ -1289,7 +1289,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1689",
+      "source": "commands.json:1702",
       "undoable": false,
       "verb": "daily",
       "whole_utterance": false
@@ -1308,7 +1308,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2755",
+      "source": "commands.json:2768",
       "undoable": true,
       "verb": "dark",
       "whole_utterance": false
@@ -1327,7 +1327,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1097",
+      "source": "commands.json:1110",
       "undoable": false,
       "verb": "dash",
       "whole_utterance": false
@@ -1346,7 +1346,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2810",
+      "source": "commands.json:2823",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1365,7 +1365,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2376",
+      "source": "commands.json:2389",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1384,7 +1384,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1396",
+      "source": "commands.json:1409",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1403,7 +1403,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2261",
+      "source": "commands.json:2274",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1422,7 +1422,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2816",
+      "source": "commands.json:2829",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1441,7 +1441,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1135",
+      "source": "commands.json:1148",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1460,7 +1460,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2737",
+      "source": "commands.json:2750",
       "undoable": true,
       "verb": "display",
       "whole_utterance": false
@@ -1479,7 +1479,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2687",
+      "source": "commands.json:2700",
       "undoable": true,
       "verb": "do",
       "whole_utterance": false
@@ -1508,7 +1508,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1967",
+      "source": "commands.json:1980",
       "undoable": false,
       "verb": "duplicate",
       "whole_utterance": false
@@ -1527,7 +1527,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2666",
+      "source": "commands.json:2679",
       "undoable": true,
       "verb": "ease",
       "whole_utterance": false
@@ -1546,7 +1546,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1104",
+      "source": "commands.json:1117",
       "undoable": false,
       "verb": "ellipsis",
       "whole_utterance": false
@@ -1565,7 +1565,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1358",
+      "source": "commands.json:1371",
       "undoable": true,
       "verb": "emoji",
       "whole_utterance": false
@@ -1584,7 +1584,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2822",
+      "source": "commands.json:2835",
       "undoable": false,
       "verb": "enter",
       "whole_utterance": false
@@ -1603,7 +1603,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:875",
+      "source": "commands.json:888",
       "undoable": true,
       "verb": "escape",
       "whole_utterance": false
@@ -1622,7 +1622,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1006",
+      "source": "commands.json:1019",
       "undoable": false,
       "verb": "exclamation",
       "whole_utterance": false
@@ -1641,7 +1641,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1013",
+      "source": "commands.json:1026",
       "undoable": false,
       "verb": "exclamation",
       "whole_utterance": false
@@ -1660,7 +1660,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2636",
+      "source": "commands.json:2649",
       "undoable": true,
       "verb": "eye",
       "whole_utterance": false
@@ -1679,7 +1679,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2414",
+      "source": "commands.json:2427",
       "undoable": false,
       "verb": "file",
       "whole_utterance": false
@@ -1698,7 +1698,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2693",
+      "source": "commands.json:2706",
       "undoable": true,
       "verb": "focus",
       "whole_utterance": false
@@ -1717,7 +1717,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1632",
+      "source": "commands.json:1645",
       "undoable": false,
       "verb": "follow",
       "whole_utterance": false
@@ -1736,7 +1736,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1260",
+      "source": "commands.json:1273",
       "undoable": true,
       "verb": "full",
       "whole_utterance": false
@@ -1755,7 +1755,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:986",
+      "source": "commands.json:999",
       "undoable": false,
       "verb": "full",
       "whole_utterance": false
@@ -1774,7 +1774,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2350",
+      "source": "commands.json:2363",
       "undoable": true,
       "verb": "game",
       "whole_utterance": false
@@ -1810,7 +1810,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:743",
+      "source": "commands.json:756",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1842,7 +1842,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:761",
+      "source": "commands.json:774",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1871,7 +1871,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1916",
+      "source": "commands.json:1929",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1890,7 +1890,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2196",
+      "source": "commands.json:2209",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1909,7 +1909,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2187",
+      "source": "commands.json:2200",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1928,7 +1928,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2428",
+      "source": "commands.json:2441",
       "undoable": true,
       "verb": "go",
       "whole_utterance": false
@@ -1947,7 +1947,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1578",
+      "source": "commands.json:1591",
       "undoable": true,
       "verb": "graph",
       "whole_utterance": false
@@ -1976,7 +1976,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2015",
+      "source": "commands.json:2028",
       "undoable": true,
       "verb": "hard",
       "whole_utterance": false
@@ -2000,7 +2000,7 @@
           "winword.exe"
         ]
       },
-      "source": "commands.json:2280",
+      "source": "commands.json:2293",
       "undoable": true,
       "verb": "heading",
       "whole_utterance": false
@@ -2024,7 +2024,7 @@
           "winword.exe"
         ]
       },
-      "source": "commands.json:2310",
+      "source": "commands.json:2323",
       "undoable": true,
       "verb": "heading",
       "whole_utterance": false
@@ -2048,7 +2048,7 @@
           "winword.exe"
         ]
       },
-      "source": "commands.json:2295",
+      "source": "commands.json:2308",
       "undoable": true,
       "verb": "heading",
       "whole_utterance": false
@@ -2067,7 +2067,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2804",
+      "source": "commands.json:2817",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -2086,7 +2086,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2524",
+      "source": "commands.json:2537",
       "undoable": true,
       "verb": "high",
       "whole_utterance": false
@@ -2105,7 +2105,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1661",
+      "source": "commands.json:1674",
       "undoable": true,
       "verb": "highlight",
       "whole_utterance": false
@@ -2124,7 +2124,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:945",
+      "source": "commands.json:958",
       "undoable": false,
       "verb": "hold",
       "whole_utterance": false
@@ -2143,7 +2143,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:959",
+      "source": "commands.json:972",
       "undoable": true,
       "verb": "hold",
       "whole_utterance": false
@@ -2162,7 +2162,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1090",
+      "source": "commands.json:1103",
       "undoable": false,
       "verb": "hyphen",
       "whole_utterance": false
@@ -2181,7 +2181,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2701",
+      "source": "commands.json:2714",
       "undoable": true,
       "verb": "immersive",
       "whole_utterance": false
@@ -2200,7 +2200,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1709",
+      "source": "commands.json:1722",
       "undoable": true,
       "verb": "indent",
       "whole_utterance": false
@@ -2219,7 +2219,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1623",
+      "source": "commands.json:1636",
       "undoable": true,
       "verb": "insert",
       "whole_utterance": false
@@ -2238,7 +2238,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2544",
+      "source": "commands.json:2557",
       "undoable": true,
       "verb": "invert",
       "whole_utterance": false
@@ -2257,7 +2257,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1326",
+      "source": "commands.json:1339",
       "undoable": true,
       "verb": "italic",
       "whole_utterance": false
@@ -2276,7 +2276,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:524",
+      "source": "commands.json:537",
       "undoable": false,
       "verb": "jump",
       "whole_utterance": false
@@ -2305,7 +2305,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2106",
+      "source": "commands.json:2119",
       "undoable": true,
       "verb": "last",
       "whole_utterance": false
@@ -2324,7 +2324,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2550",
+      "source": "commands.json:2563",
       "undoable": true,
       "verb": "live",
       "whole_utterance": false
@@ -2343,7 +2343,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1185",
+      "source": "commands.json:1198",
       "undoable": true,
       "verb": "lock",
       "whole_utterance": false
@@ -2362,7 +2362,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1176",
+      "source": "commands.json:1189",
       "undoable": true,
       "verb": "lock",
       "whole_utterance": false
@@ -2381,7 +2381,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2749",
+      "source": "commands.json:2762",
       "undoable": true,
       "verb": "make",
       "whole_utterance": false
@@ -2400,7 +2400,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:594",
+      "source": "commands.json:607",
       "undoable": true,
       "verb": "maximize",
       "whole_utterance": false
@@ -2419,7 +2419,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:585",
+      "source": "commands.json:598",
       "undoable": true,
       "verb": "minimize",
       "whole_utterance": false
@@ -2438,7 +2438,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:612",
+      "source": "commands.json:625",
       "undoable": true,
       "verb": "minimize",
       "whole_utterance": false
@@ -2457,7 +2457,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:621",
+      "source": "commands.json:634",
       "undoable": true,
       "verb": "minimize",
       "whole_utterance": false
@@ -2476,7 +2476,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2570",
+      "source": "commands.json:2583",
       "undoable": true,
       "verb": "mono",
       "whole_utterance": false
@@ -2495,7 +2495,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2618",
+      "source": "commands.json:2631",
       "undoable": true,
       "verb": "mouse",
       "whole_utterance": false
@@ -2514,7 +2514,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2852",
+      "source": "commands.json:2865",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2533,7 +2533,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2862",
+      "source": "commands.json:2875",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2552,7 +2552,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2842",
+      "source": "commands.json:2855",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2581,7 +2581,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1988",
+      "source": "commands.json:2001",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -2600,7 +2600,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1641",
+      "source": "commands.json:1654",
       "undoable": true,
       "verb": "navigate",
       "whole_utterance": false
@@ -2619,7 +2619,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1651",
+      "source": "commands.json:1664",
       "undoable": true,
       "verb": "navigate",
       "whole_utterance": false
@@ -2638,7 +2638,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2393",
+      "source": "commands.json:2406",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2657,7 +2657,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1111",
+      "source": "commands.json:1124",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2676,7 +2676,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1495",
+      "source": "commands.json:1508",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2695,7 +2695,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1117",
+      "source": "commands.json:1130",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2724,7 +2724,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:640",
+      "source": "commands.json:653",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2743,7 +2743,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1819",
+      "source": "commands.json:1832",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2762,7 +2762,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:889",
+      "source": "commands.json:902",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -2791,7 +2791,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:700",
+      "source": "commands.json:713",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -2810,7 +2810,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2731",
+      "source": "commands.json:2744",
       "undoable": true,
       "verb": "night",
       "whole_utterance": false
@@ -2834,7 +2834,7 @@
           "winword.exe"
         ]
       },
-      "source": "commands.json:2325",
+      "source": "commands.json:2338",
       "undoable": true,
       "verb": "normal",
       "whole_utterance": false
@@ -2853,7 +2853,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1367",
+      "source": "commands.json:1380",
       "undoable": true,
       "verb": "notifications",
       "whole_utterance": false
@@ -2872,7 +2872,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1671",
+      "source": "commands.json:1684",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2891,7 +2891,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1504",
+      "source": "commands.json:1517",
       "undoable": false,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2910,7 +2910,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1540",
+      "source": "commands.json:1553",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2929,7 +2929,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1614",
+      "source": "commands.json:1627",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2948,7 +2948,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2582",
+      "source": "commands.json:2595",
       "undoable": false,
       "verb": "on",
       "whole_utterance": false
@@ -2967,7 +2967,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2175",
+      "source": "commands.json:2188",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -2996,7 +2996,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1948",
+      "source": "commands.json:1961",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3015,7 +3015,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1076",
+      "source": "commands.json:1089",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3034,7 +3034,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1200",
+      "source": "commands.json:1213",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3053,7 +3053,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1465",
+      "source": "commands.json:1478",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3072,7 +3072,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:555",
+      "source": "commands.json:568",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3091,7 +3091,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1435",
+      "source": "commands.json:1448",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3110,7 +3110,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2181",
+      "source": "commands.json:2194",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3129,7 +3129,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1447",
+      "source": "commands.json:1460",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3148,7 +3148,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1889",
+      "source": "commands.json:1902",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3167,7 +3167,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1859",
+      "source": "commands.json:1872",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3196,7 +3196,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2007",
+      "source": "commands.json:2020",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3215,7 +3215,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1739",
+      "source": "commands.json:1752",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3234,7 +3234,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1883",
+      "source": "commands.json:1896",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3253,7 +3253,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1901",
+      "source": "commands.json:1914",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3282,7 +3282,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1925",
+      "source": "commands.json:1938",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3301,7 +3301,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:569",
+      "source": "commands.json:582",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3320,7 +3320,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1865",
+      "source": "commands.json:1878",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3339,7 +3339,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1206",
+      "source": "commands.json:1219",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3358,7 +3358,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1215",
+      "source": "commands.json:1228",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3377,7 +3377,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:562",
+      "source": "commands.json:575",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3396,7 +3396,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1471",
+      "source": "commands.json:1484",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3415,7 +3415,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2157",
+      "source": "commands.json:2170",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3434,7 +3434,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1587",
+      "source": "commands.json:1600",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3463,7 +3463,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1934",
+      "source": "commands.json:1947",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3482,7 +3482,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2169",
+      "source": "commands.json:2182",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3501,7 +3501,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2725",
+      "source": "commands.json:2738",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3520,7 +3520,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2592",
+      "source": "commands.json:2605",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3539,7 +3539,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3098",
+      "source": "commands.json:3111",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3558,7 +3558,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2446",
+      "source": "commands.json:2459",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3577,7 +3577,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2133",
+      "source": "commands.json:2146",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3596,7 +3596,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1522",
+      "source": "commands.json:1535",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3615,7 +3615,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1194",
+      "source": "commands.json:1207",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3634,7 +3634,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2719",
+      "source": "commands.json:2732",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3653,7 +3653,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1489",
+      "source": "commands.json:1502",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3672,7 +3672,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1757",
+      "source": "commands.json:1770",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3691,7 +3691,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1062",
+      "source": "commands.json:1075",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3710,7 +3710,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1477",
+      "source": "commands.json:1490",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3729,7 +3729,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1048",
+      "source": "commands.json:1061",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3748,7 +3748,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1877",
+      "source": "commands.json:1890",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3767,7 +3767,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2139",
+      "source": "commands.json:2152",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3786,7 +3786,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1871",
+      "source": "commands.json:1884",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3805,7 +3805,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:822",
+      "source": "commands.json:835",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3824,7 +3824,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1895",
+      "source": "commands.json:1908",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3843,7 +3843,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1745",
+      "source": "commands.json:1758",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3862,7 +3862,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1751",
+      "source": "commands.json:1764",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3881,7 +3881,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1420",
+      "source": "commands.json:1433",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3900,7 +3900,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3056",
+      "source": "commands.json:3069",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3919,7 +3919,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3062",
+      "source": "commands.json:3075",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3938,7 +3938,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3068",
+      "source": "commands.json:3081",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3957,7 +3957,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1733",
+      "source": "commands.json:1746",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3976,7 +3976,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1727",
+      "source": "commands.json:1740",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3995,7 +3995,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:922",
+      "source": "commands.json:935",
       "undoable": true,
       "verb": "other",
       "whole_utterance": false
@@ -4024,7 +4024,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1295",
+      "source": "commands.json:1308",
       "undoable": true,
       "verb": "page",
       "whole_utterance": false
@@ -4053,7 +4053,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1306",
+      "source": "commands.json:1319",
       "undoable": true,
       "verb": "page",
       "whole_utterance": false
@@ -4072,7 +4072,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:807",
+      "source": "commands.json:820",
       "undoable": true,
       "verb": "paste",
       "whole_utterance": false
@@ -4091,7 +4091,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:979",
+      "source": "commands.json:992",
       "undoable": false,
       "verb": "period",
       "whole_utterance": false
@@ -4110,7 +4110,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "destructive",
-      "source": "commands.json:2384",
+      "source": "commands.json:2397",
       "undoable": false,
       "verb": "permanent",
       "whole_utterance": false
@@ -4139,7 +4139,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1997",
+      "source": "commands.json:2010",
       "undoable": false,
       "verb": "pin",
       "whole_utterance": false
@@ -4158,7 +4158,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2624",
+      "source": "commands.json:2637",
       "undoable": true,
       "verb": "pointer",
       "whole_utterance": false
@@ -4177,7 +4177,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:931",
+      "source": "commands.json:944",
       "undoable": false,
       "verb": "press",
       "whole_utterance": false
@@ -4196,7 +4196,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:938",
+      "source": "commands.json:951",
       "undoable": false,
       "verb": "press",
       "whole_utterance": false
@@ -4215,7 +4215,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:883",
+      "source": "commands.json:896",
       "undoable": true,
       "verb": "press",
       "whole_utterance": false
@@ -4234,7 +4234,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2437",
+      "source": "commands.json:2450",
       "undoable": true,
       "verb": "preview",
       "whole_utterance": false
@@ -4253,7 +4253,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:895",
+      "source": "commands.json:908",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -4282,7 +4282,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:709",
+      "source": "commands.json:722",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -4301,7 +4301,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1344",
+      "source": "commands.json:1357",
       "undoable": false,
       "verb": "print",
       "whole_utterance": false
@@ -4330,7 +4330,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2115",
+      "source": "commands.json:2128",
       "undoable": false,
       "verb": "private",
       "whole_utterance": false
@@ -4349,7 +4349,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:999",
+      "source": "commands.json:1012",
       "undoable": false,
       "verb": "question",
       "whole_utterance": false
@@ -4368,7 +4368,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1513",
+      "source": "commands.json:1526",
       "undoable": false,
       "verb": "quick",
       "whole_utterance": false
@@ -4387,7 +4387,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1041",
+      "source": "commands.json:1054",
       "undoable": false,
       "verb": "quote",
       "whole_utterance": false
@@ -4406,7 +4406,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2709",
+      "source": "commands.json:2722",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -4425,7 +4425,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2474",
+      "source": "commands.json:2487",
       "undoable": false,
       "verb": "read",
       "whole_utterance": false
@@ -4444,7 +4444,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2484",
+      "source": "commands.json:2497",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -4463,7 +4463,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2464",
+      "source": "commands.json:2477",
       "undoable": false,
       "verb": "read",
       "whole_utterance": true
@@ -4482,7 +4482,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1605",
+      "source": "commands.json:1618",
       "undoable": true,
       "verb": "reading",
       "whole_utterance": false
@@ -4511,7 +4511,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2125",
+      "source": "commands.json:2138",
       "undoable": true,
       "verb": "reading",
       "whole_utterance": false
@@ -4530,7 +4530,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2340",
+      "source": "commands.json:2353",
       "undoable": true,
       "verb": "record",
       "whole_utterance": false
@@ -4549,7 +4549,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:843",
+      "source": "commands.json:856",
       "undoable": true,
       "verb": "redo",
       "whole_utterance": false
@@ -4568,7 +4568,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:852",
+      "source": "commands.json:865",
       "undoable": true,
       "verb": "redo",
       "whole_utterance": false
@@ -4597,7 +4597,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:719",
+      "source": "commands.json:732",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -4616,7 +4616,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:973",
+      "source": "commands.json:986",
       "undoable": true,
       "verb": "release",
       "whole_utterance": false
@@ -4635,7 +4635,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:966",
+      "source": "commands.json:979",
       "undoable": true,
       "verb": "release",
       "whole_utterance": false
@@ -4654,7 +4654,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:3048",
+      "source": "commands.json:3061",
       "undoable": false,
       "verb": "remove",
       "whole_utterance": false
@@ -4673,7 +4673,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2368",
+      "source": "commands.json:2381",
       "undoable": true,
       "verb": "rename",
       "whole_utterance": false
@@ -4702,7 +4702,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:679",
+      "source": "commands.json:692",
       "undoable": true,
       "verb": "reopen",
       "whole_utterance": false
@@ -4721,7 +4721,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2828",
+      "source": "commands.json:2841",
       "undoable": true,
       "verb": "repeat",
       "whole_utterance": false
@@ -4740,7 +4740,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1569",
+      "source": "commands.json:1582",
       "undoable": true,
       "verb": "replace",
       "whole_utterance": false
@@ -4759,7 +4759,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2145",
+      "source": "commands.json:2158",
       "undoable": true,
       "verb": "report",
       "whole_utterance": false
@@ -4788,7 +4788,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1286",
+      "source": "commands.json:1299",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -4807,7 +4807,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2977",
+      "source": "commands.json:2990",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -4826,7 +4826,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1459",
+      "source": "commands.json:1472",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4845,7 +4845,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1772",
+      "source": "commands.json:1785",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4864,7 +4864,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:837",
+      "source": "commands.json:850",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4886,7 +4886,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:373",
+      "source": "commands.json:386",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -4906,7 +4906,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:182",
+      "source": "commands.json:195",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -4933,7 +4933,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:113",
+      "source": "commands.json:126",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -4956,7 +4956,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:131",
+      "source": "commands.json:144",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -4979,7 +4979,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:289",
+      "source": "commands.json:302",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -4999,7 +4999,29 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:465",
+      "source": "commands.json:478",
+      "undoable": true,
+      "verb": "samsara",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "go to commands",
+        "open commands",
+        "open samsara command list",
+        "samsara command list"
+      ],
+      "args": [],
+      "canonical_id": "builtin.samsara_command_list",
+      "description": "Opens the Commands page in Samsara's main window.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "command_list",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:16",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5019,7 +5041,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:314",
+      "source": "commands.json:327",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5041,7 +5063,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:169",
+      "source": "commands.json:182",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5061,7 +5083,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:215",
+      "source": "commands.json:228",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5081,7 +5103,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:513",
+      "source": "commands.json:526",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5104,7 +5126,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:237",
+      "source": "commands.json:250",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5126,7 +5148,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:476",
+      "source": "commands.json:489",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5146,7 +5168,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:421",
+      "source": "commands.json:434",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5167,7 +5189,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:101",
+      "source": "commands.json:114",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5192,7 +5214,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:27",
+      "source": "commands.json:40",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5212,7 +5234,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:399",
+      "source": "commands.json:412",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5234,7 +5256,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:386",
+      "source": "commands.json:399",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5255,7 +5277,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:89",
+      "source": "commands.json:102",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5277,7 +5299,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:251",
+      "source": "commands.json:264",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5297,7 +5319,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:193",
+      "source": "commands.json:206",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5318,7 +5340,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:157",
+      "source": "commands.json:170",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5338,7 +5360,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:16",
+      "source": "commands.json:29",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5380,7 +5402,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:226",
+      "source": "commands.json:239",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5403,7 +5425,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:348",
+      "source": "commands.json:361",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5423,7 +5445,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:432",
+      "source": "commands.json:445",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5443,7 +5465,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:443",
+      "source": "commands.json:456",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5463,7 +5485,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:54",
+      "source": "commands.json:67",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5486,7 +5508,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:275",
+      "source": "commands.json:288",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5506,7 +5528,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:204",
+      "source": "commands.json:217",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5526,7 +5548,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:303",
+      "source": "commands.json:316",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5547,7 +5569,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:325",
+      "source": "commands.json:338",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5566,7 +5588,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2163",
+      "source": "commands.json:2176",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5586,7 +5608,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:78",
+      "source": "commands.json:91",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5607,7 +5629,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:145",
+      "source": "commands.json:158",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5627,7 +5649,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:43",
+      "source": "commands.json:56",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5649,7 +5671,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:489",
+      "source": "commands.json:502",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5669,7 +5691,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:410",
+      "source": "commands.json:423",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5689,7 +5711,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:337",
+      "source": "commands.json:350",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5709,7 +5731,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:454",
+      "source": "commands.json:467",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5729,7 +5751,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:264",
+      "source": "commands.json:277",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5749,7 +5771,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:362",
+      "source": "commands.json:375",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5771,7 +5793,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:65",
+      "source": "commands.json:78",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5791,7 +5813,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:502",
+      "source": "commands.json:515",
       "undoable": true,
       "verb": "samsara",
       "whole_utterance": false
@@ -5810,7 +5832,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:858",
+      "source": "commands.json:871",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -5829,7 +5851,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "destructive",
-      "source": "commands.json:3104",
+      "source": "commands.json:3117",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -5848,7 +5870,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1150",
+      "source": "commands.json:1163",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -5867,7 +5889,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1166",
+      "source": "commands.json:1179",
       "undoable": true,
       "verb": "screenshot",
       "whole_utterance": false
@@ -5886,7 +5908,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:735",
+      "source": "commands.json:748",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -5905,7 +5927,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:727",
+      "source": "commands.json:740",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -5924,7 +5946,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1550",
+      "source": "commands.json:1563",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -5943,7 +5965,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1560",
+      "source": "commands.json:1573",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -5962,7 +5984,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1790",
+      "source": "commands.json:1803",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -5986,7 +6008,7 @@
           "winword.exe"
         ]
       },
-      "source": "commands.json:775",
+      "source": "commands.json:788",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6005,7 +6027,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2241",
+      "source": "commands.json:2254",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6024,7 +6046,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2251",
+      "source": "commands.json:2264",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6043,7 +6065,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2223",
+      "source": "commands.json:2236",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6062,7 +6084,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2232",
+      "source": "commands.json:2245",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6081,7 +6103,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1376",
+      "source": "commands.json:1389",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6100,7 +6122,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1386",
+      "source": "commands.json:1399",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6119,7 +6141,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1027",
+      "source": "commands.json:1040",
       "undoable": false,
       "verb": "semicolon",
       "whole_utterance": false
@@ -6138,7 +6160,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2151",
+      "source": "commands.json:2164",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6157,7 +6179,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3017",
+      "source": "commands.json:3030",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6176,7 +6198,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2986",
+      "source": "commands.json:2999",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6195,7 +6217,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2896",
+      "source": "commands.json:2909",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6214,7 +6236,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2872",
+      "source": "commands.json:2885",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6233,7 +6255,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2953",
+      "source": "commands.json:2966",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6252,7 +6274,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2920",
+      "source": "commands.json:2933",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6272,7 +6294,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2797",
+      "source": "commands.json:2810",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -6291,7 +6313,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:603",
+      "source": "commands.json:616",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -6310,7 +6332,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:831",
+      "source": "commands.json:844",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -6329,7 +6351,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2788",
+      "source": "commands.json:2801",
       "undoable": true,
       "verb": "smaller",
       "whole_utterance": false
@@ -6348,7 +6370,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1242",
+      "source": "commands.json:1255",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -6367,7 +6389,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1251",
+      "source": "commands.json:1264",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -6386,7 +6408,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1839",
+      "source": "commands.json:1852",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -6405,7 +6427,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1849",
+      "source": "commands.json:1862",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -6424,7 +6446,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1123",
+      "source": "commands.json:1136",
       "undoable": false,
       "verb": "space",
       "whole_utterance": false
@@ -6443,7 +6465,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2651",
+      "source": "commands.json:2664",
       "undoable": true,
       "verb": "speech",
       "whole_utterance": false
@@ -6462,7 +6484,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2560",
+      "source": "commands.json:2573",
       "undoable": true,
       "verb": "start",
       "whole_utterance": false
@@ -6481,7 +6503,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2773",
+      "source": "commands.json:2786",
       "undoable": true,
       "verb": "start",
       "whole_utterance": false
@@ -6500,7 +6522,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2504",
+      "source": "commands.json:2517",
       "undoable": false,
       "verb": "start",
       "whole_utterance": false
@@ -6519,7 +6541,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3092",
+      "source": "commands.json:3105",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6538,7 +6560,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3080",
+      "source": "commands.json:3093",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6557,7 +6579,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3074",
+      "source": "commands.json:3087",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6576,7 +6598,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3086",
+      "source": "commands.json:3099",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6595,7 +6617,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2612",
+      "source": "commands.json:2625",
       "undoable": true,
       "verb": "sticky",
       "whole_utterance": false
@@ -6614,7 +6636,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:952",
+      "source": "commands.json:965",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -6633,7 +6655,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2514",
+      "source": "commands.json:2527",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -6652,7 +6674,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2494",
+      "source": "commands.json:2507",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -6671,7 +6693,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2270",
+      "source": "commands.json:2283",
       "undoable": true,
       "verb": "strikethrough",
       "whole_utterance": false
@@ -6690,7 +6712,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:867",
+      "source": "commands.json:880",
       "undoable": false,
       "verb": "submit",
       "whole_utterance": false
@@ -6709,7 +6731,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1233",
+      "source": "commands.json:1246",
       "undoable": true,
       "verb": "switch",
       "whole_utterance": false
@@ -6728,7 +6750,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1224",
+      "source": "commands.json:1237",
       "undoable": true,
       "verb": "switch",
       "whole_utterance": false
@@ -6747,7 +6769,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1763",
+      "source": "commands.json:1776",
       "undoable": true,
       "verb": "system",
       "whole_utterance": false
@@ -6776,7 +6798,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2088",
+      "source": "commands.json:2101",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6805,7 +6827,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2061",
+      "source": "commands.json:2074",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6834,7 +6856,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2052",
+      "source": "commands.json:2065",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6863,7 +6885,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2097",
+      "source": "commands.json:2110",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6892,7 +6914,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2025",
+      "source": "commands.json:2038",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6921,7 +6943,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2079",
+      "source": "commands.json:2092",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6950,7 +6972,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2070",
+      "source": "commands.json:2083",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -6979,7 +7001,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2043",
+      "source": "commands.json:2056",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -7008,7 +7030,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:2034",
+      "source": "commands.json:2047",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -7027,7 +7049,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1156",
+      "source": "commands.json:1169",
       "undoable": true,
       "verb": "take",
       "whole_utterance": false
@@ -7046,7 +7068,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:630",
+      "source": "commands.json:643",
       "undoable": true,
       "verb": "task",
       "whole_utterance": false
@@ -7065,7 +7087,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2675",
+      "source": "commands.json:2688",
       "undoable": true,
       "verb": "text",
       "whole_utterance": false
@@ -7084,7 +7106,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2743",
+      "source": "commands.json:2756",
       "undoable": true,
       "verb": "text",
       "whole_utterance": false
@@ -7103,7 +7125,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1679",
+      "source": "commands.json:1692",
       "undoable": false,
       "verb": "todays",
       "whole_utterance": false
@@ -7122,7 +7144,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1699",
+      "source": "commands.json:1712",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -7141,7 +7163,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1596",
+      "source": "commands.json:1609",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -7160,7 +7182,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3110",
+      "source": "commands.json:3123",
       "undoable": true,
       "verb": "transcribe",
       "whole_utterance": false
@@ -7179,7 +7201,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2761",
+      "source": "commands.json:2774",
       "undoable": true,
       "verb": "type",
       "whole_utterance": false
@@ -7198,7 +7220,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1335",
+      "source": "commands.json:1348",
       "undoable": true,
       "verb": "underline",
       "whole_utterance": false
@@ -7217,7 +7239,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:816",
+      "source": "commands.json:829",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -7236,7 +7258,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1144",
+      "source": "commands.json:1157",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -7255,7 +7277,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1718",
+      "source": "commands.json:1731",
       "undoable": true,
       "verb": "unindent",
       "whole_utterance": false
@@ -7274,7 +7296,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1799",
+      "source": "commands.json:1812",
       "undoable": true,
       "verb": "virtual",
       "whole_utterance": false
@@ -7293,7 +7315,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1809",
+      "source": "commands.json:1822",
       "undoable": true,
       "verb": "virtual",
       "whole_utterance": false
@@ -7312,7 +7334,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2602",
+      "source": "commands.json:2615",
       "undoable": false,
       "verb": "virtual",
       "whole_utterance": false
@@ -7331,7 +7353,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2576",
+      "source": "commands.json:2589",
       "undoable": true,
       "verb": "visual",
       "whole_utterance": false
@@ -7350,7 +7372,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2642",
+      "source": "commands.json:2655",
       "undoable": true,
       "verb": "windows",
       "whole_utterance": false
@@ -7369,7 +7391,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2205",
+      "source": "commands.json:2218",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false
@@ -7388,7 +7410,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2214",
+      "source": "commands.json:2227",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false
@@ -7407,7 +7429,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1268",
+      "source": "commands.json:1281",
       "undoable": true,
       "verb": "zoom",
       "whole_utterance": false
@@ -7426,7 +7448,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1277",
+      "source": "commands.json:1290",
       "undoable": true,
       "verb": "zoom",
       "whole_utterance": false

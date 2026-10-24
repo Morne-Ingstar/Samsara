@@ -72,9 +72,9 @@ PAUSED_RESUME = "Paused \u2014 resume"
 #: Queue 86: "Voice help" is in the nav on EVERY screen, healthy or not --
 #: a user must be able to report "voice is not working" when the app has
 #: detected no fault.
-NAV_ICONS = {"Home": "home", "History": "history", MEMOS: "memos",
+NAV_ICONS = {"Home": "home", "Commands": "commands", "History": "history", MEMOS: "memos",
              SNIPPETS: "snippets", "Dictionary": "dictionary",
-             VOICE_HELP: "guides", "Settings": "settings"}
+             VOICE_HELP: "voice_help", "Settings": "settings"}
 #: Queue 92: Memos sits beside History -- both are "things you said, kept".
 #: It is a nav row and not a Home card because Home's card grid has no room
 #: at the 900x650 default: a fourth card costs 130 px (a second row) and
@@ -83,7 +83,7 @@ NAV_ICONS = {"Home": "home", "History": "history", MEMOS: "memos",
 #: Snippets is "things you said, kept to say again". Same reason as 92 for
 #: being a nav row and not a Home card: Home's card grid has no room at the
 #: 900x650 default.
-NAV_ORDER = ("Home", "History", MEMOS, SNIPPETS, "Dictionary", VOICE_HELP, "Settings")
+NAV_ORDER = ("Home", "Commands", "History", MEMOS, SNIPPETS, "Dictionary", VOICE_HELP, "Settings")
 # The header mark follows the tray's live frame (spin while transcribing,
 # listening pulse), so it polls faster than the 2 s status refresh; the
 # timer runs only while the window is shown.
@@ -621,11 +621,14 @@ class _MainWindow(QMainWindow):
         self._stack.setCurrentWidget(self._panel_cache[name])
         self._highlight(name)
         self._on_page_shown(name)
+        return self._panel_cache[name]
 
     def _on_page_shown(self, name: str):
         """Queue 92: Memos re-reads its store on entry -- a memo recorded
         while another page was up must be there when the user arrives."""
         page = self._panel_cache.get(name)
+        if name == "Commands":
+            page.refresh_commands()
         reload_fn = getattr(page, "reload", None) if name in (MEMOS, SNIPPETS) else None
         if callable(reload_fn):
             try:
@@ -646,6 +649,9 @@ class _MainWindow(QMainWindow):
                 legacy_history_fn=lambda: getattr(self._app, 'history', []),
                 legacy_clear_fn=self._clear_legacy_history,
             )
+        if name == "Commands":
+            from samsara.ui.command_cheatsheet_qt import build_hub_page
+            return build_hub_page(self._app, self._stack)
         if name == MEMOS:
             return MemosPage(self._app)
         if name == SNIPPETS:

@@ -13,6 +13,19 @@
       "description": "Opens Samsara's Home.",
       "samsara_destination": "home"
     },
+    "samsara command list": {
+      "aliases": [
+        "open samsara command list",
+        "open commands",
+        "go to commands"
+      ],
+      "type": "method",
+      "method": "open_samsara_command_list",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens the Commands page in Samsara's main window.",
+      "samsara_destination": "command_list"
+    },
     "samsara history": {
       "aliases": [
         "open samsara history"

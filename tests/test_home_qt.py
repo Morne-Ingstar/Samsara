@@ -1765,7 +1765,8 @@ class TestFiguresAndExamples:
         commands = [c for c in cards if c["action"] == "cheatsheet"][0]
         example = home_qt.commands_card_example(records)
         assert example
-        assert commands["value"] == home_qt.quoted(example)
+        # 825: the plain-text example now explicitly invites trying it.
+        assert commands["value"] == f"Try: {home_qt.quoted(example)}"
         assert "commands" not in commands["value"]
 
     def test_the_example_is_sayable_not_merely_short(self):

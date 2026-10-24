@@ -434,6 +434,29 @@ class CommandCheatSheetQt:
 # Title bar (drag handle + opacity + close)
 # ---------------------------------------------------------------------------
 
+def build_hub_page(app, parent=None):
+    """Embed the existing reference, without a second window or window geometry (825)."""
+    from samsara.ui.command_pack_actions import open_packs, enable_pack
+
+    def commands():
+        matcher = getattr(getattr(app, 'command_executor', None), '_matcher', None)
+        return matcher.list_commands() if matcher is not None else None
+
+    palette_path = getattr(getattr(app, 'cheat_sheet', None), '_palette_path', None)
+    if not isinstance(palette_path, Path):
+        palette_path = _palette_state_path()
+    page = _CheatSheetWindow(
+        lambda phrase: app.command_executor.process_text(phrase, app, force_commands=True),
+        commands, palette_path, embedded=True,
+        open_packs_cb=lambda: open_packs(app),
+        enable_pack_cb=lambda pack, owner: enable_pack(app, pack, owner),
+        config_cb=lambda: getattr(app, 'config', {}) or {},
+    )
+    page.setParent(parent, Qt.WindowType.Widget)
+    page.setAccessibleName('Commands')
+    return page
+
+
 class _TitleBar(QWidget):
     def __init__(self, win: "_CheatSheetWindow"):
         super().__init__(win)
@@ -495,6 +518,8 @@ class _TitleBar(QWidget):
         lay.addWidget(self._close_button)
 
     def mousePressEvent(self, e):
+        if self._win._embedded:
+            return
         if e.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = (
                 e.globalPosition().toPoint() - self._win.frameGeometry().topLeft()
@@ -765,10 +790,11 @@ class _CheatSheetWindow(QMainWindow):
         execute_cb: Callable,
         commands_cb: Callable,
         palette_path: Path,
-        *, initial_scope=None, initial_view=None,
+        *, initial_scope=None, initial_view=None, embedded=False,
         open_packs_cb=None, enable_pack_cb=None, config_cb=None,
     ):
         super().__init__()
+        self._embedded = embedded
         self._execute_cb  = execute_cb
         self._commands_cb = commands_cb
         self._open_packs_cb = open_packs_cb
@@ -792,12 +818,13 @@ class _CheatSheetWindow(QMainWindow):
         if initial_view is not None:
             self._active_category = initial_view[0]
 
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
-        )
-        self.setWindowOpacity(self._opacity)
+        if not embedded:
+            self.setWindowFlags(
+                Qt.WindowType.FramelessWindowHint |
+                Qt.WindowType.WindowStaysOnTopHint |
+                Qt.WindowType.Tool
+            )
+            self.setWindowOpacity(self._opacity)
         self.resize(self._geom["w"], self._geom["h"])
         # The floor is set from the bars themselves once they exist (see the
         # end of __init__): 280 px let the user drag the window narrower than
@@ -825,6 +852,11 @@ class _CheatSheetWindow(QMainWindow):
 
         # Title bar
         self._title_bar = _TitleBar(self)
+        if embedded:
+            for control in (self._title_bar._opacity_label, self._title_bar._opacity_slider,
+                            self._title_bar._close_button):
+                control.hide()
+            self._title_bar._title_label.setCursor(Qt.CursorShape.ArrowCursor)
         lay.addWidget(self._title_bar)
 
         # Search. The inset card remains visible on both palettes; the old
@@ -837,6 +869,8 @@ class _CheatSheetWindow(QMainWindow):
         self._filter.setAccessibleName("Search commands")
         self._filter.setPlaceholderText("Search commands…")
         style_search(self._filter)
+        if embedded:
+            self._filter.setFixedWidth(320)
         # Queue 78: Qt paints a placeholder at ~50% of the text colour, which
         # lands under 3:1. The role is set explicitly so it is TEXT_SECONDARY.
         _palette = self._filter.palette()
@@ -847,6 +881,8 @@ class _CheatSheetWindow(QMainWindow):
             self._filter.setText(initial_view[1])
         self._filter.textChanged.connect(self._apply_filter)
         search_layout.addWidget(self._filter)
+        if embedded:
+            search_layout.addStretch(1)
         lay.addWidget(search_wrap)
 
         self._live_controls = QLabel(initial_view[2] if initial_view and len(initial_view) > 2 else "")
@@ -872,6 +908,10 @@ class _CheatSheetWindow(QMainWindow):
 
         # Category tab bar
         self._category_bar = _CategoryTabBar(self._set_category, on_live_only=self._set_live_only)
+        if embedded:
+            self._category_bar._combo.setFixedWidth(300)
+            self._category_bar.layout().setStretch(0, 0)
+            self._category_bar.layout().addStretch(1)
         lay.addWidget(self._category_bar)
 
         # Command list
@@ -909,6 +949,7 @@ class _CheatSheetWindow(QMainWindow):
 
         # Overlay the grip in the corner instead of reserving an empty strip.
         self._resize_grip = _VisibleSizeGrip(inner)
+        self._resize_grip.setVisible(not embedded)
 
         # Queue 78: the narrowest this window may be is the widest row it
         # has to draw -- the title bar and the category row, measured, not
@@ -1296,6 +1337,19 @@ class _CheatSheetWindow(QMainWindow):
             logger.debug(f"_load_palette: {e}")
 
     def _save_palette(self):
+        if self._embedded:
+            # Share reference preferences without replacing floating-window geometry.
+            try:
+                data = (json.loads(self._palette_path.read_text(encoding='utf-8'))
+                        if self._palette_path.exists() else {})
+                if not isinstance(data, dict):
+                    data = {}
+                data.update(pinned=sorted(self._pinned), last_category=self._active_category,
+                            most_used_expanded=self._most_used_expanded)
+                self._palette_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
+            except Exception as exc:
+                logger.debug(f"Embedded reference preferences: {exc}")
+            return
         try:
             data = {
                 "pinned":        sorted(self._pinned),
@@ -1315,6 +1369,8 @@ class _CheatSheetWindow(QMainWindow):
 
     def showEvent(self, e):
         super().showEvent(e)
+        if self._embedded:
+            return
         initial = not self._has_opened
         has_saved_position = self._geom["x"] is not None and self._geom["y"] is not None
         if initial and has_saved_position:
