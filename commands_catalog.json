@@ -7782,7 +7782,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:328",
+      "source": "plugins/commands/core_utils.py:335",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -7796,7 +7796,7 @@
       ],
       "args": [],
       "canonical_id": "core_utils.read_that_back",
-      "description": "Reads the latest committed dictation or command aloud for accessibility.",
+      "description": "Reads a requested selection or the last delivered dictation aloud.",
       "examples": [],
       "kind": "plugin",
       "object": "that_back",
@@ -7804,7 +7804,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:234",
+      "source": "plugins/commands/core_utils.py:225",
       "undoable": true,
       "verb": "read",
       "whole_utterance": true
@@ -7849,7 +7849,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:291",
+      "source": "plugins/commands/core_utils.py:298",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -7870,7 +7870,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:273",
+      "source": "plugins/commands/core_utils.py:280",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -7920,7 +7920,7 @@
       "plugin": "core_utils",
       "precondition": "Save only after an alias offer. To remove one, say remove alias and its exact wording.",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:354",
+      "source": "plugins/commands/core_utils.py:361",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -7971,7 +7971,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:523",
+      "source": "plugins/commands/core_utils.py:530",
       "undoable": true,
       "verb": "why",
       "whole_utterance": false
@@ -10575,7 +10575,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "apply",
       "whole_utterance": true
@@ -10603,7 +10603,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "capitalise",
       "whole_utterance": true
@@ -10624,7 +10624,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "capitalise",
       "whole_utterance": true
@@ -10652,7 +10652,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "capitalize",
       "whole_utterance": true
@@ -10673,7 +10673,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "capitalize",
       "whole_utterance": true
@@ -10701,7 +10701,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "change",
       "whole_utterance": true
@@ -10722,7 +10722,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "change",
       "whole_utterance": true
@@ -10770,7 +10770,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10798,7 +10798,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10819,7 +10819,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10839,7 +10839,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10867,7 +10867,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "correct",
       "whole_utterance": true
@@ -10888,7 +10888,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "correct",
       "whole_utterance": true
@@ -10908,7 +10908,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "discard",
       "whole_utterance": true
@@ -10936,7 +10936,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "edit",
       "whole_utterance": true
@@ -10957,7 +10957,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "edit",
       "whole_utterance": true
@@ -10985,7 +10985,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "expand",
       "whole_utterance": true
@@ -11006,7 +11006,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "expand",
       "whole_utterance": true
@@ -11044,7 +11044,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "fix",
       "whole_utterance": true
@@ -11068,7 +11068,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "fix",
       "whole_utterance": true
@@ -11096,7 +11096,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "formalise",
       "whole_utterance": true
@@ -11117,7 +11117,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "formalise",
       "whole_utterance": true
@@ -11145,7 +11145,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "formalize",
       "whole_utterance": true
@@ -11166,7 +11166,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "formalize",
       "whole_utterance": true
@@ -11194,7 +11194,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "lengthen",
       "whole_utterance": true
@@ -11215,7 +11215,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "lengthen",
       "whole_utterance": true
@@ -11243,7 +11243,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "make",
       "whole_utterance": true
@@ -11264,7 +11264,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "make",
       "whole_utterance": true
@@ -11292,7 +11292,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "polish",
       "whole_utterance": true
@@ -11313,7 +11313,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "polish",
       "whole_utterance": true
@@ -11341,7 +11341,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "punctuate",
       "whole_utterance": true
@@ -11362,7 +11362,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "punctuate",
       "whole_utterance": true
@@ -11390,7 +11390,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "read",
       "whole_utterance": true
@@ -11418,7 +11418,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "reformat",
       "whole_utterance": true
@@ -11439,7 +11439,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "reformat",
       "whole_utterance": true
@@ -11467,7 +11467,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "rephrase",
       "whole_utterance": true
@@ -11488,7 +11488,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "rephrase",
       "whole_utterance": true
@@ -11516,7 +11516,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "reword",
       "whole_utterance": true
@@ -11537,7 +11537,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "reword",
       "whole_utterance": true
@@ -11565,7 +11565,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "rewrite",
       "whole_utterance": true
@@ -11586,7 +11586,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "rewrite",
       "whole_utterance": true
@@ -11614,7 +11614,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "shorten",
       "whole_utterance": true
@@ -11635,7 +11635,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "shorten",
       "whole_utterance": true
@@ -11663,7 +11663,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "simplify",
       "whole_utterance": true
@@ -11684,7 +11684,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "simplify",
       "whole_utterance": true
@@ -11714,7 +11714,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "summarize",
       "whole_utterance": true
@@ -11744,7 +11744,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "summarize",
       "whole_utterance": true
@@ -11792,7 +11792,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "tidy",
       "whole_utterance": true
@@ -11820,7 +11820,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "tidy",
       "whole_utterance": true
@@ -11848,7 +11848,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "tighten",
       "whole_utterance": true
@@ -11869,7 +11869,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "tighten",
       "whole_utterance": true
@@ -11898,7 +11898,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -11927,7 +11927,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -11956,7 +11956,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -11985,7 +11985,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12014,7 +12014,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12043,7 +12043,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12072,7 +12072,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12101,7 +12101,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12130,7 +12130,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12159,7 +12159,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12188,7 +12188,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12217,7 +12217,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12246,7 +12246,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12275,7 +12275,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12303,7 +12303,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "trim",
       "whole_utterance": true
@@ -12324,7 +12324,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:273",
+      "source": "samsara/ava_edit/selection.py:279",
       "undoable": false,
       "verb": "trim",
       "whole_utterance": true

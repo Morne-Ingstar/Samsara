@@ -187,13 +187,19 @@ def capture():
 
 
 def propose_and_stage(app, instruction: str) -> bool:
+    action = intent.selection_action(instruction)
     original, target = capture()
     if not original or not original.strip():
+        if action and action[0] == "read":
+            # 822: when the selection router owns "read that back", let the
+            # accessibility handler fall back to the last delivered dictation.
+            from plugins.commands.core_utils import read_that_back
+            return read_that_back(
+                app, _selection_checked=True, _source_text=instruction)
         # Owner-specified wording, also visible on both existing chip surfaces.
         session._chip(app, "edit_refused", {"reason": "Nothing selected"})
         session._say(app, "Nothing selected")
         return False
-    action = intent.selection_action(instruction)
     if action:
         operation, argument = action
         if operation == "read":

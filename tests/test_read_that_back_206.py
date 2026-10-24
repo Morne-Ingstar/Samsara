@@ -47,7 +47,7 @@ def test_dictation_reads_the_exact_pasted_text_and_shows_chip():
     app._show_outcome_chip.assert_called_once_with("Reading back", "accent")
 
 
-def test_a_command_is_described_instead_of_read_as_dictation():
+def test_822_a_command_does_not_replace_the_last_dictation():
     app = _app([{
         "entry_type": "command",
         "status": "success",
@@ -57,15 +57,17 @@ def test_a_command_is_described_instead_of_read_as_dictation():
 
     core_utils.read_that_back(app)
 
-    assert _spoken(app) == "The last thing was a command: show numbers"
+    # 822: read-back requests now speak delivered dictation, never a command.
+    assert _spoken(app) == "older dictation"
 
 
-def test_nothing_has_the_explicit_empty_sentence():
+def test_822_nothing_has_the_required_explicit_empty_sentence():
     app = _app()
 
     core_utils.read_that_back(app)
 
-    assert _spoken(app) == "Nothing dictated yet."
+    # 822: the empty state now names the requested read-back action.
+    assert _spoken(app) == "There's nothing to read back yet."
 
 
 def test_long_dictation_is_not_truncated_by_command_mode_limit():

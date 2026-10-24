@@ -578,7 +578,12 @@ class CommandExecutor:
             remainder = str((args or {}).get('remainder', '') or '')
             logger.info("[PLUGIN] Executing: %s", canonical)
             try:
-                handler_result = entry.handler(effective_app, remainder)
+                if (getattr(entry.handler, '__module__', '') == 'plugins.commands.core_utils'
+                        and getattr(entry.handler, '__name__', '') == 'read_that_back'):
+                    handler_result = entry.handler(
+                        effective_app, remainder, _source_text=source_text)
+                else:
+                    handler_result = entry.handler(effective_app, remainder)
                 state = adapt_handler_return(handler_result)
             except Exception as e:
                 safe_exception(logger, "[ERROR] Plugin '%s' failed", canonical)

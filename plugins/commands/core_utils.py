@@ -189,38 +189,29 @@ def _history_value(row, key, default=""):
 
 
 def _last_utterance(app):
-    """Return (kind, text) for the latest committed command or dictation.
+    """Return the last successfully delivered dictation, if one exists.
 
-    HistoryStore is the shared last-utterance record used by the history/Home
-    readers. The live delivery field is preferred for dictation because it is
-    the exact post-formatting string sent through the paste chokepoint.
+    The live delivery field is preferred because it is the exact
+    post-formatting string sent through the paste chokepoint. Otherwise use
+    the newest successful dictation from HistoryStore; commands are irrelevant
+    to a request to read back dictation.
     """
+    live = getattr(app, "_last_dictation_text", None)
+    if isinstance(live, str) and live.strip():
+        return "dictation", live
+
     store = getattr(app, "history_store", None)
     query = getattr(store, "query", None)
     if callable(query):
         try:
-            rows = query(limit=20)
+            rows = query(type_filter="dictation", limit=20)
         except Exception as exc:
             logger.debug("[READBACK] history lookup failed: %s", exc)
             rows = []
         for row in rows or ():
             entry_type = str(_history_value(row, "entry_type", "dictation") or "dictation").lower()
             status = str(_history_value(row, "status", "success") or "success").lower()
-            if entry_type in ("command", "wake_command"):
-                name = str(_history_value(row, "matched_command", "") or "").strip()
-                if not name:
-                    name = str(_history_value(row, "display_text", "") or "").strip()
-                if name:
-                    try:
-                        from samsara import outcome_ring
-                        name = outcome_ring.canonical_command_label_for_phrase(name, name)
-                    except Exception:
-                        pass
-                    return "command", name
-            elif entry_type == "dictation" and status == "success":
-                live = getattr(app, "_last_dictation_text", None)
-                if isinstance(live, str) and live.strip():
-                    return "dictation", live
+            if entry_type == "dictation" and status == "success":
                 text = _history_value(row, "display_text", "")
                 if isinstance(text, str) and text.strip():
                     return "dictation", text
@@ -239,14 +230,30 @@ def _last_utterance(app):
     ai_composable=False,
 )
 def read_that_back(app, remainder="", **kwargs):
-    """Reads the latest committed dictation or command aloud for accessibility."""
-    kind, text = _last_utterance(app)
-    if kind == "command":
-        spoken = f"The last thing was a command: {text}"
-    elif kind == "dictation":
-        spoken = text
+    """Reads a requested selection or the last delivered dictation aloud."""
+    selected = None
+    source_text = str(kwargs.get("_source_text") or "").strip().casefold()
+    source_text = source_text.rstrip(" .,!?")
+    # “Read it back” remains a legacy last-dictation alias. The selection
+    # router owns “read that back” and “read this”.
+    selection_phrases = {"read that back", "read this"}
+    selection_requested = not source_text or any(
+        source_text.endswith(phrase) for phrase in selection_phrases)
+    if selection_requested and not kwargs.get("_selection_checked"):
+        try:
+            from samsara.ava_edit import selection
+            selected, _target = selection.capture()
+        except Exception as exc:
+            logger.debug("[READBACK] focused selection lookup failed: %s", exc)
+
+    if isinstance(selected, str) and selected.strip():
+        spoken = selected
     else:
-        spoken = "Nothing dictated yet."
+        kind, text = _last_utterance(app)
+        if kind == "dictation":
+            spoken = text
+        else:
+            spoken = "There's nothing to read back yet."
 
     show = getattr(app, "_show_outcome_chip", None)
     if callable(show):
