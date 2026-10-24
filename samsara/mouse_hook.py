@@ -49,6 +49,7 @@ import collections
 import ctypes
 import ctypes.wintypes
 import queue
+import sys
 import threading
 import time
 import weakref
@@ -87,108 +88,110 @@ SILENT_CHECKS = 3
 #: How long the self-test waits for our own injected move to reach the hook.
 PROBE_WAIT_S = 0.25
 
-_user32   = ctypes.windll.user32
-_kernel32 = ctypes.windll.kernel32
 _perf = time.perf_counter
 _sleep = time.sleep
 _STOP = object()
-
 MOUSEEVENTF_MOVE = 0x0001
 INPUT_MOUSE = 0
 
-
-class MSLLHOOKSTRUCT(ctypes.Structure):
-    _fields_ = [
-        ("pt",          ctypes.wintypes.POINT),
-        ("mouseData",   ctypes.wintypes.DWORD),
-        ("flags",       ctypes.wintypes.DWORD),
-        ("time",        ctypes.wintypes.DWORD),
-        ("dwExtraInfo", ctypes.c_void_p),
-    ]
+if sys.platform == 'win32':
+    _user32   = ctypes.windll.user32
+    _kernel32 = ctypes.windll.kernel32
 
 
-# Use LPARAM (not POINTER(MSLLHOOKSTRUCT)) for the third argument.
-# Python 3.13 tightened WINFUNCTYPE type validation; passing a ctypes
-# Pointer type here causes ArgumentError when SetWindowsHookExW is called.
-# The standard Windows HOOKPROC signature passes l_param as a raw pointer
-# integer (LPARAM); we cast it to POINTER(MSLLHOOKSTRUCT) inside the callback.
-LowLevelMouseProc = ctypes.WINFUNCTYPE(
-    ctypes.c_long,
-    ctypes.c_int,
-    ctypes.wintypes.WPARAM,
-    ctypes.wintypes.LPARAM,
-)
+
+    class MSLLHOOKSTRUCT(ctypes.Structure):
+        _fields_ = [
+            ("pt",          ctypes.wintypes.POINT),
+            ("mouseData",   ctypes.wintypes.DWORD),
+            ("flags",       ctypes.wintypes.DWORD),
+            ("time",        ctypes.wintypes.DWORD),
+            ("dwExtraInfo", ctypes.c_void_p),
+        ]
 
 
-def _set_windows_hook_ex():
-    """The SetWindowsHookExW to call.
-
-    ctypes.windll.user32 is one shared object per process, and pynput
-    (imported by the keyboard listener before this hook starts) declares
-    ITS OWN HOOKPROC type in SetWindowsHookExW.argtypes on it. Our
-    LowLevelMouseProc is a different WINFUNCTYPE, so calling that shared
-    function raises "expected WinFunctionType instance instead of
-    WinFunctionType" and the hook silently never installs -- the whole
-    reason Mouse 4 "did nothing" (28, 2026-09-13). A fresh pointer from the
-    library (CDLL.__getitem__ never caches) carries no foreign contract, and
-    we give it ours plus a pointer-sized restype so the hook handle is not
-    truncated on x64. pynput's own pointer is left untouched. When nothing
-    has declared a contract (or tests have patched the attribute) the
-    shared attribute is used as before.
-    """
-    fn = _user32.SetWindowsHookExW
-    argtypes = getattr(fn, 'argtypes', None)
-    try:
-        foreign = bool(argtypes) and len(argtypes) >= 2 and argtypes[1] is not LowLevelMouseProc
-    except TypeError:
-        foreign = False
-    if not foreign:
-        return fn
-    fresh = _user32['SetWindowsHookExW']
-    fresh.argtypes = (ctypes.c_int, LowLevelMouseProc, ctypes.c_void_p, ctypes.wintypes.DWORD)
-    fresh.restype = ctypes.c_void_p
-    return fresh
+    # Use LPARAM (not POINTER(MSLLHOOKSTRUCT)) for the third argument.
+    # Python 3.13 tightened WINFUNCTYPE type validation; passing a ctypes
+    # Pointer type here causes ArgumentError when SetWindowsHookExW is called.
+    # The standard Windows HOOKPROC signature passes l_param as a raw pointer
+    # integer (LPARAM); we cast it to POINTER(MSLLHOOKSTRUCT) inside the callback.
+    LowLevelMouseProc = ctypes.WINFUNCTYPE(
+        ctypes.c_long,
+        ctypes.c_int,
+        ctypes.wintypes.WPARAM,
+        ctypes.wintypes.LPARAM,
+    )
 
 
-# CallNextHookEx with a 64-bit-safe contract. pynput declares argtypes on the
-# shared user32 function when it is imported (the app always imports it);
-# without them ctypes converts the LPARAM pointer as a 32-bit int, raises
-# OverflowError inside the callback, and the chain to every OLDER low-level
-# hook is cut -- the same starvation that makes a hook look "lost" (35).
-_call_next_fresh = _user32['CallNextHookEx']
-_call_next_fresh.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM)
-_call_next_fresh.restype = ctypes.c_long   # the hook proc returns c_long
-_CFuncPtr = ctypes._CFuncPtr
+    def _set_windows_hook_ex():
+        """The SetWindowsHookExW to call.
+
+        ctypes.windll.user32 is one shared object per process, and pynput
+        (imported by the keyboard listener before this hook starts) declares
+        ITS OWN HOOKPROC type in SetWindowsHookExW.argtypes on it. Our
+        LowLevelMouseProc is a different WINFUNCTYPE, so calling that shared
+        function raises "expected WinFunctionType instance instead of
+        WinFunctionType" and the hook silently never installs -- the whole
+        reason Mouse 4 "did nothing" (28, 2026-09-13). A fresh pointer from the
+        library (CDLL.__getitem__ never caches) carries no foreign contract, and
+        we give it ours plus a pointer-sized restype so the hook handle is not
+        truncated on x64. pynput's own pointer is left untouched. When nothing
+        has declared a contract (or tests have patched the attribute) the
+        shared attribute is used as before.
+        """
+        fn = _user32.SetWindowsHookExW
+        argtypes = getattr(fn, 'argtypes', None)
+        try:
+            foreign = bool(argtypes) and len(argtypes) >= 2 and argtypes[1] is not LowLevelMouseProc
+        except TypeError:
+            foreign = False
+        if not foreign:
+            return fn
+        fresh = _user32['SetWindowsHookExW']
+        fresh.argtypes = (ctypes.c_int, LowLevelMouseProc, ctypes.c_void_p, ctypes.wintypes.DWORD)
+        fresh.restype = ctypes.c_void_p
+        return fresh
 
 
-def _call_next_hook_ex(hook_id, n_code, w_param, l_param):
-    fn = _user32.CallNextHookEx
-    if isinstance(fn, _CFuncPtr) and not fn.argtypes:
-        fn = _call_next_fresh
-    return fn(hook_id, n_code, w_param, l_param)
+    # CallNextHookEx with a 64-bit-safe contract. pynput declares argtypes on the
+    # shared user32 function when it is imported (the app always imports it);
+    # without them ctypes converts the LPARAM pointer as a 32-bit int, raises
+    # OverflowError inside the callback, and the chain to every OLDER low-level
+    # hook is cut -- the same starvation that makes a hook look "lost" (35).
+    _call_next_fresh = _user32['CallNextHookEx']
+    _call_next_fresh.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM)
+    _call_next_fresh.restype = ctypes.c_long   # the hook proc returns c_long
+    _CFuncPtr = ctypes._CFuncPtr
 
 
-class _MOUSEINPUT(ctypes.Structure):
-    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.wintypes.DWORD),
-                ("dwFlags", ctypes.wintypes.DWORD), ("time", ctypes.wintypes.DWORD),
-                ("dwExtraInfo", ctypes.c_void_p)]
+    def _call_next_hook_ex(hook_id, n_code, w_param, l_param):
+        fn = _user32.CallNextHookEx
+        if isinstance(fn, _CFuncPtr) and not fn.argtypes:
+            fn = _call_next_fresh
+        return fn(hook_id, n_code, w_param, l_param)
 
 
-class _INPUT(ctypes.Structure):
-    class _U(ctypes.Union):
-        _fields_ = [("mi", _MOUSEINPUT), ("_pad", ctypes.c_byte * 32)]
-    _anonymous_ = ("u",)
-    _fields_ = [("type", ctypes.wintypes.DWORD), ("u", _U)]
+    class _MOUSEINPUT(ctypes.Structure):
+        _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.wintypes.DWORD),
+                    ("dwFlags", ctypes.wintypes.DWORD), ("time", ctypes.wintypes.DWORD),
+                    ("dwExtraInfo", ctypes.c_void_p)]
 
 
-def _send_zero_move() -> bool:
-    """Inject one zero-motion relative mouse move; True if Windows accepted it.
-    SendInput is refused (0) on the secure desktop or into higher-integrity
-    input queues -- the self-test is then inconclusive, never a loss."""
-    inp = _INPUT()
-    inp.type = INPUT_MOUSE
-    inp.mi = _MOUSEINPUT(0, 0, 0, MOUSEEVENTF_MOVE, 0, None)
-    return _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT)) == 1
+    class _INPUT(ctypes.Structure):
+        class _U(ctypes.Union):
+            _fields_ = [("mi", _MOUSEINPUT), ("_pad", ctypes.c_byte * 32)]
+        _anonymous_ = ("u",)
+        _fields_ = [("type", ctypes.wintypes.DWORD), ("u", _U)]
+
+
+    def _send_zero_move() -> bool:
+        """Inject one zero-motion relative mouse move; True if Windows accepted it.
+        SendInput is refused (0) on the secure desktop or into higher-integrity
+        input queues -- the self-test is then inconclusive, never a loss."""
+        inp = _INPUT()
+        inp.type = INPUT_MOUSE
+        inp.mi = _MOUSEINPUT(0, 0, 0, MOUSEEVENTF_MOVE, 0, None)
+        return _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT)) == 1
 
 
 def _coerce_suppress_buttons(value) -> frozenset:
@@ -201,6 +204,8 @@ def _coerce_suppress_buttons(value) -> frozenset:
 
 
 def _cursor_pos():
+    if sys.platform != 'win32':
+        return None
     point = ctypes.wintypes.POINT()
     if not _user32.GetCursorPos(ctypes.byref(point)):
         return None
@@ -256,7 +261,9 @@ class MouseHook:
         self.install_error = ''
         self._ready = threading.Event()
         # Ref must stay alive for the lifetime of the hook
-        self._proc = LowLevelMouseProc(self._hook_callback)
+        self._proc = LowLevelMouseProc(self._hook_callback) if sys.platform == 'win32' else None
+        if sys.platform != 'win32':
+            self.install_error = "Windows mouse hooks unavailable on this platform"
 
         # Hook thread -> dispatcher: the only thing the callback writes to.
         self._events = queue.SimpleQueue()   # C put(): no Python lock, never blocks
@@ -495,6 +502,9 @@ class MouseHook:
     def start(self):
         """Install the hook on a dedicated thread (Win32 requires this) and
         start the dispatcher."""
+        if sys.platform != 'win32':
+            self.install_error = "Windows mouse hooks unavailable on this platform"
+            return False
         if self._dispatcher is None or not self._dispatcher.is_alive():
             self._events = queue.SimpleQueue()   # no stale _STOP from a previous stop()
         self._stopping.clear()

@@ -69,18 +69,19 @@ import json
 import os
 import sys
 import time
-from ctypes import (
-    POINTER,
-    Structure,
-    WINFUNCTYPE,
-    byref,
-    c_float,
-    c_int,
-    c_void_p,
-    c_wchar_p,
-    cast,
-)
-from ctypes import wintypes
+if sys.platform == "win32":
+    from ctypes import (
+        POINTER,
+        Structure,
+        WINFUNCTYPE,
+        byref,
+        c_float,
+        c_int,
+        c_void_p,
+        c_wchar_p,
+        cast,
+    )
+    from ctypes import wintypes
 from typing import Any, Iterable
 
 # Env sentinel: a frozen build re-executes its own exe for the child (there
@@ -89,606 +90,607 @@ from typing import Any, Iterable
 HOST_ENV_SENTINEL = "SAMSARA_DUCKING_HOST"
 
 
-ole32 = ctypes.windll.ole32
-
-ole32.CoInitializeEx.restype = ctypes.c_long
-ole32.CoCreateInstance.argtypes = [
-    c_void_p,
-    c_void_p,
-    wintypes.DWORD,
-    c_void_p,
-    POINTER(c_void_p),
-]
-ole32.CoCreateInstance.restype = ctypes.c_long
-ole32.CLSIDFromString.argtypes = [c_wchar_p, c_void_p]
-ole32.CLSIDFromString.restype = ctypes.c_long
-ole32.CoTaskMemFree.argtypes = [c_void_p]
-ole32.CoTaskMemFree.restype = None
-
-CLSCTX_ALL = 0x17
-COINIT_MULTITHREADED = 0
-E_RENDER = 0
-E_CONSOLE = 0
-
-
-class GUID(Structure):
-    _fields_ = [
-        ("Data1", wintypes.DWORD),
-        ("Data2", wintypes.WORD),
-        ("Data3", wintypes.WORD),
-        ("Data4", wintypes.BYTE * 8),
-    ]
-
-
-def _guid(raw: str) -> GUID:
-    value = GUID()
-    hr = ole32.CLSIDFromString(c_wchar_p(raw), byref(value))
-    if hr < 0:
-        raise OSError(f"CLSIDFromString({raw!r}) failed: 0x{hr & 0xFFFFFFFF:08x}")
-    return value
-
-
-CLSID_MMDeviceEnumerator = _guid("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
-IID_IMMDeviceEnumerator = _guid("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
-IID_IAudioSessionManager2 = _guid("{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}")
-IID_IAudioSessionControl2 = _guid("{BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D}")
-IID_ISimpleAudioVolume = _guid("{87CE5498-68D6-44E5-9215-6DA47EF883D8}")
-
-
-class IUnknownVtbl(Structure):
-    pass
-
-
-class IUnknown(Structure):
-    _fields_ = [("lpVtbl", POINTER(IUnknownVtbl))]
-
-
-IUnknownVtbl._fields_ = [
-    (
-        "QueryInterface",
-        WINFUNCTYPE(ctypes.c_long, POINTER(IUnknown), POINTER(GUID), POINTER(c_void_p)),
-    ),
-    ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IUnknown))),
-    ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IUnknown))),
-]
-
-
-class IMMDevice(Structure):
-    pass
-
-
-class IMMDeviceVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IMMDevice), POINTER(GUID), POINTER(c_void_p)
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDevice))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDevice))),
-        (
-            "Activate",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDevice),
-                POINTER(GUID),
-                wintypes.DWORD,
-                c_void_p,
-                POINTER(c_void_p),
-            ),
-        ),
-    ]
-
-
-IMMDevice._fields_ = [("lpVtbl", POINTER(IMMDeviceVtbl))]
-
-
-class IMMDeviceEnumerator(Structure):
-    pass
-
-
-class IMMDeviceEnumeratorVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDeviceEnumerator),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDeviceEnumerator))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDeviceEnumerator))),
-        (
-            "EnumAudioEndpoints",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDeviceEnumerator),
-                c_int,
-                wintypes.DWORD,
-                POINTER(c_void_p),
-            ),
-        ),
-        (
-            "GetDefaultAudioEndpoint",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IMMDeviceEnumerator),
-                c_int,
-                c_int,
-                POINTER(POINTER(IMMDevice)),
-            ),
-        ),
-    ]
-
-
-IMMDeviceEnumerator._fields_ = [("lpVtbl", POINTER(IMMDeviceEnumeratorVtbl))]
-
-
-class IAudioSessionControl(Structure):
-    pass
-
-
-class IAudioSessionControlVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionControl),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl))),
-    ]
-
-
-IAudioSessionControl._fields_ = [("lpVtbl", POINTER(IAudioSessionControlVtbl))]
-
-
-class IAudioSessionControl2(Structure):
-    pass
-
-
-class IAudioSessionControl2Vtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionControl2),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl2))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl2))),
-        (
-            "GetState",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_int)),
-        ),
-        (
-            "GetDisplayName",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "SetDisplayName",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), c_wchar_p, POINTER(GUID)
-            ),
-        ),
-        (
-            "GetIconPath",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "SetIconPath",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), c_wchar_p, POINTER(GUID)
-            ),
-        ),
-        (
-            "GetGroupingParam",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(GUID)),
-        ),
-        (
-            "SetGroupingParam",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionControl2),
-                POINTER(GUID),
-                POINTER(GUID),
-            ),
-        ),
-        (
-            "RegisterAudioSessionNotification",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), c_void_p),
-        ),
-        (
-            "UnregisterAudioSessionNotification",
-            WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), c_void_p),
-        ),
-        (
-            "GetSessionIdentifier",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "GetSessionInstanceIdentifier",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
-            ),
-        ),
-        (
-            "GetProcessId",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(wintypes.DWORD)
-            ),
-        ),
-    ]
-
-
-IAudioSessionControl2._fields_ = [("lpVtbl", POINTER(IAudioSessionControl2Vtbl))]
-
-
-class IAudioSessionEnumerator(Structure):
-    pass
-
-
-class IAudioSessionEnumeratorVtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionEnumerator),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionEnumerator))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionEnumerator))),
-        (
-            "GetCount",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(IAudioSessionEnumerator), POINTER(c_int)
-            ),
-        ),
-        (
-            "GetSession",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionEnumerator),
-                c_int,
-                POINTER(POINTER(IAudioSessionControl)),
-            ),
-        ),
-    ]
-
-
-IAudioSessionEnumerator._fields_ = [("lpVtbl", POINTER(IAudioSessionEnumeratorVtbl))]
-
-
-class IAudioSessionManager2(Structure):
-    pass
-
-
-class IAudioSessionManager2Vtbl(Structure):
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(GUID),
-                POINTER(c_void_p),
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionManager2))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionManager2))),
-        (
-            "GetAudioSessionControl",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(GUID),
-                wintypes.DWORD,
-                POINTER(c_void_p),
-            ),
-        ),
-        (
-            "GetSimpleAudioVolume",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(GUID),
-                wintypes.DWORD,
-                POINTER(c_void_p),
-            ),
-        ),
-        (
-            "GetSessionEnumerator",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(IAudioSessionManager2),
-                POINTER(POINTER(IAudioSessionEnumerator)),
-            ),
-        ),
-    ]
-
-
-IAudioSessionManager2._fields_ = [("lpVtbl", POINTER(IAudioSessionManager2Vtbl))]
-
-
-class ISimpleAudioVolume(Structure):
-    pass
-
-
-class ISimpleAudioVolumeVtbl(Structure):
-    # Documented ISimpleAudioVolume vtable order (after IUnknown 0-2):
-    # SetMasterVolume=3, GetMasterVolume=4, SetMute=5, GetMute=6.
-    _fields_ = [
-        (
-            "QueryInterface",
-            WINFUNCTYPE(
-                ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(GUID), POINTER(c_void_p)
-            ),
-        ),
-        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
-        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
-        (
-            "SetMasterVolume",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(ISimpleAudioVolume),
-                c_float,
-                POINTER(GUID),
-            ),
-        ),
-        (
-            "GetMasterVolume",
-            WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(c_float)),
-        ),
-        (
-            "SetMute",
-            WINFUNCTYPE(
-                ctypes.c_long,
-                POINTER(ISimpleAudioVolume),
-                ctypes.c_int,
-                POINTER(GUID),
-            ),
-        ),
-        (
-            "GetMute",
-            WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), ctypes.POINTER(ctypes.c_int)),
-        ),
-    ]
-
-
-ISimpleAudioVolume._fields_ = [("lpVtbl", POINTER(ISimpleAudioVolumeVtbl))]
-
-
-def _vtbl(iface: c_void_p, index: int, restype: Any, *argtypes: Any):
-    table = cast(iface, POINTER(POINTER(c_void_p))).contents
-    func_ptr = table[index]
-    return WINFUNCTYPE(restype, c_void_p, *argtypes)(func_ptr)
-
-
-def _release(iface: c_void_p) -> None:
-    if not iface:
-        return
-    _vtbl(iface, 2, ctypes.c_ulong)(iface)
-
-
-def _query_interface(interface: c_void_p, iid: GUID) -> c_void_p:
-    out = c_void_p()
-    hr = _vtbl(interface, 0, ctypes.c_long, POINTER(GUID), POINTER(c_void_p))(
-        interface,
-        byref(iid),
-        byref(out),
-    )
-    if hr < 0 or not out:
-        raise OSError(f"QueryInterface failed: 0x{hr & 0xFFFFFFFF:08x}")
-    return out
-
-
-class _CtypesSessionHandle:
-    """Adapter around an ISimpleAudioVolume pointer.
-
-    Created, used, and released entirely on this process's single COM
-    thread -- see the module docstring's threading contract, rule 2.
-    """
-
-    def __init__(self, session_id: str, pid: int, volume_iface: c_void_p) -> None:
-        self.session_id = session_id
-        self.pid = pid
-        self._volume_iface = volume_iface
-
-    def get_master_volume(self) -> float:
-        func = _vtbl(self._volume_iface, 4, ctypes.c_long, POINTER(c_float))
-        value = c_float()
-        hr = func(self._volume_iface, byref(value))
-        if hr < 0:
-            raise OSError(
-                f"ISimpleAudioVolume.GetMasterVolume failed (0x{hr & 0xFFFFFFFF:08x})"
-            )
-        return float(value.value)
-
-    def set_master_volume(self, level: float) -> None:
-        func = _vtbl(self._volume_iface, 3, ctypes.c_long, c_float, POINTER(GUID))
-        level = max(0.0, min(1.0, float(level)))
-        hr = func(self._volume_iface, c_float(level), None)
-        if hr < 0:
-            raise OSError(
-                f"ISimpleAudioVolume.SetMasterVolume failed (0x{hr & 0xFFFFFFFF:08x})"
-            )
-
-    def close(self) -> None:
-        _release(self._volume_iface)
-
-
-def _get_session_enumerator() -> c_void_p:
-    enumerator = c_void_p()
-    hr = ole32.CoCreateInstance(
-        byref(CLSID_MMDeviceEnumerator),
-        None,
-        CLSCTX_ALL,
-        byref(IID_IMMDeviceEnumerator),
-        byref(enumerator),
-    )
-    if hr < 0:
-        raise OSError(
-            f"CoCreateInstance(MMDeviceEnumerator) failed: 0x{hr & 0xFFFFFFFF:08x}"
-        )
-
-    device = c_void_p()
-    hr = _vtbl(
-        enumerator,
-        4,
-        ctypes.c_long,
-        ctypes.c_int,
-        ctypes.c_int,
-        POINTER(c_void_p),
-    )(enumerator, E_RENDER, E_CONSOLE, byref(device))
-    if hr < 0:
-        _release(enumerator)
-        raise OSError(f"GetDefaultAudioEndpoint failed: 0x{hr & 0xFFFFFFFF:08x}")
-
-    session_mgr = c_void_p()
-    hr = _vtbl(
-        device,
-        3,
-        ctypes.c_long,
-        POINTER(GUID),
+if sys.platform == "win32":
+    ole32 = ctypes.windll.ole32
+
+    ole32.CoInitializeEx.restype = ctypes.c_long
+    ole32.CoCreateInstance.argtypes = [
+        c_void_p,
+        c_void_p,
         wintypes.DWORD,
         c_void_p,
         POINTER(c_void_p),
-    )(
-        device,
-        byref(IID_IAudioSessionManager2),
-        CLSCTX_ALL,
-        None,
-        byref(session_mgr),
-    )
-    if hr < 0:
-        _release(device)
-        _release(enumerator)
-        raise OSError(
-            f"IMMDevice.Activate(IAudioSessionManager2) failed: 0x{hr & 0xFFFFFFFF:08x}"
+    ]
+    ole32.CoCreateInstance.restype = ctypes.c_long
+    ole32.CLSIDFromString.argtypes = [c_wchar_p, c_void_p]
+    ole32.CLSIDFromString.restype = ctypes.c_long
+    ole32.CoTaskMemFree.argtypes = [c_void_p]
+    ole32.CoTaskMemFree.restype = None
+
+    CLSCTX_ALL = 0x17
+    COINIT_MULTITHREADED = 0
+    E_RENDER = 0
+    E_CONSOLE = 0
+
+
+    class GUID(Structure):
+        _fields_ = [
+            ("Data1", wintypes.DWORD),
+            ("Data2", wintypes.WORD),
+            ("Data3", wintypes.WORD),
+            ("Data4", wintypes.BYTE * 8),
+        ]
+
+
+    def _guid(raw: str) -> GUID:
+        value = GUID()
+        hr = ole32.CLSIDFromString(c_wchar_p(raw), byref(value))
+        if hr < 0:
+            raise OSError(f"CLSIDFromString({raw!r}) failed: 0x{hr & 0xFFFFFFFF:08x}")
+        return value
+
+
+    CLSID_MMDeviceEnumerator = _guid("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
+    IID_IMMDeviceEnumerator = _guid("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+    IID_IAudioSessionManager2 = _guid("{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}")
+    IID_IAudioSessionControl2 = _guid("{BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D}")
+    IID_ISimpleAudioVolume = _guid("{87CE5498-68D6-44E5-9215-6DA47EF883D8}")
+
+
+    class IUnknownVtbl(Structure):
+        pass
+
+
+    class IUnknown(Structure):
+        _fields_ = [("lpVtbl", POINTER(IUnknownVtbl))]
+
+
+    IUnknownVtbl._fields_ = [
+        (
+            "QueryInterface",
+            WINFUNCTYPE(ctypes.c_long, POINTER(IUnknown), POINTER(GUID), POINTER(c_void_p)),
+        ),
+        ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IUnknown))),
+        ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IUnknown))),
+    ]
+
+
+    class IMMDevice(Structure):
+        pass
+
+
+    class IMMDeviceVtbl(Structure):
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IMMDevice), POINTER(GUID), POINTER(c_void_p)
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDevice))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDevice))),
+            (
+                "Activate",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IMMDevice),
+                    POINTER(GUID),
+                    wintypes.DWORD,
+                    c_void_p,
+                    POINTER(c_void_p),
+                ),
+            ),
+        ]
+
+
+    IMMDevice._fields_ = [("lpVtbl", POINTER(IMMDeviceVtbl))]
+
+
+    class IMMDeviceEnumerator(Structure):
+        pass
+
+
+    class IMMDeviceEnumeratorVtbl(Structure):
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IMMDeviceEnumerator),
+                    POINTER(GUID),
+                    POINTER(c_void_p),
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDeviceEnumerator))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IMMDeviceEnumerator))),
+            (
+                "EnumAudioEndpoints",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IMMDeviceEnumerator),
+                    c_int,
+                    wintypes.DWORD,
+                    POINTER(c_void_p),
+                ),
+            ),
+            (
+                "GetDefaultAudioEndpoint",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IMMDeviceEnumerator),
+                    c_int,
+                    c_int,
+                    POINTER(POINTER(IMMDevice)),
+                ),
+            ),
+        ]
+
+
+    IMMDeviceEnumerator._fields_ = [("lpVtbl", POINTER(IMMDeviceEnumeratorVtbl))]
+
+
+    class IAudioSessionControl(Structure):
+        pass
+
+
+    class IAudioSessionControlVtbl(Structure):
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionControl),
+                    POINTER(GUID),
+                    POINTER(c_void_p),
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl))),
+        ]
+
+
+    IAudioSessionControl._fields_ = [("lpVtbl", POINTER(IAudioSessionControlVtbl))]
+
+
+    class IAudioSessionControl2(Structure):
+        pass
+
+
+    class IAudioSessionControl2Vtbl(Structure):
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionControl2),
+                    POINTER(GUID),
+                    POINTER(c_void_p),
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl2))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionControl2))),
+            (
+                "GetState",
+                WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_int)),
+            ),
+            (
+                "GetDisplayName",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
+                ),
+            ),
+            (
+                "SetDisplayName",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), c_wchar_p, POINTER(GUID)
+                ),
+            ),
+            (
+                "GetIconPath",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
+                ),
+            ),
+            (
+                "SetIconPath",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), c_wchar_p, POINTER(GUID)
+                ),
+            ),
+            (
+                "GetGroupingParam",
+                WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(GUID)),
+            ),
+            (
+                "SetGroupingParam",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionControl2),
+                    POINTER(GUID),
+                    POINTER(GUID),
+                ),
+            ),
+            (
+                "RegisterAudioSessionNotification",
+                WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), c_void_p),
+            ),
+            (
+                "UnregisterAudioSessionNotification",
+                WINFUNCTYPE(ctypes.c_long, POINTER(IAudioSessionControl2), c_void_p),
+            ),
+            (
+                "GetSessionIdentifier",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
+                ),
+            ),
+            (
+                "GetSessionInstanceIdentifier",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(c_wchar_p)
+                ),
+            ),
+            (
+                "GetProcessId",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionControl2), POINTER(wintypes.DWORD)
+                ),
+            ),
+        ]
+
+
+    IAudioSessionControl2._fields_ = [("lpVtbl", POINTER(IAudioSessionControl2Vtbl))]
+
+
+    class IAudioSessionEnumerator(Structure):
+        pass
+
+
+    class IAudioSessionEnumeratorVtbl(Structure):
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionEnumerator),
+                    POINTER(GUID),
+                    POINTER(c_void_p),
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionEnumerator))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionEnumerator))),
+            (
+                "GetCount",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(IAudioSessionEnumerator), POINTER(c_int)
+                ),
+            ),
+            (
+                "GetSession",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionEnumerator),
+                    c_int,
+                    POINTER(POINTER(IAudioSessionControl)),
+                ),
+            ),
+        ]
+
+
+    IAudioSessionEnumerator._fields_ = [("lpVtbl", POINTER(IAudioSessionEnumeratorVtbl))]
+
+
+    class IAudioSessionManager2(Structure):
+        pass
+
+
+    class IAudioSessionManager2Vtbl(Structure):
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionManager2),
+                    POINTER(GUID),
+                    POINTER(c_void_p),
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionManager2))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(IAudioSessionManager2))),
+            (
+                "GetAudioSessionControl",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionManager2),
+                    POINTER(GUID),
+                    wintypes.DWORD,
+                    POINTER(c_void_p),
+                ),
+            ),
+            (
+                "GetSimpleAudioVolume",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionManager2),
+                    POINTER(GUID),
+                    wintypes.DWORD,
+                    POINTER(c_void_p),
+                ),
+            ),
+            (
+                "GetSessionEnumerator",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(IAudioSessionManager2),
+                    POINTER(POINTER(IAudioSessionEnumerator)),
+                ),
+            ),
+        ]
+
+
+    IAudioSessionManager2._fields_ = [("lpVtbl", POINTER(IAudioSessionManager2Vtbl))]
+
+
+    class ISimpleAudioVolume(Structure):
+        pass
+
+
+    class ISimpleAudioVolumeVtbl(Structure):
+        # Documented ISimpleAudioVolume vtable order (after IUnknown 0-2):
+        # SetMasterVolume=3, GetMasterVolume=4, SetMute=5, GetMute=6.
+        _fields_ = [
+            (
+                "QueryInterface",
+                WINFUNCTYPE(
+                    ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(GUID), POINTER(c_void_p)
+                ),
+            ),
+            ("AddRef", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
+            ("Release", WINFUNCTYPE(ctypes.c_ulong, POINTER(ISimpleAudioVolume))),
+            (
+                "SetMasterVolume",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(ISimpleAudioVolume),
+                    c_float,
+                    POINTER(GUID),
+                ),
+            ),
+            (
+                "GetMasterVolume",
+                WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), POINTER(c_float)),
+            ),
+            (
+                "SetMute",
+                WINFUNCTYPE(
+                    ctypes.c_long,
+                    POINTER(ISimpleAudioVolume),
+                    ctypes.c_int,
+                    POINTER(GUID),
+                ),
+            ),
+            (
+                "GetMute",
+                WINFUNCTYPE(ctypes.c_long, POINTER(ISimpleAudioVolume), ctypes.POINTER(ctypes.c_int)),
+            ),
+        ]
+
+
+    ISimpleAudioVolume._fields_ = [("lpVtbl", POINTER(ISimpleAudioVolumeVtbl))]
+
+
+    def _vtbl(iface: c_void_p, index: int, restype: Any, *argtypes: Any):
+        table = cast(iface, POINTER(POINTER(c_void_p))).contents
+        func_ptr = table[index]
+        return WINFUNCTYPE(restype, c_void_p, *argtypes)(func_ptr)
+
+
+    def _release(iface: c_void_p) -> None:
+        if not iface:
+            return
+        _vtbl(iface, 2, ctypes.c_ulong)(iface)
+
+
+    def _query_interface(interface: c_void_p, iid: GUID) -> c_void_p:
+        out = c_void_p()
+        hr = _vtbl(interface, 0, ctypes.c_long, POINTER(GUID), POINTER(c_void_p))(
+            interface,
+            byref(iid),
+            byref(out),
         )
-
-    session_enum = c_void_p()
-    hr = _vtbl(
-        session_mgr,
-        5,
-        ctypes.c_long,
-        POINTER(c_void_p),
-    )(session_mgr, byref(session_enum))
-
-    _release(session_mgr)
-    _release(device)
-    _release(enumerator)
-    if hr < 0:
-        raise OSError(f"GetSessionEnumerator failed: 0x{hr & 0xFFFFFFFF:08x}")
-
-    return session_enum
+        if hr < 0 or not out:
+            raise OSError(f"QueryInterface failed: 0x{hr & 0xFFFFFFFF:08x}")
+        return out
 
 
-def _iter_audio_sessions() -> Iterable[_CtypesSessionHandle]:
-    """Yield one handle per live render session on the default endpoint.
+    class _CtypesSessionHandle:
+        """Adapter around an ISimpleAudioVolume pointer.
 
-    Identical enumeration to the pre-child-process implementation; the only
-    change is that CoInitializeEx is no longer called here (main() owns it,
-    once, for the process).
-    """
-    session_enum = _get_session_enumerator()
-    try:
-        count = c_int()
-        hr = _vtbl(session_enum, 3, ctypes.c_long, POINTER(c_int))(
-            session_enum, byref(count)
+        Created, used, and released entirely on this process's single COM
+        thread -- see the module docstring's threading contract, rule 2.
+        """
+
+        def __init__(self, session_id: str, pid: int, volume_iface: c_void_p) -> None:
+            self.session_id = session_id
+            self.pid = pid
+            self._volume_iface = volume_iface
+
+        def get_master_volume(self) -> float:
+            func = _vtbl(self._volume_iface, 4, ctypes.c_long, POINTER(c_float))
+            value = c_float()
+            hr = func(self._volume_iface, byref(value))
+            if hr < 0:
+                raise OSError(
+                    f"ISimpleAudioVolume.GetMasterVolume failed (0x{hr & 0xFFFFFFFF:08x})"
+                )
+            return float(value.value)
+
+        def set_master_volume(self, level: float) -> None:
+            func = _vtbl(self._volume_iface, 3, ctypes.c_long, c_float, POINTER(GUID))
+            level = max(0.0, min(1.0, float(level)))
+            hr = func(self._volume_iface, c_float(level), None)
+            if hr < 0:
+                raise OSError(
+                    f"ISimpleAudioVolume.SetMasterVolume failed (0x{hr & 0xFFFFFFFF:08x})"
+                )
+
+        def close(self) -> None:
+            _release(self._volume_iface)
+
+
+    def _get_session_enumerator() -> c_void_p:
+        enumerator = c_void_p()
+        hr = ole32.CoCreateInstance(
+            byref(CLSID_MMDeviceEnumerator),
+            None,
+            CLSCTX_ALL,
+            byref(IID_IMMDeviceEnumerator),
+            byref(enumerator),
         )
         if hr < 0:
             raise OSError(
-                f"IAudioSessionEnumerator.GetCount failed: 0x{hr & 0xFFFFFFFF:08x}"
+                f"CoCreateInstance(MMDeviceEnumerator) failed: 0x{hr & 0xFFFFFFFF:08x}"
             )
 
-        for i in range(count.value):
-            session_ctl = c_void_p()
-            hr = _vtbl(
-                session_enum,
-                4,
-                ctypes.c_long,
-                c_int,
-                POINTER(c_void_p),
-            )(
-                session_enum,
-                i,
-                byref(session_ctl),
+        device = c_void_p()
+        hr = _vtbl(
+            enumerator,
+            4,
+            ctypes.c_long,
+            ctypes.c_int,
+            ctypes.c_int,
+            POINTER(c_void_p),
+        )(enumerator, E_RENDER, E_CONSOLE, byref(device))
+        if hr < 0:
+            _release(enumerator)
+            raise OSError(f"GetDefaultAudioEndpoint failed: 0x{hr & 0xFFFFFFFF:08x}")
+
+        session_mgr = c_void_p()
+        hr = _vtbl(
+            device,
+            3,
+            ctypes.c_long,
+            POINTER(GUID),
+            wintypes.DWORD,
+            c_void_p,
+            POINTER(c_void_p),
+        )(
+            device,
+            byref(IID_IAudioSessionManager2),
+            CLSCTX_ALL,
+            None,
+            byref(session_mgr),
+        )
+        if hr < 0:
+            _release(device)
+            _release(enumerator)
+            raise OSError(
+                f"IMMDevice.Activate(IAudioSessionManager2) failed: 0x{hr & 0xFFFFFFFF:08x}"
+            )
+
+        session_enum = c_void_p()
+        hr = _vtbl(
+            session_mgr,
+            5,
+            ctypes.c_long,
+            POINTER(c_void_p),
+        )(session_mgr, byref(session_enum))
+
+        _release(session_mgr)
+        _release(device)
+        _release(enumerator)
+        if hr < 0:
+            raise OSError(f"GetSessionEnumerator failed: 0x{hr & 0xFFFFFFFF:08x}")
+
+        return session_enum
+
+
+    def _iter_audio_sessions() -> Iterable[_CtypesSessionHandle]:
+        """Yield one handle per live render session on the default endpoint.
+
+        Identical enumeration to the pre-child-process implementation; the only
+        change is that CoInitializeEx is no longer called here (main() owns it,
+        once, for the process).
+        """
+        session_enum = _get_session_enumerator()
+        try:
+            count = c_int()
+            hr = _vtbl(session_enum, 3, ctypes.c_long, POINTER(c_int))(
+                session_enum, byref(count)
             )
             if hr < 0:
-                continue
-            try:
-                session_ctl2 = c_void_p()
+                raise OSError(
+                    f"IAudioSessionEnumerator.GetCount failed: 0x{hr & 0xFFFFFFFF:08x}"
+                )
+
+            for i in range(count.value):
+                session_ctl = c_void_p()
+                hr = _vtbl(
+                    session_enum,
+                    4,
+                    ctypes.c_long,
+                    c_int,
+                    POINTER(c_void_p),
+                )(
+                    session_enum,
+                    i,
+                    byref(session_ctl),
+                )
+                if hr < 0:
+                    continue
                 try:
-                    session_ctl2 = _query_interface(
-                        session_ctl, IID_IAudioSessionControl2
-                    )
-                    pid = wintypes.DWORD()
-                    hr = _vtbl(
-                        session_ctl2,
-                        14,
-                        ctypes.c_long,
-                        POINTER(wintypes.DWORD),
-                    )(
-                        session_ctl2,
-                        byref(pid),
-                    )
-                    if hr < 0:
-                        continue
+                    session_ctl2 = c_void_p()
+                    try:
+                        session_ctl2 = _query_interface(
+                            session_ctl, IID_IAudioSessionControl2
+                        )
+                        pid = wintypes.DWORD()
+                        hr = _vtbl(
+                            session_ctl2,
+                            14,
+                            ctypes.c_long,
+                            POINTER(wintypes.DWORD),
+                        )(
+                            session_ctl2,
+                            byref(pid),
+                        )
+                        if hr < 0:
+                            continue
 
-                    session_ptr = c_wchar_p()
-                    hr = _vtbl(
-                        session_ctl2, 13, ctypes.c_long, POINTER(c_wchar_p)
-                    )(
-                        session_ctl2,
-                        byref(session_ptr),
-                    )
-                    if hr < 0 or not session_ptr.value:
-                        continue
-                    session_id = session_ptr.value
-                    ole32.CoTaskMemFree(cast(session_ptr, c_void_p))
+                        session_ptr = c_wchar_p()
+                        hr = _vtbl(
+                            session_ctl2, 13, ctypes.c_long, POINTER(c_wchar_p)
+                        )(
+                            session_ctl2,
+                            byref(session_ptr),
+                        )
+                        if hr < 0 or not session_ptr.value:
+                            continue
+                        session_id = session_ptr.value
+                        ole32.CoTaskMemFree(cast(session_ptr, c_void_p))
 
-                    volume_ptr = c_void_p()
-                    hr = _vtbl(
-                        session_ctl2,
-                        0,
-                        ctypes.c_long,
-                        POINTER(GUID),
-                        POINTER(c_void_p),
-                    )(
-                        session_ctl2,
-                        byref(IID_ISimpleAudioVolume),
-                        byref(volume_ptr),
-                    )
-                    if hr < 0 or not volume_ptr:
-                        continue
+                        volume_ptr = c_void_p()
+                        hr = _vtbl(
+                            session_ctl2,
+                            0,
+                            ctypes.c_long,
+                            POINTER(GUID),
+                            POINTER(c_void_p),
+                        )(
+                            session_ctl2,
+                            byref(IID_ISimpleAudioVolume),
+                            byref(volume_ptr),
+                        )
+                        if hr < 0 or not volume_ptr:
+                            continue
 
-                    yield _CtypesSessionHandle(session_id, int(pid.value), volume_ptr)
+                        yield _CtypesSessionHandle(session_id, int(pid.value), volume_ptr)
+                    finally:
+                        _release(session_ctl2)
                 finally:
-                    _release(session_ctl2)
-            finally:
-                _release(session_ctl)
-    finally:
-        _release(session_enum)
+                    _release(session_ctl)
+        finally:
+            _release(session_enum)
 
 
 def _process_name(pid: int) -> str | None:
@@ -833,6 +835,12 @@ def main(stdin=None, stdout=None) -> int:
     """
     stream_in = stdin if stdin is not None else sys.stdin
     stream_out = stdout if stdout is not None else sys.stdout
+
+    if sys.platform != "win32":
+        stream_out.write(json.dumps({"id": None, "ok": False, "available": False,
+                                     "err": "Windows Core Audio COM host unavailable on this platform"}) + "\n")
+        stream_out.flush()
+        return 1
 
     ole32.CoInitializeEx(None, COINIT_MULTITHREADED)
     registry = _SessionRegistry()

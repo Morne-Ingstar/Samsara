@@ -1,4 +1,4 @@
-"""Qt click-through overlay for Show Numbers — numbered pill labels.
+"""Qt click-through overlay for Show Numbers â€” numbered pill labels.
 
 Frameless, transparent, always-on-top, WindowTransparentForInput so physical
 mouse clicks pass straight through to the app below. Does not steal focus.
@@ -155,17 +155,18 @@ def _ensure_dpi_thread_context() -> None:
 # DPI-aware physical-to-logical coordinate conversion
 # ---------------------------------------------------------------------------
 
-class _MONITORINFO(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", ctypes.c_ulong),
-        ("rcMonitor", _wt.RECT),
-        ("rcWork", _wt.RECT),
-        ("dwFlags", ctypes.c_ulong),
-    ]
+if sys.platform == 'win32':
+    class _MONITORINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", ctypes.c_ulong),
+            ("rcMonitor", _wt.RECT),
+            ("rcWork", _wt.RECT),
+            ("dwFlags", ctypes.c_ulong),
+        ]
 
-_MONITORENUMPROC = ctypes.WINFUNCTYPE(
-    _wt.BOOL, _wt.HMONITOR, _wt.HDC, ctypes.POINTER(_wt.RECT), _wt.LPARAM
-)
+    _MONITORENUMPROC = ctypes.WINFUNCTYPE(
+        _wt.BOOL, _wt.HMONITOR, _wt.HDC, ctypes.POINTER(_wt.RECT), _wt.LPARAM
+    )
 
 
 def _with_physical_dpi_context(fn):
@@ -195,6 +196,8 @@ def _with_physical_dpi_context(fn):
 
 def _win32_monitor_rects() -> list:
     """Return native physical monitor rectangles sorted by physical origin."""
+    if sys.platform != 'win32':
+        return []
     def _query():
         rects = []
 
@@ -455,7 +458,7 @@ class MatchNumbersOverlay:
 class NumbersOverlayWindow(QWidget):
     """Click-through overlay covering ONE monitor with numbered pill labels.
 
-    Positioned to cover target_screen only — no multi-monitor spanning.
+    Positioned to cover target_screen only â€” no multi-monitor spanning.
     Labels carry absolute screen logical coordinates; paintEvent subtracts
     the screen's logical origin (self._virt.x()/y()) to get widget-local
     coords.  Call update_labels() to refresh in place.
