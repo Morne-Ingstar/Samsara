@@ -32,10 +32,11 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl, QSize, QEvent
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QPlainTextEdit, QMenu, QToolButton, QWidgetAction, QFrame, QStyledItemDelegate,
 )
 from PySide6.QtGui import QDesktopServices
 
@@ -65,7 +66,7 @@ NO_MATCHES = "No memo matches that search."
 NO_AUDIO = "No audio kept for this one."
 NO_VIDEO = "This video's file is missing."
 AUDIO_EXPIRED = "Audio expired; the transcript is kept."
-MIN_TARGET = 44
+MIN_TARGET = 34
 GRID = 12
 EM_DASH = chr(0x2014)
 MIDDLE_DOT = chr(0xB7)
@@ -146,6 +147,13 @@ class _Player:
             logger.debug("[MEMO] Could not stop playback: %s", exc)
 
 
+class _MemoCardDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        # The card widget paints the row; keep its summary for accessibility
+        # and introspection without painting it again in the card's margins.
+        pass
+
+
 class MemosPage(QWidget):
     """The hub's Memos page."""
 
@@ -162,192 +170,258 @@ class MemosPage(QWidget):
 
     # ---- Build ----------------------------------------------------------
 
+    def _label(self, text, size=16, muted=False):
+        label = QLabel(text)
+        label.setTextFormat(Qt.TextFormat.PlainText)
+        label.setStyleSheet(
+            f"background: transparent; border: none; color: {theme.TEXT_SECONDARY if muted else theme.TEXT_PRIMARY};"
+            f" font-size: {size}px;")
+        return label
+
     def _build(self):
         self.setStyleSheet(
-            f"QWidget {{ background: {theme.BG1}; }}"
-            f"QLineEdit, QComboBox {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 8px 10px;"
-            f" font-size: {theme.TYPE_BODY}px; }}"
-            f"QLineEdit:focus, QComboBox:focus {{ border: 2px solid {theme.ACCENT}; }}"
-            f"QListWidget {{ background: {theme.BG0}; color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
-            f" font-size: {theme.TYPE_BODY}px; }}"
-            f"QListWidget::item {{ padding: 10px 8px; }}"
-            f"QListWidget::item:selected {{ background: {theme.BG2};"
-            f" color: {theme.TEXT_PRIMARY}; }}"
-        )
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(GRID, GRID, GRID, GRID)
-        lay.setSpacing(GRID)
-
-        record_row = QHBoxLayout()
-        record_row.setSpacing(GRID)
-        self._record_voice_btn = self._button("Record voice memo (Alt+R)", self.record_voice_memo)
-        self._record_video_btn = self._button("Record video memo (Alt+V)", self.record_video_memo)
-        for button in (self._record_voice_btn, self._record_video_btn):
-            button.setFixedWidth(button.sizeHint().width())
-        record_row.addWidget(self._record_voice_btn)
-        record_row.addWidget(self._record_video_btn)
-        record_row.addStretch(1)
-        lay.addLayout(record_row)
-
-        memo_help_row = QHBoxLayout()
-        memo_help_row.setSpacing(0)
-        self._memo_keys = QLabel("")
-        self._memo_keys.setAccessibleName("Memo recording keys")
-        self._memo_keys.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-            " background: transparent;")
-        memo_help_row.addWidget(self._memo_keys)
-        self._settings_link = QPushButton("Settings")
-        self._settings_link.setAccessibleName("Settings (Alt+S)")
-        self._settings_link.setMinimumHeight(MIN_TARGET)
-        self._settings_link.setMinimumWidth(MIN_TARGET)
-        self._settings_link.setFlat(True)
-        self._settings_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._settings_link.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self._settings_link.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: 1px solid transparent; padding: 0 6px;"
-            f" color: {theme.TEXT_SECONDARY}; text-decoration: none; font-weight: 700;"
-            f" font-size: {theme.TYPE_BODY}px; text-align: left; }}"
-            f"QPushButton:hover {{ color: {theme.ACCENT}; }}"
-            f"QPushButton:focus {{ color: {theme.ACCENT}; border: 1px solid {theme.ACCENT}; border-radius: 3px; }}")
-        self._settings_link.clicked.connect(self.open_memo_settings)
-        memo_help_row.addWidget(self._settings_link)
-        memo_help_row.addStretch(1)
-        lay.addLayout(memo_help_row)
-
-        # Search row. The label carries the shortcut, so the shortcut is
-        # never something the user had to be told somewhere else.
-        search_row = QHBoxLayout()
-        search_row.setSpacing(GRID)
-        label = QLabel(SEARCH_LABEL)
-        label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-            " background: transparent;")
-        label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        search_row.addWidget(label)
+            f"QWidget {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; }}"
+            f"QLineEdit, QComboBox, QPlainTextEdit {{ background: {theme.BG2};"
+            f" color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER};"
+            " border-radius: 6px; padding: 0 10px; font-size: 16px; }"
+            f"QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid {theme.ACCENT}; }}"
+            "QListWidget { background: transparent; border: none; }"
+            "QListWidget::item { background: transparent; border: none; padding: 0; }"
+            + theme.SCROLLBAR_QSS)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(40, 28, 40, 24)
+        self._column = QWidget()
+        self._column.setMaximumWidth(1180)
+        outer.addWidget(self._column, 1)
+        lay = QVBoxLayout(self._column)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(16)
+        title = self._label(TITLE, 24)
+        title.setStyleSheet(title.styleSheet() + "font-weight: 600;")
+        lay.addWidget(title)
+        # PLACEHOLDER COPY (854): purpose line from the approved 841 study.
+        lay.addWidget(self._label("Keep a thought, then find it when you need it.", muted=True))
+        lay.addSpacing(8)
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
         self._search = QLineEdit()
-        self._search.setPlaceholderText(SEARCH_PLACEHOLDER)
         self._search.setAccessibleName(SEARCH_LABEL)
-        self._search.setClearButtonEnabled(True)
-        self._search.setMinimumHeight(MIN_TARGET)
-        # Fit the placeholder plus padding and clear affordance; don't let
-        # the search control stretch across the content column.
-        search_width = self._search.fontMetrics().horizontalAdvance(SEARCH_PLACEHOLDER) + 72
-        self._search.setFixedWidth(max(220, search_width))
+        self._search.setPlaceholderText(SEARCH_PLACEHOLDER)
+        self._search.setFixedSize(280, 34)
         self._search.textChanged.connect(self._apply_filter)
-        label.setBuddy(self._search)
-        search_row.addWidget(self._search, alignment=Qt.AlignmentFlag.AlignLeft)
-        lay.addLayout(search_row)
+        controls.addWidget(self._search)
+        self._filter_category = QComboBox()
+        self._filter_category.setAccessibleName("Filter memos by category")
+        self._filter_category.setFixedSize(140, 34)
+        self._filter_category.currentIndexChanged.connect(self._apply_filter)
+        controls.addWidget(self._filter_category)
+        self._record_voice_btn = self._button("Record voice memo (Alt+R)", self.record_voice_memo)
+        self._record_voice_btn.setAccessibleName("Record voice memo (Alt+R)")
+        self._record_voice_btn.setStyleSheet(self._record_voice_btn.styleSheet() +
+            f"QPushButton {{ background: {theme.ACCENT}; color: {theme.TEXT_ON_ACCENT}; }}")
+        controls.addWidget(self._record_voice_btn)
+        self._record_video_btn = self._button("Record video memo (Alt+V)", self.record_video_memo)
+        self._settings_link = self._button("Settings", self.open_memo_settings)
+        self._settings_link.setAccessibleName("Settings (Alt+S)")
+        menu_button = QToolButton()
+        menu_button.setArrowType(Qt.ArrowType.DownArrow)
+        menu_button.setAccessibleName("More recording options")
+        menu_button.setFixedSize(34, 34)
+        menu_button.setStyleSheet(
+            f"QToolButton {{ background: {theme.BG2}; border: 1px solid {theme.BORDER}; border-radius: 6px; }}"
+            "QToolButton::menu-indicator { image: none; }")
+        menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(menu_button)
+        for button in (self._record_video_btn, self._settings_link):
+            action = QWidgetAction(menu)
+            action.setDefaultWidget(button)
+            menu.addAction(action)
+        menu_button.setMenu(menu)
+        controls.addWidget(menu_button)
+        controls.addStretch()
+        lay.addLayout(controls)
+        self._memo_keys = self._label("", 13, True)
+        self._memo_keys.setAccessibleName("Memo recording keys")
+        lay.addWidget(self._memo_keys)
 
+        panes = QHBoxLayout()
+        panes.setSpacing(32)
         self._list = QListWidget()
         self._list.setAccessibleName("Memos")
+        self._list.setItemDelegate(_MemoCardDelegate(self._list))
+        self._list.setFixedWidth(700)
+        self._list.setSpacing(0)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._list.setAlternatingRowColors(False)
-        self._list.setWordWrap(True)
-        # Rows wrap; they never scroll sideways. A horizontal scrollbar in a
-        # list of sentences is a way to hide half of one.
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.currentRowChanged.connect(self._on_selection)
+        self._list.itemSelectionChanged.connect(self._selection_changed)
         self._list.itemActivated.connect(lambda _item: self.play_selected())
-        lay.addWidget(self._list, stretch=1)
-        self._empty = QLabel(EMPTY_MEMOS)
+        self._list.viewport().installEventFilter(self)
+        left = QVBoxLayout()
+        self._empty = self._label(EMPTY_MEMOS, muted=True)
         self._empty.setWordWrap(True)
-        self._empty.setAccessibleName(EMPTY_MEMOS)
-        self._empty.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-            f" background: {theme.BG0}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 16px;")
-        self._empty.setMinimumHeight(MIN_TARGET + GRID)
-        lay.insertWidget(lay.indexOf(self._list), self._empty, stretch=1)
-
-        # The full transcript of the selected memo, at reading size.
-        self._detail = QLabel("")
-        self._detail.setWordWrap(True)
-        self._detail.setAccessibleName("Selected memo")
-        self._detail.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard)
-        self._detail.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;"
-            f" background: {theme.BG0}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 10px;")
-        self._detail.setMinimumHeight(MIN_TARGET + GRID)
-        lay.addWidget(self._detail)
-
-        # Actions. Every one is a button with its key in the visible label.
+        self._empty.setMaximumWidth(680)
+        self._empty.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        left.addWidget(self._empty, alignment=Qt.AlignmentFlag.AlignTop)
+        left.addWidget(self._list, 1)
+        left.addStretch()
+        panes.addLayout(left)
+        self._editor_pane = QWidget()
+        self._editor_pane.setMaximumWidth(718)
+        detail = QVBoxLayout(self._editor_pane)
+        detail.setContentsMargins(0, 0, 0, 0)
+        detail.setSpacing(16)
+        self._selected_meta = self._label("", 13, True)
+        detail.addWidget(self._selected_meta)
+        self._detail = QPlainTextEdit()
+        self._detail.setAccessibleName("Selected memo transcript")
+        self._detail.setMaximumWidth(718)
+        self._detail.setFixedHeight(220)
+        self._detail.setStyleSheet("QPlainTextEdit { padding: 10px; }")
+        detail.addWidget(self._detail)
+        # PLACEHOLDER COPY (854): explicit Save keeps selection changes non-destructive.
+        self._save_btn = self._button("Save", self.save_selected)
+        detail.addWidget(self._save_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         actions = QHBoxLayout()
-        actions.setSpacing(GRID)
+        actions.setSpacing(8)
         self._play_btn = self._button(PLAY, self.play_selected)
         self._copy_btn = self._button(COPY, self.copy_selected)
         self._delete_btn = self._button(DELETE, self.request_delete)
         self._confirm_btn = self._button(CONFIRM_DELETE, self.confirm_delete, danger=True)
         self._cancel_btn = self._button(CANCEL, self.cancel_delete)
-        self._confirm_btn.setVisible(False)
-        self._cancel_btn.setVisible(False)
         for button in (self._play_btn, self._copy_btn, self._delete_btn,
                        self._confirm_btn, self._cancel_btn):
             actions.addWidget(button)
-
-        actions.addStretch(1)
-        category_label = QLabel(CATEGORY_LABEL)
-        category_label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-            " background: transparent;")
-        actions.addWidget(category_label)
+        actions.addStretch()
+        detail.addLayout(actions)
+        category_row = QHBoxLayout()
+        category_label = self._label(CATEGORY_LABEL, 13, True)
+        category_row.addWidget(category_label)
         self._category = QComboBox()
         self._category.setAccessibleName(CATEGORY_LABEL)
         self._category.setEditable(True)
-        self._category.setMinimumHeight(MIN_TARGET)
-        self._category.setMinimumWidth(160)
+        self._category.setFixedSize(160, 34)
+        self._category.lineEdit().setMaximumWidth(160)
         category_label.setBuddy(self._category)
         self._category.activated.connect(lambda _i: self.apply_category())
         self._category.lineEdit().returnPressed.connect(self.apply_category)
-        actions.addWidget(self._category)
-        lay.addLayout(actions)
-
+        category_row.addWidget(self._category)
+        category_row.addStretch()
+        detail.addLayout(category_row)
+        detail.addStretch()
+        panes.addWidget(self._editor_pane, 1)
+        panes.addStretch()
+        lay.addLayout(panes, 1)
+        self._count = self._label("", 13, True)
+        lay.addWidget(self._count)
         footer = QHBoxLayout()
-        footer.setSpacing(GRID)
-        self._status = QLabel("")
+        self._status = self._label("", 13, True)
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Memo status")
-        self._status.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-            " background: transparent;")
-        footer.addWidget(self._status, stretch=1)
-        # Queue 07's affordance, kept: anyone who wants the plain file gets it.
+        self._status.setMinimumWidth(320)
+        footer.addWidget(self._status)
         self._raw_btn = self._button(OPEN_FILE, self.open_raw_file)
         footer.addWidget(self._raw_btn)
+        footer.addStretch()
         lay.addLayout(footer)
-
         chain = [self._record_voice_btn, self._record_video_btn, self._settings_link,
-                 self._search, self._list, self._play_btn, self._copy_btn,
-                 self._delete_btn, self._confirm_btn, self._cancel_btn,
-                 self._category, self._raw_btn]
+                 self._search, self._list, self._detail, self._save_btn,
+                 self._play_btn, self._copy_btn, self._delete_btn, self._confirm_btn,
+                 self._cancel_btn, self._category, self._raw_btn, self._filter_category, menu_button]
         for first, second in zip(chain, chain[1:]):
             QWidget.setTabOrder(first, second)
         self._tab_chain = chain
 
-    def _button(self, text, slot, danger=False) -> QPushButton:
+    def _button(self, text, slot, danger=False):
         button = QPushButton(text)
         button.setAccessibleName(text)
-        button.setMinimumHeight(MIN_TARGET)
-        button.setMinimumWidth(MIN_TARGET)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         colour = theme.ERROR if danger else theme.TEXT_PRIMARY
         button.setStyleSheet(
             f"QPushButton {{ background: {theme.BG2}; color: {colour};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
-            f" padding: 8px 14px; font-size: {theme.TYPE_BODY}px; }}"
-            f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
-            f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
-            f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED};"
-            f" border-color: {theme.BORDER_FAINT}; }}"
-        )
+            " min-height: 32px; max-height: 32px; padding: 0 12px; font-size: 16px; }"
+            f"QPushButton:hover, QPushButton:focus {{ border: 1px solid {theme.ACCENT}; }}"
+            f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; }}")
+        button.setFixedWidth(button.sizeHint().width())
         button.clicked.connect(slot)
         return button
+
+    def eventFilter(self, watched, event):
+        if (watched is self._list.viewport() and event.type() == QEvent.Type.MouseButtonPress
+                and self._list.itemAt(event.position().toPoint()) is None):
+            self._list.setCurrentRow(-1)
+        return super().eventFilter(watched, event)
+
+    def _selection_changed(self):
+        if not self._list.selectedItems():
+            self._list.setCurrentRow(-1)
+        self._on_selection()
+
+    def _render_cards(self):
+        width = 680 if self._list.width() == 700 else 408
+        for i, record in enumerate(self._filtered):
+            item = self._list.item(i)
+            card = QFrame()
+            selected = i == self._list.currentRow()
+            card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            card.setFixedWidth(width)
+            card.setStyleSheet(
+                f"QFrame {{ background: {theme.BG0}; border: 1px solid {theme.ACCENT if selected else theme.BORDER_FAINT}; border-radius: 8px; }}")
+            layout = QVBoxLayout(card)
+            layout.setContentsMargins(12, 12, 12, 12)
+            layout.setSpacing(8)
+            meta = QHBoxLayout()
+            meta.setSpacing(8)
+            meta.addWidget(self._label(str(record.get("at", "")).replace("T", " ")[:16], 13, True))
+            category = self._label(record.get("category") or UNCATEGORISED, 13, True)
+            category.setStyleSheet(category.styleSheet() + f"background: {theme.BG2}; border-radius: 4px; padding: 3px 7px;")
+            meta.addWidget(category)
+            if record.get("video"):
+                meta.addWidget(self._label("Partial video" if record.get("partial") else "Video", 13, True))
+            meta.addStretch()
+            layout.addLayout(meta)
+            text = self._label(record.get("text", ""))
+            text.setWordWrap(True)
+            text.setFixedWidth(width - 26)
+            layout.addWidget(text)
+            height = layout.totalHeightForWidth(width)
+            card.setFixedHeight(max(80, height))
+            item.setSizeHint(QSize(width, card.height() + 8))
+            old = self._list.itemWidget(item)
+            if old is not None:
+                old.hide()
+                self._list.removeItemWidget(item)
+                old.deleteLater()
+            self._list.setItemWidget(item, card)
+
+    def save_selected(self):
+        record = self.selected
+        text = self._detail.toPlainText().strip()
+        if record is None or not text:
+            return False
+        try:
+            records = quick_memo.load_memos(self._home)
+            target = next((r for r in records if r.get("id") == record.get("id")), None)
+            if target is None:
+                return False
+            target["text"] = text
+            quick_memo._write_index(records, self._home)
+            quick_memo._rewrite_markdown(records, self._home)
+        except Exception as exc:
+            logger.warning("[MEMO] Edit failed: %s", exc)
+            self._status.setText("Memo changes could not be saved.")
+            return False
+        memo_id = record.get("id")
+        self.reload()
+        for i, entry in enumerate(self._filtered):
+            if entry.get("id") == memo_id:
+                self._list.setCurrentRow(i)
+                break
+        self._status.setText("Memo saved.")
+        return True
 
     # ---- Data -----------------------------------------------------------
 
@@ -429,6 +503,14 @@ class MemosPage(QWidget):
             names = quick_memo.categories(self._home)
         except Exception:
             names = []
+        names = sorted(set(names) | {r["category"] for r in self._records if r.get("category")})
+        selected_filter = self._filter_category.currentText()
+        self._filter_category.blockSignals(True)
+        self._filter_category.clear()
+        self._filter_category.addItem("All categories")
+        self._filter_category.addItems(names)
+        self._filter_category.setCurrentIndex(max(0, self._filter_category.findText(selected_filter)))
+        self._filter_category.blockSignals(False)
         current = self._category.currentText()
         self._category.blockSignals(True)
         self._category.clear()
@@ -441,6 +523,9 @@ class MemosPage(QWidget):
     def _apply_filter(self):
         needle = self._search.text()
         self._filtered = quick_memo.search_memos(self._records, needle)
+        category = self._filter_category.currentText()
+        if self._filter_category.currentIndex() > 0:
+            self._filtered = [r for r in self._filtered if r.get("category") == category]
         self._list.blockSignals(True)
         self._list.clear()
         for record in self._filtered:
@@ -456,6 +541,7 @@ class MemosPage(QWidget):
         self._list.setVisible(not is_empty)
         if self._filtered:
             self._list.setCurrentRow(0)
+        self._count.setText(f"{len(self._filtered)} memos")
         self.cancel_delete()
         self._on_selection(self._list.currentRow())
 
@@ -479,23 +565,27 @@ class MemosPage(QWidget):
     def _on_selection(self, _row=None):
         record = self.selected
         has = record is not None
+        self.cancel_delete()
+        self._editor_pane.setVisible(has)
+        self._list.setFixedWidth(430 if has else 700)
+        self._render_cards()
+        self._save_btn.setEnabled(has)
         video_path = quick_memo.video_path_for(record, self._home) if has else None
         has_video = bool(video_path and video_path.exists())
         has_audio = has and playable(record, self._home) is not None
         self._play_btn.setText(OPEN_VIDEO if has_video else PLAY)
         self._play_btn.setAccessibleName(OPEN_VIDEO if has_video else PLAY)
+        self._play_btn.setFixedWidth(self._play_btn.sizeHint().width())
         self._play_btn.setEnabled(bool(has_video or has_audio))
         self._copy_btn.setEnabled(has)
         self._delete_btn.setEnabled(has)
         self._category.setEnabled(has)
         if not has:
-            self._detail.setText("")
-            self._status.setText(NO_MATCHES if self._records else "")
+            self._detail.setPlainText("")
+            self._status.setText(NO_MATCHES if self._records and not self._filtered else "")
             return
-        detail = record.get("text", "")
-        if has_video:
-            detail = ("Partial video memo. " if record.get("partial") else "Video memo. ") + detail
-        self._detail.setText(detail)
+        self._selected_meta.setText(self._spoken(record).split(". ", 1)[0])
+        self._detail.setPlainText(record.get("text", ""))
         self._category.blockSignals(True)
         self._category.setCurrentText(record.get("category") or "")
         self._category.blockSignals(False)
@@ -675,11 +765,14 @@ class MemosPage(QWidget):
                 self.stop_playback()
             elif self._search.text():
                 self._search.clear()
+            elif self.selected is not None:
+                self._list.setCurrentRow(-1)
             event.accept()
             return
         # Delete and Enter act on the list, but not while the user is typing
         # a search term or a category name.
-        typing = self._search.hasFocus() or self._category.hasFocus()
+        typing = (self._search.hasFocus() or self._category.hasFocus()
+                  or self._detail.hasFocus())
         if key == Qt.Key.Key_Delete and not typing:
             self.request_delete()
             event.accept()
@@ -706,4 +799,4 @@ class MemosPage(QWidget):
 
     @property
     def detail_text(self) -> str:
-        return self._detail.text()
+        return self._detail.toPlainText()
