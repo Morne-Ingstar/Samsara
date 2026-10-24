@@ -127,15 +127,17 @@ class CommandDetailCard(QFrame):
         self._pack_id = command.get('pack', 'core')
         self._anchor = anchor
         disabled = bool(command.get('pack_disabled'))
+        arguments = command.get('args', ())
+        examples = command.get('examples', ())
+        self._run_phrase = examples[0] if arguments and examples else self.phrase
         from samsara.command_packs import PACKS
         pack_name = PACKS.get(self._pack_id, {}).get('label', self._pack_id)
         self.pack_status.setText("This command's pack is off" if disabled else '')
         self.pack_status.setVisible(disabled)
         self.enable_button.setText('Turn on ' + pack_name)
         self.enable_button.setVisible(disabled and callable(getattr(self.window, '_enable_pack_cb', None)))
-        self.run_button.setVisible(not disabled)
+        self.run_button.setVisible(not disabled and (not arguments or bool(examples)))
         aliases = [str(a) for a in command.get('aliases', ()) if a != self.phrase]
-        arguments = command.get('args', ())
         fields = [self.phrase, 'Also: ' + ', '.join(aliases) if aliases else '',
                   command.get('description', '').strip() or NO_DESCRIPTION,
                   'Arguments: ' + ', '.join(
@@ -148,7 +150,7 @@ class CommandDetailCard(QFrame):
         self.setAccessibleName('Command details: ' + self.phrase)
         description = '\n'.join(text for text in fields if text)
         self.setAccessibleDescription(description)
-        self.run_button.setAccessibleName('Run it: ' + self.phrase)
+        self.run_button.setAccessibleName('Run it: ' + self._run_phrase)
         self.run_button.setAccessibleDescription(description)
         self.place(anchor)
         self.show()
@@ -158,7 +160,8 @@ class CommandDetailCard(QFrame):
             self._filter_installed = True
         self.scroll.verticalScrollBar().setValue(0)
         origin.setFocus(Qt.FocusReason.OtherFocusReason)
-        first_action = self.enable_button if disabled else self.run_button
+        first_action = self.enable_button if disabled else (
+            self.run_button if self.run_button.isVisible() else self.close_button)
         QWidget.setTabOrder(origin, first_action)
         QWidget.setTabOrder(self.enable_button, self.close_button)
         QWidget.setTabOrder(self.run_button, self.close_button)
@@ -194,7 +197,9 @@ class CommandDetailCard(QFrame):
         self.origin = None
 
     def run(self):
-        phrase = self.phrase
+        if not self.isVisible() or not self.phrase:
+            return
+        phrase = getattr(self, '_run_phrase', self.phrase)
         self.dismiss(True)
         if phrase:
             self.window._execute(phrase)
@@ -220,7 +225,8 @@ class CommandDetailCard(QFrame):
                 self.dismiss(True)
                 return True
             if watched is self.origin and event.key() == Qt.Key.Key_Tab:
-                action = self.enable_button if self.enable_button.isVisible() else self.run_button
+                action = self.enable_button if self.enable_button.isVisible() else (
+                    self.run_button if self.run_button.isVisible() else self.close_button)
                 action.setFocus(Qt.FocusReason.TabFocusReason)
                 return True
             if watched is self.origin and event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down):

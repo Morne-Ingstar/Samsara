@@ -94,16 +94,23 @@ def test_arrows_enter_tab_run_and_escape(reference, qapp):
     win._list.setFocus()
     QTest.keyClick(win._list, Qt.Key.Key_Down)
     assert win._list.currentRow() == 1 and executed == []
-    phrase = win._list.currentItem().data(Qt.ItemDataRole.UserRole)
     QTest.keyClick(win._list, Qt.Key.Key_Return)
     assert win._detail_card.isVisible() and executed == []
+    # 791: an argument command without a reviewed example has no Run it action.
+    assert not win._detail_card.run_button.isVisible()
     QTest.keyClick(win._list, Qt.Key.Key_Tab)
-    assert QApplication.focusWidget() is win._detail_card.run_button
-    QTest.keyClick(win._detail_card.run_button, Qt.Key.Key_Return)
-    assert executed == [phrase]
+    assert QApplication.focusWidget() is win._detail_card.close_button
+    QTest.keyClick(win._detail_card.close_button, Qt.Key.Key_Escape)
+    assert not win._detail_card.isVisible() and executed == []
+
+    # A plain command still offers the keyboard Run it path.
+    win._list.setCurrentRow(0)
     QTest.keyClick(win._list, Qt.Key.Key_Return)
     QTest.keyClick(win._list, Qt.Key.Key_Tab)
-    QTest.keyClick(win._detail_card.run_button, Qt.Key.Key_Escape)
+    assert QApplication.focusWidget() is win._detail_card.run_button
+    phrase = win._list.currentItem().data(Qt.ItemDataRole.UserRole)
+    QTest.keyClick(win._detail_card.run_button, Qt.Key.Key_Return)
+    assert executed == [phrase]
     assert not win._detail_card.isVisible()
     assert QApplication.focusWidget() is win._list
     assert executed == [phrase]
