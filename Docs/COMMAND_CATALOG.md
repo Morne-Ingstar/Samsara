@@ -30,11 +30,11 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `ask_agent.ask_gpt` | `ask codex`, `ask gpt` | text:text | `ask gpt explain how rainbows form` | Set up the GPT agent and sign in first. | ui | yes |  | Asks GPT a question through your signed-in account and reads the reply aloud. | `plugins/commands/ask_agent.py:69` |
-| `ask_agent.ask_hermes` | `ask hermes`, `tell hermes` | text:text | `ask hermes explain how rainbows form` | Set up your Hermes connection first. | ui | yes |  | Sends your question to your own Hermes while you keep dictating. | `plugins/commands/ask_agent.py:96` |
-| `ask_agent.new_conversation_with` | `new conversation with` | text:text | `new conversation with gpt`<br>`new conversation with claude` | Set up the agent you name first. | ui | yes |  | Starts a fresh conversation with GPT or Claude, without the previous chat's context. | `plugins/commands/ask_agent.py:80` |
-| `ask_agent.new_hermes_session` | `new conversation with hermes`, `new hermes session` | text:text | `new hermes session with high effort` | Set up your Hermes connection first. | ui | yes |  | Starts a fresh Hermes conversation; optionally say with high effort. | `plugins/commands/ask_agent.py:104` |
-| `ask_agent.stop_hermes` | `stop hermes` | - | - | - | ui | yes |  | Stops Hermes's current turn and keeps your conversation for later. | `plugins/commands/ask_agent.py:112` |
+| `ask_agent.ask_gpt` | `ask codex`, `ask gpt` | text:text | `ask gpt explain how rainbows form` | Set up the GPT agent and sign in first. | ui | yes |  | Asks GPT a question through your signed-in account and reads the reply aloud. | `plugins/commands/ask_agent.py:75` |
+| `ask_agent.ask_hermes` | `ask hermes`, `tell hermes` | text:text | `ask hermes explain how rainbows form` | Set up your Hermes connection first. | ui | yes |  | Sends your question to your own Hermes while you keep dictating. | `plugins/commands/ask_agent.py:103` |
+| `ask_agent.new_conversation_with` | `new conversation with` | text:text | `new conversation with gpt`<br>`new conversation with claude` | Set up the agent you name first. | ui | yes |  | Starts a fresh conversation with GPT or Claude, without the previous chat's context. | `plugins/commands/ask_agent.py:86` |
+| `ask_agent.new_hermes_session` | `new conversation with hermes`, `new hermes session` | text:text | `new hermes session with high effort` | Set up your Hermes connection first. | ui | yes |  | Starts a fresh Hermes conversation; optionally say with high effort. | `plugins/commands/ask_agent.py:111` |
+| `ask_agent.stop_hermes` | `stop hermes` | - | - | - | ui | yes |  | Stops Hermes's current turn and keeps your conversation for later. | `plugins/commands/ask_agent.py:119` |
 
 ## ask_ollama (8)
 

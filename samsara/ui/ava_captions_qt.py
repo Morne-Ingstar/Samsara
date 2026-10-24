@@ -203,7 +203,7 @@ class _CaptionsWindow(QWidget):
         inner.setContentsMargins(20, 16, 20, 18)
         inner.setSpacing(6)
 
-        self._who = QLabel("AVA")
+        self._who = QLabel("SAMSARA")
         self._who.setObjectName("avaCaptionWho")
         self._who.setAccessibleName("Speaker")
         inner.addWidget(self._who)
@@ -265,8 +265,10 @@ class _CaptionsWindow(QWidget):
 
     # -- content -------------------------------------------------------------
 
-    def show_text(self, text: str, hold: bool, linger_s: float) -> None:
+    def show_text(self, text: str, hold: bool, linger_s: float, source: str) -> None:
         self.restyle()
+        label = str(source or "SAMSARA").upper()
+        self._who.setText({"CODEX": "GPT", "CHATGPT": "GPT"}.get(label, label))
         self._text.setText(str(text or ""))
         self._text.setMaximumWidth(_MAX_WIDTH_PX)
         self.setMaximumWidth(_MAX_WIDTH_PX + 2)
@@ -461,8 +463,8 @@ def _post(fn) -> None:
     fn()
 
 
-def show_caption(app, text: str, *, hold: bool = True) -> None:
-    """Show `text` as Ava's caption. Safe from any thread.
+def show_caption(app, text: str, *, source: str, hold: bool = True) -> None:
+    """Show `text` with its explicit source. Safe from any thread.
 
     hold=True means speech is starting and the panel stays up until
     release_caption(); hold=False starts the linger immediately, which is the
@@ -475,7 +477,7 @@ def show_caption(app, text: str, *, hold: bool = True) -> None:
 
     def _run():
         try:
-            _ensure_window(app).show_text(text, hold, linger)
+            _ensure_window(app).show_text(text, hold, linger, source)
         except Exception as exc:
             logger.warning("Ava captions: could not show a caption: %s", exc)
 

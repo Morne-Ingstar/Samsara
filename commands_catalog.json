@@ -275,7 +275,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up the GPT agent and sign in first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:69",
+      "source": "plugins/commands/ask_agent.py:75",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -303,7 +303,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up your Hermes connection first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:96",
+      "source": "plugins/commands/ask_agent.py:103",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -331,7 +331,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up the agent you name first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:80",
+      "source": "plugins/commands/ask_agent.py:86",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -359,7 +359,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up your Hermes connection first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:104",
+      "source": "plugins/commands/ask_agent.py:111",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -378,7 +378,7 @@
       "plugin": "ask_agent",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:112",
+      "source": "plugins/commands/ask_agent.py:119",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false

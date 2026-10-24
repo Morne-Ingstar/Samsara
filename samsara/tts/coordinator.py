@@ -16,6 +16,8 @@ Design principles (from tts_architecture_spec_v2.md):
   - Interrupt grace period measured from engine 'playing' state, not speak()
 """
 
+import inspect
+from contextvars import ContextVar
 import logging
 import threading
 import time
@@ -28,6 +30,32 @@ from samsara.runtime import thread_registry
 from .engine_base import SpeechHandle, TTSEngine
 
 logger = logging.getLogger(__name__)
+
+
+# Scoped to this delivery, so simultaneous replies cannot borrow another label.
+reply_source = ContextVar("reply_source", default="AVA")
+
+
+def invoke_with_reply_source(speak, app, text, source):
+    """Keep the public two-argument callback while carrying caption attribution."""
+    token = reply_source.set(source)
+    try:
+        return speak(app, text)
+    finally:
+        reply_source.reset(token)
+
+
+def speak_with_caption_source(coordinator, text, *, source, **kwargs):
+    """Pass attribution when supported, preserving older speech implementations."""
+    speak = coordinator.speak
+    try:
+        parameters = inspect.signature(speak).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if ("caption_source" in parameters or
+            any(p.kind == inspect.Parameter.VAR_KEYWORD for p in parameters.values())):
+        kwargs["caption_source"] = source
+    return speak(text, **kwargs)
 
 # States
 IDLE = 'IDLE'
@@ -254,13 +282,14 @@ class AudioCoordinator:
         volume: Optional[float] = None,
         on_done: Optional[Callable] = None,
         interruptible: bool = True,
+        caption_source: str = "SAMSARA",
     ) -> SpeechHandle:
         """High-level TTS entry point. Manages state, thresholds, and ducking.
 
         Plugins and subsystems should call this instead of engine.speak().
         """
         from samsara.ava_action_feedback import scoped_decision, defer_speech
-        if defer_speech(self, text, category, queue_mode=queue_mode, voice_id=voice_id,
+        if defer_speech(self, text, category, caption_source=caption_source, queue_mode=queue_mode, voice_id=voice_id,
                         speed=speed, volume=volume, on_done=on_done, interruptible=interruptible):
             return SpeechHandle(utterance_id='noop-ava-action-pending')
         ava_decision = scoped_decision((self.app.config.get('tts', {}) or {}).get('feedback_level'), category)
@@ -281,7 +310,11 @@ class AudioCoordinator:
         decision = ava_decision or _feedback_decision(level, category)
         if decision != 'speak':
             if decision == 'caption':
-                self._emit_caption(text, hold=False)
+                self._emit_caption(
+                    text,
+                    **({"source": caption_source} if caption_source != "SAMSARA" else {}),
+                    hold=False,
+                )
             elif decision in ('error', 'action_complete'):
                 try:
                     self.app.play_sound(decision)
@@ -307,7 +340,11 @@ class AudioCoordinator:
             if muted:
                 if captions:
                     # No speech to wait for, so the linger starts now.
-                    self._emit_caption(text, hold=False)
+                    self._emit_caption(
+                        text,
+                        **({"source": caption_source} if caption_source != "SAMSARA" else {}),
+                        hold=False,
+                    )
                 logger.info(
                     "AudioCoordinator: Ava audio muted (category=%s, captions=%s)",
                     category, captions,
@@ -316,7 +353,11 @@ class AudioCoordinator:
                 self._last_spoken_handle = handle
                 return handle
             if captions:
-                self._emit_caption(text, hold=True)
+                self._emit_caption(
+                    text,
+                    **({"source": caption_source} if caption_source != "SAMSARA" else {}),
+                    hold=True,
+                )
                 # Release the caption's hold when THIS utterance finishes.
                 on_done = self._with_caption_release(on_done)
 
@@ -400,11 +441,11 @@ class AudioCoordinator:
             logger.debug("AudioCoordinator: Ava captions unavailable", exc_info=True)
             return (False, False)
 
-    def _emit_caption(self, text: str, *, hold: bool) -> None:
+    def _emit_caption(self, text: str, *, source: str = "SAMSARA", hold: bool) -> None:
         """Put Ava's words on screen. The panel marshals to the Qt thread."""
         try:
             from samsara.ui import ava_captions_qt        # noqa: PLC0415
-            ava_captions_qt.show_caption(self.app, text, hold=hold)
+            ava_captions_qt.show_caption(self.app, text, source=source, hold=hold)
         except Exception:
             safe_exception(logger, "AudioCoordinator: could not show the Ava caption",
                            level=logging.WARNING)

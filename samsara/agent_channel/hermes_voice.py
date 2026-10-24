@@ -93,7 +93,7 @@ def sound(app, cue):
         callback(cue)
 
 
-def play(app, text, *, result=False, valid=lambda: True):
+def play(app, text, *, result=False, source="SAMSARA", valid=lambda: True):
     """Recheck generation, capture and feedback level at actual delivery."""
     while valid():
         with getattr(app, "_hold_capture_lifecycle_lock", None) or nullcontext():
@@ -104,7 +104,7 @@ def play(app, text, *, result=False, valid=lambda: True):
                 if current == "full":
                     audio = getattr(app, "audio_coordinator", None)
                     if audio:
-                        handle = audio.speak(text, category="ava_response", interruptible=True)
+                        handle = audio.speak(text, category="ava_response", interruptible=True, caption_source=source)
                         app._hermes_speech = (audio, handle)
                 elif current == "brief":
                     sound(app, "agent_response" if result else "error")
@@ -164,7 +164,7 @@ def ask(app, question):
                 app._cli_agent_voice_state = {"agent": "hermes", "turn": turn,
                     "last": first, "rest": result.text, "expires": time.monotonic() + 60}
             chip(app, first[:220] or "Answered", valid=valid)
-            play(app, first, result=True, valid=valid)
+            play(app, first, result=True, source="HERMES", valid=valid)
         except Cancelled:
             pass
         except Exception as exc:
@@ -249,6 +249,6 @@ def followup(app, action, state):
         return False
     state["expires"] = time.monotonic() + 60
     chip(app, text[:220], valid=lambda: agent.valid(turn))
-    thread_registry.spawn("hermes.readback", lambda: play(app, text, result=True,
+    thread_registry.spawn("hermes.readback", lambda: play(app, text, result=True, source="HERMES",
         valid=lambda: agent.valid(turn) and not cli_agents._closing.is_set()))
     return True

@@ -9,13 +9,19 @@ from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
 
 
-def _say(app, text: str) -> None:
+def _say(app, text: str, *, source: str) -> None:
     coordinator = getattr(app, "audio_coordinator", None)
     if coordinator is not None:
-        coordinator.speak(text, category="ava_response", interruptible=True)
+        coordinator.speak(text, category="ava_response", interruptible=True,
+                          caption_source=source)
     show = getattr(app, "_show_outcome_chip", None)
     if show is not None:
         show("agent: " + text[:45], "info")
+
+
+def _caption_source(name: str) -> str:
+    return {"gpt": "GPT", "codex": "GPT", "claude": "CLAUDE",
+            "hermes": "HERMES"}.get(name.lower(), "SAMSARA")
 
 
 def _thinking(app, active: bool) -> None:
@@ -44,7 +50,7 @@ def _failure(name: str, exc: Exception) -> str:
 
 def ask_cli(app, name: str, question: str):
     if not question.strip():
-        _say(app, f"Ask {name} what?")
+        _say(app, f"Ask {name} what?", source="SAMSARA")
         return DispatchState.FAILED
     _thinking(app, True)
 
@@ -53,12 +59,12 @@ def ask_cli(app, name: str, question: str):
             config = (getattr(app, "config", {}) or {}).get("agent_channel", {}) or {}
             result = cli_agents.agent(name).ask(question, config)
             first = cli_agents.first_reply(app, result.text, source=name).spoken
-            app._cli_agent_voice_state = {"last": first, "rest": result.text,
+            app._cli_agent_voice_state = {"source": name, "last": first, "rest": result.text,
                                           "expires": time.monotonic() + 60}
             app._cli_agent_last = result
-            _say(app, first or f"{name} answered on screen")
+            _say(app, first or f"{name} answered on screen", source=_caption_source(name) if first else "SAMSARA")
         except Exception as exc:
-            _say(app, _failure(name, exc))
+            _say(app, _failure(name, exc), source="SAMSARA")
         finally:
             _thinking(app, False)
 
@@ -86,10 +92,11 @@ def new_conversation(app, remainder=""):
         from samsara.agent_channel.hermes_voice import new
         return new(app)
     if name not in {"gpt", "codex", "claude"}:
-        _say(app, "Say new conversation with GPT or Claude.")
+        _say(app, "Say new conversation with GPT or Claude.", source="SAMSARA")
         return DispatchState.FAILED
     cli_agents.agent(name).new_conversation()
-    _say(app, f"New {('GPT' if name == 'codex' else name.upper())} conversation ready.")
+    _say(app, f"New {('GPT' if name == 'codex' else name.upper())} conversation ready.",
+         source="SAMSARA")
     return True
 
 

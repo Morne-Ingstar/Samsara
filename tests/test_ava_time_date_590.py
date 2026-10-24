@@ -107,7 +107,8 @@ def test_real_delivery_speaks_and_captions_with_ai_off(display, muted, monkeypat
     monkeypatch.setattr(ava, "_log_turn", Mock())
     try:
         ava.handle_ask_ava(app, "what time is it")
-        show.assert_called_once_with(app, "It's 3:42 PM.", hold=not muted)
+        # 834r: the local clock answer is produced by Samsara.
+        show.assert_called_once_with(app, "It's 3:42 PM.", source="SAMSARA", hold=not muted)
         if muted:
             engine.speak.assert_not_called()
         else:

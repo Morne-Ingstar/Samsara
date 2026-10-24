@@ -125,7 +125,7 @@ def _ava_captions():
     window.show_text(
         "The kettle is on the second shelf. I moved it there when the "
         "cupboard was rearranged.",
-        hold=True, linger_s=6.0)
+        hold=True, linger_s=6.0, source="AVA")
     return window
 
 

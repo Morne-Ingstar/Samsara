@@ -332,27 +332,27 @@ def _handle_personal_memory_intent(app, utterance):
     try:
         if lower in {"what do you remember about me", "what do you remember"}:
             facts = memory.about()
-            speak(app, "I remember: " + "; ".join(facts) if facts else "I don't have any facts about you saved.")
+            speak_as(app, "I remember: " + "; ".join(facts) if facts else "I don't have any facts about you saved.", source="SAMSARA")
             return True
         topic = re.match(r"^(?:do you remember when we talked about|what do you remember about) (.+)$",
                          phrase, re.I)
         if topic:
             hits = memory.recall(topic.group(1))
             if not hits:
-                speak(app, "I have nothing saved about that.")
+                speak_as(app, "I have nothing saved about that.", source="SAMSARA")
                 return True
             state = _ai_state(app)
             if not state.allowed or not _assistant_recall_allowed(app, state):
-                speak(app, "I have: " + "; ".join(item for _, item in hits[:3]))
+                speak_as(app, "I have: " + "; ".join(item for _, item in hits[:3]), source="SAMSARA")
                 return True
             return False
         if lower == "forget everything":
             app._ava_erase_pending_until = time.monotonic() + 30
-            speak(app, "This will erase your Ava memory file. Say yes, forget everything to confirm.")
+            speak_as(app, "This will erase your Ava memory file. Say yes, forget everything to confirm.", source="SAMSARA")
             return True
         if lower == "yes, forget everything" or lower == "yes forget everything":
             if time.monotonic() > getattr(app, "_ava_erase_pending_until", 0):
-                speak(app, "That confirmation expired. Say forget everything to start again.")
+                speak_as(app, "That confirmation expired. Say forget everything to start again.", source="SAMSARA")
                 return True
             app._ava_erase_pending_until = 0
             app._ava_memory_generation = getattr(app, "_ava_memory_generation", 0) + 1
@@ -365,23 +365,23 @@ def _handle_personal_memory_intent(app, utterance):
                 app._ava_memory._legacy_path = None
             app._ava_summary_pending = []
             app._ava_legacy_history = []
-            speak(app, "Your Ava memory is erased.")
+            speak_as(app, "Your Ava memory is erased.", source="SAMSARA")
             return True
         if lower.startswith("forget "):
             app._ava_memory_generation = getattr(app, "_ava_memory_generation", 0) + 1
             removed = memory.forget(phrase[7:])
-            speak(app, "I removed it and won't remember it again." if removed else
-                  "I added that to your do-not-remember list.")
+            speak_as(app, "I removed it and won't remember it again." if removed else
+                  "I added that to your do-not-remember list.", source="SAMSARA")
             return True
         if memory.remember(phrase):
-            speak(app, "I'll remember that. You can ask what I remember or tell me to forget it.")
+            speak_as(app, "I'll remember that. You can ask what I remember or tell me to forget it.", source="SAMSARA")
             return True
         if lower.startswith("remember that "):
-            speak(app, "I couldn't save that. Check the do-not-remember section of your memory file.")
+            speak_as(app, "I couldn't save that. Check the do-not-remember section of your memory file.", source="SAMSARA")
             return True
     except (OSError, ValueError) as exc:
         logger.warning("[AVA MEMORY] local update failed: %s", type(exc).__name__)
-        speak(app, "I couldn't update your memory file.")
+        speak_as(app, "I couldn't update your memory file.", source="SAMSARA")
         return True
     return False
 
@@ -394,29 +394,29 @@ def _handle_persona_intent(app, utterance):
         if action == "change":
             line, omitted = ava_persona.append(change)
             if not line:
-                speak(app, "Tell me the change after change your personality.")
+                speak_as(app, "Tell me the change after change your personality.", source="SAMSARA")
             else:
                 reply = f"I added: {line}."
                 if ava_persona.asks_to_drop_guardrail(change):
                     reply += " I can sound different, but my fixed rules stay."
                 if omitted:
                     reply += " My personality file is full; the oldest change was left out of this prompt."
-                speak(app, reply)
+                speak_as(app, reply, source="SAMSARA")
         elif action == "read":
             who, changes = ava_persona.read()
-            speak(app, "Who I am: " + who + ". Changes you asked for: " +
-                  ("; ".join(changes) if changes else "none"))
+            speak_as(app, "Who I am: " + who + ". Changes you asked for: " +
+                  ("; ".join(changes) if changes else "none"), source="SAMSARA")
         elif action == "undo":
             removed = ava_persona.undo()
-            speak(app, f"I removed the newest change: {removed}." if removed else
-                  "There is no personality change to undo.")
+            speak_as(app, f"I removed the newest change: {removed}." if removed else
+                  "There is no personality change to undo.", source="SAMSARA")
         elif action == "open":
             ava_persona.read()
             os.startfile(ava_persona.path())
-            speak(app, "I opened your personality file.")
+            speak_as(app, "I opened your personality file.", source="SAMSARA")
     except (OSError, ValueError) as exc:
         logger.warning("[AVA PERSONA] local update failed: %s", type(exc).__name__)
-        speak(app, "I couldn't use your personality file.")
+        speak_as(app, "I couldn't use your personality file.", source="SAMSARA")
     return True
 
 
@@ -425,9 +425,9 @@ def _handle_working_context_intent(app, utterance):
         return False
     context = getattr(app, "_ava_last_context", None)
     if not context:
-        speak(app, "I don't have a previous reply's personality or memory context to read back.")
+        speak_as(app, "I don't have a previous reply's personality or memory context to read back.", source="SAMSARA")
     else:
-        speak(app, context)
+        speak_as(app, context, source="SAMSARA")
     return True
 
 
@@ -674,18 +674,18 @@ def _focus_and_copy(letter: str | None):
 
 def _handle_vision_request(app, text: str, intent: str, letter):
     """Execute a vision-routed request. Runs inside the Ava worker thread."""
-    speak(app, "Let me look.")
+    speak_as(app, "Let me look.", source="SAMSARA")
     _set_thinking(app, True)
     try:
         bridge = _get_vision_bridge(app)
         if not bridge.is_available():
-            speak(app, "Vision isn't available right now.")
+            speak_as(app, "Vision isn't available right now.", source="SAMSARA")
             return
 
         if letter:
             image_b64 = bridge.screenshot_by_letter(letter)
             if image_b64 is None:
-                speak(app, f"Window {letter} isn't assigned. Say show windows first.")
+                speak_as(app, f"Window {letter} isn't assigned. Say show windows first.", source="SAMSARA")
                 return
         else:
             image_b64 = bridge.screenshot_full()
@@ -698,11 +698,11 @@ def _handle_vision_request(app, text: str, intent: str, letter):
             )
             description = bridge.describe(image_b64, prompt)
             if not description:
-                speak(app, "I couldn't get a response from the vision model.")
+                speak_as(app, "I couldn't get a response from the vision model.", source="SAMSARA")
                 return
             if len(description) > 500:
                 description = description[:500].rsplit('.', 1)[0] + '.'
-            speak(app, description)
+            speak_as(app, description, source="AVA")
 
         elif intent == "describe_window":
             prompt = (
@@ -712,11 +712,11 @@ def _handle_vision_request(app, text: str, intent: str, letter):
             )
             description = bridge.describe(image_b64, prompt)
             if not description:
-                speak(app, "I couldn't get a response from the vision model.")
+                speak_as(app, "I couldn't get a response from the vision model.", source="SAMSARA")
                 return
             if len(description) > 500:
                 description = description[:500].rsplit('.', 1)[0] + '.'
-            speak(app, description)
+            speak_as(app, description, source="AVA")
 
         elif intent == "copy_from":
             describe_prompt = (
@@ -728,13 +728,13 @@ def _handle_vision_request(app, text: str, intent: str, letter):
             if description and len(description) > 300:
                 description = description[:300].rsplit('.', 1)[0] + '.'
             if description:
-                speak(app, f"Done. {description}")
+                speak_as(app, f"Done. {description}", source="AVA")
             else:
-                speak(app, "Done.")
+                speak_as(app, "Done.", source="SAMSARA")
 
     except Exception as e:
         print(f"[VISION] Request failed: {e}")
-        speak(app, "Something went wrong with the vision request.")
+        speak_as(app, "Something went wrong with the vision request.", source="SAMSARA")
     finally:
         _set_thinking(app, False)
 
@@ -853,7 +853,7 @@ def _speak_ai_off_once(app):
     if getattr(app, "_ava_ai_off_notice_given", False):
         return
     app._ava_ai_off_notice_given = True
-    speak(app, "Ava is off. Say open Settings or tap Settings, then choose Ava.")
+    speak_as(app, "Ava is off. Say open Settings or tap Settings, then choose Ava.", source="SAMSARA")
 
 
 def _disabled_since_request(app) -> bool:
@@ -905,11 +905,12 @@ def _record_speech(spoken, reason, chars):
         speech.append((spoken, reason, chars))
 
 
+def speak_as(app, text, source):
+    from samsara.tts.coordinator import invoke_with_reply_source
+    return invoke_with_reply_source(speak, app, text, source)
+
+
 def speak(app, text, category="ava_response", on_done=None):
-    """Speak one Ava line. Category "ava_response" is exempt from
-    command_mode.tts_char_limit (samsara/tts/coordinator.py): Ava's answers
-    are the point of asking, not a command acknowledgement. Returns True
-    when the text was handed to a TTS engine."""
     if not ava_turn_queue.can_deliver(app): return False
     if isinstance(text, str):
         text = _strip_tags(text)
@@ -924,16 +925,15 @@ def speak(app, text, category="ava_response", on_done=None):
             cut = cut[:boundaries[-1].end()].rstrip()
         text = cut
     chars = len(text) if isinstance(text, str) else 0
-    # Queue 110. Stamp the generation Ava's voice belongs to, so a later
-    # cancel can tell "Ava is mid-answer" from "some other subsystem happens
-    # to be speaking" -- the coordinator's handle carries no category.
+    # Queue 110: stamp the generation so cancellation identifies Ava speech.
     try:
         app._ava_speech_generation = execution_policy.current_generation(app)
     except Exception as exc:
         logger.debug(f"speak: generation stamp failed: {exc}")
     if hasattr(app, "audio_coordinator") and app.audio_coordinator:
-        handle = app.audio_coordinator.speak(text, category=category, interruptible=True,
-                                             **({"on_done": on_done} if on_done else {}))
+        from samsara.tts.coordinator import speak_with_caption_source, reply_source
+        handle = speak_with_caption_source(app.audio_coordinator, text, source=reply_source.get(), category=category,
+                                          interruptible=True, **({"on_done": on_done} if on_done else {}))
         if getattr(handle, "utterance_id", None) == "noop-cmd-mode":
             _record_speech(False, "suppressed by command_mode.tts_char_limit", chars)
             return False
@@ -1028,11 +1028,11 @@ def _catalog_page(app, state):
     items = state["items"][start:start + 3]
     state["index"] = start + len(items)
     prefix = state["prefix"] if start == 0 else "Also: "
-    spoken = speak(app, prefix + ". ".join(items) + ("." if items else ""))
+    spoken = speak_as(app, prefix + ". ".join(items) + ("." if items else ""), source="SAMSARA")
     app._last_read_more_source = "catalog"
     try:
         from samsara.ui import ava_captions_qt
-        ava_captions_qt.show_caption(app, state["full"], hold=spoken)
+        ava_captions_qt.show_caption(app, state["full"], source="SAMSARA", hold=spoken)
     except Exception:
         logger.debug("[AVA-CATALOG] full caption unavailable", exc_info=True)
 
@@ -1048,7 +1048,7 @@ def _answer_catalog(app, goal):
     items = [f"{command_catalog.canonical_phrase(record)} - {record.get('description') or 'Command'}"
              for record in matches]
     if not items:
-        speak(app, prefix)
+        speak_as(app, prefix, source="SAMSARA")
         app._ava_catalog_answer = None
         return
     state = {"items": items, "index": 0, "prefix": prefix,
@@ -1131,16 +1131,16 @@ def _action_outcome(app, name: str, result) -> TurnOutcome:
         # or an async handler owns it. Accepted, not completed.
         return TurnOutcome("action", "queued", name=name)
     if state is DispatchState.MISS:
-        speak(app, _DEFAULT_REFUSAL.format(name=name))
+        speak_as(app, _DEFAULT_REFUSAL.format(name=name), source="SAMSARA")
         return TurnOutcome("action", "refused", reason="declined", name=name)
     reason = str(result.detail.get('reason') or ('failed' if state is DispatchState.FAILED else ''))
     if state is DispatchState.FAILED:
-        speak(app, f"{name} failed.")
+        speak_as(app, f"{name} failed.", source="SAMSARA")
         return TurnOutcome("action", "failed", reason=reason or "failed", name=name)
     if reason == "stale":
         # The user cancelled: the refusal is the cancellation, not news.
         return TurnOutcome("action", "stale", reason=reason, name=name)
-    speak(app, _refusal_sentence(name, reason, str(result.detail.get('detail') or '')))
+    speak_as(app, _refusal_sentence(name, reason, str(result.detail.get('detail') or '')), source="SAMSARA")
     return TurnOutcome("action", "refused", reason=reason or "refused", name=name)
 
 
@@ -1500,7 +1500,7 @@ def _deliver_search_answer(app, query, reply):
         shown = ava_search_panel_qt.show_answer(query, answer, result.sources)
     except Exception as exc:
         logger.debug(f"[AVA-SEARCH] panel unavailable: {exc}")
-    speak(app, spoken_search_summary(answer, on_screen=shown))
+    speak_as(app, spoken_search_summary(answer, on_screen=shown), source="AVA")
     if not shown:
         logger.warning("[AVA-SEARCH] answer panel could not be shown; sources: %s",
                        ", ".join(s.domain for s in result.sources) or "none")
@@ -1995,11 +1995,11 @@ def _conversational_refusal(app, request, command_name, generation):
     if reply.ok and not _REFUSED_ACTION_TAG.search(reply.text):
         answer = _strip_tags(reply.text)
         if answer:
-            speak(app, answer)
+            speak_as(app, answer, source="AVA")
             return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
     if asks_to_run_action(request or ""):
-        speak(app, f"I couldn't find a command for that. Say 'what can I say to "
-              f"{command_name}' and I'll list what's close.")
+        speak_as(app, f"I couldn't find a command for that. Say 'what can I say to "
+              f"{command_name}' and I'll list what's close.", source="SAMSARA")
     else:
         _answer_catalog(app, catalog_question_goal(request or "") or request or command_name)
     return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
@@ -2014,18 +2014,18 @@ def handle_response(app, response, original_text=None, *, generation=None):
     Denied(stale) at the choke point."""
     global _pending_action
     if not isinstance(response, str):
-        speak(app, "Ollama returned an invalid response.")
+        speak_as(app, "Ollama returned an invalid response.", source="SAMSARA")
         return TurnOutcome("error", "failed", reason="invalid_response")
 
     if response == MODEL_UNAVAILABLE:
-        speak(app, unavailable_sentence(app))
+        speak_as(app, unavailable_sentence(app), source="SAMSARA")
         return TurnOutcome("error", "failed", reason="model_unavailable")
 
     # A garbled dispatch request cannot be converted into a different model
     # action if an external route accidentally lets it reach this parser.
     from plugins.commands.dispatch_voice import is_dispatch_shaped
     if is_dispatch_shaped(original_text or ""):
-        speak(app, "To Luna, Sol, Astra or Claude Code?")
+        speak_as(app, "To Luna, Sol, Astra or Claude Code?", source="SAMSARA")
         return TurnOutcome("conversation", "refused", reason="dispatch_unresolved")
 
     if generation is None:
@@ -2040,7 +2040,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         execution_policy._emit(app, Invocation(response[8:].strip().lower(), route=Route.MODEL,
                                                generation=generation, source_text=original_text or ""),
                                execution_policy.Denied("legacy_protocol", detail="EXECUTE free text"))
-        speak(app, "That's not a tool I can run.")
+        speak_as(app, "That's not a tool I can run.", source="SAMSARA")
         return TurnOutcome("action", "refused", reason="legacy_protocol")
 
     parsed = _parse_structured_response(response)
@@ -2054,7 +2054,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
             command_name = re.sub(r'\bclose the\b', 'close', command_name)
             command_name = re.sub(r'\s+', ' ', command_name).strip()
         if not command_name:
-            speak(app, "I didn't get a command out of that.")
+            speak_as(app, "I didn't get a command out of that.", source="SAMSARA")
             return TurnOutcome("action", "refused", reason="no_command")
 
         # --- Queue 125, gate 1: refuse an INVENTED command name. -----------
@@ -2064,7 +2064,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         #
         executor = getattr(app, "command_executor", None)
         if executor is None:
-            speak(app, "Command executor unavailable.")
+            speak_as(app, "Command executor unavailable.", source="SAMSARA")
             return TurnOutcome("action", "failed", reason="no_executor", name=command_name)
         if not execution_policy.command_exists(command_name, app=app,
                                                executor=executor):
@@ -2091,7 +2091,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # `ACTION open firefox`. Membership cannot: firefox IS on the menu.
         if not action_is_grounded(command_name, original_text or ""):
             logger.info("[AVA-GATE] %r not grounded in %r", command_name, describe_text(original_text))
-            speak(app, "I'm not sure which app you meant, so I didn't open anything.")
+            speak_as(app, "I'm not sure which app you meant, so I didn't open anything.", source="SAMSARA")
             return TurnOutcome("action", "refused", reason="ungrounded",
                                name=command_name)
 
@@ -2113,7 +2113,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         argument = parsed["argument"]
         if verb not in ACTION2_VERBS:
             # Model hallucinated an unlisted verb -- fail closed, no guessing.
-            speak(app, f"I don't know how to {verb} things.")
+            speak_as(app, f"I don't know how to {verb} things.", source="SAMSARA")
             return TurnOutcome("action2", "refused", reason="unknown_verb", name=verb)
         # Queue 125 / queue 107's review: the prompt has always said the
         # argument must be the user's own words, and nothing enforced it.
@@ -2121,7 +2121,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         if not grounded_in_utterance(argument, original_text or ""):
             logger.info("[AVA-GATE] APP argument %r not grounded in %r",
                         describe_text(argument), describe_text(original_text))
-            speak(app, "I'm not sure which app you meant, so I didn't open anything.")
+            speak_as(app, "I'm not sure which app you meant, so I didn't open anything.", source="SAMSARA")
             return TurnOutcome("action2", "refused", reason="ungrounded",
                                name=f"{verb} {argument}".strip())
         result = _execute_action2(app, verb, argument, route=Route.MODEL, generation=generation,
@@ -2142,7 +2142,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # ACTION's tag with APP's grammar (queue 117 measured this on every
         # app request). Refused, never guessed at: splitting it and running
         # the halves is how a malformed line becomes an effect.
-        speak(app, "I didn't get a command out of that.")
+        speak_as(app, "I didn't get a command out of that.", source="SAMSARA")
         return TurnOutcome("action", "refused", reason="hybrid_grammar",
                            name=parsed.get("raw", ""))
 
@@ -2153,7 +2153,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         if interval_error is not None:
             logger.info("[AVA SCHEDULER] refused interval %r: %s",
                         parsed["interval_seconds"], interval_error)
-            speak(app, interval_error)
+            speak_as(app, interval_error, source="SAMSARA")
             return TurnOutcome("schedule", "refused", reason="interval_below_floor",
                                name=str(parsed["interval_seconds"]))
         # Local template from the resolved schedule fields -- never the
@@ -2180,17 +2180,17 @@ def handle_response(app, response, original_text=None, *, generation=None):
 
         def _approve(_op):
             _start_schedule(app, task)
-            speak(app, f"Scheduled. {confirm_text}")
+            speak_as(app, f"Scheduled. {confirm_text}", source="SAMSARA")
 
         execution_policy.stage_pending(
             app, inv, confirm_text, on_approve=_approve,
             extra={"interval_seconds": task["interval_seconds"],
                    "scheduled_command": task["command"], "key": task["key"]},
             record_type="schedule")
-        speak(app, confirm_text + " -- say yes to confirm, or say ava cancel.")
+        speak_as(app, confirm_text + " -- say yes to confirm, or say ava cancel.", source="SAMSARA")
         return TurnOutcome("schedule", "queued", name=str(what))
 
-    speak(app, response)
+    speak_as(app, response, source="AVA")
     return TurnOutcome("conversation", "spoken")
 
 
@@ -2212,7 +2212,7 @@ def _execute_action2(app, verb, argument, *, route=Route.GRAMMAR, generation=Non
     verb_funcs = {"focus": do_focus, "open": do_open, "close": do_close}
     action_fn = verb_funcs.get(verb)
     if action_fn is None:
-        speak(app, f"I don't know how to {verb} things.")
+        speak_as(app, f"I don't know how to {verb} things.", source="SAMSARA")
         return ActionResult.NOT_FOUND
 
     if generation is None:
@@ -2223,14 +2223,14 @@ def _execute_action2(app, verb, argument, *, route=Route.GRAMMAR, generation=Non
     decision = execution_policy.authorize(inv, app=app, confirmed=confirmed)
     if isinstance(decision, execution_policy.Denied):
         if decision.reason != "stale":
-            speak(app, f"I can't {verb} that.")
+            speak_as(app, f"I can't {verb} that.", source="SAMSARA")
         return ActionResult.NOT_FOUND
     if isinstance(decision, execution_policy.NeedsConfirmation):
         def _approve(op):
             res = _execute_action2(app, verb, argument, route=route, generation=generation,
                                    prompt=prompt, confirmed=True, source_text=source_text)
             if res is ActionResult.DONE:
-                speak(app, "Done.")
+                speak_as(app, "Done.", source="SAMSARA")
         execution_policy.stage_pending(app, inv, decision.prompt, on_approve=_approve,
                                        extra={"verb": verb, "argument": argument, "route": route},
                                        record_type="action2")
@@ -2238,13 +2238,13 @@ def _execute_action2(app, verb, argument, *, route=Route.GRAMMAR, generation=Non
         if speak_fn is not None:
             speak_fn(ask_text)      # the waterfall's generation-bound voice
         else:
-            speak(app, ask_text)
+            speak_as(app, ask_text, source="SAMSARA")
         return ActionResult.NOT_FOUND
     result = action_fn(argument)
     if result is ActionResult.NOT_RUNNING:
-        speak(app, f"{argument} is not running.")
+        speak_as(app, f"{argument} is not running.", source="SAMSARA")
     elif result is not ActionResult.DONE:
-        speak(app, f"Couldn't find {argument}.")
+        speak_as(app, f"Couldn't find {argument}.", source="SAMSARA")
     return result
 
 
@@ -2541,7 +2541,7 @@ def _teach_history(app, text, outcome):
 
 def _teach_notice(app, text):
     ava_pending._feedback(app, text)
-    speak(app, text)
+    speak_as(app, text, source="SAMSARA")
 
 
 def _finish_teaching(app, pending):
@@ -2671,10 +2671,10 @@ def _persist_correction(app, vt, wrong: str, right: str) -> None:
         from samsara.ui.dictionary_panel_qt import refresh_dictionary
         refresh_dictionary(app)
         added = f'{right} is already in your dictionary.' if duplicate else f'Added {right}.'
-        speak(app, f"{added} '{wrong}' will now come out as '{right}'.")
+        speak_as(app, f"{added} '{wrong}' will now come out as '{right}'.", source="SAMSARA")
     else:
         _teach_turn.outcome = 'failed to save'
-        speak(app, "Could not save that correction.")
+        speak_as(app, "Could not save that correction.", source="SAMSARA")
 
 
 def _grab_source_text(source_kind: str) -> "str | None":
@@ -2794,7 +2794,7 @@ def _check_teach_pending_gate(app, text: str) -> bool:
             ok, reason = teach_patterns.validate_correction_pair(pending['wrong'], spelled)
             if not ok:
                 _clear_teach_pending()
-                speak(app, f"I can't save that correction — {reason}.")
+                speak_as(app, f"I can't save that correction — {reason}.", source="SAMSARA")
                 return True
             _open_correction_confirmation(app, pending['wrong'], spelled)
         return True
@@ -2802,7 +2802,7 @@ def _check_teach_pending_gate(app, text: str) -> bool:
     # ptype in ('vocab_confirm', 'correction_confirm')
     if teach_patterns.parse_reject(text):
         _clear_teach_pending()
-        speak(app, "Okay, not saved.")
+        speak_as(app, "Okay, not saved.", source="SAMSARA")
         return True
 
     respelled = teach_patterns.parse_letters(_strip_spelled_prefix(text))
@@ -2813,7 +2813,7 @@ def _check_teach_pending_gate(app, text: str) -> bool:
             ok, reason = teach_patterns.validate_correction_pair(pending['wrong'], respelled)
             if not ok:
                 _clear_teach_pending()
-                speak(app, f"I can't save that correction — {reason}.")
+                speak_as(app, f"I can't save that correction — {reason}.", source="SAMSARA")
                 return True
             _open_correction_confirmation(app, pending['wrong'], respelled)
         return True
@@ -2871,13 +2871,13 @@ def _check_teaching_intent_body(app, text):
         result, info = ava_profile.set_field(field, value)
         label = ava_profile.field_label(field)
         if result == 'set':
-            speak(app, f"I saved your {label.lower()} as {info}.")
+            speak_as(app, f"I saved your {label.lower()} as {info}.", source="SAMSARA")
         elif result == 'appended':
-            speak(app, f"I saved this {label.lower()}: {value}.")
+            speak_as(app, f"I saved this {label.lower()}: {value}.", source="SAMSARA")
         elif result == 'failed':
-            speak(app, f"I couldn't save that — {info}.")
+            speak_as(app, f"I couldn't save that — {info}.", source="SAMSARA")
         elif result == 'rejected':
-            speak(app, f"I couldn't save that — {info}.")
+            speak_as(app, f"I couldn't save that — {info}.", source="SAMSARA")
         return True
 
     # Profile forget
@@ -2887,21 +2887,21 @@ def _check_teaching_intent_body(app, text):
         result, info = ava_profile.clear_all()
         if result == 'cleared':
             labels = ', '.join(ava_profile.field_label(field).lower() for field in saved_fields)
-            speak(app, f"I removed your saved {labels}.")
+            speak_as(app, f"I removed your saved {labels}.", source="SAMSARA")
         elif result == 'failed':
-            speak(app, f"I couldn't remove those details — {info}.")
+            speak_as(app, f"I couldn't remove those details — {info}.", source="SAMSARA")
         else:
-            speak(app, "I don't have any saved details to remove.")
+            speak_as(app, "I don't have any saved details to remove.", source="SAMSARA")
         return True
     if forget_field:
         result, info = ava_profile.clear_field(forget_field)
         label = ava_profile.field_label(forget_field).lower()
         if result == 'cleared':
-            speak(app, f"I removed your {label}: {info}.")
+            speak_as(app, f"I removed your {label}: {info}.", source="SAMSARA")
         elif result == 'failed':
-            speak(app, f"I couldn't remove your {label} — {info}.")
+            speak_as(app, f"I couldn't remove your {label} — {info}.", source="SAMSARA")
         else:
-            speak(app, f"I don't have your {label} saved.")
+            speak_as(app, f"I don't have your {label} saved.", source="SAMSARA")
         return True
 
     # Profile query
@@ -2912,25 +2912,25 @@ def _check_teaching_intent_body(app, text):
         pace = preferences.get('pace', 'not set')
         repeat = preferences.get('repeat_back', 'not set')
         ask_first = preferences.get('ask_before_long_answers', 'not set')
-        speak(app, "I have your answer length as " + answer_length
+        speak_as(app, "I have your answer length as " + answer_length
               + ", speaking pace as " + pace
               + ", repeat instructions as " + repeat
-              + ", and ask before long answers as " + ask_first + ".")
+              + ", and ask before long answers as " + ask_first + ".", source="SAMSARA")
         return True
     if query_field == 'all':
         data = ava_profile.get_all()
         if not data:
-            speak(app, "I don't have any saved details about you yet.")
+            speak_as(app, "I don't have any saved details about you yet.", source="SAMSARA")
         else:
             summary = '; '.join(f"{ava_profile.field_label(k).lower()}: {v}" for k, v in data.items())
-            speak(app, f"I have saved {summary}. Say forget a detail to remove it.")
+            speak_as(app, f"I have saved {summary}. Say forget a detail to remove it.", source="SAMSARA")
         return True
     if query_field:
         value = ava_profile.get(query_field)
         if value:
-            speak(app, f"Your {query_field} is {value}.")
+            speak_as(app, f"Your {query_field} is {value}.", source="SAMSARA")
         else:
-            speak(app, f"I don't have your {query_field} saved.")
+            speak_as(app, f"I don't have your {query_field} saved.", source="SAMSARA")
         return True
 
     # Vocabulary/corrections voice-teaching (2026-07-11) -- siblings to the
@@ -2962,7 +2962,7 @@ def _check_teaching_intent_body(app, text):
     vocab_parsed = teach_patterns.parse_vocab_add(text)
     if vocab_parsed is not None:
         if vt is None:
-            speak(app, "Dictionary is not available.")
+            speak_as(app, "Dictionary is not available.", source="SAMSARA")
             return True
 
         if vocab_parsed['kind'] == 'missing':
@@ -2972,7 +2972,7 @@ def _check_teaching_intent_body(app, text):
         if vocab_parsed['kind'] == 'source':
             source_word = _grab_source_text(vocab_parsed['source'])
             if source_word is None:
-                speak(app, _source_refusal_text(vocab_parsed['source']))
+                speak_as(app, _source_refusal_text(vocab_parsed['source']), source="SAMSARA")
                 return True
             # Text sources are exact (not ASR output) -- skip the letter
             # readback entirely, matches the dictionary-word fast path.
@@ -2986,7 +2986,7 @@ def _check_teaching_intent_body(app, text):
             spelled_word = teach_patterns.parse_letters(letters_text)
             if spelled_word is None:
                 _teach_turn.outcome = 'failed to parse'
-                speak(app, "I didn't catch that spelling. Please spell it again.")
+                speak_as(app, "I didn't catch that spelling. Please spell it again.", source="SAMSARA")
                 return True
             _open_vocab_confirmation(app, spelled_word)
             return True
@@ -3013,24 +3013,24 @@ def _check_teaching_intent_body(app, text):
     correction_parsed = teach_patterns.parse_correction_add(text)
     if correction_parsed is not None:
         if vt is None:
-            speak(app, "Dictionary is not available.")
+            speak_as(app, "Dictionary is not available.", source="SAMSARA")
             return True
 
         recent_segments = teach_patterns.get_recent_dictated_segments(app)
         wrong = teach_patterns.resolve_correction_target(
             correction_parsed['lhs_kind'], correction_parsed.get('lhs_raw'), recent_segments)
         if wrong is None:
-            speak(app, "I can only correct something I recently wrote — dictate it first.")
+            speak_as(app, "I can only correct something I recently wrote — dictate it first.", source="SAMSARA")
             return True
 
         if correction_parsed['rhs_kind'] == 'source':
             right = _grab_source_text(correction_parsed['rhs_source'])
             if right is None:
-                speak(app, _source_refusal_text(correction_parsed['rhs_source']))
+                speak_as(app, _source_refusal_text(correction_parsed['rhs_source']), source="SAMSARA")
                 return True
             ok, reason = teach_patterns.validate_correction_pair(wrong, right)
             if not ok:
-                speak(app, f"I can't save that correction — {reason}.")
+                speak_as(app, f"I can't save that correction — {reason}.", source="SAMSARA")
                 return True
             _persist_correction(app, vt, wrong, right)
             return True
@@ -3042,18 +3042,18 @@ def _check_teaching_intent_body(app, text):
             spelled_right = teach_patterns.parse_letters(letters_text)
             if spelled_right is None:
                 _teach_turn.outcome = 'failed to parse'
-                speak(app, "I didn't catch that spelling. Please spell it again.")
+                speak_as(app, "I didn't catch that spelling. Please spell it again.", source="SAMSARA")
                 return True
             ok, reason = teach_patterns.validate_correction_pair(wrong, spelled_right)
             if not ok:
-                speak(app, f"I can't save that correction — {reason}.")
+                speak_as(app, f"I can't save that correction — {reason}.", source="SAMSARA")
                 return True
             _open_correction_confirmation(app, wrong, spelled_right)
             return True
 
         ok, reason = teach_patterns.validate_correction_pair(wrong, raw_right)
         if not ok:
-            speak(app, f"I can't save that correction — {reason}.")
+            speak_as(app, f"I can't save that correction — {reason}.", source="SAMSARA")
             return True
 
         if teach_patterns.is_known_dictionary_word(raw_right):
@@ -3072,36 +3072,36 @@ def _check_teaching_intent_body(app, text):
     if teach_patterns.parse_undo(text):
         action = teach_patterns.pop_last_action()
         if action is None:
-            speak(app, "Nothing to undo.")
+            speak_as(app, "Nothing to undo.", source="SAMSARA")
             return True
         if vt is None:
-            speak(app, "Dictionary is not available.")
+            speak_as(app, "Dictionary is not available.", source="SAMSARA")
             return True
         if action['kind'] == 'vocab':
             vt.remove_vocab_word(action['word'])
-            speak(app, f"Undone. Removed {action['word']} from your vocabulary.")
+            speak_as(app, f"Undone. Removed {action['word']} from your vocabulary.", source="SAMSARA")
         else:
             vt.remove_correction(action['wrong'])
-            speak(app, f"Undone. '{action['wrong']}' will no longer be "
-                       f"changed to '{action['right']}'.")
+            speak_as(app, f"Undone. '{action['wrong']}' will no longer be "
+                       f"changed to '{action['right']}'.", source="SAMSARA")
         return True
 
     forget_target = teach_patterns.parse_forget(text)
     if forget_target is not None:
         kind, phrase = forget_target
         if vt is None:
-            speak(app, "Dictionary is not available.")
+            speak_as(app, "Dictionary is not available.", source="SAMSARA")
             return True
         if kind == 'word':
             if vt.remove_vocab_word(phrase):
-                speak(app, f"Forgotten. {phrase} removed from your vocabulary.")
+                speak_as(app, f"Forgotten. {phrase} removed from your vocabulary.", source="SAMSARA")
             else:
-                speak(app, f"I don't have {phrase} in your vocabulary.")
+                speak_as(app, f"I don't have {phrase} in your vocabulary.", source="SAMSARA")
         else:
             if vt.remove_correction(phrase):
-                speak(app, f"Forgotten. '{phrase}' no longer has a saved correction.")
+                speak_as(app, f"Forgotten. '{phrase}' no longer has a saved correction.", source="SAMSARA")
             else:
-                speak(app, f"I don't have a correction saved for '{phrase}'.")
+                speak_as(app, f"I don't have a correction saved for '{phrase}'.", source="SAMSARA")
         return True
 
     parsed = ava_corrections.parse_teaching(text)
@@ -3117,16 +3117,16 @@ def _check_teaching_intent_body(app, text):
                     "new_expansion": expansion,
                     "expires": time.time() + 30,
                 }
-            speak(app, f'I already know {phrase} means {existing["expansion"]}. '
-                       f'Replace with {expansion}? Say yes to confirm.')
+            speak_as(app, f'I already know {phrase} means {existing["expansion"]}. '
+                       f'Replace with {expansion}? Say yes to confirm.', source="SAMSARA")
         else:
             result, info = ava_corrections.add(phrase, expansion)
             if result == 'added':
-                speak(app, f'I saved "{phrase}" to mean "{expansion}".')
+                speak_as(app, f'I saved "{phrase}" to mean "{expansion}".', source="SAMSARA")
             elif result == 'failed':
-                speak(app, f"I couldn't save that alias — {info}.")
+                speak_as(app, f"I couldn't save that alias — {info}.", source="SAMSARA")
             else:
-                speak(app, f"I couldn't save that alias — {info or 'it was rejected'}.")
+                speak_as(app, f"I couldn't save that alias — {info or 'it was rejected'}.", source="SAMSARA")
         return True
 
     # Alias forget/query are generic patterns ("forget (.+)", "what is (.+)"):
@@ -3138,28 +3138,28 @@ def _check_teaching_intent_body(app, text):
     if forget_phrase and ava_corrections.get(forget_phrase):
         result, info = ava_corrections.remove(forget_phrase)
         if result == 'removed':
-            speak(app, f'Forgotten. {forget_phrase} no longer has a saved meaning.')
+            speak_as(app, f'Forgotten. {forget_phrase} no longer has a saved meaning.', source="SAMSARA")
         elif result == 'failed':
-            speak(app, f"I couldn't forget {forget_phrase} — {info}.")
+            speak_as(app, f"I couldn't forget {forget_phrase} — {info}.", source="SAMSARA")
         else:
-            speak(app, f"I don't have {forget_phrase} saved anymore.")
+            speak_as(app, f"I don't have {forget_phrase} saved anymore.", source="SAMSARA")
         return True
 
     query_phrase = ava_corrections.parse_query(text)
     if query_phrase:
         entry = ava_corrections.get(query_phrase)
         if entry:
-            speak(app, f'{query_phrase} means {entry["expansion"]}.')
+            speak_as(app, f'{query_phrase} means {entry["expansion"]}.', source="SAMSARA")
             return True
 
     if ava_corrections.is_list_request(text):
         top = ava_corrections.list_top(5)
         total = ava_corrections.total_count()
         if not top:
-            speak(app, "You haven't taught me anything yet.")
+            speak_as(app, "You haven't taught me anything yet.", source="SAMSARA")
         else:
             phrases = ', '.join(p for p, _, _ in top)
-            speak(app, f'Your top aliases are: {phrases}. {total} total.')
+            speak_as(app, f'Your top aliases are: {phrases}. {total} total.', source="SAMSARA")
         return True
 
     return False
@@ -3207,7 +3207,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
 
     if remainder and (_handle_persona_intent(app, remainder) or
                       _handle_working_context_intent(app, remainder) or
-                      ava_local_context.handle_clock_intent(app, remainder, speak)):
+                      ava_local_context.handle_clock_intent(app, remainder, lambda app, text: speak_as(app, text, "SAMSARA"))):
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
         _log_turn(app, remainder, outcome="local_fast_path")
         _done()
@@ -3222,13 +3222,13 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
         if state.status == "off-by-choice":
             _speak_ai_off_once(app)
         else:
-            speak(app, "Ava needs setup in Settings before I can answer.")
+            speak_as(app, "Ava needs setup in Settings before I can answer.", source="SAMSARA")
         _set_turn_outcome(app, (f"{_CHIP_CROSS} Ava is off", "error"))
         _log_turn(app, remainder, outcome="disabled")
         _done()
         return
     if not remainder:
-        speak(app, "Yes? How can I help?")
+        speak_as(app, "Yes? How can I help?", source="SAMSARA")
         _set_turn_outcome(app, (f"Ava {_CHIP_CHECK}", "success"))
         _log_turn(app, remainder, outcome="prompted")
         _done()
@@ -3299,7 +3299,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
                     return
                 if response == MODEL_UNAVAILABLE:
                     outcome = "failed"
-                    speak(app, unavailable_sentence(app))
+                    speak_as(app, unavailable_sentence(app), source="SAMSARA")
                     snap = ava_readiness.readiness_for(app)
                     # STAND-IN COPY (566)
                     _set_turn_outcome(app, (f"{_CHIP_CROSS} {snap.badge_label().replace('Ava:', 'Ava')}: {snap.short_reason()}", "error" if snap.offline else "warning"))
@@ -3322,7 +3322,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
                 _set_turn_outcome(app, _outcome_chip(app, turn) or _answered_chip())
             except Exception as e:
                 print(f"[OLLAMA] Error in worker: {e}")
-                speak(app, "Sorry, something went wrong.")
+                speak_as(app, "Sorry, something went wrong.", source="SAMSARA")
                 _set_turn_outcome(app, (f"{_CHIP_CROSS} Ava error", "error"))
         finally:
             _turn_local.allow_search = False
@@ -3349,7 +3349,7 @@ def handle_is_it_safe(app, remainder="", **kwargs):
     if state.provider.identity == "ollama":
         host = get_host(app)
         if not _check_ollama_available(host):
-            speak(app, "Ollama is not reachable.")
+            speak_as(app, "Ollama is not reachable.", source="SAMSARA")
             return
     prompt = f"Is this action safe? {remainder}" if remainder else "Is this action safe?"
 
@@ -3365,7 +3365,7 @@ def handle_is_it_safe(app, remainder="", **kwargs):
             _answer_advice_text_only(app, response)
         except Exception as e:
             print(f"[OLLAMA] Error in worker: {e}")
-            speak(app, "Sorry, something went wrong.")
+            speak_as(app, "Sorry, something went wrong.", source="SAMSARA")
 
     ava_turn_queue.submit(app, _worker, generation)
 
@@ -3378,12 +3378,12 @@ def _answer_advice_text_only(app, response) -> None:
     the separate, explicitly action-capable Ava request path.
     """
     if response == MODEL_UNAVAILABLE:
-        speak(app, unavailable_sentence(app))
+        speak_as(app, unavailable_sentence(app), source="SAMSARA")
         return
     if not isinstance(response, str):
-        speak(app, "Ollama returned an invalid response.")
+        speak_as(app, "Ollama returned an invalid response.", source="SAMSARA")
         return
-    speak(app, response)
+    speak_as(app, response, source="AVA")
 
 
 @command(
@@ -3406,7 +3406,7 @@ def handle_ava_confirm(app, remainder="", **kwargs):
             action = None
 
     if action is None:
-        speak(app, "Nothing pending — confirmation window may have expired.")
+        speak_as(app, "Nothing pending — confirmation window may have expired.", source="SAMSARA")
         return
 
     # A confirmation is itself a request: if the session moved on since it
@@ -3414,7 +3414,7 @@ def handle_ava_confirm(app, remainder="", **kwargs):
     if not execution_policy.is_current(app, action.get("generation")):
         with _pending_action_lock:
             _pending_action = None
-        speak(app, "That request expired.")
+        speak_as(app, "That request expired.", source="SAMSARA")
         return
 
     if action.get("op") is not None:
@@ -3437,9 +3437,9 @@ def handle_ava_confirm(app, remainder="", **kwargs):
                 confirmed=True, source_text=action.get("original_text", ""))
             if ran:
                 _track_alias_uses(action.get("original_text", ""))
-                speak(app, "Done.")
+                speak_as(app, "Done.", source="SAMSARA")
         except Exception as e:
-            speak(app, f"Command failed: {e}")
+            speak_as(app, f"Command failed: {e}", source="SAMSARA")
 
     elif action["type"] == "action2":
         with _pending_action_lock:
@@ -3451,9 +3451,9 @@ def handle_ava_confirm(app, remainder="", **kwargs):
                                       generation=action.get("generation"), confirmed=True)
             if result is ActionResult.DONE:
                 _track_alias_uses(action.get("original_text", ""))
-                speak(app, "Done.")
+                speak_as(app, "Done.", source="SAMSARA")
         except Exception as e:
-            speak(app, f"Command failed: {e}")
+            speak_as(app, f"Command failed: {e}", source="SAMSARA")
 
     elif action["type"] == "alias_replace":
         with _pending_action_lock:
@@ -3462,18 +3462,18 @@ def handle_ava_confirm(app, remainder="", **kwargs):
         new_expansion = action["new_expansion"]
         result, info = ava_corrections.add(phrase, new_expansion)
         if result in ("added", "replaced"):
-            speak(app, f'I saved "{phrase}" to mean "{new_expansion}".')
+            speak_as(app, f'I saved "{phrase}" to mean "{new_expansion}".', source="SAMSARA")
         elif result == 'failed':
-            speak(app, f"I couldn't save that alias — {info}.")
+            speak_as(app, f"I couldn't save that alias — {info}.", source="SAMSARA")
         else:
-            speak(app, f"I couldn't save that alias — {info or 'it was rejected'}.")
+            speak_as(app, f"I couldn't save that alias — {info or 'it was rejected'}.", source="SAMSARA")
 
     elif action["type"] == "vocab_confirm":
         with _pending_action_lock:
             _pending_action = None
         vt = get_dictionary_store(app)
         if vt is None:
-            speak(app, "Dictionary is not available.")
+            speak_as(app, "Dictionary is not available.", source="SAMSARA")
         else:
             _persist_vocab_word(app, vt, action["word"])
 
@@ -3482,7 +3482,7 @@ def handle_ava_confirm(app, remainder="", **kwargs):
             _pending_action = None
         vt = get_dictionary_store(app)
         if vt is None:
-            speak(app, "Dictionary is not available.")
+            speak_as(app, "Dictionary is not available.", source="SAMSARA")
         else:
             _persist_correction(app, vt, action["wrong"], action["right"])
 
@@ -3491,7 +3491,7 @@ def handle_ava_confirm(app, remainder="", **kwargs):
         # spelling -- pending state deliberately left open (same TTL
         # still counting down) so the user can just answer the actual
         # question instead of restarting the whole teaching command.
-        speak(app, "I'm still waiting for you to spell that.")
+        speak_as(app, "I'm still waiting for you to spell that.", source="SAMSARA")
 
 
 @command(
@@ -3508,9 +3508,9 @@ def handle_ava_cancel(app, remainder="", **kwargs):
     """
     cleared = execution_policy.stop_all(app, "ava cancel", chip=False)
     if cleared["pending"] or cleared["schedule"] or cleared["queued"] or cleared["in_flight"]:
-        speak(app, "Cancelled.")
+        speak_as(app, "Cancelled.", source="SAMSARA")
     else:
-        speak(app, "Nothing to cancel.")
+        speak_as(app, "Nothing to cancel.", source="SAMSARA")
 
 
 @command(
@@ -3527,9 +3527,9 @@ def handle_stop_schedule(app, remainder="", **kwargs):
     # invisible to this check and could not be stopped by voice at all.
     stopped = _stop_schedule()
     if not stopped:
-        speak(app, "No schedule is running.")
+        speak_as(app, "No schedule is running.", source="SAMSARA")
         return
-    speak(app, "Schedule stopped." if stopped == 1 else f"Stopped {stopped} schedules.")
+    speak_as(app, "Schedule stopped." if stopped == 1 else f"Stopped {stopped} schedules.", source="SAMSARA")
 
 
 @command(
@@ -3543,7 +3543,7 @@ def handle_ava_forget(app, remainder="", **kwargs):
     """Clears what Ava remembers of this conversation."""
     if hasattr(app, "_ava_memory"):
         app._ava_memory.clear()
-    speak(app, "Conversation cleared.")
+    speak_as(app, "Conversation cleared.", source="SAMSARA")
 
 
 @command(
@@ -3558,7 +3558,7 @@ def toggle_cloud(app, remainder="", **kwargs):
     global _cloud_notice_shown
     cfg = app.config.get("cloud_llm", {})
     if not cfg.get("api_key"):
-        speak(app, "No API key configured. Add one in Settings under Ava Cloud.")
+        speak_as(app, "No API key configured. Add one in Settings under Ava Cloud.", source="SAMSARA")
         return
     currently_enabled = cfg.get("enabled", False)
     cfg["enabled"] = not currently_enabled
@@ -3566,11 +3566,11 @@ def toggle_cloud(app, remainder="", **kwargs):
     provider = cfg.get("provider", "deepseek")
     if cfg["enabled"] and not _cloud_notice_shown:
         _cloud_notice_shown = True
-        speak(app, f"Cloud mode enabled. Your voice requests will be sent to {provider}. "
-                   f"Use ava local to switch back to offline mode.")
+        speak_as(app, f"Cloud mode enabled. Your voice requests will be sent to {provider}. "
+                   f"Use ava local to switch back to offline mode.", source="SAMSARA")
     else:
         status = "enabled" if cfg["enabled"] else "disabled"
-        speak(app, f"Cloud mode {status}. Using {provider}.")
+        speak_as(app, f"Cloud mode {status}. Using {provider}.", source="SAMSARA")
 
 
 @command(
@@ -3585,7 +3585,7 @@ def switch_local(app, remainder="", **kwargs):
     cfg = app.config.get("cloud_llm", {})
     cfg["enabled"] = False
     app.config["cloud_llm"] = cfg
-    speak(app, "Cloud mode disabled. Using local Ollama.")
+    speak_as(app, "Cloud mode disabled. Using local Ollama.", source="SAMSARA")
 
 
 # ── Background health monitor ─────────────────────────────────────────────────

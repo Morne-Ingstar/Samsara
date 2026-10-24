@@ -220,7 +220,8 @@ def _speak(app, text: str, token, on_done=None):
     coordinator = getattr(app, "audio_coordinator", None)
     if coordinator is not None:
         state["handle"] = coordinator.speak(text, category="conversation",
-                                             interruptible=True, on_done=done)
+                                             interruptible=True, on_done=done,
+                                             caption_source=state.get("source", "claude").upper())
         logger.info("[CLAUDE-VOICE] speak chars=%s", len(text))
         if str(getattr(state["handle"], "utterance_id", "")).startswith("noop-"):
             done()
@@ -253,7 +254,8 @@ def followup(app, action: str) -> bool:
                 if not response:
                     coordinator.cancel_speech()
                 else:
-                    coordinator.speak(response, category="ava_response", interruptible=True)
+                    coordinator.speak(response, category="ava_response", interruptible=True,
+                                      caption_source="SAMSARA")
             return True
         return False
     state = _state(app)
@@ -379,7 +381,8 @@ def _select_drill_text(app, state, action):
 def _deliver(app, text, state, *, cli=False):
     if cli:
         state["last"] = text
-        app.audio_coordinator.speak(text, category="ava_response", interruptible=True)
+        app.audio_coordinator.speak(text, category="ava_response", interruptible=True,
+                                    caption_source=state.get("source", state.get("agent", "SAMSARA")).upper())
     else:
         _speak(app, text, state["token"], on_done=state.get("resume"))
 
@@ -396,7 +399,8 @@ def _speak_chunks(app, text, state, *, cli=False):
                 break
             if cli:
                 state["last"] = chunk
-                app.audio_coordinator.speak(chunk, category="ava_response", interruptible=True)
+                app.audio_coordinator.speak(chunk, category="ava_response", interruptible=True,
+                                            caption_source=state.get("source", state.get("agent", "SAMSARA")).upper())
             else:
                 _speak(app, chunk, state["token"])
         return
@@ -406,7 +410,8 @@ def _speak_chunks(app, text, state, *, cli=False):
         if cli:
             state["last"] = chunks[index]
             app.audio_coordinator.speak(chunks[index], category="ava_response", interruptible=True,
-                                        on_done=lambda: next_chunk(index + 1))
+                                        on_done=lambda: next_chunk(index + 1),
+                                        caption_source=state.get("source", state.get("agent", "SAMSARA")).upper())
         else:
             _speak(app, chunks[index], state["token"],
                    on_done=lambda: next_chunk(index + 1) if index + 1 < len(chunks) else state.get("resume", lambda: None)())

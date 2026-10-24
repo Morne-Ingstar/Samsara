@@ -51,7 +51,7 @@ class _Panel:
         self.released = 0
         self.hidden = 0
 
-    def show_caption(self, app, text, *, hold=True):
+    def show_caption(self, app, text, *, source, hold=True):
         self.shown.append((text, hold))
 
     def release_caption(self, app):
@@ -378,7 +378,7 @@ class TestThePanel:
     def test_showing_a_caption_builds_the_panel_and_paints_the_text(
             self, qapp, window):
         app = _app_with(ava_captions=True)
-        captions.show_caption(app, REPLY)
+        captions.show_caption(app, REPLY, source="AVA")  # 834r: identify the caption source explicitly.
         qapp.processEvents()
         panel = captions.active_window()
         assert panel is not None
@@ -388,7 +388,7 @@ class TestThePanel:
     def test_the_caption_text_clears_the_body_type_floor(self, qapp, window):
         from samsara.ui import theme
 
-        captions.show_caption(_app_with(ava_captions=True), REPLY)
+        captions.show_caption(_app_with(ava_captions=True), REPLY, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         assert f"{theme.TYPE_TITLE}px" in panel._text.styleSheet()
@@ -399,7 +399,7 @@ class TestThePanel:
             self, qapp, window):
         from PySide6.QtCore import Qt
 
-        captions.show_caption(_app_with(ava_captions=True), REPLY)
+        captions.show_caption(_app_with(ava_captions=True), REPLY, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         flags = panel.windowFlags()
@@ -411,11 +411,11 @@ class TestThePanel:
     def test_it_auto_sizes_to_the_reply_and_wraps_instead_of_widening(
             self, qapp, window):
         app = _app_with(ava_captions=True)
-        captions.show_caption(app, "Yes.")
+        captions.show_caption(app, "Yes.", source="AVA")
         qapp.processEvents()
         short_height = captions.active_window().height()
 
-        captions.show_caption(app, REPLY * 3)
+        captions.show_caption(app, REPLY * 3, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         assert panel.height() > short_height, "it did not grow for a long reply"
@@ -425,7 +425,7 @@ class TestThePanel:
         from PySide6.QtCore import QPointF, Qt
         from PySide6.QtGui import QMouseEvent
 
-        captions.show_caption(_app_with(ava_captions=True), REPLY)
+        captions.show_caption(_app_with(ava_captions=True), REPLY, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         spot = QPointF(panel.rect().center())
@@ -450,7 +450,7 @@ class TestThePanel:
         app = types.SimpleNamespace(
             config={'accessibility': {'ava_captions': True}},
             update_config_and_save=lambda updates: saved.update(updates))
-        captions.show_caption(app, REPLY)
+        captions.show_caption(app, REPLY, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         start = QPointF(panel.rect().center())
@@ -478,7 +478,7 @@ class TestThePanel:
         qapp.processEvents()
         assert captions.active_window() is None
 
-        captions.show_caption(app, REPLY)
+        captions.show_caption(app, REPLY, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         captions.release_caption(app)
@@ -487,13 +487,13 @@ class TestThePanel:
         assert panel._timer.remainingTime() <= 6000
 
     def test_an_empty_reply_shows_nothing(self, qapp, window):
-        captions.show_caption(_app_with(ava_captions=True), "   ")
+        captions.show_caption(_app_with(ava_captions=True), "   ", source="AVA")
         qapp.processEvents()
         assert captions.active_window() is None
 
     def test_hide_takes_the_panel_down_and_stops_the_timer(self, qapp, window):
         app = _app_with(ava_captions=True)
-        captions.show_caption(app, REPLY)
+        captions.show_caption(app, REPLY, source="AVA")
         qapp.processEvents()
         panel = captions.active_window()
         captions.hide_captions()
@@ -508,7 +508,7 @@ class TestThePanel:
 
         try:
             theme.set_theme("dark", refresh=False)
-            captions.show_caption(_app_with(ava_captions=True), REPLY)
+            captions.show_caption(_app_with(ava_captions=True), REPLY, source="AVA")
             qapp.processEvents()
             panel = captions.active_window()
             dark_sheet = panel._card.styleSheet()
