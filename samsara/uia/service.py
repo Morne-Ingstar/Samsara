@@ -114,6 +114,74 @@ def _click_rect(rect, verb):
             ctypes.windll.user32.SetThreadDpiAwarenessContext(previous)
 
 
+def _overlay_actionable(control, control_type):
+    if control_type in b._CLICKABLE_TYPES:
+        return True
+    # Providers inherit Invoke on noninteractive text/containers. Those are
+    # eligible only when they also expose their own keyboard focus stop.
+    structural = {'TextControl', 'PaneControl', 'GroupControl', 'StatusBarControl',
+                  'ToolBarControl', 'WindowControl', 'DocumentControl', 'TabControl'}
+    raw = getattr(control, 'element', getattr(control, '_el', None))
+    if control_type in structural:
+        try:
+            focusable = raw.CurrentIsKeyboardFocusable if raw is not None else control.IsKeyboardFocusable
+            if not focusable:
+                return False
+        except Exception:
+            return False
+    for getter, pattern_id in (('GetInvokePattern', 10000), ('GetTogglePattern', 10015),
+                               ('GetSelectionItemPattern', 10010), ('GetExpandCollapsePattern', 10005)):
+        try:
+            pattern = raw.GetCurrentPattern(pattern_id) if raw is not None else getattr(control, getter, lambda: None)()
+            if pattern is not None and bool(pattern):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def overlay_target_nodes(nodes, actionable=None):
+    """Pure overlay-only filter; search/actions keep the original snapshot.
+
+    Preorder depths reconstruct ancestry without exporting native controls.
+    Ignore empty structural rects (some providers use these for virtual
+    containers), but enforce every real ancestor's visible clip. Suppress a
+    duplicate ancestor when a descendant covers its actionable region. A
+    tab and its small close button remain separate, independently usable
+    targets; their labels are separated by the bounded layout pass.
+    """
+    candidates, ancestors, lineage = [], [], {}
+    for node in nodes:
+        while ancestors and ancestors[-1].depth >= node.depth:
+            ancestors.pop()
+        lineage[node.index] = tuple(a.index for a in ancestors)
+        l, t, r, bot = node.rect
+        valid = (node.enabled and not node.offscreen and
+                 8 <= r-l <= 1500 and 8 <= bot-t <= 1000)
+        for parent in ancestors:
+            pl, pt, pr, pb = parent.rect
+            if (parent.offscreen or not parent.enabled or
+                    (pr > pl and pb > pt and not (pl <= l and pt <= t and r <= pr and bot <= pb))):
+                valid = False
+                break
+        if valid and (actionable(node) if actionable else node.control_type in b._CLICKABLE_TYPES):
+            candidates.append(node)
+        ancestors.append(node)
+    suppressed = set()
+    by_index = {node.index: node for node in candidates}
+    for node in candidates:
+        for index in lineage[node.index]:
+            parent = by_index.get(index)
+            if parent is None:
+                continue
+            l, t, r, bot = parent.rect
+            nl, nt, nr, nb = node.rect
+            covered = max(0, min(r, nr)-max(l, nl)) * max(0, min(bot, nb)-max(t, nt))
+            if covered >= (r-l)*(bot-t)*0.8:
+                suppressed.add(index)
+    return [node for node in candidates if node.index not in suppressed]
+
+
 class UIAService:
     def __init__(self, backend_factory=b.WindowsBackend, *, ttl=0.75, max_windows=8,
                  timeout=5.0, clock=time.monotonic, click=_click_rect):
@@ -430,14 +498,11 @@ class UIAService:
                 snap = self._snapshot(bool(target_hwnd), target_hwnd)
                 nodes, stats = snap.nodes, dict(snap.stats)
                 controls, source = None, stats['source']
-            bounds = nodes[0].rect if nodes else (0, 0, 0, 0)
+            provider_controls = controls if injected else self._cache[snap.hwnd][2]
+            selected = overlay_target_nodes(nodes, lambda node: _overlay_actionable(
+                provider_controls[node.index], node.control_type))
             candidates = []
-            for node in nodes:
-                l, t, r, bot = node.rect
-                if (node.control_type not in b._CLICKABLE_TYPES or not node.enabled or node.offscreen or
-                        not 8 <= r-l <= 1500 or not 8 <= bot-t <= 1000 or
-                        r <= bounds[0] or l >= bounds[2] or bot <= bounds[1] or t >= bounds[3]):
-                    continue
+            for node in selected:
                 control = controls[node.index] if injected else ControlProxy(self, node)
                 if isinstance(control, b._CachedNode):
                     control = control.control()

@@ -44,11 +44,9 @@
       "position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;";
     _shadowRoot = _shadowHost.attachShadow({ mode: "open" });
     var style = document.createElement("style");
-    style.textContent =
-      ".pill{position:fixed;font:600 11px/16px system-ui,sans-serif;" +
-      "background:#1a1a1f;color:#5EEAD4;border:1px solid rgba(94,234,212,0.6);" +
-      "border-radius:4px;padding:0 4px;min-width:14px;text-align:center;" +
-      "pointer-events:none;white-space:nowrap;}";
+    // Generated from numbers_badge.css; the native renderer reads that same source.
+    // Keep this embedding in sync (test_show_numbers_native_layout_811.py).
+    style.textContent = ".pill{position:fixed;font:600 11px/16px system-ui,sans-serif;background:#1a1a1f;color:#5EEAD4;border:1px solid rgba(94,234,212,0.6);border-radius:4px;padding:0 4px;min-width:14px;text-align:center;pointer-events:none;white-space:nowrap;}";
     _shadowRoot.appendChild(style);
     document.documentElement.appendChild(_shadowHost);
   }

@@ -1,0 +1,431 @@
+{
+  "app": "notepad",
+  "source": "reconstructed regression fixture; NOT a captured UIA snapshot",
+  "capture_unavailable": "Sandbox desktop EnumWindows returned false/no windows (2026-10-23).",
+  "window": [
+    0,
+    0,
+    1040,
+    360
+  ],
+  "expected_count": 14,
+  "nodes": [
+    {
+      "type": "WindowControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        360
+      ],
+      "depth": 0,
+      "name": "notepad"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        12,
+        28,
+        224,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 1"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        12,
+        28,
+        224,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 1"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        232,
+        28,
+        444,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 2"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        232,
+        28,
+        444,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 2"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        452,
+        28,
+        664,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 3"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        452,
+        28,
+        664,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 3"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        672,
+        28,
+        884,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 4"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        672,
+        28,
+        884,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 4"
+    },
+    {
+      "type": "MenuItemControl",
+      "rect": [
+        12,
+        68,
+        76,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper File"
+    },
+    {
+      "type": "MenuItemControl",
+      "rect": [
+        12,
+        68,
+        76,
+        96
+      ],
+      "depth": 2,
+      "name": "File"
+    },
+    {
+      "type": "MenuItemControl",
+      "rect": [
+        82,
+        68,
+        146,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Edit"
+    },
+    {
+      "type": "MenuItemControl",
+      "rect": [
+        82,
+        68,
+        146,
+        96
+      ],
+      "depth": 2,
+      "name": "Edit"
+    },
+    {
+      "type": "MenuItemControl",
+      "rect": [
+        152,
+        68,
+        216,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper View"
+    },
+    {
+      "type": "MenuItemControl",
+      "rect": [
+        152,
+        68,
+        216,
+        96
+      ],
+      "depth": 2,
+      "name": "View"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        300,
+        68,
+        332,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Bold"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        300,
+        68,
+        332,
+        96
+      ],
+      "depth": 2,
+      "name": "Bold"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        334,
+        68,
+        366,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Italic"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        334,
+        68,
+        366,
+        96
+      ],
+      "depth": 2,
+      "name": "Italic"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        368,
+        68,
+        400,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Underline"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        368,
+        68,
+        400,
+        96
+      ],
+      "depth": 2,
+      "name": "Underline"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        402,
+        68,
+        434,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Strike"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        402,
+        68,
+        434,
+        96
+      ],
+      "depth": 2,
+      "name": "Strike"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        436,
+        68,
+        468,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper List"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        436,
+        68,
+        468,
+        96
+      ],
+      "depth": 2,
+      "name": "List"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        470,
+        68,
+        502,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Link"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        470,
+        68,
+        502,
+        96
+      ],
+      "depth": 2,
+      "name": "Link"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        504,
+        68,
+        536,
+        96
+      ],
+      "depth": 1,
+      "name": "wrapper Clear"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        504,
+        68,
+        536,
+        96
+      ],
+      "depth": 2,
+      "name": "Clear"
+    },
+    {
+      "type": "TextControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 0",
+      "offscreen": true
+    },
+    {
+      "type": "PaneControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 1",
+      "offscreen": false
+    },
+    {
+      "type": "GroupControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 2",
+      "offscreen": false
+    },
+    {
+      "type": "StatusBarControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 3",
+      "offscreen": false
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "depth": 1,
+      "name": "non-target 4",
+      "offscreen": false
+    },
+    {
+      "type": "TextControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 5",
+      "offscreen": false
+    },
+    {
+      "type": "PaneControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 6",
+      "offscreen": false
+    },
+    {
+      "type": "GroupControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 7",
+      "offscreen": true
+    }
+  ],
+  "input_count": 36,
+  "expected_legacy_count": 28
+}

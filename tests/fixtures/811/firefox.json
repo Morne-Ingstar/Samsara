@@ -1,0 +1,791 @@
+{
+  "app": "firefox",
+  "source": "reconstructed regression fixture; NOT a captured UIA snapshot",
+  "capture_unavailable": "Sandbox desktop EnumWindows returned false/no windows (2026-10-23).",
+  "window": [
+    0,
+    0,
+    1040,
+    360
+  ],
+  "expected_count": 26,
+  "nodes": [
+    {
+      "type": "WindowControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        360
+      ],
+      "depth": 0,
+      "name": "firefox"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        12,
+        28,
+        174,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 1"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        12,
+        28,
+        174,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 1"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        182,
+        28,
+        344,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 2"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        182,
+        28,
+        344,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 2"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        352,
+        28,
+        514,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 3"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        352,
+        28,
+        514,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 3"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        522,
+        28,
+        684,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 4"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        522,
+        28,
+        684,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 4"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        692,
+        28,
+        854,
+        58
+      ],
+      "depth": 1,
+      "name": "wrapper Tab 5"
+    },
+    {
+      "type": "TabItemControl",
+      "rect": [
+        692,
+        28,
+        854,
+        58
+      ],
+      "depth": 2,
+      "name": "Tab 5"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        12,
+        68,
+        44,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Back"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        12,
+        68,
+        44,
+        98
+      ],
+      "depth": 2,
+      "name": "Back"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        46,
+        68,
+        78,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Forward"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        46,
+        68,
+        78,
+        98
+      ],
+      "depth": 2,
+      "name": "Forward"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        80,
+        68,
+        112,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Reload"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        80,
+        68,
+        112,
+        98
+      ],
+      "depth": 2,
+      "name": "Reload"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        114,
+        68,
+        146,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Home"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        114,
+        68,
+        146,
+        98
+      ],
+      "depth": 2,
+      "name": "Home"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        148,
+        68,
+        180,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Downloads"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        148,
+        68,
+        180,
+        98
+      ],
+      "depth": 2,
+      "name": "Downloads"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        182,
+        68,
+        214,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Library"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        182,
+        68,
+        214,
+        98
+      ],
+      "depth": 2,
+      "name": "Library"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        216,
+        68,
+        248,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper History"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        216,
+        68,
+        248,
+        98
+      ],
+      "depth": 2,
+      "name": "History"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        250,
+        68,
+        282,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Extensions"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        250,
+        68,
+        282,
+        98
+      ],
+      "depth": 2,
+      "name": "Extensions"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        284,
+        68,
+        316,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Menu"
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        284,
+        68,
+        316,
+        98
+      ],
+      "depth": 2,
+      "name": "Menu"
+    },
+    {
+      "type": "EditControl",
+      "rect": [
+        330,
+        68,
+        1008,
+        98
+      ],
+      "depth": 1,
+      "name": "wrapper Address"
+    },
+    {
+      "type": "EditControl",
+      "rect": [
+        330,
+        68,
+        1008,
+        98
+      ],
+      "depth": 2,
+      "name": "Address"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        12,
+        110,
+        98,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 1"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        12,
+        110,
+        98,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 1"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        103,
+        110,
+        189,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 2"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        103,
+        110,
+        189,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 2"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        194,
+        110,
+        280,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 3"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        194,
+        110,
+        280,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 3"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        285,
+        110,
+        371,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 4"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        285,
+        110,
+        371,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 4"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        376,
+        110,
+        462,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 5"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        376,
+        110,
+        462,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 5"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        467,
+        110,
+        553,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 6"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        467,
+        110,
+        553,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 6"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        558,
+        110,
+        644,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 7"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        558,
+        110,
+        644,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 7"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        649,
+        110,
+        735,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 8"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        649,
+        110,
+        735,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 8"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        740,
+        110,
+        826,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 9"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        740,
+        110,
+        826,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 9"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        831,
+        110,
+        917,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 10"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        831,
+        110,
+        917,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 10"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        922,
+        110,
+        1008,
+        136
+      ],
+      "depth": 1,
+      "name": "wrapper Bookmark 11"
+    },
+    {
+      "type": "HyperlinkControl",
+      "rect": [
+        922,
+        110,
+        1008,
+        136
+      ],
+      "depth": 2,
+      "name": "Bookmark 11"
+    },
+    {
+      "type": "TextControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 0",
+      "offscreen": true
+    },
+    {
+      "type": "PaneControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 1",
+      "offscreen": false
+    },
+    {
+      "type": "GroupControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 2",
+      "offscreen": false
+    },
+    {
+      "type": "StatusBarControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 3",
+      "offscreen": false
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "depth": 1,
+      "name": "non-target 4",
+      "offscreen": false
+    },
+    {
+      "type": "TextControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 5",
+      "offscreen": false
+    },
+    {
+      "type": "PaneControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 6",
+      "offscreen": false
+    },
+    {
+      "type": "GroupControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 7",
+      "offscreen": true
+    },
+    {
+      "type": "StatusBarControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 8",
+      "offscreen": false
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "depth": 1,
+      "name": "non-target 9",
+      "offscreen": false
+    },
+    {
+      "type": "TextControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 10",
+      "offscreen": false
+    },
+    {
+      "type": "PaneControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 11",
+      "offscreen": false
+    },
+    {
+      "type": "GroupControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 12",
+      "offscreen": false
+    },
+    {
+      "type": "StatusBarControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 13",
+      "offscreen": false
+    },
+    {
+      "type": "ButtonControl",
+      "rect": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "depth": 1,
+      "name": "non-target 14",
+      "offscreen": true
+    },
+    {
+      "type": "TextControl",
+      "rect": [
+        0,
+        0,
+        1040,
+        24
+      ],
+      "depth": 1,
+      "name": "non-target 15",
+      "offscreen": false
+    }
+  ],
+  "input_count": 68,
+  "expected_legacy_count": 52
+}

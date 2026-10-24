@@ -94,7 +94,8 @@ class TestPlanGeometry:
         assert plan["kept"][1]["rect"] == (800, 600, 860, 630)      # logical, not physical
         for sx, sy, pw, ph, _t in plan["labels"]:
             assert _inside(nov.pill_rect(sx, sy, pw, ph, plan["bounds"]), plan["bounds"])
-        assert plan["clamped"] >= 1
+        # 811: native badges now start inside their target, without an outside anchor.
+        assert plan["labels"][0][:2] == list(plan["kept"][0]["rect"][:2])
 
     def test_window_on_100_percent_secondary_keeps_native_origin(self):
         window = (4000, 100, 5500, 1000)

@@ -81,7 +81,7 @@ from samsara.ui import mouse_grid, qt_runtime
 from samsara.ui.numbers_overlay_qt import (
     NumbersOverlayWindow, PILL_ANCHOR_DX, PILL_ANCHOR_DY, _COORD_DEBUG, _map_physical_to_qt,
     _ensure_dpi_thread_context, _with_physical_dpi_context, current_monitor_mappings, pill_rect,
-    screen_for_hwnd,
+    screen_for_hwnd, layout_target_labels, map_physical_rect_to_qt,
 )
 
 logger = logging.getLogger(__name__)
@@ -507,12 +507,11 @@ def plan_overlay(elements: list, window_rect_phys, mappings: list) -> dict:
 
     Returns {screen_index, screen_rect, window_rect, bounds, kept, labels,
     dropped_other_screen, dropped_outside_window, clamped}."""
+    # Each target uses the monitor containing its centre for BOTH corners.
+    # Per-corner mapping can mix two scales at a shared monitor edge.
+    # Labels and their outlines subsequently stay in Qt logical pixels.
     def to_logical(r):
-        if not mappings:
-            return tuple(r)
-        x1, y1 = _map_physical_to_qt(r[0], r[1], mappings)
-        x2, y2 = _map_physical_to_qt(r[2], r[3], mappings)
-        return (x1, y1, x2, y2)
+        return map_physical_rect_to_qt(r, mappings)
 
     screen_index = 0
     if mappings and window_rect_phys:
@@ -561,12 +560,14 @@ def plan_overlay(elements: list, window_rect_phys, mappings: list) -> dict:
             continue
         kept.append(dict(e, rect=rect))
 
-    labels = _place_labels(kept)
-    clamped = 0
-    for sx, sy, pw, ph, _text in labels:
-        x, y, _w, _h = pill_rect(sx, sy, pw, ph, bounds)
-        if (x, y) != (sx - pw + PILL_ANCHOR_DX, sy - ph + PILL_ANCHOR_DY):
-            clamped += 1
+    # Target bounds survive DPI conversion, clipping and the render handoff.
+    # Grid/diagnostic anchors retain their separate legacy placement path.
+    for e in kept:
+        l, t, r, b = e['rect']
+        e['rect'] = (max(l, bounds[0]), max(t, bounds[1]), min(r, bounds[2]), min(b, bounds[3]))
+    labels = layout_target_labels(kept)
+    clamped = sum(label[0] != e['rect'][0] or label[1] != e['rect'][1]
+                  for label, e in zip(labels, kept))
     return {
         "screen_index": screen_index, "screen_rect": screen_rect, "window_rect": window_rect,
         "bounds": bounds, "kept": kept, "labels": labels,
@@ -1885,6 +1886,8 @@ def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = froz
             return True
         element = _elements[number - 1]
 
+    if _overlay_window is not None:
+        qt_runtime.post(lambda: _overlay_window and _overlay_window.highlight_number(number))
     if not _click_with_validation(element, modifier, keys_frozen):
         msg = f"Element {number} is no longer available."
         logger.info(f"[OVERLAY] {msg}")

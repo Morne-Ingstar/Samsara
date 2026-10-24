@@ -7,6 +7,8 @@ mouse clicks pass straight through to the app below. Does not steal focus.
 import ctypes
 import ctypes.wintypes as _wt
 import logging
+from pathlib import Path
+import re
 import sys
 
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QTimer
@@ -21,25 +23,81 @@ logger = get_logger(__name__)
 
 _logger = logging.getLogger(__name__)
 
-# The overlay floats over other applications, so its pills carry their own
-# near-opaque surface -- but it is the app's surface, from the app's tokens,
-# so a light theme does not leave a black pill on a white desktop.
-# Built per paint, never cached: a module-level QColor would freeze the
-# palette that was live at import (queue 129).
+# Queue 811: one canonical CSS definition, embedded verbatim by content.js so
+# an unpacked extension needs no new web-accessible resources or permissions.
+_BADGE_CSS = (Path(__file__).resolve().parents[2] /
+              'browser_extension/numbers_badge.css').read_text(encoding='utf-8').strip()
+BADGE_STYLE = dict(re.findall(r'([\w-]+):([^;{}]+)', _BADGE_CSS))
+
+
 def _pill_bg() -> QColor:
-    colour = theme.qcolor(theme.BG0)
-    colour.setAlpha(230)
-    return colour
+    return QColor(BADGE_STYLE['background'])
 
 
 def _pill_border() -> QColor:
-    colour = theme.qcolor(theme.mix(theme.BG0, theme.TEXT_PRIMARY, 0.30))
-    colour.setAlpha(200)
-    return colour
+    rgba = [float(v) for v in re.findall(r'[\d.]+', BADGE_STYLE['border'].split('rgba(')[1])]
+    return QColor(*map(int, rgba[:3]), round(255 * rgba[3]))
 
 
 def _text_colour() -> QColor:
-    return theme.qcolor(theme.TEXT_PRIMARY)
+    return QColor(BADGE_STYLE['color'])
+
+
+class TargetLabel(list):
+    """Five-field compatibility sequence with explicit target and placement metadata.
+
+    Unlike legacy grid/diagnostic labels, x/y are FINAL badge coordinates.
+    Keeping this distinction explicit prevents a second anchor/DPI transform.
+    """
+    def __init__(self, x, y, w, h, text, target, compact=False):
+        super().__init__([x, y, w, h, text])
+        self.target, self.compact, self.collision = target, compact, False
+
+
+def _overlap(a, b):
+    return a[0] < b[0]+b[2] and b[0] < a[0]+a[2] and a[1] < b[1]+b[3] and b[1] < a[1]+a[3]
+
+
+def layout_target_labels(elements):
+    """Nudge only within each target; compact before accepting a collision.
+
+    Very narrow targets centre their badge rather than moving it onto a
+    neighbour. An impossible arrangement retains ALL numbers and marks both
+    badges for target outlines; it never drops or renumbers a click target.
+    """
+    placed = []
+    for number, element in enumerate(elements, 1):
+        l, t, r, b = element['rect']
+        text, chosen = str(number), None
+        for compact in (False, True):
+            minimum = int(BADGE_STYLE['min-width'][:-2])
+            padding = int(BADGE_STYLE['padding'].split()[-1][:-2])
+            line_height = int(re.search(r'/(\d+)px', BADGE_STYLE['font'])[1])
+            w, h = (max(14, len(text)*6+2), 14) if compact else (minimum+2*padding+2, line_height+2)
+            x0 = l if r-l >= w else (l+r-w)/2
+            y0 = t if b-t >= h else (t+b-h)/2
+            xs = {x0, max(x0, r-w)} if r-l >= w else {x0}
+            ys = {y0, max(y0, b-h)} if b-t >= h else {y0}
+            for previous in placed:
+                if r-l >= w:
+                    xs.update(x for x in (previous[0]+previous[2], previous[0]-w) if l <= x <= r-w)
+                if b-t >= h:
+                    ys.update(y for y in (previous[1]+previous[3], previous[1]-h) if t <= y <= b-h)
+            positions = sorted(((x, y) for x in xs for y in ys), key=lambda p: (p[1]-y0, p[0]-x0))
+            for x, y in positions:
+                candidate = TargetLabel(x, y, w, h, text, (l, t, r, b), compact)
+                if not any(_overlap(candidate, previous) for previous in placed):
+                    chosen = candidate
+                    break
+            if chosen is not None:
+                break
+        if chosen is None:
+            chosen = TargetLabel(x0, y0, w, h, text, (l, t, r, b), True)
+        for previous in placed:
+            if _overlap(chosen, previous):
+                chosen.collision = previous.collision = True
+        placed.append(chosen)
+    return placed
 
 
 # Queue 71: mouse-grid cell outlines. The accent is the app's one accent;
@@ -242,6 +300,19 @@ def current_monitor_mappings() -> list:
     return mappings
 
 
+def map_physical_rect_to_qt(rect, mappings):
+    if not mappings:
+        return tuple(rect)
+    cx, cy = (rect[0]+rect[2])/2, (rect[1]+rect[3])/2
+    mapping = next((m for m in mappings if m[0][0] <= cx < m[0][2] and m[0][1] <= cy < m[0][3]), None)
+    if mapping is None:
+        mapping = max(mappings, key=lambda m: max(0, min(rect[2], m[0][2])-max(rect[0], m[0][0])) *
+                      max(0, min(rect[3], m[0][3])-max(rect[1], m[0][1])))
+    (pl, pt, _pr, _pb), (ql, qt, _qr, _qb), ratio = mapping
+    return (round(ql+(rect[0]-pl)/ratio), round(qt+(rect[1]-pt)/ratio),
+            round(ql+(rect[2]-pl)/ratio), round(qt+(rect[3]-pt)/ratio))
+
+
 def pill_rect(sx: int, sy: int, pw: int, ph: int, bounds: tuple) -> tuple:
     """Final (x, y, w, h) of one pill, in logical coordinates.
 
@@ -401,6 +472,10 @@ class NumbersOverlayWindow(QWidget):
         # Queue 71: mouse-grid cell outlines, logical (l, t, r, b). Empty for
         # the numbers overlay, which draws pills only.
         self._cells: list = []
+        self._highlighted_number = None
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setInterval(75)
+        self._hover_timer.timeout.connect(self._poll_hover)
         # Set only when this overlay is showing as a visible fallback from a
         # failed DOM (browser-extension) Show Numbers attempt -- see
         # plugins/commands/show_numbers.py's _try_show_dom_numbers. Empty
@@ -455,6 +530,10 @@ class NumbersOverlayWindow(QWidget):
     def update_labels(self, labels: list, caption: str = "", bounds: "tuple | None" = None,
                       cells: "list | None" = None) -> None:
         self._labels = labels
+        self._highlighted_number = None
+        self._hover_timer.stop()
+        if self.isVisible() and any(getattr(label, "collision", False) for label in labels):
+            self._hover_timer.start()
         self._caption = caption
         if bounds is not None:
             self.set_bounds(bounds)
@@ -483,9 +562,12 @@ class NumbersOverlayWindow(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._announce_mapping()
+        if any(getattr(label, "collision", False) for label in self._labels):
+            self._hover_timer.start()
 
     def hideEvent(self, event) -> None:
         self._announcer.reset()
+        self._hover_timer.stop()
         super().hideEvent(event)
 
     def set_cells(self, cells: "list | None") -> None:
@@ -507,6 +589,23 @@ class NumbersOverlayWindow(QWidget):
         if right - left < 40 or bottom - top < 30:
             left, top, right, bottom = v.x(), v.y(), v.x() + v.width(), v.y() + v.height()
         self._bounds = (left, top, right, bottom)
+
+    def highlight_number(self, number):
+        self._highlighted_number = str(number) if number is not None else None
+        self.update()
+
+    def _poll_hover(self):
+        # Transparent-for-input windows receive no Qt mouse events. Poll only
+        # while an unresolved collision is visible; never steal input/focus.
+        point = _wt.POINT()
+        if sys.platform != 'win32' or not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+            return
+        x, y = phys_to_logical(point.x, point.y)
+        number = next((label[4] for label in reversed(self._labels)
+                       if getattr(label, 'collision', False) and
+                       label[0] <= x < label[0]+label[2] and label[1] <= y < label[1]+label[3]), None)
+        if number != self._highlighted_number:
+            self.highlight_number(number)
 
     def _paint_cells(self, painter) -> None:
         """Outline the mouse grid's cells (queue 71).
@@ -574,16 +673,24 @@ class NumbersOverlayWindow(QWidget):
                     pw * coord_scale, ph * coord_scale,
                 )
 
-        font = theme.qfont(theme.TYPE_BODY, weight=QFont.Bold)
+        font = QFont(QApplication.font().family())
+        font.setPixelSize(int(re.search(r'(\d+)px/', BADGE_STYLE['font'])[1]))
+        font.setWeight(QFont.DemiBold)
         painter.setFont(font)
 
         ox = self._virt.x()
         oy = self._virt.y()
 
-        for sx, sy, pw, ph, text in self._labels:
+        for label in self._labels:
+            sx, sy, pw, ph, text = label
             # Anchor: pill bottom-right at element top-left minus a small margin,
             # clamped inside the target window on this screen (pill_rect).
-            ax, ay, _pw, _ph = pill_rect(sx, sy, pw, ph, self._bounds)
+            if isinstance(label, TargetLabel):
+                ax, ay = sx, sy
+                font.setPixelSize(9 if label.compact else int(re.search(r'(\d+)px/', BADGE_STYLE['font'])[1]))
+                painter.setFont(font)
+            else:
+                ax, ay, _pw, _ph = pill_rect(sx, sy, pw, ph, self._bounds)
             lx = (ax - ox) * coord_scale
             ly = (ay - oy) * coord_scale
             lw = pw * coord_scale
@@ -591,7 +698,8 @@ class NumbersOverlayWindow(QWidget):
             rect = QRectF(lx, ly, lw, lh)
 
             path = QPainterPath()
-            path.addRoundedRect(rect, 4.0, 4.0)
+            radius = int(BADGE_STYLE['border-radius'][:-2])
+            path.addRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
             painter.fillPath(path, _pill_bg())
 
             painter.setPen(_pill_border())
@@ -599,6 +707,17 @@ class NumbersOverlayWindow(QWidget):
 
             painter.setPen(_text_colour())
             painter.drawText(rect, Qt.AlignCenter, text)
+
+        # Draw last: on tiny controls the badge covers the entire target, so
+        # painting its outline under the badge would hide the only cue.
+        for label in self._labels:
+            if isinstance(label, TargetLabel) and label.collision and label[4] == self._highlighted_number:
+                l, t, r, b = label.target
+                painter.setBrush(Qt.NoBrush)
+                pen = QPen(_text_colour())
+                pen.setWidthF(1 / widget_dpr)  # one physical pixel at any DPI
+                painter.setPen(pen)
+                painter.drawRect(QRectF(l-ox, t-oy, r-l, b-t))
 
         if self._caption:
             cap_font = theme.qfont(theme.TYPE_MIN)
