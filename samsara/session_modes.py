@@ -55,7 +55,7 @@ from typing import Any, Callable, Optional, Union
 from samsara.draft_document import DraftDocument
 from samsara.utterance_undo import UtteranceUndoMixin
 from samsara.draft_clear_undo import ClearDraftUndo
-from samsara import clipboard_recovery
+from samsara import clipboard_recovery, delivery_verify
 from samsara.hands_free_entry import HANDS_FREE_ENTRY_PHRASES, dispatch_dictate_hands_free_entry
 from samsara.stage_timing import current_stage_timing as _current_stage_timing
 from samsara.session_text import (
@@ -2083,7 +2083,8 @@ class SessionModeManager(UtteranceUndoMixin):
                         # does NOT stash -- its behaviour is unchanged -- so an
                         # "again" after it opens the run and stashes then.
                         self._last_scratch_at = self._clock()
-                    return DispatchOutcome(kind="scratch_success" if ok else "scratch_refuse")
+                    return DispatchOutcome(kind="scratch_success" if ok else "scratch_refuse",
+                        detail={} if ok else {"message": delivery_verify.scratch_message(self)})
                 if commit:
                     return self._commit_dictate_buffer(target_mode=None)
                 return self._do_switch(switch)
@@ -2204,6 +2205,8 @@ class SessionModeManager(UtteranceUndoMixin):
             "scratched": scratched,
             "reason": result["reason"],
         }
+        if not scratched:
+            detail["message"] = delivery_verify.scratch_message(self)
         return DispatchOutcome(
             kind="scratch_success" if scratched else "scratch_refuse", detail=detail)
 
@@ -3138,7 +3141,7 @@ class SessionModeManager(UtteranceUndoMixin):
         unit = item.extra.get('undo_unit')
         if unit is not None:
             removed = unit.change()
-        elif getattr(self, '_require_unit_undo', False):
+        elif item.extra.get('readback_required') or getattr(self, '_require_unit_undo', False):
             return False
         else:
             removed = self._remove_chars_fn(len(item.payload))

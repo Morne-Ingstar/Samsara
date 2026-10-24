@@ -11,6 +11,7 @@ import time
 from samsara.log import describe_text, safe_exception
 from samsara import flight_recorder, injection_safety
 from samsara import clipboard_recovery as recovery
+from samsara import delivery_verify
 from samsara.clipboard import (
     DeliveryOutcome,
     paste_with_preservation,
@@ -231,6 +232,7 @@ def paste_preserving_clipboard(
     # this guard makes every other lane fail honestly instead of "pasting".
     def _result(sent, confirmed, outcome=DeliveryOutcome.UNVERIFIED):
         if not return_delivery_confirmation:
+            delivery_verify.remember_standalone(app, text, sent, confirmed)
             show_delivery_result(app, sent, outcome, feedback=feedback)
         return DeliveryResult(sent, confirmed, outcome) if return_delivery_confirmation else sent
 
@@ -239,7 +241,7 @@ def paste_preserving_clipboard(
         logger.warning("[INJECT] delivery refused: foreground window is elevated (%s)", _verdict.describe())
         return _result(False, False)
     delay = app.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
-    paste_target = {'hwnd': None}
+    paste_target = {'hwnd': None, 'proof': None}
 
     # 2026-07-24: typed Unicode injection for ordinary dictation lengths.
     # Synthetic Ctrl+V into rich web editors is a documented
@@ -300,6 +302,13 @@ def paste_preserving_clipboard(
         remembering whichever window happened to be foreground earlier
         when the transcription worker began.
         """
+        # UIA may be slow. Run the caller's focus guard AFTER that read,
+        # immediately before the original native target-capture seam.
+        # Clipboard-only clients (agent typing) own a bounded delivery
+        # deadline and request no readback receipt. Do not spend that budget
+        # starting UIA before their final focus/cancellation guard.
+        if not clipboard_only:
+            paste_target['proof'] = delivery_verify.snapshot()
         if before_paste is not None and not before_paste():
             return False
         paste_target['hwnd'] = get_foreground_hwnd_fn()
@@ -334,11 +343,20 @@ def paste_preserving_clipboard(
     if typed_fallback_used["value"] or (_verdict is not None and not getattr(_verdict, 'confirmed_ok', False)):
         outcome = DeliveryOutcome.UNVERIFIED
     delivery_confirmed = outcome == DeliveryOutcome.CONFIRMED
+    readback_unit = None
+    if paste_ok and not delivery_confirmed and getattr(_verdict, 'confirmed_ok', False):
+        delivery_confirmed, readback_unit = delivery_verify.verify(
+            paste_target['proof'], text, paste_target['hwnd'])
+        if delivery_confirmed:
+            outcome = DeliveryOutcome.CONFIRMED
+            logger.info('[PASTE] Delivery verified by exact text/caret readback chars=%d', len(text))
     if paste_ok and delivery_confirmed:
         app._record_undoable_paste(
             text, target_hwnd=paste_target['hwnd'],
         )
         app.adaptive_learner.record_transcription(text)
+        if readback_unit is not None:
+            app._undo_unit = readback_unit
         logger.info(
             "[PASTE] Message delivery confirmed chars=%d hwnd=%r",
             len(text), get_foreground_hwnd_fn(),
