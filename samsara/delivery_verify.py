@@ -130,11 +130,19 @@ def _matches(before, after, text):
             and after[2] == before[2][:offset] + payload + before[2][offset:])
 
 
-def verify(before, text, target_hwnd):
+def verified_snapshot(before, text, target_hwnd):
+    """Read-only delivery proof, including UIA; grants no mutation authority."""
     if before is None or not target_hwnd or before[0][0] != target_hwnd:
-        return False, None
+        return None
     after = snapshot()
     if after is None or before[1] != after[1] or not _matches(before[0], after[0], text):
+        return None
+    return after
+
+
+def verify(before, text, target_hwnd):
+    after = verified_snapshot(before, text, target_hwnd)
+    if after is None:
         return False, None
     unit = ReadbackUnit(before[0], after[0], text) if after[1] else None
     return True, unit

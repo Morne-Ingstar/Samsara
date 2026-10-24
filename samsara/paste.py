@@ -218,6 +218,7 @@ def paste_preserving_clipboard(
     get_foreground_hwnd_fn=_get_foreground_hwnd,
 ):
     """Paste text through the app's guarded clipboard/type delivery seam."""
+    app._last_delivery = None  # 823: a new/failed attempt fences older selection receipts.
     app._unit_before = None
     app._undo_unit = None
     app._redo_unit = None
@@ -267,12 +268,17 @@ def paste_preserving_clipboard(
                 chars=len(text), result='cancelled_target_changed',
             )
             return _result(False, False)
+        typed_proof = delivery_verify.snapshot()
         typed_hwnd = get_foreground_hwnd_fn()
+        if before_paste is not None and not before_paste():
+            return _result(False, False)
         from samsara.recent_privacy import before_delivery
         if not before_delivery(app, text):
             return _result(False, False)
         app._unit_before = _editor_snapshot()
         if type_text_unicode_fn(text):
+            verified = delivery_verify.verified_snapshot(typed_proof, text, typed_hwnd)
+            app._last_delivery = (verified, text) if verified is not None else None
             app._record_undoable_paste(text, target_hwnd=typed_hwnd)
             app.adaptive_learner.record_transcription(text)
             logger.info(
@@ -350,9 +356,13 @@ def paste_preserving_clipboard(
         outcome = DeliveryOutcome.UNVERIFIED
     delivery_confirmed = outcome == DeliveryOutcome.CONFIRMED
     readback_unit = None
-    if paste_ok and not delivery_confirmed and getattr(_verdict, 'confirmed_ok', False):
-        delivery_confirmed, readback_unit = delivery_verify.verify(
-            paste_target['proof'], text, paste_target['hwnd'])
+    verified = (delivery_verify.verified_snapshot(paste_target['proof'], text, paste_target['hwnd'])
+                if paste_ok and getattr(_verdict, 'confirmed_ok', False) else None)
+    app._last_delivery = (verified, text) if verified is not None else None
+    if paste_ok and not delivery_confirmed and verified is not None:
+        delivery_confirmed = True
+        if verified[1]:  # UIA receipts stay read-only; native undo eligibility is unchanged.
+            readback_unit = delivery_verify.ReadbackUnit(paste_target['proof'][0], verified[0], text)
         if delivery_confirmed:
             outcome = DeliveryOutcome.CONFIRMED
             logger.info('[PASTE] Delivery verified by exact text/caret readback chars=%d', len(text))

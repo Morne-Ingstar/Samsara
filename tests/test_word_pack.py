@@ -128,6 +128,7 @@ def test_set_font_accepts_only_word_font_names(monkeypatch, app):
     (word.select_sentence, 3), (word.select_line, 5), (word.select_word, 2),
 ])
 def test_selection_commands_expand_only_the_current_selection(monkeypatch, app, handler, unit):
+    monkeypatch.setattr(word, "_word_is_focused", lambda: True)  # 823: pin the Word tier.
     selection = SimpleNamespace(Expand=MagicMock())
     monkeypatch.setattr(word, "_selection_call", lambda _app, action: (True, action(selection)))
 

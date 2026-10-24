@@ -718,7 +718,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2848",
+      "source": "commands.json:2850",
       "undoable": true,
       "verb": "again",
       "whole_utterance": false
@@ -737,7 +737,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1047",
+      "source": "commands.json:1042",
       "undoable": false,
       "verb": "apostrophe",
       "whole_utterance": false
@@ -756,7 +756,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:917",
+      "source": "commands.json:912",
       "undoable": true,
       "verb": "back",
       "whole_utterance": false
@@ -775,7 +775,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:926",
+      "source": "commands.json:921",
       "undoable": true,
       "verb": "back",
       "whole_utterance": false
@@ -794,7 +794,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1142",
+      "source": "commands.json:1137",
       "undoable": false,
       "verb": "backspace",
       "whole_utterance": false
@@ -824,7 +824,7 @@
       ],
       "args": [],
       "canonical_id": "builtin.bigger_text",
-      "description": "Makes the text bigger in the app you are using.",
+      "description": "Sends Ctrl+= to the current app (zoom in or increase font size, depending on the app).",
       "examples": [],
       "kind": "builtin",
       "object": "text",
@@ -851,7 +851,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1330",
+      "source": "commands.json:1325",
       "undoable": true,
       "verb": "bold",
       "whole_utterance": false
@@ -937,7 +937,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1454",
+      "source": "commands.json:1449",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -956,7 +956,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1496",
+      "source": "commands.json:1491",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -975,7 +975,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1466",
+      "source": "commands.json:1461",
       "undoable": true,
       "verb": "claude",
       "whole_utterance": false
@@ -994,7 +994,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1439",
+      "source": "commands.json:1434",
       "undoable": true,
       "verb": "clipboard",
       "whole_utterance": false
@@ -1013,7 +1013,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1096",
+      "source": "commands.json:1091",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1051,7 +1051,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1082",
+      "source": "commands.json:1077",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1070,7 +1070,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1068",
+      "source": "commands.json:1063",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -1156,7 +1156,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1033",
+      "source": "commands.json:1028",
       "undoable": false,
       "verb": "colon",
       "whole_utterance": false
@@ -1194,7 +1194,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1005",
+      "source": "commands.json:1000",
       "undoable": false,
       "verb": "comma",
       "whole_utterance": false
@@ -1213,7 +1213,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1544",
+      "source": "commands.json:1539",
       "undoable": false,
       "verb": "command",
       "whole_utterance": false
@@ -1232,7 +1232,26 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:802",
+      "source": "commands.json:797",
+      "undoable": true,
+      "verb": "copy",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "copy that"
+      ],
+      "args": [],
+      "canonical_id": "builtin.copy_that",
+      "description": "Copies selection.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3170",
       "undoable": true,
       "verb": "copy",
       "whole_utterance": false
@@ -1270,7 +1289,26 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:811",
+      "source": "commands.json:806",
+      "undoable": false,
+      "verb": "cut",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "cut that"
+      ],
+      "args": [],
+      "canonical_id": "builtin.cut_that",
+      "description": "Cuts selection.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "write",
+      "source": "commands.json:3179",
       "undoable": false,
       "verb": "cut",
       "whole_utterance": false
@@ -1327,7 +1365,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1110",
+      "source": "commands.json:1105",
       "undoable": false,
       "verb": "dash",
       "whole_utterance": false
@@ -1346,7 +1384,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2823",
+      "source": "commands.json:2825",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1384,7 +1422,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1409",
+      "source": "commands.json:1404",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1422,7 +1460,26 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2829",
+      "source": "commands.json:2831",
+      "undoable": false,
+      "verb": "delete",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "delete that"
+      ],
+      "args": [],
+      "canonical_id": "builtin.delete_that",
+      "description": "Deletes the last delivered dictation only while its verified text, target and caret are unchanged; otherwise explains why it cannot.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "destructive",
+      "source": "commands.json:3206",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -1441,9 +1498,28 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1148",
+      "source": "commands.json:1143",
       "undoable": false,
       "verb": "delete",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "deselect"
+      ],
+      "args": [],
+      "canonical_id": "builtin.deselect",
+      "description": "Clears the selection by moving the caret to its right edge.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3218",
+      "undoable": true,
+      "verb": "deselect",
       "whole_utterance": false
     },
     {
@@ -1546,7 +1622,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1117",
+      "source": "commands.json:1112",
       "undoable": false,
       "verb": "ellipsis",
       "whole_utterance": false
@@ -1565,7 +1641,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1371",
+      "source": "commands.json:1366",
       "undoable": true,
       "verb": "emoji",
       "whole_utterance": false
@@ -1584,7 +1660,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:2835",
+      "source": "commands.json:2837",
       "undoable": false,
       "verb": "enter",
       "whole_utterance": false
@@ -1603,7 +1679,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:888",
+      "source": "commands.json:883",
       "undoable": true,
       "verb": "escape",
       "whole_utterance": false
@@ -1622,7 +1698,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1019",
+      "source": "commands.json:1014",
       "undoable": false,
       "verb": "exclamation",
       "whole_utterance": false
@@ -1641,7 +1717,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1026",
+      "source": "commands.json:1021",
       "undoable": false,
       "verb": "exclamation",
       "whole_utterance": false
@@ -1717,7 +1793,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1645",
+      "source": "commands.json:1640",
       "undoable": false,
       "verb": "follow",
       "whole_utterance": false
@@ -1736,7 +1812,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1273",
+      "source": "commands.json:1268",
       "undoable": true,
       "verb": "full",
       "whole_utterance": false
@@ -1755,7 +1831,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:999",
+      "source": "commands.json:994",
       "undoable": false,
       "verb": "full",
       "whole_utterance": false
@@ -1947,7 +2023,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1591",
+      "source": "commands.json:1586",
       "undoable": true,
       "verb": "graph",
       "whole_utterance": false
@@ -2067,7 +2143,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2817",
+      "source": "commands.json:2819",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -2093,19 +2169,48 @@
     },
     {
       "aliases": [
+        "highlight selection in obsidian"
+      ],
+      "args": [],
+      "canonical_id": "builtin.highlight_selection_in_obsidian",
+      "description": "Sends Ctrl+Shift+H to Obsidian; requires a selection and a matching highlight shortcut.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "selection_in_obsidian",
+      "pack": "text-editing",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "obsidian.exe"
+        ]
+      },
+      "source": "commands.json:3155",
+      "undoable": true,
+      "verb": "highlight",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "highlight text"
       ],
       "args": [],
       "canonical_id": "builtin.highlight_text",
-      "description": "Highlights the selected text in Obsidian.",
+      "description": "Sends Ctrl+Shift+H to Obsidian; requires a selection and a matching highlight shortcut.",
       "examples": [],
       "kind": "builtin",
       "object": "text",
-      "pack": "ai",
+      "pack": "text-editing",
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1674",
+      "scope": {
+        "apps": [
+          "obsidian.exe"
+        ]
+      },
+      "source": "commands.json:1669",
       "undoable": true,
       "verb": "highlight",
       "whole_utterance": false
@@ -2124,7 +2229,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:958",
+      "source": "commands.json:953",
       "undoable": false,
       "verb": "hold",
       "whole_utterance": false
@@ -2143,7 +2248,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:972",
+      "source": "commands.json:967",
       "undoable": true,
       "verb": "hold",
       "whole_utterance": false
@@ -2162,7 +2267,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1103",
+      "source": "commands.json:1098",
       "undoable": false,
       "verb": "hyphen",
       "whole_utterance": false
@@ -2219,7 +2324,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1636",
+      "source": "commands.json:1631",
       "undoable": true,
       "verb": "insert",
       "whole_utterance": false
@@ -2257,7 +2362,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1339",
+      "source": "commands.json:1334",
       "undoable": true,
       "verb": "italic",
       "whole_utterance": false
@@ -2343,7 +2448,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1198",
+      "source": "commands.json:1193",
       "undoable": true,
       "verb": "lock",
       "whole_utterance": false
@@ -2362,7 +2467,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1189",
+      "source": "commands.json:1184",
       "undoable": true,
       "verb": "lock",
       "whole_utterance": false
@@ -2373,7 +2478,7 @@
       ],
       "args": [],
       "canonical_id": "builtin.make_text_bigger",
-      "description": "Opens text size / visual accessibility settings.",
+      "description": "Opens Windows text size and accessibility settings; does not edit the current text.",
       "examples": [],
       "kind": "builtin",
       "object": "text_bigger",
@@ -2514,7 +2619,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2865",
+      "source": "commands.json:2867",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2533,7 +2638,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2875",
+      "source": "commands.json:2877",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2552,7 +2657,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2855",
+      "source": "commands.json:2857",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -2600,7 +2705,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1654",
+      "source": "commands.json:1649",
       "undoable": true,
       "verb": "navigate",
       "whole_utterance": false
@@ -2619,7 +2724,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1664",
+      "source": "commands.json:1659",
       "undoable": true,
       "verb": "navigate",
       "whole_utterance": false
@@ -2657,7 +2762,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1124",
+      "source": "commands.json:1119",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2676,7 +2781,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1508",
+      "source": "commands.json:1503",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2695,7 +2800,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1130",
+      "source": "commands.json:1125",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -2762,7 +2867,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:902",
+      "source": "commands.json:897",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -2853,7 +2958,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1380",
+      "source": "commands.json:1375",
       "undoable": true,
       "verb": "notifications",
       "whole_utterance": false
@@ -2891,7 +2996,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1517",
+      "source": "commands.json:1512",
       "undoable": false,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2910,7 +3015,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1553",
+      "source": "commands.json:1548",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -2929,7 +3034,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1627",
+      "source": "commands.json:1622",
       "undoable": true,
       "verb": "obsidian",
       "whole_utterance": false
@@ -3015,7 +3120,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1089",
+      "source": "commands.json:1084",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3034,7 +3139,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1213",
+      "source": "commands.json:1208",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3053,7 +3158,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1478",
+      "source": "commands.json:1473",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3091,7 +3196,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1448",
+      "source": "commands.json:1443",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3129,7 +3234,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1460",
+      "source": "commands.json:1455",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3339,7 +3444,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1219",
+      "source": "commands.json:1214",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3358,7 +3463,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1228",
+      "source": "commands.json:1223",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3396,7 +3501,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1484",
+      "source": "commands.json:1479",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3434,7 +3539,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1600",
+      "source": "commands.json:1595",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3539,7 +3644,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3111",
+      "source": "commands.json:3113",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3596,7 +3701,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1535",
+      "source": "commands.json:1530",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3615,7 +3720,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1207",
+      "source": "commands.json:1202",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3653,7 +3758,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1502",
+      "source": "commands.json:1497",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3691,7 +3796,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1075",
+      "source": "commands.json:1070",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3710,7 +3815,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1490",
+      "source": "commands.json:1485",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3729,7 +3834,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1061",
+      "source": "commands.json:1056",
       "undoable": false,
       "verb": "open",
       "whole_utterance": false
@@ -3805,7 +3910,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:835",
+      "source": "commands.json:830",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3881,7 +3986,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1433",
+      "source": "commands.json:1428",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3900,7 +4005,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3069",
+      "source": "commands.json:3071",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3919,7 +4024,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3075",
+      "source": "commands.json:3077",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3938,7 +4043,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3081",
+      "source": "commands.json:3083",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -3983,6 +4088,25 @@
     },
     {
       "aliases": [
+        "open windows text size settings"
+      ],
+      "args": [],
+      "canonical_id": "builtin.open_windows_text_size_settings",
+      "description": "Opens Windows text size and accessibility settings.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "windows_text_size_settings",
+      "pack": "accessibility",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3131",
+      "undoable": true,
+      "verb": "open",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "other window"
       ],
       "args": [],
@@ -3995,7 +4119,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:935",
+      "source": "commands.json:930",
       "undoable": true,
       "verb": "other",
       "whole_utterance": false
@@ -4024,7 +4148,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1308",
+      "source": "commands.json:1303",
       "undoable": true,
       "verb": "page",
       "whole_utterance": false
@@ -4053,7 +4177,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1319",
+      "source": "commands.json:1314",
       "undoable": true,
       "verb": "page",
       "whole_utterance": false
@@ -4072,7 +4196,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:820",
+      "source": "commands.json:815",
       "undoable": true,
       "verb": "paste",
       "whole_utterance": false
@@ -4091,7 +4215,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:992",
+      "source": "commands.json:987",
       "undoable": false,
       "verb": "period",
       "whole_utterance": false
@@ -4177,7 +4301,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:944",
+      "source": "commands.json:939",
       "undoable": false,
       "verb": "press",
       "whole_utterance": false
@@ -4196,7 +4320,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:951",
+      "source": "commands.json:946",
       "undoable": false,
       "verb": "press",
       "whole_utterance": false
@@ -4215,7 +4339,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:896",
+      "source": "commands.json:891",
       "undoable": true,
       "verb": "press",
       "whole_utterance": false
@@ -4253,7 +4377,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:908",
+      "source": "commands.json:903",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -4301,7 +4425,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1357",
+      "source": "commands.json:1352",
       "undoable": false,
       "verb": "print",
       "whole_utterance": false
@@ -4349,7 +4473,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1012",
+      "source": "commands.json:1007",
       "undoable": false,
       "verb": "question",
       "whole_utterance": false
@@ -4368,7 +4492,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1526",
+      "source": "commands.json:1521",
       "undoable": false,
       "verb": "quick",
       "whole_utterance": false
@@ -4387,7 +4511,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1054",
+      "source": "commands.json:1049",
       "undoable": false,
       "verb": "quote",
       "whole_utterance": false
@@ -4482,7 +4606,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1618",
+      "source": "commands.json:1613",
       "undoable": true,
       "verb": "reading",
       "whole_utterance": false
@@ -4549,7 +4673,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:856",
+      "source": "commands.json:851",
       "undoable": true,
       "verb": "redo",
       "whole_utterance": false
@@ -4568,7 +4692,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:865",
+      "source": "commands.json:860",
       "undoable": true,
       "verb": "redo",
       "whole_utterance": false
@@ -4616,7 +4740,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:986",
+      "source": "commands.json:981",
       "undoable": true,
       "verb": "release",
       "whole_utterance": false
@@ -4635,7 +4759,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:979",
+      "source": "commands.json:974",
       "undoable": true,
       "verb": "release",
       "whole_utterance": false
@@ -4654,7 +4778,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:3061",
+      "source": "commands.json:3063",
       "undoable": false,
       "verb": "remove",
       "whole_utterance": false
@@ -4721,7 +4845,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2841",
+      "source": "commands.json:2843",
       "undoable": true,
       "verb": "repeat",
       "whole_utterance": false
@@ -4740,7 +4864,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1582",
+      "source": "commands.json:1577",
       "undoable": true,
       "verb": "replace",
       "whole_utterance": false
@@ -4788,7 +4912,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "commands.json:1299",
+      "source": "commands.json:1294",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -4807,7 +4931,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2990",
+      "source": "commands.json:2992",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -4826,7 +4950,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1472",
+      "source": "commands.json:1467",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -4864,7 +4988,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:850",
+      "source": "commands.json:845",
       "undoable": true,
       "verb": "run",
       "whole_utterance": false
@@ -5832,7 +5956,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:871",
+      "source": "commands.json:866",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -5851,7 +5975,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "destructive",
-      "source": "commands.json:3117",
+      "source": "commands.json:3119",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -5870,7 +5994,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1163",
+      "source": "commands.json:1158",
       "undoable": false,
       "verb": "scratch",
       "whole_utterance": true
@@ -5889,7 +6013,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1179",
+      "source": "commands.json:1174",
       "undoable": true,
       "verb": "screenshot",
       "whole_utterance": false
@@ -5946,7 +6070,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1563",
+      "source": "commands.json:1558",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -5965,7 +6089,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1573",
+      "source": "commands.json:1568",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -5995,7 +6119,7 @@
       ],
       "args": [],
       "canonical_id": "builtin.select_all",
-      "description": "Selects all text in focused Microsoft Word.",
+      "description": "Selects all text in the focused editor with Ctrl+A.",
       "examples": [],
       "kind": "builtin",
       "object": "all",
@@ -6003,12 +6127,64 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "scope": {
-        "apps": [
-          "winword.exe"
-        ]
-      },
       "source": "commands.json:788",
+      "undoable": true,
+      "verb": "select",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "select last word"
+      ],
+      "args": [],
+      "canonical_id": "builtin.select_last_word",
+      "description": "Selects the word before the caret using Ctrl+Shift+Left.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "last_word",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3188",
+      "undoable": true,
+      "verb": "select",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "select previous word"
+      ],
+      "args": [],
+      "canonical_id": "builtin.select_previous_word",
+      "description": "Selects the word before the caret using Ctrl+Shift+Left.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "previous_word",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3194",
+      "undoable": true,
+      "verb": "select",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "select that"
+      ],
+      "args": [],
+      "canonical_id": "builtin.select_that",
+      "description": "Selects the last delivered dictation only while its verified text, target and caret are unchanged; otherwise explains why it cannot.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3200",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6103,7 +6279,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1389",
+      "source": "commands.json:1384",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6122,7 +6298,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1399",
+      "source": "commands.json:1394",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -6141,7 +6317,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1040",
+      "source": "commands.json:1035",
       "undoable": false,
       "verb": "semicolon",
       "whole_utterance": false
@@ -6179,7 +6355,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3030",
+      "source": "commands.json:3032",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6198,7 +6374,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2999",
+      "source": "commands.json:3001",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6217,7 +6393,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2909",
+      "source": "commands.json:2911",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6236,7 +6412,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2885",
+      "source": "commands.json:2887",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6255,7 +6431,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2966",
+      "source": "commands.json:2968",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6274,7 +6450,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:2933",
+      "source": "commands.json:2935",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -6332,7 +6508,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:844",
+      "source": "commands.json:839",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -6343,7 +6519,7 @@
       ],
       "args": [],
       "canonical_id": "builtin.smaller_text",
-      "description": "Makes the text smaller in the app you are using.",
+      "description": "Sends Ctrl+- to the current app (zoom out or decrease font size, depending on the app).",
       "examples": [],
       "kind": "builtin",
       "object": "text",
@@ -6370,7 +6546,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1255",
+      "source": "commands.json:1250",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -6389,7 +6565,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1264",
+      "source": "commands.json:1259",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false
@@ -6446,7 +6622,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1136",
+      "source": "commands.json:1131",
       "undoable": false,
       "verb": "space",
       "whole_utterance": false
@@ -6541,7 +6717,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3105",
+      "source": "commands.json:3107",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6560,7 +6736,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3093",
+      "source": "commands.json:3095",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6579,7 +6755,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3087",
+      "source": "commands.json:3089",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6598,7 +6774,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3099",
+      "source": "commands.json:3101",
       "undoable": true,
       "verb": "steam",
       "whole_utterance": false
@@ -6636,7 +6812,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:965",
+      "source": "commands.json:960",
       "undoable": false,
       "verb": "stop",
       "whole_utterance": false
@@ -6712,7 +6888,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:880",
+      "source": "commands.json:875",
       "undoable": false,
       "verb": "submit",
       "whole_utterance": false
@@ -6731,7 +6907,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1246",
+      "source": "commands.json:1241",
       "undoable": true,
       "verb": "switch",
       "whole_utterance": false
@@ -6750,7 +6926,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1237",
+      "source": "commands.json:1232",
       "undoable": true,
       "verb": "switch",
       "whole_utterance": false
@@ -7049,7 +7225,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1169",
+      "source": "commands.json:1164",
       "undoable": true,
       "verb": "take",
       "whole_utterance": false
@@ -7098,7 +7274,7 @@
       ],
       "args": [],
       "canonical_id": "builtin.text_size",
-      "description": "Opens text size settings.",
+      "description": "Opens Windows text size and accessibility settings.",
       "examples": [],
       "kind": "builtin",
       "object": "size",
@@ -7163,7 +7339,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1609",
+      "source": "commands.json:1604",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -7182,7 +7358,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:3123",
+      "source": "commands.json:3125",
       "undoable": true,
       "verb": "transcribe",
       "whole_utterance": false
@@ -7220,7 +7396,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1348",
+      "source": "commands.json:1343",
       "undoable": true,
       "verb": "underline",
       "whole_utterance": false
@@ -7239,7 +7415,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:829",
+      "source": "commands.json:824",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -7258,7 +7434,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "write",
-      "source": "commands.json:1157",
+      "source": "commands.json:1152",
       "undoable": true,
       "verb": "undo",
       "whole_utterance": false
@@ -7280,6 +7456,25 @@
       "source": "commands.json:1731",
       "undoable": true,
       "verb": "unindent",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "unselect"
+      ],
+      "args": [],
+      "canonical_id": "builtin.unselect",
+      "description": "Clears the selection by moving the caret to its right edge.",
+      "examples": [],
+      "kind": "builtin",
+      "object": "",
+      "pack": "core",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3212",
+      "undoable": true,
+      "verb": "unselect",
       "whole_utterance": false
     },
     {
@@ -7429,7 +7624,7 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1281",
+      "source": "commands.json:1276",
       "undoable": true,
       "verb": "zoom",
       "whole_utterance": false
@@ -7448,7 +7643,45 @@
       "plugin": "builtin",
       "precondition": "",
       "risk": "ui",
-      "source": "commands.json:1290",
+      "source": "commands.json:1285",
+      "undoable": true,
+      "verb": "zoom",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "zoom text in"
+      ],
+      "args": [],
+      "canonical_id": "builtin.zoom_text_in",
+      "description": "Sends Ctrl+= to the current app (zoom in or increase font size, depending on the app).",
+      "examples": [],
+      "kind": "builtin",
+      "object": "text_in",
+      "pack": "text-editing",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3137",
+      "undoable": true,
+      "verb": "zoom",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "zoom text out"
+      ],
+      "args": [],
+      "canonical_id": "builtin.zoom_text_out",
+      "description": "Sends Ctrl+- to the current app (zoom out or decrease font size, depending on the app).",
+      "examples": [],
+      "kind": "builtin",
+      "object": "text_out",
+      "pack": "text-editing",
+      "plugin": "builtin",
+      "precondition": "",
+      "risk": "ui",
+      "source": "commands.json:3146",
       "undoable": true,
       "verb": "zoom",
       "whole_utterance": false
@@ -10576,7 +10809,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "apply",
       "whole_utterance": true
@@ -10585,145 +10818,89 @@
       "aliases": [
         "capitalise highlighted text",
         "capitalise highlighted word",
+        "capitalise it",
         "capitalise selected text",
         "capitalise selected word",
         "capitalise selection",
+        "capitalise that",
         "capitalise the highlighted text",
         "capitalise the highlighted word",
         "capitalise the selected text",
         "capitalise the selected word",
-        "capitalise the selection"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.capitalise_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "selection",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "capitalise",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "capitalise it",
-        "capitalise that",
-        "capitalise this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.capitalise_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "capitalise",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
+        "capitalise the selection",
+        "capitalise this",
         "capitalize highlighted text",
         "capitalize highlighted word",
+        "capitalize it",
         "capitalize selected text",
         "capitalize selected word",
         "capitalize selection",
+        "capitalize that",
         "capitalize the highlighted text",
         "capitalize the highlighted word",
         "capitalize the selected text",
         "capitalize the selected word",
-        "capitalize the selection"
+        "capitalize the selection",
+        "capitalize this"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.capitalize_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.capitalise_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "capitalise the selection"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
-      "verb": "capitalize",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "capitalize it",
-        "capitalize that",
-        "capitalize this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.capitalize_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "capitalize",
+      "verb": "capitalise",
       "whole_utterance": true
     },
     {
       "aliases": [
         "change highlighted text",
         "change highlighted word",
+        "change it",
         "change selected text",
         "change selected word",
         "change selection",
+        "change that",
         "change the highlighted text",
         "change the highlighted word",
         "change the selected text",
         "change the selected word",
-        "change the selection"
+        "change the selection",
+        "change this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.change_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "change the selection to a friendlier tone"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "change",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "change it",
-        "change that",
-        "change this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.change_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "change",
       "whole_utterance": true
@@ -10734,12 +10911,16 @@
         "clean highlighted text up",
         "clean highlighted word",
         "clean highlighted word up",
+        "clean it",
+        "clean it up",
         "clean selected text",
         "clean selected text up",
         "clean selected word",
         "clean selected word up",
         "clean selection",
         "clean selection up",
+        "clean that",
+        "clean that up",
         "clean the highlighted text",
         "clean the highlighted text up",
         "clean the highlighted word",
@@ -10750,56 +10931,42 @@
         "clean the selected word up",
         "clean the selection",
         "clean the selection up",
+        "clean this",
+        "clean this up",
+        "clean up",
         "clean up highlighted text",
         "clean up highlighted word",
+        "clean up it",
         "clean up selected text",
         "clean up selected word",
         "clean up selection",
+        "clean up that",
         "clean up the highlighted text",
         "clean up the highlighted word",
         "clean up the selected text",
         "clean up the selected word",
-        "clean up the selection"
+        "clean up the selection",
+        "clean up this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.clean_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "clean the selection"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal. Simple dictation cleanup also works offline.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "clean",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "clean it",
-        "clean it up",
-        "clean that",
-        "clean that up",
-        "clean this",
-        "clean this up",
-        "clean up",
-        "clean up it",
-        "clean up that",
-        "clean up this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.clean_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10820,7 +10987,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10840,7 +11007,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "clean",
       "whole_utterance": true
@@ -10849,47 +11016,37 @@
       "aliases": [
         "correct highlighted text",
         "correct highlighted word",
+        "correct it",
         "correct selected text",
         "correct selected word",
         "correct selection",
+        "correct that",
         "correct the highlighted text",
         "correct the highlighted word",
         "correct the selected text",
         "correct the selected word",
+        "correct the selection",
+        "correct this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.correct_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "correct the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.correct_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal. Simple dictation cleanup also works offline.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "correct",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "correct it",
-        "correct that",
-        "correct this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.correct_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "correct",
       "whole_utterance": true
@@ -10909,7 +11066,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "discard",
       "whole_utterance": true
@@ -10918,47 +11075,37 @@
       "aliases": [
         "edit highlighted text",
         "edit highlighted word",
+        "edit it",
         "edit selected text",
         "edit selected word",
         "edit selection",
+        "edit that",
         "edit the highlighted text",
         "edit the highlighted word",
         "edit the selected text",
         "edit the selected word",
-        "edit the selection"
+        "edit the selection",
+        "edit this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.edit_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "edit the selection for clarity"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "edit",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "edit it",
-        "edit that",
-        "edit this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.edit_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "edit",
       "whole_utterance": true
@@ -10967,47 +11114,37 @@
       "aliases": [
         "expand highlighted text",
         "expand highlighted word",
+        "expand it",
         "expand selected text",
         "expand selected word",
         "expand selection",
+        "expand that",
         "expand the highlighted text",
         "expand the highlighted word",
         "expand the selected text",
         "expand the selected word",
+        "expand the selection",
+        "expand this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.expand_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "expand the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.expand_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "expand",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "expand it",
-        "expand that",
-        "expand this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.expand_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "expand",
       "whole_utterance": true
@@ -11018,12 +11155,16 @@
         "fix highlighted text up",
         "fix highlighted word",
         "fix highlighted word up",
+        "fix it",
+        "fix it up",
         "fix selected text",
         "fix selected text up",
         "fix selected word",
         "fix selected word up",
         "fix selection",
         "fix selection up",
+        "fix that",
+        "fix that up",
         "fix the highlighted text",
         "fix the highlighted text up",
         "fix the highlighted word",
@@ -11033,43 +11174,29 @@
         "fix the selected word",
         "fix the selected word up",
         "fix the selection",
-        "fix the selection up"
+        "fix the selection up",
+        "fix this",
+        "fix this up"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.fix_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "fix the selection"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal. Simple dictation cleanup also works offline.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "fix",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "fix it",
-        "fix it up",
-        "fix that",
-        "fix that up",
-        "fix this",
-        "fix this up"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.fix_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "fix",
       "whole_utterance": true
@@ -11078,145 +11205,89 @@
       "aliases": [
         "formalise highlighted text",
         "formalise highlighted word",
+        "formalise it",
         "formalise selected text",
         "formalise selected word",
         "formalise selection",
+        "formalise that",
         "formalise the highlighted text",
         "formalise the highlighted word",
         "formalise the selected text",
         "formalise the selected word",
-        "formalise the selection"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.formalise_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "selection",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "formalise",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "formalise it",
-        "formalise that",
-        "formalise this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.formalise_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "formalise",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
+        "formalise the selection",
+        "formalise this",
         "formalize highlighted text",
         "formalize highlighted word",
+        "formalize it",
         "formalize selected text",
         "formalize selected word",
         "formalize selection",
+        "formalize that",
         "formalize the highlighted text",
         "formalize the highlighted word",
         "formalize the selected text",
         "formalize the selected word",
-        "formalize the selection"
+        "formalize the selection",
+        "formalize this"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.formalize_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.formalise_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "formalise the selection"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
-      "verb": "formalize",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "formalize it",
-        "formalize that",
-        "formalize this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.formalize_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "formalize",
+      "verb": "formalise",
       "whole_utterance": true
     },
     {
       "aliases": [
         "lengthen highlighted text",
         "lengthen highlighted word",
+        "lengthen it",
         "lengthen selected text",
         "lengthen selected word",
         "lengthen selection",
+        "lengthen that",
         "lengthen the highlighted text",
         "lengthen the highlighted word",
         "lengthen the selected text",
         "lengthen the selected word",
+        "lengthen the selection",
+        "lengthen this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.lengthen_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "lengthen the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.lengthen_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "lengthen",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "lengthen it",
-        "lengthen that",
-        "lengthen this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.lengthen_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "lengthen",
       "whole_utterance": true
@@ -11225,47 +11296,39 @@
       "aliases": [
         "make highlighted text",
         "make highlighted word",
+        "make it",
         "make selected text",
         "make selected word",
         "make selection",
+        "make that",
         "make the highlighted text",
         "make the highlighted word",
         "make the selected text",
         "make the selected word",
-        "make the selection"
+        "make the selection",
+        "make this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.make_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "make the selection shorter",
+        "make the selection more formal",
+        "make the selection friendlier"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "make",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "make it",
-        "make that",
-        "make this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.make_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "make",
       "whole_utterance": true
@@ -11274,47 +11337,37 @@
       "aliases": [
         "polish highlighted text",
         "polish highlighted word",
+        "polish it",
         "polish selected text",
         "polish selected word",
         "polish selection",
+        "polish that",
         "polish the highlighted text",
         "polish the highlighted word",
         "polish the selected text",
         "polish the selected word",
+        "polish the selection",
+        "polish this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.polish_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "polish the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.polish_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "polish",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "polish it",
-        "polish that",
-        "polish this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.polish_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "polish",
       "whole_utterance": true
@@ -11323,47 +11376,37 @@
       "aliases": [
         "punctuate highlighted text",
         "punctuate highlighted word",
+        "punctuate it",
         "punctuate selected text",
         "punctuate selected word",
         "punctuate selection",
+        "punctuate that",
         "punctuate the highlighted text",
         "punctuate the highlighted word",
         "punctuate the selected text",
         "punctuate the selected word",
+        "punctuate the selection",
+        "punctuate this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.punctuate_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "punctuate the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.punctuate_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal. Simple dictation cleanup also works offline.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "punctuate",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "punctuate it",
-        "punctuate that",
-        "punctuate this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.punctuate_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "punctuate",
       "whole_utterance": true
@@ -11391,7 +11434,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "read",
       "whole_utterance": true
@@ -11400,47 +11443,37 @@
       "aliases": [
         "reformat highlighted text",
         "reformat highlighted word",
+        "reformat it",
         "reformat selected text",
         "reformat selected word",
         "reformat selection",
+        "reformat that",
         "reformat the highlighted text",
         "reformat the highlighted word",
         "reformat the selected text",
         "reformat the selected word",
-        "reformat the selection"
+        "reformat the selection",
+        "reformat this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.reformat_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "reformat the selection as a paragraph"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "reformat",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "reformat it",
-        "reformat that",
-        "reformat this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.reformat_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "reformat",
       "whole_utterance": true
@@ -11449,47 +11482,37 @@
       "aliases": [
         "rephrase highlighted text",
         "rephrase highlighted word",
+        "rephrase it",
         "rephrase selected text",
         "rephrase selected word",
         "rephrase selection",
+        "rephrase that",
         "rephrase the highlighted text",
         "rephrase the highlighted word",
         "rephrase the selected text",
         "rephrase the selected word",
-        "rephrase the selection"
+        "rephrase the selection",
+        "rephrase this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.rephrase_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "rephrase the selection more clearly"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "rephrase",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "rephrase it",
-        "rephrase that",
-        "rephrase this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.rephrase_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "rephrase",
       "whole_utterance": true
@@ -11498,47 +11521,37 @@
       "aliases": [
         "reword highlighted text",
         "reword highlighted word",
+        "reword it",
         "reword selected text",
         "reword selected word",
         "reword selection",
+        "reword that",
         "reword the highlighted text",
         "reword the highlighted word",
         "reword the selected text",
         "reword the selected word",
-        "reword the selection"
+        "reword the selection",
+        "reword this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.reword_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "reword the selection more politely"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "reword",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "reword it",
-        "reword that",
-        "reword this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.reword_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "reword",
       "whole_utterance": true
@@ -11547,47 +11560,37 @@
       "aliases": [
         "rewrite highlighted text",
         "rewrite highlighted word",
+        "rewrite it",
         "rewrite selected text",
         "rewrite selected word",
         "rewrite selection",
+        "rewrite that",
         "rewrite the highlighted text",
         "rewrite the highlighted word",
         "rewrite the selected text",
         "rewrite the selected word",
-        "rewrite the selection"
+        "rewrite the selection",
+        "rewrite this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.rewrite_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "rewrite the selection more simply"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "rewrite",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "rewrite it",
-        "rewrite that",
-        "rewrite this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.rewrite_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "rewrite",
       "whole_utterance": true
@@ -11596,47 +11599,37 @@
       "aliases": [
         "shorten highlighted text",
         "shorten highlighted word",
+        "shorten it",
         "shorten selected text",
         "shorten selected word",
         "shorten selection",
+        "shorten that",
         "shorten the highlighted text",
         "shorten the highlighted word",
         "shorten the selected text",
         "shorten the selected word",
+        "shorten the selection",
+        "shorten this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.shorten_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "shorten the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.shorten_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "shorten",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "shorten it",
-        "shorten that",
-        "shorten this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.shorten_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "shorten",
       "whole_utterance": true
@@ -11645,47 +11638,37 @@
       "aliases": [
         "simplify highlighted text",
         "simplify highlighted word",
+        "simplify it",
         "simplify selected text",
         "simplify selected word",
         "simplify selection",
+        "simplify that",
         "simplify the highlighted text",
         "simplify the highlighted word",
         "simplify the selected text",
         "simplify the selected word",
+        "simplify the selection",
+        "simplify this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.simplify_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "simplify the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.simplify_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "simplify",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "simplify it",
-        "simplify that",
-        "simplify this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.simplify_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "simplify",
       "whole_utterance": true
@@ -11715,7 +11698,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "summarize",
       "whole_utterance": true
@@ -11745,7 +11728,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "summarize",
       "whole_utterance": true
@@ -11756,12 +11739,16 @@
         "tidy highlighted text up",
         "tidy highlighted word",
         "tidy highlighted word up",
+        "tidy it",
+        "tidy it up",
         "tidy selected text",
         "tidy selected text up",
         "tidy selected word",
         "tidy selected word up",
         "tidy selection",
         "tidy selection up",
+        "tidy that",
+        "tidy that up",
         "tidy the highlighted text",
         "tidy the highlighted text up",
         "tidy the highlighted word",
@@ -11772,56 +11759,42 @@
         "tidy the selected word up",
         "tidy the selection",
         "tidy the selection up",
+        "tidy this",
+        "tidy this up",
+        "tidy up",
         "tidy up highlighted text",
         "tidy up highlighted word",
+        "tidy up it",
         "tidy up selected text",
         "tidy up selected word",
         "tidy up selection",
+        "tidy up that",
         "tidy up the highlighted text",
         "tidy up the highlighted word",
         "tidy up the selected text",
         "tidy up the selected word",
-        "tidy up the selection"
+        "tidy up the selection",
+        "tidy up this"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "selection_edit.tidy_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
+        "tidy the selection"
+      ],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal. Simple dictation cleanup also works offline.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "tidy",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "tidy it",
-        "tidy it up",
-        "tidy that",
-        "tidy that up",
-        "tidy this",
-        "tidy this up",
-        "tidy up",
-        "tidy up it",
-        "tidy up that",
-        "tidy up this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.tidy_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "tidy",
       "whole_utterance": true
@@ -11830,47 +11803,37 @@
       "aliases": [
         "tighten highlighted text",
         "tighten highlighted word",
+        "tighten it",
         "tighten selected text",
         "tighten selected word",
         "tighten selection",
+        "tighten that",
         "tighten the highlighted text",
         "tighten the highlighted word",
         "tighten the selected text",
         "tighten the selected word",
+        "tighten the selection",
+        "tighten this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.tighten_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "tighten the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.tighten_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "tighten",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "tighten it",
-        "tighten that",
-        "tighten this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.tighten_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "tighten",
       "whole_utterance": true
@@ -11899,7 +11862,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -11928,7 +11891,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -11957,7 +11920,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -11986,7 +11949,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12015,7 +11978,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12044,7 +12007,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12073,7 +12036,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12102,7 +12065,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12131,7 +12094,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12160,7 +12123,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12189,7 +12152,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12218,7 +12181,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12247,7 +12210,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12276,7 +12239,7 @@
       "plugin": "selection_edit",
       "precondition": "",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "translate",
       "whole_utterance": true
@@ -12285,47 +12248,37 @@
       "aliases": [
         "trim highlighted text",
         "trim highlighted word",
+        "trim it",
         "trim selected text",
         "trim selected word",
         "trim selection",
+        "trim that",
         "trim the highlighted text",
         "trim the highlighted word",
         "trim the selected text",
         "trim the selected word",
+        "trim the selection",
+        "trim this"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "selection_edit.trim_selection",
+      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "examples": [
         "trim the selection"
       ],
-      "args": [],
-      "canonical_id": "selection_edit.trim_selection",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
       "kind": "plugin",
       "object": "selection",
       "pack": "core",
       "plugin": "selection_edit",
-      "precondition": "",
+      "precondition": "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. Say apply or discard after the proposal.",
       "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
-      "undoable": false,
-      "verb": "trim",
-      "whole_utterance": true
-    },
-    {
-      "aliases": [
-        "trim it",
-        "trim that",
-        "trim this"
-      ],
-      "args": [],
-      "canonical_id": "selection_edit.trim_this",
-      "description": "Ava: propose an edit, then say apply or discard.",
-      "examples": [],
-      "kind": "plugin",
-      "object": "this",
-      "pack": "core",
-      "plugin": "selection_edit",
-      "precondition": "",
-      "risk": "write",
-      "source": "samsara/ava_edit/selection.py:279",
+      "source": "samsara/ava_edit/selection.py:293",
       "undoable": false,
       "verb": "trim",
       "whole_utterance": true
@@ -13497,6 +13450,33 @@
       "precondition": "",
       "risk": "write",
       "source": "plugins/commands/text_marker.py:180",
+      "undoable": false,
+      "verb": "select",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "select previous"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "text_selection.select_previous",
+      "description": "Selects the previous 1 to 100 words; say select previous three words.",
+      "examples": [
+        "select previous three words"
+      ],
+      "kind": "plugin",
+      "object": "previous",
+      "pack": "core",
+      "plugin": "text_selection",
+      "precondition": "Selects words before the caret; choose 1 to 100.",
+      "risk": "write",
+      "source": "plugins/commands/text_selection.py:5",
       "undoable": false,
       "verb": "select",
       "whole_utterance": false
@@ -21429,15 +21409,15 @@
       ],
       "args": [],
       "canonical_id": "word.select_line",
-      "description": "Selects the current Word line.",
+      "description": "Selects the current line; Word uses COM, other editors use keyboard/readback conventions.",
       "examples": [],
       "kind": "plugin",
       "object": "line",
-      "pack": "word",
+      "pack": "core",
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:344",
+      "source": "plugins/commands/word.py:348",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21467,15 +21447,15 @@
       ],
       "args": [],
       "canonical_id": "word.select_sentence",
-      "description": "Selects the current Word sentence.",
+      "description": "Selects the current sentence; Word uses COM, other editors use keyboard/readback conventions.",
       "examples": [],
       "kind": "plugin",
       "object": "sentence",
-      "pack": "word",
+      "pack": "core",
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:337",
+      "source": "plugins/commands/word.py:341",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21486,15 +21466,15 @@
       ],
       "args": [],
       "canonical_id": "word.select_word",
-      "description": "Selects the current Word word.",
+      "description": "Selects the current word; Word uses COM, other editors use keyboard/readback conventions.",
       "examples": [],
       "kind": "plugin",
       "object": "word",
-      "pack": "word",
+      "pack": "core",
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:351",
+      "source": "plugins/commands/word.py:355",
       "undoable": true,
       "verb": "select",
       "whole_utterance": false
@@ -21597,7 +21577,7 @@
       "plugin": "word",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/word.py:358",
+      "source": "plugins/commands/word.py:362",
       "undoable": true,
       "verb": "word",
       "whole_utterance": false

@@ -187,6 +187,11 @@ def capture():
 
 
 def propose_and_stage(app, instruction: str) -> bool:
+    parts = intent.selection_edit_parts(instruction)
+    if parts and not parts[1]:
+        verb = parts[0].split()[0].title()
+        _notice(app, f"{verb} it how? For example: {verb.lower()} the selection shorter.")
+        return False
     action = intent.selection_action(instruction)
     original, target = capture()
     if not original or not original.strip():
@@ -197,8 +202,8 @@ def propose_and_stage(app, instruction: str) -> bool:
             return read_that_back(
                 app, _selection_checked=True, _source_text=instruction)
         # Owner-specified wording, also visible on both existing chip surfaces.
-        session._chip(app, "edit_refused", {"reason": "Nothing selected"})
-        session._say(app, "Nothing selected")
+        session._chip(app, "edit_refused", {"reason": "Select some text first"})
+        session._say(app, "Select some text first")
         return False
     if action:
         operation, argument = action
@@ -207,11 +212,15 @@ def propose_and_stage(app, instruction: str) -> bool:
             return True
         return _transform(app, original, target, operation, argument)
     cleanup = intent._first_word(instruction) in _CLEANUP_VERBS
+    if not cleanup and (not session.enabled(app) or model.resolve_backend(app) is None):
+        _notice(app, "This edit needs Ava. Turn Ava on and choose a model first.")
+        return False
     instruction = DEFAULT_INSTRUCTION if cleanup else instruction
     session._chip(app, "edit_thinking")
     proposal = session.propose(
         original, instruction, app,
-        offline=not session.is_available(app) or not session.enabled(app),
+        # 823: staged-draft availability does not describe a captured selection.
+        offline=cleanup and not session.enabled(app),
         cleanup=cleanup,
     )
     return session.stage(app, proposal, selection_target=target)
@@ -267,7 +276,12 @@ def register_commands(module_name: str) -> None:
     """Discoverable metadata + thin handlers; Ava and command mode share session."""
     from samsara.plugin_commands import command
 
-    groups = intent.selection_phrases()
+    groups = {}
+    for instruction, aliases in intent.selection_phrases().items():
+        canonical = instruction.replace("capitalize", "capitalise").replace("formalize", "formalise")
+        if canonical.split()[0] in intent.EDIT_VERBS and canonical.endswith(" this"):
+            canonical = canonical[:-5] + " selection"
+        groups[canonical] = groups.get(canonical, ()) + aliases
     groups.update({"apply": ("apply", "apply the edit"), "discard": ("discard", "discard the edit")})
     for instruction, aliases in groups.items():
         # The whole-request router selects the new reading path. These two
@@ -277,9 +291,10 @@ def register_commands(module_name: str) -> None:
             aliases = tuple(alias for alias in aliases if alias not in {"read that back", "read this"})
         def make_handler(utterance):
             def handle(app, _remainder):
-                if _remainder:
+                request = _remainder or utterance
+                if _remainder and command_for_utterance(request) != utterance:
                     return False
-                return session.handle_utterance(app, utterance)
+                return session.handle_utterance(app, request)
             handle.__module__ = module_name
             handle.__qualname__ = "edit_" + utterance.replace(" ", "_")
             # Owner-editable stand-in, surfaced by the catalogue/reference.
@@ -292,19 +307,31 @@ def register_commands(module_name: str) -> None:
                 handle.__doc__ = ("Ava: propose a summary " +
                                   ("in place of" if utterance.endswith("replace") else "below") +
                                   " selected text, then say apply or discard.")
+            if utterance.split()[0] in intent.EDIT_VERBS and utterance.endswith(" selection"):
+                handle.__doc__ = ("Ava: rewrites selected text; then say apply or discard; "
+                                  "needs Ava for AI; goes to your AI provider if cloud is chosen.")
+                if utterance.split()[0] in _CLEANUP_VERBS:
+                    handle.__doc__ += " Simple dictation cleanup also works offline."
             return handle
 
         handler = make_handler(instruction)
         command(instruction, aliases=list(aliases), pack="core", ai_visible=False,
                 risk_class="reversible", ai_composable=False,
                 side_effects=["clipboard", "keystrokes", "ui"],
-                preconditions=[], voice_triggerable=True, param_schema={},
+                preconditions=[], voice_triggerable=True,
+                param_schema=({"remainder": {"type": "str", "required": instruction.split()[0]
+                               in {"make", "change", "edit", "reformat", "rewrite", "reword", "rephrase"}}}
+                              if instruction.split()[0] in intent.EDIT_VERBS
+                              and instruction.endswith(" selection") else {}),
                 reversible=True, preview_template="")(handler)
 
 
 def command_for_utterance(text: str) -> "str | None":
     instruction = intent.selection_instruction(text)
     if instruction is not None:
+        instruction = instruction.replace("capitalize", "capitalise").replace("formalize", "formalise")
+        if instruction.split()[0] in intent.EDIT_VERBS and instruction.endswith(" this"):
+            instruction = instruction[:-5] + " selection"
         return instruction
     if session.pending() is not None:
         if intent.is_apply_utterance(text):

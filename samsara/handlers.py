@@ -354,7 +354,10 @@ class MethodHandler(CommandHandler):
 
 
 # Registry of all built-in handler types. Extend by adding a class + an entry.
+from samsara.text_selection import SelectionHandler  # 823: receipt-guarded selection
+
 _HANDLER_REGISTRY: Dict[str, CommandHandler] = {
+    'text_selection': SelectionHandler(),
     'hotkey': HotkeyHandler(),
     'press': PressHandler(),
     'key_down': KeyDownHandler(),

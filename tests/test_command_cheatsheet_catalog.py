@@ -191,7 +191,8 @@ def test_window_groups_by_plugin_and_every_item_is_a_catalog_command(qapp, live_
         assert all(item.data(Qt.ItemDataRole.UserRole + 1) in ids for item in items)
         groups = win._category_bar._pack_ids[1:]
         # 819: navigation uses a Samsara presentation group, preserving builtin IDs.
-        assert set(groups) == {r["plugin"] for r in catalog} | {"samsara"}
+        # 823: Windows settings openers have their own reference category.
+        assert set(groups) == {r["plugin"] for r in catalog} | {"samsara", "windows_accessibility"}
         some_plugin = next(group for group in groups if group != "samsara")
         win._set_category(some_plugin)
         shown = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}

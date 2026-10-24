@@ -119,6 +119,13 @@ def catalog_rows(commands: list | None) -> list | None:
         from samsara.samsara_navigation import reference_group
         row["plugin"] = reference_group(row)
         row["shown_aliases"] = command_catalog.display_aliases(record, _ALIAS_LIMIT)
+        if row.get("plugin") == "selection_edit" and row.get("args"):
+            row["shown_aliases"] = []
+            row["display_phrase"] = row["phrase"] + " ..."
+            row["needs_ava"] = True
+        if (row.get("pack") == "accessibility"
+                and row.get("description", "").startswith("Opens Windows")):
+            row["plugin"] = "windows_accessibility"
         rows.append(row)
     return rows
 
@@ -131,11 +138,15 @@ def rows_for_packs(rows: list[dict], pack_ids) -> list[dict]:
 
 
 def plugin_label(plugin: str) -> str:
+    if plugin == "windows_accessibility":
+        return "Windows / Accessibility"
     return "Built-in" if plugin == "builtin" else plugin.replace("_", " ").title()
 
 
 def row_tags(row: dict) -> list:
     tags = []
+    if row.get("needs_ava"):
+        tags.append("Needs Ava for AI / your AI provider if cloud")
     if row.get("risk") == "destructive":
         tags.append("destructive")
     if row.get("whole_utterance"):
@@ -189,7 +200,7 @@ def live_filter(rows, live_only: bool) -> tuple:
 
 def row_text(row: dict) -> str:
     """One list line: canonical phrase, up to 3 other phrases, then tags."""
-    text = row["phrase"].title()
+    text = row.get("display_phrase", row["phrase"]).title()
     if row.get("shown_aliases"):
         text += "  -  also: " + ", ".join(row["shown_aliases"])
     tags = row_tags(row)

@@ -342,8 +342,10 @@ def _expected_scopes():
         'tab seven', 'tab eight', 'tab nine', 'last tab', 'private window',
         'reading view', 'find tab', 'find text', 'tab number',
     )})
+    # 823: select all is global; Obsidian highlight is explicitly scoped.
+    expected.update({p: {'apps': ['obsidian.exe']} for p in ('highlight text', 'highlight selection in obsidian')})
     expected.update({p: {'apps': ['winword.exe']} for p in (
-        'select all', 'heading one', 'heading two', 'heading three', 'normal text',
+        'heading one', 'heading two', 'heading three', 'normal text',
     )})
     return expected
 

@@ -810,7 +810,7 @@ class CommandExecutor:
         if edit_command is not None:
             return self.execute_canonical(
                 edit_command, effective_app, route=route, generation=generation,
-                args={}, source_text=text)
+                args={'remainder': text}, source_text=text)
 
         # The queue id sits between "send" and "to <agent>", so a fixed
         # prefix matcher cannot express this complete, bounded grammar.

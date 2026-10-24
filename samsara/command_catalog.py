@@ -580,6 +580,19 @@ _DESCRIPTION_OVERRIDES = {
 
 def spoken_help(phrase: str) -> tuple[list, str]:
     phrase = normalize_phrase(phrase)
+    from samsara.ava_edit import intent
+    verb = phrase.split()[0] if phrase else ""
+    if phrase == "select previous":
+        return ["select previous three words"], "Selects words before the caret; choose 1 to 100."
+    if verb in intent.EDIT_VERBS and phrase.endswith(" selection"):
+        suffixes = {"make": ("shorter", "more formal", "friendlier"),
+                    "change": ("to a friendlier tone",), "edit": ("for clarity",),
+                    "reformat": ("as a paragraph",), "rewrite": ("more simply",),
+                    "reword": ("more politely",), "rephrase": ("more clearly",)}.get(verb, ("",))
+        return [f"{verb} the selection {suffix}".strip() for suffix in suffixes], (
+            "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. "
+            "Say apply or discard after the proposal." +
+            (" Simple dictation cleanup also works offline." if verb in {"clean", "tidy", "fix", "correct", "punctuate"} else ""))
     examples, precondition = _OVERVIEW_HELP.get(
         phrase, _COMMAND_HELP.get(phrase, ((), _INTERNAL_HELP.get(phrase, ""))))
     return list(examples), precondition

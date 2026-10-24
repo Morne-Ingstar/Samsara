@@ -330,28 +330,32 @@ def set_font(app, remainder=""):
 
 
 def _select_unit(app, unit: int) -> bool:
+    if not _word_is_focused():  # 823: preserve Word COM, add a global fallback.
+        from samsara import text_selection
+        name = {2: "word", 3: "sentence", 5: "line"}[unit]
+        return text_selection.select_sentence(app) if unit == 3 else text_selection.select_unit(name)
     ok, _ = _selection_call(app, lambda selection: selection.Expand(unit))
     return ok
 
 
-@command("select sentence", pack="word", risk_class="ui", reversible=True,
+@command("select sentence", pack="core", risk_class="ui", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"])
 def select_sentence(app, remainder=""):
-    """Selects the current Word sentence."""
+    """Selects the current sentence; Word uses COM, other editors use keyboard/readback conventions."""
     return _select_unit(app, 3)  # wdSentence
 
 
-@command("select line", pack="word", risk_class="ui", reversible=True,
+@command("select line", pack="core", risk_class="ui", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"])
 def select_line(app, remainder=""):
-    """Selects the current Word line."""
+    """Selects the current line; Word uses COM, other editors use keyboard/readback conventions."""
     return _select_unit(app, 5)  # wdLine
 
 
-@command("select word", pack="word", risk_class="ui", reversible=True,
+@command("select word", pack="core", risk_class="ui", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"])
 def select_word(app, remainder=""):
-    """Selects the current Word word."""
+    """Selects the current word; Word uses COM, other editors use keyboard/readback conventions."""
     return _select_unit(app, 2)  # wdWord
 
 

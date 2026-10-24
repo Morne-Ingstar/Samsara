@@ -56,7 +56,8 @@ def test_read_without_model_proposal_or_paste_restores_clipboard(rig, app, monke
 def test_nothing_selected(rig, app, utterance, selected):
     rig.selected = selected
     assert session.handle_utterance(app, utterance)
-    expected = "There's nothing to read back yet." if utterance == "read this" else "Nothing selected"
+    # 823: actionable edit wording; preserve 822's empty readback fallback.
+    expected = "There's nothing to read back yet." if utterance == "read this" else "Select some text first"
     assert app.spoken[-1] == expected
     assert session.pending() is None and rig.pasted == []
     assert rig.text == "original clipboard"

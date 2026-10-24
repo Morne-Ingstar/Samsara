@@ -791,13 +791,8 @@
         "ctrl",
         "a"
       ],
-      "description": "Selects all text in focused Microsoft Word.",
-      "pack": "core",
-      "scope": {
-        "apps": [
-          "winword.exe"
-        ]
-      }
+      "description": "Selects all text in the focused editor with Ctrl+A.",
+      "pack": "core"
     },
     "copy": {
       "type": "hotkey",
@@ -1678,8 +1673,13 @@
         "shift",
         "h"
       ],
-      "description": "Highlights the selected text in Obsidian.",
-      "pack": "ai"
+      "description": "Sends Ctrl+Shift+H to Obsidian; requires a selection and a matching highlight shortcut.",
+      "pack": "text-editing",
+      "scope": {
+        "apps": [
+          "obsidian.exe"
+        ]
+      }
     },
     "obsidian help": {
       "type": "hotkey",
@@ -2756,13 +2756,13 @@
     "text size": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-display",
-      "description": "Opens text size settings.",
+      "description": "Opens Windows text size and accessibility settings.",
       "pack": "accessibility"
     },
     "make text bigger": {
       "type": "launch",
       "target": "ms-settings:easeofaccess-display",
-      "description": "Opens text size / visual accessibility settings.",
+      "description": "Opens Windows text size and accessibility settings; does not edit the current text.",
       "pack": "accessibility"
     },
     "dark mode": {
@@ -2795,7 +2795,7 @@
         "ctrl",
         "="
       ],
-      "description": "Makes the text bigger in the app you are using.",
+      "description": "Sends Ctrl+= to the current app (zoom in or increase font size, depending on the app).",
       "pack": "text-editing"
     },
     "smaller text": {
@@ -2804,11 +2804,13 @@
         "ctrl",
         "-"
       ],
-      "description": "Makes the text smaller in the app you are using.",
+      "description": "Sends Ctrl+- to the current app (zoom out or decrease font size, depending on the app).",
       "pack": "text-editing"
     },
     "show commands": {
-      "aliases": ["command reference"],
+      "aliases": [
+        "command reference"
+      ],
       "type": "method",
       "method": "show_cheat_sheet",
       "pack": "core",
@@ -3125,6 +3127,99 @@
       "method": "open_transcribe_file",
       "description": "Opens the window for transcribing an audio file you already have.",
       "pack": "utilities"
+    },
+    "open windows text size settings": {
+      "type": "launch",
+      "target": "ms-settings:easeofaccess-display",
+      "description": "Opens Windows text size and accessibility settings.",
+      "pack": "accessibility"
+    },
+    "zoom text in": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "="
+      ],
+      "description": "Sends Ctrl+= to the current app (zoom in or increase font size, depending on the app).",
+      "pack": "text-editing"
+    },
+    "zoom text out": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "-"
+      ],
+      "description": "Sends Ctrl+- to the current app (zoom out or decrease font size, depending on the app).",
+      "pack": "text-editing"
+    },
+    "highlight selection in obsidian": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "shift",
+        "h"
+      ],
+      "description": "Sends Ctrl+Shift+H to Obsidian; requires a selection and a matching highlight shortcut.",
+      "pack": "text-editing",
+      "scope": {
+        "apps": [
+          "obsidian.exe"
+        ]
+      }
+    },
+    "copy that": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "c"
+      ],
+      "description": "Copies selection.",
+      "pack": "core"
+    },
+    "cut that": {
+      "type": "hotkey",
+      "keys": [
+        "ctrl",
+        "x"
+      ],
+      "description": "Cuts selection.",
+      "pack": "core"
+    },
+    "select last word": {
+      "type": "text_selection",
+      "selection_action": "select last word",
+      "description": "Selects the word before the caret using Ctrl+Shift+Left.",
+      "pack": "core"
+    },
+    "select previous word": {
+      "type": "text_selection",
+      "selection_action": "select previous word",
+      "description": "Selects the word before the caret using Ctrl+Shift+Left.",
+      "pack": "core"
+    },
+    "select that": {
+      "type": "text_selection",
+      "selection_action": "select that",
+      "description": "Selects the last delivered dictation only while its verified text, target and caret are unchanged; otherwise explains why it cannot.",
+      "pack": "core"
+    },
+    "delete that": {
+      "type": "text_selection",
+      "selection_action": "delete that",
+      "description": "Deletes the last delivered dictation only while its verified text, target and caret are unchanged; otherwise explains why it cannot.",
+      "pack": "core"
+    },
+    "unselect": {
+      "type": "press",
+      "key": "right",
+      "description": "Clears the selection by moving the caret to its right edge.",
+      "pack": "core"
+    },
+    "deselect": {
+      "type": "press",
+      "key": "right",
+      "description": "Clears the selection by moving the caret to its right edge.",
+      "pack": "core"
     }
   }
 }

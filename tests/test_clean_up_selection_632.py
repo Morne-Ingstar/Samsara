@@ -303,8 +303,9 @@ def test_nothing_selected_is_visible_and_spoken(rig, app, selected):
     rig.selected = selected
     assert session.handle_utterance(app, "clean up selection")
     assert session.pending() is None
-    assert "Nothing selected" in app.chips[-1][0]
-    assert app.spoken[-1] == "Nothing selected"
+    # 823: empty selection now says how to recover.
+    assert "Select some text first" in app.chips[-1][0]
+    assert app.spoken[-1] == "Select some text first"
 
 
 def test_missing_control_identity_fails_closed(rig, app):

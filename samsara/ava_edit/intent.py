@@ -197,6 +197,32 @@ def selection_instruction(text: str) -> "str | None":
     head, separator, language = whole.partition(" to ")
     if separator and language and head in selection_verb_phrases()["translate selection"]:
         return "translate selection"
+    dynamic = selection_edit_parts(text)
+    return dynamic[0] if dynamic else None
+
+
+def selection_edit_parts(text):
+    """A leading edit verb, explicit selection referent and trailing instruction.
+
+    Only verbs needing a complement accept arbitrary suffixes. Cleanup stays
+    whole-request only, so an embedded 'clean this up later' stays dictation.
+    """
+    if _is_quoted(text):
+        return None
+    whole = _normalize(text)
+    words = whole.split()
+    while words and words[0].strip(_TRIM) in _LEADING_FILLERS:
+        words.pop(0)
+    whole = " ".join(words)
+    for instruction, aliases in selection_phrases().items():
+        verb = instruction.split()[0]
+        if verb not in {"make", "change", "edit", "reformat", "rewrite", "reword", "rephrase"}:
+            continue
+        if not instruction.endswith(" selection"):
+            continue
+        for alias in sorted(aliases, key=len, reverse=True):
+            if whole == alias or whole.startswith(alias + " "):
+                return instruction, whole[len(alias):].strip()
     return None
 
 

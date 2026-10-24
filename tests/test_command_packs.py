@@ -317,7 +317,7 @@ class TestBrowserPackScope:
     def test_word_style_shortcuts_resolve_only_in_word(self, browser_matcher):
         word = MatchContext.for_app("winword.exe")
         other = MatchContext.for_app("notepad.exe")
-        for phrase in ("heading one", "heading two", "heading three", "normal text", "select all"):
+        for phrase in ("heading one", "heading two", "heading three", "normal text"):  # 823: select all is now global.
             hit, _remainder = browser_matcher.match(phrase, word)
             assert hit is not None and hit.phrase == phrase
             miss, _remainder = browser_matcher.match(phrase, other)
