@@ -14,7 +14,7 @@ import ctypes.wintypes as wintypes
 import sys
 from math import isfinite
 from numbers import Real
-from ctypes import POINTER, HRESULT, byref, cast, c_float, c_void_p
+from ctypes import POINTER, byref, cast, c_float, c_void_p
 from ctypes import Structure, Union, c_ulong
 
 from samsara.plugin_commands import command
@@ -49,13 +49,27 @@ _IID_IAudioEndpointVolume = _guid_bytes('{5CDF2C82-841E-4546-9722-0CF74078229A}'
 
 
 # COM function types
-_ole32 = ctypes.windll.ole32
-_ole32.CoInitialize.argtypes = [c_void_p]
-_ole32.CoInitialize.restype = HRESULT
-_ole32.CoCreateInstance.argtypes = [
-    c_void_p, c_void_p, ctypes.c_ulong, c_void_p, POINTER(c_void_p)
-]
-_ole32.CoCreateInstance.restype = HRESULT
+_ole32 = None  # Existing adapter seam; the real DLL is loaded only on Windows use.
+
+
+def _hresult_type():
+    """Return the signed 32-bit Windows LONG used for HRESULT results."""
+    return ctypes.c_long
+
+
+def _get_ole32():
+    global _ole32
+    if sys.platform != "win32":
+        return None
+    if _ole32 is None:
+        _ole32 = ctypes.windll.ole32
+        _ole32.CoInitialize.argtypes = [c_void_p]
+        _ole32.CoInitialize.restype = _hresult_type()
+        _ole32.CoCreateInstance.argtypes = [
+            c_void_p, c_void_p, ctypes.c_ulong, c_void_p, POINTER(c_void_p)
+        ]
+        _ole32.CoCreateInstance.restype = _hresult_type()
+    return _ole32
 
 
 def _get_vtable_func(iface_ptr, index, restype, *argtypes):
@@ -76,7 +90,10 @@ class _CoreAudio:
     def _ensure_init(self):
         if self._initialized:
             return True
-        hr = _ole32.CoInitialize(None)
+        ole32 = _get_ole32()
+        if ole32 is None:
+            return False
+        hr = ole32.CoInitialize(None)
         if hr < 0 and hr != 1:  # S_OK or S_FALSE (already initialized)
             print(f"[VOLUME] CoInitialize failed: {hr:#010x}")
             return False
@@ -86,7 +103,7 @@ class _CoreAudio:
     def _get_enumerator(self):
         """Get IMMDeviceEnumerator."""
         enumerator = c_void_p()
-        hr = _ole32.CoCreateInstance(
+        hr = _get_ole32().CoCreateInstance(
             _CLSID_MMDeviceEnumerator,
             None,
             CLSCTX_ALL,
@@ -109,7 +126,7 @@ class _CoreAudio:
         # 3: EnumAudioEndpoints
         # 4: GetDefaultAudioEndpoint
         func = _get_vtable_func(
-            enumerator, 4, HRESULT,
+            enumerator, 4, _hresult_type(),
             c_void_p,          # this
             ctypes.c_uint,     # dataFlow (eRender=0)
             ctypes.c_uint,     # role (eMultimedia=1)
@@ -132,7 +149,7 @@ class _CoreAudio:
         # 2: Release
         # 3: Activate
         func = _get_vtable_func(
-            device, 3, HRESULT,
+            device, 3, _hresult_type(),
             c_void_p,          # this
             c_void_p,          # iid
             ctypes.c_ulong,    # dwClsCtx
@@ -180,7 +197,7 @@ class _CoreAudio:
             return None
         try:
             func = _get_vtable_func(
-                vol, 9, HRESULT,
+                vol, 9, _hresult_type(),
                 c_void_p,          # this
                 POINTER(c_float)   # pfLevel
             )
@@ -200,7 +217,7 @@ class _CoreAudio:
             return None
         try:
             func = _get_vtable_func(
-                vol, 20, HRESULT,
+                vol, 20, _hresult_type(),
                 c_void_p,
                 POINTER(c_float),
                 POINTER(c_float),
@@ -224,7 +241,7 @@ class _CoreAudio:
             return False
         try:
             func = _get_vtable_func(
-                vol, 7, HRESULT,
+                vol, 7, _hresult_type(),
                 c_void_p,      # this
                 c_float,       # fLevel
                 c_void_p       # pguidEventContext (NULL)
@@ -247,7 +264,7 @@ class _CoreAudio:
             return None
         try:
             func = _get_vtable_func(
-                vol, 15, HRESULT,
+                vol, 15, _hresult_type(),
                 c_void_p,              # this
                 POINTER(wintypes.BOOL) # pbMute (Windows BOOL)
             )
@@ -268,7 +285,7 @@ class _CoreAudio:
             return False
         try:
             func = _get_vtable_func(
-                vol, 14, HRESULT,
+                vol, 14, _hresult_type(),
                 c_void_p,      # this
                 wintypes.BOOL, # bMute (Windows BOOL)
                 c_void_p       # pguidEventContext

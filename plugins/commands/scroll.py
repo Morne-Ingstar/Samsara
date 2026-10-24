@@ -17,6 +17,7 @@ Each click is one WHEEL_DELTA unit (120).
 
 import ctypes
 import ctypes.wintypes as wintypes
+import sys
 
 from samsara.plugin_commands import command
 from samsara.scroll_target import prepare_scroll_target
@@ -35,44 +36,35 @@ VK_NEXT    = 0x22  # Page Down
 VK_END     = 0x23
 VK_HOME    = 0x24
 
-user32 = ctypes.windll.user32
+user32 = None  # Kept as an adapter seam for existing Windows tests/callers.
 
 
 # ── SendInput structures ──────────────────────────────────────────────────────
 
-class _MOUSEINPUT(ctypes.Structure):
-    _fields_ = [
-        ("dx",          ctypes.c_long),
-        ("dy",          ctypes.c_long),
-        ("mouseData",   wintypes.DWORD),
-        ("dwFlags",     wintypes.DWORD),
-        ("time",        wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-
-class _KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk",         wintypes.WORD),
-        ("wScan",       wintypes.WORD),
-        ("dwFlags",     wintypes.DWORD),
-        ("time",        wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [
-        ("mi", _MOUSEINPUT),
-        ("ki", _KEYBDINPUT),
-    ]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [
-        ("type",   wintypes.DWORD),
-        ("_input", _INPUT_UNION),
-    ]
+def _ensure_windows_bindings():
+    """Build the original Windows-only SendInput layouts on first use."""
+    global user32, _MOUSEINPUT, _KEYBDINPUT, _INPUT_UNION, INPUT
+    if sys.platform != "win32":
+        return False
+    if user32 is None:
+        user32 = ctypes.windll.user32
+    if "INPUT" not in globals():
+        class _MOUSEINPUT(ctypes.Structure):
+            _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long),
+                        ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                        ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+        class _KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                        ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+        class _INPUT_UNION(ctypes.Union):
+            _fields_ = [("mi", _MOUSEINPUT), ("ki", _KEYBDINPUT)]
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT_UNION)]
+        globals().update(_MOUSEINPUT=_MOUSEINPUT, _KEYBDINPUT=_KEYBDINPUT,
+                         _INPUT_UNION=_INPUT_UNION, INPUT=INPUT)
+    return True
 
 
 # ── Core scroll helper ────────────────────────────────────────────────────────
@@ -87,6 +79,8 @@ def _scroll(clicks: int, up: bool, app=None) -> bool:
     Returns:
         True if SendInput reported at least one event sent.
     """
+    if not _ensure_windows_bindings():
+        return False
     if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {}):
         return False
     delta = clicks * WHEEL_DELTA * (1 if up else -1)
@@ -173,6 +167,8 @@ def scroll_down_fast(app, remainder):
 
 def _hscroll(clicks: int, right: bool, app=None) -> bool:
     """Send a horizontal wheel event at the current cursor position."""
+    if not _ensure_windows_bindings():
+        return False
     if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {}):
         return False
     delta = clicks * WHEEL_DELTA * (1 if right else -1)
@@ -191,6 +187,8 @@ def _hscroll(clicks: int, right: bool, app=None) -> bool:
 
 def _send_key_combo(*vkeys) -> bool:
     """Send key-down for each vkey in order, then key-up in reverse, as one batch."""
+    if not _ensure_windows_bindings():
+        return False
     n = len(vkeys)
     inputs = (INPUT * (n * 2))()
     for i, vk in enumerate(vkeys):

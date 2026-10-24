@@ -27,7 +27,7 @@ _marker_hwnd: int | None = None    # foreground window when anchor was set
 
 # ── Win32 SendInput structures ────────────────────────────────────────────────
 
-user32 = ctypes.windll.user32
+user32 = None  # Kept as an adapter seam for existing Windows tests/callers.
 
 INPUT_MOUSE    = 0
 INPUT_KEYBOARD = 1
@@ -44,42 +44,37 @@ SM_CXVIRTUALSCREEN = 78
 SM_CYVIRTUALSCREEN = 79
 
 
-class _MOUSEINPUT(ctypes.Structure):
-    _fields_ = [
-        ("dx",          ctypes.c_long),
-        ("dy",          ctypes.c_long),
-        ("mouseData",   wintypes.DWORD),
-        ("dwFlags",     wintypes.DWORD),
-        ("time",        wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-
-class _KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk",         wintypes.WORD),
-        ("wScan",       wintypes.WORD),
-        ("dwFlags",     wintypes.DWORD),
-        ("time",        wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [
-        ("mi", _MOUSEINPUT),
-        ("ki", _KEYBDINPUT),
-    ]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [
-        ("type", wintypes.DWORD),
-        ("_input", _INPUT_UNION),
-    ]
+def _ensure_windows_bindings():
+    """Build the original Windows-only SendInput layouts on first use."""
+    global user32
+    if sys.platform != "win32":
+        return False
+    if user32 is None:
+        user32 = ctypes.windll.user32
+    if "INPUT" not in globals():
+        class _MOUSEINPUT(ctypes.Structure):
+            _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long),
+                        ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                        ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+        class _KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                        ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+        class _INPUT_UNION(ctypes.Union):
+            _fields_ = [("mi", _MOUSEINPUT), ("ki", _KEYBDINPUT)]
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT_UNION)]
+        class _INPUT(ctypes.Structure):
+            _fields_ = [("type", wintypes.DWORD), ("u", _INPUT_UNION)]
+        globals().update(_MOUSEINPUT=_MOUSEINPUT, _KEYBDINPUT=_KEYBDINPUT,
+                         _INPUT_UNION=_INPUT_UNION, INPUT=INPUT, _INPUT=_INPUT)
+    return True
 
 
 def _get_cursor_pos() -> tuple[int, int]:
+    if not _ensure_windows_bindings():
+        return (0, 0)
     pt = wintypes.POINT()
     user32.GetCursorPos(ctypes.byref(pt))
     return pt.x, pt.y
@@ -91,6 +86,8 @@ def _to_absolute(x: int, y: int) -> tuple[int, int]:
     Uses SM_CXVIRTUALSCREEN / SM_CYVIRTUALSCREEN so the mapping covers the
     entire virtual desktop on multi-monitor setups, not just the primary screen.
     """
+    if not _ensure_windows_bindings():
+        return (0, 0)
     vw = user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
     vh = user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
     vw = vw if vw > 0 else 1
@@ -102,6 +99,8 @@ def _to_absolute(x: int, y: int) -> tuple[int, int]:
 
 def _left_click(x: int, y: int) -> None:
     """Send a plain left click at absolute screen position (x, y)."""
+    if not _ensure_windows_bindings():
+        return
     ax, ay = _to_absolute(x, y)
     flags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
 
@@ -126,6 +125,8 @@ def _shift_click(x: int, y: int) -> None:
     Input sequence sent as a single SendInput call so the OS treats them
     atomically: Shift down, mouse down, mouse up, Shift up.
     """
+    if not _ensure_windows_bindings():
+        return
     ax, ay = _to_absolute(x, y)
     flags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
 
@@ -167,6 +168,8 @@ def _shift_click(x: int, y: int) -> None:
 def mark_here(app, remainder):
     """Sets the start of a selection where the pointer is."""
     global _marker_set, _marker_pos, _marker_hwnd
+    if not _ensure_windows_bindings():
+        return False
 
     x, y = _get_cursor_pos()
     _left_click(x, y)
@@ -186,6 +189,8 @@ def mark_here(app, remainder):
 def select_to_here(app, remainder):
     """Selects from the mark you set to where the pointer is now."""
     global _marker_set, _marker_pos, _marker_hwnd
+    if not _ensure_windows_bindings():
+        return False
 
     if not _marker_set:
         print("[MARKER] No anchor set — say 'mark here' first")
@@ -214,6 +219,8 @@ def select_to_here(app, remainder):
 
 def _triple_click():
     """Send three rapid left clicks at the current mouse position."""
+    if not _ensure_windows_bindings():
+        return
     x, y = _get_cursor_pos()
     abs_x, abs_y = _to_absolute(x, y)
 
@@ -251,6 +258,8 @@ def _triple_click():
 )
 def select_paragraph(app, remainder="", **kwargs):
     """Selects the paragraph the pointer is in."""
+    if not _ensure_windows_bindings():
+        return False
     _triple_click()
     print("[MARKER] Triple-click — paragraph selected")
     return True

@@ -28,6 +28,7 @@ import ctypes
 import ctypes.wintypes as wintypes
 import re
 import struct
+import sys
 import threading
 import time
 
@@ -43,11 +44,32 @@ logger = get_logger(__name__)
 # Win32 bindings
 # ---------------------------------------------------------------------------
 
-user32   = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
-ole32    = ctypes.windll.ole32
+user32   = None  # Kept as Windows adapter seams; resolved on first native use.
+kernel32 = None
+ole32    = None
 _c_void  = ctypes.c_void_p
-HRESULT  = ctypes.HRESULT
+
+
+def _windows_supported():
+    return sys.platform == "win32"
+
+
+def _hresult_type():
+    """Return the signed 32-bit Windows LONG used for HRESULT results."""
+    return ctypes.c_long
+
+
+def _native_library(name):
+    global user32, kernel32, ole32
+    if not _windows_supported():
+        return None
+    if name == "dwmapi":
+        return ctypes.windll.dwmapi
+    value = globals()[name]
+    if value is None:
+        value = getattr(ctypes.windll, name)
+        globals()[name] = value
+    return value
 
 GWL_EXSTYLE       = -20
 GW_OWNER           = 4
@@ -178,9 +200,11 @@ def _alt_tab_eligible(window: dict) -> bool:
 
 def _is_cloaked(hwnd) -> bool:
     """True if DWM says the top-level window is not currently presentable."""
+    if not _windows_supported():
+        return False
     try:
         value = wintypes.DWORD(0)
-        result = ctypes.windll.dwmapi.DwmGetWindowAttribute(
+        result = _native_library("dwmapi").DwmGetWindowAttribute(
             hwnd, DWMWA_CLOAKED, ctypes.byref(value), ctypes.sizeof(value))
         return result == 0 and bool(value.value)
     except Exception:
@@ -202,6 +226,10 @@ def _get_all_windows(exclude_hwnds: set = None) -> list:
 
     Returns list of (hwnd, title, RECT, is_minimized).
     """
+    if not _windows_supported():
+        return []
+    global user32
+    user32 = _native_library("user32")
     exclude = exclude_hwnds or set()
     results = []
 
@@ -246,7 +274,7 @@ def _get_all_windows(exclude_hwnds: set = None) -> list:
         return True
 
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows(WNDENUMPROC(_cb), 0)
+    _native_library("user32").EnumWindows(WNDENUMPROC(_cb), 0)
     return results
 
 
@@ -281,9 +309,12 @@ def _assign_letters(windows: list) -> dict:
 
 def _set_click_through(win_id: int) -> None:
     """Add WS_EX_LAYERED | WS_EX_TRANSPARENT so clicks pass through."""
+    if not _windows_supported():
+        return
     try:
-        style = ctypes.windll.user32.GetWindowLongW(win_id, GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(
+        api = _native_library("user32")
+        style = api.GetWindowLongW(win_id, GWL_EXSTYLE)
+        api.SetWindowLongW(
             win_id, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
     except Exception as e:
         print(f"[WINSW] click-through failed: {e}")
@@ -326,7 +357,7 @@ def _make_overlay_manager_class():
                     continue
                 try:
                     rect = wintypes.RECT()
-                    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                    _native_library("user32").GetWindowRect(hwnd, ctypes.byref(rect))
 
                     pill = 54
                     # Convert physical pixels -> logical pixels for Qt
@@ -449,6 +480,8 @@ def _reset_timer() -> None:
 
 def _force_focus(hwnd: int) -> bool:
     """Delegate focus activation to the shared lower-level window helper."""
+    if not _windows_supported():
+        return False
     from plugins.commands.windows import raise_window
     return raise_window(hwnd, activate=True)
 
@@ -457,6 +490,8 @@ def _force_focus(hwnd: int) -> bool:
 # ---------------------------------------------------------------------------
 
 def _get_monitors() -> list:
+    if not _windows_supported():
+        return []
     try:
         from plugins.commands.windows import get_monitors
         return get_monitors()
@@ -465,6 +500,8 @@ def _get_monitors() -> list:
 
 
 def _move_window(hwnd: int, monitor: dict) -> None:
+    if not _windows_supported():
+        return
     try:
         from plugins.commands.windows import move_window_to_monitor
         move_window_to_monitor(hwnd, monitor)
@@ -501,13 +538,20 @@ def _vtfunc(ptr, idx: int, restype, *argtypes):
 
 
 def _get_pid(hwnd: int) -> int:
+    if not _windows_supported():
+        return 0
+    user_api = _native_library("user32")
     pid = wintypes.DWORD(0)
-    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    user_api.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
     return pid.value
 
 
 def _set_process_mute(hwnd: int, mute: bool) -> bool:
     """Mute/unmute all Core Audio sessions belonging to hwnd's PID."""
+    if not _windows_supported():
+        return False
+    global ole32
+    ole32 = _native_library("ole32")
     target_pid = _get_pid(hwnd)
     if not target_pid:
         return False
@@ -526,7 +570,7 @@ def _set_process_mute(hwnd: int, mute: bool) -> bool:
             return False
 
         # 2. IMMDevice: GetDefaultAudioEndpoint(eRender=0, eMultimedia=1) - slot 4
-        get_default = _vtfunc(enum, 4, HRESULT,
+        get_default = _vtfunc(enum, 4, _hresult_type(),
                                _c_void, ctypes.c_uint, ctypes.c_uint,
                                ctypes.POINTER(_c_void))
         device = _c_void()
@@ -536,7 +580,7 @@ def _set_process_mute(hwnd: int, mute: bool) -> bool:
             return False
 
         # 3. IAudioSessionManager2: IMMDevice::Activate - slot 3
-        activate = _vtfunc(device, 3, HRESULT,
+        activate = _vtfunc(device, 3, _hresult_type(),
                             _c_void, _c_void, ctypes.c_ulong,
                             _c_void, ctypes.POINTER(_c_void))
         mgr2 = _c_void()
@@ -547,7 +591,7 @@ def _set_process_mute(hwnd: int, mute: bool) -> bool:
             return False
 
         # 4. IAudioSessionEnumerator: GetSessionEnumerator - slot 5
-        get_sess_enum = _vtfunc(mgr2, 5, HRESULT,
+        get_sess_enum = _vtfunc(mgr2, 5, _hresult_type(),
                                  _c_void, ctypes.POINTER(_c_void))
         sess_enum = _c_void()
         hr = get_sess_enum(mgr2, ctypes.byref(sess_enum))
@@ -556,13 +600,13 @@ def _set_process_mute(hwnd: int, mute: bool) -> bool:
             return False
 
         # 5. GetCount - slot 3
-        get_count = _vtfunc(sess_enum, 3, HRESULT,
+        get_count = _vtfunc(sess_enum, 3, _hresult_type(),
                              _c_void, ctypes.POINTER(ctypes.c_int))
         count = ctypes.c_int(0)
         get_count(sess_enum, ctypes.byref(count))
 
         # 6. GetSession - slot 4
-        get_session = _vtfunc(sess_enum, 4, HRESULT,
+        get_session = _vtfunc(sess_enum, 4, _hresult_type(),
                                _c_void, ctypes.c_int,
                                ctypes.POINTER(_c_void))
 
@@ -573,7 +617,7 @@ def _set_process_mute(hwnd: int, mute: bool) -> bool:
                 continue
 
             # 7. QI ctrl → IAudioSessionControl2
-            qi = _vtfunc(ctrl, 0, HRESULT,
+            qi = _vtfunc(ctrl, 0, _hresult_type(),
                          _c_void, _c_void, ctypes.POINTER(_c_void))
             ctrl2 = _c_void()
             hr = qi(ctrl, _IID_IAudSessCtrl2, ctypes.byref(ctrl2))
@@ -583,19 +627,19 @@ def _set_process_mute(hwnd: int, mute: bool) -> bool:
                 continue
 
             # 8. GetProcessId - slot 14
-            get_pid_f = _vtfunc(ctrl2, 14, HRESULT,
+            get_pid_f = _vtfunc(ctrl2, 14, _hresult_type(),
                                  _c_void, ctypes.POINTER(wintypes.DWORD))
             sess_pid = wintypes.DWORD(0)
             get_pid_f(ctrl2, ctypes.byref(sess_pid))
 
             if sess_pid.value == target_pid:
                 # 9. QI ctrl2 → ISimpleAudioVolume
-                qi2 = _vtfunc(ctrl2, 0, HRESULT,
+                qi2 = _vtfunc(ctrl2, 0, _hresult_type(),
                                _c_void, _c_void, ctypes.POINTER(_c_void))
                 sav = _c_void()
                 if qi2(ctrl2, _IID_ISimpleAudVol, ctypes.byref(sav)) == 0 and sav:
                     # SetMute - slot 5
-                    set_mute = _vtfunc(sav, 5, HRESULT,
+                    set_mute = _vtfunc(sav, 5, _hresult_type(),
                                        _c_void, wintypes.BOOL, _c_void)
                     set_mute(sav, wintypes.BOOL(1 if mute else 0), None)
                     _vtfunc(sav, 2, ctypes.c_ulong, _c_void)(sav)  # Release
@@ -656,6 +700,8 @@ def get_window_by_letter(letter: str):
          pack="window-management", risk_class="read")
 def handle_show_windows(app, remainder):
     """Shows live pictures, numbers and layout buttons for your open windows."""
+    if not _windows_supported():
+        return False
     return _show_overview(app, remainder)
 
 # ---------------------------------------------------------------------------
@@ -669,6 +715,8 @@ def handle_show_windows(app, remainder):
 )
 def handle_window_switch(app, remainder):
     """Brings the window with the letter you name to the front."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window switch B.")
@@ -696,6 +744,8 @@ def handle_window_switch(app, remainder):
 )
 def handle_window_bring(app, remainder):
     """Moves the window with the letter you name to the screen you are on."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window bring B.")
@@ -722,6 +772,8 @@ def handle_window_bring(app, remainder):
 )
 def handle_window_move(app, remainder):
     """Moves the window with the letter you name to another screen."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window move B to monitor 2.")
@@ -741,7 +793,7 @@ def handle_window_move(app, remainder):
     if idx is None:
         # Default: next monitor relative to current window position
         rect = wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        _native_library("user32").GetWindowRect(hwnd, ctypes.byref(rect))
         cx = (rect.left + rect.right) // 2
         current_idx = 1
         for m in monitors:
@@ -774,6 +826,8 @@ def handle_window_move(app, remainder):
 )
 def handle_window_mute(app, remainder):
     """Mutes the audio coming from the window with the letter you name."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window mute C.")
@@ -797,6 +851,8 @@ def handle_window_mute(app, remainder):
 )
 def handle_window_unmute(app, remainder):
     """Unmutes the audio from the window with the letter you name."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window unmute C.")
@@ -822,6 +878,8 @@ def handle_window_unmute(app, remainder):
 )
 def handle_window_close(app, remainder):
     """Closes the window with the letter you name, asking it to save first."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if not letters:
         _speak(app, "Which window? Say window close D.")
@@ -833,7 +891,7 @@ def handle_window_close(app, remainder):
         return True
 
     hwnd, title, _ = entry
-    user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+    _native_library("user32").PostMessageW(hwnd, WM_CLOSE, 0, 0)
 
     # Retire the letter — never reassign within this session
     with _lock:
@@ -854,6 +912,8 @@ def handle_window_close(app, remainder):
 )
 def handle_window_copy(app, remainder):
     """Copies the text from one lettered window into another."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if len(letters) < 2:
         _speak(app, "Need two windows. Say window copy A into B.")
@@ -909,6 +969,8 @@ def handle_window_copy(app, remainder):
 )
 def handle_window_tile(app, remainder):
     """Arranges the lettered windows you name side by side."""
+    if not _windows_supported():
+        return False
     letters = _parse_letters(remainder or '')
     if len(letters) < 2:
         _speak(app, "Need at least 2 windows. Say window tile A and C.")
@@ -972,6 +1034,8 @@ def handle_window_tile(app, remainder):
 )
 def handle_hide_windows(app, remainder):
     """Closes the window overview and clears legacy window labels."""
+    if not _windows_supported():
+        return False
     global _app_ref
     _app_ref = app
     _hide_overview()
@@ -990,6 +1054,8 @@ def handle_hide_windows(app, remainder):
 )
 def handle_read_windows(app, remainder):
     """Shows the overview and reads one short app name per breath."""
+    if not _windows_supported():
+        return False
     if not overview_active(app):
         if not _show_overview(app, remainder):
             return False
@@ -1181,6 +1247,8 @@ def _overview_is_live(row):
 
 
 def overview_action(app, number, action='go', keep=None):
+    if not _windows_supported():
+        return False
     global _overview_pending_close, _overview_keep
     if not overview_active(app):
         return False
@@ -1250,6 +1318,8 @@ def overview_action(app, number, action='go', keep=None):
 
 
 def handle_overview_number(app, value, remainder=""):
+    if not _windows_supported():
+        return False
     if not overview_active(app):
         return False
     parsed = parse_overview_action(f"{value} {remainder or ''}")
@@ -1263,6 +1333,8 @@ def handle_overview_number(app, value, remainder=""):
          scope={"tags": ["window_overview.visible"]},
          param_schema={"number": {"type": "int", "required": True}})
 def handle_read_window(app, remainder):
+    if not _windows_supported():
+        return False
     """Reads the full title of one window in the overview."""
     from samsara.spoken_numbers import parse_spoken_number
     if not overview_active(app):
@@ -1276,6 +1348,8 @@ def handle_read_window(app, remainder):
 @command("confirm close", pack="window-management", risk_class="destructive",
          ai_visible=False, scope={"tags": ["window_overview.visible"]})
 def handle_confirm_overview_close(app, remainder):
+    if not _windows_supported():
+        return False
     """Confirms the window close just requested in the overview."""
     return overview_action(app, 0, 'confirm close') if not remainder else False
 
@@ -1283,6 +1357,8 @@ def handle_confirm_overview_close(app, remainder):
 @command("keep it open", pack="window-management", risk_class="ui",
          scope={"tags": ["window_overview.visible"]})
 def handle_keep_overview_open(app, remainder):
+    if not _windows_supported():
+        return False
     """Keeps the overview open after window actions for this session."""
     global _overview_keep
     if not overview_active(app) or remainder:
@@ -1291,6 +1367,8 @@ def handle_keep_overview_open(app, remainder):
 
 
 def handle_cancel_overview(app, remainder):
+    if not _windows_supported():
+        return False
     """Closes the window overview, or cancels recording when no overview is open."""
     if remainder:
         return False
