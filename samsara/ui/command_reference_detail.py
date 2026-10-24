@@ -1,6 +1,6 @@
 """Persistent, catalogue-backed command details inside the floating reference."""
-from PySide6.QtCore import QEvent, QSize, Qt
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QPalette
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QVBoxLayout, QWidget,
@@ -24,20 +24,60 @@ class _RunButton(QPushButton):
         super().keyPressEvent(event)
 
 
-def style_search(edit):
+def style_search(edit, height=None):
     """Use Settings' search field, including its keyboard-only ring and glyph."""
     edit.setObjectName('settingsSearchField')
-    edit.setStyleSheet(sidebar.search_qss())
-    edit.setFixedHeight(theme.HIT_TARGET_MIN)
+    sheet = sidebar.search_qss()
+    height = height or theme.HIT_TARGET_MIN
+    # Keep Settings' search glyph, focus ring and colours at a compact height.
+    for border in (2, 2 * sidebar.FOCUS_RING):
+        sheet = sheet.replace(f'height: {theme.HIT_TARGET_MIN - border}px', f'height: {height - border}px')
+    edit.setStyleSheet(sheet)
+    edit.setFixedHeight(height)
     edit.setTextMargins(sidebar.ICON_BOX + theme.SPACE_2 - sidebar.FOCUS_RING - sidebar._LINE_EDIT_MARGIN, 0, 0, 0)
     edit.setProperty('settingsInputTextInset', sidebar.ICON_INSET + sidebar.ICON_BOX + theme.SPACE_2)
     sidebar.SearchGlyph(edit)
 
 
 class CommandRowDelegate(QStyledItemDelegate):
-    """Equal-height rows; full phrasings remain available in the detail card."""
+    """Wrapped primary/secondary tiers, measured with the same fonts we paint."""
+
+    @staticmethod
+    def tiers(index):
+        row = index.data(Qt.ItemDataRole.UserRole + 3) or {}
+        primary = row.get('display_phrase', row.get('phrase', index.data() or '')).title()
+        aliases = row.get('display_aliases', row.get('shown_aliases', ()))
+        secondary = 'also: ' + ', '.join(aliases) if aliases else ''
+        tags = row.get('row_tags', ())
+        if tags:
+            secondary += ('\n' if secondary else '') + '[' + ', '.join(tags) + ']'
+        return primary, secondary
+
+    @staticmethod
+    def tier_styles():
+        primary = QFont(theme.FONT_FAMILY)
+        primary.setPixelSize(14)
+        primary.setWeight(QFont.Weight.DemiBold)
+        secondary = QFont(theme.FONT_FAMILY)
+        secondary.setPixelSize(12)
+        return ((primary, theme.TEXT_PRIMARY), (secondary, theme.TEXT_SECONDARY))
+
+    def text_layout(self, index, width):
+        width = max(1, width - theme.SPACE_1)
+        y = 8
+        parts = []
+        for text, (font, colour) in zip(self.tiers(index), self.tier_styles()):
+            if not text:
+                continue
+            height = QFontMetrics(font).boundingRect(
+                QRect(0, 0, width, 100000), Qt.TextFlag.TextWordWrap, text).height()
+            parts.append((text, font, colour, QRect(0, y, width, height)))
+            y += height + 4
+        return parts, max(theme.HIT_TARGET_MIN, y + 4)
+
     def sizeHint(self, option, index):
-        return QSize(0, theme.HIT_TARGET_MIN)
+        width = self.parent().viewport().width()
+        return QSize(0, self.text_layout(index, width)[1])
 
     def paint(self, painter, option, index):
         styled = QStyleOptionViewItem(option)
@@ -45,12 +85,13 @@ class CommandRowDelegate(QStyledItemDelegate):
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
         hovered = bool(styled.state & QStyle.StateFlag.State_MouseOver)
         painter.save()
+        painter.setClipRect(styled.rect)
         painter.fillRect(styled.rect, theme.qcolor(
             theme._rgba(theme.ACCENT, 0.14) if selected else theme.BG2 if hovered else theme.BG0))
-        painter.setFont(styled.font)
-        painter.setPen(theme.qcolor(theme.ACCENT) if selected else styled.palette.color(QPalette.ColorRole.Text))
-        text = styled.fontMetrics.elidedText(styled.text, Qt.TextElideMode.ElideRight, styled.rect.width() - theme.SPACE_1)
-        painter.drawText(styled.rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+        for text, font, colour, rect in self.text_layout(index, styled.rect.width())[0]:
+            painter.setFont(font)
+            painter.setPen(theme.qcolor(colour))
+            painter.drawText(rect.translated(styled.rect.topLeft()), Qt.TextFlag.TextWordWrap, text)
         if index.row() < index.model().rowCount() - 1:
             painter.setPen(theme.qcolor(theme.BORDER_FAINT))
             painter.drawLine(styled.rect.bottomLeft(), styled.rect.bottomRight())

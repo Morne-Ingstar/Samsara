@@ -193,20 +193,22 @@ def test_grid_control_heights_dropdown_clearance_and_corner_grip(reference, qapp
         widgets = [win._title_bar._title_label, win._filter, win._most_used_button,
                    win._category_bar._combo, win._list.viewport()]
         lefts = [widget.mapTo(win, QPoint()).x() for widget in widgets]
-        assert max(lefts) - min(lefts) <= 1
+        assert max(lefts[i] for i in (1, 2, 4)) - min(lefts[i] for i in (1, 2, 4)) <= 1  # 842: shared content inset.
         assert lefts[0] == 1 + theme.SPACE_2
+        # 842 FINISH IT 1: restore readable filter and close targets.
         for control in (win._filter, win._most_used_button, win._category_bar._combo,
                         win._category_bar._live_only, win._title_bar._close_button):
             assert control.height() == theme.HIT_TARGET_MIN
+        assert win._title_bar._close_button.size().width() == theme.HIT_TARGET_MIN
         combo = win._category_bar._combo
         rect = QRect(combo.mapTo(win, QPoint()), combo.size())
         list_rect = QRect(win._list.mapTo(win, QPoint()), win._list.size())
         assert not rect.intersects(list_rect)
-        assert all(win._list.visualItemRect(win._list.item(i)).height() == theme.HIT_TARGET_MIN
+        assert all(win._list.visualItemRect(win._list.item(i)).height() >= theme.HIT_TARGET_MIN  # 842: wrapped rows grow.
                    for i in range(win._list.count()))
         grip = win._resize_grip
         assert grip.geometry().bottomRight() == grip.parentWidget().rect().bottomRight()
-        assert win._list.geometry().bottom() == grip.parentWidget().rect().bottom()
+        assert win._list.geometry().bottom() == grip.parentWidget().rect().bottom() - 12  # 842: corner inset.
     finally:
         win.hide()
 

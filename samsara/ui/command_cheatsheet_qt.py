@@ -10,7 +10,7 @@ show() / hide() / toggle() are safe to call from any thread.
 Every row is a command-catalog record (samsara.command_catalog), built at
 runtime from the LIVE registry rows the app passes as commands_cb -- so the
 sheet can never list a command that is not registered. Rows are grouped by
-plugin and show the canonical phrase, up to 3 other phrases, a
+plugin and show the canonical phrase, its alternate phrases, a
 "destructive" tag for destructive commands and a "whole utterance" tag for
 reserved control words (they only work said on their own). If no catalog
 can be built, the sheet says so and links to Help; it never falls back to a
@@ -119,8 +119,10 @@ def catalog_rows(commands: list | None) -> list | None:
         from samsara.samsara_navigation import reference_group
         row["plugin"] = reference_group(row)
         row["shown_aliases"] = command_catalog.display_aliases(record, _ALIAS_LIMIT)
+        row["display_aliases"] = command_catalog.display_aliases(record, len(record.get("aliases", ())))
         if row.get("plugin") == "selection_edit" and row.get("args"):
             row["shown_aliases"] = []
+            row["display_aliases"] = []
             row["display_phrase"] = row["phrase"] + " ..."
             row["needs_ava"] = True
         if (row.get("pack") == "accessibility"
@@ -199,10 +201,11 @@ def live_filter(rows, live_only: bool) -> tuple:
 
 
 def row_text(row: dict) -> str:
-    """One list line: canonical phrase, up to 3 other phrases, then tags."""
+    """Accessible row text: canonical phrase, alternate phrases, then tags."""
     text = row.get("display_phrase", row["phrase"]).title()
-    if row.get("shown_aliases"):
-        text += "  -  also: " + ", ".join(row["shown_aliases"])
+    aliases = row.get("display_aliases", row.get("shown_aliases", ()))
+    if aliases:
+        text += "  -  also: " + ", ".join(aliases)
     tags = row_tags(row)
     if tags:
         text += "  [" + ", ".join(tags) + "]"
@@ -212,7 +215,7 @@ def row_text(row: dict) -> str:
 def _row_is_personal_alias(row: dict) -> bool:
     """Whether the visible aliases mark this row as user-owned."""
     return any(str(alias).endswith(" (yours)")
-               for alias in row.get("shown_aliases", ()))
+               for alias in row.get("display_aliases", row.get("shown_aliases", ())))
 
 
 def _row_text_colour(row: dict) -> str:
@@ -520,11 +523,12 @@ class _TitleBar(QWidget):
         self._close_button.setFixedSize(theme.HIT_TARGET_MIN, theme.HIT_TARGET_MIN)
         self._close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._close_button.setStyleSheet(
-            f"QPushButton{{background:{theme.BG2};color:{theme.TEXT_SECONDARY};"
-            f"border:1px solid {theme.BORDER};border-radius:6px;font-size:{theme.TYPE_TITLE}px;}}"
+            f"QPushButton{{background:transparent;color:{theme.TEXT_SECONDARY};"
+            f"border:none;border-radius:6px;font-size:{theme.TYPE_TITLE}px;padding:0;min-height:0;}}"
             f"QPushButton:hover{{border-color:{theme.ERROR};color:{theme.ERROR};}}"
             f"QPushButton:pressed{{background:{_selected_bg()};color:{theme.ERROR};}}"
         )
+        self._close_qss = self._close_button.styleSheet()
         self._close_button.clicked.connect(win.hide)
         lay.addWidget(self._close_button)
 
@@ -672,20 +676,20 @@ class _CategoryTabBar(QWidget):
         self._on_live_only = on_live_only
         self._pack_ids: List[str] = []
 
-        self.setFixedHeight(theme.HIT_TARGET_MIN + theme.SPACE_2)
+        self.setFixedHeight(theme.HIT_TARGET_MIN)
         self.setStyleSheet(
             f"background:{theme.BG0};"
         )
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
-        lay.setSpacing(theme.SPACE_1)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
 
         self._combo = QComboBox()
         self._combo.setAccessibleName("Command category")
         self._combo.setToolTip("Choose a command category")
         self._combo.setStyleSheet(_ss())
-        self._combo.setFixedHeight(theme.HIT_TARGET_MIN)
+        self._combo.setFixedSize(140, theme.HIT_TARGET_MIN)
         # Queue 78: AdjustToContents made the combo demand the width of its
         # longest pack name, and everything to its right -- "Live here only"
         # among them -- was clipped instead. The combo is the one thing on
@@ -694,10 +698,10 @@ class _CategoryTabBar(QWidget):
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self._combo.setMinimumContentsLength(10)
-        self._combo.setSizePolicy(QSizePolicy.Policy.Expanding,
+        self._combo.setSizePolicy(QSizePolicy.Policy.Fixed,
                                   QSizePolicy.Policy.Fixed)
         self._combo.currentIndexChanged.connect(self._on_changed)
-        lay.addWidget(self._combo, stretch=1)
+        lay.addWidget(self._combo)
 
         # Queue 68: commands scoped to another app / state are hidden by
         # default; the box says how many and lets the user see them all.
@@ -709,8 +713,11 @@ class _CategoryTabBar(QWidget):
             "Some commands only work in a particular app or while something is on screen. "
             "Untick to list them all, with when each one works.")
         self._live_only.setStyleSheet(
-            f"background:transparent;color:{theme.TEXT_SECONDARY};"
-            f"font-size:{theme.TYPE_BODY}px;")
+            f"QCheckBox{{background:transparent;color:{theme.TEXT_SECONDARY};"
+            f"font-size:{theme.TYPE_BODY}px;spacing:6px;min-height:0;}}"
+            f"QCheckBox::indicator{{width:16px;height:16px;border:1px solid {theme.BORDER};"
+            f"border-radius:4px;background:{theme.BG2};}}"
+            f"QCheckBox::indicator:checked{{background:{theme.ACCENT};border-color:{theme.ACCENT};}}")
         self._live_only.toggled.connect(self._on_live_toggled)
         lay.addWidget(self._live_only)
         self._hidden_lbl = QLabel("")
@@ -718,13 +725,14 @@ class _CategoryTabBar(QWidget):
             f"background:transparent;color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         self._hidden_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._hidden_lbl.setMinimumWidth(0)
-        lay.addWidget(self._hidden_lbl)
+        self._hidden_lbl.hide()
 
     def _on_live_toggled(self, checked: bool):
         if self._on_live_only is not None:
             self._on_live_only(bool(checked))
 
     def set_hidden_count(self, count: int):
+        self._live_only.setAccessibleDescription(f"{count} commands not live here" if count else "")
         self._hidden_lbl.setText(f"({count} not live here)" if count else "")
         self._hidden_lbl.setToolTip(
             f"{count} commands are not available in the current app or state" if count else "")
@@ -760,38 +768,6 @@ class _CategoryTabBar(QWidget):
 # Main window
 # ---------------------------------------------------------------------------
 
-class _VisibleSizeGrip(QSizeGrip):
-    """A normal resize grip with a visible, theme-aware direction cue."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAccessibleName("Resize command reference")
-        self.setToolTip("Drag to resize")
-        self.setFixedSize(32, 32)
-        self.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
-        self.setStyleSheet(
-            f"QSizeGrip{{background:{theme.BG1};border-left:1px solid {theme.BORDER};"
-            f"border-top:1px solid {theme.BORDER};}}")
-        self._cue = QLabel("↘", self)
-        self._cue.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._cue.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._cue.setStyleSheet(
-            f"background:transparent;color:{theme.ACCENT};font-size:{theme.TYPE_HEADING}px;")
-        parent.installEventFilter(self)
-
-    def eventFilter(self, parent, event):
-        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
-            QTimer.singleShot(0, self, self._place)
-        return super().eventFilter(parent, event)
-
-    def _place(self):
-        parent = self.parentWidget()
-        self.move(parent.width() - self.width(), parent.height() - self.height())
-        self.raise_()
-
-    def resizeEvent(self, event):
-        self._cue.setGeometry(self.rect())
-        super().resizeEvent(event)
 
 
 class _CheatSheetWindow(QMainWindow):
@@ -858,7 +834,7 @@ class _CheatSheetWindow(QMainWindow):
         inner.setStyleSheet(f"background:{theme.BG0};")
         outer_lay.addWidget(inner)
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(0, 0, 0, 12)
         lay.setSpacing(0)
 
         # Title bar
@@ -875,13 +851,15 @@ class _CheatSheetWindow(QMainWindow):
         search_wrap = QWidget()
         search_wrap.setStyleSheet(f"background:{theme.BG0};")
         search_layout = QHBoxLayout(search_wrap)
-        search_layout.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
+        search_layout.setContentsMargins(12, 12, 12, 12)
+        search_layout.setSpacing(8)
         self._filter = QLineEdit()
         self._filter.setAccessibleName("Search commands")
         self._filter.setPlaceholderText("Search commands…")
         style_search(self._filter)
-        if embedded:
-            self._filter.setFixedWidth(320)
+        self._filter.setMaximumWidth(320)
+        self._filter.setMinimumWidth(80)
+        self._filter.setFixedHeight(theme.HIT_TARGET_MIN)
         # Queue 78: Qt paints a placeholder at ~50% of the text colour, which
         # lands under 3:1. The role is set explicitly so it is TEXT_SECONDARY.
         _palette = self._filter.palette()
@@ -891,9 +869,10 @@ class _CheatSheetWindow(QMainWindow):
         if initial_view is not None:
             self._filter.setText(initial_view[1])
         self._filter.textChanged.connect(self._apply_filter)
-        search_layout.addWidget(self._filter)
-        if embedded:
-            search_layout.addStretch(1)
+        search_layout.addWidget(self._filter, 1)
+        self._category_bar = _CategoryTabBar(self._set_category, on_live_only=self._set_live_only)
+        search_layout.addWidget(self._category_bar)
+        search_layout.addStretch(0)
         lay.addWidget(search_wrap)
 
         self._live_controls = QLabel(initial_view[2] if initial_view and len(initial_view) > 2 else "")
@@ -913,23 +892,15 @@ class _CheatSheetWindow(QMainWindow):
         self._static_pane = QWidget()
         self._static_pane.setStyleSheet(f"background:{theme.BG0};")
         self._static_layout = QVBoxLayout(self._static_pane)
-        self._static_layout.setContentsMargins(theme.SPACE_2, 0, theme.SPACE_2, 0)
+        self._static_layout.setContentsMargins(12, 0, 12, 0)
         self._static_layout.setSpacing(0)
         lay.addWidget(self._static_pane)
-
-        # Category tab bar
-        self._category_bar = _CategoryTabBar(self._set_category, on_live_only=self._set_live_only)
-        if embedded:
-            self._category_bar._combo.setFixedWidth(300)
-            self._category_bar.layout().setStretch(0, 0)
-            self._category_bar.layout().addStretch(1)
-        lay.addWidget(self._category_bar)
 
         # Command list
         self._list = QListWidget()
         self._list.setAccessibleName("Command list")
         self._list.setStyleSheet(_ss())
-        self._list.setViewportMargins(theme.SPACE_2, 0, theme.SPACE_2, 0)
+        self._list.setViewportMargins(12, 0, 12, 0)
         self._list.setItemDelegate(CommandRowDelegate(self._list))
         self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.setMouseTracking(True)
@@ -959,7 +930,18 @@ class _CheatSheetWindow(QMainWindow):
         lay.addWidget(self._unavailable)
 
         # Overlay the grip in the corner instead of reserving an empty strip.
-        self._resize_grip = _VisibleSizeGrip(inner)
+        self._resize_grip = QSizeGrip(inner)
+        self._resize_grip.setFixedSize(12, 12)
+        self._resize_grip.setStyleSheet("background:transparent;border:none;")
+        self._resize_grip.setAccessibleName("Resize command reference")
+        self._resize_grip.setToolTip("Drag to resize")
+        self._resize_grip._cue = QLabel("↘", self._resize_grip)
+        self._resize_grip._cue.setGeometry(self._resize_grip.rect())
+        self._resize_grip._cue.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._resize_grip._cue.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._resize_grip._cue.setStyleSheet(
+            f"background:transparent;color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;")
+        inner.installEventFilter(self)
         self._resize_grip.setVisible(not embedded)
 
         # Queue 78: the narrowest this window may be is the widest row it
@@ -971,8 +953,10 @@ class _CheatSheetWindow(QMainWindow):
         # The additive guide treatment sets minimum heights plus padding;
         # these fixed controls already include both in their 44-DIP target.
         self._category_bar._combo.setStyleSheet(_ss())
-        self._title_bar._close_button.setStyleSheet(
-            theme.secondary_button_qss() + 'QPushButton{padding:0;min-height:0;}')
+        self._filter.setFixedHeight(theme.HIT_TARGET_MIN)
+        self._category_bar._live_only.setFixedHeight(theme.HIT_TARGET_MIN)
+        self._title_bar._close_button.setStyleSheet(self._title_bar._close_qss)
+
         self._most_used_qss = (
             f'QPushButton{{background:{theme.BG0};color:{theme.TEXT_SECONDARY};border:none;'
             f'text-align:left;padding:0;min-height:{theme.HIT_TARGET_MIN}px;max-height:{theme.HIT_TARGET_MIN}px;'
@@ -984,6 +968,11 @@ class _CheatSheetWindow(QMainWindow):
     # ----------------------------------------------------------------
     # Commands
     # ----------------------------------------------------------------
+
+    def eventFilter(self, watched, event):
+        if watched is self._resize_grip.parentWidget() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            self._resize_grip.move(watched.width() - 12, watched.height() - 12)
+        return super().eventFilter(watched, event)
 
     def set_pack_scope(self, pack_ids):
         """Restrict this open sheet to catalog rows in ``pack_ids``.
@@ -1100,6 +1089,7 @@ class _CheatSheetWindow(QMainWindow):
                 item.setData(Qt.ItemDataRole.UserRole + 1, cmd["canonical_id"])
                 item.setData(Qt.ItemDataRole.UserRole + 2, item_generation)
                 item.setText(row_text(cmd))
+                item.setData(Qt.ItemDataRole.UserRole + 3, dict(cmd, row_tags=row_tags(cmd)))
                 tooltip = cmd.get("description", "")
                 if cmd.get("pack") not in (None, "", "core"):
                     tooltip += f"\nPack: {cmd['pack']}" + (" (off)" if cmd.get("pack_disabled") else "")
@@ -1264,7 +1254,7 @@ class _CheatSheetWindow(QMainWindow):
         further instead of clipping a word."""
         try:
             need = max(self._title_bar.sizeHint().width(),
-                       self._category_bar.sizeHint().width())
+                       self._category_bar.sizeHint().width() + 80 + 32)
         except Exception:
             return
         need += 2                                   # the 1 px border each side
