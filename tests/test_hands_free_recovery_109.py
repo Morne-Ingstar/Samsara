@@ -513,8 +513,11 @@ class TestReadinessIsRuntime:
         app.available_mics = []
         app._wake_consumer = _FakeConsumer(running=False)
         state = home_signals.hands_free_state(app)
-        assert state.detail == "Your selected device is unavailable. Choose another in Settings > General > Microphone."
-        assert state.action == ""        # no button reconnects a microphone
+        # 838b: the microphone setup row is registered under Audio.
+        assert state.detail == "Your selected device is unavailable. Choose another in Settings > Audio > Microphone."
+        # 838b: the notice opens the registered microphone setup guide.
+        assert state.action == home_signals.ACTION_SETUP_MICROPHONE
+        assert state.action_label == home_signals.SETUP_MICROPHONE_LABEL
 
 
 # ---------------------------------------------------------------------------

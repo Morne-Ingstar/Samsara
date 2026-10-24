@@ -101,13 +101,27 @@ def test_voice_help_starts_collapsed_preserves_818_and_remembers(hub, qapp):
         second.deleteLater()
 
 
-def test_transfer_actions_fit_one_row_and_preserve_distinct_bundle_actions(hub):
-    _, panel, _ = hub
+@pytest.mark.parametrize('width,height', [(900, 650), (700, 500)])
+def test_transfer_actions_fit_one_row_and_preserve_distinct_bundle_actions(hub, qapp, width, height):
+    window, panel, _ = hub
+    window.resize(width, height)
+    for _ in range(10):
+        qapp.processEvents()
     page = panel._tabs.widget(0)
     buttons = [b for b in page.findChildren(QPushButton) if b.text() in ('Remove Selected', 'Import', 'Export')]
-    more = next(b for b in page.findChildren(QToolButton) if b.text() == 'More')
+    # 838b: identify the action independently of its visible dropdown glyph.
+    more = next(b for b in page.findChildren(QToolButton)
+                if b.accessibleName() == 'More dictionary actions')
     assert len(buttons) == 3
     row = next(page.layout().itemAt(i).layout() for i in range(page.layout().count())
                if page.layout().itemAt(i).layout() and page.layout().itemAt(i).layout().indexOf(more) >= 0)
     assert all(row.indexOf(button) >= 0 for button in buttons)
+    controls = [*buttons, more]
+    assert (window.width(), window.height()) == (width, height)
+    assert all(button.geometry().top() <= more.geometry().center().y() <= button.geometry().bottom()
+               for button in controls)
+    assert all(page.rect().contains(button.geometry()) for button in controls)
+    assert all(button.width() == button.sizeHint().width() for button in controls)
+    assert all(button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+               for button in controls)
     assert [action.text() for action in more.menu().actions()] == ['Export dictionary…', 'Import dictionary…']

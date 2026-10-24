@@ -193,7 +193,7 @@ GUIDES = (
     ("Command reference", "cheatsheet", None),
     ("Quick reference", "app", "open_quick_reference"),
     ("Tutorial", "app", "show_tutorial"),
-    ("Help & support", "settings", "Help & Support"),
+    ("Help && support", "settings", "Help & Support"),
 )
 #: Queue 86: Home's own vocabulary.
 TITLE = "Samsara"
@@ -906,10 +906,11 @@ def catalog_example(records) -> Optional[str]:
     return command_catalog.canonical_phrase(picks[0]) if picks else None
 
 
-def _user_word_count() -> Optional[int]:
+def _user_word_count(app) -> Optional[int]:
     try:
-        from samsara import phonetic_wash
-        return len(phonetic_wash.get_user_corrections() or {})
+        from samsara.dictionary_store import get_dictionary_store
+        store = get_dictionary_store(app)
+        return len(getattr(store, "custom_vocab", ()) or ())
     except Exception as exc:
         logger.debug(f"_user_word_count: {exc}")
         return None
@@ -1013,7 +1014,7 @@ def capability_cards(app, records) -> list:
         dictate_value = f"press {hotkey}"
     else:
         dictate_value = "always on"
-    words = _user_word_count()
+    words = _user_word_count(app)
     values = (
         commands_value,
         f"{len(GUIDES)} guides",
@@ -1653,7 +1654,8 @@ class AvaHeaderControl(QPushButton):
         label = f"Ava: {word}"  # PLACEHOLDER COPY (824)
         if state != home_signals.AVA_ASLEEP:
             route = home_signals.ava_route_label(self._app).removeprefix("Ava: ")
-            label += f" {EM_DASH} {route}"  # PLACEHOLDER COPY (824)
+            if route.casefold() != word.casefold():
+                label += f" {EM_DASH} {route}"  # PLACEHOLDER COPY (824)
         self._text.setText(label)
         self.setText(label)
         self.setAccessibleName(label)
@@ -2240,6 +2242,12 @@ class HomePage(QWidget):
         notice = self._notice
         if notice is not None and notice.action == home_signals.ACTION_RESTART_HANDS_FREE:
             restart_hands_free(self._app)
+            self.refresh()
+            return
+        if notice is not None and notice.action == home_signals.ACTION_SETUP_MICROPHONE:
+            setup = getattr(self._app, "open_mic_setup_guide", None)
+            if callable(setup):
+                setup()
             self.refresh()
             return
         self._open_page(VOICE_HELP)

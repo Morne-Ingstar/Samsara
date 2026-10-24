@@ -57,6 +57,8 @@ NOTICE_ORDER = (DICTATION, HANDS_FREE, AVA)
 #: route. A fault that cannot be repaired by a button never names one.
 ACTION_RESTART_HANDS_FREE = "restart_hands_free"
 RESTART_HANDS_FREE_LABEL = "Restart hands-free"
+ACTION_SETUP_MICROPHONE = "setup_microphone"  # PLACEHOLDER COPY (838b)
+SETUP_MICROPHONE_LABEL = "Set up microphone..."  # PLACEHOLDER COPY (838b)
 
 #: Ava's four presence states (queue 82). "awake" says only that Ava can
 #: answer -- never that a microphone is open or that anything is being sent.
@@ -183,11 +185,12 @@ def dictation_state(app) -> CapabilityState:
     if mic is None:
         return CapabilityState(
             DICTATION, UNKNOWN, "Samsara has not checked your microphone yet.",
-            "You can review the selected device in Settings > General > Microphone")
+            "You can review the selected device in Settings > Audio > Microphone")  # PLACEHOLDER COPY (838b)
     if not mic:
         return CapabilityState(
             DICTATION, UNAVAILABLE,
-            "Your selected device is unavailable. Choose another in Settings > General > Microphone.")
+            "Your selected device is unavailable. Choose another in Settings > Audio > Microphone.",  # PLACEHOLDER COPY (838b)
+            action_label=SETUP_MICROPHONE_LABEL, action=ACTION_SETUP_MICROPHONE)
     return CapabilityState(DICTATION, READY, "", "Samsara has a microphone selected")
 
 
@@ -268,11 +271,12 @@ def hands_free_state(app) -> CapabilityState:
     if mic is None:
         return CapabilityState(
             HANDS_FREE, UNKNOWN, "Samsara has not checked your microphone yet.",
-            "You can review the selected device in Settings > General > Microphone")
+            "You can review the selected device in Settings > Audio > Microphone")  # PLACEHOLDER COPY (838b)
     if not mic:
         return CapabilityState(
             HANDS_FREE, UNAVAILABLE,
-            "Your selected device is unavailable. Choose another in Settings > General > Microphone.")
+            "Your selected device is unavailable. Choose another in Settings > Audio > Microphone.",  # PLACEHOLDER COPY (838b)
+            action_label=SETUP_MICROPHONE_LABEL, action=ACTION_SETUP_MICROPHONE)
 
     models = wake_models_state(app)
     running = wake_consumer_running(app)
@@ -514,7 +518,7 @@ def discovery_hints(app) -> list:
             text="Ask a question out loud and hear the answer.",
             action_label="Configure Ava", action="settings", arg="Ava / Cloud"))
 
-    if not _user_words_exist():
+    if not _user_words_exist(app):
         hints.append(Hint(
             id="discover.dictionary", tier=TIER_DISCOVERY,
             text="Teach it the names and words it keeps getting wrong.",
@@ -523,10 +527,10 @@ def discovery_hints(app) -> list:
     return hints
 
 
-def _user_words_exist() -> bool:
+def _user_words_exist(app) -> bool:
     try:
         from samsara.ui.home_qt import _user_word_count         # noqa: PLC0415
-        return bool(_user_word_count())
+        return bool(_user_word_count(app))
     except Exception:
         return True      # unknown: do not nag
 

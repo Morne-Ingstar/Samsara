@@ -354,7 +354,11 @@ class DictionaryPanelQt(QWidget):
 
         # Vocabulary JSON is distinct from a full dictionary bundle.
         more_btn = QToolButton()
-        more_btn.setText("More")
+        more_btn.setText("More ▾")  # PLACEHOLDER COPY (838b)
+        more_btn.setStyleSheet(
+            "QToolButton { padding-right: 8px; }"
+            "QToolButton::menu-indicator { image: none; width: 0px; }"
+        )
         more_btn.setAccessibleName("More dictionary actions")
         more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(more_btn)

@@ -49,8 +49,8 @@ def refresh_problem_notice(card, text_widget, button, notice,
     if (notice.capability == dictation_capability and
             notice.text.startswith("Your selected device is unavailable.")):
         visible_text = (
-            "Mic unavailable. Choose another in Settings > General > "
-            "Microphone. Dictation unavailable.")
+            "Mic unavailable. Choose another in Settings > Audio > "
+            "Microphone. Dictation unavailable.")  # PLACEHOLDER COPY (838b)
     text_widget.setText(visible_text)
     card.setAccessibleDescription(f"{notice.text} Evidence: {notice.evidence}.")
     label = notice.action_label or fallback_action_label

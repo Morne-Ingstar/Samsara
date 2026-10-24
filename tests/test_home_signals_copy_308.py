@@ -1,6 +1,7 @@
 """Plain-language evidence contracts for Home and Voice help (queue 308)."""
 
 import ast
+import inspect
 import re
 import time
 import types
@@ -69,8 +70,15 @@ def _copy_strings(value):
 def _declared_settings_rows():
     from samsara.ui.settings_qt import PAGE_MODULES
     # Declarations also use imported labels; they are data, not all literals.
-    return {module.TITLE: {spec[0] for spec in module.BASE + module.ADVANCED}
-            for module in PAGE_MODULES}
+    declarations = {
+        module.TITLE: {spec[0] for spec in module.BASE + module.ADVANCED}
+        for module in PAGE_MODULES
+    }
+    for module in PAGE_MODULES:
+        if "open_mic_setup_guide" in inspect.getsource(module.build):
+            # 838b: Audio builds this setup row from its registered page builder.
+            declarations[module.TITLE].add("Microphone")
+    return declarations
 
 
 def _all_state_copy(monkeypatch):
@@ -154,7 +162,8 @@ def test_every_settings_location_names_a_declared_page_and_row(monkeypatch):
     copy = "\n".join(text for state in states for text in (state.detail, state.evidence))
     citations = {(page.strip(), row.strip()) for page, row in SETTINGS_CITATION.findall(copy)}
     assert citations == {
-        ("General", "Microphone"),
+        # 838b: the microphone setup row is registered under Audio.
+        ("Audio", "Microphone"),
         ("Dictation", "Wake activation"),
     }
     declarations = _declared_settings_rows()

@@ -586,12 +586,14 @@ class TestProblemNotice:
         home = page(_app(available_mics=[]))
         notice = home.notice
         assert notice.capability == home_signals.DICTATION
+        # 838b: the repair destination is the registered Audio microphone row.
         assert notice.text == (
             "Your selected device is unavailable. Choose another in Settings > "
-            "General > Microphone. Dictation cannot hear you.")
+            "Audio > Microphone. Dictation cannot hear you.")
         assert home._notice_text.text() == (
-            "Mic unavailable. Choose another in Settings > General > "
+            "Mic unavailable. Choose another in Settings > Audio > "
             "Microphone. Dictation unavailable.")
+        assert home._notice_btn.text() == home_signals.SETUP_MICROPHONE_LABEL
         assert home._notice_card.isVisibleTo(home)
 
     def test_ava_offline_does_not_declare_dictation_broken(self, page, monkeypatch):
@@ -700,12 +702,17 @@ class TestStoppedHandsFreeIsRecoverable:
         assert state.detail == (
             "Hands-free stopped listening. Select Restart hands-free below to try again.")
 
-    def test_a_microphone_fault_still_offers_voice_help(self, page, monkeypatch):
-        """Only a fault with a repair names one; nothing reconnects a mic."""
+    def test_a_microphone_fault_offers_the_setup_action(self, page, monkeypatch):
+        """The Audio row's setup button is the direct repair for a missing mic."""
         _ready(None, home_signals.READY, monkeypatch=monkeypatch)
-        home = page(_app(available_mics=[]))
+        app = _app(available_mics=[])
+        app.setup_calls = 0
+        app.open_mic_setup_guide = lambda: setattr(app, "setup_calls", app.setup_calls + 1)
+        home = page(app)
         assert home.notice.capability == home_signals.DICTATION
-        assert home._notice_btn.text() == home_qt.OPEN_VOICE_HELP
+        assert home._notice_btn.text() == home_signals.SETUP_MICROPHONE_LABEL
+        home._notice_btn.click()
+        assert app.setup_calls == 1
 
     def test_the_restart_appears_in_the_destination_table(self, page, monkeypatch):
         _ready(None, home_signals.READY, monkeypatch=monkeypatch)
