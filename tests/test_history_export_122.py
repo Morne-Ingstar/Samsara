@@ -324,10 +324,12 @@ class TestTheExportControl:
         assert v._export_btn.accessibleName() == hv.EXPORT_LABEL
 
     def test_it_is_a_44px_target(self, view, qapp):
+        from samsara.ui import history_view as hv
         v, _s, _mgr = view
         qapp.processEvents()
-        assert v._export_btn.minimumHeight() >= 44
-        assert v._export_btn.height() >= 44
+        # 839: primary actions share the hub's 34px control height.
+        assert v._export_btn.minimumHeight() == hv.theme.HUB_CONTROL_HEIGHT
+        assert v._export_btn.height() == hv.theme.HUB_CONTROL_HEIGHT
         assert v._export_btn.width() >= 44
 
     def test_it_is_keyboard_reachable(self, view, qapp):

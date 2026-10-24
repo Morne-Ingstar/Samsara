@@ -66,7 +66,9 @@ HEADER_MARK_PX = 34
 HEADER_MARK_GAP = 12
 HEADER_H = 64
 NAV_ROW_H = 44
-NAV_ICON_PX = 18
+# 839: reuse the actual Settings pill metrics; glyphs/order remain 825's.
+from samsara.ui.settings.sidebar import PILL_RADIUS as NAV_RADIUS, ICON_BOX as NAV_ICON_PX
+NAV_SIDE_MARGIN = theme.SPACE_1
 PAUSED_RESUME = "Paused \u2014 resume"
 #: Nav item -> icon key in home_qt.ICON_GLYPHS (one vocabulary, 38).
 #: Queue 86: "Voice help" is in the nav on EVERY screen, healthy or not --
@@ -456,7 +458,7 @@ class _MainWindow(QMainWindow):
         sidebar.setStyleSheet(
             f"QWidget#hubSidebar {{ background: {theme.BG0}; border-right: 1px solid {theme.BORDER}; }}")
         slay = QVBoxLayout(sidebar)
-        slay.setContentsMargins(0, 12, 0, 12)
+        slay.setContentsMargins(NAV_SIDE_MARGIN, 12, NAV_SIDE_MARGIN, 12)
         slay.setSpacing(2)
 
         self._nav_btns = {}
@@ -561,18 +563,16 @@ class _MainWindow(QMainWindow):
 
     @staticmethod
     def _nav_style(active: bool) -> str:
-        """Nav row stylesheet (38). Selected differs from rest in more than
-        colour: a 2 px ACCENT left rail, a BG2 fill and a heavier weight.
-        Rest is TEXT_SECONDARY with a real hover (BG1 fill, TEXT_PRIMARY)."""
-        common = (f" border: none; border-radius: 0; text-align: left;"
+        """Settings' inset pill, with a heavier selected label (839)."""
+        common = (f" border: none; border-radius: {NAV_RADIUS}px; text-align: left;"
                   f" padding-left: 16px; padding-right: 12px; min-height: {NAV_ROW_H}px;"
                   f" font-size: {theme.TYPE_NAV}px;")
         if active:
             return (f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
-                    f" border-left: 2px solid {theme.ACCENT}; font-weight: 600;{common} }}"
+                    f" font-weight: 600;{common} }}"
                     f"QPushButton:hover {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; }}")
         return (f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
-                f" border-left: 2px solid transparent; font-weight: 400;{common} }}"
+                f" font-weight: 400;{common} }}"
                 f"QPushButton:hover {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; }}"
                 f"QPushButton:focus {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; }}")
 

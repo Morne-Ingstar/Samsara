@@ -60,15 +60,15 @@ NO_SNIPPETS = ("No snippets yet. Dictate something, then say "
 NO_MATCHES = "No snippet matches that search."
 SAVED = "Saved."
 DELETED = "Deleted."
-MIN_TARGET = 44
+MIN_TARGET = theme.HUB_CONTROL_HEIGHT
 GRID = 12
 #: Three list rows (a name line plus a preview line each) at the 900x650
 #: default, with the editor open. Measured with the editor open.
 _LIST_MIN_H = 150
 #: The editor is bounded so it cannot starve the list. A longer snippet
 #: scrolls inside the box; the PAGE still never scrolls.
-_TEXT_MIN_H = MIN_TARGET + GRID * 2
-_TEXT_MAX_H = MIN_TARGET * 3
+_TEXT_MIN_H = theme.HIT_TARGET_MIN + GRID * 2
+_TEXT_MAX_H = theme.HIT_TARGET_MIN * 3
 MIDDLE_DOT = chr(0xB7)
 EM_DASH = chr(0x2014)
 
@@ -100,6 +100,7 @@ class SnippetsPage(QWidget):
             f"QLineEdit, QPlainTextEdit {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 8px 10px;"
             f" font-size: {theme.TYPE_BODY}px; }}"
+            "QLineEdit { padding: 0px 10px; }"
             f"QLineEdit:focus, QPlainTextEdit:focus {{ border: 2px solid {theme.ACCENT}; }}"
             f"QListWidget {{ background: {theme.BG0}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
@@ -109,8 +110,11 @@ class SnippetsPage(QWidget):
             f" color: {theme.TEXT_PRIMARY}; }}"
         )
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(GRID, GRID, GRID, GRID)
+        lay.setContentsMargins(28, 24, 28, 16)
         lay.setSpacing(GRID)
+        # PLACEHOLDER COPY (839)
+        self._header = theme.hub_header(TITLE, "Save named text to insert by voice.")
+        lay.addWidget(self._header)
 
         # Search row. The label carries the shortcut.
         search_row = QHBoxLayout()
@@ -121,15 +125,18 @@ class SnippetsPage(QWidget):
         self._search.setPlaceholderText(SEARCH_PLACEHOLDER)
         self._search.setAccessibleName(SEARCH_LABEL)
         self._search.setClearButtonEnabled(True)
-        self._search.setMinimumHeight(MIN_TARGET)
+        theme.hub_control(self._search)
+        self._search.setMaximumWidth(theme.HUB_INPUT_WIDTH)
         self._search.textChanged.connect(self._apply_filter)
         search_label.setBuddy(self._search)
         search_row.addWidget(self._search, stretch=1)
         self._new_btn = self._button(NEW, self.start_new)
         search_row.addWidget(self._new_btn)
+        search_row.addStretch()
         lay.addLayout(search_row)
 
         self._list = QListWidget()
+        self._list.setMaximumWidth(theme.HUB_LIST_WIDTH)
         self._list.setAccessibleName("Snippets")
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setWordWrap(True)
@@ -152,15 +159,18 @@ class SnippetsPage(QWidget):
         self._name = QLineEdit()
         self._name.setPlaceholderText(NAME_PLACEHOLDER)
         self._name.setAccessibleName(NAME_LABEL)
-        self._name.setMinimumHeight(MIN_TARGET)
+        theme.hub_control(self._name)
+        self._name.setMaximumWidth(280)
         self._name.returnPressed.connect(self.save_edit)
         name_label.setBuddy(self._name)
         name_row.addWidget(self._name, stretch=1)
+        name_row.addStretch()
         lay.addLayout(name_row)
 
         text_label = self._label(TEXT_LABEL)
         lay.addWidget(text_label)
         self._text = QPlainTextEdit()
+        self._text.setMaximumWidth(480)
         self._text.setPlaceholderText(TEXT_PLACEHOLDER)
         self._text.setAccessibleName(TEXT_LABEL)
         # Bounded, so the editor cannot starve the list at 900x650. Longer
@@ -221,15 +231,15 @@ class SnippetsPage(QWidget):
     def _button(self, text, slot, danger=False) -> QPushButton:
         button = QPushButton(text)
         button.setAccessibleName(text)
-        button.setMinimumHeight(MIN_TARGET)
+        theme.hub_control(button)
         button.setMinimumWidth(MIN_TARGET)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        colour = theme.ERROR if danger else theme.TEXT_PRIMARY
+        colour = theme.TEXT_PRIMARY
         button.setStyleSheet(
             f"QPushButton {{ background: {theme.BG2}; color: {colour};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
-            f" padding: 8px 14px; font-size: {theme.TYPE_BODY}px; }}"
+            f" padding: 0px 14px; font-size: {theme.TYPE_BODY}px; }}"
             f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
             f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
             f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED};"

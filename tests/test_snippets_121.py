@@ -491,7 +491,13 @@ def test_every_control_is_focusable_and_44px_in_a_deliberate_order(page, qapp):
         assert widget.focusPolicy() != Qt.FocusPolicy.NoFocus, widget.accessibleName()
         assert widget.accessibleName(), widget
         if widget.isVisible():
-            assert widget.height() >= 44 or widget.minimumHeight() >= 44, widget.accessibleName()
+            # 839: buttons/line inputs use the shared 34px height; multiline controls keep room.
+            from PySide6.QtWidgets import QLineEdit, QPushButton
+            from samsara.ui import theme
+            if isinstance(widget, (QLineEdit, QPushButton)):
+                assert widget.height() == theme.HUB_CONTROL_HEIGHT, widget.accessibleName()
+            else:
+                assert widget.height() >= 44 or widget.minimumHeight() >= 44, widget.accessibleName()
     # The order is set, not left to construction order.
     assert page._tab_chain[0] is page._search
     assert page._tab_chain[-1] is page._cancel_btn

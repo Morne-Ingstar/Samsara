@@ -336,9 +336,10 @@ class TestBrandHeaderAndSidebar:
             assert btn.accessibleName() == btn.text() == name
         rest = main_window_qt._MainWindow._nav_style(False)
         selected = main_window_qt._MainWindow._nav_style(True)
-        assert f"border-left: 2px solid {_theme.ACCENT}" in selected and f"background: {_theme.BG2}" in selected
+        # 839: Settings' inset pill replaces the old left accent rail.
+        assert f"border-radius: {main_window_qt.NAV_RADIUS}px" in selected and f"background: {_theme.BG2}" in selected
         assert "font-weight: 600" in selected and _theme.TEXT_PRIMARY in selected
-        assert "border-left: 2px solid transparent" in rest and "font-weight: 400" in rest
+        assert "border-left" not in rest and "font-weight: 400" in rest
         assert _theme.TEXT_SECONDARY in rest and "QPushButton:hover" in rest
         assert win._nav_btns["Home"].isChecked() and not win._nav_btns["History"].isChecked()
         assert win._nav_btns["Home"].styleSheet() == selected

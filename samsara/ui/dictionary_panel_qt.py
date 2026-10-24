@@ -23,7 +23,7 @@ from contextlib import nullcontext
 
 from PySide6.QtCore import Qt, Signal, Slot, QObject, QSettings, QItemSelectionModel
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
     QScrollArea, QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
@@ -62,16 +62,15 @@ def _ss() -> str:
     QTabWidget::pane {{ border:1px solid {theme.BORDER}; background:{theme.BG0}; }}
     QTabBar::tab {{ background:{theme.BG1}; color:{theme.TEXT_SECONDARY};
                     padding:5px 14px; border:none; margin-right:2px; }}
-    QTabBar::tab:selected {{ background:{theme.BG2}; color:{theme.ACCENT};
-                             border-bottom:2px solid {theme.ACCENT}; }}
+    QTabBar::tab:selected {{ background:{theme.BG2}; color:{theme.ACCENT}; }}
     QTabBar::tab:hover:!selected {{ color:{theme.TEXT_PRIMARY}; }}
     QListWidget, QTableWidget {{
         background:{theme.BG1}; border:1px solid {theme.BORDER};
         color:{theme.TEXT_PRIMARY}; outline:none; gridline-color:{theme.BORDER};
     }}
-    QListWidget::item {{ padding:3px 6px; }}
+    QListWidget::item {{ padding:3px 8px; }}
     QListWidget::item:selected {{ background:{theme.ACCENT}; color:{theme.BG0}; }}
-    QTableWidget::item {{ padding:3px 6px; }}
+    QTableWidget::item {{ padding:3px 8px; }}
     QTableWidget::item:selected {{ background:{theme.ACCENT}; color:{theme.BG0}; }}
     QHeaderView::section {{
         background:{theme.BG2}; color:{theme.TEXT_SECONDARY}; border:none;
@@ -88,8 +87,6 @@ def _ss() -> str:
         border:1px solid {theme.BORDER}; padding:4px 12px; border-radius:4px;
     }}
     QPushButton:hover {{ background:{theme.ACCENT}; color:{theme.BG0}; border-color:{theme.ACCENT}; }}
-    QPushButton#danger {{ color:{theme.ERROR}; border-color:{theme.ERROR}; }}
-    QPushButton#danger:hover {{ background:{theme.ERROR}; color:{theme.BG0}; }}
 """ + theme.SCROLLBAR_QSS
 
 
@@ -250,16 +247,44 @@ class DictionaryPanelQt(QWidget):
 
     def _build_ui(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(28, 24, 28, 16)
         lay.setSpacing(0)
+        # PLACEHOLDER COPY (839)
+        self._purposes = (
+            "Add names, technical terms, or words Samsara often mishears.",
+            "Replace standalone words in dictated text from the next dictation. Removing a seeded entry keeps it removed.",
+            "Map misheard wake phrases to your wake word.",
+        )
+        self._header = theme.hub_header("Dictionary", self._purposes[0], self)
+        self._header.setMaximumWidth(theme.HUB_LIST_WIDTH)
+        lay.addWidget(self._header)
 
         self._tabs = QTabWidget()
-        lay.addWidget(self._tabs)
+        self._tabs.setMaximumWidth(theme.HUB_LIST_WIDTH + 28)
+        # 839: the header and separate preference row must not push actions
+        # outside a short window. Scroll the tab body when its minimum won't fit.
+        self._body_scroll = QScrollArea()
+        self._body_scroll.setWidgetResizable(True)
+        self._body_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._body_scroll.setMaximumWidth(theme.HUB_LIST_WIDTH + 28)
+        self._body_scroll.setWidget(self._tabs)
+        lay.addWidget(self._body_scroll)
 
         vocab_title = "Vocabulary"
         self._tabs.addTab(self._build_vocab_tab(vocab_title), vocab_title)
         for mode, title in (("corrections", "Corrections"), ("wake", "Wake Words")):
             self._tabs.addTab(self._build_kv_tab(mode, title), title)
+        self._tabs.currentChanged.connect(lambda index: self._header.purpose.setText(self._purposes[index]))
+        for button in self.findChildren(QPushButton):
+            theme.hub_control(button)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        for field in self.findChildren(QLineEdit):
+            theme.hub_control(field)
+            field.setMaximumWidth(theme.HUB_INPUT_WIDTH)
+        for view_type in (QListWidget, QTableWidget):
+            for view in self.findChildren(view_type):
+                view.setMaximumWidth(theme.HUB_LIST_WIDTH)
 
     # ------------------------------------------------------------------
     # Vocabulary tab
@@ -268,23 +293,17 @@ class DictionaryPanelQt(QWidget):
     def _build_vocab_tab(self, title: str) -> QWidget:
         page = QWidget()
         lay  = QVBoxLayout(page)
-        lay.setContentsMargins(14, 14, 14, 12)
+        lay.setContentsMargins(14, 14, 14, 16)
         lay.setSpacing(6)
-
-        desc = QLabel(
-            "Add names, technical terms, or words Samsara often mishears."
-        )
-        desc.setWordWrap(True)
-        desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        lay.addWidget(desc)
 
         self._voice_settings = QSettings("Samsara", "Samsara")
         self._voice_expander = QToolButton()
-        self._voice_expander.setText("How to add words by voice")
-        self._voice_expander.setAccessibleName(self._voice_expander.text())
+        self._voice_expander.setText("▸ How to add words by voice")
+        self._voice_expander.setAccessibleName("How to add words by voice")
         self._voice_expander.setCheckable(True)
         self._voice_expander.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._voice_expander.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._style_disclosure(self._voice_expander)
         lay.addWidget(self._voice_expander)
         help_text = QLabel(
             'Say: “add the word Siobhan to my vocabulary spelled S I O B H A N”. '
@@ -300,16 +319,14 @@ class DictionaryPanelQt(QWidget):
         lay.addWidget(help_text)
 
         def expand_voice(expanded):
-            self._voice_expander.setArrowType(
-                Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+            self._voice_expander.setText(("▾" if expanded else "▸") + " How to add words by voice")
             help_text.setVisible(expanded)
             self._voice_settings.setValue("dictionary/voice_help_expanded", expanded)
 
         expanded = self._voice_settings.value("dictionary/voice_help_expanded", False, type=bool)
         self._voice_expander.setChecked(expanded)
         help_text.setVisible(expanded)
-        self._voice_expander.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self._voice_expander.setText(("▾" if expanded else "▸") + " How to add words by voice")
         self._voice_expander.toggled.connect(expand_voice)
 
         self._build_builtin_words(lay)
@@ -325,6 +342,7 @@ class DictionaryPanelQt(QWidget):
         add_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         add_btn.clicked.connect(self._vocab_add)
         add_row.addWidget(add_btn)
+        add_row.addStretch()
         lay.addLayout(add_row)
 
         # List
@@ -360,6 +378,7 @@ class DictionaryPanelQt(QWidget):
             "QToolButton::menu-indicator { image: none; width: 0px; }"
         )
         more_btn.setAccessibleName("More dictionary actions")
+        theme.hub_control(more_btn)
         more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(more_btn)
         menu.addAction("Export dictionary…", self._dictionary_export)
@@ -380,6 +399,17 @@ class DictionaryPanelQt(QWidget):
 
         return page
 
+    @staticmethod
+    def _style_disclosure(button):
+        theme.hub_control(button, inline=True)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        button.setArrowType(Qt.ArrowType.NoArrow)
+        button.setStyleSheet(
+            f"QToolButton {{ background: transparent; color: {theme.TEXT_PRIMARY};"
+            f" border: none; padding: 0; font-size: {theme.TYPE_MIN}px; text-align: left; }}"
+            f"QToolButton:hover {{ color: {theme.ACCENT}; }}")
+
     def _build_builtin_words(self, layout):
         from samsara.ui.settings.calm_controls import switch
 
@@ -393,13 +423,13 @@ class DictionaryPanelQt(QWidget):
         self._builtin_enabled.setEnabled(callable(getattr(self._app, "update_config_and_save", None)))
 
         self._builtin_expander = QToolButton()
-        self._builtin_expander.setText("Built-in words")
+        self._builtin_expander.setText("▸ Built-in words")
         self._builtin_expander.setAccessibleName("Show built-in words")
         self._builtin_expander.setCheckable(True)
         self._builtin_expander.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self._builtin_expander.setArrowType(Qt.ArrowType.RightArrow)
+        self._style_disclosure(self._builtin_expander)
         self._builtin_expander.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        master_row.addWidget(self._builtin_expander)
+        layout.addWidget(self._builtin_expander)
         master_row.addWidget(self._builtin_enabled)
         master_row.addWidget(label)
         master_row.addStretch()
@@ -442,7 +472,7 @@ class DictionaryPanelQt(QWidget):
         self._sigs.builtin_saved.connect(self._builtin_save_finished)
 
     def _builtin_expand(self, expanded):
-        self._builtin_expander.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self._builtin_expander.setText(("▾" if expanded else "▸") + " Built-in words")
         self._builtin_expander.setAccessibleName("Hide built-in words" if expanded else "Show built-in words")
         self._builtin_scroll.setVisible(expanded)
 
@@ -684,32 +714,17 @@ class DictionaryPanelQt(QWidget):
         """
         page = QWidget()
         lay  = QVBoxLayout(page)
-        lay.setContentsMargins(14, 14, 14, 12)
+        lay.setContentsMargins(14, 14, 14, 16)
         lay.setSpacing(8)
 
         if mode == "corrections":
-            desc_text = (
-                'Fixes Whisper misrecognitions in dictated text '
-                '(e.g. "open crow" -> "open Chrome").  '
-                'Changes take effect on the next dictation.'
-            )
             col1_hdr = "Heard"
             col2_hdr = "Should be"
             ph1, ph2 = "Whisper says...", "You mean..."
         else:
-            desc_text = (
-                "Maps Whisper misrecognitions of your wake phrase back to its "
-                "canonical form.  Token-level: 'charvis' anywhere in the "
-                "transcription becomes 'jarvis'."
-            )
             col1_hdr = "Heard"
             col2_hdr = "Wake word"
             ph1, ph2 = "Heard as...", "Correct phrase..."
-
-        desc = QLabel(desc_text)
-        desc.setWordWrap(True)
-        desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        lay.addWidget(desc)
 
         # Input row
         inp_row = QHBoxLayout()
@@ -728,18 +743,8 @@ class DictionaryPanelQt(QWidget):
         inp_row.addWidget(arrow)
         inp_row.addWidget(field2, stretch=1)
         inp_row.addWidget(add_btn)
+        inp_row.addStretch()
         lay.addLayout(inp_row)
-
-        # OWNER COPY — REVIEW: replace this placeholder with owner-approved copy.
-        if mode == "corrections":
-            scope_note = QLabel(
-                "A correction replaces the word everywhere it is dictated as a standalone word."
-            )
-            scope_note.setWordWrap(True)
-            scope_note.setStyleSheet(
-                f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;"
-            )
-            lay.addWidget(scope_note)
 
         # Table: Heard | Value | Source
         table = QTableWidget(0, 3)
@@ -748,6 +753,7 @@ class DictionaryPanelQt(QWidget):
         table.setAccessibleName(title)
         table.setHorizontalHeaderLabels([col1_hdr, col2_hdr, "Source"])
         hdr = table.horizontalHeader()
+        hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
@@ -760,12 +766,8 @@ class DictionaryPanelQt(QWidget):
         # Button row
         btn_row = QHBoxLayout()
         rem_btn = QPushButton("Remove Selected  (user only)")
-        rem_btn.setObjectName("danger")
         btn_row.addWidget(rem_btn)
         btn_row.addStretch()
-        note = QLabel("Removing a seeded entry keeps it removed.")
-        note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
-        btn_row.addWidget(note)
         lay.addLayout(btn_row)
 
         # Status

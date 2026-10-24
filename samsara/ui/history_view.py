@@ -65,7 +65,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _PAGE_SIZE = 200
-_CONTROL_H = 40           # >= 40px accessibility minimum for interactive controls
+_CONTROL_H = theme.HUB_CONTROL_HEIGHT
 # Qt drops a rounded background whose radius exceeds half the inner height
 # (40 px minus the 1 px borders): a 20 px radius left the checked chip with
 # dark text and no fill.
@@ -73,8 +73,8 @@ _CHIP_RADIUS = 16
 _ROW_MIN_HEIGHT = 56
 _ROW_PAD_V = 9
 _ROW_PAD_H = 12
-_ROW_SPACING = 12
-_TEXT_MAX_LINES = 2
+_ROW_SPACING = 16
+_TEXT_MAX_LINES = 6  # 839: card layout keeps longer entries readable before opening details.
 # 14 px top + the day label's line box + 4 px bottom (see
 # _build_day_header_widget). 34 fitted the old 12 px label; at the TYPE_MIN
 # floor (83) the line box is 19 px, so the label was clipped by 3 px.
@@ -107,7 +107,7 @@ _FILTER_ALIASES = {"Failed": FILTER_NOT_TYPED}
 NO_SPEECH_TOGGLE_LABEL = "Show attempts with no speech"
 SEARCH_PLACEHOLDER = "Search all history"
 TITLE = "History"
-SUBTITLE = "Newest first. Double-click an entry or press Enter to copy it."
+SUBTITLE = "Newest first. Double-click an entry or press Enter to copy it."  # PLACEHOLDER COPY (839)
 
 # The history `mode` column says how the words were captured. "hold" is
 # written by the hotkey path in BOTH hold and toggle modes, so it reads as
@@ -564,7 +564,7 @@ QCheckBox {{
     min-height: {_CONTROL_H}px;
 }}
 QCheckBox::indicator {{
-    width: 16px; height: 16px;
+    width: 16px; height: 16px; /* 18px including the 1px border */
     border: 1px solid {theme.BORDER};
     border-radius: 4px;
     background: {theme.BG2};
@@ -580,6 +580,7 @@ QPushButton {{
     color: {theme.TEXT_PRIMARY};
     padding: 0px 14px;
     min-height: {_CONTROL_H - 2}px;
+    max-height: {_CONTROL_H - 2}px;
 }}
 QPushButton:hover {{
     background-color: {theme.BG2};
@@ -601,29 +602,25 @@ QPushButton[class="chip"]:checked {{
 }}
 QPushButton[class="rowCopy"] {{
     color: {theme.TEXT_SECONDARY};
-    border-color: {theme.BORDER_FAINT};
+    border-color: transparent;
     font-size: {theme.TYPE_MIN}px;
     padding: 0px 10px;
-    min-height: 34px;
+    min-height: {theme.HUB_INLINE_HEIGHT - 2}px;
+    max-height: {theme.HUB_INLINE_HEIGHT - 2}px;
 }}
 QPushButton[class="rowCopy"]:hover {{
     color: {theme.ACCENT};
     border-color: {theme.ACCENT};
 }}
 QPushButton[class="danger"] {{
-    color: {theme.TEXT_SECONDARY};
-    border-color: transparent;
+    color: {theme.TEXT_PRIMARY};
+    border-color: {theme.BORDER};
 }}
 QPushButton[class="danger"]:hover {{
-    color: {theme.ERROR};
-    border-color: {_tint(theme.ERROR, 0.45)};
-    background-color: {_tint(theme.ERROR, 0.10)};
+    border-color: {theme.ACCENT};
+    background-color: {theme.BG2};
 }}
 QPushButton[class="export"] {{
-    /* Queue 122: 44 px, not this file's _CONTROL_H of 40. A stylesheet
-       min-height overrides setMinimumHeight(), so the number has to be
-       stated here or the programmatic one is silently ignored. */
-    min-height: 42px;
     padding: 0px 18px;
 }}
 QPushButton[class="primary"] {{
@@ -640,6 +637,11 @@ QFrame#historyDetail {{
     background-color: {theme.BG2};
     border: 1px solid {theme.BORDER};
     border-radius: 10px;
+}}
+QWidget#historyCard {{
+    background-color: {theme.BG0};
+    border: 1px solid {theme.BORDER};
+    border-radius: 8px;
 }}
 QFrame#historyDetail QLabel#historyDetailMeta {{
     color: {theme.TEXT_SECONDARY};
@@ -683,6 +685,8 @@ QMessageBox QLabel {{
 
 
 def _set_class(widget: QWidget, name: str) -> None:
+    if isinstance(widget, QPushButton):
+        theme.hub_control(widget, inline=name == "rowCopy")
     widget.setProperty("class", name)
     widget.style().unpolish(widget)
     widget.style().polish(widget)
@@ -879,11 +883,12 @@ def _pill(outcome: Outcome, parent: QWidget | None = None) -> QLabel:
 
 
 class _HistoryRow(QWidget):
-    """One entry: time | two lines of text over pills + meta | Copy."""
+    """History A (839): metadata above text, with an always-visible Copy."""
 
     def __init__(self, row: dict, on_copy, parent: QWidget | None = None):
         super().__init__(parent)
-        _make_transparent(self)
+        self.setObjectName("historyCard")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.row = row
         lay = QHBoxLayout(self)
         lay.setContentsMargins(_ROW_PAD_H, _ROW_PAD_V, _ROW_PAD_H, _ROW_PAD_V)
@@ -893,7 +898,6 @@ class _HistoryRow(QWidget):
         self.time_label = _plain_label(dt.strftime("%H:%M") if dt else "", "historyTime", self)
         self.time_label.setFixedWidth(_TIME_COL_WIDTH)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        lay.addWidget(self.time_label, alignment=Qt.AlignmentFlag.AlignTop)
 
         body = QVBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -903,11 +907,11 @@ class _HistoryRow(QWidget):
         self.text_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         if is_no_speech_attempt(row) or str(row.get('entry_type')) == 'failed':
             self.text_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
-        body.addWidget(self.text_label)
 
         meta_row = QHBoxLayout()
         meta_row.setContentsMargins(0, 0, 0, 0)
         meta_row.setSpacing(6)
+        meta_row.addWidget(self.time_label)
         self.pills = [_pill(p, self) for p in row_pills(row)]
         for pill in self.pills:
             meta_row.addWidget(pill)
@@ -915,6 +919,7 @@ class _HistoryRow(QWidget):
         self.meta_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         meta_row.addWidget(self.meta_label, stretch=1)
         body.addLayout(meta_row)
+        body.addWidget(self.text_label)
         lay.addLayout(body, stretch=1)
 
         self.copy_button = QPushButton("Copy", self)
@@ -936,7 +941,7 @@ class _HistoryRow(QWidget):
             child.ensurePolished()
 
     def text_width_for(self, row_width: int) -> int:
-        return max(row_width - 2 * _ROW_PAD_H - _TIME_COL_WIDTH - 2 * _ROW_SPACING - _COPY_BTN_WIDTH, 40)
+        return max(row_width - 2 * _ROW_PAD_H - _ROW_SPACING - _COPY_BTN_WIDTH, 40)
 
     def relayout(self, row_width: int) -> int:
         """Re-wrap the text for `row_width` and return the height the row
@@ -947,7 +952,7 @@ class _HistoryRow(QWidget):
         pills_w = sum(p.sizeHint().width() + 6 for p in self.pills)
         meta_fm = QFontMetrics(self.meta_label.font())
         self.meta_label.setText(meta_fm.elidedText(
-            meta_text(self.row), Qt.TextElideMode.ElideRight, max(text_w - pills_w, 20)))
+            meta_text(self.row), Qt.TextElideMode.ElideRight, max(text_w - pills_w - _TIME_COL_WIDTH - 6, 20)))
         text_h = self._lines * QFontMetrics(self.text_label.font()).lineSpacing()
         meta_h = max([meta_fm.height()] + [p.sizeHint().height() for p in self.pills])
         return max(_ROW_MIN_HEIGHT, 2 * _ROW_PAD_V + text_h + 4 + meta_h)
@@ -960,6 +965,7 @@ def _build_load_older_widget(on_click, parent: QWidget | None = None) -> QWidget
     lay.setContentsMargins(12, 4, 12, 4)
     lay.addStretch()
     btn = QPushButton("Load older entries", w)
+    theme.hub_control(btn)
     btn.clicked.connect(on_click)
     lay.addWidget(btn)
     lay.addStretch()
@@ -981,6 +987,7 @@ def _build_empty_state_widget(
     lay.addWidget(lbl)
     if action_label and on_action is not None:
         btn = QPushButton(action_label, w)
+        theme.hub_control(btn)
         btn.clicked.connect(on_action)
         lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
     w._message_label = lbl
@@ -1026,6 +1033,7 @@ class _DetailCard(QFrame):
         self.copy_button.clicked.connect(on_copy)
         actions.addWidget(self.copy_button)
         self.copy_original_button = QPushButton("Copy original words", self)
+        theme.hub_control(self.copy_original_button)
         self.copy_original_button.clicked.connect(on_copy_original)
         actions.addWidget(self.copy_original_button)
         actions.addStretch()
@@ -1147,15 +1155,13 @@ class HistoryView(QWidget):
         self._rows_ready.connect(self._on_rows_ready)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 12)
+        root.setContentsMargins(28, 24, 28, 16)
         root.setSpacing(10)
 
         # ---- Header -------------------------------------------------------
-        self._title = _plain_label(TITLE, "historyTitle", self)
-        root.addWidget(self._title)
-        self._subtitle = _plain_label(SUBTITLE, "historySubtitle", self)
-        self._subtitle.setWordWrap(True)
-        root.addWidget(self._subtitle)
+        self._header = theme.hub_header(TITLE, SUBTITLE, self)
+        self._title, self._subtitle = self._header.title, self._header.purpose
+        root.addWidget(self._header)
 
         # ---- Search + range ------------------------------------------------
         search_row = QHBoxLayout()
@@ -1165,13 +1171,18 @@ class HistoryView(QWidget):
         self._search.setClearButtonEnabled(True)
         self._search.setAccessibleName("Search history")
         self._search.setMinimumWidth(160)
+        theme.hub_control(self._search)
+        self._search.setFixedWidth(320)
         pal = self._search.palette()
         pal.setColor(pal.ColorRole.PlaceholderText, theme.qcolor(theme.TEXT_SECONDARY))
         self._search.setPalette(pal)
         self._search.textChanged.connect(self._query_changed)
-        search_row.addWidget(self._search, stretch=1)
+        search_row.addWidget(self._search)
 
         self._scope = QComboBox(self)
+        theme.hub_control(self._scope)
+        self._scope.setFixedWidth(140)
+        self._scope.view().setMaximumWidth(140)
         self._scope.addItems([_SCOPE_LAST_7_DAYS, _SCOPE_ALL])
         saved_scope = self._settings.value(_SCOPE_SETTING, _SCOPE_LAST_7_DAYS, type=str)
         saved_scope = _SCOPE_ALIASES.get(saved_scope, saved_scope)
@@ -1182,6 +1193,7 @@ class HistoryView(QWidget):
         self._scope.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._scope.currentTextChanged.connect(self._scope_changed)
         search_row.addWidget(self._scope)
+        search_row.addStretch()
         root.addLayout(search_row)
 
         # ---- Filters (wrap, never clip) ------------------------------------
@@ -1198,14 +1210,16 @@ class HistoryView(QWidget):
         self._show_empty_wake.stateChanged.connect(self._empty_wake_changed)
         flow.addWidget(self._show_empty_wake)
         self._filter_host = filter_host
+        filter_host.setMaximumWidth(theme.HUB_LIST_WIDTH)
         root.addWidget(filter_host)
 
         # ---- List ---------------------------------------------------------
         self._list = QListWidget(self)
+        self._list.setMaximumWidth(theme.HUB_LIST_WIDTH)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._list.setSpacing(1)
+        self._list.setSpacing(4)
         self._list.itemActivated.connect(self._on_item_activated)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._on_context_menu)
@@ -1224,18 +1238,15 @@ class HistoryView(QWidget):
             parent=self,
         )
         self._detail.setVisible(False)
+        self._detail.setMaximumWidth(theme.HUB_LIST_WIDTH)
         root.addWidget(self._detail)
 
         # ---- Footer ---------------------------------------------------------
         footer = QHBoxLayout()
-        footer.setSpacing(8)
+        footer.setSpacing(12)
         self._status_lbl = _plain_label("", "historyStatus", self)
-        self._status_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        footer.addWidget(self._status_lbl, stretch=1)
-        # Queue 122. The way out. 44 px explicitly, not this file's local
-        # _CONTROL_H of 40: the brief asks for 44 and a button that hands
-        # over everything you have ever dictated should not be the smallest
-        # target on the page.
+        self._status_lbl.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        footer.addWidget(self._status_lbl)
         self._export_btn = QPushButton(EXPORT_LABEL, self)
         self._export_btn.setAccessibleName(EXPORT_LABEL)
         _set_class(self._export_btn, "export")
@@ -1248,6 +1259,7 @@ class HistoryView(QWidget):
         self._clear_btn = _danger_btn("Clear history\u2026", self)
         self._clear_btn.clicked.connect(self._clear_all)
         footer.addWidget(self._clear_btn)
+        footer.addStretch()
         root.addLayout(footer)
         # Export sits before the destructive button in the tab order: the
         # thing you reach for by accident should not be the one that deletes.

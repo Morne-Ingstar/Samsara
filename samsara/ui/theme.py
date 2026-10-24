@@ -31,6 +31,50 @@ from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QPushButton, QWidget
 
+# Hub chrome (839); additive so Settings' existing scale stays intact.
+HUB_CONTROL_HEIGHT = 34
+HUB_INLINE_HEIGHT = 28
+HUB_INPUT_WIDTH = 360
+HUB_LIST_WIDTH = 680
+HUB_TITLE_SIZE = 24
+HUB_PURPOSE_SIZE = 13
+
+
+def hub_header(title: str, purpose: str, parent=None):
+    """Settings-shaped title/purpose block; the page supplies 24px top inset."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel, QVBoxLayout, QSizePolicy
+
+    block = QWidget(parent)
+    block.setObjectName("hubHeader")
+    block.setStyleSheet("QWidget#hubHeader { background: transparent; }")
+    block.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+    column = QVBoxLayout(block)
+    column.setContentsMargins(0, 0, 0, 16)
+    column.setSpacing(8)
+    block.title = QLabel(title)
+    block.title.setObjectName("hubHeaderTitle")
+    block.title.setProperty("role", "title")
+    block.purpose = QLabel(purpose)
+    block.purpose.setObjectName("hubHeaderPurpose")
+    block.purpose.setWordWrap(True)
+    for label in (block.title, block.purpose):
+        label.setTextFormat(Qt.TextFormat.PlainText)
+        column.addWidget(label)
+    block.title.setStyleSheet(
+        f"background: transparent; color: {TEXT_PRIMARY}; font-size: {HUB_TITLE_SIZE}px; font-weight: 600;")
+    block.purpose.setStyleSheet(
+        f"background: transparent; color: {TEXT_SECONDARY}; font-size: {HUB_PURPOSE_SIZE}px;")
+    return block
+
+
+def hub_control(widget, *, inline=False):
+    """Content-sized, consistently tall action or single-line input."""
+    from PySide6.QtWidgets import QSizePolicy
+    widget.setFixedHeight(HUB_INLINE_HEIGHT if inline else HUB_CONTROL_HEIGHT)
+    widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    return widget
+
 # ---------------------------------------------------------------------------
 # Color math (tiny, dependency-free -- just enough for hover/pressed/disabled
 # variants derived from a single source color instead of hand-picked hex).

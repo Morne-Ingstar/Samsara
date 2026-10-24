@@ -59,10 +59,15 @@ def test_vocabulary_height_budget(hub, qapp, width, height, rows):
     assert (window.width(), window.height()) == (width, height)
     view = panel._vocab_list
     assert view.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
-    assert view.viewport().height() >= rows * view.sizeHintForRow(0)
+    # 839: the new header and separate preference row leave five rows at
+    # 900x650; the 700x500 tab body scrolls while keeping its four-row minimum.
+    visible_rows = rows - 3 if height == 650 else rows
+    assert view.viewport().height() >= visible_rows * view.sizeHintForRow(0)
     assert view.minimumHeight() >= 4 * view.sizeHintForRow(0)
     page = panel._tabs.widget(0)
     assert page.rect().contains(view.geometry())
+    if height == 500:
+        assert panel._body_scroll.verticalScrollBar().maximum() > 0
     for button in page.findChildren(QPushButton):
         assert button.width() <= button.sizeHint().width() + 1
 
@@ -71,9 +76,11 @@ def test_builtin_controls_share_row_and_expander_stays_available(hub):
     _, panel, _ = hub
     layout = panel._tabs.widget(0).layout()
     rows = [layout.itemAt(i).layout() for i in range(layout.count())]
+    # 839: the immediate preference has its own row below both disclosures.
+    assert layout.indexOf(panel._builtin_expander) >= 0
     assert any(isinstance(row, QHBoxLayout) and
-               row.indexOf(panel._builtin_expander) >= 0 and
-               row.indexOf(panel._builtin_enabled) >= 0 for row in rows)
+               row.indexOf(panel._builtin_enabled) >= 0 and
+               row.indexOf(panel._builtin_expander) < 0 for row in rows)
     panel._builtin_enabled.blockSignals(True)
     panel._builtin_enabled.setChecked(False)
     panel._builtin_expander.click()
