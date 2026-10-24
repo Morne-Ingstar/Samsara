@@ -115,6 +115,9 @@ def catalog_rows(commands: list | None) -> list | None:
     for record in records:
         row = dict(record)
         row["phrase"] = command_catalog.canonical_phrase(record)
+        # 819: navigation has its own visible group; execution IDs stay stable.
+        from samsara.samsara_navigation import reference_group
+        row["plugin"] = reference_group(row)
         row["shown_aliases"] = command_catalog.display_aliases(record, _ALIAS_LIMIT)
         rows.append(row)
     return rows

@@ -36,6 +36,20 @@ class SettingsQt:
     def show(self):
         qt_runtime.post(self._show_preferences)
 
+    def show_page(self, page):
+        """Open one registered preference page from any thread (819)."""
+        page = _ALIASES.get(page, page)
+        if page not in _TAB_NAMES:
+            raise ValueError(page)
+        qt_runtime.post(lambda: self._show_preferences(page))
+
+    def show_setting(self, key):
+        """Open and reveal a named setup section using lazy navigation (819)."""
+        def show():
+            self._show_tool('Command library')
+            self._window.focus_setting(key)
+        qt_runtime.post(show)
+
     def _show_preferences(self, page="General"):
         if self._window is None:
             self._window = _SettingsWindow(self.app)

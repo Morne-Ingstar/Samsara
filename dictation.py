@@ -80,11 +80,11 @@ _STARTUP_ARGUMENT_CODE = _dispatch_startup_argument(sys.argv[1:])
 if _STARTUP_ARGUMENT_CODE is not None:
     sys.exit(_STARTUP_ARGUMENT_CODE)
 
-
 # Before every heavy/native import below (torch guard, sounddevice, scipy,
 # faster-whisper, Qt) so a crash during boot also leaves a dump.
 from samsara.paths import samsara_home_dir as _fh_home_dir
 from samsara.command_fast_path import CommandFastPathMixin
+from samsara.samsara_navigation import SamsaraNavigationMixin
 from samsara.stage_timing import (
     StageTiming,
     current_stage_timing,
@@ -1356,7 +1356,7 @@ def _reap_old_preview_profiles() -> None:
             logger.debug(f"[PREVIEW] Could not reap {path_str}: {e}")
 
 
-class DictationApp(CommandFastPathMixin):
+class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     # Config-backup safeguard (2026-07-2x "config wiped to defaults"
     # incident). See save_config()'s rolling-backup step,
     # _write_last_known_good(), and _quarantine_corrupt_config().

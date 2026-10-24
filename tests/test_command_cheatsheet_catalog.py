@@ -190,11 +190,20 @@ def test_window_groups_by_plugin_and_every_item_is_a_catalog_command(qapp, live_
         assert len(items) == len(catalog)
         assert all(item.data(Qt.ItemDataRole.UserRole + 1) in ids for item in items)
         groups = win._category_bar._pack_ids[1:]
-        assert set(groups) == {r["plugin"] for r in catalog}
-        some_plugin = groups[0]
+        # 819: navigation uses a Samsara presentation group, preserving builtin IDs.
+        assert set(groups) == {r["plugin"] for r in catalog} | {"samsara"}
+        some_plugin = next(group for group in groups if group != "samsara")
         win._set_category(some_plugin)
         shown = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert shown and all(cid.startswith(some_plugin + ".") for cid in shown)
+        win._set_category("samsara")
+        shown = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1)
+                 for i in range(win._list.count())}
+        expected = {r["canonical_id"] for r in catalog
+                    if cc.canonical_phrase(r).startswith("samsara ")
+                    and r["canonical_id"] != "builtin.samsara_repo"}
+        expected.add("builtin.what_can_i_open")
+        assert shown == expected
     finally:
         win.deleteLater()
 

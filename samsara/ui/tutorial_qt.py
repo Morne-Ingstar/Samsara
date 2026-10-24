@@ -341,7 +341,7 @@ class TutorialWindow(QMainWindow):
 
         self._build_step_list()
 
-        self.setWindowTitle("Samsara Tutorial")
+        self.setWindowTitle("Tutorial — Samsara")
         # Keep ordinary steps compact. The done page expands to its content
         # when the available screen height permits; otherwise its scroll area
         # keeps the text and guide actions at their natural sizes.

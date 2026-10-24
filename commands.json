@@ -1,5 +1,537 @@
 {
   "commands": {
+    "samsara home": {
+      "aliases": [
+        "open samsara home",
+        "open samsara",
+        "show samsara"
+      ],
+      "type": "method",
+      "method": "open_samsara_home",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Home.",
+      "samsara_destination": "home"
+    },
+    "samsara history": {
+      "aliases": [
+        "open samsara history"
+      ],
+      "type": "method",
+      "method": "open_samsara_history",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's History.",
+      "samsara_destination": "history"
+    },
+    "samsara dictionary": {
+      "aliases": [
+        "open samsara dictionary",
+        "open dictionary",
+        "samsara vocabulary",
+        "open samsara vocabulary",
+        "samsara my words",
+        "open samsara my words"
+      ],
+      "type": "method",
+      "method": "open_samsara_dictionary",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Dictionary.",
+      "samsara_destination": "dictionary"
+    },
+    "samsara snippets": {
+      "aliases": [
+        "open samsara snippets"
+      ],
+      "type": "method",
+      "method": "open_samsara_snippets",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Snippets.",
+      "samsara_destination": "snippets"
+    },
+    "samsara memos": {
+      "aliases": [
+        "open samsara memos"
+      ],
+      "type": "method",
+      "method": "open_samsara_memos",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Memos.",
+      "samsara_destination": "memos"
+    },
+    "samsara voice help": {
+      "aliases": [
+        "open samsara voice help",
+        "samsara voice troubleshooting",
+        "open samsara voice troubleshooting"
+      ],
+      "type": "method",
+      "method": "open_samsara_voice_help",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Voice help.",
+      "samsara_destination": "voice_help"
+    },
+    "samsara settings": {
+      "aliases": [
+        "open samsara settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_settings",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Settings.",
+      "samsara_destination": "settings"
+    },
+    "samsara general": {
+      "aliases": [
+        "open samsara general",
+        "open general settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_general",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's General.",
+      "samsara_destination": "general"
+    },
+    "samsara dictation": {
+      "aliases": [
+        "open samsara dictation",
+        "open dictation settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_dictation",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Dictation.",
+      "samsara_destination": "dictation"
+    },
+    "samsara audio": {
+      "aliases": [
+        "open samsara audio",
+        "samsara microphone",
+        "open samsara microphone",
+        "samsara mic settings",
+        "open samsara mic settings",
+        "open microphone settings",
+        "open mic settings",
+        "open audio settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_audio",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Audio.",
+      "samsara_destination": "audio"
+    },
+    "samsara ava": {
+      "aliases": [
+        "open samsara ava",
+        "samsara ava settings",
+        "open samsara ava settings",
+        "open ava settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_ava",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Ava.",
+      "samsara_destination": "ava"
+    },
+    "samsara shortcuts": {
+      "aliases": [
+        "open samsara shortcuts",
+        "open shortcuts settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_shortcuts",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Shortcuts.",
+      "samsara_destination": "shortcuts"
+    },
+    "samsara help": {
+      "aliases": [
+        "open samsara help",
+        "open help settings"
+      ],
+      "type": "method",
+      "method": "open_samsara_help",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Help.",
+      "samsara_destination": "help"
+    },
+    "samsara commands": {
+      "aliases": [
+        "open samsara commands",
+        "samsara command library",
+        "open samsara command library"
+      ],
+      "type": "method",
+      "method": "open_samsara_commands",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Commands.",
+      "samsara_destination": "commands"
+    },
+    "samsara alarms": {
+      "aliases": [
+        "open samsara alarms"
+      ],
+      "type": "method",
+      "method": "open_samsara_alarms",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Alarms.",
+      "samsara_destination": "alarms"
+    },
+    "samsara health": {
+      "aliases": [
+        "open samsara health"
+      ],
+      "type": "method",
+      "method": "open_samsara_health",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Health.",
+      "samsara_destination": "health"
+    },
+    "samsara music": {
+      "aliases": [
+        "open samsara music"
+      ],
+      "type": "method",
+      "method": "open_samsara_music",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Music.",
+      "samsara_destination": "music"
+    },
+    "samsara components": {
+      "aliases": [
+        "open samsara components"
+      ],
+      "type": "method",
+      "method": "open_samsara_components",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Components.",
+      "samsara_destination": "components"
+    },
+    "samsara integrations": {
+      "aliases": [
+        "open samsara integrations"
+      ],
+      "type": "method",
+      "method": "open_samsara_integrations",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Integrations.",
+      "samsara_destination": "integrations"
+    },
+    "samsara connect ai app": {
+      "aliases": [
+        "open samsara connect ai app",
+        "samsara connect an ai app",
+        "open samsara connect an ai app",
+        "open connect an ai app"
+      ],
+      "type": "method",
+      "method": "open_samsara_connect_ai_app",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Connect an AI app.",
+      "samsara_destination": "connect_ai_app"
+    },
+    "samsara guides": {
+      "aliases": [
+        "open samsara guides",
+        "samsara guides and tutorials",
+        "open samsara guides and tutorials"
+      ],
+      "type": "method",
+      "method": "open_samsara_guides",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Guides & tutorials.",
+      "samsara_destination": "guides"
+    },
+    "samsara tutorial": {
+      "aliases": [
+        "open samsara tutorial"
+      ],
+      "type": "method",
+      "method": "open_samsara_tutorial",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Tutorial.",
+      "samsara_destination": "tutorial"
+    },
+    "samsara microphone guide": {
+      "aliases": [
+        "open samsara microphone guide",
+        "microphone guide",
+        "samsara mic setup guide",
+        "open samsara mic setup guide"
+      ],
+      "type": "method",
+      "method": "open_samsara_microphone_guide",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Mic Setup Guide.",
+      "samsara_destination": "microphone_guide"
+    },
+    "samsara ava setup": {
+      "aliases": [
+        "open samsara ava setup",
+        "ava setup",
+        "samsara ava setup guide",
+        "open samsara ava setup guide"
+      ],
+      "type": "method",
+      "method": "open_samsara_ava_setup",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Ava Setup Guide.",
+      "samsara_destination": "ava_setup"
+    },
+    "samsara quick reference": {
+      "aliases": [
+        "open samsara quick reference"
+      ],
+      "type": "method",
+      "method": "open_samsara_quick_reference",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Quick Reference.",
+      "samsara_destination": "quick_reference"
+    },
+    "samsara command reference": {
+      "aliases": [
+        "open samsara command reference"
+      ],
+      "type": "method",
+      "method": "open_samsara_command_reference",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Command Reference.",
+      "samsara_destination": "command_reference"
+    },
+    "samsara reminders": {
+      "aliases": [
+        "open samsara reminders",
+        "open reminders"
+      ],
+      "type": "method",
+      "method": "open_samsara_reminders",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Reminders.",
+      "samsara_destination": "reminders"
+    },
+    "samsara tasks": {
+      "aliases": [
+        "open samsara tasks"
+      ],
+      "type": "method",
+      "method": "open_samsara_tasks",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Tasks.",
+      "samsara_destination": "tasks"
+    },
+    "samsara listening display": {
+      "aliases": [
+        "open samsara listening display",
+        "show listening display",
+        "samsara listening indicator",
+        "open samsara listening indicator"
+      ],
+      "type": "method",
+      "method": "open_samsara_listening_display",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Listening display.",
+      "samsara_destination": "listening_display"
+    },
+    "samsara updates": {
+      "aliases": [
+        "open samsara updates"
+      ],
+      "type": "method",
+      "method": "open_samsara_updates",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Updates.",
+      "samsara_destination": "updates"
+    },
+    "samsara about": {
+      "aliases": [
+        "open samsara about",
+        "samsara about samsara",
+        "open samsara about samsara"
+      ],
+      "type": "method",
+      "method": "open_samsara_about",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's About Samsara.",
+      "samsara_destination": "about"
+    },
+    "samsara documentation": {
+      "aliases": [
+        "open samsara documentation",
+        "samsara docs",
+        "open samsara docs"
+      ],
+      "type": "method",
+      "method": "open_samsara_documentation",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Documentation.",
+      "samsara_destination": "documentation"
+    },
+    "samsara discord": {
+      "aliases": [
+        "open samsara discord"
+      ],
+      "type": "method",
+      "method": "open_samsara_discord",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Discord.",
+      "samsara_destination": "discord"
+    },
+    "samsara support": {
+      "aliases": [
+        "open samsara support"
+      ],
+      "type": "method",
+      "method": "open_samsara_support",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Support.",
+      "samsara_destination": "support"
+    },
+    "samsara diagnostics": {
+      "aliases": [
+        "open samsara diagnostics"
+      ],
+      "type": "method",
+      "method": "open_samsara_diagnostics",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Dictation Diagnostics.",
+      "samsara_destination": "diagnostics"
+    },
+    "samsara live log": {
+      "aliases": [
+        "open samsara live log"
+      ],
+      "type": "method",
+      "method": "open_samsara_live_log",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Live Log.",
+      "samsara_destination": "live_log"
+    },
+    "samsara log": {
+      "aliases": [
+        "open samsara log"
+      ],
+      "type": "method",
+      "method": "open_samsara_log",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Main log.",
+      "samsara_destination": "log"
+    },
+    "samsara transcribe file": {
+      "aliases": [
+        "open samsara transcribe file"
+      ],
+      "type": "method",
+      "method": "open_samsara_transcribe_file",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Transcribe a file.",
+      "samsara_destination": "transcribe_file"
+    },
+    "samsara benchmark review": {
+      "aliases": [
+        "open samsara benchmark review"
+      ],
+      "type": "method",
+      "method": "open_samsara_benchmark_review",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Benchmark Review.",
+      "samsara_destination": "benchmark_review"
+    },
+    "samsara correction": {
+      "aliases": [
+        "open samsara correction",
+        "samsara correct last dictation",
+        "open samsara correct last dictation"
+      ],
+      "type": "method",
+      "method": "open_samsara_correction",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Correct Last Dictation.",
+      "samsara_destination": "correction"
+    },
+    "samsara stress test": {
+      "aliases": [
+        "open samsara stress test",
+        "samsara stress test wizard",
+        "open samsara stress test wizard"
+      ],
+      "type": "method",
+      "method": "open_samsara_stress_test",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Stress Test Wizard.",
+      "samsara_destination": "stress_test"
+    },
+    "samsara wake word debug": {
+      "aliases": [
+        "open samsara wake word debug"
+      ],
+      "type": "method",
+      "method": "open_samsara_wake_word_debug",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Wake word debug.",
+      "samsara_destination": "wake_word_debug"
+    },
+    "samsara config folder": {
+      "aliases": [
+        "open samsara config folder"
+      ],
+      "type": "method",
+      "method": "open_samsara_config_folder",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Opens Samsara's Config folder.",
+      "samsara_destination": "config_folder"
+    },
+    "what can i open": {
+      "aliases": [
+        "samsara places",
+        "show samsara places"
+      ],
+      "type": "method",
+      "method": "show_samsara_places",
+      "pack": "core",
+      "risk_class": "ui",
+      "description": "Shows Samsara places and explains how to open them by voice."
+    },
     "jump five times": {
       "type": "macro",
       "steps": [
@@ -290,7 +822,7 @@
         "win",
         "i"
       ],
-      "description": "Opens Windows Settings.",
+      "description": "Opens Windows Settings (say 'samsara settings' for Samsara's).",
       "pack": "core"
     },
     "show tutorial": {
