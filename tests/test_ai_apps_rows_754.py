@@ -18,6 +18,9 @@ def test_ai_app_settings_rows_keep_controls_with_titles_and_dividers(qapp, monke
     monkeypatch.setattr(agents_section, "for_app", lambda _app: server)
     owner = SimpleNamespace(app=SimpleNamespace(config={"command_packs": {"agents": True}}))
     panel = agents_section.AgentsControls(owner, QCheckBox())
+    # 858: inspect the rows after opening the initially collapsed setup.
+    assert not panel.details.toggle.isChecked()
+    panel.details.toggle.click()
     switch(panel.enabled)
     panel.resize(1000, 560)
     panel.show()
@@ -39,7 +42,10 @@ def test_ai_app_settings_rows_keep_controls_with_titles_and_dividers(qapp, monke
         assert abs(control.mapTo(row, control.rect().topLeft()).x()
                    - row.heading.mapTo(row, row.heading.rect().topRight()).x()) < 250
 
-    dividers = RowDividers(panel.layout())
+    outer = RowDividers(panel.layout())
+    inner = RowDividers(panel.digest_row.parentWidget().layout())
+    dividers = SimpleNamespace(groups=outer.groups + inner.groups,
+                               dividers=outer.dividers + inner.dividers)
     qapp.processEvents()
     # 786: the setup and guide separate the connection/reply rows.
     assert dividers.groups == [[panel.enable_row], [panel.digest_row], [panel.typing_row, panel.approval_row]]

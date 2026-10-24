@@ -194,6 +194,13 @@ class AgentsControls(QWidget):
         self.enable_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         layout.addWidget(self.enable_row)
         self.status = note("")
+        self.details = Disclosure("AI app setup")
+        layout.addWidget(self.details)
+        details_host = QWidget()
+        details_layout = QVBoxLayout(details_host)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        self.details.rows.addWidget(details_host)
+        layout = details_layout
 
         self.connect_heading = group("Connect an app")
         self.app_selector = compact(QComboBox())
@@ -300,8 +307,10 @@ class AgentsControls(QWidget):
 
         self.app_selector.currentIndexChanged.connect(self._select_route)
         self._select_route(0)
+        self.details.toggle.setChecked(bool(enabled.isChecked()))
         guard = getattr(owner, "_visit_callback", lambda fn, *widgets: fn)
         enabled.toggled.connect(guard(self.toggle, self))
+        enabled.toggled.connect(self.details.toggle.setChecked)
         self.copy.clicked.connect(guard(self.copy_details, self))
         self.command_preview.copy_action = guard(self.copy_code_command, self)
         self.desktop_preview.copy_action = guard(self.copy_desktop_entry, self)

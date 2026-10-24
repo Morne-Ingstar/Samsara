@@ -107,10 +107,14 @@ def test_ava_guide_appears_once_only_without_configured_local_model(page, monkey
 
 def test_flow_and_app_specific_steps(page, qapp):
     panel, *_ = page
+    # 858: turn the enabled fixture off, then open setup as a user would.
+    panel.enabled.click()
+    assert not panel.details.toggle.isChecked()
+    panel.details.toggle.click()
     panel.resize(940, 1300)
     panel.show()
     qapp.processEvents()
-    positions = [panel.layout().indexOf(w) for w in
+    positions = [w.mapTo(panel, QPoint()).y() for w in
                  (panel.connection_heading, panel.enable_row, panel.status, panel.connect_heading,
                   panel.app_selector, panel.routes, panel.help, panel.capabilities_heading,
                   panel.digest_row, panel.typing_row, panel.approval_row)]

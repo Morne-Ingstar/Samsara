@@ -121,6 +121,9 @@ def test_links_land_on_named_lazy_row_without_changing_value(window, qapp):
 def test_selected_route_only_is_visible_and_accessible(window, qapp):
     window._select_tool('Integrations')
     controls = window._tool_pages['Integrations'].findChild(agents_section.AgentsControls)
+    # 858: inspect routes after opening the initially collapsed setup.
+    assert not controls.details.toggle.isChecked()
+    controls.details.toggle.click()
     qapp.processEvents()
     assert controls.code_panel.isVisible() and not controls.desktop_panel.isVisible()
     interface = QAccessible.queryAccessibleInterface(controls.desktop_copy)
