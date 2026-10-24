@@ -9613,7 +9613,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:714",
+      "source": "plugins/commands/music.py:749",
       "undoable": true,
       "verb": "import",
       "whole_utterance": false
@@ -9634,7 +9634,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:757",
+      "source": "plugins/commands/music.py:792",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -9659,7 +9659,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:743",
+      "source": "plugins/commands/music.py:778",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -9681,7 +9681,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:736",
+      "source": "plugins/commands/music.py:771",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -9701,7 +9701,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:266",
+      "source": "plugins/commands/music.py:301",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -9731,7 +9731,7 @@
       "plugin": "music",
       "precondition": "Set up Spotify and include the artist in your Music library.",
       "risk": "ui",
-      "source": "plugins/commands/music.py:680",
+      "source": "plugins/commands/music.py:715",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9759,7 +9759,7 @@
       "plugin": "music",
       "precondition": "Add Abbey Road to your Music library and set up Spotify first.",
       "risk": "ui",
-      "source": "plugins/commands/music.py:698",
+      "source": "plugins/commands/music.py:733",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9787,7 +9787,7 @@
       "plugin": "music",
       "precondition": "Add Nick Cave to your Music library and set up Spotify first.",
       "risk": "ui",
-      "source": "plugins/commands/music.py:706",
+      "source": "plugins/commands/music.py:741",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9829,7 +9829,7 @@
       "plugin": "music",
       "precondition": "Add Nick Cave to your Music library and set up Spotify first.",
       "risk": "ui",
-      "source": "plugins/commands/music.py:594",
+      "source": "plugins/commands/music.py:629",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9857,7 +9857,7 @@
       "plugin": "music",
       "precondition": "Add a playlist named Favourites to your Music library and set up Spotify first.",
       "risk": "ui",
-      "source": "plugins/commands/music.py:690",
+      "source": "plugins/commands/music.py:725",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9877,7 +9877,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:266",
+      "source": "plugins/commands/music.py:301",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9900,7 +9900,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:750",
+      "source": "plugins/commands/music.py:785",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -9920,7 +9920,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:645",
+      "source": "plugins/commands/music.py:680",
       "undoable": true,
       "verb": "search",
       "whole_utterance": false
@@ -9941,7 +9941,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:278",
+      "source": "plugins/commands/music.py:313",
       "undoable": true,
       "verb": "spotify",
       "whole_utterance": false
@@ -9962,7 +9962,7 @@
       "plugin": "music",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/music.py:278",
+      "source": "plugins/commands/music.py:313",
       "undoable": true,
       "verb": "spotify",
       "whole_utterance": false

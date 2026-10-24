@@ -568,21 +568,21 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `music.import_my_spotify_playlists` | `import my spotify playlists`, `import spotify playlists` | - | - | - | ui | yes |  | Opens the picker for importing playlists from your downloaded Spotify data. | `plugins/commands/music.py:714` |
-| `music.mute` | `mute`, `mute spotify`, `mute the spotify` | - | - | - | ui | yes |  | Mutes or unmutes Spotify without touching the system volume. | `plugins/commands/music.py:757` |
-| `music.next` | `next`, `next song`, `next track`, `skip`, `skip song`, `skip the track`, `skip track` | - | - | - | ui | yes |  | Skips to the next track. | `plugins/commands/music.py:743` |
-| `music.pause` | `pause`, `pause music`, `play pause`, `stop music` | - | - | - | ui | yes |  | Pauses whatever is playing. | `plugins/commands/music.py:736` |
-| `music.pause_spotify` | `pause spotify`, `stop spotify` | - | - | - | ui | yes |  | Pauses Spotify, whatever else is playing. | `plugins/commands/music.py:266` |
-| `music.play` | `play`, `resume`, `resume music`, `unpause music` | name:text | `play Nick Cave` | Set up Spotify and include the artist in your Music library. | ui | yes |  | Resumes whatever was playing. | `plugins/commands/music.py:680` |
-| `music.play_album` | `album`, `play album` | remainder:text* | `play album Abbey Road` | Add Abbey Road to your Music library and set up Spotify first. | ui | yes |  | Plays a named Spotify album from your Music library. | `plugins/commands/music.py:698` |
-| `music.play_artist` | `artist`, `play artist` | remainder:text* | `play artist Nick Cave` | Add Nick Cave to your Music library and set up Spotify first. | ui | yes |  | Plays a named Spotify artist from your Music library. | `plugins/commands/music.py:706` |
-| `music.play_music` | `place music`, `place of music`, `place some music`, `play me`, `play me some`, `play me some music`, `play music`, `play of music`, `play some`, `play some music`, `playing me some`, `playing some`, `plays music`, `plays some music`, `put on`, `put on some` | playlist:playlist | `play music Nick Cave` | Add Nick Cave to your Music library and set up Spotify first. | ui | yes |  | Plays the item you name from your Music library on Spotify. | `plugins/commands/music.py:594` |
-| `music.play_playlist` | `play playlist`, `playlist` | remainder:text* | `play playlist Favourites` | Add a playlist named Favourites to your Music library and set up Spotify first. | ui | yes |  | Plays a named Spotify playlist from your Music library. | `plugins/commands/music.py:690` |
-| `music.play_spotify` | `play spotify`, `resume spotify` | - | - | - | ui | yes |  | Resumes Spotify, whatever else is playing. | `plugins/commands/music.py:266` |
-| `music.previous_music` | `back a song`, `previous`, `previous music`, `previous song`, `previous track` | - | - | - | ui | yes |  | Skips back in the current media session. | `plugins/commands/music.py:750` |
-| `music.search_music` | `search`, `search music` | - | - | - | ui | yes |  | Searches Spotify after music was not found in your library and a search was offered. | `plugins/commands/music.py:645` |
-| `music.spotify_volume_down` | `spotify quieter`, `spotify volume down`, `turn spotify down` | - | - | - | ui | yes |  | Lowers Spotify's own volume by ten points. | `plugins/commands/music.py:278` |
-| `music.spotify_volume_up` | `spotify louder`, `spotify volume up`, `turn spotify up` | - | - | - | ui | yes |  | Raises Spotify's own volume by ten points. | `plugins/commands/music.py:278` |
+| `music.import_my_spotify_playlists` | `import my spotify playlists`, `import spotify playlists` | - | - | - | ui | yes |  | Opens the picker for importing playlists from your downloaded Spotify data. | `plugins/commands/music.py:749` |
+| `music.mute` | `mute`, `mute spotify`, `mute the spotify` | - | - | - | ui | yes |  | Mutes or unmutes Spotify without touching the system volume. | `plugins/commands/music.py:792` |
+| `music.next` | `next`, `next song`, `next track`, `skip`, `skip song`, `skip the track`, `skip track` | - | - | - | ui | yes |  | Skips to the next track. | `plugins/commands/music.py:778` |
+| `music.pause` | `pause`, `pause music`, `play pause`, `stop music` | - | - | - | ui | yes |  | Pauses whatever is playing. | `plugins/commands/music.py:771` |
+| `music.pause_spotify` | `pause spotify`, `stop spotify` | - | - | - | ui | yes |  | Pauses Spotify, whatever else is playing. | `plugins/commands/music.py:301` |
+| `music.play` | `play`, `resume`, `resume music`, `unpause music` | name:text | `play Nick Cave` | Set up Spotify and include the artist in your Music library. | ui | yes |  | Resumes whatever was playing. | `plugins/commands/music.py:715` |
+| `music.play_album` | `album`, `play album` | remainder:text* | `play album Abbey Road` | Add Abbey Road to your Music library and set up Spotify first. | ui | yes |  | Plays a named Spotify album from your Music library. | `plugins/commands/music.py:733` |
+| `music.play_artist` | `artist`, `play artist` | remainder:text* | `play artist Nick Cave` | Add Nick Cave to your Music library and set up Spotify first. | ui | yes |  | Plays a named Spotify artist from your Music library. | `plugins/commands/music.py:741` |
+| `music.play_music` | `place music`, `place of music`, `place some music`, `play me`, `play me some`, `play me some music`, `play music`, `play of music`, `play some`, `play some music`, `playing me some`, `playing some`, `plays music`, `plays some music`, `put on`, `put on some` | playlist:playlist | `play music Nick Cave` | Add Nick Cave to your Music library and set up Spotify first. | ui | yes |  | Plays the item you name from your Music library on Spotify. | `plugins/commands/music.py:629` |
+| `music.play_playlist` | `play playlist`, `playlist` | remainder:text* | `play playlist Favourites` | Add a playlist named Favourites to your Music library and set up Spotify first. | ui | yes |  | Plays a named Spotify playlist from your Music library. | `plugins/commands/music.py:725` |
+| `music.play_spotify` | `play spotify`, `resume spotify` | - | - | - | ui | yes |  | Resumes Spotify, whatever else is playing. | `plugins/commands/music.py:301` |
+| `music.previous_music` | `back a song`, `previous`, `previous music`, `previous song`, `previous track` | - | - | - | ui | yes |  | Skips back in the current media session. | `plugins/commands/music.py:785` |
+| `music.search_music` | `search`, `search music` | - | - | - | ui | yes |  | Searches Spotify after music was not found in your library and a search was offered. | `plugins/commands/music.py:680` |
+| `music.spotify_volume_down` | `spotify quieter`, `spotify volume down`, `turn spotify down` | - | - | - | ui | yes |  | Lowers Spotify's own volume by ten points. | `plugins/commands/music.py:313` |
+| `music.spotify_volume_up` | `spotify louder`, `spotify volume up`, `turn spotify up` | - | - | - | ui | yes |  | Raises Spotify's own volume by ten points. | `plugins/commands/music.py:313` |
 
 ## quick_ask (1)
 

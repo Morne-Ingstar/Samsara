@@ -29,6 +29,20 @@ from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
 
+_SESSION_MANAGER = None
+_SESSION_MANAGER_SOURCE = None
+
+
+async def _cached_session_manager(request_async, *, source=None, refresh=False):
+    """Reuse a manager only while its transport backend remains the same."""
+    global _SESSION_MANAGER, _SESSION_MANAGER_SOURCE
+    source = request_async if source is None else source
+    if refresh or _SESSION_MANAGER is None or _SESSION_MANAGER_SOURCE != source:
+        manager = await request_async()
+        _SESSION_MANAGER = manager
+        _SESSION_MANAGER_SOURCE = source
+    return _SESSION_MANAGER
+
 
 _NAMED_APPS = {
     "spotify": ("spotify.exe", "spotify", "Spotify", "spotify", ("transport", "volume")),
@@ -58,22 +72,38 @@ def _media_transport(action, app_stem=None):
         )
 
         async def _transport():
+            manager_started = time.perf_counter()
             try:
-                mgr = await SessionManager.request_async()
+                mgr = await _cached_session_manager(
+                    SessionManager.request_async, source=SessionManager)
+                manager_ms = (time.perf_counter() - manager_started) * 1000
                 display = next((row[2] for row in _NAMED_APPS.values()
                                 if row[1] == app_stem), app_stem)
-                if app_stem is None:
-                    session = mgr.get_current_session()
-                else:
-                    session = next((item for item in mgr.get_sessions()
-                                    if app_stem.casefold() in
-                                    item.source_app_user_model_id.casefold()), None)
+                lookup_started = time.perf_counter()
+                def resolve_session(manager):
+                    if app_stem is None:
+                        return manager.get_current_session()
+                    return next((item for item in manager.get_sessions()
+                                 if app_stem.casefold() in
+                                 item.source_app_user_model_id.casefold()), None)
+
+                try:
+                    session = resolve_session(mgr)
+                except Exception:
+                    # A stale manager must not bypass normal transport resolution.
+                    mgr = await _cached_session_manager(
+                        SessionManager.request_async, source=SessionManager, refresh=True)
+                    session = resolve_session(mgr)
+                lookup_ms = (time.perf_counter() - lookup_started) * 1000
                 if not session:
+                    logger.debug('[MEDIA] transport timing action=%s manager=%.1fms lookup=%.1fms pause=0ms',
+                                 action, manager_ms, lookup_ms)
                     return DispatchResult(
                         DispatchState.FAILED, phrase=action,
                         detail={"reason": (f"{display} has no media session"
                                            if app_stem is not None else "no media app found")},
                     )
+                pause_started = time.perf_counter()
                 if action == "play":
                     ok = await session.try_play_async()
                 elif action == "pause":
@@ -83,10 +113,15 @@ def _media_transport(action, app_stem=None):
                 elif action == "previous":
                     ok = await session.try_skip_previous_async()
                 else:
+                    logger.debug('[MEDIA] transport timing action=%s manager=%.1fms lookup=%.1fms pause=0ms',
+                                 action, manager_ms, lookup_ms)
                     return DispatchResult(
                         DispatchState.FAILED, phrase=action,
                         detail={"reason": "unknown media action"},
                     )
+                pause_ms = (time.perf_counter() - pause_started) * 1000
+                logger.debug('[MEDIA] transport timing action=%s manager=%.1fms lookup=%.1fms pause=%.1fms',
+                             action, manager_ms, lookup_ms, pause_ms)
                 if not ok:
                     return DispatchResult(
                         DispatchState.FAILED, phrase=action,
