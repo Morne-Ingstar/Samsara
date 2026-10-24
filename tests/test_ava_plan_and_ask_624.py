@@ -179,8 +179,13 @@ def test_silence_expires_quietly_after_configured_window(rig):
     before = list(rig.spoken)
     rig.now[0] = 109.1
     rig.timers[-1].fire()
+    # 830: a yes/no question offers one retry, then expires without running the plan.
+    assert rig.spoken == before + ['Say yes or no']
+    assert rig.app._ava_question.deadline == 118.1
+    rig.now[0] = 118.2
+    rig.timers[-1].fire()
     assert rig.app._ava_question is None and not rig.effects
-    assert rig.spoken == before
+    assert rig.spoken == before + ['Say yes or no']
     assert any("expired" in c.args[0] for c in rig.app.listening_indicator.show_outcome.call_args_list)
 
 
@@ -192,7 +197,7 @@ def test_speech_completion_starts_window_and_cancelled_speech_is_bounded(rig):
     assert ava_pending.consume(rig.app, "yes") and not rig.effects
     rig.now[0] += 10
     done.pop()()
-    assert rig.app._ava_question.deadline == 118
+    assert rig.app._ava_question.deadline == 120  # 830: default window is ten seconds.
 
 
 def test_model_question_yes_cannot_approve_a_destructive_step(rig):
@@ -357,7 +362,7 @@ def test_each_destructive_step_needs_its_own_approval(rig):
 def test_policy_question_expiry_removes_policy_pending_too(rig):
     deliver(rig, {"type": "plan", "plan": ["close window"]})
     before = list(rig.spoken)
-    rig.now[0] += 9
+    rig.now[0] += 11  # 830: default reply window is ten seconds.
     rig.timers[-1].fire()
     assert policy.pending_operation() is None and not rig.effects
     assert rig.spoken == before
@@ -368,7 +373,7 @@ def test_wait_keeps_the_policy_question_and_reply_capture(rig):
     current = rig.app._ava_question
     rig.now[0] += 7
     assert ava_pending.consume(rig.app, "wait")
-    assert rig.app._ava_question is current and current.deadline == 115
+    assert rig.app._ava_question is current and current.deadline == 117  # 830: ten-second extension.
     assert policy.pending_operation().extended
     assert ava_pending.consume(rig.app, "yes") and len(rig.effects) == 1
 

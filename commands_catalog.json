@@ -399,7 +399,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3478",
+      "source": "plugins/commands/ask_ollama.py:3493",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -420,7 +420,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3530",
+      "source": "plugins/commands/ask_ollama.py:3545",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -442,7 +442,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3516",
+      "source": "plugins/commands/ask_ollama.py:3531",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -463,7 +463,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3557",
+      "source": "plugins/commands/ask_ollama.py:3572",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -495,7 +495,7 @@
       "plugin": "ask_ollama",
       "precondition": "Enable Ava and set up an AI provider first.",
       "risk": "ui",
-      "source": "samsara/ava_turn_queue.py:3151",
+      "source": "samsara/ava_turn_queue.py:3166",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -524,7 +524,7 @@
       "plugin": "ask_ollama",
       "precondition": "Enable Ava and set up an AI provider first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3316",
+      "source": "plugins/commands/ask_ollama.py:3331",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -547,7 +547,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3497",
+      "source": "plugins/commands/ask_ollama.py:3512",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -574,7 +574,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3370",
+      "source": "plugins/commands/ask_ollama.py:3385",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false

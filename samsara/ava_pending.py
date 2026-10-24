@@ -24,14 +24,57 @@ class Question:
     timer: object = None
     duration: float = None
     label: str = ""
+    reprompted: bool = False
 
 
 def reply_seconds(app):
     try:
-        value = float(app.config.get("ava", {}).get("reply_window_seconds", 8))
-        return max(2.0, min(30.0, value)) if math.isfinite(value) else 8.0
+        value = float(app.config.get("ava", {}).get("reply_window_seconds", 10))
+        return max(2.0, min(30.0, value)) if math.isfinite(value) else 10.0
     except (TypeError, ValueError):
-        return 8.0
+        return 10.0
+
+
+def short_answer_question(app):
+    """Only a live question that owns wake routing may replace its audio gate."""
+    q = getattr(app, "_ava_question", None)
+    if (q is not None and q.opened and q.state_owned and _live(app, q)
+            and (getattr(app, "app_state", None), getattr(app, "wake_word_triggered", False)) == ("command_window", True)
+            and getattr(q.runner, "short_answer", q.kind == "yes_no")):
+        return q
+    return None
+
+
+def _capture_history(app, q, reason):
+    missed = getattr(q.runner, "missed", None)
+    if callable(missed):
+        missed(reason)
+    else:
+        write = getattr(app, "_log_history", None)
+        if callable(write):
+            write(raw_text=q.text, display_text=f"Question: {reason}", mode="command",
+                  status="empty", entry_type="failed")
+
+
+def missed_capture(app, reason, *, question=None):
+    """Keep a bounded yes/no answer window; speak at most one second chance."""
+    from plugins.commands import ask_ollama as ava
+    with ownership_lock(app):
+        q = short_answer_question(app)
+        if q is None or (question is not None and q is not question):
+            return False
+        _capture_history(app, q, reason)
+        if q.reprompted:
+            return True
+        q.reprompted, q.opened = True, False
+        if q.timer:
+            q.timer.cancel()
+        # Bound cancelled TTS, then give the full configured window on completion.
+        q.deadline = time.monotonic() + 60
+        _tick(app, q)
+        if not ava.speak(app, "Say yes or no", category="confirmation", on_done=lambda: _open(app, q)):
+            _open(app, q)
+        return True
 
 
 def _feedback(app, label, question=None):
@@ -93,6 +136,11 @@ def _tick(app, q):
                 _clear(app, q, "Ava question closed.")  # Stand-in copy (624).
             return
         if time.monotonic() >= q.deadline:
+            if short_answer_question(app) is q and not q.reprompted:
+                missed_capture(app, "timeout (retry)")
+                return
+            if q.kind != "teaching":
+                _capture_history(app, q, "timeout")
             _expire(app, q)
             return
         q.timer = thread_registry.timer("ava.question.expiry", 0.1, lambda: _tick(app, q), daemon=True)
@@ -111,9 +159,10 @@ def _open(app, q):
         if q.timer: q.timer.cancel()
         q.opened = True
         q.deadline = time.monotonic() + (q.duration if q.duration is not None else reply_seconds(app))
-        q.previous = (getattr(app, "app_state", "asleep"), getattr(app, "wake_word_triggered", False))
+        if not q.capture_owned:
+            q.previous = (getattr(app, "app_state", "asleep"), getattr(app, "wake_word_triggered", False))
         ensure = getattr(app, "_ensure_wake_consumer", None)
-        if callable(ensure):
+        if callable(ensure) and not q.capture_owned:
             # A running toggle session already has its own routing and state.
             active = (getattr(app, "command_mode_active", False)
                       and app.config.get("command_mode", {}).get("mode") == "toggle")
@@ -157,7 +206,7 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
         app._ava_question = q
         _tick(app, q)  # Also retires a question if speech is cancelled or AI is switched off.
         spoken = text + (" " + "; ".join(options) + "." if options else "")
-        # The eight seconds start after speech completes, including Silent mode.
+        # The answer window starts after speech completes, including Silent mode.
         if not ava.speak(app, spoken, category="confirmation", on_done=lambda: _open(app, q)):
             _open(app, q)
         return ava.TurnOutcome("ask", "queued", name="question")

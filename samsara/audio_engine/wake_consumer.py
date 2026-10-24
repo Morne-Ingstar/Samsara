@@ -287,6 +287,33 @@ def in_session_rms_gate(audio_rms: float):
     return audio_rms < threshold, threshold, 'in_session_near_silence'
 
 
+def pending_short_answer_gate(app, audio, sample_rate):
+    """None retains ordinary gates; a binary reply uses local speech evidence.
+
+    Pre-buffer silence must not dilute a short word out of the readback window.
+    Detector uncertainty retains decoding, as in the generic speech gate.
+    """
+    from samsara import ava_pending, speech_presence
+    question = ava_pending.short_answer_question(app)
+    if question is None:
+        return None
+    if app.config.get('dictation', {}).get('speech_presence_gate') is False:
+        return False
+    try:
+        result = speech_presence._presence.measure(audio, sample_rate)
+        stats, peak = result.statistics()
+        skip = result.known and not (peak > .5 or stats[1][1] >= .3)
+    except Exception:
+        result, skip = speech_presence.Presence(False), False
+    speech_presence._log_final('wake_short_answer', len(audio) / sample_rate, result,
+                               0.0, 'reject' if skip else 'pass' if result.known else 'unknown', None)
+    if ava_pending.short_answer_question(app) is not question:
+        return True  # The capture belonged to a question retired during scoring.
+    if skip:
+        ava_pending.missed_capture(app, 'capture skipped (no short-answer speech)', question=question)
+    return skip
+
+
 class WakeStopResult(list):
     """Buffered frames plus explicit join status; compatible with existing flush callers."""
     def __init__(self, frames=(), *, stopped: bool):

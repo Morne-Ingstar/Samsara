@@ -8459,20 +8459,16 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 except Exception as _de:
                     logger.exception(f"[DEBUG] Audio dump failed: {_de}")
 
-            # FIX 1: RMS energy gate — skip Whisper on silent audio.
-            # On CPU machines Whisper takes ~1s per call; calling it on every
-            # chunk saturates the CPU. This gate rejects the buffer early when
-            # the audio energy is not meaningfully above the ambient noise floor.
+            # 830: a state-owned short answer uses speech evidence before RMS.
+            from samsara.audio_engine.wake_consumer import pending_short_answer_gate
+            short_answer = pending_short_answer_gate(self, audio, self.model_rate)
             audio_rms = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
-            if self._wake_audio_is_below_gate(audio_rms, oww_confirmed=oww_confirmed):
+            if short_answer is True or (short_answer is None and self._wake_audio_is_below_gate(audio_rms, oww_confirmed=oww_confirmed)):
                 from samsara.speech_presence import skip_decode
-                skip_decode(audio, self, path="wake", skip_reason="rms_dropped")
+                if short_answer is None: skip_decode(audio, self, path="wake", skip_reason="rms_dropped")
                 if stage_timing is not None:
                     stage_timing.mark("capture_finalised", outcome="gated")
                 return
-
-            # The wake FIFO preserves capture order; model_lock serializes
-            # Whisper against the independent toggle, Ava and hold lanes.
 
             # Get transcription parameters based on performance mode. NOT
             # forced to English: this is the wake/_output_dictation lane --
@@ -8489,7 +8485,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # the buffer. Whisper's own vad_filter then strips quiet audio a
             # second time — on low-gain mics this removes everything, producing
             # empty transcription. Disable it so RMS-gated audio passes through.
-            if not self._vad_available:
+            if short_answer is False or not self._vad_available:
                 transcribe_params['vad_filter'] = False
             perf_mode = self.config.get('performance_mode', config_defaults.DEFAULTS['performance_mode'])
 
@@ -8502,7 +8498,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 )
             transcribe_start = time.time()
             from samsara.speech_presence import reject_wake
-            if reject_wake(self, audio, stage_timing):
+            if short_answer is None and reject_wake(self, audio, stage_timing):
                 return
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
@@ -8579,6 +8575,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 logger.info(f"[HEAR] (nothing — Whisper returned empty for {audio_duration:.1f}s of audio)")
                 if stage_timing is not None:
                     stage_timing.mark("transcribe_end", outcome="empty")
+                from samsara.ava_pending import missed_capture
+                if missed_capture(self, 'empty decode'): return
                 # Only log when the user actually spoke (>0.5s of audio) but
                 # Whisper returned nothing. Don't spam history with every
                 # silent buffer the wake-word callback flushes.

@@ -64,6 +64,10 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "ava.reply_window_seconds": {
+        "type": "float", "min": 2, "max": 30, "default": 10, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Reply window after question speech ends, allowing reaction, capture and decoding; config only.",
+    },
     "builtin_vocabulary_enabled": {
         "type": "bool", "default": True, "tab": "general", "settings_ui": False,
         "ui_less_reason": "Immediate switch in Dictionary > Vocabulary, outside the Settings preference pages.",

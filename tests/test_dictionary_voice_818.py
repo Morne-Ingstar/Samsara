@@ -103,7 +103,7 @@ def test_spelled_teaching_routes_and_yes_saves_without_ai(rig, phrase, lane):
         assert result.claimed and result.state.value == 'completed'
     assert rig.store.custom_vocab == []
     assert rig.app._ava_question.opened
-    assert rig.app._ava_question.deadline == 106.0
+    assert rig.app._ava_question.deadline == 110.0  # 830: ten seconds after readback TTS.
     rig.app._ensure_wake_consumer.assert_called_with('ava_question')
     assert rig.app.listening_indicator.show_outcome.call_args.args[0] == 'Say yes or no'
     ava.handle_ask_ava(rig.app, remainder='yes.')
@@ -164,10 +164,14 @@ def test_timeout_releases_mic_and_late_speech_callback_cannot_reopen(rig):
     ava._check_teaching_intent(rig.app, 'spell word M O R N E')
     q = rig.app._ava_question
     assert not q.opened
-    rig.now[0] = 120.0  # Six seconds start after TTS, not at command receipt.
+    rig.now[0] = 120.0  # 830: ten seconds start after TTS, with one retry.
     rig.callbacks[-1]()
-    assert q.deadline == 126.0
-    rig.now[0] = 127.0
+    assert q.deadline == 130.0
+    rig.now[0] = 131.0
+    ava_pending._tick(rig.app, q)
+    assert rig.spoken[-1] == 'Say yes or no'
+    rig.callbacks[-1]()
+    rig.now[0] = 142.0
     ava_pending._tick(rig.app, q)
     assert rig.spoken[-1] == 'Not saved.'
     assert rig.app._ava_question is None and ava._pending_action is None
@@ -178,15 +182,18 @@ def test_timeout_releases_mic_and_late_speech_callback_cannot_reopen(rig):
 
 def test_new_command_closes_window_and_can_be_routed(rig):
     ava._check_teaching_intent(rig.app, 'spell word M O R N E')
-    assert not ava_pending.consume(rig.app, 'open chrome')
+    assert ava_pending.consume(rig.app, 'open chrome')  # 830: readback nonanswers are consumed.
     assert rig.app._ava_question is None and ava._pending_action is None
     assert rig.store.custom_vocab == []
-    assert 'different command' in rig.db.recent()[0]['display_text']
+    assert 'non-answer' in rig.db.recent()[0]['display_text']
 
 
 def test_new_teaching_replaces_old_readback(rig):
     ava._check_teaching_intent(rig.app, 'spell word M O R N E')
     old = rig.app._ava_question
+    rig.executor.process_text('spell word A T L A S', rig.app, force_commands=True)
+    # 830: a different decoded command first ends the yes/no readback as no.
+    assert rig.app._ava_question is None
     rig.executor.process_text('spell word A T L A S', rig.app, force_commands=True)
     assert rig.app._ava_question is not old
     ava_pending._expire(rig.app, old)

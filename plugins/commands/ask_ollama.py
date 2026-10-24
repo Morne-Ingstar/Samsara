@@ -2513,12 +2513,13 @@ def _set_teach_pending(app, pending: dict, spoken_text: str) -> None:
     pending['expires'] = now + _TEACH_PENDING_TTL_S
     pending['speak_until'] = now + _estimate_speak_window_s(spoken_text)
     pending['generation'] = execution_policy.capture_generation(app)
+    pending['question'] = spoken_text
     with _pending_action_lock:
         _pending_action = pending
     runner = _TeachingReply(app, pending)
     label = 'Say yes or no' if pending['type'].endswith('_confirm') else (
         'Which word?' if pending['type'] == 'vocab_word_wait' else 'Say the letters')
-    result = ava_pending.ask(app, runner, 'teaching', spoken_text, (), duration=6.0, label=label)
+    result = ava_pending.ask(app, runner, 'teaching', spoken_text, (), duration=ava_pending.reply_seconds(app), label=label)
     if result.state == 'refused':
         _finish_teaching(app, pending)
         _teach_notice(app, 'Not saved. Another confirmation is pending.')
@@ -2561,18 +2562,32 @@ class _TeachingReply:
         return (_pending_action is self.pending and
                 execution_policy.is_current(self.app, self.pending['generation']))
 
+    @property
+    def short_answer(self):
+        return self.pending['type'].endswith('_confirm')
+
     def opened(self):
         self.pending['speak_until'] = 0
-        self.pending['expires'] = time.time() + 6.0
+        q = getattr(self.app, '_ava_question', None)
+        self.pending['expires'] = time.time() + (q.duration if q is not None else ava_pending.reply_seconds(self.app))
+
+    def missed(self, reason):
+        _teach_history(self.app, self.pending['question'], reason)
 
     def expired(self):
         if _pending_action is self.pending:
             _finish_teaching(self.app, self.pending)
-            _teach_history(self.app, '', 'cancelled (timeout or retired)')
+            _teach_history(self.app, self.pending['question'], 'cancelled (timeout or retired)')
             _teach_notice(self.app, 'Not saved.')
 
     def answer(self, text):
         _teach_turn.outcome = 'awaiting answer'
+        reply = text.strip().rstrip('.!?').casefold()
+        if self.short_answer and reply not in {'yes', 'yeah', 'yep', 'no', 'nope', 'cancel', 'nevermind', 'never mind'}:
+            _finish_teaching(self.app, self.pending)
+            _teach_history(self.app, text, 'cancelled (non-answer)')
+            _teach_notice(self.app, "I'll take that as no. Not saved.")
+            return True
         if _check_teach_pending_gate(self.app, text):
             _teach_history(self.app, text, _teach_turn.outcome)
             return True
@@ -2719,7 +2734,7 @@ def _check_teach_pending_gate(app, text: str) -> bool:
         _teach_notice(app, 'Okay, not saved.')
         return True
 
-    if ptype.endswith('_confirm') and execution_policy.classify_reply(text) == execution_policy.REPLY_YES:
+    if ptype.endswith('_confirm') and text.strip().rstrip('.!?').casefold() in {'yes', 'yeah', 'yep'}:
         _finish_teaching(app, pending)
         vt = get_dictionary_store(app)
         if vt is None:

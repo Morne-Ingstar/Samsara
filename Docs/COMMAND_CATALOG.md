@@ -40,14 +40,14 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | - | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3478` |
-| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | - | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3530` |
-| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | - | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3516` |
-| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | - | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3557` |
-| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | `hey ava explain how rainbows form` | Enable Ava and set up an AI provider first. | ui | yes | yes | Asks Ava the question that follows, out loud. | `samsara/ava_turn_queue.py:3151` |
-| `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | `is it safe to unplug a running computer` | Enable Ava and set up an AI provider first. | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3316` |
-| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | - | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3497` |
-| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | - | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3370` |
+| `ask_ollama.ava_cancel` | `ava cancel`, `ava stop`, `cancel that ava` | - | - | - | ui | yes |  | Cancels everything Ava is doing, including anything queued or repeating. | `plugins/commands/ask_ollama.py:3493` |
+| `ask_ollama.ava_cloud` | `ava cloud`, `cloud mode`, `use cloud` | - | - | - | ui | yes |  | Switches Ava to the cloud model, which sends your requests to your provider. | `plugins/commands/ask_ollama.py:3545` |
+| `ask_ollama.ava_forget` | `ava forget`, `clear memory`, `forget conversation`, `start over ava` | - | - | - | ui | yes |  | Clears what Ava remembers of this conversation. | `plugins/commands/ask_ollama.py:3531` |
+| `ask_ollama.ava_local` | `ava local`, `local mode`, `use local` | - | - | - | ui | yes |  | Switches Ava back to the local model, so nothing leaves the machine. | `plugins/commands/ask_ollama.py:3572` |
+| `ask_ollama.hey_ava` | `ask ava`, `ava`, `hey ava`, `samsara think`, `think about`, `what do you think` | text:text | `hey ava explain how rainbows form` | Enable Ava and set up an AI provider first. | ui | yes | yes | Asks Ava the question that follows, out loud. | `samsara/ava_turn_queue.py:3166` |
+| `ask_ollama.is_it_safe_to` | `is it okay to`, `is it safe to`, `should i` | text:text | `is it safe to unplug a running computer` | Enable Ava and set up an AI provider first. | ui | yes |  | Asks Ava whether an action you describe is safe before you do it. | `plugins/commands/ask_ollama.py:3331` |
+| `ask_ollama.stop_schedule` | `ava stop schedule`, `cancel schedule`, `stop repeating`, `stop schedule`, `stop timer` | - | - | - | ui | yes |  | Stops any repeating task Ava is running. | `plugins/commands/ask_ollama.py:3512` |
+| `ask_ollama.yes` | `confirm it`, `do it`, `go ahead`, `sure`, `yeah`, `yeah do it`, `yep`, `yes`, `yup` | - | - | - | ui | yes |  | Confirms the action Ava has just asked you about. | `plugins/commands/ask_ollama.py:3385` |
 
 ## audio_switch (2)
 
