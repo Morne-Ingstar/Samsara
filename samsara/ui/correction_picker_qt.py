@@ -5,6 +5,7 @@ is needed to offer teaching; only a deliberate button invokes the store.
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 
@@ -16,6 +17,13 @@ from samsara.dictionary_store import get_dictionary_store
 from samsara.letter_spelling import parse_letters
 from samsara.ui import qt_runtime, theme
 from samsara.draft_selection import common_phrase
+
+logger = logging.getLogger(__name__)
+
+
+def _cosmetic_correction(wrong, right):
+    words = lambda text: re.sub(r"[^\w\s]", "", text.casefold()).split()
+    return bool(words(wrong)) and words(wrong) == words(right)
 
 
 NATO = dict(zip(
@@ -116,6 +124,11 @@ class CorrectionLearningOffer(QWidget):
         self.setFixedWidth(460)
 
     def _save(self, vocabulary):
+        if not vocabulary and _cosmetic_correction(self.wrong, self.right):
+            logger.debug("[DRAFT-LEARN] phrase=%d result=cosmetic", len(self.wrong.split()))
+            self.status.setText("Nothing to save - only the capitals or punctuation changed.")
+            self.always.hide()
+            return
         store = get_dictionary_store(self.app)
         if store is None:
             return
@@ -247,6 +260,7 @@ class WordCorrectionMenu(QWidget):
         return button
 
     def open(self, wrong, candidates):
+        logger.debug("[DRAFT-LEARN] phrase=%d result=menu-open", len(wrong.split()))
         self.close_input()
         self.learning = self.awaiting = False
         self.wrong, self.right = wrong, ""
@@ -310,6 +324,7 @@ class WordCorrectionMenu(QWidget):
             "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height: 0; }")
 
     def choose(self, text):
+        logger.debug("[DRAFT-LEARN] phrase=%d result=alternate-chosen", len(self.wrong.split()))
         if text == self.wrong:
             self._cancel_editor()
             return
@@ -318,6 +333,7 @@ class WordCorrectionMenu(QWidget):
         self.on_apply(text)
 
     def show_learning(self, wrong, right):
+        logger.debug("[DRAFT-LEARN] phrase=%d result=edit-accepted", len(wrong.split()))
         self.close_input()
         self.awaiting, self.learning = False, True
         self.wrong, self.right = wrong, right
@@ -413,6 +429,7 @@ class WordCorrectionMenu(QWidget):
 def offer_correction_learning(app, wrong: str, right: str):
     """Called only after an accepted edit, from Full or Compact."""
     wrong, right = str(wrong).strip(), str(right).strip()
+    logger.debug("[DRAFT-LEARN] phrase=%d result=learning-offered", len(wrong.split()))
     if not wrong or not right or wrong == right:
         return
     def show():

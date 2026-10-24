@@ -217,7 +217,14 @@ class DictionaryStore:
     def learn_draft_correction(self, wrong: str, right: str, *, vocabulary=False) -> bool:
         """Explicit post-edit approval; a failed save must not teach in memory."""
         wrong, right = wrong.strip(), right.strip()
-        if not right or (not vocabulary and (not wrong or wrong.casefold() == right.casefold())):
+        count = len(wrong.split())
+        reason = 'empty-right' if not right else 'empty-wrong' if not vocabulary and not wrong else None
+        if reason is None and not vocabulary:
+            words = lambda text: re.sub(r"[^\w\s]", "", text.casefold()).split()
+            if wrong.casefold() == right.casefold() or (words(wrong) and words(wrong) == words(right)):
+                reason = 'cosmetic'
+        if reason is not None:
+            logger.info("[DRAFT-LEARN] phrase=%d result=%s", count, reason)
             return False
         corrections, words = dict(self.corrections_dict), list(self.custom_vocab)
         if vocabulary:
@@ -232,6 +239,9 @@ class DictionaryStore:
             self.corrections_dict.update(corrections)
             self.custom_vocab[:] = words
             self._rebuild_corrections_pattern()
+            logger.info("[DRAFT-LEARN] phrase=%d result=save-failed", count)
+        else:
+            logger.debug("[DRAFT-LEARN] phrase=%d result=saved", count)
         return ok
 
     def remove_correction(self, wrong: str) -> bool:
