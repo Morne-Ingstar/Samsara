@@ -218,7 +218,7 @@ def pack_for_exe(exe: str | None) -> str | None:
     return EXE_TO_PACK.get(str(exe or "").lower())
 
 
-def get_enabled_packs(config: dict) -> set:
+def get_enabled_packs(config: dict, *, hermes_available=None) -> set:
     """Return the set of pack names that are currently enabled.
 
     Reads config['command_packs'], applies defaults for missing packs,
@@ -228,8 +228,12 @@ def get_enabled_packs(config: dict) -> set:
     enabled = set()
     for pack_id, meta in PACKS.items():
         if pack_id == 'hermes':
-            from samsara.agent_channel.hermes import installed, permitted
-            if not permitted(config) or not installed():
+            if hermes_available is None:
+                from samsara.agent_channel.hermes import installed, permitted
+                available = permitted(config) and installed()
+            else:
+                available = hermes_available(config)
+            if not available:
                 continue
         if meta['always_on']:
             enabled.add(pack_id)

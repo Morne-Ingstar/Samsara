@@ -61,8 +61,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--restart-helper":
 #: fetch having happened (one already running) -- both silent. The lock is
 #: ~14,700 lines below; this runs first, so a fetch during an active session
 #: still fetches, which is exactly what post-install needs.
-_ARGUMENT_MODES = ("--fetch-components",)
-
+_ARGUMENT_MODES = ("--fetch-components", "--headless-check")
 def _dispatch_startup_argument(argv):
     """Return an exit code for a non-app CLI mode, or None to start the app.
 
@@ -70,8 +69,9 @@ def _dispatch_startup_argument(argv):
     tests can drive it without importing anything heavy."""
     if not argv or not any(arg in _ARGUMENT_MODES for arg in argv):
         return None
-    # Imported here, not at module scope: the app path must not pay for it,
-    # and this module is imported by tooling that never passes arguments.
+    if '--headless-check' in argv:
+        from samsara.headless import main
+        return main(argv)
     from samsara.ui.first_run_qt import fetch_components_main
     return int(fetch_components_main(argv))
 
@@ -265,9 +265,9 @@ if _ace_import_ms > 5000:
     sys.stdout.write(f"[BOOT-DIAG] SLOW STEP: samsara.audio_engine import {_ace_import_ms:.0f}ms\n")
     sys.stdout.flush()
 
-from pynput import keyboard as pynput_keyboard
-from pynput.keyboard import Key, Controller as KeyboardController
-import keyboard  # CapsLock streaming hook ONLY (config-gated; see _install_capslock_hook)
+from samsara.headless import LazyImport, compose_services
+pynput_keyboard, Key, KeyboardController = LazyImport('pynput.keyboard'), LazyImport('pynput.keyboard', 'Key'), LazyImport('pynput.keyboard', 'Controller')
+keyboard = LazyImport('keyboard')  # CapsLock streaming hook ONLY (config-gated)
 
 
 # ---------------------------------------------------------------------------
@@ -332,9 +332,9 @@ def _raw_key_pressed(name: str) -> bool:
 _raw_key_pressed._warned = set()  # type: ignore[attr-defined]
 _raw_key_pressed._pressed_vks = {}  # type: ignore[attr-defined]
 
-from pynput.mouse import Button, Controller as MouseController
+Button, MouseController = LazyImport('pynput.mouse', 'Button'), LazyImport('pynput.mouse', 'Controller')
 import pyperclip
-import pyautogui
+pyautogui = LazyImport('pyautogui')
 if sys.stdout is not None:
     sys.stdout.write(f"[PRE-LOG] +{(time.perf_counter()-_POST_SD_T)*1000:.0f}ms (after input libs)\n")
     sys.stdout.flush()
@@ -1626,7 +1626,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         
         logger.info("[INIT] Loading plugins...")
         commands_path = Path(__file__).parent / "commands.json"
-        self.command_executor = CommandExecutor(commands_path, app=self)
+        self.command_executor = compose_services(self, commands_path, executor_factory=CommandExecutor).command_executor
         # Gates command MATCHING during regular dictation -- distinct from
         # command_mode.enabled, which gates the walkie-talkie button/session
         # listener. Renamed from the legacy top-level 'command_mode_enabled'

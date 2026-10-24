@@ -1,0 +1,44 @@
+name: Linux headless composition
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  headless-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      QT_QPA_PLATFORM: offscreen
+      HF_HUB_OFFLINE: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TRANSFORMERS_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install the small composition gate dependencies
+        run: python -m pip install pytest
+      - name: Compose without desktop, profile, audio, network or model resources
+        shell: bash
+        run: |
+          unset DISPLAY WAYLAND_DISPLAY
+          isolation="$(mktemp -d)"
+          trap 'rm -rf -- "$isolation"' EXIT
+          export HOME="$isolation/home" USERPROFILE="$isolation/home"
+          export SAMSARA_HOME_DIR="$isolation/profile"
+          export APPDATA="$isolation/appdata" LOCALAPPDATA="$isolation/localappdata"
+          export TMPDIR="$isolation/tmp"
+          mkdir -p "$TMPDIR"
+          python -m samsara.headless
+          python dictation.py --headless-check
+          test ! -e "$SAMSARA_HOME_DIR"
+          python -m pytest tests/test_linux_lp05.py -q -p no:cacheprovider --basetemp="$isolation/pytest"

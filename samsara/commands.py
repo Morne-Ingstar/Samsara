@@ -41,57 +41,22 @@ _NO_ARGUMENT_TAIL_UNITS = (
     'just', 'hey', 'okay', 'um', 'uh', 'so',
 )
 
-# Optional dependencies - may not be available in test environments
-try:
-    from pynput.keyboard import Key, Controller as KeyboardController
-    from pynput.mouse import Button, Controller as MouseController
-    HAS_PYNPUT = True
-except ImportError:
-    # Create mock classes for testing
-    class Key:
-        ctrl = 'ctrl'
-        shift = 'shift'
-        alt = 'alt'
-        cmd = 'cmd'
-        enter = 'enter'
-        esc = 'esc'
-        space = 'space'
-        tab = 'tab'
-        backspace = 'backspace'
-        delete = 'delete'
-        home = 'home'
-        end = 'end'
-        page_up = 'page_up'
-        page_down = 'page_down'
-        up = 'up'
-        down = 'down'
-        left = 'left'
-        right = 'right'
-        f1 = 'f1'
-        f2 = 'f2'
-        f3 = 'f3'
-        f4 = 'f4'
-        f5 = 'f5'
-        f6 = 'f6'
-        f7 = 'f7'
-        f8 = 'f8'
-        f9 = 'f9'
-        f10 = 'f10'
-        f11 = 'f11'
-        f12 = 'f12'
+from .headless import DeferredController, KeyMap, LazyImport
 
-    class Button:
-        left = 'left'
-        right = 'right'
+Key = LazyImport('pynput.keyboard', 'Key')
+Button = LazyImport('pynput.mouse', 'Button')
+KeyboardController = LazyImport('pynput.keyboard', 'Controller')
+MouseController = LazyImport('pynput.mouse', 'Controller')
 
-    class KeyboardController:
-        def press(self, key): pass
-        def release(self, key): pass
 
-    class MouseController:
-        def click(self, button, count=1): pass
-
-    HAS_PYNPUT = False
+def __getattr__(name):
+    if name == 'HAS_PYNPUT':
+        try:
+            Key.resolve()
+            return True
+        except ImportError:
+            return False
+    raise AttributeError(name)
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +110,9 @@ class CommandExecutor:
         plugins_dir:  Plugin directory to scan (defaults to plugins/commands/).
     """
 
-    KEY_MAP = {
+    @staticmethod
+    def _desktop_key_map():
+        return {
         'ctrl': Key.ctrl,
         'shift': Key.shift,
         'alt': Key.alt,
@@ -167,13 +134,16 @@ class CommandExecutor:
         'f1': Key.f1, 'f2': Key.f2, 'f3': Key.f3, 'f4': Key.f4,
         'f5': Key.f5, 'f6': Key.f6, 'f7': Key.f7, 'f8': Key.f8,
         'f9': Key.f9, 'f10': Key.f10, 'f11': Key.f11, 'f12': Key.f12,
-    }
+        }
+
+    KEY_MAP = KeyMap(_desktop_key_map)
 
     def __init__(
         self,
         commands_path: Optional[Path] = None,
         app: Any = None,
         plugins_dir: Optional[Path] = None,
+        *, resources=None,
     ) -> None:
         if commands_path is None:
             commands_path = Path(__file__).parent.parent / "commands.json"
@@ -182,24 +152,33 @@ class CommandExecutor:
         self._matcher_lock = threading.RLock()
         self.commands: Dict[str, Dict[str, Any]] = {}
         self.held_keys: Dict[str, Any] = {}
-        self.keyboard_controller = KeyboardController()
-        self.mouse_controller = MouseController()
+        self._resources = resources
+        self._plugin_registry = None if resources is None else (resources.ports['plugin_registry'].value or {})
+        if resources is None:
+            self.keyboard_controller = DeferredController(lambda: KeyboardController())
+            self.mouse_controller = DeferredController(lambda: MouseController())
+        else:
+            self.keyboard_controller = resources.controller('keyboard')
+            self.mouse_controller = resources.controller('mouse')
+            self.KEY_MAP = resources.key_map
         self.load_commands()
 
         if plugins_dir is None:
             plugins_dir = Path(__file__).parent.parent / "plugins" / "commands"
-        try:
-            _plugin_commands.load_plugins(plugins_dir)
-        except Exception as e:
-            print(f"[PLUGINS] Failed to load plugins: {e}")
-        unique = len({id(entry) for entry in _plugin_commands._REGISTRY.values()})
+        if resources is None:
+            try:
+                _plugin_commands.load_plugins(plugins_dir)
+            except Exception as e:
+                print(f"[PLUGINS] Failed to load plugins: {e}")
+        registry = _plugin_commands._REGISTRY if self._plugin_registry is None else self._plugin_registry
+        unique = len({id(entry) for entry in registry.values()})
         print(f"[PLUGINS] Loaded {unique} plugin commands")
 
         self.rebuild_matcher()
 
         # Plugin background services (e.g. ask_ollama's health monitor) start
         # here, once, for a real app -- never as an import side effect.
-        if app is not None:
+        if app is not None and resources is None:
             _plugin_commands.start_plugin_services(app)
             self.rebuild_matcher()  # pick up aliases handed off by service hooks
 
@@ -212,6 +191,8 @@ class CommandExecutor:
                 self.commands = data.get('commands', {})
             print(f"[OK] Loaded {len(self.commands)} voice commands")
         except Exception as e:
+            if self._resources is not None:
+                raise
             print(f"[WARN] Could not load commands: {e}")
             self.commands = {}
 
@@ -225,16 +206,23 @@ class CommandExecutor:
         with self._matcher_lock:
             matcher = CommandMatcher()
             app_config = getattr(self._app, 'config', {}) if self._app is not None else {}
-            matcher.set_enabled_packs(get_enabled_packs(app_config))
+            if self._resources is None:
+                enabled = get_enabled_packs(app_config)
+            else:
+                probe = self._resources.ports['hermes'].value or (lambda config: False)
+                enabled = get_enabled_packs(app_config, hermes_available=probe)
+            matcher.set_enabled_packs(enabled)
             matcher.load_builtins(self.commands)
-            matcher.load_plugins(_plugin_commands._REGISTRY)
+            registry = _plugin_commands._REGISTRY if self._plugin_registry is None else self._plugin_registry
+            matcher.load_plugins(registry)
             matcher.freeze()
             matcher.detect_collisions()
             # Queue 68: scoped commands are evaluated against the foreground
             # window and active tags at match time (samsara.command_scope).
             matcher.set_context_provider(_command_scope.capture_context)
             self._matcher = matcher
-            _plugin_commands.set_shared_matcher(matcher)
+            if self._resources is None:
+                _plugin_commands.set_shared_matcher(matcher)
             return matcher
 
     def reload_commands(self) -> None:
