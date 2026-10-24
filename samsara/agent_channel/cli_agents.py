@@ -201,6 +201,13 @@ def shutdown_all() -> None:
 thread_registry.on_shutdown(shutdown_all)
 
 
+def _console_popen_kwargs() -> dict[str, int]:
+    """Keep headless CLI launches from creating a Windows console."""
+    if os.name == "nt":
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+    return {}
+
+
 class CliAgent:
     def __init__(self, name: str, argv_builder: Callable, parse_reply: Callable,
                  executable: list[str] | None = None):
@@ -261,7 +268,8 @@ class CliAgent:
         process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, encoding="utf-8", errors="replace",
-                                   env=_codex_env(home) if self.name == "gpt" else os.environ.copy())
+                                   env=_codex_env(home) if self.name == "gpt" else os.environ.copy(),
+                                   **_console_popen_kwargs())
         with _active_lock:
             _active.add(process)
         events: queue.Queue = queue.Queue()
