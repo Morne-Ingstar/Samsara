@@ -18,6 +18,7 @@ from samsara.dictionary_store import get_dictionary_store
 from samsara.config_defaults import cfg_get
 
 import logging
+import re
 from contextlib import nullcontext
 
 from PySide6.QtCore import Qt, Signal, QObject
@@ -99,6 +100,55 @@ def _ss() -> str:
 class _Signals(QObject):
     status = Signal(str, str)   # (message, color)
     builtin_saved = Signal(object, bool, bool)  # word (None = master), enabled, saved
+    refresh = Signal()
+    vocab_saved = Signal(str, bool, bool)
+
+
+def refresh_dictionary(app):
+    panel = getattr(app, '_dictionary_panel', None)
+    if panel is not None and _qt_widget_is_valid(panel):
+        panel._sigs.refresh.emit()
+
+
+def prefill_dictionary(app, text):
+    """Use Home's existing hub navigation; only fill, never persist."""
+    from samsara.ui import qt_runtime
+    app.show_main_window()
+
+    def select():
+        app.open_hub_page('Dictionary')
+
+        def fill():
+            panel = getattr(app, '_dictionary_panel', None)
+            if panel is not None and _qt_widget_is_valid(panel):
+                panel.prefill(text)
+
+        qt_runtime.post(fill)
+
+    qt_runtime.post(select)
+
+
+class _VocabularyInput(QLineEdit):
+    def __init__(self, app):
+        super().__init__()
+        self._app = app
+        self.textChanged.connect(self._normalize_spelling)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self._app._dictionary_add_focused = True
+
+    def focusOutEvent(self, event):
+        self._app._dictionary_add_focused = False
+        super().focusOutEvent(event)
+
+    def _normalize_spelling(self, text):
+        if self.hasFocus() and re.fullmatch(r'[A-Z](?:[- .][A-Z]){2,}\.?', text):
+            from samsara.letter_spelling import parse_letters
+            word = parse_letters(text)
+            if word:
+                self.setText(word)
+                self.setCursorPosition(len(word))
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +165,26 @@ class DictionaryPanelQt(QWidget):
         self._sigs   = _Signals()
         self.setStyleSheet(_ss())
         self._build_ui()
+        self._app._dictionary_panel = self
+        self._sigs.refresh.connect(self.reload)
+        self._sigs.vocab_saved.connect(self._vocab_saved)
+
+    def showEvent(self, event):
+        self.reload()
+        super().showEvent(event)
+
+    def reload(self):
+        if not self._alive:
+            return
+        self._vocab_list.clear()
+        self._vocab_list.addItems(list(self._custom_vocab))
+
+    def prefill(self, text):
+        self._tabs.setCurrentIndex(0)
+        self._vocab_input.setText(text)
+        self._vocab_input.setFocus()
+        self._vocab_input.selectAll()
+        self._vocab_status.setText('Not saved yet. Edit the word, then say add or press Add.')
 
     def closeEvent(self, e):
         self._alive = False
@@ -176,11 +246,24 @@ class DictionaryPanelQt(QWidget):
         desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(desc)
 
+        help_text = QLabel(
+            'Say: “add the word Siobhan to my vocabulary spelled S I O B H A N”. '
+            'After the readback, say yes or no without a key. '
+            'You can also say “learn the word Siobhan spelled S-I-O-B-H-A-N”, '
+            '“correct that to Siobhan spelled S I O B H A N”, or '
+            '“add the selected word to my vocabulary”. '
+            'Works with Ava off. Say “add that to the dictionary” to edit your last dictation here.'
+        )
+        help_text.setObjectName('dictionaryVoiceHelp')
+        help_text.setWordWrap(True)
+        help_text.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;')
+        lay.addWidget(help_text)
+
         self._build_builtin_words(lay)
 
         # Input row
         add_row = QHBoxLayout()
-        self._vocab_input = QLineEdit()
+        self._vocab_input = _VocabularyInput(self._app)
         self._vocab_input.setAccessibleName("Add vocabulary word")
         self._vocab_input.setPlaceholderText("Word or phrase to add...")
         self._vocab_input.returnPressed.connect(self._vocab_add)
@@ -346,18 +429,50 @@ class DictionaryPanelQt(QWidget):
         self._vocab_status.setText("" if saved else "Could not save built-in words. Try again.")
 
     def _vocab_add(self):
+        voice = getattr(self, '_voice_add_pending', False)
+        self._voice_add_pending = False
         word = self._vocab_input.text().strip()
         if not word:
+            if voice:
+                from plugins.commands.ask_ollama import _teach_notice
+                _teach_notice(self._app, 'Which word?')
             return
         vocab = self._custom_vocab
-        if word in vocab:
+        if any(item.casefold() == word.casefold() for item in vocab):
             self._vocab_status.setText(f'"{word}" is already in the list.')
+            if voice:
+                from plugins.commands.ask_ollama import _teach_notice, _teach_history
+                _teach_notice(self._app, f'{word} is already in your dictionary.')
+                _teach_history(self._app, 'add', 'already saved')
             return
-        vocab.append(word)
-        self._vocab_list.addItem(word)
-        self._vocab_input.clear()
-        self._vocab_status.setText("")
-        thread_registry.spawn("dictionary_panel_qt._save_vocab", self._save_vocab, daemon=True)
+        self._vocab_input.setEnabled(False)
+        self._vocab_status.setText('Saving...')
+
+        def save():
+            before = list(vocab)
+            saved = self._vt.add_vocab_word(word)
+            if not saved:
+                vocab[:] = before
+            if self._alive:
+                self._sigs.vocab_saved.emit(word, saved, voice)
+
+        thread_registry.spawn('dictionary_panel_qt.add_vocab', save, daemon=True)
+
+    def add_by_voice(self):
+        self._voice_add_pending = True
+        self._vocab_add()
+
+    def _vocab_saved(self, word, saved, voice):
+        self._vocab_input.setEnabled(True)
+        if saved:
+            self._vocab_input.clear()
+            self.reload()
+        self._vocab_status.setText(f'Added {word} to your dictionary.' if saved else
+                                   'Could not save that word. Try again.')
+        if voice:
+            from plugins.commands.ask_ollama import _teach_notice, _teach_history
+            _teach_notice(self._app, self._vocab_status.text())
+            _teach_history(self._app, 'add', 'saved' if saved else 'failed to save')
 
     def _vocab_remove(self):
         rows = sorted(

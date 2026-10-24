@@ -303,7 +303,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up your Hermes connection first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:99",
+      "source": "plugins/commands/ask_agent.py:96",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -331,7 +331,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up the agent you name first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:83",
+      "source": "plugins/commands/ask_agent.py:80",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -359,7 +359,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up your Hermes connection first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:107",
+      "source": "plugins/commands/ask_agent.py:104",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -378,7 +378,7 @@
       "plugin": "ask_agent",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:115",
+      "source": "plugins/commands/ask_agent.py:112",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -399,7 +399,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3304",
+      "source": "plugins/commands/ask_ollama.py:3478",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -420,7 +420,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3356",
+      "source": "plugins/commands/ask_ollama.py:3530",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -442,7 +442,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3342",
+      "source": "plugins/commands/ask_ollama.py:3516",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -463,7 +463,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3383",
+      "source": "plugins/commands/ask_ollama.py:3557",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -495,7 +495,7 @@
       "plugin": "ask_ollama",
       "precondition": "Enable Ava and set up an AI provider first.",
       "risk": "ui",
-      "source": "samsara/ava_turn_queue.py:2984",
+      "source": "samsara/ava_turn_queue.py:3151",
       "undoable": true,
       "verb": "hey",
       "whole_utterance": true
@@ -524,7 +524,7 @@
       "plugin": "ask_ollama",
       "precondition": "Enable Ava and set up an AI provider first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3145",
+      "source": "plugins/commands/ask_ollama.py:3316",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -547,7 +547,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3323",
+      "source": "plugins/commands/ask_ollama.py:3497",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -574,7 +574,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3199",
+      "source": "plugins/commands/ask_ollama.py:3370",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -7039,6 +7039,95 @@
     },
     {
       "aliases": [
+        "add that to the dictionary"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "dictionary.add_that_to_the_dictionary",
+      "description": "Open Dictionary with the last delivered dictation filled in; edit it, then say add.",
+      "examples": [
+        "add that to the dictionary"
+      ],
+      "kind": "plugin",
+      "object": "that_to_the_dictionary",
+      "pack": "core",
+      "plugin": "dictionary",
+      "precondition": "Dictate up to four words first. Edit the prefilled word, then say add or press Add.",
+      "risk": "ui",
+      "source": "plugins/commands/dictionary.py:29",
+      "undoable": true,
+      "verb": "add",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "add the word",
+        "add word",
+        "learn the word",
+        "learn word",
+        "teach word"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "dictionary.add_word",
+      "description": "Teach a Dictionary word; spell unfamiliar names and answer yes to the readback.",
+      "examples": [
+        "add the word Siobhan to my vocabulary spelled S I O B H A N",
+        "learn the word Siobhan spelled S-I-O-B-H-A-N",
+        "add the selected word to my vocabulary",
+        "correct that to Siobhan spelled S I O B H A N"
+      ],
+      "kind": "plugin",
+      "object": "word",
+      "pack": "core",
+      "plugin": "dictionary",
+      "precondition": "Works with Ava off. Spell unfamiliar words, then say yes or no after the readback.",
+      "risk": "ui",
+      "source": "plugins/commands/dictionary.py:5",
+      "undoable": true,
+      "verb": "add",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "spell word"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "dictionary.spell_word",
+      "description": "Spell a Dictionary word with letter names or NATO words, then say yes.",
+      "examples": [
+        "spell word Mike Oscar Romeo November Echo",
+        "add word spelled S I O B H A N"
+      ],
+      "kind": "plugin",
+      "object": "word",
+      "pack": "core",
+      "plugin": "dictionary",
+      "precondition": "Say yes after the spelling readback to save.",
+      "risk": "ui",
+      "source": "plugins/commands/dictionary.py:20",
+      "undoable": true,
+      "verb": "spell",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "greet me",
         "hello",
         "say hello"
@@ -9235,7 +9324,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:217",
+      "source": "plugins/commands/scroll.py:223",
       "undoable": true,
       "verb": "bottom",
       "whole_utterance": false
@@ -9256,7 +9345,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:239",
+      "source": "plugins/commands/scroll.py:245",
       "undoable": true,
       "verb": "page",
       "whole_utterance": false
@@ -9277,7 +9366,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:228",
+      "source": "plugins/commands/scroll.py:234",
       "undoable": true,
       "verb": "page",
       "whole_utterance": false
@@ -9288,7 +9377,7 @@
       ],
       "args": [],
       "canonical_id": "scroll.scroll_down",
-      "description": "Scrolls down a page's worth wherever the pointer is.",
+      "description": "Scrolls down a page's worth in the app you are using.",
       "examples": [],
       "kind": "plugin",
       "object": "down",
@@ -9296,7 +9385,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:128",
+      "source": "plugins/commands/scroll.py:132",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9307,7 +9396,7 @@
       ],
       "args": [],
       "canonical_id": "scroll.scroll_down_a_little",
-      "description": "Scrolls down a few lines wherever the pointer is.",
+      "description": "Scrolls down a few lines in the app you are using.",
       "examples": [],
       "kind": "plugin",
       "object": "down_a_little",
@@ -9315,7 +9404,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:116",
+      "source": "plugins/commands/scroll.py:120",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9334,7 +9423,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:164",
+      "source": "plugins/commands/scroll.py:168",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9353,7 +9442,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:152",
+      "source": "plugins/commands/scroll.py:156",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9372,7 +9461,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:140",
+      "source": "plugins/commands/scroll.py:144",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9392,7 +9481,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:250",
+      "source": "plugins/commands/scroll.py:256",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9412,7 +9501,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:261",
+      "source": "plugins/commands/scroll.py:267",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9423,7 +9512,7 @@
       ],
       "args": [],
       "canonical_id": "scroll.scroll_up",
-      "description": "Scrolls up a page's worth wherever the pointer is.",
+      "description": "Scrolls up a page's worth in the app you are using.",
       "examples": [],
       "kind": "plugin",
       "object": "up",
@@ -9431,7 +9520,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:122",
+      "source": "plugins/commands/scroll.py:126",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9442,7 +9531,7 @@
       ],
       "args": [],
       "canonical_id": "scroll.scroll_up_a_little",
-      "description": "Scrolls up a few lines wherever the pointer is.",
+      "description": "Scrolls up a few lines in the app you are using.",
       "examples": [],
       "kind": "plugin",
       "object": "up_a_little",
@@ -9450,7 +9539,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:110",
+      "source": "plugins/commands/scroll.py:114",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9469,7 +9558,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:158",
+      "source": "plugins/commands/scroll.py:162",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9488,7 +9577,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:146",
+      "source": "plugins/commands/scroll.py:150",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9507,7 +9596,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:134",
+      "source": "plugins/commands/scroll.py:138",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -9528,7 +9617,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:206",
+      "source": "plugins/commands/scroll.py:212",
       "undoable": true,
       "verb": "top",
       "whole_utterance": false
@@ -11348,7 +11437,7 @@
       "plugin": "show_numbers",
       "precondition": "Say show numbers first for numbered labels. For a name, keep that control visible. A number refines an active mouse grid.",
       "risk": "write",
-      "source": "plugins/commands/show_numbers.py:1765",
+      "source": "plugins/commands/show_numbers.py:1766",
       "undoable": false,
       "verb": "click",
       "whole_utterance": false
@@ -11380,7 +11469,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1924",
+      "source": "plugins/commands/show_numbers.py:1927",
       "undoable": false,
       "verb": "double",
       "whole_utterance": false
@@ -11406,7 +11495,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1621",
+      "source": "plugins/commands/show_numbers.py:1622",
       "undoable": true,
       "verb": "grid",
       "whole_utterance": false
@@ -11433,7 +11522,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1608",
+      "source": "plugins/commands/show_numbers.py:1609",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -11458,7 +11547,7 @@
       "plugin": "show_numbers",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1728",
+      "source": "plugins/commands/show_numbers.py:1729",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -11490,7 +11579,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1910",
+      "source": "plugins/commands/show_numbers.py:1913",
       "undoable": false,
       "verb": "left",
       "whole_utterance": false
@@ -11521,7 +11610,7 @@
       "plugin": "show_numbers",
       "precondition": "The first example covers the focused window. The second refines cells 5, 3, then 8 and clicks.",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1578",
+      "source": "plugins/commands/show_numbers.py:1579",
       "undoable": true,
       "verb": "mouse",
       "whole_utterance": false
@@ -11548,7 +11637,7 @@
           "mouse_grid.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1636",
+      "source": "plugins/commands/show_numbers.py:1637",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -11569,7 +11658,7 @@
       "plugin": "show_numbers",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1288",
+      "source": "plugins/commands/show_numbers.py:1289",
       "undoable": true,
       "verb": "overlay",
       "whole_utterance": false
@@ -11604,7 +11693,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1936",
+      "source": "plugins/commands/show_numbers.py:1939",
       "undoable": false,
       "verb": "pick",
       "whole_utterance": false
@@ -11626,7 +11715,7 @@
       "plugin": "show_numbers",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1741",
+      "source": "plugins/commands/show_numbers.py:1742",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -11658,7 +11747,7 @@
           "show_numbers.visible"
         ]
       },
-      "source": "plugins/commands/show_numbers.py:1917",
+      "source": "plugins/commands/show_numbers.py:1920",
       "undoable": false,
       "verb": "right",
       "whole_utterance": false
@@ -11684,7 +11773,7 @@
       "plugin": "show_numbers",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1663",
+      "source": "plugins/commands/show_numbers.py:1664",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -11703,7 +11792,7 @@
       "plugin": "show_numbers",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/show_numbers.py:1657",
+      "source": "plugins/commands/show_numbers.py:1658",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -11724,7 +11813,7 @@
       "plugin": "show_numbers",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/show_numbers.py:1177",
+      "source": "plugins/commands/show_numbers.py:1178",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false

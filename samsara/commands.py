@@ -732,6 +732,18 @@ class CommandExecutor:
             return DispatchResult.miss(None)
 
         effective_app = app_instance if app_instance is not None else self._app
+        # 818: a local teaching reply outranks yes/no commands on every key.
+        question = getattr(effective_app, '_ava_question', None)
+        if question is not None and question.kind == 'teaching':
+            from samsara.ava_pending import consume
+            if consume(effective_app, text, capture_path=capture_path):
+                return DispatchResult(DispatchState.COMPLETED, 'dictionary reply', 'dictionary reply')
+        if (getattr(effective_app, '_dictionary_add_focused', False) is True
+                and text.strip().rstrip('.!?').casefold() == 'add'):
+            return self.execute_canonical(
+                'add word', effective_app, route=route,
+                generation=generation if generation is not None else execution_policy.capture_generation(effective_app),
+                args={'remainder': text}, source_text=text)
         spelling = getattr(effective_app, "_draft_spelling_input", None)
         if spelling is not None and spelling.consume(text):
             return DispatchResult(DispatchState.QUEUED, "draft spelling", "draft spelling")
@@ -787,6 +799,12 @@ class CommandExecutor:
 
         # 632: whole selection requests share Ava's filler/quote rules, then
         # enter the normal canonical policy path (also for apply/discard).
+        from samsara import teach_patterns
+        teaching_command = teach_patterns.dictionary_command(text) if not literals_only else None
+        if teaching_command is not None:
+            return self.execute_canonical(
+                teaching_command, effective_app, route=route, generation=generation,
+                args={'remainder': text}, source_text=text)
         from samsara.ava_edit.selection import command_for_utterance
         edit_command = command_for_utterance(text) if not literals_only else None
         if edit_command is not None:

@@ -102,13 +102,13 @@ except ImportError:
 
 _VOCAB_SOURCE_PATTERN = re.compile(
     r'^add (?:the )?(selected word|selected text|selection|highlighted word|'
-    r'highlighted text|clipboard) to (?:my )?(?:vocabulary|vocab|dictionary)$',
+    r'highlighted text|clipboard) to (?:(?:my|the) )?(?:vocabulary|vocab|dictionary)$',
     re.IGNORECASE,
 )
 
 _VOCAB_LITERAL_PATTERNS = [
     re.compile(
-        r'^add (?:the word )?(.+?) to (?:my )?(?:vocabulary|vocab|dictionary)'
+        r'^add (?:the word )?(.+?) to (?:(?:my|the) )?(?:vocabulary|vocab|dictionary)'
         r'(?: spelled (.+))?$',
         re.IGNORECASE,
     ),
@@ -116,6 +116,7 @@ _VOCAB_LITERAL_PATTERNS = [
         r'^learn the word (.+?)(?: spelled (.+))?$',
         re.IGNORECASE,
     ),
+    re.compile(r'^(?:add|teach|learn) (?:the )?word (.+?)(?: spelled (.+))?$', re.IGNORECASE),
 ]
 
 _CORRECTION_SOURCE_PATTERN = re.compile(
@@ -183,7 +184,13 @@ def parse_vocab_add(text: str) -> "dict | None":
            what happens to it next). 'letters' is the raw "spelled <...>"
            tail text if present, else None.
     """
-    text = (text or "").strip()
+    text = (text or "").strip().rstrip('.!?')
+
+    m = re.fullmatch(r'(?:add word spelled|spell word)\s+(.+)', text, re.IGNORECASE)
+    if m:
+        return {'kind': 'literal', 'word': '', 'letters': m.group(1)}
+    if re.fullmatch(r'(?:add|teach|learn) (?:the )?word', text, re.IGNORECASE):
+        return {'kind': 'missing', 'word': '', 'letters': None}
 
     m = _VOCAB_SOURCE_PATTERN.match(text)
     if m:
@@ -197,6 +204,20 @@ def parse_vocab_add(text: str) -> "dict | None":
             letters = m.group(2).strip() if m.group(2) else None
             if word and _word_count_ok(word):
                 return {'kind': 'literal', 'word': word, 'letters': letters}
+    return None
+
+
+def dictionary_command(text):
+    """Whole teaching utterances for command lanes; parsing stays shared."""
+    text = (text or '').strip().rstrip('.!?')
+    if text.casefold() == 'add that to the dictionary':
+        return 'add that to the dictionary'
+    if re.match(r'^spell word(?:\s|$)', text, re.I):
+        return 'spell word'
+    if (parse_vocab_add(text) is not None or parse_correction_add(text) is not None
+            or re.match(r'^(?:add|teach|learn) (?:the )?word(?:\s|$)', text, re.I)
+            or parse_undo(text) or parse_forget(text) is not None):
+        return 'add word'
     return None
 
 

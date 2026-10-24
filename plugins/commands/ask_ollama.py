@@ -2506,11 +2506,87 @@ def _set_teach_pending(app, pending: dict, spoken_text: str) -> None:
     site can forget one half of it."""
     global _pending_action
     now = time.time()
+    if execution_policy.pending_operation() is not None:
+        _teach_turn.outcome = 'not saved (another confirmation)'
+        _teach_notice(app, 'Not saved. Another confirmation is pending.')
+        return
     pending['expires'] = now + _TEACH_PENDING_TTL_S
     pending['speak_until'] = now + _estimate_speak_window_s(spoken_text)
+    pending['generation'] = execution_policy.capture_generation(app)
     with _pending_action_lock:
         _pending_action = pending
-    speak(app, spoken_text)
+    runner = _TeachingReply(app, pending)
+    label = 'Say yes or no' if pending['type'].endswith('_confirm') else (
+        'Which word?' if pending['type'] == 'vocab_word_wait' else 'Say the letters')
+    result = ava_pending.ask(app, runner, 'teaching', spoken_text, (), duration=6.0, label=label)
+    if result.state == 'refused':
+        _finish_teaching(app, pending)
+        _teach_notice(app, 'Not saved. Another confirmation is pending.')
+
+
+_teach_turn = threading.local()
+_TEACH_TYPES = {'vocab_confirm', 'correction_confirm', 'vocab_spelling_wait',
+                'correction_spelling_wait', 'vocab_word_wait'}
+
+
+def _teach_history(app, text, outcome):
+    """Use the same persistent History seam as dictation, never diagnostic logs."""
+    write = getattr(app, '_log_history', None)
+    if callable(write):
+        write(raw_text=text, display_text=f'Dictionary: {outcome}', mode='command',
+              status='failed' if outcome in {'failed to parse', 'failed to save'} else 'success',
+              entry_type='command', matched_command='Dictionary teaching')
+
+
+def _teach_notice(app, text):
+    ava_pending._feedback(app, text)
+    speak(app, text)
+
+
+def _finish_teaching(app, pending):
+    global _pending_action
+    with _pending_action_lock:
+        if _pending_action is pending:
+            _pending_action = None
+    q = getattr(app, '_ava_question', None)
+    if q is not None and getattr(q.runner, 'pending', None) is pending:
+        ava_pending._clear(app, q)
+
+
+class _TeachingReply:
+    def __init__(self, app, pending):
+        self.app, self.pending = app, pending
+
+    def eligible(self):
+        return (_pending_action is self.pending and
+                execution_policy.is_current(self.app, self.pending['generation']))
+
+    def opened(self):
+        self.pending['speak_until'] = 0
+        self.pending['expires'] = time.time() + 6.0
+
+    def expired(self):
+        if _pending_action is self.pending:
+            _finish_teaching(self.app, self.pending)
+            _teach_history(self.app, '', 'cancelled (timeout or retired)')
+            _teach_notice(self.app, 'Not saved.')
+
+    def answer(self, text):
+        _teach_turn.outcome = 'awaiting answer'
+        if _check_teach_pending_gate(self.app, text):
+            _teach_history(self.app, text, _teach_turn.outcome)
+            return True
+        _finish_teaching(self.app, self.pending)
+        _teach_history(self.app, text, 'cancelled (different command)')
+        _teach_notice(self.app, 'Not saved.')
+        return False
+
+
+def _check_dictionary_teaching(app, text):
+    if (teach_patterns.dictionary_command(text) is not None or
+            (_pending_action or {}).get('type') in _TEACH_TYPES):
+        return _check_teaching_intent(app, text)
+    return False
 
 
 def _clear_teach_pending() -> None:
@@ -2545,23 +2621,40 @@ def _open_correction_confirmation(app, wrong: str, right: str) -> None:
 
 
 def _persist_vocab_word(app, vt, word: str) -> None:
+    if not word.strip() or len(word) > 200 or len(word.split()) > 4:
+        _teach_turn.outcome = 'failed to parse'
+        _teach_notice(app, 'Use a word or phrase of up to four words.')
+        return
+    duplicate = any(w.casefold() == word.casefold() for w in vt.custom_vocab)
+    before = list(vt.custom_vocab)
+    if duplicate:
+        _teach_turn.outcome = 'already saved'
+        _teach_notice(app, f'{word} is already in your dictionary.')
+        return
     if vt.add_vocab_word(word):
+        _teach_turn.outcome = 'saved'
         teach_patterns.record_last_action('vocab', word=word)
         if hasattr(app, "play_sound"):
             app.play_sound("success")
-        speak(app, f"Added {word} to your vocabulary.")
+        from samsara.ui.dictionary_panel_qt import refresh_dictionary
+        refresh_dictionary(app)
+        _teach_notice(app, f"Added {word} to your dictionary.")
     else:
-        speak(app, f'"{word}" is already in your vocabulary.')
+        vt.custom_vocab[:] = before
+        _teach_turn.outcome = 'failed to save'
+        _teach_notice(app, 'Could not save that word. Try again.')
 
 
 def _persist_correction(app, vt, wrong: str, right: str) -> None:
     if vt.add_correction(wrong, right):
+        _teach_turn.outcome = 'saved'
         teach_patterns.record_last_action('correction', wrong=wrong, right=right)
         if hasattr(app, "play_sound"):
             app.play_sound("success")
         speak(app, f"From now on I'll change '{wrong}' to '{right}'. "
                    f"Say 'undo that' to cancel.")
     else:
+        _teach_turn.outcome = 'failed to save'
         speak(app, "Could not save that correction.")
 
 
@@ -2596,17 +2689,20 @@ def _check_teach_pending_gate(app, text: str) -> bool:
     """
     global _pending_action
     pending = _pending_action
-    if pending is None or pending.get('type') not in (
-        'vocab_spelling_wait', 'correction_spelling_wait',
-        'vocab_confirm', 'correction_confirm',
-    ):
+    if pending is None or pending.get('type') not in _TEACH_TYPES:
         return False
 
     if pending.get('expires', 0) < time.time():
-        with _pending_action_lock:
-            if _pending_action is pending:
-                _pending_action = None
-        return False
+        _finish_teaching(app, pending)
+        _teach_turn.outcome = 'cancelled (expired)'
+        _teach_notice(app, 'Not saved.')
+        return teach_patterns.dictionary_command(text) is None
+
+    if not execution_policy.is_current(app, pending.get('generation')):
+        _finish_teaching(app, pending)
+        _teach_turn.outcome = 'cancelled (retired)'
+        _teach_notice(app, 'Not saved.')
+        return True
 
     if time.time() < pending.get('speak_until', 0):
         # Probable self-transcription of Ava's own readback -- see the
@@ -2617,9 +2713,47 @@ def _check_teach_pending_gate(app, text: str) -> bool:
 
     ptype = pending['type']
 
+    if teach_patterns.parse_reject(text.strip().rstrip('.!?')):
+        _finish_teaching(app, pending)
+        _teach_turn.outcome = 'cancelled'
+        _teach_notice(app, 'Okay, not saved.')
+        return True
+
+    if ptype.endswith('_confirm') and execution_policy.classify_reply(text) == execution_policy.REPLY_YES:
+        _finish_teaching(app, pending)
+        vt = get_dictionary_store(app)
+        if vt is None:
+            _teach_turn.outcome = 'failed to save'
+            _teach_notice(app, 'Dictionary is not available.')
+        elif ptype == 'vocab_confirm':
+            _persist_vocab_word(app, vt, pending['word'])
+        else:
+            _persist_correction(app, vt, pending['wrong'], pending['right'])
+        return True
+
+    # A different complete command ends the answer window and is dispatched normally.
+    if teach_patterns.dictionary_command(text) is not None:
+        _finish_teaching(app, pending)
+        return False
+
+    executor = getattr(app, 'command_executor', None)
+    if executor is not None and executor.find_exact_command(text):
+        _finish_teaching(app, pending)
+        return False
+
+    if ptype == 'vocab_word_wait':
+        _finish_teaching(app, pending)
+        return _check_teaching_intent_body(app, 'add word ' + text)
+
     if ptype in ('vocab_spelling_wait', 'correction_spelling_wait'):
+        if execution_policy.classify_reply(text) == execution_policy.REPLY_YES:
+            _set_teach_pending(app, {k: v for k, v in pending.items()
+                                    if k in {'type', 'wrong'}},
+                               "I'm still waiting for you to spell that.")
+            return True
         spelled = teach_patterns.parse_letters(_strip_spelled_prefix(text))
         if spelled is None:
+            _teach_turn.outcome = 'failed to parse'
             # One more shot, same pending state conceptually -- but
             # _set_teach_pending always builds a fresh dict, so rebuild
             # from what's already known rather than mutating in place
@@ -2674,6 +2808,17 @@ def _check_teach_pending_gate(app, text: str) -> bool:
 
 
 def _check_teaching_intent(app, text):
+    teaching = (teach_patterns.dictionary_command(text) is not None or
+                (_pending_action or {}).get('type') in _TEACH_TYPES)
+    with ava_turn_queue.ownership_lock(app):
+        _teach_turn.outcome = 'awaiting answer'
+        handled = _check_teaching_intent_body(app, text)
+        if teaching and handled:
+            _teach_history(app, text, _teach_turn.outcome)
+        return handled
+
+
+def _check_teaching_intent_body(app, text):
     """Returns True if text was handled as a teaching/forget/query/list operation.
 
     Ollama is never called for any of these paths.
@@ -2687,6 +2832,17 @@ def _check_teaching_intent(app, text):
     # may be a reply to something Ava just asked rather than a new
     # command. See _check_teach_pending_gate's own docstring.
     if _check_teach_pending_gate(app, text):
+        return True
+
+    if text.strip().rstrip('.!?').casefold() == 'add that to the dictionary':
+        segments = teach_patterns.get_recent_dictated_segments(app, limit=1)
+        if not segments or len(segments[0].split()) > 4 or len(segments[0]) > 200:
+            _teach_turn.outcome = 'failed to parse'
+            _teach_notice(app, 'Dictate a word or phrase of up to four words first.')
+        else:
+            from samsara.ui.dictionary_panel_qt import prefill_dictionary
+            prefill_dictionary(app, segments[0])
+            _teach_turn.outcome = 'prefilled (not saved)'
         return True
 
     # Profile teaching
@@ -2790,6 +2946,10 @@ def _check_teaching_intent(app, text):
             speak(app, "Dictionary is not available.")
             return True
 
+        if vocab_parsed['kind'] == 'missing':
+            _set_teach_pending(app, {'type': 'vocab_word_wait'}, 'Which word?')
+            return True
+
         if vocab_parsed['kind'] == 'source':
             source_word = _grab_source_text(vocab_parsed['source'])
             if source_word is None:
@@ -2806,6 +2966,7 @@ def _check_teaching_intent(app, text):
         if letters_text:
             spelled_word = teach_patterns.parse_letters(letters_text)
             if spelled_word is None:
+                _teach_turn.outcome = 'failed to parse'
                 speak(app, "I didn't catch that spelling. Please spell it again.")
                 return True
             _open_vocab_confirmation(app, spelled_word)
@@ -2819,6 +2980,11 @@ def _check_teaching_intent(app, text):
             return True
 
         _open_vocab_spelling_wait(app)
+        return True
+
+    if re.match(r'^(?:(?:add|teach|learn) (?:the )?word|spell word)(?:\s|$)', text, re.I):
+        _teach_turn.outcome = 'failed to parse'
+        _teach_notice(app, 'Use a word or phrase of up to four words, or say add word spelled followed by the letters.')
         return True
 
     # CORRECTIONS -- LHS is NEVER trusted from this utterance (STEP 3A):
@@ -2856,6 +3022,7 @@ def _check_teaching_intent(app, text):
         if letters_text:
             spelled_right = teach_patterns.parse_letters(letters_text)
             if spelled_right is None:
+                _teach_turn.outcome = 'failed to parse'
                 speak(app, "I didn't catch that spelling. Please spell it again.")
                 return True
             ok, reason = teach_patterns.validate_correction_pair(wrong, spelled_right)
@@ -3007,6 +3174,10 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     _set_turn_outcome(app, None)
 
     if remainder and ava_pending.consume(app, remainder):
+        _done()
+        return
+    # 818: local Dictionary teaching is checked before menus and AI capability.
+    if remainder and _check_dictionary_teaching(app, remainder):
         _done()
         return
     # Direct Ava callers share the local dispatch gate.
@@ -3206,6 +3377,9 @@ def _answer_advice_text_only(app, response) -> None:
 def handle_ava_confirm(app, remainder="", **kwargs):
     """Confirms the action Ava has just asked you about."""
     global _pending_action
+    if (_pending_action or {}).get('type') in _TEACH_TYPES:
+        _check_teaching_intent(app, 'yes')
+        return
     with _pending_action_lock:
         action = _pending_action
         if action and action.get("expires", 0) < time.time():

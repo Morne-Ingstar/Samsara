@@ -22,6 +22,8 @@ class Question:
     state_owned: bool = False
     previous: tuple = ()
     timer: object = None
+    duration: float = None
+    label: str = ""
 
 
 def reply_seconds(app):
@@ -70,7 +72,12 @@ def _live(app, q):
 
 
 def _expire(app, q):
-    _clear(app, q, "Ava question expired.")  # Quiet: no speech on silence.
+    if getattr(app, "_ava_question", None) is not q:
+        return
+    _clear(app, q, "Not saved." if q.kind == "teaching" else "Ava question expired.")
+    expired = getattr(q.runner, "expired", None)
+    if callable(expired):
+        expired()
     if q.operation is not None:
         # Release by identity, including if clearing capture installed a successor.
         policy._release_slot(q.operation)
@@ -80,7 +87,10 @@ def _expire(app, q):
 def _tick(app, q):
     with ownership_lock(app):
         if not _live(app, q):
-            _clear(app, q, "Ava question closed.")  # Stand-in copy (624).
+            if q.kind == "teaching":
+                _expire(app, q)
+            else:
+                _clear(app, q, "Ava question closed.")  # Stand-in copy (624).
             return
         if time.monotonic() >= q.deadline:
             _expire(app, q)
@@ -91,13 +101,16 @@ def _tick(app, q):
 def _open(app, q):
     with ownership_lock(app):
         if not _live(app, q):
-            _clear(app, q)
+            if q.kind == 'teaching':
+                _expire(app, q)
+            else:
+                _clear(app, q)
             return
         if q.opened:
             return
         if q.timer: q.timer.cancel()
         q.opened = True
-        q.deadline = time.monotonic() + reply_seconds(app)
+        q.deadline = time.monotonic() + (q.duration if q.duration is not None else reply_seconds(app))
         q.previous = (getattr(app, "app_state", "asleep"), getattr(app, "wake_word_triggered", False))
         ensure = getattr(app, "_ensure_wake_consumer", None)
         if callable(ensure):
@@ -115,22 +128,32 @@ def _open(app, q):
             try:
                 ensure("ava_question")
             except Exception:
-                _clear(app, q, "Ava reply microphone unavailable. Hold the Ava key to ask again.")
+                if q.kind == 'teaching':
+                    _expire(app, q)
+                else:
+                    _clear(app, q, "Ava reply microphone unavailable. Hold the Ava key to ask again.")
                 return
         # This feedback bridge renders in Compact and Full.
-        _feedback(app, "Ava is waiting for your answer. " + q.text, q)
+        opened = getattr(q.runner, "opened", None)
+        if callable(opened):
+            opened()
+        _feedback(app, q.label or "Ava is waiting for your answer. " + q.text, q)
         _tick(app, q)
 
 
-def ask(app, runner, kind, text, options, *, operation=None):
+def ask(app, runner, kind, text, options, *, operation=None, duration=None, label=""):
     from plugins.commands import ask_ollama as ava
     with ownership_lock(app):
         if not runner.eligible() or (policy.pending_operation() is not operation):
             return ava.TurnOutcome("ask", "refused", reason="another_confirmation")
         old = getattr(app, "_ava_question", None)
         if old is not None:
-            _clear(app, old)
-        q = Question(runner, kind, text, options, operation=operation, deadline=time.monotonic() + 60)
+            if old.kind == "teaching":
+                _expire(app, old)
+            else:
+                _clear(app, old)
+        q = Question(runner, kind, text, options, operation=operation,
+                     deadline=time.monotonic() + 60, duration=duration, label=label)
         app._ava_question = q
         _tick(app, q)  # Also retires a question if speech is cancelled or AI is switched off.
         spoken = text + (" " + "; ".join(options) + "." if options else "")
@@ -148,6 +171,9 @@ def consume(app, text, *, capture_path=None):
         if q is None:
             return False
         if policy.is_stop_utterance(text):
+            if q.kind == "teaching":
+                _expire(app, q)
+                return True
             _clear(app, q, "Ava question cancelled.")
             policy.stop_all(app, "ava question cancelled")
             return True
@@ -161,8 +187,7 @@ def consume(app, text, *, capture_path=None):
         answer = getattr(q.runner, "answer", None)
         if callable(answer):
             _clear(app, q)
-            answer(text)
-            return True
+            return answer(text) is not False
         answer = (text or "").strip().rstrip(".!?").casefold()
         if answer in {"nevermind", "never mind"}:
             _clear(app, q, "Ava question cancelled.")

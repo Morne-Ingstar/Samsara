@@ -25,6 +25,9 @@ because whole-word transcriptions vary in open-ended ways).
 """
 import re
 import unicodedata
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── Letter homophone map ────────────────────────────────────────────────────
 #
@@ -78,6 +81,11 @@ _TOKEN_TO_LETTER = {
     for letter, tokens in _LETTER_HOMOPHONES.items()
     for token in tokens
 }
+_TOKEN_TO_LETTER.update(dict(zip(
+    'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima mike november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee zulu'.split(),
+    'abcdefghijklmnopqrstuvwxyz',
+)))
+_TOKEN_TO_LETTER.update(juliet='j', whisky='w', **{'x-ray': 'x'})
 
 _PUNCTUATION_WORDS = {
     'hyphen': '-',
@@ -103,6 +111,10 @@ def _tokenize(text: str) -> "list[str]":
     # token) so "M, O, R" and "M O R" parse identically -- spoken letter
     # lists are read with or without pause-commas depending on how the ASR
     # rendered pauses, and neither form should behave differently.
+    # Split ASR punctuation only between isolated letter tokens. Preserve
+    # spoken punctuation and names such as double-u and x-ray.
+    text = re.sub(r'\b[A-Za-z](?:[-.,][A-Za-z])+\b(?:\.)?',
+                  lambda m: re.sub(r'[-.,]', ' ', m.group()), text)
     raw = text.replace(',', ' ').split()
     return [_strip_token(t) for t in raw if _strip_token(t)]
 
@@ -161,9 +173,14 @@ def parse_letters(text: str) -> "str | None":
     any_explicit_capital = False
     i = 0
     n = len(tokens)
+    logger.debug('Spelling shape: tokens=%d', n)
 
     while i < n:
         tok = tokens[i]
+        if tok == 'lowercase':
+            any_explicit_capital = True
+            i += 1
+            continue
 
         # Multi-token letter names first (longest match wins).
         matched_multi = False
@@ -215,6 +232,8 @@ def parse_letters(text: str) -> "str | None":
 
         letter = _TOKEN_TO_LETTER.get(tok)
         if letter is None:
+            logger.info('Spelling shape: tokens=%d failed_index=%d token_length=%d',
+                        n, i, len(tok))
             return None
         out_chars.append(letter)
         i += 1

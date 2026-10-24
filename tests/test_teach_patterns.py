@@ -583,7 +583,8 @@ def drain_module_state():
 
 def _speak_capture(monkeypatch):
     spoken = []
-    monkeypatch.setattr(ao, "speak", lambda a, t: spoken.append(t))
+    # 818: readback now supplies the shared question window's completion callback.
+    monkeypatch.setattr(ao, "speak", lambda a, t, **kw: spoken.append(t) or True)
     return spoken
 
 

@@ -10782,7 +10782,8 @@ class DictationApp(CommandFastPathMixin):
                 if text:
                     text_lower = text.lower().strip()
                     from samsara.ava_pending import consume
-                    if (is_command_mode or is_ava_mode) and consume(self, text, capture_path='command_key' if is_command_mode else 'ava_hold'): return
+                    teaching_reply = getattr(getattr(self, '_ava_question', None), 'kind', '') == 'teaching'
+                    if (is_command_mode or is_ava_mode or teaching_reply) and consume(self, text, capture_path='command_key' if is_command_mode else 'ava_hold' if is_ava_mode else 'dictation_key'): return
                     # Voice exit from Mouse 4 command mode. Queue 84: WHOLE
                     # utterance only. This was a substring test, the same rule
                     # that let "Have it stop listening to you, or something
