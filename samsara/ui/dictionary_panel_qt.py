@@ -21,10 +21,10 @@ import logging
 import re
 from contextlib import nullcontext
 
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Qt, Signal, QObject, QSettings
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListWidget, QMessageBox, QPushButton,
+    QLabel, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
     QScrollArea, QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
@@ -172,6 +172,12 @@ class DictionaryPanelQt(QWidget):
     def showEvent(self, event):
         self.reload()
         super().showEvent(event)
+        # Measure after parenting/polish: the hub supplies the final font.
+        row_height = self._vocab_list.sizeHintForRow(0)
+        if row_height < 0:
+            row_height = self._vocab_list.fontMetrics().height() + 6
+        self._vocab_list.setMinimumHeight(
+            4 * row_height + 2 * self._vocab_list.frameWidth())
 
     def reload(self):
         if not self._alive:
@@ -236,16 +242,23 @@ class DictionaryPanelQt(QWidget):
         page = QWidget()
         lay  = QVBoxLayout(page)
         lay.setContentsMargins(14, 14, 14, 12)
-        lay.setSpacing(8)
+        lay.setSpacing(6)
 
         desc = QLabel(
-            "Add names, technical terms, or words Samsara often mishears. "
-            "Your words stay separate from the built-in list."
+            "Add names, technical terms, or words Samsara often mishears."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         lay.addWidget(desc)
 
+        self._voice_settings = QSettings("Samsara", "Samsara")
+        self._voice_expander = QToolButton()
+        self._voice_expander.setText("How to add words by voice")
+        self._voice_expander.setAccessibleName(self._voice_expander.text())
+        self._voice_expander.setCheckable(True)
+        self._voice_expander.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._voice_expander.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        lay.addWidget(self._voice_expander)
         help_text = QLabel(
             'Say: “add the word Siobhan to my vocabulary spelled S I O B H A N”. '
             'After the readback, say yes or no without a key. '
@@ -259,6 +272,19 @@ class DictionaryPanelQt(QWidget):
         help_text.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;')
         lay.addWidget(help_text)
 
+        def expand_voice(expanded):
+            self._voice_expander.setArrowType(
+                Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+            help_text.setVisible(expanded)
+            self._voice_settings.setValue("dictionary/voice_help_expanded", expanded)
+
+        expanded = self._voice_settings.value("dictionary/voice_help_expanded", False, type=bool)
+        self._voice_expander.setChecked(expanded)
+        help_text.setVisible(expanded)
+        self._voice_expander.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self._voice_expander.toggled.connect(expand_voice)
+
         self._build_builtin_words(lay)
 
         # Input row
@@ -269,13 +295,14 @@ class DictionaryPanelQt(QWidget):
         self._vocab_input.returnPressed.connect(self._vocab_add)
         add_row.addWidget(self._vocab_input, stretch=1)
         add_btn = QPushButton("Add")
-        add_btn.setFixedWidth(60)
+        add_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         add_btn.clicked.connect(self._vocab_add)
         add_row.addWidget(add_btn)
         lay.addLayout(add_row)
 
         # List
         self._vocab_list = QListWidget()
+        self._vocab_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._vocab_list.setAccessibleName(title)
         self._vocab_list.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
@@ -288,9 +315,9 @@ class DictionaryPanelQt(QWidget):
         btn_row = QHBoxLayout()
         rem_btn = QPushButton("Remove Selected")
         rem_btn.clicked.connect(self._vocab_remove)
-        imp_btn = QPushButton("Import JSON")
+        imp_btn = QPushButton("Import")
         imp_btn.clicked.connect(self._vocab_import)
-        exp_btn = QPushButton("Export JSON")
+        exp_btn = QPushButton("Export")
         exp_btn.clicked.connect(self._vocab_export)
         btn_row.addWidget(rem_btn)
         btn_row.addWidget(imp_btn)
@@ -298,17 +325,18 @@ class DictionaryPanelQt(QWidget):
         btn_row.addStretch()
         lay.addLayout(btn_row)
 
-        transfer_row = QHBoxLayout()
-        export_dictionary_btn = QPushButton("Export dictionary…")
-        export_dictionary_btn.setObjectName("exportDictionaryButton")
-        export_dictionary_btn.clicked.connect(self._dictionary_export)
-        import_dictionary_btn = QPushButton("Import dictionary…")
-        import_dictionary_btn.setObjectName("importDictionaryButton")
-        import_dictionary_btn.clicked.connect(self._dictionary_import)
-        transfer_row.addWidget(export_dictionary_btn)
-        transfer_row.addWidget(import_dictionary_btn)
-        transfer_row.addStretch()
-        lay.addLayout(transfer_row)
+        # Vocabulary JSON is distinct from a full dictionary bundle.
+        more_btn = QToolButton()
+        more_btn.setText("More")
+        more_btn.setAccessibleName("More dictionary actions")
+        more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(more_btn)
+        menu.addAction("Export dictionary…", self._dictionary_export)
+        menu.addAction("Import dictionary…", self._dictionary_import)
+        more_btn.setMenu(menu)
+        btn_row.insertWidget(3, more_btn)
+        for button in (rem_btn, imp_btn, exp_btn, more_btn):
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         # Status label
         self._vocab_status = QLabel("")
@@ -327,15 +355,11 @@ class DictionaryPanelQt(QWidget):
         master_row = QHBoxLayout()
         self._builtin_enabled = switch(QCheckBox())
         self._builtin_enabled.setObjectName("builtinVocabularyEnabled")
-        label = QLabel("Use Samsara's built-in words")
+        label = QLabel("Use them")
         label.setBuddy(self._builtin_enabled)
-        self._builtin_enabled.setAccessibleName(label.text())
+        self._builtin_enabled.setAccessibleName("Use Samsara's built-in words")
         self._builtin_enabled.setChecked(cfg_get(self._app.config, "builtin_vocabulary_enabled"))
         self._builtin_enabled.setEnabled(callable(getattr(self._app, "update_config_and_save", None)))
-        master_row.addWidget(label)
-        master_row.addWidget(self._builtin_enabled)
-        master_row.addStretch()
-        layout.addLayout(master_row)
 
         self._builtin_expander = QToolButton()
         self._builtin_expander.setText("Built-in words")
@@ -344,7 +368,11 @@ class DictionaryPanelQt(QWidget):
         self._builtin_expander.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._builtin_expander.setArrowType(Qt.ArrowType.RightArrow)
         self._builtin_expander.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        layout.addWidget(self._builtin_expander)
+        master_row.addWidget(self._builtin_expander)
+        master_row.addWidget(self._builtin_enabled)
+        master_row.addWidget(label)
+        master_row.addStretch()
+        layout.addLayout(master_row)
 
         self._builtin_scroll = QScrollArea()
         self._builtin_scroll.setWidgetResizable(True)
