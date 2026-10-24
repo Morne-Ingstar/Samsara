@@ -12,10 +12,13 @@ default multimedia endpoint directly.
 import ctypes
 import ctypes.wintypes as wintypes
 import sys
+from math import isfinite
+from numbers import Real
 from ctypes import POINTER, HRESULT, byref, cast, c_float, c_void_p
 from ctypes import Structure, Union, c_ulong
 
 from samsara.plugin_commands import command
+from samsara.command_registry import DispatchResult, DispatchState
 
 VOLUME_STEP = 0.20
 
@@ -190,6 +193,28 @@ class _CoreAudio:
         finally:
             _get_vtable_func(vol, 2, ctypes.c_ulong, c_void_p)(vol)  # Release
 
+    def get_volume_range(self):
+        """Get the endpoint's min, max and increment in dB (vtable slot 20)."""
+        vol = self._get_volume_interface()
+        if not vol:
+            return None
+        try:
+            func = _get_vtable_func(
+                vol, 20, HRESULT,
+                c_void_p,
+                POINTER(c_float),
+                POINTER(c_float),
+                POINTER(c_float),
+            )
+            minimum, maximum, increment = c_float(), c_float(), c_float()
+            hr = func(vol, byref(minimum), byref(maximum), byref(increment))
+            if hr != 0:
+                print(f"[VOLUME] GetVolumeRange failed: {hr:#010x}")
+                return None
+            return minimum.value, maximum.value, increment.value
+        finally:
+            _get_vtable_func(vol, 2, ctypes.c_ulong, c_void_p)(vol)  # Release
+
     def set_volume(self, level):
         """Set master volume scalar (0.0 - 1.0).
         IAudioEndpointVolume vtable index 7: SetMasterVolumeLevelScalar
@@ -215,18 +240,18 @@ class _CoreAudio:
 
     def get_mute(self):
         """Get mute state.
-        IAudioEndpointVolume vtable index 13: GetMute
+        IAudioEndpointVolume vtable index 15: GetMute
         """
         vol = self._get_volume_interface()
         if not vol:
             return None
         try:
             func = _get_vtable_func(
-                vol, 13, HRESULT,
+                vol, 15, HRESULT,
                 c_void_p,              # this
-                POINTER(ctypes.c_int)  # pbMute
+                POINTER(wintypes.BOOL) # pbMute (Windows BOOL)
             )
-            muted = ctypes.c_int()
+            muted = wintypes.BOOL()
             hr = func(vol, byref(muted))
             if hr != 0:
                 return None
@@ -236,16 +261,16 @@ class _CoreAudio:
 
     def set_mute(self, mute):
         """Set mute state.
-        IAudioEndpointVolume vtable index 12: SetMute
+        IAudioEndpointVolume vtable index 14: SetMute
         """
         vol = self._get_volume_interface()
         if not vol:
             return False
         try:
             func = _get_vtable_func(
-                vol, 12, HRESULT,
+                vol, 14, HRESULT,
                 c_void_p,      # this
-                ctypes.c_int,  # bMute
+                wintypes.BOOL, # bMute (Windows BOOL)
                 c_void_p       # pguidEventContext
             )
             hr = func(vol, int(mute), None)
@@ -255,6 +280,67 @@ class _CoreAudio:
 
 
 _audio = _CoreAudio()
+
+
+def _volume_failure(app, reason, *, fixed_endpoint=False):
+    message = ("This device controls its own volume" if fixed_endpoint else reason)
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        show(message, "warning", 3500)
+    return DispatchResult(DispatchState.FAILED, phrase="set volume",
+                          detail={"reason": message})
+
+
+def _set_and_verify_volume(app, level):
+    # Older endpoint adapters may not expose a usable range. Preserve their
+    # setter contract rather than doing arithmetic on unknown readback values.
+    try:
+        range_reader = _audio.get_volume_range
+        # A native range cannot verify a substituted getter or setter: those
+        # may target another device (or no device). Keep the adapter's contract
+        # without querying unrelated native hardware.
+        native_range = getattr(range_reader, "__func__", None) is _CoreAudio.get_volume_range
+        native_io = (getattr(_audio.get_volume, "__func__", None) is _CoreAudio.get_volume
+                     and getattr(_audio.set_volume, "__func__", None) is _CoreAudio.set_volume)
+        volume_range = range_reader() if not native_range or native_io else None
+        known_range = (isinstance(volume_range, (tuple, list)) and
+                       len(volume_range) == 3 and
+                       all(isinstance(value, Real) and not isinstance(value, bool)
+                           and isfinite(value) for value in volume_range) and
+                       volume_range[0] <= volume_range[1])
+    except Exception:
+        known_range = False
+
+    def read_volume():
+        try:
+            value = _audio.get_volume()
+            if (isinstance(value, Real) and not isinstance(value, bool)
+                    and isfinite(value)):
+                return value
+        except Exception:
+            pass
+        return None
+
+    previous = read_volume() if known_range else None
+    if not _audio.set_volume(level):
+        return False
+    actual = level
+    if known_range:
+        readback = read_volume()
+        fixed = (abs(volume_range[0]) <= 1e-6 and
+                 abs(volume_range[1]) <= 1e-6)
+        if previous is not None and readback is not None:
+            unchanged = abs(readback - previous) <= 0.005
+            if fixed and unchanged:
+                return _volume_failure(app, "Could not set Windows volume", fixed_endpoint=True)
+            if unchanged and abs(readback - level) > 0.005:
+                return _volume_failure(app, "Could not set Windows volume")
+            actual = readback
+        # Unavailable readback is not evidence that a successful write failed.
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        show(f"Windows volume {round(actual * 100)}%", "success", 3500)
+    return True
 
 
 # ── Commands ───────────────────────────────────────────────────────────────
@@ -273,13 +359,7 @@ def handle_set_volume(app, remainder):
     level = 100 if words in (["100"], ["one", "hundred"]) else _number(words)
     if level is None or not 0 <= level <= 100:
         return False
-    if not _audio.set_volume(level / 100):
-        from samsara.command_registry import DispatchState
-        return DispatchState.FAILED
-    show = getattr(app, "_show_outcome_chip", None)
-    if callable(show):
-        show(f"Windows volume {level}%", "success", 3500)
-    return True
+    return _set_and_verify_volume(app, level / 100)
 
 
 @command("volume up", aliases=[
@@ -294,12 +374,8 @@ def handle_volume_up(app, remainder):
         print("[VOLUME] Failed to read volume")
         return False
     new = min(1.0, current + VOLUME_STEP)
-    ok = _audio.set_volume(new)
+    ok = _set_and_verify_volume(app, new)
     print(f"[VOLUME] {int(current*100)}% -> {int(new*100)}%")
-    if ok:
-        show = getattr(app, "_show_outcome_chip", None)
-        if callable(show):
-            show(f"Windows volume {round(new * 100)}%", "success", 3500)
     return ok
 
 
@@ -315,12 +391,8 @@ def handle_volume_down(app, remainder):
         print("[VOLUME] Failed to read volume")
         return False
     new = max(0.0, current - VOLUME_STEP)
-    ok = _audio.set_volume(new)
+    ok = _set_and_verify_volume(app, new)
     print(f"[VOLUME] {int(current*100)}% -> {int(new*100)}%")
-    if ok:
-        show = getattr(app, "_show_outcome_chip", None)
-        if callable(show):
-            show(f"Windows volume {round(new * 100)}%", "success", 3500)
     return ok
 
 
@@ -335,5 +407,12 @@ def handle_mute(app, remainder):
         print("[VOLUME] Failed to read mute state")
         return False
     ok = _audio.set_mute(not muted)
-    print(f"[VOLUME] Mute: {not muted}")
-    return ok
+    if not ok:
+        return DispatchResult(DispatchState.FAILED, phrase="toggle mute",
+                              detail={"reason": "Could not change mute"})
+    actual = _audio.get_mute()
+    if actual is None or actual != (not muted):
+        return DispatchResult(DispatchState.FAILED, phrase="toggle mute",
+                              detail={"reason": "Could not verify mute"})
+    print(f"[VOLUME] Mute: {actual}")
+    return True

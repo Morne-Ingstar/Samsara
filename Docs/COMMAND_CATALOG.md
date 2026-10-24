@@ -824,10 +824,10 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `volume.set_volume` | `lower the volume to`, `lower volume to`, `raise volume to`, `set the volume to`, `set volume`, `set volume to`, `volume`, `volume to` | level:int | `set volume fifty`<br>`set volume 25` | Sets Windows sound volume as a percentage from 0 to 100. | ui | yes |  | Sets Windows volume to a spoken number from zero to one hundred. | `plugins/commands/volume.py:262` |
-| `volume.toggle_mute` | `silence`, `toggle mute`, `unsilence` | - | - | - | ui | yes |  | Mutes or unmutes the system sound. | `plugins/commands/volume.py:327` |
-| `volume.volume_down` | `decrease volume`, `lower the volume`, `quieter`, `softer`, `turn down the volume`, `turn it down`, `volume down` | - | - | - | ui | yes |  | Turns the system volume down by twenty percent. | `plugins/commands/volume.py:306` |
-| `volume.volume_up` | `increase volume`, `louder`, `raise the volume`, `turn it up`, `turn up the volume`, `volume up` | - | - | - | ui | yes |  | Turns the system volume up by twenty percent. | `plugins/commands/volume.py:285` |
+| `volume.set_volume` | `lower the volume to`, `lower volume to`, `raise volume to`, `set the volume to`, `set volume`, `set volume to`, `volume`, `volume to` | level:int | `set volume fifty`<br>`set volume 25` | Sets Windows sound volume as a percentage from 0 to 100. | ui | yes |  | Sets Windows volume to a spoken number from zero to one hundred. | `plugins/commands/volume.py:348` |
+| `volume.toggle_mute` | `silence`, `toggle mute`, `unsilence` | - | - | - | ui | yes |  | Mutes or unmutes the system sound. | `plugins/commands/volume.py:399` |
+| `volume.volume_down` | `decrease volume`, `lower the volume`, `quieter`, `softer`, `turn down the volume`, `turn it down`, `volume down` | - | - | - | ui | yes |  | Turns the system volume down by twenty percent. | `plugins/commands/volume.py:382` |
+| `volume.volume_up` | `increase volume`, `louder`, `raise the volume`, `turn it up`, `turn up the volume`, `volume up` | - | - | - | ui | yes |  | Turns the system volume up by twenty percent. | `plugins/commands/volume.py:365` |
 
 ## web_shortcuts (2)
 

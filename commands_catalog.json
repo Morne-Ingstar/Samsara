@@ -13684,7 +13684,7 @@
       "plugin": "volume",
       "precondition": "Sets Windows sound volume as a percentage from 0 to 100.",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:262",
+      "source": "plugins/commands/volume.py:348",
       "undoable": true,
       "verb": "set",
       "whole_utterance": false
@@ -13705,7 +13705,7 @@
       "plugin": "volume",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:327",
+      "source": "plugins/commands/volume.py:399",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -13730,7 +13730,7 @@
       "plugin": "volume",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:306",
+      "source": "plugins/commands/volume.py:382",
       "undoable": true,
       "verb": "volume",
       "whole_utterance": false
@@ -13754,7 +13754,7 @@
       "plugin": "volume",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/volume.py:285",
+      "source": "plugins/commands/volume.py:365",
       "undoable": true,
       "verb": "volume",
       "whole_utterance": false
