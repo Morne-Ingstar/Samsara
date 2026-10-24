@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 import unicodedata
+import weakref
 from datetime import date
 from pathlib import Path
 from typing import List
@@ -41,6 +42,7 @@ class DictionaryStore:
 
     def __init__(self, app):
         self.app = app
+        self._change_listeners = []
         self.custom_vocab: List[str] = []
         self.corrections_dict: dict = {}
         self._corrections_pattern = None
@@ -50,6 +52,38 @@ class DictionaryStore:
         self._loaded_bytes = None
         self._builtin_preferences = BuiltinPreferences(app.config_path)
         self.load_training_data()
+
+    def add_change_listener(self, callback):
+        """Observe successful saves/reloads without depending on a UI toolkit.
+
+        Bound listeners are weak so a long-lived store cannot retain a page.
+        Callbacks run on the saving thread; UI listeners must marshal to Qt.
+        The returned function disconnects the listener.
+        """
+        listener = (weakref.WeakMethod(callback)
+                    if getattr(callback, '__func__', None) is not None else callback)
+        self._change_listeners.append(listener)
+
+        def disconnect():
+            if listener in self._change_listeners:
+                self._change_listeners.remove(listener)
+
+        return disconnect
+
+    def _notify_changed(self):
+        for listener in list(self._change_listeners):
+            callback = listener() if isinstance(listener, weakref.WeakMethod) else listener
+            if callback is None:
+                if listener in self._change_listeners:
+                    self._change_listeners.remove(listener)
+                continue
+            try:
+                callback()
+            except Exception:
+                logger.exception('[STORE] Dictionary change listener failed')
+            finally:
+                # Captured exception tracebacks must not retain a later page.
+                callback = None
 
     def get_builtin_words(self):
         """UI rows stay separate from custom_vocab and dictionary exports."""
@@ -102,6 +136,8 @@ class DictionaryStore:
         self._migrate_legacy_user_corrections(training_file)
         self._migrate_punctuated_corrections(training_file)
         self._rebuild_corrections_pattern()
+
+        self._notify_changed()
 
     @staticmethod
     def normalize_correction_source(wrong: str) -> str:
@@ -344,6 +380,7 @@ class DictionaryStore:
                 f"[STORE] training_data.json saved: {len(self.custom_vocab)} "
                 f"vocab, {len(self.corrections_dict)} corrections"
             )
+        self._notify_changed()
         return True
 
     # Legacy character cap; 801 also enforces 223 tokens with the loaded

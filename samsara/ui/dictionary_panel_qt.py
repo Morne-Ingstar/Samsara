@@ -21,7 +21,7 @@ import logging
 import re
 from contextlib import nullcontext
 
-from PySide6.QtCore import Qt, Signal, QObject, QSettings
+from PySide6.QtCore import Qt, Signal, Slot, QObject, QSettings, QItemSelectionModel
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
@@ -162,14 +162,23 @@ class DictionaryPanelQt(QWidget):
         super().__init__(parent)
         self._app    = app
         self._alive  = True
-        self._sigs   = _Signals()
+        self._sigs   = _Signals(self)
         self.setStyleSheet(_ss())
         self._build_ui()
         self._app._dictionary_panel = self
-        self._sigs.refresh.connect(self.reload)
+        self._sigs.refresh.connect(self.reload, Qt.ConnectionType.QueuedConnection)
         self._sigs.vocab_saved.connect(self._vocab_saved)
+        subscribe = getattr(self._vt, 'add_change_listener', None)
+        if callable(subscribe):
+            disconnect = subscribe(self._dictionary_changed)
+            self.destroyed.connect(lambda _obj=None: disconnect())
+
+    def _dictionary_changed(self):
+        if _qt_widget_is_valid(self):
+            self._sigs.refresh.emit()
 
     def showEvent(self, event):
+        self._alive = True
         self.reload()
         super().showEvent(event)
         # Measure after parenting/polish: the hub supplies the final font.
@@ -179,11 +188,29 @@ class DictionaryPanelQt(QWidget):
         self._vocab_list.setMinimumHeight(
             4 * row_height + 2 * self._vocab_list.frameWidth())
 
+    @Slot()
     def reload(self):
         if not self._alive:
             return
+        selected = {item.text() for item in self._vocab_list.selectedItems()}
+        scroll = self._vocab_list.verticalScrollBar().value()
         self._vocab_list.clear()
         self._vocab_list.addItems(list(self._custom_vocab))
+        for row in range(self._vocab_list.count()):
+            item = self._vocab_list.item(row)
+            item.setSelected(item.text() in selected)
+        self._vocab_list.verticalScrollBar().setValue(scroll)
+        table = self._corrections_table
+        selected = {table.item(index.row(), 0).text()
+                    for index in table.selectionModel().selectedRows()}
+        scroll = table.verticalScrollBar().value()
+        self._kv_load(table, 'corrections')
+        for row in range(table.rowCount()):
+            if table.item(row, 0).text() in selected:
+                table.selectionModel().select(
+                    table.model().index(row, 0),
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+        table.verticalScrollBar().setValue(scroll)
 
     def prefill(self, text):
         self._tabs.setCurrentIndex(0)
@@ -635,9 +662,7 @@ class DictionaryPanelQt(QWidget):
             install_user_aliases(matcher, self._dictionary_profile_manager().app_dir)
         except Exception as exc:
             logger.debug("Dictionary import reload failed: %s", exc)
-        self._vocab_list.clear()
-        for word in self._custom_vocab:
-            self._vocab_list.addItem(word)
+        self.reload()
         self._vocab_status.setText(message)
         self._vocab_status.setStyleSheet(
             f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;"
@@ -714,6 +739,8 @@ class DictionaryPanelQt(QWidget):
 
         # Table: Heard | Value | Source
         table = QTableWidget(0, 3)
+        if mode == "corrections":
+            self._corrections_table = table
         table.setAccessibleName(title)
         table.setHorizontalHeaderLabels([col1_hdr, col2_hdr, "Source"])
         hdr = table.horizontalHeader()
@@ -770,8 +797,8 @@ class DictionaryPanelQt(QWidget):
                 vt = self._vt
                 if vt is None:
                     return
-                for key in sorted(vt.corrections_dict):
-                    self._kv_insert_row(table, key, vt.corrections_dict[key], "user")
+                for key, value in sorted(dict(vt.corrections_dict).items()):
+                    self._kv_insert_row(table, key, value, "user")
                 return
             mod = self._kv_module(mode)
             user = mod.get_user_corrections() or {}
