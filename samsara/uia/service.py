@@ -147,8 +147,8 @@ def overlay_target_nodes(nodes, actionable=None):
     Ignore empty structural rects (some providers use these for virtual
     containers), but enforce every real ancestor's visible clip. Suppress a
     duplicate ancestor when a descendant covers its actionable region. A
-    tab and its small close button remain separate, independently usable
-    targets; their labels are separated by the bounded layout pass.
+    Nested controls with near-identical regions are one voice-click target;
+    small independent controls such as a tab's close button remain separate.
     """
     candidates, ancestors, lineage = [], [], {}
     for node in nodes:
@@ -169,16 +169,28 @@ def overlay_target_nodes(nodes, actionable=None):
         ancestors.append(node)
     suppressed = set()
     by_index = {node.index: node for node in candidates}
+    protected = {'TabItemControl', 'TabControl'}
+    # Protect the independently actionable tab label and its close control.
     for node in candidates:
+        if node.control_type in protected:
+            suppressed.update(lineage[node.index])
+    for node in candidates:
+        l, t, r, bot = node.rect
+        area = (r-l)*(bot-t)
         for index in lineage[node.index]:
             parent = by_index.get(index)
             if parent is None:
                 continue
-            l, t, r, bot = parent.rect
-            nl, nt, nr, nb = node.rect
-            covered = max(0, min(r, nr)-max(l, nl)) * max(0, min(bot, nb)-max(t, nt))
-            if covered >= (r-l)*(bot-t)*0.8:
-                suppressed.add(index)
+            pl, pt, pr, pb = parent.rect
+            parent_area = (pr-pl)*(pb-pt)
+            overlap = max(0, min(r, pr)-max(l, pl)) * max(0, min(bot, pb)-max(t, pt))
+            # These are duplicates only when each rectangle is nearly
+            # contained in the other. A toolbar parent covering many distinct
+            # children is not one duplicate target.
+            near_same = overlap >= parent_area * 0.85 and overlap >= area * 0.85
+            if near_same and parent.index not in suppressed:
+                # Keep the smaller target: it is the actionable click surface.
+                suppressed.add(index if area <= parent_area else parent.index)
     return [node for node in candidates if node.index not in suppressed]
 
 
