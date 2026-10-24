@@ -780,8 +780,7 @@ class TestDispatchCorrectionAddBufferSourced:
 
         assert handled is True
         assert app_with_vt.voice_training_window.corrections_dict == {"flat": "hat"}
-        assert "From now on" in spoken[-1]
-        assert "undo that" in spoken[-1]
+        assert "will now come out as" in spoken[-1]
         assert ao._pending_action is None  # dictionary RHS -- no gate
 
     def test_lhs_stored_is_buffer_literal_not_teaching_utterance_transcription(self, app_with_vt, monkeypatch):

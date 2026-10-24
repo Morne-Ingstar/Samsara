@@ -100,7 +100,55 @@ class DictionaryStore:
             except (OSError, ValueError, TypeError) as exc:
                 logger.warning("[STORE] Could not load bundled default dictionary: %s", exc)
         self._migrate_legacy_user_corrections(training_file)
+        self._migrate_punctuated_corrections(training_file)
         self._rebuild_corrections_pattern()
+
+    @staticmethod
+    def normalize_correction_source(wrong: str) -> str:
+        """Remove delivered-unit punctuation, retaining punctuation inside words."""
+        wrong = unicodedata.normalize('NFC', wrong).strip()
+        while wrong and unicodedata.category(wrong[0]).startswith('P'):
+            wrong = wrong[1:].lstrip()
+        while wrong and unicodedata.category(wrong[-1]).startswith('P'):
+            wrong = wrong[:-1].rstrip()
+        return wrong
+
+    def _migrate_punctuated_corrections(self, training_file: Path) -> None:
+        """Normalize once on load, preserving an immutable pre-migration backup."""
+        original = dict(self.corrections_dict)
+        normalized, seen = {}, set()
+        # A deliberately stored bare key wins over an older punctuated variant.
+        keys = sorted(original, key=lambda key: key != self.normalize_correction_source(key))
+        changed = 0
+        for key in keys:
+            bare = self.normalize_correction_source(key) or key
+            folded = bare.casefold()
+            if bare != key or folded in seen:
+                changed += 1
+            if folded not in seen:
+                normalized[bare] = original[key]
+                seen.add(folded)
+        if not changed:
+            return
+        backup = training_file.with_name(training_file.name + '.pre-831.bak')
+        try:
+            # Never overwrite the first backup, including after a failed save.
+            if backup.exists() and not backup.is_file():
+                raise OSError('backup path is not a file')
+            if not backup.exists():
+                with backup.open('xb') as output:
+                    output.write(training_file.read_bytes())
+        except OSError as exc:
+            logger.warning('[STORE] Correction normalization skipped: backup failed: %s', exc)
+            return
+        self.corrections_dict.clear()
+        self.corrections_dict.update(normalized)
+        if not self.save_training_data():
+            self.corrections_dict.clear()
+            self.corrections_dict.update(original)
+            logger.warning('[STORE] Correction normalization could not be saved')
+            return
+        logger.info('[STORE] Normalized %d correction keys (831); backup=%s', changed, backup)
 
     def _migrate_legacy_user_corrections(self, training_file: Path) -> None:
         """Move pre-783d728 Corrections-tab entries into the live store.
@@ -196,27 +244,35 @@ class DictionaryStore:
                 return self.save_training_data()
         return False
 
-    def add_correction(self, wrong: str, right: str) -> bool:
-        """Exact same mutation sequence as correction_capture_qt.py's
-        _on_always_fix: corrections_dict[wrong] = right, then
-        _rebuild_corrections_pattern() (so apply_corrections() sees it on
-        the very next call -- see that method's own docstring for why this
-        step is required), then save_training_data(). An existing entry
-        for `wrong` is overwritten, not confirm-gated -- this path is only
-        reached after the caller's own atomic-substitution validation
-        (samsara/teach_patterns.validate_correction_pair), and the
-        "instant, permanent, name it + offer undo" confirmation happens at
-        the dispatch layer, not here."""
-        wrong, right = wrong.strip(), right.strip()
+    def add_correction(self, wrong: str, right: str, *, vocabulary=False) -> bool:
+        """Save a normalized correction and optional vocabulary in one transaction.
+
+        Voice teaching opts into vocabulary. Other correction editors retain
+        their existing vocabulary policy. Rebuild immediately; a failed save
+        restores both collections and the pattern before returning False.
+        """
+        wrong, right = self.normalize_correction_source(wrong), right.strip()
         if not wrong or not right:
             return False
+        corrections, words = dict(self.corrections_dict), list(self.custom_vocab)
+        for key in list(self.corrections_dict):
+            if self.normalize_correction_source(key).casefold() == wrong.casefold():
+                del self.corrections_dict[key]
         self.corrections_dict[wrong] = right
+        if vocabulary and not any(word.casefold() == right.casefold() for word in words):
+            self.custom_vocab.append(right)
         self._rebuild_corrections_pattern()
-        return self.save_training_data()
+        if self.save_training_data():
+            return True
+        self.corrections_dict.clear()
+        self.corrections_dict.update(corrections)
+        self.custom_vocab[:] = words
+        self._rebuild_corrections_pattern()
+        return False
 
     def learn_draft_correction(self, wrong: str, right: str, *, vocabulary=False) -> bool:
         """Explicit post-edit approval; a failed save must not teach in memory."""
-        wrong, right = wrong.strip(), right.strip()
+        wrong, right = self.normalize_correction_source(wrong), right.strip()
         count = len(wrong.split())
         reason = 'empty-right' if not right else 'empty-wrong' if not vocabulary and not wrong else None
         if reason is None and not vocabulary:
@@ -398,7 +454,17 @@ class DictionaryStore:
         Called whenever corrections_dict is mutated (add/remove/clear/import/
         load) so apply_corrections() never sees a stale pattern.
         """
-        keys = [k for k in self.corrections_dict if k]
+        # UI/import callers can still mutate the map directly before rebuilding.
+        # Give those entries the same punctuation-preserving match semantics.
+        corrections = {}
+        seen = set()
+        for key in sorted(self.corrections_dict,
+                          key=lambda key: key != self.normalize_correction_source(key)):
+            bare = self.normalize_correction_source(key) or key
+            if bare and bare.casefold() not in seen:
+                corrections[bare] = self.corrections_dict[key]
+                seen.add(bare.casefold())
+        keys = list(corrections)
         if not keys:
             self._corrections_pattern = None
             self._corrections_lookup = {}
@@ -413,7 +479,7 @@ class DictionaryStore:
             # entered in different Unicode forms (e.g. a precomposed "é"
             # vs "e" + combining acute accent) land on the same dict entry
             # instead of silently missing each other.
-            lookup[unicodedata.normalize('NFC', key).lower()] = self.corrections_dict[key]
+            lookup[unicodedata.normalize('NFC', key).lower()] = corrections[key]
             # Each end's \b anchor is decided independently by the
             # character AT that end. CJK/Thai/etc have no whitespace word
             # boundaries -- a \b anchor between two \w characters with no

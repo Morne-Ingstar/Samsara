@@ -2661,13 +2661,17 @@ def _persist_vocab_word(app, vt, word: str) -> None:
 
 
 def _persist_correction(app, vt, wrong: str, right: str) -> None:
-    if vt.add_correction(wrong, right):
+    wrong = vt.normalize_correction_source(wrong)
+    duplicate = any(word.casefold() == right.casefold() for word in vt.custom_vocab)
+    if vt.add_correction(wrong, right, vocabulary=True):
         _teach_turn.outcome = 'saved'
         teach_patterns.record_last_action('correction', wrong=wrong, right=right)
         if hasattr(app, "play_sound"):
             app.play_sound("success")
-        speak(app, f"From now on I'll change '{wrong}' to '{right}'. "
-                   f"Say 'undo that' to cancel.")
+        from samsara.ui.dictionary_panel_qt import refresh_dictionary
+        refresh_dictionary(app)
+        added = f'{right} is already in your dictionary.' if duplicate else f'Added {right}.'
+        speak(app, f"{added} '{wrong}' will now come out as '{right}'.")
     else:
         _teach_turn.outcome = 'failed to save'
         speak(app, "Could not save that correction.")
