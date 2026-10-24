@@ -7,11 +7,20 @@ _focus_browser() runs first and aborts if no Chrome/Edge window exists.
 """
 
 import time
+import sys
+from types import ModuleType
 
-import pyautogui
 import pyperclip
-import win32con
-import win32gui
+
+_WINDOWS_AVAILABLE = sys.platform == "win32"
+_UNAVAILABLE_REASON = "Browser tab controls are unavailable on this platform."  # PLACEHOLDER COPY (850a)
+if _WINDOWS_AVAILABLE:
+    import pyautogui
+    import win32con
+    import win32gui
+else:
+    # Keep patchable names for Windows-side characterization tests.
+    pyautogui = win32con = win32gui = ModuleType("windows_only")
 
 from samsara.plugin_commands import command
 
@@ -38,6 +47,9 @@ def _focus_browser():
 
     Returns True if a browser was found and focused, False otherwise.
     """
+    if not _WINDOWS_AVAILABLE:
+        print(f"[TABS] {_UNAVAILABLE_REASON}")
+        return False
     target_hwnd = None
 
     def enum_callback(hwnd, _):
@@ -77,6 +89,9 @@ def find_tab(app, remainder):
 
     'find tab github', 'where is slack'.
     """
+    if not _WINDOWS_AVAILABLE:
+        print(f"[TABS] {_UNAVAILABLE_REASON}")
+        return False
     if not remainder:
         print("[TABS] Find which tab? Say a keyword.")
         return False
@@ -109,6 +124,9 @@ def find_tab(app, remainder):
 )
 def find_text(app, remainder):
     """Finds the browser tab that contains the words you say."""
+    if not _WINDOWS_AVAILABLE:
+        print(f"[TABS] {_UNAVAILABLE_REASON}")
+        return False
     query = _clean(remainder)
     if not query:
         return False
@@ -124,6 +142,9 @@ def find_text(app, remainder):
 )
 def tab_number(app, remainder):
     """Switches to the browser tab with the number you say."""
+    if not _WINDOWS_AVAILABLE:
+        print(f"[TABS] {_UNAVAILABLE_REASON}")
+        return False
     number = _browser_tab_number(remainder)
     if number is None:
         return False

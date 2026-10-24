@@ -164,7 +164,7 @@
       "plugin": "app_verbs",
       "precondition": "Firefox must be running. It may ask you to save your work.",
       "risk": "write",
-      "source": "plugins/commands/app_verbs.py:346",
+      "source": "plugins/commands/app_verbs.py:378",
       "undoable": false,
       "verb": "close",
       "whole_utterance": false
@@ -191,7 +191,7 @@
       "plugin": "app_verbs",
       "precondition": "Create desktop 2 in Windows Task View first.",
       "risk": "ui",
-      "source": "plugins/commands/app_verbs.py:474",
+      "source": "plugins/commands/app_verbs.py:525",
       "undoable": true,
       "verb": "desk",
       "whole_utterance": false
@@ -219,7 +219,7 @@
       "plugin": "app_verbs",
       "precondition": "Firefox must be running.",
       "risk": "ui",
-      "source": "plugins/commands/app_verbs.py:290",
+      "source": "plugins/commands/app_verbs.py:310",
       "undoable": true,
       "verb": "focus",
       "whole_utterance": false
@@ -247,7 +247,7 @@
       "plugin": "app_verbs",
       "precondition": "Thunderbird must be installed and known to Samsara.",
       "risk": "ui",
-      "source": "plugins/commands/app_verbs.py:322",
+      "source": "plugins/commands/app_verbs.py:348",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -9345,7 +9345,7 @@
       "plugin": "media_keys",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:171",
+      "source": "plugins/commands/media_keys.py:182",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -9366,7 +9366,7 @@
       "plugin": "media_keys",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:144",
+      "source": "plugins/commands/media_keys.py:155",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -9387,7 +9387,7 @@
       "plugin": "media_keys",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:153",
+      "source": "plugins/commands/media_keys.py:164",
       "undoable": true,
       "verb": "play",
       "whole_utterance": false
@@ -9408,7 +9408,7 @@
       "plugin": "media_keys",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:180",
+      "source": "plugins/commands/media_keys.py:191",
       "undoable": true,
       "verb": "previous",
       "whole_utterance": false
@@ -9428,7 +9428,7 @@
       "plugin": "media_keys",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/media_keys.py:162",
+      "source": "plugins/commands/media_keys.py:173",
       "undoable": true,
       "verb": "toggle",
       "whole_utterance": false
@@ -13089,7 +13089,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "plugins/commands/tab_finder.py:71",
+      "source": "plugins/commands/tab_finder.py:83",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -13127,7 +13127,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "plugins/commands/tab_finder.py:106",
+      "source": "plugins/commands/tab_finder.py:121",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -13165,7 +13165,7 @@
           "vivaldi.exe"
         ]
       },
-      "source": "plugins/commands/tab_finder.py:121",
+      "source": "plugins/commands/tab_finder.py:139",
       "undoable": true,
       "verb": "tab",
       "whole_utterance": false
@@ -20794,7 +20794,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Moves it to the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:686",
+      "source": "plugins/commands/windows.py:722",
       "undoable": true,
       "verb": "bring",
       "whole_utterance": false
@@ -20829,7 +20829,7 @@
       "plugin": "windows",
       "precondition": "Connect a second monitor first. Monitor numbers run from left to right.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1201",
+      "source": "plugins/commands/windows.py:1255",
       "undoable": true,
       "verb": "cursor",
       "whole_utterance": false
@@ -20858,7 +20858,7 @@
       "plugin": "windows",
       "precondition": "Save a layout named writing first. Confirmation may be required.",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:1116",
+      "source": "plugins/commands/windows.py:1162",
       "undoable": false,
       "verb": "delete",
       "whole_utterance": false
@@ -20879,7 +20879,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1135",
+      "source": "plugins/commands/windows.py:1183",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -20906,7 +20906,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Reports matching window positions in the log.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1170",
+      "source": "plugins/commands/windows.py:1222",
       "undoable": true,
       "verb": "find",
       "whole_utterance": false
@@ -20927,7 +20927,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1101",
+      "source": "plugins/commands/windows.py:1147",
       "undoable": true,
       "verb": "list",
       "whole_utterance": false
@@ -20949,7 +20949,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:812",
+      "source": "plugins/commands/windows.py:852",
       "undoable": true,
       "verb": "movie",
       "whole_utterance": false
@@ -20970,7 +20970,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1152",
+      "source": "plugins/commands/windows.py:1202",
       "undoable": true,
       "verb": "rescue",
       "whole_utterance": false
@@ -20999,7 +20999,7 @@
       "plugin": "windows",
       "precondition": "Save a layout named writing first and keep its apps open.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1086",
+      "source": "plugins/commands/windows.py:1130",
       "undoable": true,
       "verb": "restore",
       "whole_utterance": false
@@ -21028,7 +21028,7 @@
       "plugin": "windows",
       "precondition": "Arrange your windows first. Saves their positions as writing.",
       "risk": "write",
-      "source": "plugins/commands/windows.py:1071",
+      "source": "plugins/commands/windows.py:1113",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -21064,7 +21064,7 @@
       "plugin": "windows",
       "precondition": "Connect a second monitor first. Name a running app, or omit the app to move the focused window.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:765",
+      "source": "plugins/commands/windows.py:803",
       "undoable": true,
       "verb": "send",
       "whole_utterance": false
@@ -21097,7 +21097,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Places its window in the top-left quarter of its screen.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1343",
+      "source": "plugins/commands/windows.py:1403",
       "undoable": true,
       "verb": "snap",
       "whole_utterance": false

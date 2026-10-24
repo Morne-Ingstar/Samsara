@@ -33,18 +33,31 @@ before app_index resolution -- see do_open().
 import os
 import subprocess
 import time
-import winreg
+import sys
+from types import ModuleType
 from enum import Enum
 
 import psutil
-import win32con
-import win32gui
-import win32process
+_WINDOWS_AVAILABLE = sys.platform == "win32"
+_UNAVAILABLE_REASON = "Windows app and window controls are unavailable on this platform."  # PLACEHOLDER COPY (850a)
+
+if _WINDOWS_AVAILABLE:
+    import winreg
+    import win32con
+    import win32gui
+    import win32process
+else:
+    # Keep the Windows bindings as patchable module globals for existing tests.
+    winreg = win32con = win32gui = win32process = ModuleType("windows_only")
 
 from samsara.app_index import get_app_index, launch_app, log_top3, normalize_name, rank_candidates
 from samsara.plugin_commands import command
 
-from plugins.commands.window_switcher import _force_focus
+
+def _force_focus(hwnd: int) -> bool:
+    """Load the native window switcher only when a Windows focus is requested."""
+    from plugins.commands.window_switcher import _force_focus as force_focus
+    return force_focus(hwnd)
 
 
 # ---------------------------------------------------------------------------
@@ -233,12 +246,15 @@ class ActionResult(Enum):
     DONE = "done"
     NOT_RUNNING = "not_running"  # app_index found it, but no live window
     NOT_FOUND = "not_found"      # neither a window nor an installed app matched
+    UNAVAILABLE = "unavailable"
 
 
 def do_focus(name: str) -> "ActionResult":
     """Focus a live window only -- never launches. If the app is installed
     but not currently running, that's NOT_RUNNING, not NOT_FOUND (distinct
     feedback: "not running" vs "no such app")."""
+    if not _WINDOWS_AVAILABLE:
+        return ActionResult.UNAVAILABLE
     match = resolve_window(name)
     if match is not None:
         hwnd, _title, _proc = match
@@ -258,6 +274,8 @@ def do_open(name: str) -> "ActionResult":
     override's own window is already open (e.g. Brave-mode Netflix),
     saying "launch netflix" again focuses that existing window instead of
     launching a duplicate, same as any other app."""
+    if not _WINDOWS_AVAILABLE:
+        return ActionResult.UNAVAILABLE
     match = resolve_window(name)
     if match is not None:
         hwnd, _title, _proc = match
@@ -275,6 +293,8 @@ def do_open(name: str) -> "ActionResult":
 def do_close(name: str) -> "ActionResult":
     """Graceful WM_CLOSE to the resolved window's top-level hwnd -- the app
     may prompt to save; this never TerminateProcess()es."""
+    if not _WINDOWS_AVAILABLE:
+        return ActionResult.UNAVAILABLE
     match = resolve_window(name)
     if match is None:
         return ActionResult.NOT_FOUND
@@ -305,8 +325,14 @@ def handle_focus(app, remainder):
     name = (remainder or "").strip()
     if not name:
         return False
+    if not _WINDOWS_AVAILABLE:
+        _speak(app, _UNAVAILABLE_REASON)
+        return True
     result = do_focus(name)
     if result is ActionResult.DONE:
+        return True
+    if result is ActionResult.UNAVAILABLE:
+        _speak(app, _UNAVAILABLE_REASON)
         return True
     _miss_earcon(app)
     speakable = _name_for_speech(name)
@@ -334,8 +360,14 @@ def handle_open(app, remainder):
     name = (remainder or "").strip()
     if not name:
         return False
+    if not _WINDOWS_AVAILABLE:
+        _speak(app, _UNAVAILABLE_REASON)
+        return True
     result = do_open(name)
     if result is ActionResult.DONE:
+        return True
+    if result is ActionResult.UNAVAILABLE:
+        _speak(app, _UNAVAILABLE_REASON)
         return True
     _miss_earcon(app)
     speakable = _name_for_speech(name)
@@ -354,8 +386,14 @@ def handle_close(app, remainder):
     name = (remainder or "").strip()
     if not name:
         return False
+    if not _WINDOWS_AVAILABLE:
+        _speak(app, _UNAVAILABLE_REASON)
+        return True
     result = do_close(name)
     if result is ActionResult.DONE:
+        return True
+    if result is ActionResult.UNAVAILABLE:
+        _speak(app, _UNAVAILABLE_REASON)
         return True
     _miss_earcon(app)
     speakable = _name_for_speech(name)
@@ -365,6 +403,8 @@ def handle_close(app, remainder):
 
 def snap_named_window(app, remainder, *, windows_module):
     """Extend the existing snap handler; bind names before any window effect."""
+    if not _WINDOWS_AVAILABLE:
+        return _window_control_unavailable(app)
     w = windows_module
     text = " ".join((remainder or "").lower().replace("-", " ").split())
     directions = w._SNAP_DIRECTIONS | {'left third', 'full', 'next screen'}
@@ -422,8 +462,17 @@ def _window_control_failure(app):
                           {'reason': 'window_target_unavailable'})
 
 
+def _window_control_unavailable(app):
+    from samsara.command_registry import DispatchResult, DispatchState
+    _speak(app, _UNAVAILABLE_REASON)
+    return DispatchResult(DispatchState.FAILED, 'snap', 'snap',
+                          {'reason': _UNAVAILABLE_REASON})
+
+
 def _desktop_state():
     """Read Explorer's ordered IDs; never invent a current desktop number."""
+    if not _WINDOWS_AVAILABLE:
+        raise OSError(_UNAVAILABLE_REASON)
     import win32ts
     root = r"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops"
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, root) as key:
@@ -446,6 +495,8 @@ def _desktop_state():
 
 def _switch_desktop(number):
     """Use supported shortcuts, observing each transition before the next."""
+    if not _WINDOWS_AVAILABLE:
+        return False
     import pyautogui
     ordered, current = _desktop_state()
     if number < 1 or number > len(ordered):
@@ -478,6 +529,9 @@ def handle_desk(app, remainder):
     from samsara.spoken_numbers import parse_spoken_number
     from samsara.command_registry import DispatchResult, DispatchState
     text = (remainder or '').strip().lower()
+    if not _WINDOWS_AVAILABLE:
+        return DispatchResult(DispatchState.FAILED, 'desk', 'desk',
+                              {'reason': _UNAVAILABLE_REASON})
     number = parse_spoken_number(text)
     try:
         if number is not None and _switch_desktop(number):

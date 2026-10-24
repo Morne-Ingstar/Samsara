@@ -27,14 +27,22 @@ import logging
 import os
 import sys
 import time
+from types import ModuleType
 from datetime import datetime
 from pathlib import Path
 from samsara.log import describe_text
 import psutil
-import win32api
-import win32con
-import win32gui
-import win32process
+
+_WINDOWS_AVAILABLE = sys.platform == "win32"
+_UNAVAILABLE_REASON = "Window controls are unavailable on this platform."  # PLACEHOLDER COPY (850a)
+if _WINDOWS_AVAILABLE:
+    import win32api
+    import win32con
+    import win32gui
+    import win32process
+else:
+    # Module globals stay available for the existing monkeypatch-based tests.
+    win32api = win32con = win32gui = win32process = ModuleType("windows_only")
 
 from samsara.command_registry import DispatchResult, DispatchState
 from samsara.plugin_commands import command
@@ -79,13 +87,19 @@ APP_ALIASES = {
     'powershell': 'powershell.exe',
 }
 
-_MONITORENUMPROC = ctypes.WINFUNCTYPE(
+_MONITORENUMPROC = (ctypes.WINFUNCTYPE(
     ctypes.c_bool,
     ctypes.c_size_t,
     ctypes.c_size_t,
     ctypes.POINTER(ctypes.wintypes.RECT),
     ctypes.c_size_t,
-)
+) if _WINDOWS_AVAILABLE else None)
+
+
+def _unavailable_result(command_name):
+    print(f"[WINDOWS] {_UNAVAILABLE_REASON}")
+    return DispatchResult(DispatchState.FAILED, command_name, command_name,
+                          {'reason': _UNAVAILABLE_REASON})
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +107,8 @@ _MONITORENUMPROC = ctypes.WINFUNCTYPE(
 # ---------------------------------------------------------------------------
 
 def get_monitors():
+    if not _WINDOWS_AVAILABLE:
+        return []
     monitors = []
 
     def _cb(hmon, hdc, lprect, lparam):
@@ -179,6 +195,8 @@ def get_monitor_by_index(index, monitors=None):
 # ---------------------------------------------------------------------------
 
 def _is_cloaked(hwnd):
+    if not _WINDOWS_AVAILABLE:
+        return False
     try:
         val = ctypes.c_int(0)
         ctypes.windll.dwmapi.DwmGetWindowAttribute(
@@ -193,6 +211,8 @@ def _is_cloaked(hwnd):
 
 
 def is_valid_app_window(hwnd, extra_ignore=None):
+    if not _WINDOWS_AVAILABLE:
+        return False
     if not win32gui.IsWindowVisible(hwnd):
         return False
     if not win32gui.GetWindowText(hwnd):
@@ -222,6 +242,8 @@ def is_valid_app_window(hwnd, extra_ignore=None):
 # ---------------------------------------------------------------------------
 
 def find_windows_by_app(app_name, extra_ignore=None):
+    if not _WINDOWS_AVAILABLE:
+        return []
     name_lower = app_name.lower().strip()
     target_exe = APP_ALIASES.get(name_lower)
     results = []
@@ -252,6 +274,8 @@ def find_windows_by_app(app_name, extra_ignore=None):
 
 
 def get_all_movable_windows(extra_ignore=None):
+    if not _WINDOWS_AVAILABLE:
+        return []
     results = []
 
     def _cb(hwnd, _):
@@ -297,6 +321,8 @@ def raise_window(hwnd: int, *, activate: bool, preflight=None) -> bool:
     activating each window would thrash the desktop; successful completion of
     that non-activating sequence returns True.
     """
+    if not _WINDOWS_AVAILABLE:
+        return False
     try:
         user32 = ctypes.windll.user32
 
@@ -373,6 +399,8 @@ def raise_window(hwnd: int, *, activate: bool, preflight=None) -> bool:
 
 
 def move_window_to_monitor(hwnd, monitor, *, preflight=None):
+    if not _WINDOWS_AVAILABLE:
+        return False
     def ready():
         return preflight is None or preflight()
     try:
@@ -414,6 +442,8 @@ def move_window_to_monitor(hwnd, monitor, *, preflight=None):
 
 
 def maximize_window_on_monitor(hwnd, monitor):
+    if not _WINDOWS_AVAILABLE:
+        return False
     move_window_to_monitor(hwnd, monitor)
     win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
@@ -423,6 +453,8 @@ def maximize_window_on_monitor(hwnd, monitor):
 # ---------------------------------------------------------------------------
 
 def teleport_cursor(monitor):
+    if not _WINDOWS_AVAILABLE:
+        return False
     l, t, r, b = monitor['rect']
     cx, cy = (l + r) // 2, (t + b) // 2
     win32api.SetCursorPos((cx, cy))
@@ -613,6 +645,8 @@ def _parse_placements(remainder):
 def _strict_monitors():
     """Read-only policy snapshot; detect enumeration/monitor-info failures
     that the handler's best-effort monitor reader otherwise tolerates."""
+    if not _WINDOWS_AVAILABLE:
+        return []
     monitors = get_monitors()
     handles = {int(handle) for handle, _hdc, _rect in win32api.EnumDisplayMonitors()}
     if not handles or {int(m['handle']) for m in monitors} != handles:
@@ -622,6 +656,8 @@ def _strict_monitors():
 
 def _strict_cursor_monitor(monitors):
     """Read the cursor without the handler reader's exception fallback."""
+    if not _WINDOWS_AVAILABLE:
+        return None
     x, y = win32api.GetCursorPos()  # a failed read propagates to validation
     for monitor in monitors:
         l, t, r, b = monitor['rect']
@@ -687,6 +723,8 @@ register_arg_type('app_name', _validate_app_name)
          risk_class="ui", param_schema={"app_name": {"type": "app_name", "required": False}})
 def handle_bring(app, remainder):
     """Brings the app you name to the screen your pointer is on."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('bring')
     logger.info("bring: remainder='%s'", describe_text(remainder))
     extra_ignore = _get_extra_ignore(app)
     target = get_monitor_under_cursor()
@@ -771,6 +809,8 @@ def handle_send(app, remainder):
     FAILED with the detail naming it: partial completion is never called success
     and the first move is never undone.
     """
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('send')
     logger.info("send: remainder='%s'", describe_text(remainder))
     extra_ignore = _get_extra_ignore(app)
 
@@ -813,6 +853,8 @@ def handle_send(app, remainder):
          risk_class="ui")
 def handle_movie_mode(app, remainder):
     """Puts video on the TV screen and clears the other screens."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('movie mode')
     extra_ignore = _get_extra_ignore(app)
     tv = get_tv_monitor(app)
     if tv is None:
@@ -1075,6 +1117,8 @@ def _detect_lost_windows():
 )
 def handle_save_layout(app, remainder):
     """Saves where your windows are now, under the name you give it."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('save layout')
     name = _extract_layout_name(remainder)
     if not name:
         print("[LAYOUTS] No valid name provided")
@@ -1090,6 +1134,8 @@ def handle_save_layout(app, remainder):
 )
 def handle_restore_layout(app, remainder):
     """Puts your windows back the way a saved layout had them."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('restore layout')
     name = _extract_layout_name(remainder)
     if not name:
         print("[LAYOUTS] No valid name provided")
@@ -1120,6 +1166,8 @@ def handle_list_layouts(app, remainder):
 )
 def handle_delete_layout(app, remainder):
     """Deletes the saved window layout you name."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('delete layout')
     name = _extract_layout_name(remainder)
     if not name:
         print("[LAYOUTS] No valid name provided")
@@ -1139,6 +1187,8 @@ def handle_delete_layout(app, remainder):
 )
 def handle_find_lost_windows(app, remainder):
     """Reports any windows sitting off-screen where you cannot reach them."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('find lost windows')
     lost = _detect_lost_windows()
     if not lost:
         print("[LOST] No lost windows detected")
@@ -1156,6 +1206,8 @@ def handle_find_lost_windows(app, remainder):
 )
 def handle_rescue_lost(app, remainder):
     """Pulls windows that are off-screen back onto a screen you can see."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('rescue lost windows')
     lost = _detect_lost_windows()
     if not lost:
         print("[LOST] No lost windows to rescue")
@@ -1173,6 +1225,8 @@ def handle_rescue_lost(app, remainder):
 )
 def handle_find_specific(app, remainder):
     """Finds the window for the app you name and brings it to the front."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('find window')
     if not remainder or not remainder.strip():
         print("[FIND] No app specified")
         return True
@@ -1212,6 +1266,8 @@ def handle_find_specific(app, remainder):
 )
 def handle_cursor(app, remainder):
     """Moves the mouse pointer to the screen or place you name."""
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('cursor to')
     logger.info("cursor: remainder='%s'", describe_text(remainder))
     monitors = get_monitors()
     target = _parse_destination(remainder, app, monitors)
@@ -1251,6 +1307,8 @@ _SNAP_DIRECTIONS = frozenset({
 
 def _get_monitor_for_window(hwnd, monitors=None):
     """Return the monitor whose work area contains the center of hwnd."""
+    if not _WINDOWS_AVAILABLE:
+        return None
     if monitors is None:
         monitors = get_monitors()
     try:
@@ -1296,6 +1354,8 @@ def _snap_rect(monitor, direction):
 
 def snap_window(hwnd, direction, *, preflight=None, target_monitor=None) -> bool:
     """Snap an exact HWND; a bound caller rechecks identity at each substep."""
+    if not _WINDOWS_AVAILABLE:
+        return False
     if direction not in _SNAP_DIRECTIONS and direction not in {'left third', 'full'}:
         return False
     ready = lambda: preflight is None or preflight()
@@ -1347,5 +1407,7 @@ def handle_snap(app, remainder):
 
     Legacy foreground snap delegates to the exact-HWND helper.
     """
+    if not _WINDOWS_AVAILABLE:
+        return _unavailable_result('snap')
     from plugins.commands.app_verbs import snap_named_window
     return snap_named_window(app, remainder, windows_module=sys.modules[__name__])

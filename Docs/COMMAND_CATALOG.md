@@ -21,10 +21,10 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `app_verbs.close` | `close` | app_name:app_name | `close firefox` | Firefox must be running. It may ask you to save your work. | write | no |  | Closes the app you name, asking it to save first. | `plugins/commands/app_verbs.py:346` |
-| `app_verbs.desk` | `desk` | number:int | `desk two` | Create desktop 2 in Windows Task View first. | ui | yes |  | Switches to an existing virtual desktop by its Task View number. | `plugins/commands/app_verbs.py:474` |
-| `app_verbs.focus` | `focus`, `switch to` | app_name:app_name | `focus firefox` | Firefox must be running. | ui | yes |  | Brings the app you name to the front, such as focus firefox. | `plugins/commands/app_verbs.py:290` |
-| `app_verbs.open` | `open`, `start` | app_name:app_name | `open thunderbird` | Thunderbird must be installed and known to Samsara. | ui | yes |  | Opens the app you name, or brings it to the front if it is already running. | `plugins/commands/app_verbs.py:322` |
+| `app_verbs.close` | `close` | app_name:app_name | `close firefox` | Firefox must be running. It may ask you to save your work. | write | no |  | Closes the app you name, asking it to save first. | `plugins/commands/app_verbs.py:378` |
+| `app_verbs.desk` | `desk` | number:int | `desk two` | Create desktop 2 in Windows Task View first. | ui | yes |  | Switches to an existing virtual desktop by its Task View number. | `plugins/commands/app_verbs.py:525` |
+| `app_verbs.focus` | `focus`, `switch to` | app_name:app_name | `focus firefox` | Firefox must be running. | ui | yes |  | Brings the app you name to the front, such as focus firefox. | `plugins/commands/app_verbs.py:310` |
+| `app_verbs.open` | `open`, `start` | app_name:app_name | `open thunderbird` | Thunderbird must be installed and known to Samsara. | ui | yes |  | Opens the app you name, or brings it to the front if it is already running. | `plugins/commands/app_verbs.py:348` |
 
 ## ask_agent (5)
 
@@ -543,11 +543,11 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `media_keys.next_track_this` | `next this`, `next track this`, `skip this` | - | - | - | ui | yes |  | Skips to the next track in whatever is playing. | `plugins/commands/media_keys.py:171` |
-| `media_keys.pause_this` | `pause active`, `pause focused`, `pause this` | - | - | - | ui | yes |  | Pauses whatever is playing, using the keyboard's media keys. | `plugins/commands/media_keys.py:144` |
-| `media_keys.play_this` | `play focused`, `play this`, `resume this` | - | - | - | ui | yes |  | Resumes whatever was playing, using the keyboard's media keys. | `plugins/commands/media_keys.py:153` |
-| `media_keys.previous_track_this` | `back this`, `previous this`, `previous track this` | - | - | - | ui | yes |  | Goes back to the previous track in whatever is playing. | `plugins/commands/media_keys.py:180` |
-| `media_keys.toggle_this` | `toggle focused`, `toggle this` | - | - | - | ui | yes |  | Plays or pauses whatever is playing, whichever it is not doing now. | `plugins/commands/media_keys.py:162` |
+| `media_keys.next_track_this` | `next this`, `next track this`, `skip this` | - | - | - | ui | yes |  | Skips to the next track in whatever is playing. | `plugins/commands/media_keys.py:182` |
+| `media_keys.pause_this` | `pause active`, `pause focused`, `pause this` | - | - | - | ui | yes |  | Pauses whatever is playing, using the keyboard's media keys. | `plugins/commands/media_keys.py:155` |
+| `media_keys.play_this` | `play focused`, `play this`, `resume this` | - | - | - | ui | yes |  | Resumes whatever was playing, using the keyboard's media keys. | `plugins/commands/media_keys.py:164` |
+| `media_keys.previous_track_this` | `back this`, `previous this`, `previous track this` | - | - | - | ui | yes |  | Goes back to the previous track in whatever is playing. | `plugins/commands/media_keys.py:191` |
+| `media_keys.toggle_this` | `toggle focused`, `toggle this` | - | - | - | ui | yes |  | Plays or pauses whatever is playing, whichever it is not doing now. | `plugins/commands/media_keys.py:173` |
 
 ## message_chatgpt (3)
 
@@ -754,9 +754,9 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `tab_finder.find_tab` | `find my`, `find tab`, `find the tab`, `switch to tab`, `where is` | query:text | `find tab github` | Open a supported browser with a tab whose title contains github. | ui | yes |  | Finds the browser tab matching what you say and switches to it. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:71` |
-| `tab_finder.find_text` | `find`, `find text` | remainder:text* | `find text installation` | Focus the page or document to search. Opens its Find box and types installation. | ui | yes |  | Opens Find in the focused page or document and enters your search words. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:106` |
-| `tab_finder.tab_number` | `tab`, `tab number` | remainder:text* | `tab number two` | Focus a browser with at least two tabs. Numbers 1 through 9 are supported; 9 selects the last tab. | ui | yes |  | Switches to the browser tab with the number you say. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:121` |
+| `tab_finder.find_tab` | `find my`, `find tab`, `find the tab`, `switch to tab`, `where is` | query:text | `find tab github` | Open a supported browser with a tab whose title contains github. | ui | yes |  | Finds the browser tab matching what you say and switches to it. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:83` |
+| `tab_finder.find_text` | `find`, `find text` | remainder:text* | `find text installation` | Focus the page or document to search. Opens its Find box and types installation. | ui | yes |  | Opens Find in the focused page or document and enters your search words. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:121` |
+| `tab_finder.tab_number` | `tab`, `tab number` | remainder:text* | `tab number two` | Focus a browser with at least two tabs. Numbers 1 through 9 are supported; 9 selects the last tab. | ui | yes |  | Switches to the browser tab with the number you say. *(Live only in brave.exe, chrome.exe, firefox.exe, msedge.exe, opera.exe, vivaldi.exe.)* | `plugins/commands/tab_finder.py:139` |
 
 ## tasks (9)
 
@@ -1071,18 +1071,18 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `windows.bring` | `bring`, `bring back`, `fetch`, `get`, `grab` | app_name:app_name | `bring firefox here` | Firefox must be running. Moves it to the screen containing your pointer. | ui | yes |  | Brings the app you name to the screen your pointer is on. | `plugins/commands/windows.py:686` |
-| `windows.cursor_to` | `cursor to`, `mouse to`, `move cursor to`, `move mouse to`, `move the cursor to`, `move the mouse to`, `pointer to`, `teleport cursor to`, `teleport mouse to` | monitor:monitor | `cursor to monitor two` | Connect a second monitor first. Monitor numbers run from left to right. | ui | yes |  | Moves the mouse pointer to the screen or place you name. | `plugins/commands/windows.py:1201` |
-| `windows.delete_layout` | `delete layout`, `forget layout`, `remove layout` | name:text | `delete layout writing` | Save a layout named writing first. Confirmation may be required. | destructive | no |  | Deletes the saved window layout you name. | `plugins/commands/windows.py:1116` |
-| `windows.find_lost_windows` | `find lost windows`, `lost windows`, `where are my windows` | - | - | - | read | yes |  | Reports any windows sitting off-screen where you cannot reach them. | `plugins/commands/windows.py:1135` |
-| `windows.find_window` | `find window` | app_name:app_name | `find window firefox` | Firefox must be running. Reports matching window positions in the log. | ui | yes |  | Reports where matching app windows are positioned. | `plugins/commands/windows.py:1170` |
-| `windows.list_layouts` | `list layouts`, `show layouts`, `what layouts` | - | - | - | read | yes |  | Reads out the window layouts you have saved. | `plugins/commands/windows.py:1101` |
-| `windows.movie_mode` | `couch mode`, `movie mode`, `movie time`, `tv mode` | - | - | - | ui | yes |  | Puts video on the TV screen and clears the other screens. | `plugins/commands/windows.py:812` |
-| `windows.rescue_lost_windows` | `bring back lost windows`, `recover windows`, `rescue lost windows` | - | - | - | ui | yes |  | Pulls windows that are off-screen back onto a screen you can see. | `plugins/commands/windows.py:1152` |
-| `windows.restore_layout` | `load layout`, `restore layout`, `restore window layout` | name:text | `restore layout writing` | Save a layout named writing first and keep its apps open. | ui | yes |  | Puts your windows back the way a saved layout had them. | `plugins/commands/windows.py:1086` |
-| `windows.save_layout` | `save layout`, `save this layout`, `save window layout` | name:text | `save layout writing` | Arrange your windows first. Saves their positions as writing. | write | no |  | Saves where your windows are now, under the name you give it. | `plugins/commands/windows.py:1071` |
-| `windows.send` | `move`, `put`, `send`, `throw` | app_name:app_name, monitor:monitor* | `send firefox to monitor two`<br>`send to monitor two` | Connect a second monitor first. Name a running app, or omit the app to move the focused window. | ui | yes |  | Moves the app you name to the screen you name, such as the left one. | `plugins/commands/windows.py:765` |
-| `windows.snap` | `dock`, `snap` | side:text, app_name:app_name | `snap firefox top left` | Firefox must be running. Places its window in the top-left quarter of its screen. | ui | yes |  | Snaps the focused window to the side you name, such as left or right. | `plugins/commands/windows.py:1343` |
+| `windows.bring` | `bring`, `bring back`, `fetch`, `get`, `grab` | app_name:app_name | `bring firefox here` | Firefox must be running. Moves it to the screen containing your pointer. | ui | yes |  | Brings the app you name to the screen your pointer is on. | `plugins/commands/windows.py:722` |
+| `windows.cursor_to` | `cursor to`, `mouse to`, `move cursor to`, `move mouse to`, `move the cursor to`, `move the mouse to`, `pointer to`, `teleport cursor to`, `teleport mouse to` | monitor:monitor | `cursor to monitor two` | Connect a second monitor first. Monitor numbers run from left to right. | ui | yes |  | Moves the mouse pointer to the screen or place you name. | `plugins/commands/windows.py:1255` |
+| `windows.delete_layout` | `delete layout`, `forget layout`, `remove layout` | name:text | `delete layout writing` | Save a layout named writing first. Confirmation may be required. | destructive | no |  | Deletes the saved window layout you name. | `plugins/commands/windows.py:1162` |
+| `windows.find_lost_windows` | `find lost windows`, `lost windows`, `where are my windows` | - | - | - | read | yes |  | Reports any windows sitting off-screen where you cannot reach them. | `plugins/commands/windows.py:1183` |
+| `windows.find_window` | `find window` | app_name:app_name | `find window firefox` | Firefox must be running. Reports matching window positions in the log. | ui | yes |  | Reports where matching app windows are positioned. | `plugins/commands/windows.py:1222` |
+| `windows.list_layouts` | `list layouts`, `show layouts`, `what layouts` | - | - | - | read | yes |  | Reads out the window layouts you have saved. | `plugins/commands/windows.py:1147` |
+| `windows.movie_mode` | `couch mode`, `movie mode`, `movie time`, `tv mode` | - | - | - | ui | yes |  | Puts video on the TV screen and clears the other screens. | `plugins/commands/windows.py:852` |
+| `windows.rescue_lost_windows` | `bring back lost windows`, `recover windows`, `rescue lost windows` | - | - | - | ui | yes |  | Pulls windows that are off-screen back onto a screen you can see. | `plugins/commands/windows.py:1202` |
+| `windows.restore_layout` | `load layout`, `restore layout`, `restore window layout` | name:text | `restore layout writing` | Save a layout named writing first and keep its apps open. | ui | yes |  | Puts your windows back the way a saved layout had them. | `plugins/commands/windows.py:1130` |
+| `windows.save_layout` | `save layout`, `save this layout`, `save window layout` | name:text | `save layout writing` | Arrange your windows first. Saves their positions as writing. | write | no |  | Saves where your windows are now, under the name you give it. | `plugins/commands/windows.py:1113` |
+| `windows.send` | `move`, `put`, `send`, `throw` | app_name:app_name, monitor:monitor* | `send firefox to monitor two`<br>`send to monitor two` | Connect a second monitor first. Name a running app, or omit the app to move the focused window. | ui | yes |  | Moves the app you name to the screen you name, such as the left one. | `plugins/commands/windows.py:803` |
+| `windows.snap` | `dock`, `snap` | side:text, app_name:app_name | `snap firefox top left` | Firefox must be running. Places its window in the top-left quarter of its screen. | ui | yes |  | Snaps the focused window to the side you name, such as left or right. | `plugins/commands/windows.py:1403` |
 
 ## word (24)
 

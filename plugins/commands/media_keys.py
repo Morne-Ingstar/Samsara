@@ -15,10 +15,19 @@ Commands:
 
 import asyncio
 import logging
+import sys
+from types import ModuleType
 
 import psutil
-import win32gui
-import win32process
+
+_WINDOWS_AVAILABLE = sys.platform == "win32"
+_UNAVAILABLE_REASON = "Media controls are unavailable on this platform."  # PLACEHOLDER COPY (850a)
+if _WINDOWS_AVAILABLE:
+    import win32gui
+    import win32process
+else:
+    # Existing tests patch these module-level bindings directly.
+    win32gui = win32process = ModuleType("windows_only")
 
 from samsara.plugin_commands import command
 from samsara.command_registry import DispatchResult, DispatchState
@@ -100,6 +109,8 @@ async def _send_action(action_name):
 
     Returns (ok: bool, message: str).
     """
+    if not _WINDOWS_AVAILABLE:
+        return False, _UNAVAILABLE_REASON
     proc = _get_foreground_process_name()
     if not proc:
         return False, "no foreground app"
