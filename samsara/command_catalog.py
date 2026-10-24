@@ -427,11 +427,10 @@ _SCHEMA_TYPE = {"int": "int", "integer": "int", "float": "int", "str": "text", "
 _COMMAND_HELP = {
     "add word": (["add the word Siobhan to my vocabulary spelled S I O B H A N",
                   "learn the word Siobhan spelled S-I-O-B-H-A-N",
-                  "add the selected word to my vocabulary",
                   "correct that to Siobhan spelled S I O B H A N"],
                  "Works with Ava off. Spell unfamiliar words, then say yes or no after the readback."),
-    "spell word": (["spell word Mike Oscar Romeo November Echo",
-                    "add word spelled S I O B H A N"], "Say yes after the spelling readback to save."),
+    "spell word": (["spell word Sierra India Oscar Bravo Hotel Alpha November",
+                    "spell word S I O B H A N"], "Say yes after the spelling readback to save."),
     "add that to the dictionary": (["add that to the dictionary"],
                                    "Dictate up to four words first. Edit the prefilled word, then say add or press Add."),
     "disable alarm": (["disable alarm morning"], "Create an alarm named morning first."),

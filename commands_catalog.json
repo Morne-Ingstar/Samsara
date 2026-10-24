@@ -7049,7 +7049,7 @@
         }
       ],
       "canonical_id": "dictionary.add_that_to_the_dictionary",
-      "description": "Open Dictionary with the last delivered dictation filled in; edit it, then say add.",
+      "description": "Opens Dictionary with the last delivered dictation filled in; edit it, then say add.",
       "examples": [
         "add that to the dictionary"
       ],
@@ -7080,11 +7080,10 @@
         }
       ],
       "canonical_id": "dictionary.add_word",
-      "description": "Teach a Dictionary word; spell unfamiliar names and answer yes to the readback.",
+      "description": "Teaches a Dictionary word; spell unfamiliar names and answer yes to the readback.",
       "examples": [
         "add the word Siobhan to my vocabulary spelled S I O B H A N",
         "learn the word Siobhan spelled S-I-O-B-H-A-N",
-        "add the selected word to my vocabulary",
         "correct that to Siobhan spelled S I O B H A N"
       ],
       "kind": "plugin",
@@ -7110,10 +7109,10 @@
         }
       ],
       "canonical_id": "dictionary.spell_word",
-      "description": "Spell a Dictionary word with letter names or NATO words, then say yes.",
+      "description": "Spells a Dictionary word with letter names or NATO words, then say yes.",
       "examples": [
-        "spell word Mike Oscar Romeo November Echo",
-        "add word spelled S I O B H A N"
+        "spell word Sierra India Oscar Bravo Hotel Alpha November",
+        "spell word S I O B H A N"
       ],
       "kind": "plugin",
       "object": "word",

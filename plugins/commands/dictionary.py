@@ -6,7 +6,7 @@ from samsara.plugin_commands import command
          pack='core', risk_class='safe', ai_visible=False,
          side_effects=['file', 'ui', 'audio'], reversible=True)
 def add_word(app, remainder='', **kwargs):
-    """Teach a Dictionary word; spell unfamiliar names and answer yes to the readback."""
+    """Teaches a Dictionary word; spell unfamiliar names and answer yes to the readback."""
     from samsara import teach_patterns
     from plugins.commands.ask_ollama import _check_teaching_intent
     if (getattr(app, '_dictionary_add_focused', False) is True
@@ -20,7 +20,7 @@ def add_word(app, remainder='', **kwargs):
 @command('spell word', pack='core', risk_class='safe', ai_visible=False,
          side_effects=['file', 'ui', 'audio'], reversible=True)
 def spell_word(app, remainder='', **kwargs):
-    """Spell a Dictionary word with letter names or NATO words, then say yes."""
+    """Spells a Dictionary word with letter names or NATO words, then say yes."""
     from plugins.commands.ask_ollama import _check_teaching_intent
     text = remainder if remainder.lower().startswith('spell word') else 'spell word ' + remainder
     return _check_teaching_intent(app, text)
@@ -29,6 +29,6 @@ def spell_word(app, remainder='', **kwargs):
 @command('add that to the dictionary', pack='core', risk_class='safe', ai_visible=False,
          side_effects=['ui'], reversible=True)
 def add_that(app, remainder='', **kwargs):
-    """Open Dictionary with the last delivered dictation filled in; edit it, then say add."""
+    """Opens Dictionary with the last delivered dictation filled in; edit it, then say add."""
     from plugins.commands.ask_ollama import _check_teaching_intent
     return _check_teaching_intent(app, 'add that to the dictionary')

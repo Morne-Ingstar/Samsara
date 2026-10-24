@@ -347,6 +347,10 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
         monkeypatch.setattr(module.win32gui, 'IsIconic', lambda _h: False)
         from plugins.commands import app_verbs
         monkeypatch.setattr(app_verbs, 'snap_named_window', effect('snap_window'))
+    elif stem == 'dictionary':
+        from plugins.commands import ask_ollama as _ava
+        monkeypatch.setattr(_ava, '_check_teaching_intent', effect('dictionary_teach'))
+        monkeypatch.setattr(module, '_check_teaching_intent', effect('dictionary_teach'), raising=False)
     elif stem == 'word':
         selection = NS(Font=NS(Name=None, Size=None), ParagraphFormat=NS(LineSpacingRule=None),
                        Application=NS(FontNames=['Arial']))
