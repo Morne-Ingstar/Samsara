@@ -3479,12 +3479,12 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     def add_to_history(self, text, is_command=False):
         """Add a transcription to history"""
         from datetime import datetime
+        from samsara.recent_privacy import legacy_text
+        text = legacy_text(self, text, is_command)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.history.append((timestamp, text, is_command))
-        # Keep only last N items
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history:]
-        # Save to file
         self.save_history()
 
     def _get_foreground_app(self):
@@ -3514,7 +3514,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         if self.history_db is None:
             return
         try:
-            self.history_db.add(
+            from samsara.recent_privacy import write_history
+            write_history(self,
                 raw_text=raw_text,
                 display_text=display_text if display_text is not None else raw_text,
                 app_context=app_context if app_context is not None else self._get_foreground_app(),
@@ -3527,7 +3528,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             )
         except Exception as e:
             safe_exception(logger, f"[HISTORY] log failed: {describe_text(e)}")
-
     def _notify_main_window(self, text):
         """Direct callback into the hub window (no event bus).
 

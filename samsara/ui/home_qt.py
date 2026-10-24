@@ -1775,6 +1775,12 @@ class HomePage(QWidget):
         col.addWidget(self._build_notice())
         col.addWidget(self._build_hint())
         col.addWidget(self._build_destinations())
+        from samsara.ui.home_recent_qt import RecentActivity
+        self._recent = RecentActivity(self._app, self._open_page,
+                                      lambda: talk_instructions(self._app)[0], self._content)
+        col.addWidget(self._recent)
+        self._recent_fit_pending = False
+        self._content.installEventFilter(self)
         # Queue 95: the stretch sits ABOVE the identity strip, not below it.
         # 89 put it below, which top-aligned the whole column and left ~180 px
         # of dead window under the stats. The stats belong on the floor, where
@@ -1792,6 +1798,7 @@ class HomePage(QWidget):
                  self._hint_action_btn, self._hint_details_btn,
                  self._hint_next_btn, self._hint_hide_btn,
                  *(w for c in self._cards for w in (c, *c.findChildren(QPushButton))), *self._guide_btns.values(),
+                 *(slot[3] for slot in self._recent._slots),
                  *(self._links[name] for name, _url in
                    (*IDENTITY_LINKS, (KOFI_LINK, KOFI_URL)))]
         for a, b in zip(chain, chain[1:]):
@@ -2192,6 +2199,8 @@ class HomePage(QWidget):
         # words today is a live figure; words remaining is the fixed
         # infinity glyph and never changes.
         self._words_val.setText(format_count(words_today(self._app)))
+        self._recent.refresh()
+        self._queue_recent_fit()
 
     def _refresh_notice(self):
         notice = home_signals.problem_notice(self._app)
@@ -2393,6 +2402,25 @@ class HomePage(QWidget):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._relayout()
+        self._queue_recent_fit()
+
+    def _queue_recent_fit(self):
+        if not hasattr(self, '_recent') or self._recent_fit_pending:
+            return
+        self._recent_fit_pending = True
+        QTimer.singleShot(0, self, self._fit_recent)
+
+    def _fit_recent(self):
+        self._recent_fit_pending = False
+        col = self._content.layout()
+        col.activate()
+        # Recover the budget without hiding/re-showing the strip (no flicker).
+        stretch = next(col.itemAt(i) for i in range(col.count())
+                       if col.itemAt(i).spacerItem() is not None)
+        free = stretch.geometry().height()
+        if not self._recent.isHidden():
+            free += self._recent.height() + col.spacing()
+        self._recent.fit(free)
 
     def eventFilter(self, obj, event):
         # The page's own resizeEvent fires BEFORE the scroll area has given
@@ -2402,6 +2430,11 @@ class HomePage(QWidget):
         # The viewport's own resize is the event that knows the real width.
         if obj is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
             self._relayout()
+            self._queue_recent_fit()
+        if obj is getattr(self, '_content', None) and event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.Resize):
+            self._queue_recent_fit()
+        if obj is self.window() and event.type() == QEvent.Type.WindowActivate:
+            self.refresh()
         return super().eventFilter(obj, event)
 
     def destinations(self) -> dict:

@@ -61,17 +61,15 @@ ADVANCED = [
         "floatingWindowActions",
         ""
     ],
+    # PLACEHOLDER COPY (826b)
+    ["Show recent words on Home", "When off, Home shows outcomes only.",
+     "home_recent_words", "home.show_recent_words"],
+    # 826b: group related preview controls to retain the five-row Advanced budget.
     [
-        "Preview fades after",
-        "Delay before the idle dictation preview fades.",
-        "cmd_preview_idle_delay",
-        "command_mode.preview_idle_delay_s"
-    ],
-    [
-        "Faded preview visibility",
-        "Choose how visible the idle preview stays.",
-        "cmd_preview_idle_opacity",
-        "command_mode.preview_idle_opacity"
+        "Idle preview",
+        "Delay before fading, then how visible the idle preview stays.",
+        "cmd_preview_idle_delay,cmd_preview_idle_opacity",
+        "command_mode.preview_idle_delay_s,command_mode.preview_idle_opacity"
     ]
 ]
 

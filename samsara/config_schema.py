@@ -64,6 +64,9 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "home.show_recent_words": {
+        "type": "bool", "default": True, "tab": "general",
+    },
     "ava.reply_window_seconds": {
         "type": "float", "min": 2, "max": 30, "default": 10, "tab": "general", "settings_ui": False,
         "ui_less_reason": "Reply window after question speech ends, allowing reaction, capture and decoding; config only.",

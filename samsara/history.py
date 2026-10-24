@@ -62,6 +62,8 @@ class HistoryManager:
             ("entry_type",       "TEXT DEFAULT 'dictation'"),
             ("log_prob",         "REAL DEFAULT NULL"),
             ("matched_command",  "TEXT DEFAULT NULL"),
+            ("privacy_reason",   "TEXT DEFAULT ''"),
+            ("target_app",       "TEXT DEFAULT ''"),
         ]
         with self._lock:
             existing = {
@@ -77,30 +79,48 @@ class HistoryManager:
     def add(self, raw_text, display_text="", app_context="",
             duration_ms=0, mode="hold", status="success",
             audio_path=None, entry_type="dictation",
-            log_prob=None, matched_command=None):
+            log_prob=None, matched_command=None, privacy_reason="", target_app=""):
         """Add a transcription to history. Returns the row id."""
         if not display_text:
             display_text = raw_text
+        if privacy_reason:
+            raw_text = display_text = app_context = ""
+            audio_path = matched_command = None
         timestamp = datetime.now().isoformat()
         with self._lock:
             cursor = self._conn.execute("""
                 INSERT INTO history
                     (timestamp, app_context, raw_text, display_text,
                      duration_ms, mode, status, audio_path,
-                     session_id, entry_type, log_prob, matched_command)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     session_id, entry_type, log_prob, matched_command, privacy_reason, target_app)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (timestamp, app_context, raw_text, display_text,
                   duration_ms, mode, status, audio_path,
-                  self.session_id, entry_type, log_prob, matched_command))
+                  self.session_id, entry_type, log_prob, matched_command, privacy_reason, target_app))
             self._conn.commit()
             return cursor.lastrowid
+
+    def conceal_delivery(self, text, reason, target_app=""):
+        """Conceal any matching pre-delivery record before protected injection."""
+        with self._lock:
+            ids = tuple(row[0] for row in self._conn.execute(
+                "SELECT id FROM history WHERE entry_type='dictation' AND TRIM(display_text)=?",
+                (text.strip(),)))
+            self._conn.execute("""
+                UPDATE history SET raw_text='', display_text='', app_context='',
+                    audio_path=NULL, matched_command=NULL, correction_source=NULL,
+                    privacy_reason=?, target_app=?
+                WHERE entry_type='dictation' AND TRIM(display_text)=?
+            """, (reason, target_app, text.strip()))
+            self._conn.commit()
+            return ids
 
     def update_status(self, row_id, status, display_text=None):
         """Update status (e.g., transcribing -> success or failed)."""
         with self._lock:
             if display_text:
                 self._conn.execute(
-                    "UPDATE history SET status=?, display_text=? WHERE id=?",
+                    "UPDATE history SET status=?, display_text=CASE WHEN privacy_reason='' THEN ? ELSE '' END WHERE id=?",
                     (status, display_text, row_id))
             else:
                 self._conn.execute(

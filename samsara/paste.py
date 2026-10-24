@@ -268,6 +268,9 @@ def paste_preserving_clipboard(
             )
             return _result(False, False)
         typed_hwnd = get_foreground_hwnd_fn()
+        from samsara.recent_privacy import before_delivery
+        if not before_delivery(app, text):
+            return _result(False, False)
         app._unit_before = _editor_snapshot()
         if type_text_unicode_fn(text):
             app._record_undoable_paste(text, target_hwnd=typed_hwnd)
@@ -310,6 +313,9 @@ def paste_preserving_clipboard(
         if not clipboard_only:
             paste_target['proof'] = delivery_verify.snapshot()
         if before_paste is not None and not before_paste():
+            return False
+        from samsara.recent_privacy import before_delivery
+        if not before_delivery(app, text):
             return False
         paste_target['hwnd'] = get_foreground_hwnd_fn()
         app._unit_before = _editor_snapshot()

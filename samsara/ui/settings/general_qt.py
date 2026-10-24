@@ -207,6 +207,15 @@ class GeneralPage:
         )
 
         # ---- Card: Audio -------------------------------------------------
+        # PLACEHOLDER COPY (826b): preference affects Home, not History retention.
+        from samsara.recent_privacy import show_recent_words
+        recent_words = QCheckBox()
+        recent_words.setChecked(show_recent_words(self.app.config))
+        recent_words.setAccessibleName("Show recent words on Home")
+        self._widgets['home_recent_words'] = recent_words
+        _add_row(accessibility_layout, "Show recent words on Home",
+                 "When off, Home shows outcomes only.", recent_words)
+
         audio_card, audio_layout = self._section_card(
             "Audio",
             "Select input/output devices and quick setup actions.",
@@ -655,6 +664,8 @@ class GeneralPage:
             if not isinstance(stored_access, dict):
                 stored_access = {}
             updates = {
+                'home': {**(self.app.config.get('home') or {}),
+                         'show_recent_words': self._widgets['home_recent_words'].isChecked()},
                 'ui_scale':          UI_SCALE_OPTIONS[self._widgets['ui_scale_combo'].currentText()],
                 'ui':                {**(self.app.config.get('ui') or {}),
                                       'theme': self._widgets['theme_combo'].currentData()},
