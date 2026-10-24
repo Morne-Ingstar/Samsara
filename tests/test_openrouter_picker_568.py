@@ -64,7 +64,8 @@ def test_invalid_envelopes_are_rejected(payload):
 
 
 def test_filters_search_name_id_free_suffix_zero_price_and_both_capabilities():
-    rows = catalog.parse_models({"data": [model(), model("example/free:free"), model("example/zero", pricing={"prompt": "0.0", "completion": "0"}),
+    # 816: the :free label alone does not override nonzero prices.
+    rows = catalog.parse_models({"data": [model(), model("example/free:free", pricing={"prompt": "0", "completion": "0"}), model("example/zero", pricing={"prompt": "0.0", "completion": "0"}),
         model("tools-only", supported_parameters=["tools"]), model("json-only", supported_parameters=["structured_outputs"])]})
     assert catalog.matches(rows[0], "EXAMPLE MODEL") and catalog.matches(rows[0], "example/paid")
     assert not catalog.matches(rows[0], free_only=True)
@@ -177,7 +178,8 @@ def ids(picker):
 
 def test_custom_auto_filters_accessibility_and_keyboard_choice(picker):
     picker.receive(catalog.Catalogue(catalog.parse_models({"data": [model(), model("example/free:free")]})))
-    assert ids(picker) == ["openrouter/auto", "custom/kept", "example/paid", "example/free:free"]
+    # 816: model rows sort by display name, case-insensitively (id breaks ties).
+    assert ids(picker) == ["openrouter/auto", "custom/kept", "example/free:free", "example/paid"]
     picker.search.setText("no match")
     picker.free.setChecked(True)
     picker.capabilities.setChecked(True)
@@ -331,4 +333,5 @@ def test_free_filter_includes_prices_displayed_as_zero(picker):
     picker.receive(catalog.Catalogue(rows))
     assert "in $0 · out $0" in picker.row_text(rows[0])
     picker.free.setChecked(True)
-    assert ids(picker) == ["openrouter/auto", "custom/kept", "tiny/free"]
+    # 816: a nonzero price remains paid even when its display rounds to zero.
+    assert ids(picker) == ["openrouter/auto", "custom/kept"]

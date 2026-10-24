@@ -16,6 +16,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
+from decimal import Decimal
 
 from PySide6.QtCore import QEvent, QUrl, Qt, QTimer, Signal
 from PySide6.QtGui import QDesktopServices
@@ -213,7 +214,7 @@ class AvaGuideQt:
 # ---------------------------------------------------------------------------
 
 
-from PySide6.QtWidgets import QCheckBox, QLineEdit, QGridLayout, QSpinBox, QDoubleSpinBox
+from PySide6.QtWidgets import QCheckBox, QLineEdit, QGridLayout, QSpinBox, QDoubleSpinBox, QCompleter
 from samsara import cloud_llm
 from samsara.ui.settings.presentation import style as presentation_style, CleanComboBox
 from samsara import ai_models, ai_transport, openrouter_catalog
@@ -222,9 +223,21 @@ import time
 from urllib.parse import urlencode
 
 
+class _ModelFilterLineEdit(QLineEdit):
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.selectAll()
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.selectAll()
+
+
 def _model_cache_path(provider):
     if provider not in ai_models.SNAPSHOT:
         raise ValueError('unsupported provider')
+    if provider == 'openrouter':
+        return samsara_home_dir() / 'openrouter_catalog.json'
     return samsara_home_dir() / ('ai_models_' + provider + '.json')
 
 
@@ -266,6 +279,11 @@ def _load_models(provider, *, refresh=False, api_key=''):
     fallback = openrouter_catalog.Catalogue(models, cached.fetched_at, cached.attempted_at, cached.reason)
     if not refresh or not api_key.strip():
         return fallback
+    if provider == 'openrouter':
+        # Settings and this guide share the same public, keyless catalogue and cache.
+        result = openrouter_catalog.load_catalogue(path, refresh=True)
+        return openrouter_catalog.Catalogue(
+            _merge_models(models, result.models), result.fetched_at, result.attempted_at, result.reason)
     headers = ({'x-api-key': api_key, 'anthropic-version': '2023-06-01'} if provider == 'anthropic'
                else {'Authorization': 'Bearer ' + api_key})
     endpoint = cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + '/models'
@@ -326,8 +344,9 @@ def _make_provider_picker(entry, provider, active, catalogue, refresh_action, cu
             self.search.setAccessibleName('Search models by name or id')
             self.models.setAccessibleName('Models with names and ids')
             self.status.setAccessibleName('Model list status')
-            self.refresh.setText('Check key and refresh')
-            self.refresh.setAccessibleName(self.refresh.text())
+            if provider != 'openrouter':
+                self.refresh.setText('Check key and refresh')
+                self.refresh.setAccessibleName(self.refresh.text())
             self.receive(catalogue)
 
         @staticmethod
@@ -342,12 +361,18 @@ def _make_provider_picker(entry, provider, active, catalogue, refresh_action, cu
             selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else self.entry.text().strip()
             self.models.clear()
             default = ai_models.SNAPSHOT[self.provider]['default']
-            for model in self.catalogue.models:
+            models = sorted(self.catalogue.models,
+                            key=lambda model: (model['name'].casefold(), model['id'].casefold()))
+            models.sort(key=lambda model: model['id'] != default)
+            for model in models:
                 if not openrouter_catalog.matches(model, self.search.text(), self.free.isChecked(), self.capabilities.isChecked()):
                     continue
                 text = self.row_text(model)
+                if all(model['pricing'][key] is not None and Decimal(model['pricing'][key]) == 0
+                       for key in ('prompt', 'completion')):
+                    text += ' · free'
                 if model['id'] == default:
-                    text = text.replace('\n', ' · Recommended\n', 1)
+                    text = text.replace('\n', ' (recommended)\n', 1)
                 item = QListWidgetItem(text, self.models)
                 item.setData(Qt.ItemDataRole.UserRole, model['id'])
                 item.setData(Qt.ItemDataRole.AccessibleTextRole, text)
@@ -368,10 +393,17 @@ def _make_provider_picker(entry, provider, active, catalogue, refresh_action, cu
                     super().select_model()
 
         def load(self, *, refresh=False):
-            if refresh and self.active():
+            if self.provider == 'openrouter':
+                super().load(refresh=refresh)
+            elif refresh and self.active():
                 refresh_action()
 
         def receive(self, result):
+            if provider == 'openrouter':
+                # Keep the bundled list when the shared live catalogue is empty or offline.
+                result = openrouter_catalog.Catalogue(
+                    _merge_models(self.catalogue.models, result.models),
+                    result.fetched_at, result.attempted_at, result.reason)
             self.catalogue = result
             # Never imply unsupported/paid when metadata is merely absent.
             free_known = any(any(v is not None for v in m['pricing'].values()) or m['id'].endswith(':free') for m in result.models)
@@ -409,12 +441,18 @@ COPY = {
     'model_missing': 'This model is not on your PC yet. Download it to continue.',
     'download_failed': 'The download did not finish. Check your connection and try again.',
     'cloud_setup': 'Use your own provider account. Your key stays hidden in this form.',
+    # STAND-IN COPY (816)
+    'openrouter_note': ("OpenRouter's free models cost nothing but are limited (about 50 requests a day; "
+                        'every Ava answer and every command Ava interprets counts). Some free providers may '
+                        'use your prompts for training. For unlimited and private, use Ava on your PC.'),
     'key_good': 'The key check passed. A test reply is still needed.',
     'bad_key': 'The provider rejected this key. Replace it, then check again.',
     'no_credit': 'The account balance or key spending limit is exhausted. Check it with your provider, then retry.',
     'network': 'The connection failed. Check your internet connection, then retry.',
     'model_unavailable': 'This model is unavailable. Choose another model, then retry.',
     'provider_error': 'The provider could not complete the request. Try again shortly, or choose another provider.',
+    'answer_cut_off': 'The model spent its whole answer limit thinking. Pick a non-reasoning model or raise the limit.',
+    'empty_reply': 'The AI service sent back an empty answer.',
     'rate_limited': 'The provider is limiting requests. Wait a moment, then retry.',
     'blocked': 'The provider blocked this request. Check your account restrictions or choose another provider.',
     'local_test': 'Run a short speed test, usually about 10 seconds. It checks this model on this PC.',
@@ -715,6 +753,10 @@ class _WizardWindow(QDialog):
         saved = self._app.config.get('cloud_llm', {}) or {}
         self._provider.setCurrentIndex(max(0, self._provider.findData(saved.get('provider', 'deepseek'))))
         self._row(col, 'Provider', self._provider)
+        self._openrouter_note = _text(COPY['openrouter_note'], 'description')
+        self._openrouter_note.setWordWrap(True)
+        col.addWidget(self._openrouter_note)
+        self._openrouter_note.setVisible(self._provider.currentData() == 'openrouter')
         self._api_key = QLineEdit(saved.get('api_key', ''))
         self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._show_key = self._button('Show', self._toggle_key)
@@ -723,6 +765,8 @@ class _WizardWindow(QDialog):
         # The line edit is visible only after choosing the explicit Custom option.
         self._cloud_model = QLineEdit(saved.get('model') or ai_models.SNAPSHOT[self._provider.currentData()]['default'])
         self._cloud_models = CleanComboBox()
+        self._cloud_models.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._cloud_models.setAccessibleName('Cloud model; type to filter')
         self._row(col, 'Model', self._cloud_models)
         self._model_id = _text('', 'description')
         self._model_id.setTextFormat(Qt.TextFormat.PlainText)
@@ -748,21 +792,53 @@ class _WizardWindow(QDialog):
         self._api_key.textChanged.connect(self._cloud_changed)
         self._cloud_model.textChanged.connect(self._cloud_changed)
         self._cloud_model.textChanged.connect(self._sync_model_choice)
-        self._cloud_models.currentIndexChanged.connect(self._choose_cloud_model)
+        self._cloud_models.activated.connect(self._choose_cloud_model)
         self._picker = None
 
     def _fill_model_choices(self):
         self._cloud_models.blockSignals(True)
         self._cloud_models.clear()
         default = ai_models.SNAPSHOT[self._provider.currentData()]['default']
-        for model in self._cloud_catalogue.models:
-            label = model['name'] + (' · Recommended' if model['id'] == default else '')
+        models = sorted((model for model in self._cloud_catalogue.models
+                         if openrouter_catalog.matches(model)),
+                        key=lambda model: (model['name'].casefold(), model['id'].casefold()))
+        models.sort(key=lambda model: model['id'] != default)
+        for model in models:
+            is_free = all(model['pricing'][key] is not None and Decimal(model['pricing'][key]) == 0
+                          for key in ('prompt', 'completion'))
+            label = model['name'] + (' · free' if is_free else '')
+            if model['id'] == default:
+                label += ' (recommended)'
             self._cloud_models.addItem(label, model['id'])
             index = self._cloud_models.count() - 1
             self._cloud_models.setItemData(index, model['id'], Qt.ItemDataRole.ToolTipRole)
         self._cloud_models.addItem('Custom model id', None)
+        editable = self._cloud_models.count() - 1 > 30
+        self._cloud_models.setEditable(editable)
+        if editable:
+            if not isinstance(self._cloud_models.lineEdit(), _ModelFilterLineEdit):
+                self._cloud_models.setLineEdit(_ModelFilterLineEdit())
+            self._cloud_models.lineEdit().setPlaceholderText('Type to filter models')
+            self._cloud_models.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+            self._cloud_models.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            self._cloud_models.completer().setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+            line_edit = self._cloud_models.lineEdit()
+            if line_edit is not getattr(self, '_model_filter_line_edit', None):
+                previous = getattr(self, '_model_filter_line_edit', None)
+                if previous is not None:
+                    try:
+                        previous.textEdited.disconnect(self._filter_model_completions)
+                    except (RuntimeError, TypeError):
+                        pass
+                line_edit.textEdited.connect(self._filter_model_completions)
+                self._model_filter_line_edit = line_edit
         self._cloud_models.blockSignals(False)
         self._sync_model_choice()
+
+    def _filter_model_completions(self, text):
+        completer = self._cloud_models.completer()
+        completer.setCompletionPrefix(text)
+        completer.complete()
 
     def _sync_model_choice(self, *_args):
         model_id = self._cloud_model.text().strip()
@@ -786,6 +862,7 @@ class _WizardWindow(QDialog):
     def _custom_model(self):
         self._picker.hide()
         self._cloud_models.setCurrentIndex(self._cloud_models.count() - 1)
+        self._choose_cloud_model()
 
     def _picker_model_chosen(self):
         self._custom_mode = False
@@ -1002,6 +1079,7 @@ class _WizardWindow(QDialog):
         self._api_key.clear()
         self._custom_mode = False
         self._cloud_catalogue = _load_models(self._provider.currentData())
+        self._openrouter_note.setVisible(self._provider.currentData() == 'openrouter')
         self._cloud_model.setText(ai_models.SNAPSHOT[self._provider.currentData()]['default'])
         self._fill_model_choices()
         if self._picker:
@@ -1026,6 +1104,7 @@ class _WizardWindow(QDialog):
             self._catalogue = _make_provider_picker(self._cloud_model, provider,
                 lambda: self._provider.currentData() == provider and not self._closed,
                 self._cloud_catalogue, self._picker_refresh, self._custom_model, self._picker_model_chosen)
+            self._catalogue.loaded.connect(self._receive_model_catalogue)
             self._catalogue.choose.clicked.connect(self._picker.hide)
             self._catalogue.models.itemActivated.connect(lambda _item: self._picker.hide())
             self._catalogue.search.setMinimumHeight(theme.HIT_TARGET_MIN)
@@ -1035,6 +1114,11 @@ class _WizardWindow(QDialog):
             self._picker.resize(680, 520)
         self._picker.show()
         self._catalogue.receive(self._cloud_catalogue)
+        self._catalogue.load()
+
+    def _receive_model_catalogue(self, result):
+        self._cloud_catalogue = result
+        self._fill_model_choices()
 
     def _draft(self):
         if self._accepted != (self._route, self._provider.currentData()):
@@ -1086,7 +1170,7 @@ class _WizardWindow(QDialog):
         def run():
             if self._route == 'local':
                 return hardware_check.measure_local(cfg)
-            cfg['cloud_llm'].update(timeout_seconds=10, max_tokens=32)
+            cfg['cloud_llm'].update(timeout_seconds=10, max_tokens=2048)
             reply = cloud_llm.send('Reply only with the word ready.', 'Setup test.', SimpleNamespace(config=cfg), timeout=10)
             if isinstance(reply, cloud_llm.CloudError):
                 return reply.failure.kind
@@ -1123,7 +1207,8 @@ class _WizardWindow(QDialog):
             return
         errors = {'bad_key': 'bad_key', 'out_of_credit': 'no_credit', 'unreachable': 'network',
                   'timeout': 'network', 'model_unavailable': 'model_unavailable', 'provider_down': 'provider_error',
-                  'rate_limited': 'rate_limited', 'blocked': 'blocked', 'error': 'provider_error'}
+                  'rate_limited': 'rate_limited', 'blocked': 'blocked', 'error': 'provider_error',
+                  'answer_cut_off': 'answer_cut_off', 'empty_reply': 'empty_reply'}
         if kind == 'hardware':
             if isinstance(value, hardware_check.Hardware):
                 self._fill_hardware(value)

@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.runtime import thread_registry
-from samsara import ai_preferences, ava_readiness, cloud_llm, config_defaults
+from samsara import ai_preferences, ai_models, ava_readiness, cloud_llm, config_defaults
 from samsara.ava_memory import PersonalMemory
 from samsara.paths import samsara_home_dir
 from samsara.log import get_logger
@@ -61,7 +61,11 @@ _PROVIDER_INFO = {
     "deepseek":  "deepseek-flash — Best value. Cheapest per token, strong reasoning. Recommended for most users.",
     "openai":    "gpt-4o-mini — Fast and widely supported. Good for general tasks and tool use.",
     "anthropic": "claude-sonnet-5-5 — Best reasoning and instruction following. Higher cost per token.",
-    "openrouter": "One key, many models. Auto-picks per request, or enter a model slug below.",
+    # STAND-IN COPY (816)
+    "openrouter": ("One key, many models. Auto-picks per request, or enter a model slug below. "
+                   "OpenRouter's free models cost nothing but are limited (about 50 requests a day; "
+                   "every Ava answer and every command Ava interprets counts). Some free providers may "
+                   "use your prompts for training. For unlimited and private, use Ava on your PC."),
 }
 
 
@@ -172,6 +176,9 @@ class _OpenRouterPicker(QWidget):
         context = f"{context:,}" if context else "unknown"
         text = (f"{model['name']}\n{model['id']}\n"
                 f"USD / 1M tokens: in {price('prompt')} · out {price('completion')} | Context: {context}")
+        if all(model["pricing"][key] is not None and Decimal(model["pricing"][key]) == 0
+               for key in ("prompt", "completion")):
+            text += " · free"
         expiration = model["expiration_date"]
         if expiration:
             remaining = (date.fromisoformat(expiration) - date.today()).days
@@ -187,13 +194,27 @@ class _OpenRouterPicker(QWidget):
         # STAND-IN COPY (568): Auto and the saved choice stay visible through filters.
         rows = [("openrouter/auto", "Auto (OpenRouter chooses)")]
         by_id = {model["id"]: model for model in self.catalogue.models}
-        if current != "openrouter/auto":
+        default = ai_models.SNAPSHOT["openrouter"]["default"]
+        current_allowed = current not in by_id or openrouter_catalog.matches(by_id[current])
+        models = sorted(self.catalogue.models,
+                        key=lambda model: (model["name"].casefold(), model["id"].casefold()))
+        models.sort(key=lambda model: model["id"] != default)
+        if (current_allowed and current != "openrouter/auto" and current == default
+                and openrouter_catalog.matches(
+                    by_id[current], self.search.text(), self.free.isChecked(), self.capabilities.isChecked())):
             rows.append((current, self.row_text(by_id[current]) if current in by_id else f"Custom: {current}"))
-        for model in self.catalogue.models:
-            if model["id"] in {"openrouter/auto", current}:
+            rows[-1] = (rows[-1][0], rows[-1][1].replace("\n", " (recommended)\n", 1))
+        elif default in by_id and openrouter_catalog.matches(
+                by_id[default], self.search.text(), self.free.isChecked(), self.capabilities.isChecked()):
+            rows.append((default, self.row_text(by_id[default]).replace("\n", " (recommended)\n", 1)))
+        if current_allowed and current not in {"openrouter/auto", default}:
+            rows.append((current, self.row_text(by_id[current]) if current in by_id else f"Custom: {current}"))
+        for model in models:
+            if model["id"] in {"openrouter/auto", current, default}:
                 continue
             if openrouter_catalog.matches(model, self.search.text(), self.free.isChecked(), self.capabilities.isChecked()):
-                rows.append((model["id"], self.row_text(model)))
+                text = self.row_text(model)
+                rows.append((model["id"], text))
         for model_id, text in rows:
             item = QListWidgetItem(text, self.models)
             item.setData(Qt.ItemDataRole.UserRole, model_id)

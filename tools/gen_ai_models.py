@@ -5,7 +5,7 @@ No network or application imports. Output is importable Python data so the
 existing freezer includes it without a separate resource-copy rule.
 
 Mapping rules:
-* OpenRouter keeps every unsuffixed id (including non-chat entries), plus Auto.
+* OpenRouter keeps every unsuffixed id and its `:free` variants, plus Auto.
 * Direct providers keep text-output chat models from their vendor namespace.
   Image/audio generators, embeddings, moderation and legacy completions are out.
 * OpenAI/DeepSeek native ids strip the vendor prefix; Anthropic also changes
@@ -14,7 +14,7 @@ Mapping rules:
 * Dates, preview, exp and vision-exp identify variants of the same family.
   Prefer an undated stable entry; otherwise retain only the newest variant,
   with its actual id (never invent an unavailable stable alias).
-* Newest catalogue creation date first; tool support, context and id break ties.
+* Alphabetical display order; a provider's recommended model is pinned first.
 """
 from __future__ import annotations
 
@@ -80,19 +80,20 @@ def model_record(row, provider):
 
 
 def sort_key(row):
-    return (-row.get('created', 0), -int(row['tools']), -(row['context'] or 0), row['id'])
+    return (row['display_name'].casefold(), row['id'].casefold())
 
 
 def build_snapshot(payload):
     # Resolve duplicate identical ids deterministically, independent of input order.
     source = {}
     for row in sorted(payload['data'], key=lambda item: json.dumps(item, sort_keys=True)):
-        if ':' not in row['id']:
+        model_id = row['id']
+        if ':' not in model_id or model_id.endswith(':free'):
             source[row['id']] = row
     snapshot = {}
     for provider, default in DEFAULTS.items():
         if provider == 'openrouter':
-            selected = list(source.values())
+            selected = [row for row in source.values() if is_chat(row)]
         else:
             families = {}
             for row in source.values():
@@ -103,12 +104,16 @@ def build_snapshot(payload):
                 stable = next((row for row in rows if row['id'] == family), None)
                 selected.append(stable or max(rows, key=lambda row: (row.get('created', 0), row['id'])))
         models = sorted((model_record(row, provider) for row in selected), key=sort_key)
-        if provider == 'openrouter' and 'openrouter/auto' not in source:
+        if provider == 'openrouter' and not any(r['id'] == 'openrouter/auto' for r in models):
             models.append({'id': 'openrouter/auto', 'display_name': 'Auto (OpenRouter chooses)',
                            'free': None, 'tools': False, 'json': False, 'context': None,
                            'created': 0, 'pricing': {'prompt': None, 'completion': None}})
         if provider == 'openrouter':
             next(row for row in models if row['id'] == 'openrouter/auto')['display_name'] = 'Auto (OpenRouter chooses)'
+        recommended = next((row for row in models if row['id'] == default), None)
+        if recommended is not None:
+            models.remove(recommended)
+            models.insert(0, recommended)
         snapshot[provider] = {'default': default, 'models': models}
     return snapshot
 

@@ -219,6 +219,9 @@ def test_key_check_is_not_a_real_turn_or_ready(window, monkeypatch):
     window._go_to(window._STEP_CLOUD)
     checker = Mock(return_value=SimpleNamespace(failure=None))
     monkeypatch.setattr(cloud_llm, 'check_openrouter', checker)
+    monkeypatch.setattr(ag.openrouter_catalog, 'load_catalogue',
+                        Mock(return_value=ag.openrouter_catalog.Catalogue(
+                            ag._load_models('openrouter').models)))
     window._check_key()
     checker.assert_called_once()
     assert window._tested is None
@@ -307,13 +310,16 @@ def test_only_use_ava_persists_tested_selection(window, monkeypatch):
 def test_bundled_models_load_offline_with_recommended_default(window, monkeypatch, provider):
     get = Mock(side_effect=AssertionError('offline browsing must not use HTTP'))
     monkeypatch.setattr(ag.ai_transport, 'get_cloud', get)
+    monkeypatch.setattr(ag.openrouter_catalog, 'load_catalogue',
+                        Mock(return_value=ag.openrouter_catalog.Catalogue(reason='offline')))
     window._provider.setCurrentIndex(window._provider.findData(provider))
     window._go_to(window._STEP_CLOUD)
     snapshot = ag.ai_models.SNAPSHOT[provider]
     assert len(snapshot['models']) > 5
     assert snapshot['default'] in {row['id'] for row in snapshot['models']}
     assert window._cloud_models.currentData() == snapshot['default']
-    assert not window._cloud_models.isEditable()
+    # 816: long model lists expose contains-match type filtering.
+    assert window._cloud_models.isEditable() == (len(snapshot['models']) > 30)
     assert not window._cloud_model.isVisible()
     assert window._model_id.text() == snapshot['default']
     assert window._cloud_models.itemText(window._cloud_models.count() - 1) == 'Custom model id'
@@ -335,9 +341,13 @@ def catalogue_response(rows, **extra):
 @pytest.mark.parametrize('provider', list(cloud_llm.BUILTIN_PROVIDERS))
 def test_refresh_merges_caches_and_reloads_without_key(window, monkeypatch, provider):
     default = ag.ai_models.SNAPSHOT[provider]['default']
-    response = catalogue_response([{'id': default}, {'id': 'new-model', 'display_name': 'A friendly name',
+    # 816: OpenRouter's public endpoint provides `name`, not `display_name`.
+    response_rows = [{'id': default}, {'id': 'new-model', 'display_name': 'A friendly name',
         'context_length': 64000, 'supported_parameters': ['tools', 'response_format'],
-        'pricing': {'prompt': '0', 'completion': '0'}, 'private_response_field': 'must be discarded'}])
+        'pricing': {'prompt': '0', 'completion': '0'}, 'private_response_field': 'must be discarded'}]
+    if provider == 'openrouter':
+        response_rows[1]['name'] = response_rows[1].pop('display_name')
+    response = catalogue_response(response_rows)
     get = Mock(return_value=response)
     monkeypatch.setattr(ag.ai_transport, 'get_cloud', get)
     result = ag._load_models(provider, refresh=True, api_key='fixture-only')
@@ -347,10 +357,15 @@ def test_refresh_merges_caches_and_reloads_without_key(window, monkeypatch, prov
     assert by_id[default]['name'] == bundled[default]['display_name']
     assert by_id['new-model']['name'] == 'A friendly name'
     assert by_id['new-model']['context_length'] == 64000
-    assert get.call_args.args == (cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + '/models',)
-    headers = get.call_args.kwargs['headers']
-    assert headers == ({'x-api-key': 'fixture-only', 'anthropic-version': '2023-06-01'} if provider == 'anthropic'
-                       else {'Authorization': 'Bearer fixture-only'})
+    if provider == 'openrouter':
+        # 816: OpenRouter shares Settings' public, keyless catalogue endpoint.
+        assert get.call_args.args == ('https://openrouter.ai/api/v1/models',)
+        assert 'headers' not in get.call_args.kwargs
+    else:
+        assert get.call_args.args == (cloud_llm.BUILTIN_PROVIDERS[provider]['base_url'] + '/models',)
+        headers = get.call_args.kwargs['headers']
+        assert headers == ({'x-api-key': 'fixture-only', 'anthropic-version': '2023-06-01'} if provider == 'anthropic'
+                           else {'Authorization': 'Bearer fixture-only'})
     response.close.assert_called_once()
     raw = ag._model_cache_path(provider).read_text()
     assert 'fixture-only' not in raw and 'private_response_field' not in raw
@@ -429,6 +444,7 @@ def test_custom_id_saves_and_picker_can_return_to_named_model(window, monkeypatc
     setup_cloud(window)
     window._go_to(window._STEP_CLOUD)
     window._cloud_models.setCurrentIndex(window._cloud_models.count() - 1)
+    window._cloud_models.activated.emit(window._cloud_models.currentIndex())
     assert window._cloud_model.isVisible()
     assert not window._next_btn.isEnabled()
     window._cloud_model.setText('my-custom-model')
@@ -439,6 +455,7 @@ def test_custom_id_saves_and_picker_can_return_to_named_model(window, monkeypatc
     assert not window._cloud_model.isVisible()
     assert window._cloud_models.currentData() == ag.ai_models.SNAPSHOT['deepseek']['default']
     window._cloud_models.setCurrentIndex(window._cloud_models.count() - 1)
+    window._cloud_models.activated.emit(window._cloud_models.currentIndex())
     window._cloud_model.setText('my-custom-model')
     monkeypatch.setattr(cloud_llm, 'send', lambda *a, **kw: 'ready')
     window._go_to(window._STEP_TEST)
@@ -523,7 +540,9 @@ def test_generator_openrouter_complete_deduplicated_and_metadata_exact():
               generator_row('vendor/unknown', created=2, price=None, parameters=[]),
               generator_row('vendor/image', created=4, output=['image'])]
     result = build_snapshot({'data': source})['openrouter']['models']
-    assert [r['id'] for r in result] == ['vendor/image', 'vendor/zero', 'vendor/unknown', 'vendor/paid', 'openrouter/auto']
+    # 816: image output is excluded, free suffixes stay, and names sort alphabetically.
+    assert [r['id'] for r in result] == ['vendor/paid', 'vendor/paid:free', 'vendor/unknown',
+                                         'vendor/zero', 'openrouter/auto']
     by_id = {r['id']: r for r in result}
     assert by_id['vendor/zero']['free'] is True
     assert by_id['vendor/paid']['free'] is False
@@ -566,14 +585,17 @@ def test_generator_reproducible_cli_without_external_input(tmp_path, monkeypatch
 
 def test_generated_snapshot_coverage_defaults_and_order():
     from tools.gen_ai_models import sort_key
-    expected_counts = {'openrouter': 376, 'openai': 53, 'anthropic': 15, 'deepseek': 9}
+    # 816: the regenerated source keeps text free variants and drops non-chat rows.
+    expected_counts = {'openrouter': 357, 'openai': 53, 'anthropic': 15, 'deepseek': 9}
     for provider, entry in ag.ai_models.SNAPSHOT.items():
         rows = entry['models']
         assert len(rows) == expected_counts[provider]
         assert len({r['id'] for r in rows}) == len(rows)
-        assert not any(':' in r['id'] for r in rows)
-        chronological = [r for r in rows if r['id'] != 'openrouter/auto']
-        assert chronological == sorted(chronological, key=sort_key)
+        # 816: only OpenRouter's :free IDs remain; the rest sort by display name.
+        assert not any(':' in r['id'] and not r['id'].endswith(':free') for r in rows)
+        alphabetical = [r for r in rows if r['id'] not in {'openrouter/auto', entry['default']}]
+        assert alphabetical == sorted(alphabetical, key=sort_key)
+        assert rows[0]['id'] == entry['default']
         default = next(r for r in rows if r['id'] == entry['default'])
         assert default['tools'] and default['json']
         assert default['created'] >= 1788220800  # September 2026 or later in supplied snapshot.
@@ -595,8 +617,7 @@ def test_expanded_picker_search_filters_and_scroll(window, provider):
                for i in range(picker.models.count()))
     picker.search.clear()
     picker.free.setChecked(True)
-    expected = sum(all(m['pricing'][key] is not None and Decimal(m['pricing'][key]) == 0
-                       for key in ('prompt', 'completion')) for m in picker.catalogue.models)
+    expected = sum(ag.openrouter_catalog.matches(m, free_only=True) for m in picker.catalogue.models)
     assert picker.models.count() == expected + 1  # Custom is always available.
     picker.free.setChecked(False)
     picker.capabilities.setChecked(True)

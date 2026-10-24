@@ -10,6 +10,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import tempfile
 import time
 import threading
@@ -80,13 +81,22 @@ def parse_models(payload):
 
 
 def matches(model, search="", free_only=False, capabilities=False):
+    model_id = model["id"]
+    if ":" in model_id and not model_id.endswith(":free"):
+        return False
+    output_modalities = model.get("architecture", {}).get("output_modalities")
+    chat = output_modalities is None or output_modalities == ["text"]
+    if output_modalities is None and re.search(
+            r"lyria|(?:image|audio)[ -]?(?:generation|generator)|text-to-(?:image|audio|video)",
+            model.get("name", "") + " " + model_id, re.IGNORECASE):
+        # Older bundled snapshots predate the output-modality field.
+        chat = False
     pricing = model["pricing"]
-    free = model["id"].endswith(":free") or all(
-        pricing[key] is not None and f"{Decimal(pricing[key]) * 1_000_000:.4f}" == "0.0000"
-        for key in ("prompt", "completion"))
+    free = all(pricing[key] is not None and Decimal(pricing[key]) == 0
+               for key in ("prompt", "completion"))
     params = set(model["supported_parameters"])
     capable = "tools" in params and bool(params & {"response_format", "structured_outputs"})
-    return (search.casefold() in (model["name"] + " " + model["id"]).casefold()
+    return (chat and search.casefold() in (model["name"] + " " + model["id"]).casefold()
             and (not free_only or free) and (not capabilities or capable))
 
 

@@ -39,6 +39,7 @@ BUILTIN_PROVIDERS = {
     },
 }
 SUPPORTED_PROVIDERS = frozenset(BUILTIN_PROVIDERS)
+DEFAULT_MAX_TOKENS = 2048  # Room for a short answer after modest reasoning tokens.
 RETIRED_DEFAULTS = {
     "deepseek": {"deepseek-chat": BUILTIN_PROVIDERS["deepseek"]["model"]},
     "anthropic": {"claude-sonnet-4-20250514": BUILTIN_PROVIDERS["anthropic"]["model"]},
@@ -89,6 +90,8 @@ _FAILURE_SUMMARIES = {
     "unreachable": "The provider could not be reached.",
     "not_configured": "No API key configured for cloud LLM.",
     "error": "The provider returned an error.",
+    "answer_cut_off": "The model spent its whole answer limit thinking. Pick a non-reasoning model or raise the limit.",
+    "empty_reply": "The AI service sent back an empty answer.",
 }
 _SAFE_ERROR_CODES = frozenset({
     "invalid_api_key", "authentication_error", "permission_error",
@@ -270,7 +273,7 @@ def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
     if not api_key:
         return None, "error", _error_result(make_failure("not_configured", provider))
     timeout = cfg.get("timeout_seconds", timeout)
-    max_tokens = cfg.get("max_tokens", 300)
+    max_tokens = cfg.get("max_tokens", DEFAULT_MAX_TOKENS)
     try:
         provider, base_url, model = _get_provider_config(app)
         if provider == "anthropic":
@@ -349,10 +352,34 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
     }
     if "AVA_STRUCTURED_REPLY_624" in system_prompt:
         payload["response_format"] = {"type": "json_object"}
+    provider = next((name for name, cfg in BUILTIN_PROVIDERS.items()
+                     if urlparse(base_url).hostname == cfg["host"]), "cloud")
+    if provider == "openrouter":
+        payload["reasoning"] = {"effort": "low"}
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     _check_response(base_url, response)
     data = response.json()
-    return data["choices"][0]["message"]["content"].strip()
+    choices = data.get("choices") or []
+    choice = choices[0] if choices and isinstance(choices[0], dict) else {}
+    message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+    content = message.get("content")
+    answer = content.strip() if isinstance(content, str) else ""
+    if not answer:
+        reasoning_chars = sum(len(value) for value in
+                              (message.get("reasoning"), message.get("reasoning_content"))
+                              if isinstance(value, str))
+        other_chars = sum(len(value) for key, value in message.items()
+                          if key not in {"content", "reasoning", "reasoning_content"}
+                          and isinstance(value, str))
+        finish_reason = choice.get("finish_reason")
+        answer_chars = len(content) if isinstance(content, str) else 0
+        logging.getLogger("Samsara.cloud_llm").warning(
+            "[CLOUD-EMPTY] provider=%s model=%s finish_reason=%s content_chars=%d reasoning_chars=%d other_chars=%d",
+            provider, model, finish_reason, answer_chars,
+            reasoning_chars, other_chars)
+        kind = "answer_cut_off" if finish_reason == "length" and reasoning_chars else "empty_reply"
+        raise _CloudRequestFailed(make_failure(kind, provider))
+    return answer
 
 
 def _send_anthropic(base_url, api_key, model, system_prompt,
@@ -382,8 +409,26 @@ def _send_anthropic(base_url, api_key, model, system_prompt,
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     _check_response(base_url, response)
     data = response.json()
-    text_blocks = [b["text"] for b in data.get("content", []) if b.get("type") == "text"]
-    return " ".join(text_blocks).strip()
+    blocks = data.get("content", [])
+    if not isinstance(blocks, list):
+        blocks = []
+    text_blocks = [b["text"] for b in blocks
+                   if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+    answer = " ".join(text_blocks).strip()
+    if not answer:
+        reasoning_chars = sum(len(b.get("thinking", "")) for b in blocks
+                              if isinstance(b, dict) and b.get("type") == "thinking"
+                              and isinstance(b.get("thinking", ""), str))
+        other_chars = sum(len(b.get("text", "")) for b in blocks
+                          if isinstance(b, dict) and b.get("type") not in {"text", "thinking"}
+                          and isinstance(b.get("text", ""), str))
+        stop_reason = data.get("stop_reason")
+        logging.getLogger("Samsara.cloud_llm").warning(
+            "[CLOUD-EMPTY] provider=anthropic model=%s finish_reason=%s content_chars=%d reasoning_chars=%d other_chars=%d",
+            model, stop_reason, sum(map(len, text_blocks)), reasoning_chars, other_chars)
+        kind = "answer_cut_off" if stop_reason == "max_tokens" and reasoning_chars else "empty_reply"
+        raise _CloudRequestFailed(make_failure(kind, "anthropic"))
+    return answer
 
 
 # ---------------------------------------------------------------------------
