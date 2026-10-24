@@ -338,7 +338,7 @@ def _finish_app(level="silent", *, tts=None):
                            _startup_shell_ready=ready, _resolve_playback_output=lambda: None,
                            command_mode_active=False, play_sound=MagicMock(), save_config=MagicMock(),
                            _session_mode_manager=MagicMock(),
-                           _maybe_announce_ava_command_session_migration=MagicMock())
+                           )
 
 
 def _start(app):
@@ -353,7 +353,7 @@ def test_finish_startup_off_installs_router_without_building_engine(tts, fake_en
     assert isinstance(coord, AudioCoordinator)
     assert coord.engine is None and app.tts_engine is None
     assert app.tts_ready.is_set()
-    app._maybe_announce_ava_command_session_migration.assert_called_once()
+    # Prompt 824n: TTS startup no longer invokes the retired migration notice.
     fake_engine_constructors.local.assert_not_called()
     fake_engine_constructors.network.assert_not_called()
 
@@ -374,7 +374,6 @@ def test_finish_boot_schedules_worker_even_when_silent():
     namespace = {"self": app, "threading": threading, "thread_registry": SimpleNamespace(spawn=spawn)}
     exec(compile(ast.Module(body=init.body[start:end], type_ignores=[]), "<tts-init-fragment-ast>", "exec"), namespace)
     spawn.assert_called_once_with("dictation.tts_init", app._tts_init_worker, daemon=True)
-    app._maybe_announce_ava_command_session_migration.assert_not_called()
 
 
 def _assert_session_question(app):
@@ -472,7 +471,7 @@ def test_finish_engine_failure_keeps_router_and_logs_once(fake_engine_constructo
     assert isinstance(app.audio_coordinator, AudioCoordinator)
     assert app.audio_coordinator.engine is None and app.tts_engine is None
     assert len([r for r in caplog.records if r.levelno >= logging.ERROR]) == 1
-    app._maybe_announce_ava_command_session_migration.assert_called_once()
+    # Prompt 824n: the startup error path also has no migration announcement.
     schema.apply_feedback_level(app.config, "silent")
     _assert_session_question(app)
 

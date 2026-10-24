@@ -2261,17 +2261,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         f"{(time.perf_counter() - _t) * 1000:.0f}ms, off the boot thread)")
         finally:
             self.tts_ready.set()
-        # Ava Front Door spec v2 "Migration": one-time first-run-after-update
-        # notice for the ai_command_mode -> ava_command_session consolidation
-        # (toast + one spoken line). Deliberately no legacy-module compatibility
-        # switch (spec ruling: "keeping the deleted brain alive defeats the
-        # consolidation and doubles the test surface") -- this notice is the
-        # entire migration UX.
-        try:
-            self._maybe_announce_ava_command_session_migration()
-        except Exception as e:
-            logger.debug(f"[TTS] Startup announcement failed: {e}")
-
     def update_splash(self, status, progress=None, detail=None, *, error=False):
         """Update startup state without allowing concurrent phases to regress.
 
@@ -2815,31 +2804,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     def _migrate_retired_ava_command_session_config(self):
         from samsara.config_migrations import _migrate_retired_ava_command_session_config
         return _migrate_retired_ava_command_session_config(self)
-
-    def _maybe_announce_ava_command_session_migration(self) -> None:
-        """One-time first-run-after-update notice (Ava Front Door spec v2
-        "Migration"): toast + one spoken line, exactly once ever (per
-        install), using HintManager's existing one-shot-per-hint_id
-        primitive (samsara/hints.py) -- there is no version-gated "what's
-        new" mechanism in this codebase to hook into instead, and building
-        one is out of scope for this pass (a single fixed message doesn't
-        need it). Silently a no-op if hints are disabled or this has
-        already fired."""
-        hints_mgr = getattr(self, 'hints', None)
-        if hints_mgr is None:
-            return
-        hint_id = "ava_command_session_migration_v1"
-        message = "Left-Alt is now an Ava command session."
-        already_shown = hint_id in getattr(hints_mgr, '_shown', set())
-        hints_mgr.maybe_show(hint_id, message)
-        if already_shown:
-            return
-        ac = getattr(self, 'audio_coordinator', None)
-        if ac is not None:
-            try:
-                ac.speak(message, category="system_notice")
-            except Exception as e:
-                logger.debug(f"[MIGRATE] Migration notice TTS failed: {e}")
 
     def _deep_update(self, target, source):
         from samsara.config_migrations import _deep_update

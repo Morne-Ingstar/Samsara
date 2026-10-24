@@ -327,7 +327,7 @@ def test_update_config_does_not_load_openwakeword_before_wake_is_requested(monke
 
 # â”€â”€ Fix 3: TTS worker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def test_tts_worker_waits_for_shell_then_publishes_and_announces(monkeypatch):
+def test_tts_worker_waits_for_shell_then_publishes(monkeypatch):
     import samsara.tts as tts_pkg
 
     app = dictation.DictationApp.__new__(dictation.DictationApp)
@@ -352,9 +352,6 @@ def test_tts_worker_waits_for_shell_then_publishes_and_announces(monkeypatch):
     monkeypatch.setattr(tts_pkg, "EdgeTTSEngine", _Engine)
     from samsara.tts import runtime
     monkeypatch.setattr(runtime, "AudioCoordinator", _Coordinator)
-    app._maybe_announce_ava_command_session_migration = lambda: order.append(
-        ("announce", app.audio_coordinator is not None))
-
     t = threading.Thread(target=app._tts_init_worker)
     t.start()
     t.join(timeout=0.2)
@@ -363,7 +360,8 @@ def test_tts_worker_waits_for_shell_then_publishes_and_announces(monkeypatch):
     app._startup_shell_ready.set()
     t.join(timeout=5)
     assert not t.is_alive()
-    assert order == ["caption-router", "engine", "coordinator", ("announce", True)]
+    # Prompt 824n: TTS startup finishes without the retired migration notice.
+    assert order == ["caption-router", "engine", "coordinator"]
     assert app.tts_ready.is_set()
     assert isinstance(app.tts_engine, _Engine)
 
@@ -378,7 +376,6 @@ def test_tts_worker_failure_leaves_guards_none_and_ready_set(monkeypatch):
     app.tts_engine = None
     app.audio_coordinator = None
     app.tts_ready = threading.Event()
-    app._maybe_announce_ava_command_session_migration = Mock()
     monkeypatch.setattr(tts_pkg, "WinRTEngine", Mock(side_effect=RuntimeError("no winsdk")))
 
     app._tts_init_worker()
@@ -387,7 +384,6 @@ def test_tts_worker_failure_leaves_guards_none_and_ready_set(monkeypatch):
     assert app.audio_coordinator is not None and app.audio_coordinator.engine is None
     app.audio_coordinator.shutdown()
     assert app.tts_ready.is_set()
-    app._maybe_announce_ava_command_session_migration.assert_called_once_with()
 
 
 # â”€â”€ Fix 4: persisted calibration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
