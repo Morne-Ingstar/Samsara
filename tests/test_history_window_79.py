@@ -135,7 +135,7 @@ def main_window(qapp, tmp_path):
     mgr, store, ids = _seed(tmp_path)
     app = types.SimpleNamespace(
         config={"mode": "toggle", "wake_word_enabled": False, "microphone": None},
-        available_mics=[], recording=False, continuous_active=False, wake_word_active=False,
+        available_mics=[{"id": 7, "name": "Test microphone"}], recording=False, continuous_active=False, wake_word_active=False,  # 824: exercise readiness with a present mic.
         snoozed=False, history=[], history_store=store, history_db=mgr,
     )
     win = main_window_qt._MainWindow(app)
@@ -172,7 +172,7 @@ def test_header_badge_never_paints_over_the_header_divider(qapp, main_window, st
         assert "background: transparent" in badge.styleSheet()
         return
     _pump(qapp, 50)
-    assert badge.text() == state
+    assert badge.text() == {"ready": "Mic ready", "listening": "Mic ready", "recording": "Recording"}[state]  # 824: explicit state labels.
     assert "background: transparent" in badge.styleSheet()
     header = badge.parentWidget()
     image = header.grab().toImage()

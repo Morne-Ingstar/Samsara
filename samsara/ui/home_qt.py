@@ -664,9 +664,68 @@ def target_text(app) -> str:
 
 
 def hotkey_label(hotkey) -> str:
-    """'ctrl+shift' -> 'Ctrl+Shift'."""
-    parts = [p.strip() for p in str(hotkey or '').split('+') if p.strip()]
-    return "+".join(p[:1].upper() + p[1:] for p in parts)
+    """Use the same binding spelling as Settings' key capture button."""
+    from samsara.ui.settings.shared_qt import _readable_hotkey
+    return _readable_hotkey(str(hotkey or ''))
+
+
+# PLACEHOLDER COPY (824): Home's key instructions and listening state/action copy.
+def talk_instructions(app) -> tuple:
+    """Primary key, optional wake phrase, separate Ava key; runtime gates wake."""
+    from samsara.ai_preferences import ava_master_enabled
+    cfg = _cfg(app)
+    key = hotkey_label(_cfg_get(cfg, 'hotkey') or config_defaults.DEFAULTS['hotkey'])
+    mode = str(_cfg_get(cfg, 'mode') or 'hold')
+    if mode == 'hold':
+        primary = f"Hold {key} to talk"  # PLACEHOLDER COPY (824)
+    elif mode == 'toggle':
+        primary = f"Tap {key} to start and stop"  # PLACEHOLDER COPY (824)
+    elif getattr(app, 'continuous_active', False):
+        primary = "Speak any time"  # PLACEHOLDER COPY (824)
+    else:
+        key = hotkey_label(_cfg_get(cfg, 'continuous_hotkey') or 'ctrl+alt+d')
+        primary = f"Tap {key} to listen continuously"  # PLACEHOLDER COPY (824)
+    wake = (f"or say {quoted(wake_phrase(cfg))}"  # PLACEHOLDER COPY (824)
+            if cfg.get('wake_word_enabled', False)
+            and getattr(app, 'wake_word_active', False)
+            and not getattr(app, 'snoozed', False) and not capturing(app)
+            and mic_present(app) else "")
+    ava_key = hotkey_label(cfg.get('ava_mode_key', 'right_alt'))
+    ava = (f"Ava key: {ava_key}" if ava_master_enabled(cfg)  # PLACEHOLDER COPY (824)
+           and ava_key and ava_key != hotkey_label(cfg.get('hotkey') or config_defaults.DEFAULTS['hotkey'])
+           else "")
+    return primary, wake, ava
+
+
+# PLACEHOLDER COPY (824): accent means a speech capture/session is active.
+LISTENING_BADGE_STATES = {
+    'ready': ('Mic ready', 'TEXT_SECONDARY', 'pause'),  # PLACEHOLDER COPY (824)
+    'waiting': ('Mic ready', 'TEXT_SECONDARY', 'pause'),  # PLACEHOLDER COPY (824)
+    'recording': ('Recording', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
+    'hands_free': ('Hands-free on', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
+    'continuous': ('Hands-free on', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
+    'ava_session': ('Ava listening', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
+    'paused': ('Paused', 'TEXT_SECONDARY', 'resume'),  # PLACEHOLDER COPY (824)
+    'unavailable': ('No microphone', 'ERROR', 'none'),  # PLACEHOLDER COPY (824)
+}
+
+
+def listening_badge_view(app) -> tuple:
+    """Label, theme colour, explanation/action tooltip, and existing app action."""
+    state = listening_state_id(app)
+    if state in ('ready', 'waiting') and not mic_present(app):
+        state = 'unavailable'
+    label, colour, action = LISTENING_BADGE_STATES[state]
+    # PLACEHOLDER COPY (824)
+    click = {'pause': 'Click to pause listening.', 'stop': 'Click to stop listening.',  # PLACEHOLDER COPY (824)
+             'resume': 'Click to resume listening.', 'none': 'Choose a microphone in Settings.'}[action]  # PLACEHOLDER COPY (824)
+    if state in ('ready', 'waiting'):
+        primary, wake, _ava = talk_instructions(app)
+        instruction = primary + (f" {wake}" if wake else "")
+        tooltip = f"Nothing is being recorded. {instruction}. {click}"  # PLACEHOLDER COPY (824)
+    else:
+        tooltip = click
+    return label, getattr(theme, colour), tooltip, action
 
 
 def help_phrase(records) -> Optional[str]:
@@ -1573,9 +1632,11 @@ class AvaHeaderControl(QPushButton):
             sentence = "Samsara could not refresh Ava's status. Try again shortly."
         self._state = state
         self._mark.set_state(state)
-        route = home_signals.ava_route_label(self._app)
         word = AVA_SHORT_STATE.get(state, state)
-        label = f"{route} {EM_DASH} {word}"
+        label = f"Ava: {word}"  # PLACEHOLDER COPY (824)
+        if state != home_signals.AVA_ASLEEP:
+            route = home_signals.ava_route_label(self._app).removeprefix("Ava: ")
+            label += f" {EM_DASH} {route}"  # PLACEHOLDER COPY (824)
         self._text.setText(label)
         self.setText(label)
         self.setAccessibleName(label)

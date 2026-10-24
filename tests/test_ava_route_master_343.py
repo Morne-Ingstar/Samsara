@@ -164,7 +164,7 @@ def test_home_header_shows_selected_route(qapp):
     control = AvaHeaderControl(_StubApp(cfg))
     try:
         control.refresh()
-        assert "Ava: on this PC - llama3.2:3b" in control.visible_text
+        assert control.visible_text == "Ava: checking \u2014 on this PC - llama3.2:3b"  # 824: state first, full route/model retained.
     finally:
         control.deleteLater()
 

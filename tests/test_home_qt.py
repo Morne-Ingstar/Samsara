@@ -482,10 +482,10 @@ class TestAvaInTheHeader:
         monkeypatch.setattr(home_qt.home_signals, "ava_presence",
                             lambda _app: current["value"])
         control = self._control(qapp)
-        assert control.visible_text.endswith("checking")
+        assert control.visible_text.startswith("Ava: checking")  # 824: state precedes the retained route.
         current["value"] = (home_signals.AVA_AWAKE, "Ava is ready to answer.")
         tracker.record_probe("ollama", None)
-        assert control.visible_text.endswith("ready")
+        assert control.visible_text.startswith("Ava: ready")  # 824: state precedes route.
         control.close()
 
     def test_refresh_failure_replaces_stale_text_and_warns_once(self, qapp, monkeypatch):
@@ -497,7 +497,7 @@ class TestAvaInTheHeader:
         control = self._control(qapp)
         control.refresh()
         assert control.state == home_signals.AVA_CHECKING
-        assert control.visible_text.endswith("checking")
+        assert control.visible_text.startswith("Ava: checking")  # 824: state precedes the retained route.
         assert control.accessibleDescription() == (
             "Samsara could not refresh Ava's status. Try again shortly.")
         assert len(calls) == 1

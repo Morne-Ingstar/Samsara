@@ -1,5 +1,5 @@
 """Decorative status glyphs using the existing Settings icon vocabulary."""
-from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QLabel, QWidget, QBoxLayout
 
@@ -26,6 +26,9 @@ class StatusRow(QWidget):
                 for segment in segments:
                     inner = segment.layout()
                     need += sum(inner.itemAt(i).sizeHint().width() for i in (0, 1)) + inner.spacing()
+                fit = getattr(self._window, '_fit_status_segments', None)
+                if fit is not None:
+                    need = fit(layout, segments, need)
                 stacked = need + 2 > self._window.width()
                 for segment in segments:
                     inner = segment.layout()
@@ -56,6 +59,13 @@ class StatusLabel(QLabel):
         self._icon_ink = None
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+    def sizeHint(self):
+        size = super().sizeHint()
+        return QSize(self.font().pixelSize(), size.height()) if self.property('iconOnly') else size
+
+    def minimumSizeHint(self):
+        return self.sizeHint() if self.property('iconOnly') else super().minimumSizeHint()
+
     def event(self, event):
         result = super().event(event)
         if event.type() in (QEvent.Type.FontChange, QEvent.Type.Polish):
@@ -67,7 +77,8 @@ class StatusLabel(QLabel):
         return result
 
     def paintEvent(self, event):
-        super().paintEvent(event)
+        if not self.property('iconOnly'):
+            super().paintEvent(event)
         family = icon_family()
         if family is None:
             return

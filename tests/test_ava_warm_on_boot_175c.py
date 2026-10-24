@@ -192,7 +192,9 @@ def test_header_pill_has_a_visible_label_for_every_ava_state(qapp, monkeypatch, 
     control = home_qt.AvaHeaderControl(_app())
     control.show()
     qapp.processEvents()
-    assert control.visible_text == f"Ava: on this PC - test {home_qt.EM_DASH} {word}"
+    # 824: off stands alone; other states retain route and model after the state.
+    expected = f"Ava: {word}" + (f" {home_qt.EM_DASH} on this PC - test" if state != home_signals.AVA_ASLEEP else "")
+    assert control.visible_text == expected
     assert control.accessibleName() == control.visible_text
     assert control.sizeHint().width() >= control.layout().sizeHint().width()
     control.close()

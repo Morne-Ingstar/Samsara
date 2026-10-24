@@ -34,11 +34,12 @@ from PySide6.QtWidgets import (
 from samsara import config_defaults
 from samsara.ui import qt_runtime, theme, window_activation, window_geometry
 from samsara.ui.tray_qt import MarkFrame, idle_brand_icon_path, paint_mark
-from samsara.ui.command_marquee import build_example_strip
+from samsara.ui.command_marquee import build_example_strip, example_phrases, example_text
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
 from samsara.ui.home_qt import (
-    MEMOS, VOICE_HELP, AvaHeaderControl, HomePage, glyph_icon, open_settings_tab,
+    MEMOS, VOICE_HELP, AvaHeaderControl, HomePage, catalog_records, glyph_icon, open_settings_tab,
+    listening_badge_view, pause_hands_free, resume_hands_free, stop_capture, talk_instructions,
 )
 from samsara.ui.memos_qt import MemosPage
 from samsara.ui.snippets_qt import SNIPPETS, SnippetsPage
@@ -337,6 +338,7 @@ class _MainWindow(QMainWindow):
         self._build_ui()
         self._activate("Home")
         self._restore_geometry()
+        self._refresh_status()
         self._poll_timer.start()
         self._dictation_sig.connect(self._on_dictation)
 
@@ -350,7 +352,6 @@ class _MainWindow(QMainWindow):
                 widget.setStyleSheet(theme.retheme_stylesheet(inline))
         for name, button in self._nav_btns.items():
             self._style_nav(button, name, button.isChecked())
-        self._reset_btn.setIcon(glyph_icon("history", theme.TEXT_SECONDARY, NAV_ICON_PX))
         self._refresh_status()
         # QSystemTrayIcon is not in QApplication.topLevelWidgets(). Refresh
         # its existing MarkFrame through the app's Qt-thread method now.
@@ -386,20 +387,22 @@ class _MainWindow(QMainWindow):
             f"color: {theme.TEXT_PRIMARY}; font-family: {theme.FONT_FAMILY_DISPLAY};"
             f" font-size: {theme.FONT_SIZE_DISPLAY}px; letter-spacing: {theme.LETTER_SPACING_DISPLAY};"
             " background: transparent; border: none;")
-        self._badge = QLabel("ready")
+        self._badge = QPushButton("Mic ready")  # PLACEHOLDER COPY (824)
         self._badge.setStyleSheet(_badge_css(theme.TEXT_SECONDARY))
+        self._badge.setMinimumHeight(NAV_ROW_H)
+        self._badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._badge.clicked.connect(self._on_listening)
         # Paused is never invisible or inescapable (38): while hands-free is
         # snoozed the header shows this instead of the badge, and clicking it
         # resumes through the app's own resume_listening.
-        self._paused_btn = QPushButton(PAUSED_RESUME)
-        self._paused_btn.setAccessibleName(PAUSED_RESUME)
+        self._paused_btn = QPushButton("Paused")  # PLACEHOLDER COPY (824)
         self._paused_btn.setMinimumHeight(NAV_ROW_H)
         self._paused_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._paused_btn.setStyleSheet(
             f"QPushButton {{ background: {theme.BG2}; color: {theme.WARNING};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 6px 14px; font-size: {theme.TYPE_BODY}px; }}"
             f"QPushButton:hover {{ border-color: {theme.ACCENT}; color: {theme.TEXT_PRIMARY}; }}")
-        self._paused_btn.clicked.connect(self._on_resume)
+        self._paused_btn.clicked.connect(self._on_listening)
         self._paused_btn.setVisible(False)
         # Live mark, app-avatar style: in the shared header, so every page
         # shows the state. Polled only while the window is shown.
@@ -414,24 +417,25 @@ class _MainWindow(QMainWindow):
         self._ava = AvaHeaderControl(
             self._app, on_click=lambda: open_settings_tab(self._app, "Ava / Cloud"))
         hlay.addStretch()
-        self._reset_btn = QPushButton()
+        self._reset_btn = QPushButton("Reset size")  # PLACEHOLDER COPY (824)
         self._reset_btn.setObjectName("resetWindowSize")
         self._reset_btn.setAccessibleName("Reset window size")
         self._reset_btn.setToolTip("Reset window size")
-        self._reset_btn.setIcon(glyph_icon("history", theme.TEXT_SECONDARY, NAV_ICON_PX))
-        self._reset_btn.setIconSize(QSize(NAV_ICON_PX, NAV_ICON_PX))
-        self._reset_btn.setFixedSize(NAV_ROW_H, NAV_ROW_H)
+        self._reset_btn.setFixedHeight(NAV_ROW_H)
+        self._reset_btn.setMinimumWidth(NAV_ROW_H)
         self._reset_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: 1px solid transparent;"
-            f" border-radius: 6px; padding: 0; }}"
+            f" border-radius: 6px; padding: 0 6px; color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; }}"
             f"QPushButton:hover {{ background: {theme.BG1}; border-color: {theme.BORDER}; }}"
             f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}")
         self._reset_btn.clicked.connect(self._reset_geometry)
         hlay.addWidget(self._reset_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
         hlay.addWidget(self._ava, alignment=Qt.AlignmentFlag.AlignVCenter)
-        hlay.addSpacing(HEADER_MARK_GAP)
+        divider = _status_separator()
+        divider.setObjectName("avaMicDivider")
+        hlay.addWidget(divider, alignment=Qt.AlignmentFlag.AlignVCenter)
         hlay.addWidget(self._paused_btn)
         hlay.addWidget(self._badge)
         outer.addWidget(header)
@@ -490,7 +494,7 @@ class _MainWindow(QMainWindow):
         row = StatusRow(self, sb, MIN_WIDTH)
         row.setStyleSheet("background: transparent;")
         row_layout = QHBoxLayout(row)
-        # Native QStatusBar starts its item at x=2; MODE must start at 16.
+        # Native QStatusBar starts its item at x=2; text starts at 16.
         row_layout.setContentsMargins(14, 0, 0, 0)
         row_layout.setSpacing(14)
         from PySide6.QtWidgets import QLayout
@@ -513,6 +517,7 @@ class _MainWindow(QMainWindow):
         # marquee has no "previous". It is NOT the diagnostic hint slot on
         # Home -- that one is actionable.
         self._example_strip = build_example_strip(self._app)
+        self._status_examples = example_phrases(catalog_records(self._app), count=10000)
         self._example_strip.setSizePolicy(QSizePolicy.Policy.Expanding,
                                           QSizePolicy.Policy.Preferred)
         # Keep the 44px target and behavior; offset only its painted glyph.
@@ -583,6 +588,16 @@ class _MainWindow(QMainWindow):
                 fn()
             except Exception as e:
                 logger.warning(f"[MAIN] resume_listening failed: {e}")
+        self._refresh_status()
+
+    def _on_listening(self):
+        action = listening_badge_view(self._app)[3]
+        if action == 'stop':
+            stop_capture(self._app)
+        elif action == 'pause':
+            pause_hands_free(self._app)
+        elif action == 'resume':
+            resume_hands_free(self._app)
         self._refresh_status()
 
     # ---- Navigation ---------------------------------------------------------
@@ -658,6 +673,44 @@ class _MainWindow(QMainWindow):
 
     # ---- Status -------------------------------------------------------------
 
+    def _fit_status_segments(self, layout, segments, need):
+        """Reserve a whole example; wake then device details yield to keys."""
+        strip = self._example_strip
+        metrics = strip.label.fontMetrics()
+        example = max((metrics.horizontalAdvance(example_text(p))
+                       for p in self._status_examples), default=0)
+        captions = [s.layout().itemAt(0).widget() for s in segments]
+        full_need = need + sum(QLabel.sizeHint(c).width() - c.sizeHint().width() for c in captions)
+        # Keep the established stacked layout for enlarged status fonts (388).
+        stacked = self._lbl_mode.font().pixelSize() > theme.TYPE_BODY and full_need + 2 > self.width()
+        reserve = 0 if stacked else example + strip.layout().spacing()
+        # These captions repeat what the instructions already say. Keep their
+        # accessible names and existing glyphs before dropping useful text.
+        compact = not stacked and full_need + reserve + 2 > self.width()
+        for caption in captions:
+            if bool(caption.property('iconOnly')) != compact:
+                caption.setProperty('iconOnly', compact)
+                caption.setToolTip(caption.text().title() if compact else '')
+                caption.updateGeometry()
+                caption.update()
+        need = full_need - sum(QLabel.sizeHint(c).width() - c.sizeHint().width() for c in captions)
+        widths = [tuple(s.layout().itemAt(i).sizeHint().width() for i in (0, 1)) for s in segments]
+        if stacked:
+            need -= sum(sum(w) + s.layout().spacing() - max(w) for s, w in zip(segments, widths))
+        for segment, separator in ((segments[1], layout.itemAt(3).widget()),
+                                   (segments[2], layout.itemAt(1).widget())):
+            available = segment is not segments[1] or bool(self._lbl_wake.text())
+            show = available and need + reserve + 2 <= self.width()
+            if not show:
+                inner = segment.layout()
+                width = widths[segments.index(segment)]
+                need -= (max(width) if stacked else sum(width) + inner.spacing()) + 1 + layout.spacing() * 2
+            if segment.isHidden() == show:
+                segment.setVisible(show)
+            if separator.isHidden() == show:
+                separator.setVisible(show)
+        return max(need, self.width() + 1) if stacked else need
+
     def _refresh_status(self):
         cfg = getattr(self._app, 'config', {}) or {}
 
@@ -672,29 +725,6 @@ class _MainWindow(QMainWindow):
             except Exception as e:
                 logger.debug(f"_refresh_status home: {e}")
 
-        mode = cfg.get('mode', 'hold').title()
-        self._lbl_mode.setText(mode)
-
-        wake_on = cfg.get('wake_word_enabled', False)
-        phrase  = cfg.get('wake_word_config', {}).get(
-            'phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
-        if _hands_free_active(self._app):
-            # Same inactive visual language as ListeningIndicator's Snoozed
-            # state: the configured wake model is present but suspended while
-            # the open-mic hands-free session listens.
-            self._lbl_wake.setText(f"\"{phrase}\" (suspended)")
-            self._lbl_wake.setStyleSheet(
-                f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;"
-                " font-weight: 500; background: transparent;"
-            )
-        else:
-            # A spoken phrase is always shown quoted (41).
-            self._lbl_wake.setText(f"\"{phrase}\" (on)" if wake_on else "Off")
-            self._lbl_wake.setStyleSheet(
-                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px;"
-                " font-weight: 500; background: transparent;"
-            )
-
         mic_id   = cfg.get('microphone')
         mic_name = "Default"
         for m in getattr(self._app, 'available_mics', []) or []:
@@ -703,24 +733,24 @@ class _MainWindow(QMainWindow):
                 break
         if len(mic_name) > 36:
             mic_name = mic_name[:35] + '...'
+        primary, wake, ava = talk_instructions(self._app)
+        self._lbl_mode.setText(primary + (f" \u00b7 {ava}" if ava else ""))  # PLACEHOLDER COPY (824)
+        self._lbl_wake.setText(wake)
         self._lbl_mic.setText(mic_name)
+        # Keep omitted instructions available to assistive tools and hover.
+        self._lbl_mode.setToolTip(' \u00b7 '.join(p for p in (primary, wake, ava) if p))
 
-        snoozed = bool(getattr(self._app, 'snoozed', False))
-        self._paused_btn.setVisible(snoozed)
-        self._badge.setVisible(not snoozed)
-        if snoozed:
-            self._badge.setText("snoozed")
-            self._badge.setStyleSheet(_badge_css(theme.WARNING))
-        elif getattr(self._app, 'recording', False):
-            self._badge.setText("recording")
-            self._badge.setStyleSheet(_badge_css(theme.ERROR))
-        elif (getattr(self._app, 'continuous_active', False) or
-              getattr(self._app, 'wake_word_active', False)):
-            self._badge.setText("listening")
-            self._badge.setStyleSheet(_badge_css(theme.SUCCESS))
-        else:
-            self._badge.setText("ready")
-            self._badge.setStyleSheet(_badge_css(theme.TEXT_SECONDARY))
+        label, colour, tooltip, action = listening_badge_view(self._app)
+        paused = action == 'resume'
+        self._paused_btn.setVisible(paused)
+        self._badge.setVisible(not paused)
+        control = self._paused_btn if paused else self._badge
+        control.setText(label)
+        control.setStyleSheet(_badge_css(colour))
+        control.setToolTip(tooltip)
+        click = tooltip.rsplit('. ', 1)[-1]
+        control.setAccessibleName(f"{label}. {click}")  # PLACEHOLDER COPY (824)
+        control.setEnabled(action != 'none')
 
     @Slot(str)
     def _on_dictation(self, text: str):

@@ -9,7 +9,7 @@
     "samsara/session_modes.py": 3363,
     "samsara/streaming.py": 3202,
     "samsara/ui/history_view.py": 1777,
-    "samsara/ui/home_qt.py": 2474,
+    "samsara/ui/home_qt.py": 2535,
     "samsara/updater.py": 1630
   },
   "slack": 25,

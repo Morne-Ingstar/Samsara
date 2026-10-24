@@ -70,14 +70,14 @@ def test_apply_checks_without_a_turn(qapp, monkeypatch, tracker, route, failure)
         SettingsServices._apply_and_close(harness)
         assert entered.wait(2)
         header.refresh()
-        assert header.visible_text.endswith('checking')
+        assert header.visible_text.startswith('Ava: checking')  # 824: state precedes the retained route.
         assert tracker.snapshot().state == ava_readiness.UNKNOWN
         done = threading.Event()
         tracker.add_listener(lambda _old, new: done.set() if new.state != ava_readiness.UNKNOWN else None)
         release.set()
         assert done.wait(2)
         header.refresh()
-        assert header.visible_text.endswith('unavailable' if failure else 'ready')
+        assert header.visible_text.startswith('Ava: unavailable' if failure else 'Ava: ready')  # 824: state first.
         if failure:
             reason = ava_readiness.failure_short(failure)
             assert reason in header.toolTip() == header.accessibleDescription()

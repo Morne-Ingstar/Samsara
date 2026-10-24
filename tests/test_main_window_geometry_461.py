@@ -114,7 +114,7 @@ def test_startup_uses_rule_with_fake_screen_rectangles(make_window, config):
 def test_button_is_immediately_left_of_ava_and_keyboard_reachable(make_window):
     window, _ = make_window()
     button = window._reset_btn
-    assert button.text() == ''
+    assert button.text() == 'Reset size'  # 824: the bare arrow glyph read as History
     assert not button.icon().isNull()
     assert button.accessibleName() == button.toolTip() == 'Reset window size'
     assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus

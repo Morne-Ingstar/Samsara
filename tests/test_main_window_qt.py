@@ -222,7 +222,7 @@ class TestHeaderMark:
         app.pair = ("recording", "off")
         mark.refresh()
         assert mark.accessibleName() == "Samsara \u2014 recording, hands-free off"
-        assert win._badge.text() == "ready"          # badge text unchanged by the mark
+        assert win._badge.text() == "Mic ready"  # 824: neutral readiness label; mark does not change it.
 
     def test_timer_runs_while_shown_and_stops_on_hide(self, window, qapp):
         win, _app = window
@@ -352,7 +352,8 @@ class TestBrandHeaderAndSidebar:
         app.resume_listening = lambda: (calls.append("resume"), setattr(app, "snoozed", False))
         win._refresh_status()
         assert win._paused_btn.isVisibleTo(win) and not win._badge.isVisibleTo(win)
-        assert win._paused_btn.text() == win._paused_btn.accessibleName() == "Paused \u2014 resume"
+        assert win._paused_btn.text() == "Paused"  # 824: state label; action is described accessibly.
+        assert win._paused_btn.accessibleName() == "Paused. Click to resume listening."
         assert win._paused_btn.minimumHeight() >= 44
         win._paused_btn.click()
         assert calls == ["resume"]

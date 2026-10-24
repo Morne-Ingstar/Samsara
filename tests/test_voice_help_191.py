@@ -100,13 +100,13 @@ def test_status_bar_suspends_wake_only_during_hands_free():
 
     app.command_mode_active = True
     main_window_qt._MainWindow._refresh_status(target)
-    assert target._lbl_wake.text() == '"jarvis" (suspended)'
-    assert main_window_qt.theme.ICON_IDLE in target._lbl_wake.styleSheet()
+    assert target._lbl_wake.text() == ''  # 824: suspended wake is omitted from the instruction.
+    assert target._badge.text() == 'Hands-free on'  # 824: session stays explicit.
 
     app.command_mode_active = False
     main_window_qt._MainWindow._refresh_status(target)
-    assert target._lbl_wake.text() == '"jarvis" (on)'
-    assert main_window_qt.theme.TEXT_PRIMARY in target._lbl_wake.styleSheet()
+    assert target._lbl_wake.text() == 'or say "jarvis"'  # 824: enabled wake is an instruction.
+    assert target._badge.text() == 'Mic ready'  # 824: armed wake is neutral readiness.
 
 
 def test_wake_phrase_dropdown_lists_models_and_saves_selection(qapp, monkeypatch):
