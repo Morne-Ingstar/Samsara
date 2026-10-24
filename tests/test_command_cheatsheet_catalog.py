@@ -202,7 +202,7 @@ def test_window_groups_by_plugin_and_every_item_is_a_catalog_command(qapp, live_
         expected = {r["canonical_id"] for r in catalog
                     if cc.canonical_phrase(r).startswith("samsara ")
                     and r["canonical_id"] != "builtin.samsara_repo"}
-        expected.add("builtin.what_can_i_open")
+        # 825f: the removed places-list command is no longer in this group.
         assert shown == expected
     finally:
         win.deleteLater()

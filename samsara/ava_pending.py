@@ -117,7 +117,8 @@ def _live(app, q):
 def _expire(app, q):
     if getattr(app, "_ava_question", None) is not q:
         return
-    _clear(app, q, "Not saved." if q.kind == "teaching" else "Ava question expired.")
+    _clear(app, q, "Not saved." if q.kind == "teaching" else
+           "Cancelled." if isinstance(q.runner, policy._ConfirmationListener) else "Ava question expired.")
     expired = getattr(q.runner, "expired", None)
     if callable(expired):
         expired()
@@ -130,7 +131,7 @@ def _expire(app, q):
 def _tick(app, q):
     with ownership_lock(app):
         if not _live(app, q):
-            if q.kind == "teaching":
+            if q.kind == "teaching" or isinstance(q.runner, policy._ConfirmationListener):
                 _expire(app, q)
             else:
                 _clear(app, q, "Ava question closed.")  # Stand-in copy (624).
@@ -149,7 +150,7 @@ def _tick(app, q):
 def _open(app, q):
     with ownership_lock(app):
         if not _live(app, q):
-            if q.kind == 'teaching':
+            if q.kind == 'teaching' or isinstance(q.runner, policy._ConfirmationListener):
                 _expire(app, q)
             else:
                 _clear(app, q)
@@ -177,7 +178,7 @@ def _open(app, q):
             try:
                 ensure("ava_question")
             except Exception:
-                if q.kind == 'teaching':
+                if q.kind == 'teaching' or isinstance(q.runner, policy._ConfirmationListener):
                     _expire(app, q)
                 else:
                     _clear(app, q, "Ava reply microphone unavailable. Hold the Ava key to ask again.")
@@ -226,6 +227,15 @@ def consume(app, text, *, capture_path=None):
             _clear(app, q, "Ava question cancelled.")
             policy.stop_all(app, "ava question cancelled")
             return True
+        if q.kind == "policy" and isinstance(q.runner, policy._ConfirmationListener):
+            # Capture owns the microphone, not the definition of an answer.
+            # Keyed replies can arrive before the readback finishes; ordinary
+            # words remain unconsumed and leave the pending operation intact.
+            if policy.pending_operation() is not q.operation or (q.opened and time.monotonic() >= q.deadline):
+                _expire(app, q)
+                return True
+            result = policy.answer_pending(app, text, capture_path=capture_path)
+            return result is not None
         # Never fall through to the global yes command for a retired question.
         if not _live(app, q) or (q.opened and time.monotonic() >= q.deadline):
             _expire(app, q)

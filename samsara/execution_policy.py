@@ -179,7 +179,13 @@ _METHOD_RISK = {
     "hide_cheat_sheet": RISK_UI,
     "repeat_last_command": RISK_UNKNOWN,   # repeats whatever ran last -- cannot be classified statically
     "open_log_file": RISK_UI,
+    "open_transcribe_file": RISK_UI,
 }
+
+# 825f: these are the reviewed navigation methods, not a name-prefix exemption.
+# Built-in risk metadata alone must not relabel arbitrary methods or hotkeys.
+from samsara.samsara_navigation import PLACES as _SAMSARA_PLACES
+_METHOD_RISK.update({f"open_samsara_{place}": RISK_UI for place in _SAMSARA_PLACES})
 
 _ACTION2_RISK = {"focus": RISK_UI, "open": RISK_UI, "close": RISK_DESTRUCTIVE}
 
@@ -1141,6 +1147,11 @@ class PendingOperation:
             self.approved = bool(approved)
             self.always = bool(always)
         self._event.set()
+        question = getattr(self._app, "_ava_question", None)
+        if (question is not None and question.operation is self
+                and isinstance(question.runner, _ConfirmationListener)):
+            from samsara import ava_pending
+            ava_pending._clear(self._app, question, "Confirmed." if approved else "Cancelled.")
         cb = self._on_approve if approved else self._on_reject
         if cb is not None:
             try:
@@ -1423,6 +1434,49 @@ def stage_pending(app, inv: Invocation, prompt: str, *, on_approve=None, on_reje
     return op
 
 
+class _ConfirmationListener:
+    """Local policy question: no model turn or AI-enabled requirement."""
+
+    def __init__(self, app, operation):
+        self.app, self.operation = app, operation
+
+    def eligible(self):
+        op = self.operation
+        return (op.approved is None and not op.is_expired()
+                and is_fresh(self.app, op.generation))
+
+    def expired(self):
+        if self.operation.approved is not True:
+            from plugins.commands import ask_ollama as ava
+            ava.speak(self.app, "Cancelled.", category="confirmation")
+
+
+def listen_for_confirmation(app, prompt):
+    """Reuse 818's post-readback mic lease and both-display question bridge."""
+    from samsara import ava_pending
+    op = pending_operation()
+    if app is None or op is None:
+        return
+    text = prompt + " Say yes to confirm or no to cancel."
+    if not callable(getattr(app, "_ensure_wake_consumer", None)):
+        # Executor hosts without microphone routing retain spoken/keyed replies
+        # and need no post-speech callback support from their coordinator.
+        from plugins.commands import ask_ollama as ava
+        return ava.speak(app, text, category="confirmation")
+    runner = _ConfirmationListener(app, op)
+    return ava_pending.ask(app, runner, "policy",
+        text, (), operation=op,
+        duration=6.0, label="Say yes or no")
+
+
+def retire_confirmation(app):
+    """A recognized new command retires only the local policy listener."""
+    question = getattr(app, "_ava_question", None)
+    if question is not None and isinstance(question.runner, _ConfirmationListener):
+        _release_slot(question.operation)
+        question.operation.cancel(app, "different command", chip=False)
+
+
 def stage_bound_pending(app, inv: Invocation, prompt: str, *, targets: dict,
                         target_probe: Callable[[], dict],
                         current_invocation: Callable[[], Invocation],
@@ -1599,6 +1653,10 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE, capture_path: 
             except Exception:
                 pass
             _chip(app, "waiting", "pending")
+            question = getattr(app, "_ava_question", None)
+            if question is not None and isinstance(question.runner, _ConfirmationListener) and question.operation is op:
+                from samsara import ava_pending
+                question.deadline = ava_pending.time.monotonic() + ava_pending.reply_seconds(app)
             return "extended"
         return "refused:wait already used" if op.extended else f"refused:{op.refusal(app) or 'not live'}"
     if reply == REPLY_NO:

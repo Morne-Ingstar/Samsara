@@ -60,18 +60,11 @@ PLACES = {
     "config_folder": Place("Config folder", "method", "open_config_folder"),
 }
 
-PLACES_HELP = (
-    "Say samsara followed by settings, dictionary, history, snippets, memos, "
-    "audio, Ava, shortcuts, commands, reminders, tasks, or help. "
-    "Say samsara guides for tutorials and setup."
-)
-
-
 def reference_group(row):
     """Presentation group only; canonical IDs and execution stay unchanged."""
     phrase = row.get("phrase", "")
     phrases = {'samsara ' + key.replace('_', ' ') for key in PLACES}
-    return "samsara" if phrase in phrases or phrase == "what can i open" else row.get("plugin")
+    return "samsara" if phrase in phrases else row.get("plugin")
 
 
 def _surface(wrapper):
@@ -166,22 +159,8 @@ def open_place(app, place_id):
     app._schedule_ui(lambda: _open(app, place))
 
 
-def show_places(app):
-    def show():
-        from samsara.ui import qt_runtime
-        app.cheat_sheet.show_filtered("samsara")
-        qt_runtime.post(lambda: _surface(app.cheat_sheet))
-    app._schedule_ui(show)
-    coordinator = getattr(app, 'audio_coordinator', None)
-    if coordinator is not None:
-        coordinator.speak(PLACES_HELP, category='readback', interruptible=False)
-
-
 class SamsaraNavigationMixin:
     """Zero-argument methods for the existing MethodHandler protocol."""
-
-    def show_samsara_places(self):
-        show_places(self)
 
     def open_samsara_home(self):
         open_place(self, "home")

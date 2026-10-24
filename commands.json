@@ -521,17 +521,6 @@
       "description": "Opens Samsara's Config folder.",
       "samsara_destination": "config_folder"
     },
-    "what can i open": {
-      "aliases": [
-        "samsara places",
-        "show samsara places"
-      ],
-      "type": "method",
-      "method": "show_samsara_places",
-      "pack": "core",
-      "risk_class": "ui",
-      "description": "Shows Samsara places and explains how to open them by voice."
-    },
     "jump five times": {
       "type": "macro",
       "steps": [

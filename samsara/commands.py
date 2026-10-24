@@ -563,6 +563,9 @@ class CommandExecutor:
         inv = Invocation(canonical, dict(args or {}), route, generation, "", source_text)
         decision = execution_policy.authorize(inv, app=effective_app, executor=self,
                                               confirmed=confirmed)
+        if (route is Route.EXACT and not confirmed and entry is not None
+                and execution_policy.classify_reply(source_text or canonical) is None):
+            execution_policy.retire_confirmation(effective_app)
         if isinstance(decision, execution_policy.Denied):
             logger.info("[EXEC] %r refused: %s (%s)", canonical, decision.reason,
                         getattr(decision, 'detail', '') or '')
@@ -672,15 +675,7 @@ class CommandExecutor:
         self._speak_confirmation(app, decision.prompt)
 
     def _speak_confirmation(self, app, prompt: str) -> None:
-        text = f"{prompt} -- say yes to confirm, or say ava cancel."
-        speak = getattr(app, 'audio_coordinator', None)
-        try:
-            if speak is not None:
-                speak.speak(text, category="confirmation")
-            else:
-                print(f"[POLICY] {text}")
-        except Exception as e:
-            print(f"[POLICY] confirmation prompt failed: {e}")
+        execution_policy.listen_for_confirmation(app, prompt)
 
     def find_command(self, text: str) -> Optional[str]:
         """Return the canonical phrase of the best matching command, or None."""

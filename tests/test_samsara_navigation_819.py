@@ -19,6 +19,8 @@ NAV_COMMANDS = {phrase: cmd for phrase, cmd in COMMANDS.items()
                 if cmd.get('method', '').startswith(('open_samsara_', 'show_samsara_places'))}
 PHRASES = [(alias, cmd) for phrase, cmd in NAV_COMMANDS.items()
            for alias in [phrase, *cmd.get('aliases', [])]]
+# 825f: retain prior gate IDs as removal regressions.
+PHRASES += [(p, None) for p in ('what can i open', 'samsara places', 'show samsara places')]
 
 
 @pytest.fixture
@@ -66,13 +68,17 @@ def matcher():
 @pytest.mark.parametrize('phrase,cmd', PHRASES, ids=[p for p, _ in PHRASES])
 def test_every_phrase_matches_and_dispatches_to_its_destination(phrase, cmd, matcher, monkeypatch):
     entry, remainder = matcher.match(phrase)
+    if cmd is None:
+        # 825f: a generic prefix may match, but the removed command cannot.
+        assert entry is None or remainder
+        assert entry is None or entry.data.get('method') != 'show_samsara_places'
+        return
     assert entry is not None and not remainder
     assert entry.data == cmd
     assert entry.pack == 'core' and not entry.scope
     app = nav.SamsaraNavigationMixin()
     opened = []
     monkeypatch.setattr(nav, 'open_place', lambda app, place_id: opened.append(place_id))
-    monkeypatch.setattr(nav, 'show_places', lambda app: opened.append('places'))
     assert MethodHandler().execute(entry.data, CommandContext(app=app))
     assert opened == [cmd.get('samsara_destination', 'places')]
 
@@ -232,14 +238,15 @@ def test_show_listening_display_is_idempotent_for_both_choices(choice, queue):
 
 
 def test_places_help_is_short_spoken_and_shown(queue, monkeypatch):
-    pending, drain = queue
-    app = SimpleNamespace(_schedule_ui=pending.append, audio_coordinator=Mock(), cheat_sheet=Mock())
-    monkeypatch.setattr(nav, '_surface', Mock())
-    nav.show_places(app)
-    drain()
-    app.cheat_sheet.show_filtered.assert_called_once_with('samsara')
-    app.audio_coordinator.speak.assert_called_once_with(nav.PLACES_HELP, category='readback', interruptible=False)
-    assert len(nav.PLACES_HELP.split()) < 50
+    # 825f: the narrow places-list command and all its aliases are removed.
+    matcher = CommandMatcher()
+    matcher.load_builtins(COMMANDS)
+    matcher.freeze()
+    for phrase in ('what can i open', 'samsara places', 'show samsara places'):
+        entry, remainder = matcher.match(phrase)
+        assert entry is None or remainder
+        assert entry is None or entry.data.get('method') != 'show_samsara_places'
+    assert not hasattr(nav.SamsaraNavigationMixin, 'show_samsara_places')
 
 
 def test_reference_group_and_run_phrase_preserve_execution_identity():
