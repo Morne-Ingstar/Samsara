@@ -181,9 +181,6 @@ class CommandsPage:
                 QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
             )
             text_col.addWidget(desc_lbl)
-            if pack_id == 'agents':
-                from .agents_section import AgentsControls
-                text_col.addWidget(AgentsControls(self, cb))
             row_h.addLayout(text_col, stretch=1)
             row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignVCenter)
 
@@ -271,28 +268,6 @@ class CommandsPage:
 
         layout = command_layout
 
-        # ---- Command Profiles ---------------------------------------------
-        layout.addWidget(self._section_title("Command Profiles"))
-        profile_entry = QWidget()
-        profile_entry.setObjectName("commandProfilesEntry")
-        profile_row = QHBoxLayout(profile_entry)
-        profile_row.setContentsMargins(0, 0, 0, 0)
-        profile_note = QLabel(
-            "Profiles: export / import / manage. Default is built-in and read-only."
-        )
-        profile_note.setWordWrap(True)
-        profile_note.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
-        )
-        profile_row.addWidget(profile_note, stretch=1)
-        profile_button = QPushButton("Manage Profiles…")
-        profile_button.setObjectName("manageCommandProfilesButton")
-        profile_button.clicked.connect(lambda: self._open_command_profiles(table=None))
-        profile_row.addWidget(profile_button)
-        layout.addWidget(profile_entry)
-        self._widgets['_command_profiles_button'] = profile_button
-        self._widgets['_command_profiles_entry'] = profile_entry
-
         # ---- Section: Voice Commands ---------------------------------------
         cmd_header = QHBoxLayout()
         commands_title = self._section_title("Voice Commands")
@@ -348,8 +323,6 @@ class CommandsPage:
         )
         table.setMinimumHeight(260)
         self._widgets['cmd_table'] = table
-        profile_button.clicked.disconnect()
-        profile_button.clicked.connect(lambda: self._open_command_profiles(table=table))
         self._populate_commands_table(table, "")
         search_box.textChanged.connect(lambda txt: self._filter_commands(table, txt))
         layout.addWidget(table, stretch=1)
@@ -409,6 +382,29 @@ class CommandsPage:
         btn_row.addWidget(reload_btn)
 
         layout.addLayout(btn_row)
+
+        # Keep pack selection adjacent to the command list; profile management
+        # follows the list and its Add / Edit / Delete controls.
+        layout.addWidget(self._section_title("Command Profiles"))
+        profile_entry = QWidget()
+        profile_entry.setObjectName("commandProfilesEntry")
+        profile_row = QHBoxLayout(profile_entry)
+        profile_row.setContentsMargins(0, 0, 0, 0)
+        profile_note = QLabel(
+            "Profiles: export / import / manage. Default is built-in and read-only."
+        )
+        profile_note.setWordWrap(True)
+        profile_note.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
+        )
+        profile_row.addWidget(profile_note, stretch=1)
+        profile_button = QPushButton("Manage Profiles…")
+        profile_button.setObjectName("manageCommandProfilesButton")
+        profile_button.clicked.connect(lambda: self._open_command_profiles(table=table))
+        profile_row.addWidget(profile_button)
+        layout.addWidget(profile_entry)
+        self._widgets['_command_profiles_button'] = profile_button
+        self._widgets['_command_profiles_entry'] = profile_entry
 
         footer = QLabel("Say these phrases while recording to trigger actions.")
         # Same reason as instant_note above: unwrapped, this label's 636px

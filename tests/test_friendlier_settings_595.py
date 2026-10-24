@@ -95,15 +95,17 @@ def test_notice_height_at_900_is_one_text_line_plus_margins(window, qapp):
 
 def test_links_land_on_named_lazy_row_without_changing_value(window, qapp):
     window._select_tool('Command library')
-    controls = window._tool_pages['Command library'].findChild(agents_section.AgentsControls)
+    assert window._tool_pages['Command library'].findChild(agents_section.AgentsControls) is None
+    window._select_tool('Integrations')
+    controls = window._tool_pages['Integrations'].findChild(agents_section.AgentsControls)
     before = controls.enabled.isChecked()
-    # 786: connection is directly visible; retain the lazy navigation contract.
+    # 827: Connect an AI app and its setting links now land under Integrations.
     window.focus_setting('agents')
     qapp.processEvents()
     assert QApplication.focusWidget() is controls.enabled
     assert controls.enabled.isChecked() is before
     assert controls.enabled.visibleRegion().boundingRect().height() > 0
-    assert not window._widgets['_pack_scroll'].isAncestorOf(controls)
+    assert window._tool_name == 'Integrations'
     assert 'Shortcuts' not in set(window._pages)
     # 786: command-key navigation is an ordinary button instead of inline text.
     controls.command_key_button.click()
@@ -117,8 +119,8 @@ def test_links_land_on_named_lazy_row_without_changing_value(window, qapp):
 
 
 def test_selected_route_only_is_visible_and_accessible(window, qapp):
-    window._select_tool('Command library')
-    controls = window._tool_pages['Command library'].findChild(agents_section.AgentsControls)
+    window._select_tool('Integrations')
+    controls = window._tool_pages['Integrations'].findChild(agents_section.AgentsControls)
     qapp.processEvents()
     assert controls.code_panel.isVisible() and not controls.desktop_panel.isVisible()
     interface = QAccessible.queryAccessibleInterface(controls.desktop_copy)

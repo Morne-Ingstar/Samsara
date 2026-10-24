@@ -165,7 +165,7 @@ def test_ai_setup_reveals_agents_after_tool_creation(monkeypatch, queue):
     pending, drain = queue
     controller = SettingsQt(SimpleNamespace())
     def build(tool):
-        assert tool == 'Command library'
+        assert tool == 'Integrations'  # 827c: AI setup moved with its controls.
         controller._window = SimpleNamespace(focus_setting=Mock())
     monkeypatch.setattr(controller, '_show_tool', build)
     controller.show_setting('agents')

@@ -46,7 +46,7 @@ class SettingsQt:
     def show_setting(self, key):
         """Open and reveal a named setup section using lazy navigation (819)."""
         def show():
-            self._show_tool('Command library')
+            self._show_tool('Integrations' if key in ('agents', 'agent_token') else 'Command library')
             self._window.focus_setting(key)
         qt_runtime.post(show)
 
@@ -291,6 +291,9 @@ class _SettingsWindow(
                     row.disclosure.reveal()
         for page in self._pages.values():
             page.advanced.refresh_filter_state(query)
+        if query and any(term in query for term in ('connect an ai app', 'agent')):
+            self._select_tool('Integrations')
+            return
         if query and matched:
             # A setting's name outranks an incidental mention in help, e.g.
             # "Stage timing" before "staged thought" when searching "stage".

@@ -174,6 +174,10 @@ def window(qapp, monkeypatch, qt_widget_scope):
 def test_every_audited_key_has_one_reachable_editor(window):
     assert len(AUDITED_KEYS) == 145  # 405 retires both echo-cancellation editors.
     bindings = window.config_row_inventory()
+    # 827c: the connection switch has one reachable home on Integrations.
+    assert [(page, widget) for key, page, widget in bindings
+            if key == 'command_packs.agents'] == [
+                ('Integrations', window._widgets['_pack_checkboxes']['agents'])]
     counts = Counter(key for key, _page, _widget in bindings)
     assert AUDITED_KEYS <= counts.keys(), sorted(AUDITED_KEYS - counts.keys())
     assert all(counts[key] == 1 for key in AUDITED_KEYS)

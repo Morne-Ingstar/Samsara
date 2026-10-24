@@ -145,19 +145,15 @@ class PageAssembly:
         self._ensure_source(source)
         with source_config(self):
             pages = tools_page.build(self, name)
+        if name == 'Integrations':
+            # Keep Connect an AI app with Hermes on Integrations; the
+            # existing pack switch remains its single persisted enable control.
+            from .agents_section import AgentsControls
+            agents_enabled = self._widgets['_pack_checkboxes']['agents']
+            agents_enabled.parentWidget().hide()
+            pages['Integrations'].base.addWidget(AgentsControls(self, agents_enabled))
         self._tool_pages.update(pages)
         for title, page in pages.items():
-            if title == 'Command library':
-                from .agents_section import AgentsControls
-                controls = page.findChild(AgentsControls)
-                pack_row = controls.parentWidget()
-                layout = page.widget().layout()
-                layout.insertWidget(layout.indexOf(self._widgets['_pack_restart_lbl']) + 1, controls)
-                controls.enable_row.addWidget(controls.enabled)
-                controls.enabled.setAccessibleName('Let AI apps use Samsara')
-                # Setup uses the destination's scroll area, not the small pack
-                # inventory viewport. The original row no longer has an editor.
-                pack_row.hide()
             self._add_beta_notice(page)
             self._stack.addWidget(page)
             self._style_materialized_page(title, page)
@@ -178,8 +174,8 @@ class PageAssembly:
         from .presentation import Disclosure
         from .agents_section import AgentsControls
         if key in ('agents', 'agent_token'):
-            self._select_tool('Command library')
-            controls = self._tool_pages['Command library'].findChild(AgentsControls)
+            self._select_tool('Integrations')
+            controls = self._tool_pages['Integrations'].findChild(AgentsControls)
             target = controls.enabled if key == 'agents' else controls.rotate
         else:
             row = self._rows_by_widget[key]  # 619 materializes this destination.
@@ -509,10 +505,10 @@ class PageAssembly:
         for pack_id, control in self._widgets['_pack_checkboxes'].items():
             if pack_id != 'ai':
                 bindings.append(('command_packs.' + pack_id,
-                                 'Integrations' if pack_id == 'hermes' else 'Command library', control))
+                                 'Integrations' if pack_id in ('hermes', 'agents') else 'Command library', control))
         from .agents_section import AgentsControls
-        agents = self._tool_pages['Command library'].findChild(AgentsControls)
-        bindings.extend((key, 'Command library', control) for key, control in (
+        agents = self._tool_pages['Integrations'].findChild(AgentsControls)
+        bindings.extend((key, 'Integrations', control) for key, control in (
             ('agent_server.allow_typing', agents.typing),
             ('agent_server.command_key_only', agents.approval_style),
         ))

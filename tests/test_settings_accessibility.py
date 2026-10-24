@@ -160,8 +160,8 @@ def test_commands_page_scrolls_vertically_without_horizontal_overflow(qapp):
         # scrolls horizontally" rather than a pixel count from one font.
         window.resize(720, 480)
         window.show()
-        from samsara.ui.settings.presentation import Disclosure
-        commands_page.findChild(Disclosure).reveal()
+        # 827c: the setup disclosure now belongs to Integrations; Commands
+        # must still scroll correctly without it.
         qapp.processEvents()
         # Chrome (sidebar + margins + scrollbar) is only final once shown.
         chrome = window.width() - commands_page.viewport().width()
@@ -170,6 +170,19 @@ def test_commands_page_scrolls_vertically_without_horizontal_overflow(qapp):
         qapp.processEvents()
         assert commands_page.verticalScrollBar().maximum() > 0
         assert commands_page.horizontalScrollBar().maximum() == 0
+
+        window.show_tab('Integrations')
+        integrations_page = window._tool_pages['Integrations']
+        from samsara.ui.settings.agents_section import AgentsControls
+        agents = integrations_page.findChild(AgentsControls)
+        agents.help.reveal()
+        qapp.processEvents()
+        chrome = window.width() - integrations_page.viewport().width()
+        required = integrations_page.widget().minimumSizeHint().width() + chrome
+        window.resize(max(720, required), 480)
+        qapp.processEvents()
+        assert integrations_page.verticalScrollBar().maximum() > 0
+        assert integrations_page.horizontalScrollBar().maximum() == 0
     finally:
         window.hide()
         window.deleteLater()
