@@ -15,7 +15,7 @@ Steps:
   1  Dictation   — speak → text lands in box → green check
   2  Command     — say any command → green check
   3  Ways        — passive overview of the user's current capture controls
-  4  Display     — try the listening display and choose its position
+  4  Show        — read-only demonstration of the chosen listening display
   5  Try         — live voice, pace and feedback trials; each card saves on Keep
   6  Done        — checklist recap, all items ticked; points to Ava and
                    the click-by-number overlay as things to try once set up
@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from samsara.ui.tutorial_try_qt import _TryPage
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QRectF
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QLayout, QMainWindow,
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
@@ -44,7 +44,9 @@ from samsara import command_catalog, tutorial_capture
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
 from samsara.onboarding.guidance_facts import facts_from_config
-from samsara.ui.tutorial_display_qt import tutorial_page, TITLE as PLACEMENT_TITLE
+from samsara import listening_display
+from samsara.onboarding.display_placement import current_position
+from samsara.ui.widgets.indicator_demo import DesktopSketch, IndicatorDemo, POSITIONS
 from samsara.onboarding.mode_details import detail_from_config
 from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
@@ -295,7 +297,10 @@ def show_tutorial(app) -> None:
     Call this from dictation.py via _schedule_ui so the window is
     always constructed on the correct thread.
     """
-    win = TutorialWindow(app)
+    from_setup = getattr(app, '_tutorial_start_from_setup', False)
+    app._tutorial_start_from_setup = False
+    win = TutorialWindow(app, from_setup=from_setup)
+    app._tutorial_window = win  # Retain the top-level window after this call returns.
     win.show()
     qt_app = QApplication.instance()
     if qt_app:
@@ -319,6 +324,106 @@ class _ModeDetailButton(QPushButton):
         super().keyPressEvent(event)
 
 
+class _ChosenDisplaySketch(DesktopSketch):
+    """Illustrate saved placement without any draggable/choosable targets."""
+
+    def indicator_size(self):
+        if self.display == 'full':
+            return super().indicator_size()
+        from samsara.ui.widgets.indicator_demo import compact_stand_in
+        from samsara.ui.listening_indicator import ListeningIndicator
+        proxy = compact_stand_in()
+        proxy._font = lambda: ListeningIndicator._font(proxy)
+        return ListeningIndicator._pill_width(proxy, self.state_words()[0], True), 36
+
+    def paint_desktop(self, painter):
+        # These examples keep drafts in Samsara; none imply text was inserted.
+        beat = self.beat
+        try:
+            self.beat = 0
+            super().paint_desktop(painter)
+        finally:
+            self.beat = beat
+
+    def indicator_rect(self):
+        config = self.parentWidget().config
+        width, height = self.indicator_size()
+        position = current_position(config, self.display)
+        if position in POSITIONS:
+            return self.target_rect(position, width, height)
+        if self.display == 'compact':
+            record = config.get('listening_indicator_custom_position') or {}
+            cx, cy = record.get('cx', .5), record.get('cy', .5)
+        else:
+            from samsara.live_surface.placement import normalize_placement
+            placement = ((config.get('ui') or {}).get('live_surface') or {}).get('placement') or {}
+            record = (placement.get('monitors') or {}).get(placement.get('preferred_monitor')) or placement.get('seed')
+            saved = normalize_placement(record)
+            cx, cy = {'top': (saved.t, 0), 'bottom': (saved.t, 1),
+                      'left': (0, saved.t), 'right': (1, saved.t)}.get(saved.edge.value, (saved.free_cx, saved.free_cy))
+        area = self.work_rect().adjusted(10, 10, -10, -10)
+        return QRectF(area.left() + (area.width()-width)*cx,
+                      area.top() + (area.height()-height)*cy, width, height)
+
+    def demo_view(self):
+        from samsara.live_surface.model import LiveSurfaceModel, Lane, CaptureState, DocumentState
+        model = LiveSurfaceModel(clock=lambda: 0)
+        model.lane = Lane.HOLD if self.beat < 2 else Lane.HANDS_FREE_DICTATE
+        model.capture = CaptureState.RECORDING if self.beat in (0, 3) else CaptureState.HANDS_FREE_LISTENING
+        if self.beat in (1, 4):
+            model.capture = CaptureState.OFF
+            model.text = 'A new thought.'  # PLACEHOLDER COPY (837): illustrative sample.
+            model.document = DocumentState.EDITABLE_DRAFT
+        return model.view()
+
+    def working(self):
+        return False
+
+    def result_message(self):
+        return ''
+
+    def _paint_indicator_into(self, painter, rect, dpr):
+        header, subline = self.state_words()
+        state = 'recording' if self.beat in (0, 3) else 'idle'
+        if self.display == 'full':
+            beat = self.beat
+            try:
+                # The shared painter puts a level meter on beat 1 only.
+                self.beat = 1 if state == 'recording' else 0
+                self._paint_indicator_body(painter, rect, dpr, header, subline, '', state, 0)
+            finally:
+                self.beat = beat
+        else:
+            from samsara.ui.widgets.indicator_demo import compact_stand_in
+            from samsara.ui.listening_indicator import ListeningIndicator
+            proxy = compact_stand_in(listening=state == 'recording', mode_text=header)
+            proxy._glyph_mark = lambda: (state, 'asleep', 0, 1.0)
+            proxy._font = lambda: ListeningIndicator._font(proxy)
+            bg, fg, label, glyph = ListeningIndicator._resolve_colors(proxy)
+            ListeningIndicator._paint_pill(proxy, painter, rect, bg, fg, label, glyph)
+
+
+class _ChosenDisplayDemo(IndicatorDemo):
+    # PLACEHOLDER COPY (837)
+    captions = (
+        'Recording — Samsara is listening to your voice.',
+        'Staged — your words are waiting to be pasted.',
+        'Hands-free — listening for your next thought or command.',
+        'Hands-free recording — speak without holding a key.',
+        'Staged — your draft stays available until you paste it.',
+    )
+
+    def __init__(self, config, parent):
+        self.config = config
+        super().__init__(parent, display=listening_display.display_choice(config).value,
+                         desktop_type=_ChosenDisplaySketch)
+        for index, button in enumerate(self.steps):
+            button.setAccessibleName(self.captions[index])
+
+    def caption_for_beat(self, beat):
+        return self.captions[beat]
+
+
 class TutorialWindow(QMainWindow):
     """Interactive post-wizard tutorial.
 
@@ -329,10 +434,10 @@ class TutorialWindow(QMainWindow):
     # Signal for cross-thread UI updates (audio/worker → Qt thread)
     _step_signal = Signal(str, str)   # (event_name, payload)
 
-    def __init__(self, app):
+    def __init__(self, app, *, from_setup=False):
         super().__init__()
         self._app = app
-        self._step = 0
+        self._step = 1 if from_setup else 0
         self._completed: set[int] = set()
         self._skipped_steps: set[int] = set()
         self._hint_timer: QTimer | None = None
@@ -341,7 +446,7 @@ class TutorialWindow(QMainWindow):
 
         self._build_step_list()
 
-        self.setWindowTitle("Tutorial — Samsara")
+        self.setWindowTitle("Learn Samsara")  # PLACEHOLDER COPY (837)
         # Keep ordinary steps compact. The done page expands to its content
         # when the available screen height permits; otherwise its scroll area
         # keeps the text and guide actions at their natural sizes.
@@ -369,7 +474,9 @@ class TutorialWindow(QMainWindow):
         hl.addStretch()
 
         root.addWidget(header)
-        self._step_indicator = StepIndicator([key.capitalize() for key, _ in self._steps])
+        self._step_indicator = StepIndicator(
+            ['Show' if key == 'display' else key.capitalize() for key, _ in self._steps],
+            variant='C')
         root.addWidget(self._step_indicator)
         root.addSpacing(12)
 
@@ -590,12 +697,12 @@ class TutorialWindow(QMainWindow):
 
     def _build_step_list(self):
         self._steps: list[tuple[str, str]] = [
-            ("welcome",   "Welcome to Samsara"),
+            ("welcome",   "Learn Samsara"),  # PLACEHOLDER COPY (837)
             ("dictation", "Talk → It Types"),
             ("command",   "Say a Command"),
             # PLACEHOLDER COPY (378)
             ("ways",      "Ways to talk to Samsara"),
-            ("display",   PLACEMENT_TITLE),  # PLACEHOLDER COPY (490)
+            ("display",   "Your listening display"),  # PLACEHOLDER COPY (837)
             ("try",       "Try your settings"),
             ("done",      "Tutorial complete"),
         ]
@@ -652,11 +759,31 @@ class TutorialWindow(QMainWindow):
             "dictation": self._build_dictation,
             "command":   self._build_command,
             "ways":      self._build_ways,
-            "display":   lambda: tutorial_page(self),
+            "display":   self._build_display_show,
             "try":       lambda: _TryPage(self),
             "done":      self._build_done,
         }
         return builders[key]()
+
+    def _build_display_show(self):
+        content, layout = self._padded()
+        config = getattr(self._app, 'config', {}) or {}
+        display = listening_display.display_choice(config).value
+        position = current_position(config, display).replace('-', ' ')
+        # PLACEHOLDER COPY (837)
+        layout.addWidget(QLabel(f'{display.title()} display · {position}', content))
+        self._display_demo = _ChosenDisplayDemo(config, content)
+        self._display_demo.layout().setContentsMargins(0, 0, 0, 0)
+        # Preserve the page/demo seam used by navigation and placement callers;
+        # there are no placement controls in this read-only illustration.
+        self._display_page = content
+        content.picker = self._display_demo
+        from samsara.onboarding.display_placement import choose_for_app
+        from samsara.ui.tutorial_display_qt import placement_monitor
+        self._display_demo.choose = lambda value: choose_for_app(
+            self._app, value, placement_monitor(config, self._app))
+        layout.addWidget(self._display_demo, 1)
+        return content
 
     def _build_ways(self) -> QWidget:
         content, lay = self._padded()
@@ -1034,6 +1161,7 @@ class TutorialWindow(QMainWindow):
         # Cancel any running hint timer from the previous step
         self._cancel_hint_timer()
         self._remove_all_hooks()
+        self._display_demo._stop()
 
         # Restore the user's pre-Try width and keep all frame edges inside the work area.
         key = self._steps[self._step][0]
@@ -1053,6 +1181,8 @@ class TutorialWindow(QMainWindow):
             self._current_page.hide()
         self._stack_layout.addWidget(page)
         page.show()
+        if key == 'display':
+            self._display_demo._restart()
         self._current_page = page
 
         key, title = self._steps[self._step]
@@ -1290,6 +1420,7 @@ class TutorialWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def closeEvent(self, event):
+        self._display_demo._stop()
         self._remove_all_hooks()
         self._cancel_hint_timer()
         event.accept()

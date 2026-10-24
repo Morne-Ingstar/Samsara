@@ -259,7 +259,7 @@ class _WizardChoiceIndicator(QRadioButton):
 
 
 _STEPS = [
-    ("Welcome",    "Welcome to Samsara"),
+    ("Welcome",    "Set up Samsara"),  # PLACEHOLDER COPY (837)
     ("Microphone", "Select Your Microphone"),
     ("Components", "Optional Components"),
     ("Recognition", COPY["recognition.title"]),
@@ -572,7 +572,7 @@ class _WizardWindow(QMainWindow):
         self._mic_result.connect(self._on_mic_result)
         self._mic_announcer = LiveSurfaceAnnouncer(self)
 
-        self.setWindowTitle("Samsara Setup")
+        self.setWindowTitle("Set up Samsara")  # PLACEHOLDER COPY (837)
         self.setMinimumSize(720, 480)
         self.resize(860, 760)
         self.setStyleSheet(theme.build_stylesheet())
@@ -591,6 +591,7 @@ class _WizardWindow(QMainWindow):
         hl.setContentsMargins(28, 0, 28, 0)
 
         self._step_lbl = QLabel()
+        self._step_lbl.setWordWrap(True)
         self._step_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
         hl.addWidget(self._step_lbl)
 
@@ -598,8 +599,9 @@ class _WizardWindow(QMainWindow):
 
         root.addWidget(header)
         self._step_indicator = SetupStepIndicator([name for name, _ in _STEPS])
+        self._step_indicator.setMaximumWidth(680)
         self._step_indicator.setViewportMargins(28, 0, 28, 0)
-        root.addWidget(self._step_indicator)
+        root.addWidget(self._step_indicator, alignment=Qt.AlignmentFlag.AlignHCenter)
         root.addSpacing(STEP_LABEL_GAP)
         sep_top = QFrame()
         sep_top.setFrameShape(QFrame.Shape.HLine)
@@ -621,9 +623,10 @@ class _WizardWindow(QMainWindow):
 
         # ---- Page stack ---------------------------------------------------
         self._stack = QWidget()
+        self._stack.setMaximumWidth(680)
         self._stack_layout = QVBoxLayout(self._stack)
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(self._stack, stretch=1)
+        root.addWidget(self._stack, stretch=1, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         self._mic_combo: QComboBox | None = None
         self._mic_status: QLabel | None = None
@@ -678,7 +681,16 @@ class _WizardWindow(QMainWindow):
 
         nl.addStretch()
 
+        self._tutorial_btn = QPushButton("Try it now - 2 min")  # PLACEHOLDER COPY (837)
+        self._tutorial_btn.setAutoDefault(True)
+        theme.make_primary(self._tutorial_btn)
+        self._tutorial_btn.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._tutorial_btn.setProperty('walkthrough_detail', True)
+        self._tutorial_btn.clicked.connect(self._finish_and_learn)
+        nl.addWidget(self._tutorial_btn)
+
         self._next_btn = QPushButton("Next")
+        self._next_btn.setDefault(True)
         theme.make_primary(self._next_btn)
         self._next_btn.setFixedWidth(150)
         self._next_btn.clicked.connect(self._go_next)
@@ -733,7 +745,16 @@ class _WizardWindow(QMainWindow):
         height = max(1, area.height() - top - bottom)
         self.setMinimumSize(min(720, width), min(480, height))
         self.setMaximumSize(width, height)
-        self.resize(min(860, width), self._decisions.fit_content(min(860, width), height))
+        self._stack.setFixedWidth(min(680, width))
+        self._step_indicator.setFixedWidth(min(680, width))
+        fitted_height = self._decisions.fit_content(min(680, width), height)
+        # The narrower content may scroll; keep the accepted strip/rule gap
+        # even when fit_content uses its compact chrome treatment.
+        root = self.centralWidget().layout()
+        root.itemAt(2).spacerItem().changeSize(
+            0, STEP_LABEL_GAP, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        root.invalidate()
+        self.resize(min(860, width), fitted_height)
         frame = self.frameGeometry()
         self.move(max(area.left(), min(frame.left(), area.right() - frame.width() + 1)),
                   max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1)))
@@ -873,7 +894,8 @@ class _WizardWindow(QMainWindow):
         self._current_page = page
 
         name, title = _STEPS[self._step]
-        self._step_lbl.setText(f"Step {self._step + 1} of {len(_STEPS)}")
+        # PLACEHOLDER COPY (837)
+        self._step_lbl.setText(f"Step {self._step + 1} of {len(_STEPS)}\nSetup")
         self._title_lbl.setText(title)
 
         self._step_indicator.set_progress(self._step)
@@ -882,6 +904,8 @@ class _WizardWindow(QMainWindow):
         # Button states
         self._back_btn.setEnabled(self._step > 0)
         is_last = self._step == len(_STEPS) - 1
+        self._tutorial_btn.setVisible(is_last)
+        (theme.make_secondary if is_last else theme.make_primary)(self._next_btn)
         self._next_btn.setText("Start Samsara" if is_last else "Next")
         self._decisions.prepare_step(name)
 
@@ -893,6 +917,7 @@ class _WizardWindow(QMainWindow):
         if _STEPS[self._step][0] == "Microphone":
             self._next_btn.setEnabled(False)
             self._start_meter()
+        self._next_btn.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _go_next(self):
         self._collect_step()
@@ -929,7 +954,10 @@ class _WizardWindow(QMainWindow):
     def _fill_summary(self):
         self._decisions.summary()
 
-    def _finish(self):
+    def _finish_and_learn(self):
+        self._finish(learn=True)
+
+    def _finish(self, *, learn=False):
         if self._config.get('microphone') is None:
             return
         self._collect_step()
@@ -939,6 +967,9 @@ class _WizardWindow(QMainWindow):
         if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
             self._config['hints_enabled'] = False
         self.result = _finalize_config(self._config)
+        if learn and self._samsara_app is not None:
+            # Startup already schedules the tutorial after config/audio are ready.
+            self._samsara_app._tutorial_start_from_setup = True
         self.close()
 
     def closeEvent(self, event):
