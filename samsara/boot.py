@@ -588,6 +588,22 @@ def _previous_log_tail(log_dir, started):
     return last
 
 
+_report_previous_session = None
+_report_log_dir = None
+
+
+def offer_previous_report(app):
+    """Startup handoff, after the main window and listening display exist."""
+    global _report_previous_session
+    from samsara.bug_report.coordinator import install
+    install(app, _report_log_dir)
+    previous = _report_previous_session
+    _report_previous_session = None
+    if previous is not None:
+        from samsara.bug_report.crash import CrashCatch, offer
+        offer(app, CrashCatch(*previous))
+
+
 def begin_session(log_dir, log=None):
     """Record this run as in progress. If the previous run's marker is still
     there, that run ended without quit_app (a crash, a kill, a power loss):
@@ -637,6 +653,13 @@ def begin_session(log_dir, log=None):
             log.debug(f"[CRASH-DIAG] session marker unavailable: {exc!r}")
         except Exception:
             pass
+    # 803: retain the OLD process's evidence before its marker is replaced.
+    # The UI consumes this once; it must never reinterpret our new marker.
+    global _report_previous_session, _report_log_dir
+    _report_log_dir = log_dir
+    fault = ([summary.get("fatal", "")] + summary.get("stack", []) + summary.get("threads", [])) if previous and 'summary' in locals() else []
+    # Keep early boot stdlib-only: importing samsara here configures logging.
+    _report_previous_session = (previous, fault) if previous is not None else None
     return previous
 
 

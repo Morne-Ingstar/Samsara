@@ -1858,7 +1858,7 @@ class HomePage(QWidget):
         card, self._notice_text, self._notice_btn = build_problem_notice(
             GRID, _card, lambda text, **kwargs: _label(
                 text, color=theme.WARNING, **kwargs), _button,
-            self._on_notice_action)
+            self._on_notice_action, self._on_report_notice)
         self._notice_card = card
         return card
 
@@ -2235,6 +2235,10 @@ class HomePage(QWidget):
             self._notice_card, self._notice_text, self._notice_btn, notice,
             home_signals.DICTATION, OPEN_VOICE_HELP)
 
+    def _on_report_notice(self):
+        from samsara.bug_report.coordinator import report_notice
+        report_notice(self._app, self._notice)
+
     def _on_notice_action(self):
         """The notice's one button. A repair runs and the page re-reads state
         immediately, so the notice disappears when -- and only when -- the
@@ -2430,8 +2434,8 @@ class HomePage(QWidget):
     def _relayout(self):
         """Re-flow the two grids for the room the VIEWPORT has now."""
         avail = max(1, min(CONTENT_MAX_W, self._scroll.viewport().width() - 2 * GRID))
-        notice = self._notice_card.layout(); stack = avail < 2 * self._notice_btn.sizeHint().width() + 6 * GRID
-        notice.setDirection(QBoxLayout.Direction.TopToBottom if stack else QBoxLayout.Direction.LeftToRight); notice.setAlignment(self._notice_btn, Qt.AlignmentFlag.AlignRight if stack else Qt.AlignmentFlag(0))
+        from samsara.ui.home_notice_qt import layout_problem_notice
+        layout_problem_notice(self._notice_card, self._notice_text, self._notice_btn, avail, GRID)
         actions, grid = self._hint_action_btn.parentWidget(), self._hint_card.layout(); stacked = bool(self._whats_new and avail < self._hint_heading.minimumSizeHint().width() + self._hint_action_btn.parentWidget().minimumWidth() + 3 * GRID)
         if self._whats_new and (grid.getItemPosition(grid.indexOf(actions))[1] == 0) != stacked: grid.removeWidget(actions); grid.addWidget(actions, 3 if stacked else 0, 0 if stacked else 1, 1 if stacked else 3, 1, Qt.AlignmentFlag.AlignVCenter)
         self._relayout_cards(avail); self._relayout_identity(avail)

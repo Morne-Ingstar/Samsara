@@ -2607,39 +2607,8 @@ class SessionModeManager(UtteranceUndoMixin):
     def _dispatch_command(
         self, text: str, *, heard: Optional[str] = None, allow_suggestion: bool = True,
     ) -> DispatchOutcome:
-        heard = _short(text if heard is None else heard, _COMMAND_HEARD_MAX)
-        result = self._command_dispatch_fn(text)
-        state = _command_state(result)
-        if result.matched and state in COMMAND_UNSUCCESSFUL_STATES:
-            # Recognised but not carried out: say so, but it is still a
-            # command -- not a miss, not dictation, nothing to undo.
-            return DispatchOutcome(kind="command_failed", detail={
-                **getattr(result, "detail", {}),
-                "phrase": result.phrase, "state": state, "heard": heard,
-            })
-        if result.matched and getattr(result, "awaiting_confirmation", False):
-            # Nothing has run: no undo entry, and never "command_executed".
-            return DispatchOutcome(kind="command_awaiting_confirmation", detail={
-                "phrase": result.phrase, "state": state, "heard": heard,
-            })
-        if result.matched:
-            self._stack.push(StackItem(
-                kind="command", payload=result.phrase or text,
-                mode=SessionMode.COMMAND, timestamp=self._clock(),
-            ))
-            return DispatchOutcome(kind="command_executed", detail={
-                **getattr(result, "detail", {}),
-                "phrase": result.phrase, "state": state, "heard": heard,
-            })
-        pack = getattr(result, "disabled_pack", None)
-        if pack:
-            return DispatchOutcome(kind="command_miss", detail={
-                "reason": "pack_disabled", "pack": pack, "heard": heard,
-            })
-        suggested = self._offer_command_suggestion(text) if allow_suggestion else None
-        if suggested is not None:
-            return suggested
-        return DispatchOutcome(kind="command_miss", detail={"heard": heard})
+        from samsara.bug_report.routing import dispatch_command
+        return dispatch_command(self, text, heard=heard, allow_suggestion=allow_suggestion)
 
     def _dispatch_hands_free_command(
         self, match: HandsFreeCommandMatch, *, deferred: bool = False,

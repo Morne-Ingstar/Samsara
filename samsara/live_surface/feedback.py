@@ -153,6 +153,8 @@ def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
     if context is not None and context[0] is app:
         _, source, detail = context
     feedback = producer_feedback(app, kind, source, detail)
+    from samsara.bug_report.coordinator import remember
+    remember(app, label, kind, source, detail)
     if not getattr(indicator, "_records_feedback", False):
         remember_feedback(app, label, feedback)
     if callable(getattr(type(indicator), "show_feedback", None)):

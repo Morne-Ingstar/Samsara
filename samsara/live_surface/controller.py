@@ -194,6 +194,7 @@ class LiveSurfaceController:
                                ("clean_up_requested", self._clean_up),
                                ("clear_requested", self._clear),
                                ("dismiss_feedback_requested", self.dismiss_error),
+                               ("report_problem_requested", self._report_problem),
                                ("dismiss_question_requested", self.dismiss_question),
                                ("pause_requested", self._pause),
                                ("correct_word_requested", self._correct),
@@ -206,6 +207,11 @@ class LiveSurfaceController:
             signal = getattr(self.widget, name, None)
             if signal is not None:
                 signal.connect(callback)
+
+    def _report_problem(self, notice) -> None:
+        from samsara.bug_report.coordinator import report_problem
+        if notice is not None:
+            report_problem(self.app, notice.message, notice.feedback.value)
 
     def dismiss_question(self) -> None:
         adapter = getattr(self, "_feedback_adapter", None)
@@ -640,6 +646,10 @@ class LiveSurfaceIndicatorAdapter:
         self.show_feedback(label, kind, ttl_ms, feedback_for(kind))
 
     def show_feedback(self, label: str, kind: str, ttl_ms, feedback: Feedback) -> None:
+        from samsara.bug_report.coordinator import remember
+        app = getattr(self.controller, "app", None)
+        if app is not None:
+            remember(app, label, kind)
         self.reconcile_interactions(queued=True)
         if not label:
             self.clear_feedback(feedback.owner)

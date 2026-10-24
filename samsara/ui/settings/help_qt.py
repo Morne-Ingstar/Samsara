@@ -34,6 +34,14 @@ from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, logger
 class HelpPage:
     """Methods of the Help & Support settings page (moved from _SettingsWindow)."""
 
+    def _preview_problem_report(self, status_label):
+        from samsara.bug_report.coordinator import report_problem
+        try:
+            report_problem(self.app)
+            status_label.setText("Report preview opened. Nothing has been submitted.")
+        except Exception:
+            status_label.setText("Could not open the report preview. Try again.")
+
     def _create_support_bundle(self, status_label: QLabel, open_folder_btn: QPushButton) -> None:
         from samsara.support_bundle import build_bundle
 
@@ -224,28 +232,19 @@ class HelpPage:
 
         bundle_btn = QPushButton("Report a problem")
         bundle_btn.setObjectName("createSupportBundleButton")
-        bundle_btn.setAccessibleName("Create a report bundle for a Samsara problem")
-        open_bundle_folder_btn = QPushButton("Open folder")
-        open_bundle_folder_btn.setObjectName("openSupportBundleFolderButton")
-        open_bundle_folder_btn.setAccessibleName("Open the folder containing the report bundle")
-        open_bundle_folder_btn.setEnabled(False)
+        bundle_btn.setAccessibleName("Preview a Samsara problem report")
         bundle_actions = QWidget()
         bundle_actions_row = QHBoxLayout(bundle_actions)
         bundle_actions_row.setContentsMargins(0, 0, 0, 0)
         bundle_actions_row.setSpacing(10)
         bundle_actions_row.addWidget(bundle_btn)
-        bundle_actions_row.addWidget(open_bundle_folder_btn)
         bundle_actions_row.addStretch()
         bundle_btn.clicked.connect(
-            lambda: self._create_support_bundle(support_status, open_bundle_folder_btn)
-        )
-        open_bundle_folder_btn.clicked.connect(
-            lambda: self._open_support_bundle_folder(support_status)
+            lambda: self._preview_problem_report(support_status)
         )
         layout.addLayout(self._setting_row(
-            "Share a support bundle",
-            "Creates a zip with recent logs, scrubbed settings, versions, and device names. "
-            "Transcripts, memos, Ava memory, and vault files are excluded.",
+            "Report a problem",
+            "Review a diagnostic summary before opening a public GitHub issue draft.",
             bundle_actions,
         ))
 

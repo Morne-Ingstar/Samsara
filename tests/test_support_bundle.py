@@ -276,6 +276,10 @@ def test_help_support_button_creates_bundle_and_opens_folder(qapp, tmp_path, mon
 
     expected = tmp_path / "samsara-report_2026-09-19_12-34.zip"
     monkeypatch.setattr(support_bundle, "build_bundle", lambda: expected)
+    # 803: this existing button now previews; the legacy ZIP library stays tested above.
+    from samsara.bug_report import coordinator
+    previews = []
+    monkeypatch.setattr(coordinator, "report_problem", lambda app: previews.append(app))
     opened = []
     monkeypatch.setattr(
         QDesktopServices,
@@ -290,14 +294,11 @@ def test_help_support_button_creates_bundle_and_opens_folder(qapp, tmp_path, mon
         status = page.findChild(QLabel, "feedbackStatusLabel")
         assert report is not None and report.text() == "Report a problem"
         assert email is not None and email.text() == "Email the developer"
-        assert open_folder is not None and not open_folder.isEnabled()
+        assert open_folder is None
         report.click()
-        assert str(expected) in status.text()
-        assert open_folder.isEnabled()
-        open_folder.click()
-        assert len(opened) == 1
-        assert Path(opened[0]) == expected.parent
-        assert "Opened the report folder" in status.text()
+        assert len(previews) == 1
+        assert "Report preview opened" in status.text()
+        assert not opened
     finally:
         page.deleteLater()
         qt_deferred_delete(page)
@@ -311,16 +312,18 @@ def test_help_support_button_reports_build_failure(qapp, monkeypatch, qt_deferre
     def fail():
         raise OSError("desktop unavailable")
 
-    monkeypatch.setattr(support_bundle, "build_bundle", fail)
+    # 803: surface a preview failure, with no raw exception details or browser send.
+    from samsara.bug_report import coordinator
+    monkeypatch.setattr(coordinator, "report_problem", lambda app: fail())
     page = _support_page()
     try:
         report = page.findChild(QPushButton, "createSupportBundleButton")
         open_folder = page.findChild(QPushButton, "openSupportBundleFolderButton")
         status = page.findChild(QLabel, "feedbackStatusLabel")
         report.click()
-        assert "Could not create the report bundle" in status.text()
-        assert "desktop unavailable" in status.text()
-        assert not open_folder.isEnabled()
+        assert "Could not open the report preview" in status.text()
+        assert "desktop unavailable" not in status.text()
+        assert open_folder is None
     finally:
         page.deleteLater()
         qt_deferred_delete(page)

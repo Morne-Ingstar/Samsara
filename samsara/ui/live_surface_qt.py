@@ -144,6 +144,7 @@ class _FeedbackBand(QWidget):
     """A content row with at most two readable lines and full hover text."""
     dismissed = Signal()
     question_dismissed = Signal()
+    report_requested = Signal(object)
     def __init__(self, parent, name, *, chip=False):
         super().__init__(parent)
         self.notice, self.chip = None, chip
@@ -160,6 +161,16 @@ class _FeedbackBand(QWidget):
         self.dismiss.setToolTip("Cancel this suggestion")
         self.dismiss.clicked.connect(self.question_dismissed.emit)
         self.dismiss.hide()
+        self.report = QPushButton("Report", self)
+        self.report.setAccessibleName("Report this problem")
+        self.report.clicked.connect(lambda: self.report_requested.emit(self.notice))
+        self.report.hide()
+
+    def _report_width(self):
+        return 76 if self.notice and self.notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING) else 0
+
+    def _action_width(self):
+        return self._dismiss_width() + self._report_width()
 
     def _dismiss_width(self):
         return 76 if self.notice and self.notice.purpose is FeedbackPurpose.QUESTION and self.notice.owner.startswith("suggestion:") else 0
@@ -167,6 +178,7 @@ class _FeedbackBand(QWidget):
     def set_notice(self, notice):
         self.notice = notice
         self.dismiss.setVisible(bool(self._dismiss_width()))
+        self.report.setVisible(bool(self._report_width()))
         from samsara.ui.result_message_rendering import set_result_label
         message = notice.message if notice else ""
         self.setAccessibleName(message or "Live surface feedback")
@@ -175,7 +187,7 @@ class _FeedbackBand(QWidget):
         if not self.chip and notice and notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING, FeedbackKind.LIVE):
             message = KIND_WORDS[notice.feedback] + ": " + message
         self._message = message
-        lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._dismiss_width()))
+        lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._action_width()))
         set_result_label(self.label, '\n'.join(lines), theme.TEXT_PRIMARY)
         if self.label.textFormat() == Qt.TextFormat.RichText:
             self.label.setText(self.label.text().replace('\n', '<br>'))
@@ -186,14 +198,16 @@ class _FeedbackBand(QWidget):
     def required_height(self, width):
         if not self.notice or not self.notice.message:
             return 0
-        return max(36 if self._dismiss_width() else 0, message_height(self._message, self.label.font(), width-(42 if self.chip else 24)-self._dismiss_width()))
+        return max(36 if self._action_width() else 0, message_height(self._message, self.label.font(), width-(42 if self.chip else 24)-self._action_width()))
 
     def desired_width(self):
-        return self.label.fontMetrics().horizontalAdvance(self.notice.message) + 42 + self._dismiss_width() if self.notice else 0
+        return self.label.fontMetrics().horizontalAdvance(self.notice.message) + 42 + self._action_width() if self.notice else 0
 
     def restyle(self):
         self.dismiss.setFont(theme.qfont(theme.TYPE_MIN))
         self.dismiss.setStyleSheet(f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: 5px; padding: 0; font-size: {theme.TYPE_MIN}px; }} QPushButton:hover {{ border-color: {theme.ACCENT}; }}")
+        self.report.setFont(self.dismiss.font())
+        self.report.setStyleSheet(self.dismiss.styleSheet())
         kind = self.notice.feedback if self.notice else FeedbackKind.INFORMATION
         from samsara.result_messages import is_ava_chain_result
         fill = theme.AVA if self.notice and is_ava_chain_result(self.notice.message) else getattr(theme, FILL_TOKENS[kind])
@@ -222,9 +236,10 @@ class _FeedbackBand(QWidget):
 
     def resizeEvent(self, event):
         self.label.setGeometry(30 if self.chip else 12, 0 if self.chip else 6,
-                               max(1, self.width()-(42 if self.chip else 24)-self._dismiss_width()),
+                               max(1, self.width()-(42 if self.chip else 24)-self._action_width()),
                                self.height() if self.chip else max(1, self.height()-12))
         self.dismiss.setGeometry(self.width()-76, max(0, (self.height()-28)//2), 70, 28)
+        self.report.setGeometry(self.width()-self._action_width(), max(0, (self.height()-28)//2), 68, 28)
         self.set_notice(self.notice)
         super().resizeEvent(event)
 
@@ -308,6 +323,7 @@ class LiveSurfaceWidget(QWidget):
     commit_requested = Signal()
     clear_requested = Signal()
     dismiss_feedback_requested = Signal()
+    report_problem_requested = Signal(object)
     dismiss_question_requested = Signal()
     clean_up_requested = Signal()
     pause_requested = Signal()
@@ -368,6 +384,8 @@ class LiveSurfaceWidget(QWidget):
         self._band = _FeedbackBand(self, "surfaceFeedback")
         self._secondary_band = _FeedbackBand(self, "surfaceFailure")
         self._band.dismissed.connect(self.dismiss_feedback_requested.emit)
+        self._band.report_requested.connect(self.report_problem_requested.emit)
+        self._secondary_band.report_requested.connect(self.report_problem_requested.emit)
         self._secondary_band.dismissed.connect(self.dismiss_feedback_requested.emit)
         self._band.question_dismissed.connect(self.dismiss_question_requested.emit)
         self._secondary_band.question_dismissed.connect(self.dismiss_question_requested.emit)
@@ -663,6 +681,7 @@ class LiveSurfaceWidget(QWidget):
         if short and self._chip is None:
             self._chip = _FeedbackBand(self, "surfaceChip", chip=True)
             self._chip.dismissed.connect(self.dismiss_feedback_requested.emit)
+            self._chip.report_requested.connect(self.report_problem_requested.emit)
             self._chip.question_dismissed.connect(self.dismiss_question_requested.emit)
         if self._chip is not None:
             if short:

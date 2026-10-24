@@ -1,7 +1,7 @@
 """Compact Home version and problem notice widgets."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
+from PySide6.QtWidgets import QBoxLayout, QHBoxLayout, QSizePolicy, QWidget
 
 
 def build_version_row(version_label, grid: int) -> QWidget:
@@ -17,7 +17,7 @@ def build_version_row(version_label, grid: int) -> QWidget:
 
 
 def build_problem_notice(grid, card_factory, label_factory, button_factory,
-                         action_callback):
+                         action_callback, report_callback=None):
     """Build the shared card used for all known Home problem states."""
     card = card_factory()
     card.setObjectName("homeNotice")
@@ -31,10 +31,45 @@ def build_problem_notice(grid, card_factory, label_factory, button_factory,
                        QSizePolicy.Policy.Preferred)
     layout.addWidget(text, stretch=1)
     button = button_factory("Voice troubleshooting", primary=True)
+    button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
     button.clicked.connect(action_callback)
-    layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
+    actions = QWidget(card)
+    actions.setObjectName("homeNoticeActions")
+    action_layout = QHBoxLayout(actions)
+    action_layout.setContentsMargins(0, 0, 0, 0)
+    action_layout.setSpacing(grid)
+    action_layout.addWidget(button)
+    if report_callback is not None:
+        report = button_factory("Report")
+        report.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        report.setObjectName("reportProblemNotice")
+        report.clicked.connect(report_callback)
+        action_layout.addWidget(report)
+    layout.addWidget(actions, alignment=Qt.AlignmentFlag.AlignVCenter)
     card.setVisible(False)
     return card, text, button
+
+
+def layout_problem_notice(card, text, button, available, grid):
+    """Wrap actions when their full labels cannot share the card's width."""
+    actions = button.parentWidget()
+    row = actions.layout()
+    buttons = [row.itemAt(i).widget() for i in range(row.count())]
+    for control in buttons:
+        control.ensurePolished()
+        row.setAlignment(control, Qt.AlignmentFlag.AlignRight)
+    required = sum(control.sizeHint().width() for control in buttons)
+    required += row.spacing() * (len(buttons) - 1)
+    row.setDirection(QBoxLayout.Direction.TopToBottom if required > available - 2 * grid
+                     else QBoxLayout.Direction.LeftToRight)
+    row.invalidate()
+    stack = available < (text.fontMetrics().horizontalAdvance(text.text())
+                         + actions.sizeHint().width() + 3 * grid)
+    layout = card.layout()
+    layout.setDirection(QBoxLayout.Direction.TopToBottom if stack
+                        else QBoxLayout.Direction.LeftToRight)
+    layout.setAlignment(actions, Qt.AlignmentFlag.AlignRight if stack
+                        else Qt.AlignmentFlag.AlignVCenter)
 
 
 def refresh_problem_notice(card, text_widget, button, notice,

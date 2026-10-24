@@ -1234,7 +1234,11 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         from samsara.ui.result_message_rendering import result_width
         screen = self._resolve_custom_screen()
         limit = max(1, screen.availableGeometry().width()-16) if screen else 820
-        return min(820, limit, result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X)
+        return min(820, limit, result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X + self._report_width())
+
+    def _report_width(self):
+        chip = self._active_chip()
+        return 76 if chip and chip[1] in ('error', 'warning') else 0
 
     def _layout(self):
         """(total_w, total_h, pill_rect|None, chip_rect|None) in widget coords.
@@ -1247,7 +1251,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         pill_w = self._pill_width(label, show_dot)
         chip = self._active_chip()
         chip_w = self._chip_width(chip[0]) if chip else 0
-        chip_h = max(_CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X, padding=6)) if chip else 0
+        chip_h = max(36 if self._report_width() else _CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X-self._report_width(), padding=6)) if chip else 0
 
         if chip is None:
             return pill_w, _PILL_H, QRectF(0, 0, pill_w, _PILL_H), None
@@ -1340,11 +1344,11 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         fill = theme.AVA if is_ava_chain_result(label) else theme.WARNING if running else theme.TEXT_SECONDARY if kind == 'accent' else _chip_fill().get(kind, theme.WARNING)
         painter.fillPath(path, theme.qcolor(fill))
         font = self._chip_font()
-        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X)
+        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X-self._report_width())
         height = message_line_spacing(label, font)
         for index, line in enumerate(lines):
             line_rect = QRectF(rect.x()+_CHIP_PAD_X, rect.center().y()-len(lines)*height/2+index*height,
-                               rect.width()-2*_CHIP_PAD_X, height)
+                               rect.width()-2*_CHIP_PAD_X-self._report_width(), height)
             paint_result(painter, line_rect, line, font, QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT))
 
     def dismiss_error(self):
@@ -1370,7 +1374,8 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         window = getattr(self, '_message_window', None)
         if chip and self.isVisible():
             if window is None:
-                window = self._message_window = MessageHoverWindow(self)
+                from samsara.bug_report.compact_qt import ReportMessageWindow
+                window = self._message_window = ReportMessageWindow(self)
             rect = self._layout()[3].toRect().translated(self.pos())
             window.setGeometry(rect)
             window.setToolTip(chip[0]); window.setAccessibleName(chip[0])

@@ -39,6 +39,8 @@ _INTERACT_SOURCE = _SOURCE.with_name("interact.py")
 _CORRECTIONS_SOURCE = _SOURCE.with_name("session_corrections.py")
 # 776: independent source path, like corrections, survives facade mutation tests.
 _RECOVERY_SOURCE = _SOURCE.with_name("clipboard_recovery.py")
+# 803: command outcomes moved to the report-routing delegate; enumerate it too.
+_COMMAND_SOURCE = _SOURCE.parent / "bug_report" / "routing.py"
 
 
 def _literal_kinds(node):
@@ -77,7 +79,7 @@ def _dispatch_outcome_kinds() -> set:
     """
     trees = []
     # 776: clipboard outcome producers moved to the dedicated recovery module.
-    for source in (_SOURCE, _CORRECTIONS_SOURCE, _RECOVERY_SOURCE):
+    for source in (_SOURCE, _CORRECTIONS_SOURCE, _RECOVERY_SOURCE, _COMMAND_SOURCE):
         assert source.is_file(), f"Missing outcome producer: {source}"
         trees.append(ast.parse(source.read_text(encoding="utf-8")))
     tree = trees[0]  # Interact binding analysis belongs to the facade only.

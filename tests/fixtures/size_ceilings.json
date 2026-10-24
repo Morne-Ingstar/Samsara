@@ -6,10 +6,10 @@
     "samsara/audio_ducking.py": 1545,
     "samsara/audio_engine/wake_consumer.py": 1715,
     "samsara/execution_policy.py": 2083,
-    "samsara/session_modes.py": 3363,
+    "samsara/session_modes.py": 3332,
     "samsara/streaming.py": 3212,
     "samsara/ui/history_view.py": 1777,
-    "samsara/ui/home_qt.py": 2605,
+    "samsara/ui/home_qt.py": 2609,
     "samsara/updater.py": 1630
   },
   "slack": 25,

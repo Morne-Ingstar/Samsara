@@ -2258,7 +2258,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         from samsara.ui.main_window_qt import MainWindowQt
         self.main_window = None
         def _init_main_window():
-            self.main_window = MainWindowQt(self)
+            self.main_window = MainWindowQt(self); _samsara_boot.offer_previous_report(self)
         self._schedule_ui(_init_main_window)
 
         # NOTE: Splash is intentionally NOT closed here.  The model worker also

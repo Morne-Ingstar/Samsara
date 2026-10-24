@@ -138,7 +138,8 @@ class TestChipDirection:
         indicator.show()
         indicator.show_outcome("MISS", "error", ttl_ms=None)
         total_w, total_h, _, _ = indicator._layout()
-        assert total_h == _PILL_H + _CHIP_GAP + _CHIP_H
+        # 803: the Report control reserves a 36 DIP message row.
+        assert total_h == _PILL_H + _CHIP_GAP + max(_CHIP_H, 36)
 
     def test_a_wide_chip_widens_the_widget_and_centres_the_pill(self, indicator):
         indicator.show()

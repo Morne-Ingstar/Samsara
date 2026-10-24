@@ -374,8 +374,7 @@ class PageAssembly:
             ])
             self._widgets['supportChoices'] = self._choice_button('Get help', [
                 ('Email the developer', 'betaFeedbackButton'),
-                ('Create support bundle', 'createSupportBundleButton'),
-                ('Open bundle folder', 'openSupportBundleFolderButton'),
+                ('Report a problem', 'createSupportBundleButton'),
                 ('Copy safe diagnostics', 'copyDiagnosticButton'),
                 ('Public GitHub report', 'reportBugButton'),
                 ('Open live log', 'openLiveLogButton'),
