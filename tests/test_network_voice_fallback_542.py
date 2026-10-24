@@ -111,7 +111,8 @@ def rig(monkeypatch):
         raise RenderError('Network unavailable')
     monkeypatch.setattr(edge, '_synthesize_mp3', fail)
     monkeypatch.setattr(edge, '_mp3_to_pcm', lambda data: b'pcm')
-    engine = edge.EdgeTTSEngine(output_device=17)
+    # 826v: fallback requires the user's explicit Windows voice selection.
+    engine = edge.EdgeTTSEngine(output_device=17, fallback_voice_id='chosen-windows-id')
     monkeypatch.setattr(engine, '_play_pcm', lambda pcm, **kw: played.append(pcm))
     return SimpleNamespace(engine=engine, local=local, jobs=jobs, requests=requests,
                            played=played, fail=fail)
@@ -122,6 +123,7 @@ def app_router(rig):
                                          'feedback_level': 'full', 'voice_id': 'network-id',
                                          'speed': 1.3, 'volume': .6}},
                           tts_engine=rig.engine, command_mode_active=False,
+                          _tts_windows_voice_id='chosen-windows-id',  # 826v: remembered local choice.
                           _show_outcome_chip=Mock(),
                           listening_indicator=SimpleNamespace(show_outcome=Mock()),
                           _schedule_ui=Mock(), _hold_chip_seq=7, _hold_chip_resolved_seq=6)
@@ -142,7 +144,7 @@ def test_same_turn_same_words_settings_and_completion(rig):
     assert text == 'Example speech'
     assert args['speed'] == 1.3 and args['volume'] == .6
     assert args['category'] == 'readback' and args['queue_mode'] == 'append'
-    assert 'voice_id' not in args
+    assert args['voice_id'] == 'chosen-windows-id'  # 826v: never the OS default.
     assert handle.network_failed and handle.voice_result == 'windows'
     assert router.get_state() == IDLE and handle._state == 'done'
     done.assert_called_once()

@@ -279,6 +279,8 @@ def test_network_choice_and_cooldown_fallback_are_visible(rig, settings_window, 
     monkeypatch.setattr(edge, '_synthesize_mp3', synthesize)
     if entry == 'settings':
         window = settings_window
+        # 826v: the live router resolves the remembered explicit Windows choice.
+        window.app._tts_windows_voice_id = 'chosen-windows-id'
         install_router(window.app, rig.engine, 'edge')
         window._widgets['tts_engine'].setCurrentText('edge')
         window._refresh_tts_voices()
@@ -289,6 +291,8 @@ def test_network_choice_and_cooldown_fallback_are_visible(rig, settings_window, 
         rig.jobs.pop(0)()
         assert requests == ['en-US-AriaNeural']
         rig.engine._retry_at = float('inf')
+        # 826v: a cached healthy sample remains usable; request an uncached voice.
+        choose.setCurrentIndex(choose.findData('en-US-AvaNeural'))
         window._test_tts()
         rig.jobs.pop(0)()
         window._tts_sample_timer.timeout.emit()
@@ -310,6 +314,8 @@ def test_network_choice_and_cooldown_fallback_are_visible(rig, settings_window, 
         assert requests[-1] == 'en-US-AriaNeural'
         page.poll()
         rig.engine._retry_at = float('inf')
+        # 826v: uncached settings, without disposing this fixture's private engine.
+        page.speed.setValue(page.speed.value() + 10)
         page.actions['voice'].click()
         rig.jobs.pop(0)()
         assert page.preview_handle.network_bypassed
@@ -317,4 +323,4 @@ def test_network_choice_and_cooldown_fallback_are_visible(rig, settings_window, 
         page.poll()
         assert page.result.text() == 'Network voice unavailable - using the Windows voice.'
     assert len(requests) == 1  # Cooldown must not make another Network request.
-    assert rig.local.calls[-1][1].get('voice_id') is None
+    assert rig.local.calls[-1][1]['voice_id'] == 'chosen-windows-id'  # 826v: explicit local voice.

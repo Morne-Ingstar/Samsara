@@ -22,6 +22,14 @@ def tts_runtime_lock(app):
             with app._config_lock:
                 if old is not getattr(app, 'audio_coordinator', None):
                     continue
+                # Capture before Apply replaces the single shared voice_id.
+                # No stored Windows choice exists in an Edge-only session;
+                # that case must keep text rather than use an arbitrary voice.
+                tts = app.config.get('tts', {}) or {}
+                voice_id = tts.get('voice_id')
+                if tts.get('engine') == 'winrt':
+                    app._tts_windows_voice_id = (
+                        voice_id if isinstance(voice_id, str) and voice_id else None)
                 yield
                 return
 

@@ -142,7 +142,8 @@ def test_persistent_403_uses_local_voice_and_existing_notice_once(rig, handshake
     assert len(handshake.requests) == 4  # two refusals, then Samsara cooldown
     assert handle.network_bypassed and not handle.network_failed
     assert len(rig.local.calls) == 3 and not rig.played
-    assert all(args.get('voice_id') is None for _, args, _ in rig.local.calls)
+    # 826v: refusal uses the selected Windows voice for each complete line.
+    assert all(args['voice_id'] == 'chosen-windows-id' for _, args, _ in rig.local.calls)
     AudioCoordinator(app, rig.engine)._on_network_fallback()  # rebuilt router
     app._schedule_ui.assert_called_once_with(
         app.listening_indicator.show_outcome,

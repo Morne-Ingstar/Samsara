@@ -23,7 +23,7 @@ samsara/ui/qt_runtime.py:60
 # thread_registry.timer() starts immediately on construction, which would
 # invert that ordering. Kept as raw construction + register() right after
 # .start() to preserve the exact original sequencing.
-samsara/tts/coordinator.py:463
+samsara/tts/coordinator.py:466
 
 # Final-exit watchdog must survive registry shutdown, which cancels every
 # registered Timer. Keep this daemon independent so blocked log/stdio flushes

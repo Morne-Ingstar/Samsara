@@ -154,6 +154,9 @@ class AudioCoordinator:
         fallback_listener = getattr(engine, 'set_fallback_listener', None)
         if callable(fallback_listener):
             fallback_listener(self._on_network_fallback)
+        fallback_voice = getattr(engine, 'set_fallback_voice_resolver', None)
+        if callable(fallback_voice):
+            fallback_voice(lambda: getattr(self.app, '__dict__', {}).get('_tts_windows_voice_id'))
         self._engine_provider = (getattr(app, 'config', {}).get('tts', {}) or {}).get('engine')
         authorize = getattr(engine, 'set_authorization_checker', None)
         if callable(authorize):
