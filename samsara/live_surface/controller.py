@@ -194,6 +194,7 @@ class LiveSurfaceController:
                                ("clean_up_requested", self._clean_up),
                                ("clear_requested", self._clear),
                                ("dismiss_feedback_requested", self.dismiss_error),
+                               ("dismiss_question_requested", self.dismiss_question),
                                ("pause_requested", self._pause),
                                ("correct_word_requested", self._correct),
                                ("correction_apply_requested", self._apply_correction),
@@ -205,6 +206,11 @@ class LiveSurfaceController:
             signal = getattr(self.widget, name, None)
             if signal is not None:
                 signal.connect(callback)
+
+    def dismiss_question(self) -> None:
+        adapter = getattr(self, "_feedback_adapter", None)
+        if adapter is not None:
+            adapter.dismiss_question()
 
     def dismiss_error(self) -> None:
         from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices
@@ -554,6 +560,7 @@ class LiveSurfaceIndicatorAdapter:
         self._capture_id = None
         self._device_lost = False
         self._interactions = {}
+        self._dismissals = {}
         controller._feedback_adapter = self
 
     def set_mode(self, text: str) -> None:
@@ -646,6 +653,8 @@ class LiveSurfaceIndicatorAdapter:
             if not feedback.alive():
                 return  # The producer resolved before this queued handoff.
             self._interactions[feedback.owner] = feedback.alive
+        if feedback.dismiss is not None:
+            self._dismissals[feedback.owner] = feedback.dismiss
         self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=notice,
             message=str(label), ttl_s=None if ttl_ms is None else float(ttl_ms) / 1000,
             persistent=ttl_ms is None, feedback=feedback.kind, purpose=feedback.purpose,
@@ -654,6 +663,15 @@ class LiveSurfaceIndicatorAdapter:
     def clear_feedback(self, owner: str) -> None:
         self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, owner=owner))
         self._interactions.pop(owner, None)
+        self._dismissals.pop(owner, None)
+
+    def dismiss_question(self) -> bool:
+        owner = self.controller.view().notice.owner
+        dismiss = self._dismissals.get(owner)
+        if dismiss is None or not dismiss():
+            return False
+        self.show_feedback("Cancelled", "warning", DEFAULT_TTL_MS, Feedback(FeedbackKind.WARNING))
+        return True
 
     def reconcile_interactions(self, *, queued: bool = False) -> None:
         for owner, alive in tuple(self._interactions.items()):
@@ -664,6 +682,7 @@ class LiveSurfaceIndicatorAdapter:
                 else:
                     self.controller.model.consume(event)
                 self._interactions.pop(owner, None)
+                self._dismissals.pop(owner, None)
 
     def set_device_lost(self, lost: bool) -> None:
         lost = bool(lost)

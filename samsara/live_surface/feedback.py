@@ -58,6 +58,7 @@ class Feedback:
     owner: str = ""
     resolves: str = ""
     alive: Callable[[], bool] | None = field(default=None, compare=False, repr=False)
+    dismiss: Callable[[], bool] | None = field(default=None, compare=False, repr=False)
 
 
 def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> Feedback:
@@ -104,10 +105,30 @@ def producer_feedback(app, kind: str, source: str = "", detail: dict | None = No
     policy = sys.modules.get("samsara.execution_policy")
     pending = getattr(policy, "pending_operation", None)
     op = pending() if callable(pending) else None
+    manager = getattr(app, "_session_mode_manager", None)
+    suggestion = getattr(manager, "_pending_command_suggestion", None)
+    if source == "command_suggestion_pending":
+        if not isinstance(suggestion, dict):
+            suggestion = None
+        if suggestion is None and op is None:
+            return Feedback(FeedbackKind.QUESTION, FeedbackPurpose.QUESTION,
+                            "suggestion", alive=lambda: False)
+        from samsara.live_surface.suggestion_lifecycle import suggestion_callbacks
+        alive, dismiss = suggestion_callbacks(app, manager, suggestion, policy, op)
+        owner = "policy:" + str(op.op_id) if op is not None else str(id(suggestion))
+        bound = Feedback(FeedbackKind.QUESTION, FeedbackPurpose.QUESTION,
+                         "suggestion:" + owner, alive=alive, dismiss=dismiss)
+        if op is not None:
+            op._suggestion_feedback = bound
+        return bound
     if op is not None and getattr(op, "approved", None) is None:
         owner = "policy:" + str(op.op_id)
-        alive = lambda: pending() is op and op.approved is None
+        alive = lambda: pending() is op and getattr(
+            op, "is_live", lambda _: op.approved is None)(app)
         if kind == "pending" and source in ("", "command_cancel_window", "command_awaiting_confirmation", "pending_reply"):
+            bound = getattr(op, "_suggestion_feedback", None)
+            if bound is not None:
+                return bound
             running = type(op).__name__ == "TimedOperation" and not getattr(op, "converted", False)
             return Feedback(FeedbackKind.RUNNING if running else FeedbackKind.QUESTION,
                             FeedbackPurpose.RUNNING if running else FeedbackPurpose.QUESTION,
@@ -123,11 +144,6 @@ def producer_feedback(app, kind: str, source: str = "", detail: dict | None = No
     if source == "personal_alias_offer" and isinstance(alias, dict):
         return Feedback(FeedbackKind.QUESTION, FeedbackPurpose.QUESTION, "alias:" + str(id(alias)),
                         alive=lambda: getattr(app, "_personal_alias_offer", None) is alias)
-    manager = getattr(app, "_session_mode_manager", None)
-    suggestion = getattr(manager, "_pending_command_suggestion", None)
-    if source == "command_suggestion_pending" and isinstance(suggestion, dict):
-        return Feedback(FeedbackKind.QUESTION, FeedbackPurpose.QUESTION, "suggestion:" + str(id(suggestion)),
-                        alive=lambda: getattr(manager, "_pending_command_suggestion", None) is suggestion)
     return feedback
 
 

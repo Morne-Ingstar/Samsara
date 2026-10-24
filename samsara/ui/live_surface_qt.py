@@ -143,6 +143,7 @@ class _Mark(QWidget):
 class _FeedbackBand(QWidget):
     """A content row with at most two readable lines and full hover text."""
     dismissed = Signal()
+    question_dismissed = Signal()
     def __init__(self, parent, name, *, chip=False):
         super().__init__(parent)
         self.notice, self.chip = None, chip
@@ -154,9 +155,18 @@ class _FeedbackBand(QWidget):
         self.label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.label.setFont(theme.qfont(theme.TYPE_BODY))
         self.label.setAccessibleName("Live surface feedback")
+        self.dismiss = QPushButton("Dismiss", self)
+        self.dismiss.setAccessibleName("Dismiss suggestion")
+        self.dismiss.setToolTip("Cancel this suggestion")
+        self.dismiss.clicked.connect(self.question_dismissed.emit)
+        self.dismiss.hide()
+
+    def _dismiss_width(self):
+        return 76 if self.notice and self.notice.purpose is FeedbackPurpose.QUESTION and self.notice.owner.startswith("suggestion:") else 0
 
     def set_notice(self, notice):
         self.notice = notice
+        self.dismiss.setVisible(bool(self._dismiss_width()))
         from samsara.ui.result_message_rendering import set_result_label
         message = notice.message if notice else ""
         self.setAccessibleName(message or "Live surface feedback")
@@ -165,7 +175,7 @@ class _FeedbackBand(QWidget):
         if not self.chip and notice and notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING, FeedbackKind.LIVE):
             message = KIND_WORDS[notice.feedback] + ": " + message
         self._message = message
-        lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)))
+        lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._dismiss_width()))
         set_result_label(self.label, '\n'.join(lines), theme.TEXT_PRIMARY)
         if self.label.textFormat() == Qt.TextFormat.RichText:
             self.label.setText(self.label.text().replace('\n', '<br>'))
@@ -176,12 +186,14 @@ class _FeedbackBand(QWidget):
     def required_height(self, width):
         if not self.notice or not self.notice.message:
             return 0
-        return message_height(self._message, self.label.font(), width-(42 if self.chip else 24))
+        return max(36 if self._dismiss_width() else 0, message_height(self._message, self.label.font(), width-(42 if self.chip else 24)-self._dismiss_width()))
 
     def desired_width(self):
-        return self.label.fontMetrics().horizontalAdvance(self.notice.message) + 42 if self.notice else 0
+        return self.label.fontMetrics().horizontalAdvance(self.notice.message) + 42 + self._dismiss_width() if self.notice else 0
 
     def restyle(self):
+        self.dismiss.setFont(theme.qfont(theme.TYPE_MIN))
+        self.dismiss.setStyleSheet(f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: 5px; padding: 0; font-size: {theme.TYPE_MIN}px; }} QPushButton:hover {{ border-color: {theme.ACCENT}; }}")
         kind = self.notice.feedback if self.notice else FeedbackKind.INFORMATION
         from samsara.result_messages import is_ava_chain_result
         fill = theme.AVA if self.notice and is_ava_chain_result(self.notice.message) else getattr(theme, FILL_TOKENS[kind])
@@ -210,8 +222,9 @@ class _FeedbackBand(QWidget):
 
     def resizeEvent(self, event):
         self.label.setGeometry(30 if self.chip else 12, 0 if self.chip else 6,
-                               max(1, self.width()-(42 if self.chip else 24)),
+                               max(1, self.width()-(42 if self.chip else 24)-self._dismiss_width()),
                                self.height() if self.chip else max(1, self.height()-12))
+        self.dismiss.setGeometry(self.width()-76, max(0, (self.height()-28)//2), 70, 28)
         self.set_notice(self.notice)
         super().resizeEvent(event)
 
@@ -295,6 +308,7 @@ class LiveSurfaceWidget(QWidget):
     commit_requested = Signal()
     clear_requested = Signal()
     dismiss_feedback_requested = Signal()
+    dismiss_question_requested = Signal()
     clean_up_requested = Signal()
     pause_requested = Signal()
     correct_word_requested = Signal(object)
@@ -355,6 +369,8 @@ class LiveSurfaceWidget(QWidget):
         self._secondary_band = _FeedbackBand(self, "surfaceFailure")
         self._band.dismissed.connect(self.dismiss_feedback_requested.emit)
         self._secondary_band.dismissed.connect(self.dismiss_feedback_requested.emit)
+        self._band.question_dismissed.connect(self.dismiss_question_requested.emit)
+        self._secondary_band.question_dismissed.connect(self.dismiss_question_requested.emit)
         self._chip = None
         self._band_height = 0
         self._state = QLabel(self); self._state.setObjectName("surfaceState"); self._state.setWordWrap(True)
@@ -647,6 +663,7 @@ class LiveSurfaceWidget(QWidget):
         if short and self._chip is None:
             self._chip = _FeedbackBand(self, "surfaceChip", chip=True)
             self._chip.dismissed.connect(self.dismiss_feedback_requested.emit)
+            self._chip.question_dismissed.connect(self.dismiss_question_requested.emit)
         if self._chip is not None:
             if short:
                 self._chip.set_notice(notice); self._chip.restyle()

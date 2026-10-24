@@ -55,6 +55,7 @@ from typing import Any, Callable, Optional, Union
 from samsara.draft_document import DraftDocument
 from samsara.utterance_undo import UtteranceUndoMixin
 from samsara.draft_clear_undo import ClearDraftUndo
+from samsara.live_surface.suggestion_lifecycle import bind_pending_reply
 from samsara import clipboard_recovery, delivery_verify
 from samsara.hands_free_entry import HANDS_FREE_ENTRY_PHRASES, dispatch_dictate_hands_free_entry
 from samsara.stage_timing import current_stage_timing as _current_stage_timing
@@ -1336,7 +1337,7 @@ class SessionModeManager(UtteranceUndoMixin):
         # pending_reply_fn(text): answer the live pending question
         # (execution_policy.answer_pending). Returns None when the text is not
         # a complete-utterance reply or nothing is pending.
-        self._pending_reply_fn = pending_reply_fn
+        self._pending_reply_fn = bind_pending_reply(self, pending_reply_fn)
         self._abort_phrases = list(abort_phrases)
         # Sleep phrases (SESSION_SLEEP_PHRASES) match the WHOLE utterance
         # only and are never compiled into the anywhere-in-the-text abort
