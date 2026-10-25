@@ -41,6 +41,7 @@ _SHORT_REPLY_CHARS = 160
 _CACHE_ENTRIES = 32
 _CACHE_BYTES = 4 * 1024 * 1024
 _CACHE_ITEM_BYTES = 882000  # ten seconds of 44.1 kHz mono int16
+_MAX_JOBS = 2  # one playing reply and one fetched ahead; never a thread per backlog
 
 # Curated English voice list — full list available via edge_tts.list_voices()
 _BUILTIN_VOICES = [
@@ -93,7 +94,7 @@ class _PartialAudio(bytes):
 
 
 def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
-                    authorize=None, max_attempts=3, timeout=10.0) -> bytes:
+                    authorize=None, max_attempts=3, timeout=10.0, timing=None) -> bytes:
     """Synthesize text via edge-tts, return raw MP3 bytes.
 
     edge-tts streams audio over a websocket that can drop mid-utterance on
@@ -117,6 +118,8 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
 
     async def _do():
         _require_authorized()
+        if timing:
+            timing('websocket_request')
         communicate = edge_tts.Communicate(text, voice_id, rate=rate, volume=volume)
         buf = io.BytesIO()
         got_audio = False
@@ -131,6 +134,8 @@ def _synthesize_mp3(voice_id: str, text: str, rate: str, volume: str,
                                                max(0.0, deadline - loop.time()))
                 _require_authorized()
                 if chunk["type"] == "audio" and chunk["data"]:
+                    if not got_audio and timing:
+                        timing('first_chunk')
                     buf.write(chunk["data"])
                     got_audio = True
                     deadline = loop.time() + timeout
@@ -252,6 +257,7 @@ class EdgeTTSEngine(TTSEngine):
         self._authorization_checker = None
         self._jobs = {}
         self._worker_lock = threading.Lock()
+        self._synthesis_lock = threading.Lock()
         self._fallback_engine = None
         self._fallback_listener = None
         self._fallback_voice_id = fallback_voice_id
@@ -362,11 +368,24 @@ class EdgeTTSEngine(TTSEngine):
         handle.audio_cache_hit = False
         handle.audio_started_ms = None
         started = time.perf_counter()
+        handle.timings_ms = {}
+
+        def timing(stage):
+            elapsed = (time.perf_counter() - started) * 1000
+            handle.timings_ms.setdefault(stage, elapsed)
+            logger.debug('[EdgeTTS] id=%s category=%s chars=%d stage=%s elapsed_ms=%.1f',
+                         handle.utterance_id, category, len(text), stage, elapsed)
+
         cache_key = ((voice_id or _DEFAULT_VOICE, text, speed, pitch, volume)
                      if 0 < len(text) <= _SHORT_REPLY_CHARS else None)
-        job = {'handle': handle, 'cancelled': threading.Event(), 'local': None}
+        job = {'handle': handle, 'cancelled': threading.Event(), 'local': None,
+               'done': threading.Event()}
         with self._lock:
-            self._jobs[handle.utterance_id] = job
+            admitted = len(self._jobs) < _MAX_JOBS and not self._shutdown
+            previous = next(reversed(self._jobs.values()), None) if self._jobs else None
+            if admitted:
+                self._jobs[handle.utterance_id] = job
+        timing('enqueue' if admitted else 'queue_full')
 
         def authorized():
             return (not job['cancelled'].is_set() and not self._shutdown
@@ -378,6 +397,7 @@ class EdgeTTSEngine(TTSEngine):
                 if self._active_handle is handle:
                     self._state = 'idle'
                     self._active_handle = None
+                job['done'].set()
             handle._state = 'done'
             if on_done:
                 try:
@@ -387,14 +407,18 @@ class EdgeTTSEngine(TTSEngine):
 
         def worker():
             try:
-                # Serial playback also serializes circuit-breaker decisions.
-                with self._worker_lock:
+                timing('dequeue')
+                # Fetch the next reply while the current one plays. Keep the
+                # circuit breaker serialized, but never hold it over playback.
+                with self._synthesis_lock:
+                    timing('synthesis_lock_acquired')
                     if not authorized():
                         handle.voice_result = 'cancelled'
                         return
                     with self._lock:
-                        self._active_handle = handle
-                        self._state = 'synthesizing'
+                        if self._active_handle is None:
+                            self._active_handle = handle
+                            self._state = 'synthesizing'
                         pcm = self._cached_pcm(cache_key) if cache_key is not None else None
                         handle.audio_cache_hit = pcm is not None
                         bypass = pcm is None and time.monotonic() < self._retry_at
@@ -410,8 +434,11 @@ class EdgeTTSEngine(TTSEngine):
                                     voice_id or _DEFAULT_VOICE, text,
                                     f'{rate_pct:+d}%', f'{vol_pct:+d}%',
                                     authorize=authorized, max_attempts=1 if probe else 3,
+                                    timing=timing,
                                 )
+                                timing('synthesis_complete')
                                 pcm = _mp3_to_pcm(mp3)
+                                timing('decode_complete')
                                 cacheable = not isinstance(mp3, _PartialAudio)
                             if not pcm:
                                 raise RenderError('Network voice decoded no audio')
@@ -419,6 +446,7 @@ class EdgeTTSEngine(TTSEngine):
                             handle.voice_result = 'cancelled'
                             return
                         except Exception:
+                            pcm = None
                             if not authorized():
                                 handle.voice_result = 'cancelled'
                                 return
@@ -436,18 +464,33 @@ class EdgeTTSEngine(TTSEngine):
                                 if not handle.audio_cache_hit:
                                     self._failure_count = 0
                                     self._retry_at = 0.0
-                                self._state = 'playing'
 
-                            def on_start():
-                                handle.audio_started_ms = (time.perf_counter() - started) * 1000
-                                logger.debug('[EdgeTTS] first audio write: %.0fms (cache=%s)',
-                                             handle.audio_started_ms, handle.audio_cache_hit)
+                # Insertion order, rather than mutex wake order, defines append.
+                # Cancellation can release this waiter without waiting for audio.
+                while previous is not None and not previous['done'].wait(.02):
+                    if not authorized():
+                        handle.voice_result = 'cancelled'
+                        return
+                with self._worker_lock:
+                    timing('playback_lock_acquired')
+                    if not authorized():
+                        handle.voice_result = 'cancelled'
+                        return
+                    with self._lock:
+                        self._active_handle = handle
+                        self._state = 'playing' if pcm is not None and not bypass else 'synthesizing'
+                    if pcm is not None and not bypass:
+                        def on_start():
+                            timing('first_write')
+                            handle.audio_started_ms = handle.timings_ms['first_write']
+                            logger.debug('[EdgeTTS] first audio write: %.0fms (cache=%s)',
+                                         handle.audio_started_ms, handle.audio_cache_hit)
 
-                            self._play_pcm(pcm, authorize=authorized, on_start=on_start)
-                            handle.voice_result = 'network' if authorized() else 'cancelled'
-                            if authorized() and cacheable:
-                                self._cache_pcm(cache_key, pcm)
-                            return
+                        self._play_pcm(pcm, authorize=authorized, on_start=on_start)
+                        handle.voice_result = 'network' if authorized() else 'cancelled'
+                        if authorized() and cacheable:
+                            self._cache_pcm(cache_key, pcm)
+                        return
                     handle.network_failed = not bypass
                     self._speak_windows(job, text, speed, pitch, volume, category,
                                         queue_mode, authorized)
@@ -457,7 +500,7 @@ class EdgeTTSEngine(TTSEngine):
             finally:
                 finish()
 
-        if not authorized():
+        if not admitted or not authorized():
             handle.voice_result = 'cancelled'
             finish()
         else:

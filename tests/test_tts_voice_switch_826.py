@@ -310,22 +310,13 @@ def test_default_windows_selection_clears_previous_explicit_choice(rig, monkeypa
 
 def test_fallback_finishes_before_next_edge_utterance(rig, monkeypatch):
     waiting = threading.Event()
-    class ObservedLock:
-        def __init__(self):
-            self.lock = threading.Lock()
-        def __enter__(self):
-            if self.lock.locked():
-                waiting.set()
-            self.lock.acquire()
-        def __exit__(self, *args):
-            self.lock.release()
-    rig.engine._worker_lock = ObservedLock()
     rig.local.hold = True
     calls = []
     def synth(*args, **kwargs):
         calls.append(args)
         if len(calls) == 1:
             raise RenderError('offline')
+        waiting.set()
         return b'mp3'
     monkeypatch.setattr(edge, '_synthesize_mp3', synth)
     first = rig.engine.speak('Synthetic first utterance')
@@ -339,7 +330,8 @@ def test_fallback_finishes_before_next_edge_utterance(rig, monkeypatch):
         workers[1].start()
         second_started = True
         assert waiting.wait(1)
-        assert len(calls) == 1 and not rig.played
+        # 868: fetching overlaps fallback; audible playback must still wait.
+        assert len(calls) == 2 and not rig.played
         text, kwargs, local_handle = rig.local.calls[0]
         assert text == 'Synthetic first utterance'
         local_handle._state = 'done'
