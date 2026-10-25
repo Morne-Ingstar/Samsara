@@ -123,80 +123,108 @@ running or the checkout is dirty) was not wired in: a fresh Actions runner
 checkout is always clean and never has Samsara running, so the check would
 always trivially pass and adds no signal on CI.
 
-## SignPath Foundation requirements
+## Code signing policy and Windows metadata
 
-Per <https://signpath.org/terms.html> (SignPath Foundation's published
-conditions for open-source projects), the three requirements that shaped
-this workflow's design:
+The [Code signing policy](../CODE_SIGNING_POLICY.md) publishes the intended
+attribution, author/reviewer/approver roles, MFA/manual approval requirements,
+and [privacy policy](../PRIVACY.md). The README and release-notes template link
+it. The website needs the same section before application.
 
-1. **"The binary is a valid, automated build resulting from the source
-   code"** at the reviewed repository, verified technically for each
-   release. This is why the workflow builds from a tag push in a
-   GitHub-hosted runner with no local/manual build step in the path -- it's
-   the "verifiable CI pipeline from the public repo" SignPath's process
-   needs to point at.
-2. **Every release needs manual approval for signing** (SignPath's own
-   review/approval flow, separate from this workflow). This is why the
-   signing step is a disabled stub between packaging and the draft release,
-   not an automatic call: signing itself happens as a distinct,
-   human-gated request once a project is registered, not as an unattended
-   CI step.
-3. **Source code, including build scripts and CI configuration, is what
-   reviewers examine** to grant and keep eligibility. This is why the build
-   stays a single straightforward PyInstaller-via-`samsara.spec` path with
-   one smoke gate, rather than something reviewers would have to untangle.
+`scripts/version_info.py` reads the package version with AST, without importing
+the app, and generates resources for `Samsara.exe` and `samsara-mcp.exe`. These
+are the only first-party PE outputs in the current spec. No separate compiled
+updater, own DLL or own `.pyd` target exists. Third-party DLLs/extensions and
+component ZIPs must not be submitted under Samsara's identity.
 
-(Other eligibility conditions -- OSI-approved license, no proprietary
-components, active maintenance, no malware/exploit tooling, MFA for all team
-members, published code-signing policy, etc. -- are project/organizational
-facts, not workflow design choices, so they aren't reflected in the YAML
-itself.)
+ProductName/CompanyName are `Samsara`; FileDescription is `Samsara voice control
+and dictation`; copyright includes AGPL-3.0. ProductVersion is the full package
+version. Numeric FileVersion/fixed product version is major.minor.patch.counter,
+with the prerelease counter or zero for stable versions: `0.30.0-beta.9` becomes
+`0.30.0.9`. Numeric resource fields do not define update ordering.
 
-Once signed, the certificate is issued to **SignPath Foundation**, not to
-this project -- Windows SmartScreen and install dialogs will show "SignPath
-Foundation" as the publisher, not "Samsara".
+Inno uses `GetVersionNumbersString` on the built app for numeric fields and
+AppVersion for its product text version; it has no SignTool. CI checks the two
+application PE resources before smoke/packaging. The checker reads every
+translated string and fixed version through Windows version.dll without
+executing the files.
 
-## What still has to happen manually
+## Signing status and intended two-stage process
 
-1. **Apply to SignPath Foundation.** Nothing here does this automatically.
-   Application review and eligibility (OSI license, no proprietary
-   components, published code-signing policy, team roles, MFA) happen
-   outside CI, at <https://signpath.org/>. Only after acceptance does an
-   `organization-id` / `project-slug` / signing policy exist to fill into the
-   commented-out stub step.
-2. **Wire up the SignPath action for real** once approved: uncomment the
-   stub step, pin `signpath/github-action-submit-signing-request` to an
-   exact commit SHA (not done here -- no account exists yet to test against),
-   add `SIGNPATH_API_TOKEN` as a repository secret, and repoint the packaging
-   step to zip the *signed* output instead of the unsigned one.
-3. **Azure Trusted Signing (now "Azure Artifact Signing") as a paid
-   fallback**, if SignPath Foundation's review is rejected, too slow, or its
-   organizational requirements (MFA for all members, published policy, etc.)
-   don't fit: Basic tier is **$9.99/month** for 5,000 signatures/month, one
-   certificate profile of each type, $0.005/signature overage
-   (<https://azure.microsoft.com/en-us/pricing/details/artifact-signing/>).
-   Restricted to US/Canadian/EU/UK businesses as of general availability.
-4. **A first real run on `windows-latest`** to confirm the assumptions
-   RELEASING.md already flags as unverified for `release.yml` (GUI/window
-   creation succeeding headless, the bundled VAD asset reaching the frozen
-   app, build size) apply the same way here, since this workflow builds the
-   same way.
+**Integration is blocked pending an authoritative full commit SHA for the v3
+SignPath action and validation of the artifact configuration schema.** This
+change was prepared offline. The checked-in workflow retains its disabled
+signing stub. Adding a token alone does not yet activate signing; current
+artifacts must not be described as signed.
 
-## First-run steps
+The intended process, all on GitHub-hosted `windows-latest` runners:
 
-1. Review this file's diff against `release.yml` side by side; decide
-   whether `release-build.yml` replaces it, runs alongside it, or gets
-   discarded once reviewed.
-2. Trigger it once via **Actions -> Release Build (CPU, SignPath-ready) ->
-   Run workflow** (`workflow_dispatch`, blank version input) on this branch
-   or a throwaway branch pushed to the remote -- this builds, smoke-checks,
-   and uploads artifacts, but creates no Release (the draft-release step
-   only runs `if: github.ref_type == 'tag'`).
-3. Inspect the uploaded `smoke-log-*` artifact and the build-size/warning
-   output in the "Verify build output" step, same as RELEASING.md's existing
-   "Assumptions a first real CI run should confirm" list.
-4. Only after a clean `workflow_dispatch` run, push a real tag (e.g.
-   `v0.22.1-rc1`) to confirm the draft-release path -- **the release is
-   created as a draft**, so nothing goes out until someone opens it on
-   GitHub and clicks Publish.
-5. Delete the draft release and the tag if it was only a test.
+1. Build and smoke the tagged source. Stage A uploads only `Samsara.exe` and
+   `samsara-mcp.exe` using upload-artifact id `upload-unsigned-artifact`.
+2. Submit its artifact-id to `signpath/github-action-submit-signing-request`,
+   configuration `stage-a`, policy `release-signing`. Wait for manual approval,
+   download the result, validate both Authenticode signatures and PE identities,
+   and replace only these files in dist. Then build the portable ZIP and installer.
+3. Stage B uploads `SamsaraSetup-<version>.exe`, submits its artifact-id with
+   configuration `stage-b` and the same policy, waits for a second manual approval,
+   validates the result and replaces the installer.
+4. Compute SHA-256 sidecars from the final ZIP/installer, then upload those same
+   final files as artifacts and draft-release assets. Signing failures must fail
+   the job; they must never fall back silently to unsigned output.
+
+`signpath/stage-a.xml` and `stage-b.xml` have ZIP roots because upload-artifact
+wraps even a single installer in a ZIP. Their allowlist excludes third-party PE
+files. XML well-formedness can be checked offline; SignPath schema validation
+is still required before activation.
+
+The guard design computes `SIGNPATH_ENABLED` in job env from the token's presence
+and guards every signing upload/request/restore step with that boolean. GitHub
+does not allow secrets directly in a step's `if` expression. Without the token,
+all signing steps skip and the existing packaging scripts continue. The token
+is passed only to the two requests. Organization/project come from repository
+variables `SIGNPATH_ORGANIZATION_ID` / `SIGNPATH_PROJECT_SLUG`; no extra enable
+variable is needed.
+
+## Foundation requirements and sources
+
+These requirements come from the brief's 2026-10-22 reading of the
+[Foundation terms](https://signpath.org/terms) and
+[SignPath documentation](https://docs.signpath.io/). They were not re-fetched
+in this offline implementation; recheck the primary sources during activation.
+
+- OSI-approved license, active maintenance, prior releases, no proprietary
+  components, and functionality described on the download page.
+- Own binaries built from own source; Code signing policy on home/download/release
+  pages; privacy disclosures; roles/permission links; GitHub and SignPath MFA;
+  review of non-committer changes; manual approval of every signing request.
+- ProductName `Samsara` and consistent ProductVersion. The certificate is provided
+  by SignPath Foundation and the signing service by SignPath.io.
+- SignPath GitHub App installed for trusted build-origin verification; all jobs
+  before submission on GitHub-hosted runners.
+
+No verified Foundation certificate reputation guidance was available in the
+offline material. This change makes no claim about when SmartScreen warnings
+disappear and does not assert that current docs are silent. Verify the current
+Foundation guidance before promising an outcome.
+
+## Remaining steps, in order
+
+1. Resolve/pin the official v3 action commit, validate both XML configurations
+   against SignPath's schema, install the reviewed two-stage workflow and rerun
+   its focused gates. This is a code-verification blocker, not an owner account step.
+2. The owner approved the policy wording/roles on 2026-10-23; add the same
+   **Code signing policy** section to the VPS site's home and download pages.
+3. Enable MFA for every GitHub team member and apply at
+   [SignPath Foundation](https://signpath.org/) with the
+   [repository](https://github.com/Morne-Ingstar/Samsara), policy and privacy links.
+4. After approval, enable MFA for every SignPath member; create the project,
+   `stage-a` / `stage-b` artifact configurations, a `release-signing` policy
+   requiring manual approval, and an API token allowed to submit requests.
+5. Install the SignPath GitHub App for this repository's origin verification.
+6. Add repository secret `SIGNPATH_API_TOKEN` and variables
+   `SIGNPATH_ORGANIZATION_ID` / `SIGNPATH_PROJECT_SLUG` using the account values.
+7. Push the next real matching version tag; approve both requests, inspect the
+   draft signatures/sidecars, and follow the normal release review/publish process.
+
+The account/API, hosted build, actual signing and reputation behavior have not
+been exercised here. Offline fixture packaging checks file routing only; it
+cannot establish trusted origin, genuine signatures or real build equivalence.

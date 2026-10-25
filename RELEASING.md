@@ -180,12 +180,25 @@ build begins.
   push while a build is running kills the first one rather than queuing
   behind it.
 
-## Future: SignPath signing hook point
+## Code signing policy and release notes
 
-Once the CPU build has a few clean CI runs behind it, SignPath code signing
-slots in after the "Package CPU build" step and before "Attach to GitHub
-Release": upload the unsigned zip (or just `Samsara.exe`) to SignPath's
-API, wait for the signed artifact, and use *that* in the Release/artifact
-upload steps instead. Not wired up yet — this workflow is the
-prerequisite (verifiable, CI-built binary) SignPath's process needs before
-that conversation can start.
+Include this section in every release's notes (use an absolute URL on GitHub):
+
+```markdown
+### Code signing policy
+
+See the [Code signing policy](https://github.com/Morne-Ingstar/Samsara/blob/master/CODE_SIGNING_POLICY.md)
+for signing status, SignPath.io and SignPath Foundation attribution, team roles,
+and the privacy policy. Check the individual assets' signatures; older unsigned
+releases remain unsigned.
+```
+
+The package version generates Windows PE resources for `Samsara.exe` and
+`samsara-mcp.exe`. The installer reads its numeric version from the built app and
+its full product text version from AppVersion. CI checks both application PE
+resources before smoke or packaging. Company/publisher is `Samsara`.
+
+Signing integration remains pending verification of the SignPath action's full
+commit SHA and artifact schema. The checked-in workflow retains its disabled
+signing stub; do not describe its outputs as signed. See [Release CI](Docs/RELEASE_CI.md)
+for the intended two-stage process and activation steps.

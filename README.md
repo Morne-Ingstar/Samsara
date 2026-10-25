@@ -18,6 +18,11 @@ Samsara is free. No word limits, subscriptions, or paid feature tiers—and no e
 *Interface and features can differ between builds;
 see the release notes for the build you choose.*
 
+## Code signing policy
+
+Read our [Code signing policy](CODE_SIGNING_POLICY.md) for signing status,
+SignPath.io and SignPath Foundation attribution, team roles, and privacy policy.
+
 ## Get started
 
 You need **Windows 10 or 11 and a microphone**. The packaged app includes

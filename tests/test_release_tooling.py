@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools import release_manifest
-from tools.check_release_version import check_versions
+from tools.check_release_version import check_versions, check_pe_version
 from tools.release_manifest import tracked_tree_datas
 from tools.release_preflight import git_release_blockers, samsara_process_reason
 
@@ -171,3 +171,16 @@ def test_release_scripts_are_fail_closed_and_manifest_based():
     assert "set INCLUDE_CUDA=0" in batch
     assert "SAMSARA_PYTHON" in batch
     assert "set PYTHON=C:\\test-env\\samsara\\python.exe" not in batch
+
+
+@pytest.mark.parametrize("field", ["ProductName", "ProductVersion", "FileVersion",
+                                  "CompanyName", "FixedFileVersion", "FixedProductVersion"])
+def test_release_pe_rejects_identity_mismatch(monkeypatch, field):
+    values = dict(ProductName="Samsara", ProductVersion="0.30.0-beta.9",
+                  FileVersion="0.30.0.9", CompanyName="Samsara",
+                  FixedFileVersion="0.30.0.9", FixedProductVersion="0.30.0.9")
+    monkeypatch.setattr("tools.check_release_version.read_pe_version", lambda path: values)
+    check_pe_version("not-executed.exe", "0.30.0-beta.9")
+    values[field] = "wrong"
+    with pytest.raises(ValueError, match=field + " mismatch"):
+        check_pe_version("not-executed.exe", "0.30.0-beta.9")

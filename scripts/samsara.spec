@@ -583,12 +583,20 @@ a.binaries = [entry for entry in a.binaries
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+from scripts.version_info import write_version_resource
+
+_app_version_resource = write_version_resource(
+    app_dir, _build_work / 'samsara_version_info.txt', 'Samsara.exe')
+_relay_version_resource = write_version_resource(
+    app_dir, _build_work / 'samsara_mcp_version_info.txt', 'samsara-mcp.exe')
+
 exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
     name='Samsara',
+    version=str(_app_version_resource),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -614,6 +622,7 @@ relay_pyz = PYZ(relay_analysis.pure)
 relay_exe = EXE(
     relay_pyz, relay_analysis.scripts, [], exclude_binaries=True,
     name='samsara-mcp', console=True, contents_directory='_internal',
+    version=str(_relay_version_resource),
     debug=False, strip=False, upx=False,
 )
 

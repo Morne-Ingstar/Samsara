@@ -147,6 +147,12 @@ jobs:
             }
           }
 
+      - name: Verify built PE version resources
+        shell: pwsh
+        run: |
+          python tools\check_release_version.py --exe dist\Samsara\Samsara.exe --exe dist\Samsara\samsara-mcp.exe
+          if ($LASTEXITCODE -ne 0) { throw "Built PE version resources do not match the release" }
+
       # ------------------------------------------------------------------
       # Headless-safe smoke checks.
       #
