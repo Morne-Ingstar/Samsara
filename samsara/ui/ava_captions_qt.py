@@ -249,6 +249,7 @@ class _CaptionsWindow(QWidget):
             f" border-radius: 12px; }}"
         )
         self._who.setStyleSheet(
+            "background: transparent; border: none;"
             f"color: {theme.AVA}; font-size: {theme.TYPE_BODY}px;"
             f" font-weight: 700; letter-spacing: 0.12em;"
         )
@@ -256,10 +257,12 @@ class _CaptionsWindow(QWidget):
         # panel, primary ink on a card, which is the highest-contrast pair
         # the palette has (tests/test_theme_contrast.py).
         self._text.setStyleSheet(
+            "background: transparent; border: none;"
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_TITLE}px;"
             f" font-weight: 600;"
         )
         self._hint.setStyleSheet(
+            "background: transparent; border: none;"
             f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px;"
         )
 

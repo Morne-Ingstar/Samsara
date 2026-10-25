@@ -1335,12 +1335,15 @@ QComboBox {{
 }}
 QComboBox:hover {{ border-color: {ACCENT}; }}
 QComboBox::drop-down {{
+    background: transparent;
     subcontrol-origin: padding;
     subcontrol-position: center right;
     width: 24px;
     border: none;
 }}
 QComboBox::down-arrow {{
+    background: transparent;
+    border: none;
     image: url({ARROW_PATH});
     width: 10px;
     height: 6px;

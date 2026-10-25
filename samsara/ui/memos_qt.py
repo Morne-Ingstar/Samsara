@@ -185,6 +185,7 @@ class MemosPage(QWidget):
             f" color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER};"
             " border-radius: 6px; padding: 0 10px; font-size: 16px; }"
             f"QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid {theme.ACCENT}; }}"
+            "QComboBox::drop-down, QComboBox::down-arrow { background: transparent; border: none; }"
             "QListWidget { background: transparent; border: none; }"
             "QListWidget::item { background: transparent; border: none; padding: 0; }"
             + theme.SCROLLBAR_QSS)

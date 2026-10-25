@@ -60,9 +60,12 @@ def _ss() -> str:
     QWidget {{ background:{theme.BG0}; color:{theme.TEXT_PRIMARY};
               font-family:'Segoe UI',sans-serif; font-size:{theme.TYPE_BODY}px; }}
     QTabWidget::pane {{ border:1px solid {theme.BORDER}; background:{theme.BG0}; }}
+    QTabWidget, QTabBar {{ background:{theme.BG1}; }}
     QTabBar::tab {{ background:{theme.BG1}; color:{theme.TEXT_SECONDARY};
-                    padding:5px 14px; border:none; margin-right:2px; }}
-    QTabBar::tab:selected {{ background:{theme.BG2}; color:{theme.ACCENT}; }}
+                    padding:4px 14px; border:1px solid {theme.BORDER};
+                    border-radius:6px; margin-right:4px; }}
+    QTabBar::tab:selected {{ background:{theme.BG2}; color:{theme.ACCENT};
+                             border-color:{theme.ACCENT}; }}
     QTabBar::tab:hover:!selected {{ color:{theme.TEXT_PRIMARY}; }}
     QListWidget, QTableWidget {{
         background:{theme.BG1}; border:1px solid {theme.BORDER};
@@ -260,6 +263,7 @@ class DictionaryPanelQt(QWidget):
         lay.addWidget(self._header)
 
         self._tabs = QTabWidget()
+        self._tabs.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._tabs.setMaximumWidth(theme.HUB_LIST_WIDTH + 28)
         # 839: the header and separate preference row must not push actions
         # outside a short window. Scroll the tab body when its minimum won't fit.
