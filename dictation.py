@@ -2642,6 +2642,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 _existing_file_unreadable = True
 
         if _loaded_from_disk:
+            from samsara import model_guard
+            model_guard.loaded(self, default_config)
             # Migration saves write self.config as-is, bypassing save_config's
             # three-way merge. The merge has no notion of "deleted in memory":
             # a key absent from memory but present on disk is taken from disk,
@@ -2653,7 +2655,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # preserve.
             from samsara.config_migrations import migrate_loaded_config
             migrate_loaded_config(self, default_config)
-
             # Fill in any missing top-level keys
             for key in default_config:
                 if key not in self.config:
@@ -2686,11 +2687,12 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # (not re-acquiring the lock) is correct here.
             self.save_config()
 
+        from samsara.model_guard import finish_load
+        finish_load(self)
         # Record the on-disk state so save_config can do three-way merging.
         self._stage_timing_enabled = bool(
             (self.config.get("diagnostics", {}) or {}).get("stage_timing", False)
         )
-        logger.debug("[CONFIG] load_config: starting deepcopy snapshot")
         self._config_last_disk_snapshot = copy.deepcopy(self.config)
         logger.debug("[CONFIG] load_config: done")
 
@@ -2847,20 +2849,17 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     
     def save_config(self):
         """Save configuration to JSON file, then rotate a timestamped backup.
-
         Prefers a true atomic os.replace() for the final swap into place,
         with a short retry + fallback (see step 3) -- a concurrent
         config-watcher read can transiently hold config.json open without
         FILE_SHARE_DELETE on Windows. If serialization throws partway
         through (as happened with the MenuItem-in-config bug), config.json
         is left untouched instead of being truncated.
-
         Also keeps the previous good copy at config.json.bak, AND
         (2026-07-2x config-backup safeguard) a rolling, timestamped copy of
         the PRE-write on-disk state under _config_backups_dir() (newest
         _CONFIG_BACKUP_KEEP kept -- see _rotate_config_backup()) so a bad
         write is never the only surviving copy of a user's settings.
-
         SAVE LATCH: a no-op if self._config_load_failed is set -- meaning
         load_config() could not read an existing config file THIS session
         (see its failure branch and _quarantine_corrupt_config()). This is
@@ -2872,7 +2871,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         update_config_and_save, update_config), so gating it here is a
         single choke point -- defaults from a failed load can never reach
         disk over the quarantined original.
-
         Caller MUST hold self._config_lock.  Use persist_config() for
         external or fire-and-forget saves where you don't already hold it.
         """
@@ -2895,7 +2893,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
         tmp_path = self.config_path.with_suffix('.json.tmp')
         bak_path = self.config_path.with_suffix('.json.bak')
-
+        from samsara import model_guard
         try:
             # 0. Three-way merge: (last-known-disk, in-memory, current-disk).
             #    External edits (keys changed on disk since our last read/write)
@@ -2914,6 +2912,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     logger.warning(f"[WARN] Could not read on-disk config for merge: {e}")
                     merged = self.config
 
+            merged = model_guard.protect_save(self, merged)
             # 1. Serialize to temp file. If json.dump raises, the real
             #    config.json is unaffected.
             with open(tmp_path, 'w') as f:
@@ -2969,6 +2968,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # 4. Sync in-memory config and snapshot to what was written.
             self.config = merged
             self._config_last_disk_snapshot = copy.deepcopy(merged)
+            model_guard.saved(self)
         except Exception as e:
             # Clean up the temp file if we left one lying around
             try:

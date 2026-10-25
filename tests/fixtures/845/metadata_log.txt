@@ -1,0 +1,8 @@
+2026-10-24 16:35:21,604 - Samsara - INFO - [GATE] speech_presence path=hold duration_s=2.3 peak=0.996100 grace_peak=0.5 verdict=pass
+2026-10-24 16:35:22,604 - Samsara - INFO - [TRANSCRIBED] Held dictation ready for delivery
+2026-10-24 16:35:23,604 - Samsara - INFO - [TRANSCRIBED] synthetic private speech must not appear in the audit
+2026-10-24 17:42:25,017 - Samsara - INFO - [CONFIG] Model: small.en, Device: cuda, Compute: float16
+2026-10-24 17:42:26,017 - Samsara - INFO - [GATE] speech_presence path=handsfree duration_s=1.0 peak=0.500000 grace_peak=0.9 verdict=pass
+2026-10-24 17:42:27,017 - Samsara - INFO - [DICTATE-PREVIEW] correction choice synthetic source -> synthetic replacement
+2026-10-24 17:42:28,017 - Samsara - INFO - [GATE] speech_presence path=hold peak=-1 verdict=unknown
+2026-10-24 17:42:29,017 - Samsara - INFO - [CONFIG] Model: private-model, Device: private-device, Compute: private-precision

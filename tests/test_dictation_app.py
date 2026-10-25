@@ -288,6 +288,13 @@ class TestTextProcessing:
 class TestHistoryManagement:
     """Tests for dictation history"""
 
+    @pytest.fixture(autouse=True)
+    def known_history_target(self, monkeypatch):
+        # 845: history container tests need a known target, not the live desktop.
+        from samsara import recent_privacy
+        monkeypatch.setattr(recent_privacy, 'focused_target',
+                            lambda: recent_privacy.TargetPrivacy('', 'notepad.exe'))
+
     def test_add_to_history(self, sample_config, tmp_path):
         """Test adding items to history"""
         app = create_test_app(sample_config, tmp_path)

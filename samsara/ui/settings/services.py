@@ -474,6 +474,8 @@ class SettingsServices:
         updates: dict = {}
         for save_fn in self._save_fns:
             updates.update(save_fn(updates))
+        from samsara.model_guard import settings_choices, save_settings
+        model_choices = settings_choices(self, updates)
         if hasattr(self, '_config_at_open'):
             from samsara.settings_merge import merge_outside_changes
             updates, kept = merge_outside_changes(
@@ -521,7 +523,7 @@ class SettingsServices:
             self.app.config.update(updates)
             if replace_tts:
                 self._replace_tts_runtime(requested_tts)
-            self.app.save_config()
+            save_settings(self.app, model_choices)
             if 'diagnostics' in updates:
                 # Recording paths use this cached flag; Apply takes effect on
                 # the next utterance without restarting the running app.

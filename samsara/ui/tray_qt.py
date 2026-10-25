@@ -751,7 +751,6 @@ class SamsaraTrayQt(QObject):
         self._tooltip_sig.connect(self._tray.setToolTip)
         self._hide_sig.connect(self._tray.hide)
         self._warning_sig.connect(self._show_warning_balloon)
-
         # Initial icon + tooltip
         try:
             self._apply_icon(app.create_icon_image())
@@ -761,7 +760,8 @@ class SamsaraTrayQt(QObject):
         self._attach_ready_ladder()
         self._refresh_ready_tooltip()
         self._tray.show()
-
+        from samsara.model_guard import attach_notices
+        attach_notices(app)
         # A visible tray is not proof that startup succeeded: Whisper, CUDA,
         # VAD, and the listening services are still loading at this point.
         # Confirm an update only after DictationApp publishes 100% startup.
