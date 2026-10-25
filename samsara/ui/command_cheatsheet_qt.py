@@ -465,10 +465,36 @@ def build_hub_page(app, parent=None):
         open_packs_cb=lambda: open_packs(app),
         enable_pack_cb=lambda pack, owner: enable_pack(app, pack, owner),
         config_cb=lambda: getattr(app, 'config', {}) or {},
+        app=app,
     )
     page.setParent(parent, Qt.WindowType.Widget)
     page.setAccessibleName('Commands')
+    # Home's bottom strip follows this same runtime/configuration poll (824).
+    poll = getattr(parent.window(), '_poll_timer', None) if parent is not None else None
+    if poll is not None:
+        page._instruction_timer.stop()
+        poll.timeout.connect(page.refresh_instruction)
     return page
+
+
+def command_instruction(config, app=None):
+    """Live command activation, using Home's formatters without default bindings."""
+    from samsara.ui.home_qt import hotkey_label, quoted, talk_instructions, wake_phrase
+
+    # PLACEHOLDER COPY (844)
+    if app is not None and getattr(app, 'command_mode_active', False):
+        return 'Hands-free is on. Speak commands without a key.'
+    key = hotkey_label(config.get('command_hotkey'))
+    phrase = (config.get('wake_word_config') or {}).get('phrase')
+    wake_on = config.get('wake_word_enabled', False) and str(phrase or '').strip()
+    if app is not None:
+        wake_on = wake_on and bool(talk_instructions(app)[1])
+    if wake_on:
+        wake = f'Say {quoted(wake_phrase(config))} then speak a command'
+        return f'{wake}, or hold {key} to speak commands.' if key else f'{wake}.'
+    if key:
+        return f'Hold {key} to speak commands.'
+    return 'Set up a command key or wake word in Settings to speak commands.'
 
 
 class _TitleBar(QWidget):
@@ -778,7 +804,7 @@ class _CheatSheetWindow(QMainWindow):
         commands_cb: Callable,
         palette_path: Path,
         *, initial_scope=None, initial_view=None, embedded=False,
-        open_packs_cb=None, enable_pack_cb=None, config_cb=None,
+        open_packs_cb=None, enable_pack_cb=None, config_cb=None, app=None,
     ):
         super().__init__()
         self._embedded = embedded
@@ -787,6 +813,7 @@ class _CheatSheetWindow(QMainWindow):
         self._open_packs_cb = open_packs_cb
         self._enable_pack_cb = enable_pack_cb
         self._config_cb = config_cb
+        self._instruction_app = app
         self._palette_path = palette_path
         self._all: List[dict] = []
         self._pack_scope = initial_scope
@@ -845,6 +872,19 @@ class _CheatSheetWindow(QMainWindow):
                 control.hide()
             self._title_bar._title_label.setCursor(Qt.CursorShape.ArrowCursor)
         lay.addWidget(self._title_bar)
+
+        self._instruction = QLabel()
+        self._instruction.setWordWrap(True)
+        self._instruction.setContentsMargins(12, 0, 12, 0)
+        self._instruction.setStyleSheet(
+            f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_SECONDARY}px;background:{theme.BG0};')
+        lay.addWidget(self._instruction)
+        self.refresh_instruction()
+        # Standalone references have no hub poll; keep their callback live too.
+        self._instruction_timer = QTimer(self)
+        self._instruction_timer.setInterval(500)
+        self._instruction_timer.timeout.connect(self.refresh_instruction)
+        self._instruction_timer.start()
 
         # Search. The inset card remains visible on both palettes; the old
         # borderless white field disappeared into the light window.
@@ -968,6 +1008,10 @@ class _CheatSheetWindow(QMainWindow):
     # ----------------------------------------------------------------
     # Commands
     # ----------------------------------------------------------------
+
+    def refresh_instruction(self):
+        config = self._config_cb() if self._config_cb is not None else {}
+        self._instruction.setText(command_instruction(config or {}, self._instruction_app))
 
     def eventFilter(self, watched, event):
         if watched is self._resize_grip.parentWidget() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
