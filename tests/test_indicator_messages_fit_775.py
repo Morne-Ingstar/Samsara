@@ -130,7 +130,7 @@ def test_errors_clear_on_next_utterance_and_click_but_device_fault_survives(disp
         d.compact.show_outcome('Synthetic failure','error',None)
         qapp.processEvents()
     error()
-    assert model.view().notice.expires_at==2.5
+    assert model.view().notice.expires_at==4.0  # 891: minimum time to read an error.
     QTest.mouseClick(d.full._chip.label,Qt.MouseButton.LeftButton)
     QTest.mouseClick(d.compact._message_window,Qt.MouseButton.LeftButton)
     assert not model.view().notice.message and not d.compact._chip_label
@@ -143,7 +143,7 @@ def test_errors_clear_on_next_utterance_and_click_but_device_fault_survives(disp
     model.consume(SurfaceEvent(EventKind.CAPTURE_CHANGED,capture=CaptureState.RECORDING))
     assert not model.view().notice.message
     error()
-    clock[0]=2.5
+    clock[0]=4.0  # 891: expiry follows the error reading-time floor.
     d.compact._chip_deadline=0
     d.compact._clear_outcome()
     assert not model.view().notice.message and not d.compact._chip_label

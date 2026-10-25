@@ -1688,7 +1688,7 @@ class StreamingWorker(threading.Thread):
                 self._session._decode_failure = LOST
                 self._session.on_final(None, duration_s=len(audio) / app.model_rate if audio is not None else 0)
                 return
-            from samsara.speech_presence import finish_streaming_if_empty
+            from samsara.failure_reasons import finish_streaming_if_empty
             if finish_streaming_if_empty(self, audio):
                 return
             params = self._final_params()
@@ -1778,7 +1778,7 @@ class StreamingWorker(threading.Thread):
                                    elapsed_ms=elapsed_ms)
         except Exception as e:
             logger.exception(f"[STREAM] Final pass error: {e}")
-            self._session.on_final(None)
+            from samsara.failure_reasons import stream_decode_failed; stream_decode_failed(self._session)
 
     def _snapshot_audio(self):
         app = self._session.app
@@ -2074,7 +2074,7 @@ class StreamingSession:
         if self.cancel_event.is_set():
             self.on_cancelled()
             return
-        self.app._schedule_ui(self._deliver_final, final_text, raw_text,
+        from samsara.failure_reasons import deliver_stream_final; self.app._schedule_ui(deliver_stream_final, self, final_text, raw_text,
                               duration_s, elapsed_ms)
 
     # ---- Main-thread handlers -------------------------------------------

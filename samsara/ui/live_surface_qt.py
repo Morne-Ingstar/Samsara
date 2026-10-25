@@ -167,7 +167,9 @@ class _FeedbackBand(QWidget):
         self.report.hide()
 
     def _report_width(self):
-        return 76 if self.notice and self.notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING) else 0
+        if self.notice and self.notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING):
+            return 150 if self.notice.owner == 'capture_long_failure' else 76
+        return 0
 
     def _action_width(self):
         return self._dismiss_width() + self._report_width()
@@ -177,6 +179,7 @@ class _FeedbackBand(QWidget):
 
     def set_notice(self, notice):
         self.notice = notice
+        self.report.setText('Report a problem' if notice and notice.owner == 'capture_long_failure' else 'Report')
         self.dismiss.setVisible(bool(self._dismiss_width()))
         self.report.setVisible(bool(self._report_width()))
         from samsara.ui.result_message_rendering import set_result_label
@@ -189,6 +192,13 @@ class _FeedbackBand(QWidget):
         self._message = message
         lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._action_width()))
         set_result_label(self.label, '\n'.join(lines), theme.TEXT_PRIMARY)
+        if notice and notice.owner == 'capture_clipping':
+            from html import escape
+            self.label.setTextFormat(Qt.TextFormat.RichText)
+            self.label.setText('<br>'.join(
+                escape(line) if index == 0 else
+                f'<span style="color:{theme.TEXT_SECONDARY}">{escape(line)}</span>'
+                for index, line in enumerate(lines)))
         if self.label.textFormat() == Qt.TextFormat.RichText:
             self.label.setText(self.label.text().replace('\n', '<br>'))
         description = (KIND_WORDS[notice.feedback] + ": " + notice.message) if notice else ""
@@ -239,7 +249,7 @@ class _FeedbackBand(QWidget):
                                max(1, self.width()-(42 if self.chip else 24)-self._action_width()),
                                self.height() if self.chip else max(1, self.height()-12))
         self.dismiss.setGeometry(self.width()-76, max(0, (self.height()-28)//2), 70, 28)
-        self.report.setGeometry(self.width()-self._action_width(), max(0, (self.height()-28)//2), 68, 28)
+        self.report.setGeometry(self.width()-self._action_width(), max(0, (self.height()-28)//2), max(68, self._report_width()-8), 28)
         self.set_notice(self.notice)
         super().resizeEvent(event)
 

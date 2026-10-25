@@ -72,6 +72,8 @@ class LiveSurfaceController:
 
     def drain(self) -> int:
         """Run on the Qt thread; process queued events and repaint once."""
+        from samsara.failure_reasons import preserve_clipping
+        from samsara.message_durations import message_protected
         with self._lock:
             events, self._events = self._events, deque()
             self._scheduled = False
@@ -81,7 +83,14 @@ class LiveSurfaceController:
             if event.kind in (EventKind.CAPTURE_STARTED, EventKind.DOCUMENT_UPDATED):
                 # These are the allowed placement reevaluation boundaries.
                 self._last_caret = None
-            revision = self.model.view().feedback_revision
+            view = self.model.view()
+            # 891: check in queue order; the adapter remains a post-only bridge.
+            if event.kind is EventKind.NOTICE and preserve_clipping(
+                    event.message, event.feedback or event.notice, view.notice.owner,
+                    message_protected(view.notice.message, view.notice.feedback,
+                                      view.notice.expires_at, self.model._clock())):
+                continue
+            revision = view.feedback_revision
             if self.model.consume(event):
                 accepted += 1
                 view = self.model.view()

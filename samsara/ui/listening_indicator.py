@@ -981,6 +981,9 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         return True
 
     def show_feedback(self, label, kind, ttl_ms, feedback):
+        from samsara.failure_reasons import preserve_clipping
+        if preserve_clipping(label, kind, getattr(self._chip_feedback, 'owner', ''), self._protected_outcome()):
+            return
         if feedback.alive is not None and not feedback.alive():
             return
         if self._question_alive() and feedback.purpose.value == "result":
@@ -1349,7 +1352,10 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         for index, line in enumerate(lines):
             line_rect = QRectF(rect.x()+_CHIP_PAD_X, rect.center().y()-len(lines)*height/2+index*height,
                                rect.width()-2*_CHIP_PAD_X-self._report_width(), height)
-            paint_result(painter, line_rect, line, font, QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT))
+            ink = QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT)
+            if index and getattr(self._chip_feedback, 'owner', '') == 'capture_clipping':
+                ink.setAlphaF(.72)
+            paint_result(painter, line_rect, line, font, ink)
 
     def dismiss_error(self):
         from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices

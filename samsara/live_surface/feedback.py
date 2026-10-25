@@ -64,6 +64,8 @@ class Feedback:
 def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> Feedback:
     """Explicit dispatch vocabulary; legacy pending is a question, never guessed."""
     detail = detail or {}
+    if source.startswith('capture_'):
+        return Feedback(FeedbackKind(kind), owner=source)
     if source == "tutorial_sample":
         return Feedback(FeedbackKind(kind), owner="tutorial_sample")
     if source == "hold_pending":
