@@ -1941,9 +1941,13 @@ def enumerate_clickable_elements() -> list:
          param_schema={"label": {"type": "int", "required": False}})
 def handle_pick_number(app, remainder):
     """Chooses a numbered label while Show Numbers is visible."""
+    from samsara.command_registry import DispatchResult, DispatchState
     from samsara.numbered_picks import pick_remainder
     pick = pick_remainder(remainder)
-    return handle_click(app, pick) if pick is not None else False
+    if pick is None or not is_overlay_active():
+        # 869s / 888a: no live label is an explicit decline, not a failed click.
+        return DispatchResult(DispatchState.MISS)
+    return handle_click(app, pick)
 
 
 def is_overlay_active() -> bool:

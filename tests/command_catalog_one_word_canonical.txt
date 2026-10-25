@@ -29,6 +29,8 @@ builtin.copy
 builtin.cut
 builtin.dash
 builtin.delete
+# 823 / 888a: explicit selection-clear commands retain their one-word canonicals.
+builtin.deselect
 builtin.ellipsis
 builtin.emoji
 builtin.enter
@@ -83,3 +85,5 @@ click_by_name.toggle
 selection_edit.apply
 selection_edit.discard
 window_cube.choose
+# 823 / 888a: the alternate selection-clear canonical is intentionally one word.
+builtin.unselect

@@ -344,14 +344,21 @@ def test_every_word_is_a_link_whose_index_matches_the_map():
     assert targets[2] == ("that", 0) and targets[3] == ("that", 1)
 
 
-def test_clicking_a_word_arms_a_correction_and_changes_nothing_yet(preview):
+def test_clicking_a_word_arms_a_correction_and_changes_nothing_yet(preview, monkeypatch):
+    # 779 / 888a: the shared range selector opens inline choices, not a prompt receipt.
+    choices = Mock(wraps=preview.session._show_correction_choices)
+    monkeypatch.setattr(preview.session, '_show_correction_choices', choices)
     _say(preview, "I met Morn yesterday.")
     index = [w for w, _o in preview.session._words].index("Morn")
     preview.session._on_word_clicked(index)
     pending = preview.manager.pending_word_correction()
     assert pending["word"] == "Morn"
     assert preview.manager.dictate_pending_buffer == "I met Morn yesterday."
-    assert preview.calls["prompt"][-1] == CORRECTION_PROMPT.format(word="Morn")
+    assert preview.session._correction_armed
+    assert preview.session._span_selection['word'] == 'Morn'
+    assert preview.session._span_selection['first_index'] == preview.session._span_selection['last_index'] == index
+    assert choices.call_count == 1 and choices.call_args.args[0] == 'Morn'
+    assert choices.call_args.args[1][0] == 'Morn'
 
 
 def test_the_next_utterance_replaces_the_word_and_is_not_dictated(preview):

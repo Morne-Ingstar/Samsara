@@ -273,15 +273,13 @@ class TestTypeScale:
             if isinstance(value, int):
                 assert value >= theme.TYPE_FLOOR_ABSOLUTE, f"{rel} uses {name} = {value}px"
 
-    def test_the_rows_the_owner_reads_are_at_the_body_floor(self):
+    def test_the_rows_the_owner_reads_are_at_the_body_floor(self, sheet):
         """"Some of them are too small": every string in this window was
         TYPE_MIN (14 px, the caption floor). The list rows, the filter, the
         static rows and controls are reading text and are TYPE_BODY now;
         only counts and other metadata stay at TYPE_MIN."""
         code = (REPO / WINDOWS[0]).read_text(encoding="utf-8")
         body_sites = [
-            "QListWidget {{",                    # the command list itself
-            "QLineEdit {{",                      # the filter the user types in
             "phrase_lbl.setStyleSheet",          # Most Used / Pinned rows
             "self._live_only.setStyleSheet",     # "Live here only"
             "self._opacity_label.setStyleSheet", # "Opacity"
@@ -290,6 +288,14 @@ class TestTypeScale:
             index = code.index(marker)
             window = code[index:index + 400]
             assert "TYPE_BODY" in window, f"{marker} is not at the body floor"
+        # 859 / 888a: the real delegate and shared search style replaced inline QSS.
+        win = sheet()
+        try:
+            assert win._list.itemDelegate().tier_styles()[0][0].pixelSize() == theme.TYPE_BODY
+            assert f'font-size: {theme.TYPE_BODY}px' in win._filter.styleSheet()
+        finally:
+            win.close()
+            win.deleteLater()
         assert "TYPE_EMPHASIS" in code, "the window's own name is still caption-sized"
 
     def test_row_heights_leave_room_for_the_bigger_text(self, sheet):

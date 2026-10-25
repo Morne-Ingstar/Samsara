@@ -1455,9 +1455,9 @@ def handle_overview_number(app, value, remainder=""):
          scope={"tags": ["window_overview.visible"]},
          param_schema={"number": {"type": "int", "required": True}})
 def handle_read_window(app, remainder):
+    """Reads the full title of one window in the overview."""
     if not _windows_supported():
         return False
-    """Reads the full title of one window in the overview."""
     from samsara.spoken_numbers import parse_spoken_number
     if not overview_active(app):
         return False
@@ -1470,9 +1470,9 @@ def handle_read_window(app, remainder):
 @command("confirm close", pack="window-management", risk_class="destructive",
          ai_visible=False, scope={"tags": ["window_overview.visible"]})
 def handle_confirm_overview_close(app, remainder):
+    """Confirms the window close just requested in the overview."""
     if not _windows_supported():
         return False
-    """Confirms the window close just requested in the overview."""
     return overview_action(app, 0, 'confirm close') if not remainder else False
 
 
@@ -1482,9 +1482,9 @@ handle_confirm_overview_close.handles_own_confirmation = True
 @command("keep it open", pack="window-management", risk_class="ui",
          scope={"tags": ["window_overview.visible"]})
 def handle_keep_overview_open(app, remainder):
+    """Keeps the overview open after window actions for this session."""
     if not _windows_supported():
         return False
-    """Keeps the overview open after window actions for this session."""
     global _overview_keep
     if not overview_active(app) or remainder:
         return False
@@ -1492,9 +1492,9 @@ def handle_keep_overview_open(app, remainder):
 
 
 def handle_cancel_overview(app, remainder):
+    """Closes the window overview, or cancels recording when no overview is open."""
     if not _windows_supported():
         return False
-    """Closes the window overview, or cancels recording when no overview is open."""
     if remainder:
         return False
     if overview_active(app):

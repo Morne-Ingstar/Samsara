@@ -7,6 +7,8 @@ from samsara import plugin_commands
 from samsara.command_registry import CommandMatcher
 from samsara.commands import CommandExecutor
 from samsara.ui.settings_qt import _collect_command_rows
+# 781 / 888a: lazy pick admission imports this module; register before installing fakes.
+from plugins.commands import show_numbers  # noqa: F401
 
 
 def _plugin_entry(handler):
@@ -26,6 +28,9 @@ def _plugin_entry(handler):
 def _stale_executor(app):
     executor = CommandExecutor.__new__(CommandExecutor)
     executor._app = app
+    # 851 / 888a: mirror the desktop constructor's optional composition ports.
+    executor._resources = None
+    executor._plugin_registry = None
     executor._matcher_lock = threading.RLock()
     executor.commands = {}
     executor._matcher = CommandMatcher()

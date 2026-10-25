@@ -154,13 +154,16 @@ def test_status_comes_from_effective_destination():
     assert ai.ava_route_status(cloud) == "Ava: cloud - DeepSeek"
 
 
-def test_home_header_shows_selected_route(qapp):
+def test_home_header_shows_selected_route(qapp, monkeypatch):
     from samsara.ui.home_qt import AvaHeaderControl
 
     cfg = _config()
     provider = ai.provider_for(cfg, "local", resolved_addresses=("127.0.0.1", "::1"))
     cfg["ava"]["consent"] = ai.accept_consent(
         cfg, provider=provider, accepted_at="2026-09-27T00:00:00+00:00")
+    # 824 / 888a: route rendering must not depend on a live readiness worker.
+    monkeypatch.setattr(home_signals, 'ava_presence',
+                        lambda app: (home_signals.AVA_CHECKING, 'Synthetic readiness check'))
     control = AvaHeaderControl(_StubApp(cfg))
     try:
         control.refresh()

@@ -223,7 +223,8 @@ def test_every_description_is_one_sentence_starting_with_a_verb(record):
     ava = record['canonical_id'].startswith('selection_edit.') and desc.startswith('Ava: ')
     body = desc.removeprefix('Ava: ') if ava else desc
     first = body.split()[0] if body else ""
-    grammar = r"^(propose|read)$" if ava else r"^[A-Z][A-Za-z-]*(s|es|ies)$"
+    # 823 / 888a: selection rewrite help now describes Ava's action in third person.
+    grammar = r"^(propose|read|rewrites)$" if ava else r"^[A-Z][A-Za-z-]*(s|es|ies)$"
     assert re.match(grammar, first), (
         f"{record['canonical_id']}: {first!r} is not a third-person verb "
         f"(\"Opens\", not \"Open\") -- {desc!r}")

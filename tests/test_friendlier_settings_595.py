@@ -13,6 +13,8 @@ from tests.test_settings_pages import _StubApp, _schema_defaults
 
 @pytest.fixture
 def window(qapp, monkeypatch):
+    # 875b / 888a: this fixture exercises the beta notice even in a stable release.
+    monkeypatch.setattr('samsara.ui.widgets.beta_notice.__version__', '0.40.0-beta.test')
     from samsara import autostart, cuda_detect
     from samsara.runtime import thread_registry
     from samsara.ui.first_run_qt import ComponentsPage

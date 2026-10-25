@@ -29,8 +29,9 @@ def window(hwnd=20, exe='notepad.exe', rect=(0, 0, 100, 100)):
 
 
 def real_wait(executor, monkeypatch, clock):
-    monkeypatch.setattr(settle.time, 'monotonic', lambda: clock.now)
-    monkeypatch.setattr(settle.time, 'sleep', clock.sleep)
+    # 888a: a fake chain clock must not advance real background workers' time.
+    monkeypatch.setattr(settle, 'time', SimpleNamespace(
+        monotonic=lambda: clock.now, sleep=clock.sleep))
     monkeypatch.setattr(executor, '_grammar_wait_target',
                         commands.CommandExecutor._grammar_wait_target.__get__(executor))
 
@@ -177,7 +178,8 @@ def test_three_volume_steps_do_not_observe_or_sleep(rig, monkeypatch):
     monkeypatch.setattr(executor, '_grammar_chain_target',
                         lambda entry, args, values: settle.prepare(entry, args, values))
     monkeypatch.setattr(settle, 'Desktop', Mock(side_effect=AssertionError('non-focus desktop read')))
-    monkeypatch.setattr(settle.time, 'sleep', Mock(side_effect=AssertionError('non-focus delay')))
+    monkeypatch.setattr(settle, 'time', SimpleNamespace(
+        monotonic=settle.time.monotonic, sleep=Mock(side_effect=AssertionError('non-focus delay'))))
     result = executor.process_text('volume down then volume down then volume down', force_commands=True)
     assert result.state is State.COMPLETED
     assert calls == [('volume down', '')] * 3

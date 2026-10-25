@@ -162,6 +162,8 @@ AUDITED_KEYS = set([
 
 @pytest.fixture
 def window(qapp, monkeypatch, qt_widget_scope):
+    # 785 / 888a: inventory tests include optional Hermes without a real PATH install.
+    monkeypatch.setattr('samsara.ui.settings.hermes_section.installed', lambda: True)
     from samsara import autostart
     from samsara.ui.first_run_qt import ComponentsPage
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **kw: None)
@@ -246,7 +248,8 @@ def test_preferences_do_not_apply_tool_optins(window):
 
 
 def test_integration_apply_cannot_change_preferences(window):
-    window._tool_name = 'Integrations'
+    # 827c / 888a: construct the lazy destination before testing its Apply boundary.
+    window._select_tool('Integrations')
     window._widgets['launch_at_login'].setChecked(True)
     window._widgets['todoist_enabled'].setChecked(True)
     updates = window._collect_destination_updates({})

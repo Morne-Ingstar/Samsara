@@ -2,7 +2,7 @@
   "ceilings": {
     "dictation.py": 12389,
     "plugins/commands/ask_ollama.py": 3692,
-    "plugins/commands/show_numbers.py": 1972,
+    "plugins/commands/show_numbers.py": 1976,
     "plugins/commands/window_switcher.py": 1537,
     "samsara/audio_ducking.py": 1545,
     "samsara/audio_engine/wake_consumer.py": 1715,

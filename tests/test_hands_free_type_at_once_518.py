@@ -259,6 +259,10 @@ def test_real_host_callback_formats_once_pastes_and_records_exact_bytes(lane, mo
     manager.reset(SessionMode.DICTATE)
     waiting = 'Synthetic earlier draft.'
     manager._stage_dictate_chunk(waiting, audio_ref='synthetic earlier audio')
+    # 814 / 888a: the earlier draft is prepared before display, outside these two sends.
+    app.process_transcription.assert_called_once_with(waiting)
+    app.process_transcription.reset_mock()
+    app._apply_formatting_tokens.reset_mock()
     before = manager.draft_document.segments
     for text in (FIRST, SECOND):
         result = manager.dispatch_utterance(text, SIGNALS)

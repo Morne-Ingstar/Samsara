@@ -266,13 +266,14 @@ def test_running_version_labels(qapp, monkeypatch):
     from PySide6.QtWidgets import QLabel
     from samsara import __version__, cuda_detect
     from samsara.ui import home_qt, settings_qt
-    from tests.test_home_qt import _FakeSettings, _app
+    from tests.test_home_qt import _FakeSettings, _app, _hub
     from tests.test_settings_pages import _StubApp, _schema_defaults
     from samsara import autostart
     monkeypatch.setattr(home_qt, 'QSettings', _FakeSettings)
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **kw: None)
     monkeypatch.setattr(cuda_detect, 'request_cuda_status', lambda callback: None)
-    home = home_qt.HomePage(_app())
+    # 825 / 888a: the running-version label lives in the hub sidebar now.
+    home = _hub(qapp, app=_app())
     settings = settings_qt._SettingsWindow(_StubApp(_schema_defaults()))
     try:
         for page in (home, settings._pages['General']):

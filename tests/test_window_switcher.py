@@ -165,8 +165,9 @@ class TestEnumerationFilters:
 
 class TestParseMonitorIndex:
     def test_named_monitors(self):
-        assert ws._parse_monitor_index("move a to the left") == 1
-        assert ws._parse_monitor_index("move a to the right") == 2
+        # 820b / 888a: directions are layout actions, never monitor identities.
+        assert ws._parse_monitor_index("move a to the left") is None
+        assert ws._parse_monitor_index("move a to the right") is None
 
     def test_numbered_monitor(self):
         assert ws._parse_monitor_index("monitor 4") == 4

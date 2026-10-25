@@ -245,6 +245,14 @@ def test_ambiguous_first_reading_keeps_prefix(rig, monkeypatch, caplog):
 TEXT_SLOT_FIXTURE = json.loads(
     (ROOT/'tests/fixtures/several_commands_399_text_slots.json').read_text(encoding='utf-8'))
 
+# 407 / 888a: preserve historical node IDs after no-argument commands lose inferred slots.
+RETIRED_TEXT_SLOTS = {
+    'core_utils.move_preview_to_this_screen': 'move preview to this screen',
+    'core_utils.reset_floating_windows': 'reset floating windows',
+    'show_numbers.refresh_numbers': 'refresh numbers',
+    'window_cube.refresh_cube': 'refresh cube',
+}
+
 # 806: these newly understood chains fail quiet policy before any effect.
 REFUSED_ARGUMENT_CHAINS = frozenset({
     'ask_agent.ask_hermes', 'ask_agent.new_hermes_session', 'ask_ollama.hey_ava',
@@ -259,9 +267,15 @@ REFUSED_ARGUMENT_CHAINS = frozenset({
 })
 
 
-@pytest.mark.parametrize('canonical_id', sorted(TEXT_SLOT_FIXTURE))
+@pytest.mark.parametrize('canonical_id', sorted(set(TEXT_SLOT_FIXTURE) | set(RETIRED_TEXT_SLOTS)))
 def test_every_text_slot_keeps_head_behavior(rig, canonical_id):
     executor, app, calls = rig
+    if canonical_id in RETIRED_TEXT_SLOTS:
+        phrase = RETIRED_TEXT_SLOTS[canonical_id]
+        result = executor.process_text(phrase + ' alpha and volume down', force_commands=True)
+        assert result.state is State.MISS
+        assert calls == []
+        return
     expected = TEXT_SLOT_FIXTURE[canonical_id]
     result = executor.process_text(expected['text'], force_commands=True)
     # 806: explicit known command suffixes now end free-text arguments.
@@ -290,7 +304,7 @@ def test_text_slot_fixture_covers_catalog():
            if not r['canonical_id'].startswith('demo_commands.')
            and any(a.get('type', 'text') == 'text' for a in r.get('args', []))}
     assert ids
-    assert set(TEXT_SLOT_FIXTURE) == ids
+    assert set(TEXT_SLOT_FIXTURE) - set(RETIRED_TEXT_SLOTS) == ids
 
 
 def test_free_text_and_is_content(rig):
@@ -379,8 +393,9 @@ def test_foreground_wait_real_loop_has_deadline_and_cancellation(rig, monkeypatc
     from samsara import chain_settle
     executor, app, calls = rig
     clock = [0.0]
-    monkeypatch.setattr(commands.time, 'monotonic', lambda: clock[0])
-    monkeypatch.setattr(commands.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    # 888a: keep the fake wait clock local; background workers use real time.
+    monkeypatch.setattr(chain_settle, 'time', SimpleNamespace(
+        monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
     wait = commands.CommandExecutor._grammar_wait_target.__get__(executor)
     # 806: wait for the expected process, capped at three seconds.
     desktop = SimpleNamespace(foreground=lambda: chain_settle.Window(10, 1, 'brave.exe', (0, 0, 100, 100)))

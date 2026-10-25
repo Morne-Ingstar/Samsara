@@ -17048,7 +17048,7 @@
       ],
       "args": [],
       "canonical_id": "window_switcher.confirm_close",
-      "description": "confirm close",
+      "description": "Confirms the window close just requested in the overview.",
       "examples": [],
       "kind": "plugin",
       "object": "close",
@@ -17093,7 +17093,7 @@
       ],
       "args": [],
       "canonical_id": "window_switcher.keep_it_open",
-      "description": "keep it open",
+      "description": "Keeps the overview open after window actions for this session.",
       "examples": [],
       "kind": "plugin",
       "object": "it_open",
@@ -17124,7 +17124,7 @@
         }
       ],
       "canonical_id": "window_switcher.read_window",
-      "description": "read window",
+      "description": "Reads the full title of one window in the overview.",
       "examples": [
         "read window three"
       ],

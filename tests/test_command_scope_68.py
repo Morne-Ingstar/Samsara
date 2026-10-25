@@ -347,6 +347,16 @@ def _expected_scopes():
     expected.update({p: {'apps': ['winword.exe']} for p in (
         'heading one', 'heading two', 'heading three', 'normal text',
     )})
+    # 781/820 / 888a: picks and overview follow-ups are live only with their overlay.
+    expected['pick number'] = {'tags': ['show_numbers.visible']}
+    expected.update({p: {'tags': ['window_overview.visible']} for p in (
+        'read window', 'confirm close', 'keep it open',
+        *(f'close {number}' for number in range(1, 100)),
+    )})
+    from samsara.spoken_numbers import NUMBER_WORDS
+    words = {number: word for word, number in NUMBER_WORDS.items()}
+    expected.update({f"window {words.get(number) or words[number // 10 * 10] + ' ' + words[number % 10]}":
+                     {'tags': ['window_overview.visible']} for number in range(10, 100)})
     return expected
 
 
@@ -476,7 +486,9 @@ def test_cheatsheet_window_hides_not_live_and_says_how_many(
         specs = cc.build_catalog(executor)
         ids_by_phrase = {alias: spec.canonical_id for spec in specs for alias in spec.aliases}
         hidden.update(ids_by_phrase[phrase]
-                      for phrase, scope in _expected_scopes().items() if 'apps' in scope)
+                      for phrase, scope in _expected_scopes().items()
+                      if 'apps' in scope or scope.get('tags') in (
+                          ['window_overview.visible'], ['show_numbers.visible']))
         all_ids = {spec.canonical_id for spec in specs}
         assert all_ids - ids == hidden
         assert win._category_bar._hidden_lbl.text() == f"({len(hidden)} not live here)"

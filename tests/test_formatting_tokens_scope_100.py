@@ -341,25 +341,25 @@ def test_inject_pipeline_order_still_matches_dictation():
     """_commit_pipeline above mirrors dictation.py's `_inject_fn`. Pin the two
     facts it depends on: add_trailing_space runs BEFORE the token pass, and the
     token pass is the LAST thing before delivery."""
-    src = (ROOT / "dictation.py").read_text(encoding="utf-8")
-    inject = src.split("def _inject_fn(text: str, commit_focus_guard=None):")[1]
-    inject = inject.split("\n        def ")[0]
-    # Code only -- _inject_fn's own docstring names these steps in prose.
-    inject = inject.split('"""', 2)[-1]
+    # 814 / 888a: the delivery adapter prepares before display; Finish sends it unchanged.
+    src = (ROOT / "samsara/delivery_text.py").read_text(encoding="utf-8")
+    inject = src.split("def _prepare(self, text: str, *, draft: bool)")[1].split("\n    def ")[0]
     order = [m.group(1) for m in re.finditer(
         r"(add_trailing_space|_apply_formatting_tokens|_paste_preserving_clipboard)", inject)]
     assert order.index("add_trailing_space") < order.index("_apply_formatting_tokens")
-    assert (order.index("_apply_formatting_tokens")
-            < order.index("_paste_preserving_clipboard"))
     assert order.count("_apply_formatting_tokens") == 1, (
         "the commit path must apply formatting tokens exactly once")
+    prepared = src.split('def inject_prepared(')[1].split('\n    def ')[0]
+    assert 'self._deliver(text, text, commit_focus_guard)' in prepared
+    assert '_prepare(' not in prepared and '_apply_formatting_tokens' not in prepared
 
 
 def test_every_delivery_site_applies_the_pass_once():
     """The four delivery sites, and the count at each. A second call added to
     any of them is what queue 100 was about."""
     counts = {
-        "dictation.py": 3,      # _inject_fn (commit), _output_dictation, hotkey
+        "dictation.py": 2,      # 814 / 888a: immediate hold/hotkey sites remain here.
+        "samsara/delivery_text.py": 1,  # Shared prepare-before-display / legacy send.
         "samsara/streaming.py": 1,
     }
     for rel, expected in counts.items():

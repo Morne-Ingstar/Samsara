@@ -71,7 +71,8 @@ def test_readback_stays_for_entire_window_then_result(caption_flow, qapp, choice
     panel = captions.active_window()
     assert panel._text.text() == expected
     assert panel._who.text() == 'SAMSARA'
-    assert panel._timer.remainingTime() >= 59000
+    # 888a: assert the exact configured hold; CI painting can consume a second.
+    assert panel._timer.interval() == 60000 and panel._timer.isActive()
     assert not q.opened
     assert display_label(flow, qapp) == expected
 

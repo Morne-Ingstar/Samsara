@@ -327,12 +327,9 @@ def test_new_live_display_shows_clear_and_restore_from_real_outcomes(make_manage
             adapter.show_outcome(*outcome_chip(outcome.kind, outcome.detail))
             controller.drain()
             if phrase == "bring it back":
-                # 591 protects the first receipt's reading time while the
-                # authoritative document still restores immediately.
-                assert controller.view().notice.message == 'Draft cleared - say "bring it back"'
+                # 775 / 888a: the latest receipt replaces the previous one immediately.
+                assert controller.view().notice.message == expected
                 assert controller.view().text == manager.dictate_pending_buffer
-                now[0] = controller.view().notice.expires_at + 0.001
-                controller.refresh_expired()
             assert controller.view().notice.message == expected
             assert controller.view().text == manager.dictate_pending_buffer
     finally:

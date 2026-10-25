@@ -64,7 +64,8 @@ def test_unsupported_commands_refuse_without_native_activity():
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows adapter parity")
 def test_windows_sendinput_adapters_keep_argument_order_and_payload(monkeypatch):
     scroll_calls = []
-    monkeypatch.setattr(scroll, "prepare_scroll_target", lambda config: True)
+    # 869s / 888a: target preparation now accepts its explicit fallback policy.
+    monkeypatch.setattr(scroll, "prepare_scroll_target", lambda config, *, fallback: True)
     monkeypatch.setattr(scroll, "user32", SimpleNamespace(
         SendInput=lambda *args: scroll_calls.append(args) or 1))
 

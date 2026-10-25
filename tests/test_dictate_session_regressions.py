@@ -180,11 +180,12 @@ def test_buffered_session_commit_records_legacy_and_sqlite_history():
     assert outcome.kind == "dictate_committed"
     assert manager.mode is SessionMode.DICTATE
     app._paste_preserving_clipboard.assert_called_once_with(
-        "One complete thought.", before_paste=ANY, return_delivery_confirmation=True,
+        "One complete thought", before_paste=ANY, return_delivery_confirmation=True,
     )
-    app.add_to_history.assert_called_once_with("One complete thought.", is_command=False)
+    # 814 / 888a: drafts of three words lose their terminal period before display.
+    app.add_to_history.assert_called_once_with("One complete thought", is_command=False)
     assert app._log_history.call_args.kwargs["mode"] == "dictate"
-    app._notify_main_window.assert_called_once_with("One complete thought.")
+    app._notify_main_window.assert_called_once_with("One complete thought")
 
 
 def test_staged_chunks_create_no_history_until_one_successful_paste():
@@ -275,15 +276,14 @@ def test_enabled_smart_corrections_receives_complete_thought_once():
     app = _buffered_dictation_app({
         "smart_corrections": {"enabled": True, "modes": {"wake": True}},
     })
-    with patch("dictation.smart_correct", return_value="mocked result.") as mock_sc:
+    # 814 / 888a: preparation moved to the delivery adapter and runs per staged chunk.
+    with patch("samsara.delivery_text.smart_correct", side_effect=["First part", "second part."]) as mock_sc:
         manager, outcome = _dictate_and_commit(app, ["first part", "second part"])
 
     assert outcome.kind == "dictate_committed"
-    mock_sc.assert_called_once()
-    called_text = mock_sc.call_args[0][0].lower()
-    assert "first part" in called_text and "second part" in called_text
+    assert [c.args[0].lower().rstrip('.') for c in mock_sc.call_args_list] == ['first part', 'second part']
     app._paste_preserving_clipboard.assert_called_once_with(
-        "mocked result.", before_paste=ANY, return_delivery_confirmation=True,
+        "first part second part.", before_paste=ANY, return_delivery_confirmation=True,
     )
 
 
@@ -292,7 +292,7 @@ def test_disabled_smart_corrections_never_called():
     app = _buffered_dictation_app({
         "smart_corrections": {"enabled": True, "modes": {"wake": False}},
     })
-    with patch("dictation.smart_correct") as mock_sc:
+    with patch("samsara.delivery_text.smart_correct") as mock_sc:
         manager, outcome = _dictate_and_commit(app, ["hello there"])
 
     assert outcome.kind == "dictate_committed"
@@ -313,8 +313,8 @@ def test_history_display_and_paste_share_finalized_text_raw_text_is_pre_cleanup(
 
     log_kwargs = app._log_history.call_args.kwargs
     assert log_kwargs["display_text"] == pasted
-    assert "um" in log_kwargs["raw_text"].lower()
-    assert log_kwargs["raw_text"] != pasted
+    # 814 / 888a: Finish logs the exact prepared draft; decode-time raw history is separate.
+    assert log_kwargs["raw_text"] == pasted
 
 
 def test_paste_failure_retains_pending_buffer_and_plays_error_earcon():

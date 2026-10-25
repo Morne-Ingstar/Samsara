@@ -225,7 +225,8 @@ def test_command_mode_utterance_is_passed_through_untouched():
     mgr.force_mode(SessionMode.COMMAND)
     outcome = mgr.dispatch_utterance("open chrome...", GOOD)
     assert outcome.kind == "command_executed"
-    mgr._command_dispatch_fn.assert_called_once_with("open chrome...")
+    # 814 / 888a: command admission normalizes boundary punctuation before dispatch.
+    mgr._command_dispatch_fn.assert_called_once_with("open chrome")
     assert mgr.dictate_pending_buffer == ""
 
 

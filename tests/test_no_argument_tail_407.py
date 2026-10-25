@@ -169,7 +169,8 @@ def test_all_200_corpus_rows_before_and_after(rig, monkeypatch):
             assert not any(not value for value in new['argument_bearing'])
         if old['argument_bearing'] and all(old['argument_bearing']):
             assert new['calls'] == old['calls']
-    assert sum(bool(r['calls']) for r in before if r['tag'] == 'dictation') == 13
+    # 823 / 888a: the landed selection inventory adds one legacy prefix match.
+    assert sum(bool(r['calls']) for r in before if r['tag'] == 'dictation') == 14
     assert sum(bool(r['calls']) for r in after if r['tag'] == 'dictation') == 3
 
 
@@ -193,8 +194,13 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
             continue
         parameter = fn.args.args[1].arg
         body = fn.body
+        # 888a: Python docstrings precede the actual remainder guard.
+        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+            body = body[1:]
         if (body and isinstance(body[0], ast.If)
-                and isinstance(body[0].test, ast.Name) and body[0].test.id == parameter
+                and ast.unparse(body[0].test) in {
+                    parameter, f'{parameter}.strip()',
+                    f"str({parameter} or '').strip()", f"({parameter} or '').strip()"}
                 and not body[0].orelse and len(body[0].body) == 1
                 and isinstance(body[0].body[0], ast.Return)
                 and isinstance(body[0].body[0].value, ast.Constant)
@@ -203,6 +209,13 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
             # They must stay no-argument commands, rather than swallow prose.
             assert not executor._takes_argument(entry), entry.phrase
             body = body[1:]
+        # 407: these refresh operations only forward the unused legacy parameter.
+        if (handler.__module__, handler.__name__) in {
+            ('plugins.commands.show_numbers', 'handle_refresh_numbers'),
+            ('plugins.commands.window_cube', 'handle_refresh_cube'),
+        }:
+            assert not executor._takes_argument(entry), entry.phrase
+            continue
         if any(isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id == parameter
                for statement in body for n in ast.walk(statement)):
             assert executor._takes_argument(entry), entry.phrase

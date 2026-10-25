@@ -18,6 +18,11 @@ DECISIONS = FIXTURES / "help_decisions.md"
 # Explicit changes since the historical synthetic 359 inventory. New schema
 # keys still fail unless a decision is recorded here or in that inventory.
 DECISION_UPDATES = {
+    # 826b/834r/862/877 / 888a: explicitly account for landed preference additions.
+    'home.show_recent_words': ('DROP', 'The Home privacy row explains recent words.'),
+    'ava.reply_window_seconds': ('DROP', 'The reply-window timing is configured outside Settings.'),
+    'builtin_vocabulary_enabled': ('DROP', 'Dictionary owns the built-in vocabulary switch.'),
+    'scroll.target_foreground': ('KEEP', 'Explain which window receives voice scrolling.'),
     'mouth_sounds.experiment_shadow': ('DROP', 'Offline shadow experiment, configured outside Settings.'),
     'mouth_sounds.pair_window_ms': ('DROP', 'Developer calibration bounds for the shadow detector.'),
     'mouth_sounds.refractory_ms': ('DROP', 'Developer shadow-detector refractory interval.'),
@@ -60,7 +65,8 @@ def test_every_schema_key_has_a_decision_and_help_docs_home():
     decisions = [item for item in decisions if item[0] != "feedback.spoken_notices"
                  and item[0] not in DECISION_UPDATES]
     decisions.extend((key, decision, reason) for key, (decision, reason) in DECISION_UPDATES.items())
-    anchors.update({'command_mode.dictation_literal_commands_only', 'command_mode.utterance_silence_s'})
+    anchors.update({'command_mode.dictation_literal_commands_only', 'command_mode.utterance_silence_s',
+                    'scroll.target_foreground'})
     assert len(decisions) == len(SETTINGS_SCHEMA)
     assert {key for key, _decision, _reason in decisions} == set(SETTINGS_SCHEMA)
     decision_by_key = {key: (decision, reason) for key, decision, reason in decisions}

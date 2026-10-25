@@ -11,6 +11,10 @@ from tests.test_clipboard_audit6 import fake, target  # reusable, fully fake Win
 
 @pytest.fixture
 def session(fake, target, monkeypatch):
+    # 826b/887 / 888a: privacy metadata is synthetic; never probe the owner's editor.
+    from samsara import recent_privacy
+    monkeypatch.setattr(recent_privacy, 'focused_target',
+                        lambda: recent_privacy.TargetPrivacy('', 'editor.exe'))
     fake.formats = {cb.CF_DIB: b'synthetic pixels', cb.CF_BITMAP: b'fake GDI handle'}
     fake.size_override[cb.CF_DIB] = cb._MAX_FORMAT_BYTES + 1
     monkeypatch.setattr(cb._user32, 'CreateWindowExW', Mock(return_value=777), raising=False)
@@ -285,7 +289,7 @@ def test_actual_message_click_opens_both_choices_without_focus(session, qapp, mo
         buttons = {b.text(): b for b in panel.findChildren(QPushButton)}
         assert {'Type it', 'Paste anyway', 'Keep draft'} == set(buttons)
         # Keep this test deterministic while exercising the real clicked route.
-        monkeypatch.setattr('samsara.runtime.thread_registry.spawn', lambda name, fn: fn())
+        monkeypatch.setattr('samsara.runtime.thread_registry.spawn', lambda name, fn, **kwargs: fn())
         QTest.mouseClick(buttons['Type it'], Qt.MouseButton.LeftButton)
         assert not session.manager.dictate_pending_buffer
         session.typed.assert_called_once()
