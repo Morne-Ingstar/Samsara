@@ -715,8 +715,10 @@ class LiveSurfaceIndicatorAdapter:
             self.controller.widget.show()
 
     def hide(self) -> None:
-        # Legacy preview/session teardown must not remove the active mode badge.
-        if self._session_lane is None and self.controller.widget is not None and self.controller.view().notice.kind is NoticeKind.NONE:
+        # Idle visibility and legacy teardown cannot hide unsent words.
+        view = self.controller.view()
+        if (self._session_lane is None and self.controller.widget is not None
+                and view.notice.kind is NoticeKind.NONE and not view.text):
             self.controller.widget.hide()
 
     def destroy(self) -> None:
