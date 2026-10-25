@@ -1,12 +1,235 @@
 """Shared Settings presentation. Copy is provisional per owner-approved 285."""
-from PySide6.QtCore import Qt, QPoint, QRectF
-from PySide6.QtGui import QPainter, QPainterPath, QPen, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QPoint, QRectF, QEvent
+from PySide6.QtGui import QPainter, QPainterPath, QPen, QKeySequence, QShortcut, QColor
 from PySide6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QComboBox, QListView,
     QHBoxLayout, QVBoxLayout, QGridLayout,
     QScrollArea, QStylePainter, QStyleOptionComboBox, QStyle,
+    QTableWidget, QStyledItemDelegate, QHeaderView, QSizePolicy,
 )
 from samsara.ui import theme
+
+TOOLS_TABLE_MAX_WIDTH = 640
+
+
+class DataCellDelegate(QStyledItemDelegate):
+    """Opaque whole-row states, elided text and a persistent selection marker."""
+    def paint(self, painter, option, index):
+        table = self.parent()
+        selected = table.selectionModel().isRowSelected(index.row(), index.parent())
+        fill = (theme.DATA_ROW_SELECTED if selected else
+                theme.DATA_ROW_HOVER if index.row() == table._hover_row else
+                theme.DATA_ROW_ALT if index.row() % 2 else theme.DATA_SURFACE)
+        painter.save()
+        painter.setClipRect(option.rect)
+        painter.fillRect(option.rect, QColor(fill))
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or '')
+        secondary = index.column() in table._secondary_columns and not selected
+        painter.setPen(QColor(theme.DATA_TEXT_SECONDARY if secondary else theme.TEXT_PRIMARY))
+        painter.setFont(option.font)
+        rect = option.rect.adjusted(12, 0, -12, 0)
+        alignment = index.data(Qt.ItemDataRole.TextAlignmentRole)
+        alignment = Qt.AlignmentFlag(alignment) if alignment else Qt.AlignmentFlag.AlignLeft
+        text = option.fontMetrics.elidedText(text, Qt.TextElideMode.ElideRight, max(0, rect.width()))
+        painter.drawText(rect, alignment | Qt.AlignmentFlag.AlignVCenter, text)
+        if selected and index.column() == 0:
+            painter.fillRect(option.rect.x(), option.rect.y() + 8, 3,
+                             option.rect.height() - 16, QColor(theme.ACCENT))
+        if table.hasFocus() and table.currentRow() == index.row():
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(QColor(theme.ACCENT), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            row = QRectF(1, option.rect.y() + 1, table.viewport().width() - 2,
+                         option.rect.height() - 2)
+            painter.drawRoundedRect(row, 5, 5)
+        painter.restore()
+
+
+class DataTable(QTableWidget):
+    """Settings' filled record panel; ordinary tables elsewhere stay unchanged."""
+    def __init__(self, *args):
+        super().__init__(*args)
+        self._hover_row = -1
+        self._data_widths = ()
+        self._flex_column = 0
+        self._secondary_columns = ()
+        self.setProperty('settingsDataPanel', True)
+        self.setMaximumWidth(TOOLS_TABLE_MAX_WIDTH)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setShowGrid(False)
+        self.setAlternatingRowColors(True)
+        self.setWordWrap(False)
+        self.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.setMouseTracking(True)
+        self.viewport().setObjectName('settingsDataViewport')
+        self.viewport().installEventFilter(self)
+        self.setItemDelegate(DataCellDelegate(self))
+        self.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.horizontalHeader().setStretchLastSection(False)
+        self.horizontalHeader().setMinimumSectionSize(24)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.horizontalScrollBar().rangeChanged.connect(self._scroll_range_changed)
+        self.retheme()
+
+    def columns(self, widths, flexible=0, secondary=()):
+        self._data_widths, self._flex_column = widths, flexible
+        self._secondary_columns = secondary
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self._allocate_columns()
+
+    def _allocate_columns(self):
+        if not self._data_widths:
+            return
+        widths = list(self._data_widths)
+        # Narrow windows scroll horizontally; never crush a data/state column.
+        available = self.viewport().width()
+        if available >= sum(widths) - self.verticalScrollBar().sizeHint().width():
+            widths[self._flex_column] += available - sum(widths)
+        for column, width in enumerate(widths):
+            if self.columnWidth(column) != width:
+                self.setColumnWidth(column, width)
+
+    def retheme(self):
+        self.setStyleSheet(f"""
+            QTableWidget {{ background: {theme.DATA_SURFACE}; color: {theme.TEXT_PRIMARY};
+                alternate-background-color: {theme.DATA_ROW_ALT}; border: none;
+                border-radius: 10px; padding: 8px 16px; gridline-color: transparent; }}
+            QTableWidget QWidget {{ background: transparent; }}
+            QTableWidget QHeaderView {{ background: {theme.DATA_SURFACE}; }}
+            QHeaderView::section {{ background: {theme.DATA_SURFACE}; color: {theme.DATA_TEXT_SECONDARY};
+                border: none; padding: 0 12px; font-size: {theme.TYPE_BODY}px; font-weight: 600; }}
+            QTableCornerButton::section {{ background: {theme.DATA_SURFACE}; border: none; }}
+            QLabel#toolsTableEmptyState {{ color: {theme.DATA_TEXT_SECONDARY}; background: transparent; }}
+            QScrollBar {{ background: {theme.DATA_SURFACE}; border: none; margin: 0; }}
+            QScrollBar:vertical {{ width: 10px; }}
+            QScrollBar:horizontal {{ height: 10px; }}
+            QScrollBar::handle {{ background: {theme.DATA_TEXT_SECONDARY}; border-radius: 4px; }}
+            QScrollBar::handle:vertical {{ min-height: 24px; }}
+            QScrollBar::handle:horizontal {{ min-width: 24px; }}
+            QScrollBar::handle:hover {{ background: {theme.ACCENT}; }}
+            QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; border: none; }}
+            QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+        """)
+        self.viewport().setStyleSheet(f'QWidget#settingsDataViewport {{ background: {theme.DATA_SURFACE}; border: none; }}')
+        self.horizontalHeader().setFixedHeight(max(40, self.fontMetrics().height() + 16))
+        self.verticalHeader().setDefaultSectionSize(max(48, self.fontMetrics().height() + 24))
+        self._allocate_columns()
+        if hasattr(self, '_empty_state_label'):
+            table_empty_state(self, self._empty_state_label.text())
+        self.viewport().update()
+
+    def _scroll_range_changed(self, *_):
+        if hasattr(self, '_empty_state_label'):
+            table_empty_state(self, self._empty_state_label.text())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, '_data_widths'):
+            self._allocate_columns()
+        if hasattr(self, '_empty_state_label'):
+            self._empty_state_label.setGeometry(self.viewport().rect())
+
+    def mouseMoveEvent(self, event):
+        self._hover_row = self.rowAt(int(event.position().y()))
+        self.viewport().update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover_row = -1
+        self.viewport().update()
+        super().leaveEvent(event)
+
+    def setItem(self, row, column, item):
+        # The model retains full values for accessibility; hover exposes elision.
+        item.setToolTip(item.text())
+        super().setItem(row, column, item)
+
+    def setCellWidget(self, row, column, widget):
+        widget.setMouseTracking(True)
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.setMouseTracking(True)
+            child.installEventFilter(self)
+        if isinstance(widget, QLabel):
+            widget.setContentsMargins(12, 0, 12, 0)
+            widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            widget.setProperty('dataSecondary', True)
+        super().setCellWidget(row, column, widget)
+
+    def eventFilter(self, widget, event):
+        if widget is self.viewport():
+            if event.type() == QEvent.Type.Leave:
+                self._hover_row = -1
+                self.viewport().update()
+        elif event.type() in (QEvent.Type.Enter, QEvent.Type.MouseMove):
+            self._hover_row = self.rowAt(widget.mapTo(self.viewport(), QPoint()).y())
+            self.viewport().update()
+        return super().eventFilter(widget, event)
+
+
+def table_empty_state(table, text):
+    """Accessible viewport overlay: 96-DIP empty body, never a fake record."""
+    label = getattr(table, '_empty_state_label', None)
+    if label is None:
+        label = QLabel(table.viewport())
+        label.setObjectName('toolsTableEmptyState')
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        label.setContentsMargins(12, 24, 12, 24)
+        table._empty_state_label = label
+    label.setText(text)
+    label.setAccessibleName(text)
+    label.setStyleSheet(f'color: {theme.DATA_TEXT_SECONDARY}; background: transparent;')
+    empty = table.rowCount() == 0
+    label.setVisible(empty)
+    table.setMaximumWidth(TOOLS_TABLE_MAX_WIDTH)
+    header = max(40, table.fontMetrics().height() + 16)
+    table.horizontalHeader().setFixedHeight(header)
+    row_height = max(48, table.fontMetrics().height() + 24)
+    for row in range(table.rowCount()):
+        table.setRowHeight(row, row_height)
+        for column in range(table.columnCount()):
+            widget = table.cellWidget(row, column)
+            if widget and widget.property('dataSecondary'):
+                widget.setStyleSheet(f'color: {theme.DATA_TEXT_SECONDARY}; background: transparent; border: none;')
+    body = max(96, label.heightForWidth(max(1, table.width() - 32))) if empty else row_height * min(table.rowCount(), 5)
+    # A horizontal scrollbar takes its own space, leaving all five rows readable.
+    horizontal = table.horizontalScrollBar().sizeHint().height() if table.horizontalScrollBar().maximum() else 0
+    table.setFixedHeight(16 + header + body + horizontal)
+    label.setGeometry(table.viewport().rect())
+    label.raise_()
+
+
+def data_heading(label):
+    label.setProperty('role', 'dataSectionTitle')
+    label.setContentsMargins(0, 0, 0, 0)
+    label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+    return label
+
+
+def style_data_list(panel):
+    """A wrapping list shares the table surface without form-row separators."""
+    panel.setProperty('settingsDataList', True)
+    panel.setMaximumWidth(TOOLS_TABLE_MAX_WIDTH)
+    panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    panel.setStyleSheet(f"""
+        QWidget#commandPacksContent {{ background: {theme.DATA_SURFACE}; border: none; border-radius: 10px; }}
+        QWidget[dataListRow='true'] {{ background: {theme.DATA_SURFACE}; border: none; border-radius: 0; }}
+        QWidget[dataListRow='true'][alternate='true'] {{ background: {theme.DATA_ROW_ALT}; }}
+        QWidget[dataListRow='true']:hover {{ background: {theme.DATA_ROW_HOVER}; }}
+        QWidget[dataListRow='true'] QLabel, QWidget[dataListRow='true'] QCheckBox {{ background: transparent; }}
+        QLabel[dataSecondary='true'] {{ color: {theme.DATA_TEXT_SECONDARY}; }}
+    """)
+    visible = [panel.layout().itemAt(i).widget() for i in range(panel.layout().count())]
+    for label in panel.findChildren(QLabel):
+        if label.property('dataSecondary'):
+            label.setStyleSheet(f'color: {theme.DATA_TEXT_SECONDARY}; background: transparent;')
+    for i, row in enumerate(row for row in visible if row and not row.isHidden()):
+        row.setProperty('alternate', bool(i % 2))
+        row.style().unpolish(row)
+        row.style().polish(row)
+
 
 def style():
     return f"""
@@ -20,6 +243,7 @@ def style():
     QLabel[role='description'] {{ color: {theme.TEXT_SECONDARY}; }}
     QLabel[role='title'] {{ font-size: {theme.TYPE_TITLE}px; font-weight: 600; }}
     QLabel[role='label'] {{ font-weight: 600; }}
+    QLabel[role='dataSectionTitle'] {{ color: {theme.ACCENT}; font-size: {theme.TYPE_HEADING}px; font-weight: 600; }}
     QPushButton, QComboBox, QLineEdit, QSpinBox {{ background: {theme.BG2};
         border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 0 12px; }}
     QComboBox {{ border-color: {theme.BORDER_FAINT}; border-radius: 8px;

@@ -126,9 +126,8 @@ def test_music_settings_button_imports_and_updates_rows(qapp, tmp_path, monkeypa
     window = _SettingsWindow(app, tool="Music")
     monkeypatch.setattr(window, "_choose_spotify_export_path", lambda: str(archive))
     try:
-        assert window._widgets["music_library_spotify_import"].text() == (
-            "Import from your Spotify data export"
-        )
+        # 840: the ZIP picker sits directly below the preserved import instructions.
+        assert window._widgets["music_library_spotify_import"].text() == "Import Spotify ZIP…"
         assert window._widgets["music_library_spotify_help"].text().splitlines() == [
             "Spotify > Privacy settings > Download your data",
             "Wait for the email",

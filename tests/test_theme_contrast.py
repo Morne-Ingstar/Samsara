@@ -229,3 +229,13 @@ def test_disabled_text_is_the_one_documented_exception(palette):
             f"({ratio:.2f}:1) -- if that is intended, delete this test")
         assert ratio >= 2.0, (
             f"TEXT_DISABLED is invisible on {surface} in {palette} ({ratio:.2f}:1)")
+
+
+@pytest.mark.parametrize('surface', ('DATA_SURFACE', 'DATA_ROW_ALT', 'DATA_ROW_HOVER', 'DATA_ROW_SELECTED'))
+@pytest.mark.parametrize('text', ('TEXT_PRIMARY', 'DATA_TEXT_SECONDARY'))
+def test_settings_data_text_contrast_840(palette, surface, text):
+    assert theme.contrast_ratio(getattr(theme, text), getattr(theme, surface)) >= AA_NORMAL_TEXT
+
+
+def test_settings_data_selection_marker_contrast_840(palette):
+    assert theme.contrast_ratio(theme.ACCENT, theme.DATA_ROW_SELECTED) >= NON_TEXT

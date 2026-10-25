@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import theme
-from .presentation import Disclosure
+from .presentation import Disclosure, TOOLS_TABLE_MAX_WIDTH, table_empty_state, DataTable, data_heading
 
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
@@ -46,7 +46,7 @@ class HealthPage:
         container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(8)
+        layout.setSpacing(0)
 
         # _fmt_time lives in _refresh_health_log (where it's actually used) --
         # this tab only builds the static command reference + table chrome.
@@ -58,15 +58,16 @@ class HealthPage:
         instant_note.setWordWrap(True)
         instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(instant_note)
-        layout.addSpacing(8)
+        layout.addSpacing(16)
 
         # ---- Section: Voice Command Reference ----
         main_layout = layout
         reference = Disclosure('Voice command reference')
         main_layout.addWidget(reference)
+        main_layout.addSpacing(24)
         layout = reference.rows
         layout.addWidget(self._tool_section_title("Voice Commands"))
-        layout.addSpacing(4)
+        layout.addSpacing(8)
 
         # Read the same effective command catalog used by Command library.
         # No plugin import/registration or private health data is needed here.
@@ -92,67 +93,73 @@ class HealthPage:
             column.addWidget(description)
             layout.addWidget(row)
 
-        layout.addSpacing(20)
+        layout.addSpacing(24)
 
         # ---- Section: Today's Log ----
         layout = main_layout
-        log_title = self._tool_section_title("Today's Log")
-        layout.addWidget(log_title)
-        layout.addSpacing(4)
-
+        log_title = data_heading(self._tool_section_title("Today's Log"))
+        log_header = QHBoxLayout()
+        log_header.setContentsMargins(0, 0, 28, 0)
+        log_header.setSpacing(8)
+        log_header.addWidget(log_title)
         self._health_count_label = QLabel("Loading...")
-        self._health_count_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(self._health_count_label)
-        layout.addSpacing(4)
+        self._health_count_label.setProperty('role', 'description')
+        log_header.addStretch()
+        log_header.addWidget(self._health_count_label)
+        log_heading_host = QWidget()
+        log_heading_host.setMaximumWidth(640)
+        log_heading_host.setLayout(log_header)
+        layout.addWidget(log_heading_host)
+        layout.addSpacing(12)
 
-        self._health_log_table = QTableWidget()
+        self._health_log_table = DataTable()
         self._health_log_table.setAccessibleName(log_title.text())
         self._health_log_table.setColumnCount(3)
         self._health_log_table.setHorizontalHeaderLabels(["Time", "Type", "Detail"])
-        self._health_log_table.horizontalHeader().setStretchLastSection(True)
-        self._health_log_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents)
-        self._health_log_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents)
+        self._health_log_table.columns((112, 136, 360), flexible=2, secondary=(1, 2))
         self._health_log_table.verticalHeader().setVisible(False)
         self._health_log_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
         self._health_log_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows)
-        self._health_log_table.setMinimumHeight(160)
+        self._health_log_table.setMaximumWidth(TOOLS_TABLE_MAX_WIDTH)
         self._health_log_table.setMaximumHeight(260)
-        layout.addWidget(self._health_log_table)
+        table_row = QHBoxLayout()
+        table_row.setContentsMargins(0, 0, 0, 0)
+        table_row.addWidget(self._health_log_table, 1)
+        table_row.addStretch(0)
+        layout.addLayout(table_row)
 
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setMinimumWidth(100)
         refresh_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         refresh_btn.clicked.connect(self._refresh_health_log)
-        # Added directly to the tab's own QVBoxLayout with no sibling
-        # sharing the row -- without an explicit alignment, a Minimum
-        # (rather than Fixed) horizontal sizePolicy lets a QVBoxLayout
-        # stretch this button to the row's full width instead of just its
-        # own content width.
-        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.addSpacing(20)
+        # Keep this single action at the same inset as the table.
+        layout.addSpacing(12)
+        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addSpacing(24)
 
-        # ---- Section: Summary ----
-        layout.addWidget(self._tool_section_title("Summary"))
-        layout.addSpacing(4)
-
+        # Keep the populated summary and its spacing together when empty.
+        self._health_summary_group = QWidget()
+        summary_layout = QVBoxLayout(self._health_summary_group)
+        summary_layout.setContentsMargins(0, 0, 0, 24)
+        summary_layout.setSpacing(8)
+        self._health_summary_title = self._tool_section_title("Summary")
+        self._health_summary_title.setContentsMargins(0, 0, 0, 0)
+        summary_layout.addWidget(self._health_summary_title)
         self._health_summary_label = QLabel("")
         self._health_summary_label.setWordWrap(True)
-        self._health_summary_label.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.TYPE_BODY}px; line-height: 1.5;"
-        )
-        layout.addWidget(self._health_summary_label)
-        layout.addSpacing(20)
+        summary_layout.addWidget(self._health_summary_label)
+        layout.addWidget(self._health_summary_group)
 
         # ---- Section: Export ----
-        layout.addWidget(self._tool_section_title("Export"))
-        layout.addSpacing(4)
+        export_title = self._tool_section_title("Export")
+        export_title.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(export_title)
+        layout.addSpacing(8)
 
         export_row = QHBoxLayout()
-        export_row.addStretch()
+        export_row.setSpacing(8)
         export_btn = QPushButton("Export to CSV")
         export_btn.setMinimumWidth(140)
         export_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
@@ -164,16 +171,20 @@ class HealthPage:
         open_folder_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         open_folder_btn.clicked.connect(self._open_health_folder)
         export_row.addWidget(open_folder_btn)
+        export_row.addStretch()
         layout.addLayout(export_row)
 
         self._health_export_label = QLabel("")
         self._health_export_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
+        self._health_export_label.hide()
         layout.addWidget(self._health_export_label)
-        layout.addSpacing(20)
+        layout.addSpacing(24)
 
         # ---- Section: Medication Dictionary ----
-        layout.addWidget(self._tool_section_title("Medication Dictionary"))
-        layout.addSpacing(4)
+        dictionary_title = self._tool_section_title("Medication Dictionary")
+        dictionary_title.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(dictionary_title)
+        layout.addSpacing(8)
 
         dict_desc = QLabel(
             "Adds ~100 common medication names to speech recognition so 'took pregabalin' "
@@ -185,16 +196,18 @@ class HealthPage:
         layout.addSpacing(6)
 
         dict_row = QHBoxLayout()
-        dict_row.addStretch()
+        dict_row.setSpacing(8)
         load_dict_btn = QPushButton("Load Medication Dictionary")
         load_dict_btn.setMinimumWidth(235)  # sizeHint is 224; a few px of margin
         load_dict_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         load_dict_btn.clicked.connect(self._load_medication_dictionary)
         dict_row.addWidget(load_dict_btn)
+        dict_row.addStretch()
         layout.addLayout(dict_row)
 
         self._med_dict_label = QLabel("")
         self._med_dict_label.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
+        self._med_dict_label.hide()
         layout.addWidget(self._med_dict_label)
 
         layout.addStretch()
@@ -204,6 +217,13 @@ class HealthPage:
         # Populate on build
         self._refresh_health_log()
 
+        from .calm_layout import _style_row_button
+        for button in container.findChildren(QPushButton):
+            button.setMinimumWidth(0)
+            button.setFixedHeight(theme.HIT_TARGET_MIN)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.setProperty('settingsToolAction', True)
+            _style_row_button(button)
         return scroll
 
     def _refresh_health_log(self):
@@ -253,8 +273,11 @@ class HealthPage:
 
         n = len(entries)
         self._health_count_label.setText(
-            f"{n} entr{'ies' if n != 1 else 'y'} today" if n else "No entries today"
+            f"{n} entr{'ies' if n != 1 else 'y'} today" if n else ""
         )
+
+        self._health_count_label.setVisible(bool(n))
+        table_empty_state(self._health_log_table, "No entries today\nNo pain logged today.")
 
         # Summary
         try:
@@ -274,7 +297,7 @@ class HealthPage:
                     f"Today's pain: avg {pain_avg}, range {lo}-{hi} "
                     f"({len(levels)} readings)"
                 )
-            else:
+            elif entries:
                 parts.append("No pain logged today.")
 
             if today_meds:
@@ -294,10 +317,17 @@ class HealthPage:
                 parts.append(f"Weekly avg pain: {week_avg}")
 
             self._health_summary_label.setText("\n".join(parts))
+            self._health_summary_group.setVisible(bool(entries) and bool(parts))
+            self._health_summary_title.setVisible(bool(entries) and bool(parts))
+            self._health_summary_label.setVisible(bool(entries) and bool(parts))
         except Exception as ex:
+            self._health_summary_group.show()
+            self._health_summary_title.show()
+            self._health_summary_label.show()
             self._health_summary_label.setText(f"Could not load summary: {ex}")
 
     def _export_health_csv(self):
+        self._health_export_label.show()
         try:
             from samsara import health_store
             path = health_store.export_csv()
@@ -317,6 +347,7 @@ class HealthPage:
 
     def _load_medication_dictionary(self):
         """Load the bundled medication dictionary into the vocabulary."""
+        self._med_dict_label.show()
         import json
         from pathlib import Path
         try:

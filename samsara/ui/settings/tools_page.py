@@ -25,7 +25,6 @@ def open_packs(controller):
         owner = controller._window
         page = owner._tool_pages['Command library']
         packs = owner._widgets['_pack_scroll']
-        packs.verticalScrollBar().setValue(0)
         page.ensureWidgetVisible(packs)
     qt_runtime.post(show)
 
@@ -88,9 +87,13 @@ def build(owner, name=None):
             ['Repeat interval', 'Replay the alarm until completed or dismissed.', 'alarms_nag', 'alarms.nag_interval_seconds'],
         ])
         table = owner._widgets['alarms_table']
+        alarms.base.addSpacing(12)
         alarms.base.addWidget(table)
+        alarms.base.addSpacing(12)
         toolbar = QWidget()
         actions = QHBoxLayout(toolbar)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(8)
         for text in ('Add Alarm', 'Edit', 'Toggle', 'Test', 'Delete'):
             actions.addWidget(owner._source_button(text, 'alarms'))
         actions.addStretch()
@@ -115,5 +118,8 @@ def build(owner, name=None):
         tools[tool] = owner._source_pages[tool.lower()]
         heading = QLabel(tool)
         heading.setProperty('role', 'title')
-        tools[tool].widget().layout().insertWidget(0, heading)
+        column = tools[tool].widget().layout()
+        column.insertWidget(0, heading)
+        if tool == 'Music':
+            column.insertSpacing(1, 32)
     return tools

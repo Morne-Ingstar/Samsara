@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from plugins.commands import music
 from samsara.ui import theme
+from .presentation import TOOLS_TABLE_MAX_WIDTH, table_empty_state, DataTable, data_heading
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
 from samsara.music_import import MusicImportError, import_spotify_export, merge_imported_playlists
 
@@ -29,6 +31,45 @@ _TYPE_LABELS = {
     "artist": "Artist",
     "track": "Track",
 }
+
+
+class MusicEditor(QWidget):
+    """Keep the two named inputs legible when the host becomes narrow."""
+    def __init__(self):
+        super().__init__()
+        self.setMaximumWidth(640)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.grid = QGridLayout(self)
+        self.controls = ()
+        self._narrow = None
+
+    def set_controls(self, *controls):
+        self.controls = controls
+        self.reflow()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.reflow()
+
+    def reflow(self):
+        if not self.controls:
+            return
+        narrow = self.width() < 600
+        if narrow == self._narrow:
+            return
+        self._narrow = narrow
+        name, link, add = self.controls
+        for widget in self.controls:
+            self.grid.removeWidget(widget)
+        self.grid.addWidget(name, 0, 0)
+        self.grid.addWidget(link, 1 if narrow else 0, 0 if narrow else 1)
+        self.grid.addWidget(add, 1 if narrow else 0, 1 if narrow else 2, Qt.AlignmentFlag.AlignLeft)
+        name.setMinimumWidth(0 if narrow else 240)
+        link.setMinimumWidth(0 if narrow else 280)
+        self.grid.setColumnStretch(0, 1 if narrow else 0)
+        self.grid.setColumnStretch(1, 0)
+        self.grid.setColumnStretch(3, 1 if not narrow else 0)
+        self.setFixedHeight(96 if narrow else 44)
 
 
 class MusicPage:
@@ -44,18 +85,20 @@ class MusicPage:
         container.setMaximumWidth(_CONTENT_MAX_WIDTH)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(12)
+        layout.setSpacing(0)
 
-        library_title = self._tool_section_title("Music library")
+        library_title = data_heading(self._tool_section_title("Music library"))
         layout.addWidget(library_title)
+        layout.addSpacing(8)
         note = QLabel(
             "Name playlists, albums, artists, or tracks once, then say “playlist Morning”."
         )
         note.setWordWrap(True)
         note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(note)
+        layout.addSpacing(16)
 
-        import_button = QPushButton("Import from your Spotify data export")
+        import_button = QPushButton("Import Spotify ZIP…")  # PLACEHOLDER COPY (840)
         import_button.setObjectName("musicLibrarySpotifyImport")
         import_button.setMinimumHeight(48)
         import_button.setMinimumWidth(320)
@@ -69,68 +112,63 @@ class MusicPage:
         export_help.setObjectName("musicLibrarySpotifyHelp")
         export_help.setWordWrap(True)
         export_help.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
-        from .presentation import SettingRow
-        from .calm_layout import RowLayout
-        import_row = SettingRow(import_button.text(), export_help.text(), [import_button])
-        import_row.heading.hide()
-        import_row.text.layout().removeWidget(import_row.detail)
-        import_row.detail.deleteLater()
-        import_row.detail = export_help
-        import_row.text.layout().addWidget(export_help)
-        import_row._calm_layout = RowLayout(import_row)
-        layout.addWidget(import_row)
+        layout.addWidget(export_help)
+        layout.addSpacing(8)
+        layout.addWidget(import_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addSpacing(24)
 
-        editor_row = QWidget()
-        editor_row.setProperty('settingsToolRow', True)
-        add_row = QHBoxLayout(editor_row)
-        add_row.setContentsMargins(0, theme.SPACE_2, 0, theme.SPACE_2)
-        add_row.setSpacing(10)
+        editor_row = MusicEditor()
+        add_row = editor_row.grid
+        add_row.setContentsMargins(0, 0, 0, 0)
+        add_row.setSpacing(8)
         name = QLineEdit()
         name.setAccessibleName("Music item name")
         name.setObjectName("musicLibraryName")
         name.setMinimumHeight(44)
+        name.setMaximumWidth(240)
         name.setPlaceholderText("Name to say, for example Morning Coffee")
         link = QLineEdit()
         link.setAccessibleName("Spotify link")
         link.setObjectName("musicLibraryLink")
         link.setMinimumHeight(44)
+        link.setMaximumWidth(280)
         link.setPlaceholderText("Paste a Spotify link or spotify: URI")
         add_button = QPushButton("Add")
         add_button.setObjectName("musicLibraryAdd")
         add_button.setMinimumHeight(44)
         add_button.setMinimumWidth(88)
-        add_row.addWidget(name, 1)
-        add_row.addWidget(link, 2)
-        add_row.addWidget(add_button)
+        editor_row.set_controls(name, link, add_button)
         layout.addWidget(editor_row)
+        layout.addSpacing(12)
 
         error = QLabel("")
         error.setObjectName("musicLibraryError")
         error.setWordWrap(True)
         error.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")
+        error.hide()
         layout.addWidget(error)
 
         import_summary = QLabel("")
         import_summary.setObjectName("musicLibrarySpotifyImportSummary")
         import_summary.setWordWrap(True)
         import_summary.setStyleSheet(f"color: {theme.ACCENT}; font-size: {theme.TYPE_BODY}px;")
+        import_summary.hide()
         layout.addWidget(import_summary)
 
-        table = QTableWidget(0, 4)
+        table = DataTable(0, 4)
         table.setAccessibleName(library_title.text())
         table.setObjectName("musicLibraryTable")
         table.setHorizontalHeaderLabels(["Name", "Type", "Spotify link", ""])
         table.verticalHeader().setVisible(False)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setMinimumHeight(190)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(1, 96)
-        table.setColumnWidth(3, 104)
-        layout.addWidget(table)
+        table.setMaximumWidth(TOOLS_TABLE_MAX_WIDTH)
+        table.columns((184, 88, 232, 104), flexible=0, secondary=(1, 2))
+        table_row = QHBoxLayout()
+        table_row.setContentsMargins(0, 0, 0, 0)
+        table_row.addWidget(table, 1)
+        table_row.addStretch(0)
+        layout.addLayout(table_row)
 
         self._widgets['music_library_name'] = name
         self._widgets['music_library_link'] = link
@@ -151,6 +189,13 @@ class MusicPage:
         self._save_fns.append(_save)
         layout.addStretch()
         scroll.setWidget(container)
+        from .calm_layout import _style_row_button
+        for button in container.findChildren(QPushButton):
+            button.setMinimumWidth(0)
+            button.setFixedHeight(theme.HIT_TARGET_MIN)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.setProperty('settingsToolAction', True)
+            _style_row_button(button)
         return scroll
 
     def _refresh_music_library_table(self):
@@ -164,44 +209,54 @@ class MusicPage:
             table.setItem(row, 0, QTableWidgetItem(name))
 
             chip = QLabel(_TYPE_LABELS.get(entry['type'], entry['type'].title()))
-            chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            chip.setMinimumWidth(88)
-            chip.setStyleSheet(
-                f"background-color: {theme.tint(theme.ACCENT, 0.16)}; "
-                f"border: 1px solid {theme.tint(theme.ACCENT, 0.45)}; "
-                f"border-radius: 8px; color: {theme.ACCENT}; "
-                f"font-size: {theme.TYPE_BODY}px; font-weight: 600; padding: 4px 8px;"
-            )
+            chip.setStyleSheet(f"color: {theme.DATA_TEXT_SECONDARY}; background: transparent; border: none;")
             table.setCellWidget(row, 1, chip)
             table.setItem(row, 2, QTableWidgetItem(entry['uri']))
 
             delete = QPushButton("Delete")
-            delete.setMinimumHeight(44)
-            delete.setMinimumWidth(92)
+            from .calm_layout import _style_row_button
+            delete.setFixedHeight(theme.HIT_TARGET_MIN)
+            delete.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            delete.setProperty('settingsToolAction', True)
+            _style_row_button(delete)
+            delete.setMinimumWidth(0)
+            delete.setMaximumWidth(80)
             delete.clicked.connect(lambda _checked=False, entry_name=name:
                                    self._delete_music_library_entry(entry_name))
-            table.setCellWidget(row, 3, delete)
+            action = QWidget()
+            action_row = QHBoxLayout(action)
+            action_row.setContentsMargins(12, 2, 12, 2)
+            action_row.setSpacing(0)
+            action_row.addWidget(delete, alignment=Qt.AlignmentFlag.AlignLeft)
+            table.setCellWidget(row, 3, action)
+
+        # PLACEHOLDER COPY (840)
+        table_empty_state(table, "No music saved yet.")
 
     def _add_music_library_entry(self):
         name = self._widgets['music_library_name'].text().strip()
         link = self._widgets['music_library_link'].text().strip()
         error = self._widgets['music_library_error']
         if not name:
+            error.show()
             error.setText("Give this Spotify item a name you can say.")
             return
         normalized = music.normalize_spotify_link(link)
         if normalized is None:
+            error.show()
             error.setText("That is not a Spotify playlist, album, artist, or track link.")
             return
         self._music_library[name] = normalized
         self._widgets['music_library_name'].clear()
         self._widgets['music_library_link'].clear()
         error.clear()
+        error.hide()
         self._refresh_music_library_table()
 
     def _delete_music_library_entry(self, name):
         self._music_library.pop(name, None)
         self._widgets['music_library_error'].clear()
+        self._widgets['music_library_error'].hide()
         self._refresh_music_library_table()
 
     def _choose_spotify_export_path(self):
@@ -251,13 +306,17 @@ class MusicPage:
             merged = merge_imported_playlists(self._music_library, imported)
         except MusicImportError as exc:
             summary.clear()
+            summary.hide()
+            error.show()
             error.setText(str(exc))
             return
 
         self._music_library = merged.library
         self._refresh_music_library_table()
         error.clear()
+        error.hide()
         summary.setText(merged.summary)
+        summary.show()
         music._announce(self.app, merged.summary)
 
 

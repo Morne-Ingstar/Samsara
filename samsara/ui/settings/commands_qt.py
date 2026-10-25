@@ -36,7 +36,7 @@ from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, _collect_command_rows, logger
 
 
-from samsara.ui.settings.presentation import CleanComboBox as QComboBox
+from samsara.ui.settings.presentation import CleanComboBox as QComboBox, TOOLS_TABLE_MAX_WIDTH, DataTable, table_empty_state, data_heading, style_data_list
 
 class CommandsPage:
     """Methods of the Commands settings page (moved from _SettingsWindow)."""
@@ -58,38 +58,31 @@ class CommandsPage:
         outer.setMaximumWidth(_CONTENT_MAX_WIDTH)
         outer.setObjectName("commandsPageContent")
         layout = QVBoxLayout(outer)
-        layout.setContentsMargins(28, 20, 28, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(0)
 
         cfg = self.app.config
 
         # ---- Section: Command Packs ----------------------------------------
-        layout.addWidget(self._tool_section_title("Command Packs"))
+        layout.addWidget(data_heading(self._tool_section_title("Command Packs")))
 
         desc1 = QLabel(
             "Enable the packs you use. Disabling unused packs improves recognition accuracy."
         )
         desc1.setWordWrap(True)
         desc1.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
+        layout.addSpacing(8)
         layout.addWidget(desc1)
-        layout.addSpacing(4)
-
-        pack_scroll = QScrollArea()
-        pack_scroll.setObjectName("commandPacksScroll")
-        pack_scroll.setWidgetResizable(True)
-        pack_scroll.setMinimumHeight(210)
-        pack_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        pack_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        pack_scroll.setStyleSheet(
-            f"QScrollArea {{ background-color: {theme.BG1}; border-radius: 6px; "
-            f"border: 1px solid {theme.wash(0.08)}; }}"
-        )
+        layout.addSpacing(16)
 
         pack_container = QWidget()
-        pack_container.setStyleSheet("background: transparent;")
+        pack_container.setObjectName("commandPacksContent")
+        pack_container.setMaximumWidth(640)
+        pack_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
         pack_vlayout = QVBoxLayout(pack_container)
-        pack_vlayout.setContentsMargins(10, 8, 10, 8)
-        pack_vlayout.setSpacing(3)
+        pack_vlayout.setContentsMargins(16, 8, 16, 8)
+        pack_vlayout.setSpacing(0)
 
         current_packs = cfg.get('command_packs', {}) or {}
         pack_checkboxes: dict[str, QCheckBox] = {}
@@ -133,10 +126,10 @@ class CommandsPage:
             count_str     = f"  ({count})" if count else ""
 
             row_w = QWidget()
-            row_w.setProperty('settingsToolRow', True)
-            row_w.setStyleSheet("background: transparent;")
+            row_w.setProperty('dataListRow', True)
+            row_w.setMinimumHeight(72)
             row_h = QHBoxLayout(row_w)
-            row_h.setContentsMargins(0, theme.SPACE_2, 0, theme.SPACE_2)
+            row_h.setContentsMargins(12, 12, 12, 12)
             row_h.setSpacing(8)
 
             cb = QCheckBox()
@@ -155,7 +148,7 @@ class CommandsPage:
 
             text_col = QVBoxLayout()
             text_col.setContentsMargins(0, 0, 0, 0)
-            text_col.setSpacing(1)
+            text_col.setSpacing(4)
 
             name_lbl = QLabel(
                 meta.get('label', pack_id)
@@ -168,13 +161,16 @@ class CommandsPage:
                 f"font-size: {theme.TYPE_BODY}px; font-weight: {'normal' if always_on else '600'};"
                 "background: transparent;"
             )
+            name_lbl.setMinimumHeight(22)
             text_col.addWidget(name_lbl)
 
             desc_lbl = QLabel(meta.get('description', ''))
+            desc_lbl.setProperty('dataSecondary', True)
             desc_lbl.setObjectName(f"commandPackDescription_{pack_id}")
             desc_lbl.setStyleSheet(
                 f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px; background: transparent;"
             )
+            desc_lbl.setMinimumHeight(22)
             desc_lbl.setWordWrap(True)
             desc_lbl.setMinimumWidth(0)
             desc_lbl.setSizePolicy(
@@ -186,15 +182,17 @@ class CommandsPage:
 
             pack_vlayout.addWidget(row_w)
 
-        pack_vlayout.addStretch()
-        pack_scroll.setWidget(pack_container)
+        style_data_list(pack_container)
         self._widgets['_pack_checkboxes'] = pack_checkboxes
-        self._widgets['_pack_scroll'] = pack_scroll
-        layout.addWidget(pack_scroll)
+        self._widgets['_pack_scroll'] = pack_container
+        pack_row = QHBoxLayout()
+        pack_row.setContentsMargins(0, 0, 0, 0)
+        pack_row.addWidget(pack_container, 1)
+        pack_row.addStretch(0)
+        layout.addLayout(pack_row)
         layout.addWidget(restart_lbl)
         from .hermes_section import add_section
         add_section(self, layout)
-        layout.addSpacing(4)
 
         # ---- Todoist ------------------------------------------------------
         command_layout = layout
@@ -270,9 +268,9 @@ class CommandsPage:
 
         # ---- Section: Voice Commands ---------------------------------------
         cmd_header = QHBoxLayout()
-        commands_title = self._tool_section_title("Voice Commands")
+        commands_title = data_heading(self._tool_section_title("Voice Commands"))
         cmd_header.addWidget(commands_title)
-        cmd_header.addStretch()
+        cmd_header.setSpacing(8)
         quick_reference_button = QPushButton("Command list...")
         quick_reference_button.setObjectName("commandListButton")
         quick_reference_button.setMinimumHeight(44)
@@ -291,7 +289,10 @@ class CommandsPage:
         )
         self._widgets['cmd_search'] = search_box
         cmd_header.addWidget(search_box)
+        cmd_header.addStretch()
+        layout.addSpacing(24)
         layout.addLayout(cmd_header)
+        layout.addSpacing(8)
 
         instant_note = QLabel("Changes to commands below apply immediately.")
         # Word-wrap so this sentence cannot force a horizontal scrollbar on the
@@ -302,30 +303,25 @@ class CommandsPage:
         instant_note.setWordWrap(True)
         instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
         layout.addWidget(instant_note)
-        layout.addSpacing(4)
+        layout.addSpacing(16)
 
         # Table
-        table = QTableWidget(0, 4)
+        table = DataTable(0, 4)
         table.setAccessibleName(commands_title.text())
         table.setHorizontalHeaderLabels(['Voice Phrase', 'Type', 'Action', 'Description'])
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.columns((176, 80, 128, 224), flexible=3)
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setAlternatingRowColors(True)
-        table.setStyleSheet(
-            table.styleSheet()
-            + f"QTableWidget {{ alternate-background-color: {theme.wash(0.02)}; }}"
-        )
-        table.setMinimumHeight(260)
         self._widgets['cmd_table'] = table
         self._populate_commands_table(table, "")
         search_box.textChanged.connect(lambda txt: self._filter_commands(table, txt))
-        layout.addWidget(table, stretch=1)
+        table_row = QHBoxLayout()
+        table_row.setContentsMargins(0, 0, 0, 0)
+        table_row.addWidget(table, 1)
+        table_row.addStretch(0)
+        layout.addLayout(table_row)
 
         # Button row
         btn_row = QHBoxLayout()
@@ -368,8 +364,6 @@ class CommandsPage:
         test_btn.clicked.connect(lambda: self._test_selected_command(table))
         btn_row.addWidget(test_btn)
 
-        btn_row.addStretch()
-
         reload_btn = QPushButton("Reload")
         reload_btn.setObjectName("reloadCommandsButton")
         reload_btn.setStyleSheet(
@@ -380,12 +374,18 @@ class CommandsPage:
         )
         reload_btn.clicked.connect(lambda: self._reload_commands(table))
         btn_row.addWidget(reload_btn)
+        btn_row.addStretch()
 
+        layout.addSpacing(12)
         layout.addLayout(btn_row)
+        layout.addSpacing(24)
 
         # Keep pack selection adjacent to the command list; profile management
         # follows the list and its Add / Edit / Delete controls.
-        layout.addWidget(self._tool_section_title("Command Profiles"))
+        profiles_title = self._tool_section_title("Command Profiles")
+        profiles_title.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(profiles_title)
+        layout.addSpacing(8)
         profile_entry = QWidget()
         profile_entry.setObjectName("commandProfilesEntry")
         profile_row = QHBoxLayout(profile_entry)
@@ -397,11 +397,12 @@ class CommandsPage:
         profile_note.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;"
         )
-        profile_row.addWidget(profile_note, stretch=1)
+        profile_row.addWidget(profile_note)
         profile_button = QPushButton("Manage Profiles…")
         profile_button.setObjectName("manageCommandProfilesButton")
         profile_button.clicked.connect(lambda: self._open_command_profiles(table=table))
         profile_row.addWidget(profile_button)
+        profile_row.addStretch()
         layout.addWidget(profile_entry)
         self._widgets['_command_profiles_button'] = profile_button
         self._widgets['_command_profiles_entry'] = profile_entry
@@ -434,7 +435,15 @@ class CommandsPage:
             return updates
         self._save_fns.append(_save)
 
+        layout.addStretch()
         page.setWidget(outer)
+        from .calm_layout import _style_row_button
+        for button in outer.findChildren(QPushButton):
+            button.setMinimumWidth(0)
+            button.setFixedHeight(theme.HIT_TARGET_MIN)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.setProperty('settingsToolAction', True)
+            _style_row_button(button)
         return page
 
     def _open_command_profiles(self, table=None) -> None:
@@ -518,6 +527,8 @@ class CommandsPage:
                 table.setItem(row, 3, QTableWidgetItem(command['description']))
         finally:
             table.setUpdatesEnabled(True)
+        # PLACEHOLDER COPY (840)
+        table_empty_state(table, "No commands match your search." if filter_text else "No commands loaded.")
 
     def _filter_commands(self, table: QTableWidget, text: str) -> None:
         self._populate_commands_table(table, text)

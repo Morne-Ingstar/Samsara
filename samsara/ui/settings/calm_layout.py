@@ -233,6 +233,19 @@ def group_page(page, starts):
 
 def apply_settings(window):
     window.setStyleSheet(window.styleSheet() + '\n' + stylesheet())
+    # 840: tool actions receive the same compact face after each theme pass.
+    for button in window.findChildren(QPushButton):
+        if button.property('settingsToolAction'):
+            _style_row_button(button)
+    # Re-measure empty copy after the host applies its final font metrics.
+    from .presentation import DataTable, style_data_list
+    from PySide6.QtWidgets import QTableWidget
+    for table in window.findChildren(QTableWidget):
+        if isinstance(table, DataTable):
+            table.retheme()
+    for panel in window.findChildren(QWidget):
+        if panel.property('settingsDataList'):
+            style_data_list(panel)
     for page in window._pages.values():
         page.column.setContentsMargins(theme.SPACE_4, theme.SPACE_3, theme.SPACE_4, theme.SPACE_3)
     for row in window._destination_rows:
@@ -325,6 +338,8 @@ class RowDividers(QObject):
             # deleteLater(), but asking one for a property raises
             # RuntimeError (wrapped by Qt as an uncaught SystemError).
             if widget is not None and not isValid(widget):
+                continue
+            if widget and widget.property('dataListRow'):
                 continue
             if widget and widget.property('settingsRowDivider'):
                 continue

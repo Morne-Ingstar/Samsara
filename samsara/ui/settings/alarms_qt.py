@@ -31,7 +31,9 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara.ui import theme
-from samsara.ui.settings.presentation import CleanComboBox as QComboBox
+from samsara.ui.settings.presentation import (
+    CleanComboBox as QComboBox, TOOLS_TABLE_MAX_WIDTH, table_empty_state, DataTable, data_heading,
+)
 
 from samsara.ui.settings_qt import (
     _AlarmHotkeyButton,
@@ -115,19 +117,15 @@ class AlarmsPage:
         layout.addWidget(instant_note)
         layout.addSpacing(4)
 
-        table = QTableWidget(0, 5)
+        table = DataTable(0, 5)
         table.setAccessibleName(alarms_title.text())
         table.setHorizontalHeaderLabels(['On', 'Name', 'Interval', 'Next', 'Streak'])
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        table.columns((56, 208, 112, 128, 104), flexible=1)
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setMinimumHeight(200)
+        table.setMaximumWidth(TOOLS_TABLE_MAX_WIDTH)
         self._widgets['alarms_table'] = table
         self._populate_alarms_table(table)
         # This tab used to be the one non-scrollable Settings page. With
@@ -135,7 +133,11 @@ class AlarmsPage:
         # for the same fixed viewport height and painted over it. Let the
         # content take its natural height inside the shared Settings scroll
         # pattern instead.
-        layout.addWidget(table)
+        table_row = QHBoxLayout()
+        table_row.setContentsMargins(0, 0, 0, 0)
+        table_row.addWidget(table, 1)
+        table_row.addStretch(0)
+        layout.addLayout(table_row)
 
         # Button row
         btn_row = QHBoxLayout()
@@ -179,8 +181,6 @@ class AlarmsPage:
         del_btn.clicked.connect(lambda: self._delete_selected_alarm(table))
         btn_row.addWidget(del_btn)
 
-        btn_row.addStretch()
-
         reset_btn = QPushButton("Reset Stats")
         reset_btn.setMinimumWidth(105)  # sizeHint is 95; a few px of margin
         reset_btn.setMinimumHeight(theme.HIT_TARGET_MIN)
@@ -188,6 +188,14 @@ class AlarmsPage:
         reset_btn.setStyleSheet(_SEC)
         reset_btn.clicked.connect(lambda: self._reset_alarm_stats(table))
         btn_row.addWidget(reset_btn)
+        btn_row.addStretch()
+        from .calm_layout import _style_row_button
+        for button in (add_btn, del_btn, reset_btn, *[btn_row.itemAt(i).widget() for i in range(1, 4)]):
+            button.setMinimumWidth(0)
+            button.setFixedHeight(theme.HIT_TARGET_MIN)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.setProperty('settingsToolAction', True)
+            _style_row_button(button)
 
         layout.addLayout(btn_row)
 
@@ -283,6 +291,8 @@ class AlarmsPage:
                 table.setItem(row, 4, QTableWidgetItem(streak))
         finally:
             table.setUpdatesEnabled(True)
+        # PLACEHOLDER COPY (840)
+        table_empty_state(table, "No alarms yet.")
         if selected_row is None and fallback_row is not None and fallback_row >= 0:
             if table.rowCount():
                 selected_row = min(fallback_row, table.rowCount() - 1)
@@ -409,7 +419,7 @@ class AlarmsPage:
         dlg_layout.addLayout(form)
 
         btn_row2 = QHBoxLayout()
-        btn_row2.addStretch()
+        btn_row2.setSpacing(8)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setFixedWidth(80)
         cancel_btn.setStyleSheet(
@@ -425,6 +435,7 @@ class AlarmsPage:
             name_edit, interval_spin, sound_combo, enabled_cb,
         ))
         btn_row2.addWidget(save_btn)
+        btn_row2.addStretch()
         dlg_layout.addLayout(btn_row2)
         dlg.exec()
 
