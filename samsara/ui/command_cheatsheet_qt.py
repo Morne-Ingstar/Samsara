@@ -19,6 +19,7 @@ hand-written list.
 
 import json
 import shutil
+from time import perf_counter
 from pathlib import Path
 from typing import Callable, List
 
@@ -326,6 +327,8 @@ class CommandCheatSheetQt:
         self._request_show(None, ("All", text))
 
     def _request_show(self, scope, view):
+        self._latency_request_at = perf_counter()
+        logger.debug('[SHOW_LATENCY] reference handler_enter at=%.6f', self._latency_request_at)
         self._visible = True
         self._pending_pack_scope = scope
         self._pending_view = view
@@ -367,15 +370,19 @@ class CommandCheatSheetQt:
 
     def _init_window(self):
         """Runs on the Qt thread."""
+        started = perf_counter()
         self._window = _CheatSheetWindow(
             self._execute_cb, self._commands_cb, self._palette_path,
             initial_scope=self._pending_pack_scope, initial_view=self._pending_view,
             **self._pack_callbacks,
         )
+        logger.debug('[SHOW_LATENCY] reference construct_ms=%.3f', (perf_counter() - started) * 1000)
+        self._window._latency_request_at = self._latency_request_at
         self._window.show()
 
     def _show_with_pack_scope(self, pack_ids, view=None):
         """Apply scope and raise the sheet on the Qt thread."""
+        self._window._latency_request_at = self._latency_request_at
         self._window.set_view(pack_ids, view)
         self._window.show()
         self._window.raise_()
@@ -989,6 +996,7 @@ class _CheatSheetWindow(QMainWindow):
             self._save_palette()
 
     def refresh_commands(self):
+        started = perf_counter()
         try:
             live = self._commands_cb()
         except Exception as exc:
@@ -1018,6 +1026,8 @@ class _CheatSheetWindow(QMainWindow):
                if all(c.get("pack_disabled") for c in self._all if c["plugin"] == p)}
         self._category_bar.set_categories(plugin_ids, self._active_category, off)
         self._apply_filter(self._filter.text())
+        logger.debug('[SHOW_LATENCY] reference rows_built_ms=%.3f rows=%d',
+                     (perf_counter() - started) * 1000, len(self._all))
 
     def _apply_filter(self, text: str = ""):
         if self._refill_running:
@@ -1344,6 +1354,13 @@ class _CheatSheetWindow(QMainWindow):
             )
         except Exception as exc:
             print(f"[CHEATSHEET] Save palette: {exc}")
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        started = getattr(self, '_latency_request_at', None)
+        if started is not None:
+            logger.debug('[SHOW_LATENCY] reference request_to_paint_ms=%.3f', (perf_counter() - started) * 1000)
+            self._latency_request_at = None
 
     def showEvent(self, e):
         super().showEvent(e)

@@ -2142,7 +2142,7 @@
       "pack": "core",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "ui",
+      "risk": "read",
       "source": "commands.json:2819",
       "undoable": true,
       "verb": "hide",
@@ -3643,7 +3643,7 @@
       "pack": "core",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "ui",
+      "risk": "read",
       "source": "commands.json:3113",
       "undoable": true,
       "verb": "open",
@@ -4987,7 +4987,7 @@
       "pack": "core",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "ui",
+      "risk": "read",
       "source": "commands.json:845",
       "undoable": true,
       "verb": "run",
@@ -6469,7 +6469,7 @@
       "pack": "core",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "ui",
+      "risk": "read",
       "source": "commands.json:2810",
       "undoable": true,
       "verb": "show",
@@ -6507,7 +6507,7 @@
       "pack": "core",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "ui",
+      "risk": "read",
       "source": "commands.json:839",
       "undoable": true,
       "verb": "show",
@@ -7357,7 +7357,7 @@
       "pack": "utilities",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "ui",
+      "risk": "read",
       "source": "commands.json:3125",
       "undoable": true,
       "verb": "transcribe",
@@ -13826,7 +13826,7 @@
           "window_cube.selection"
         ]
       },
-      "source": "plugins/commands/window_cube.py:419",
+      "source": "plugins/commands/window_cube.py:454",
       "undoable": true,
       "verb": "choose",
       "whole_utterance": false
@@ -13855,7 +13855,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Select the source text in window 2 and put the caret in window 4. Copies the selection from 2 into 4.",
       "risk": "write",
-      "source": "plugins/commands/window_cube.py:531",
+      "source": "plugins/commands/window_cube.py:566",
       "undoable": false,
       "verb": "cube",
       "whole_utterance": false
@@ -13883,7 +13883,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Name an existing page, or say cube page alone for the next page.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:381",
+      "source": "plugins/commands/window_cube.py:416",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -13913,7 +13913,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Use the numbers on the window cards. Places those windows side by side on the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:546",
+      "source": "plugins/commands/window_cube.py:581",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -13948,7 +13948,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "eight",
       "whole_utterance": false
@@ -13983,7 +13983,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "five",
       "whole_utterance": false
@@ -14018,7 +14018,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "four",
       "whole_utterance": false
@@ -14039,7 +14039,7 @@
       "plugin": "window_cube",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:348",
+      "source": "plugins/commands/window_cube.py:383",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -14074,7 +14074,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "nine",
       "whole_utterance": false
@@ -14109,7 +14109,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "one",
       "whole_utterance": false
@@ -14129,8 +14129,8 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "precondition": "",
-      "risk": "ui",
-      "source": "plugins/commands/window_cube.py:367",
+      "risk": "read",
+      "source": "plugins/commands/window_cube.py:402",
       "undoable": true,
       "verb": "refresh",
       "whole_utterance": false
@@ -14165,7 +14165,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "seven",
       "whole_utterance": false
@@ -14186,8 +14186,8 @@
       "pack": "window-management",
       "plugin": "window_cube",
       "precondition": "",
-      "risk": "ui",
-      "source": "plugins/commands/window_cube.py:332",
+      "risk": "read",
+      "source": "plugins/commands/window_cube.py:364",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -14222,7 +14222,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "six",
       "whole_utterance": false
@@ -14257,7 +14257,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "three",
       "whole_utterance": false
@@ -14292,7 +14292,7 @@
           "window_cube.visible"
         ]
       },
-      "source": "plugins/commands/window_cube.py:451",
+      "source": "plugins/commands/window_cube.py:486",
       "undoable": true,
       "verb": "two",
       "whole_utterance": false
@@ -14322,7 +14322,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14352,7 +14352,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14382,7 +14382,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14412,7 +14412,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14442,7 +14442,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14472,7 +14472,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14502,7 +14502,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14532,7 +14532,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14562,7 +14562,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:469",
+      "source": "plugins/commands/window_cube.py:504",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false

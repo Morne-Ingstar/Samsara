@@ -39,7 +39,7 @@ from samsara import plugin_commands  # noqa: E402
 from samsara.commands import CommandExecutor  # noqa: E402
 from samsara.execution_policy import (  # noqa: E402
     Allowed, Denied, Invocation, NeedsConfirmation, Route,
-    RISK_DESTRUCTIVE, RISK_UI, RISK_UNKNOWN, RISK_WRITE,
+    RISK_DESTRUCTIVE, RISK_UI, RISK_UNKNOWN, RISK_WRITE, RISK_READ,  # 772: reference classification
 )
 
 COMMANDS = {
@@ -137,7 +137,7 @@ class TestClassify:
         ({"type": "hotkey", "keys": "ctrl+shift+w"}, RISK_DESTRUCTIVE),
         ({"type": "hotkey", "keys": ["win", "l"]}, RISK_UI),
         ({"type": "hotkey", "keys": ["shift", "delete"]}, RISK_DESTRUCTIVE),
-        ({"type": "method", "method": "show_cheat_sheet"}, RISK_UI),
+        ({"type": "method", "method": "show_cheat_sheet"}, RISK_READ),  # 772: immediate reference
         ({"type": "method", "method": "repeat_last_command"}, RISK_UNKNOWN),
         ({"type": "method", "method": "never_heard_of_it"}, RISK_UNKNOWN),
         ({"type": "macro", "steps": [{"action": "hotkey", "keys": ["alt", "tab"]}]}, RISK_UI),

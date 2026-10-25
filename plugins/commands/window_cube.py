@@ -30,6 +30,9 @@ that: returning False is NOT the same as the phrase never matching.
 
 import threading
 import time
+import logging
+from functools import lru_cache
+from pathlib import Path
 
 from samsara.plugin_commands import command
 from samsara.spoken_numbers import parse_spoken_number, spoken_number_matches
@@ -48,6 +51,30 @@ from plugins.commands.window_switcher import (
 )
 
 MAX_ROWS_DEFAULT = 9
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _alias_names():
+    from plugins.commands.windows import APP_ALIASES
+    names = {}
+    for spoken, exe in APP_ALIASES.items():
+        names.setdefault(exe.lower(), spoken.title())
+    return names
+
+
+@lru_cache(maxsize=256)
+def _file_description(path, modified_ns, size):
+    # File identity participates in the key: replacing an executable cannot
+    # leave its old product name pinned for the rest of the session.
+    import win32api
+    translations = win32api.GetFileVersionInfo(path, r'\VarFileInfo\Translation')
+    for language, codepage in translations:
+        description = win32api.GetFileVersionInfo(
+            path, rf'\StringFileInfo\{language:04x}{codepage:04x}\FileDescription')
+        if description and description.strip():
+            return description.strip()
+    return ''
 
 _lock = threading.Lock()
 _slots: list = []        # ordered [{number, hwnd, app, title, closed}]
@@ -96,7 +123,8 @@ def _friendly_app_name(hwnd: int) -> str:
     proc = ""
     try:
         import psutil
-        proc = psutil.Process(_get_pid(hwnd)).name() or ""
+        process = psutil.Process(_get_pid(hwnd))
+        proc = process.name() or ""
     except Exception:
         proc = ""
     if not proc:
@@ -107,21 +135,21 @@ def _friendly_app_name(hwnd: int) -> str:
     if proc.lower() in common:
         return common[proc.lower()]
     try:
-        import win32api
-        path = psutil.Process(_get_pid(hwnd)).exe()
-        translations = win32api.GetFileVersionInfo(path, r'\VarFileInfo\Translation')
-        for language, codepage in translations:
-            description = win32api.GetFileVersionInfo(
-                path, rf'\StringFileInfo\{language:04x}{codepage:04x}\FileDescription')
-            if description:
-                return description.strip()
+        path = process.exe()
+        try:
+            stat = Path(path).stat()
+            identity = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            # An inaccessible executable must not acquire a session cache entry.
+            return _file_description.__wrapped__(path, None, None) or _alias_names().get(
+                proc.lower(), proc.rsplit('.', 1)[0].title())
+        description = _file_description(path, *identity)
+        if description:
+            return description
     except Exception:
         pass
     try:
-        from plugins.commands.windows import APP_ALIASES
-        for spoken, exe in APP_ALIASES.items():
-            if exe.lower() == proc.lower():
-                return spoken.title()
+        return _alias_names().get(proc.lower(), proc.rsplit('.', 1)[0].title())
     except Exception:
         pass
     return proc.rsplit(".", 1)[0].title()
@@ -130,12 +158,16 @@ def _friendly_app_name(hwnd: int) -> str:
 def _build_rows(app):
     """Enumerate via window_switcher and return [(hwnd, app_name, title)] in
     the switcher's own stable order (visible left-to-right, then minimized)."""
+    started = time.perf_counter()
     windows = _get_all_windows(_own_hwnd(app))
+    enumerated = time.perf_counter()
     ordered = _assign_letters(windows)
     out = []
     for letter in sorted(ordered, key=lambda k: (len(k), k)):
         hwnd, title, _is_min = ordered[letter]
         out.append((hwnd, _friendly_app_name(hwnd), title))
+    logger.debug('[SHOW_LATENCY] cube enumerate_ms=%.3f names_rows_ms=%.3f rows=%d',
+                 (enumerated - started) * 1000, (time.perf_counter() - enumerated) * 1000, len(out))
     return out
 
 
@@ -331,16 +363,19 @@ def _numbers_active(app) -> bool:
 
 @command("show cube", aliases=["pin windows", "pin cube", "switch"],
          pack="window-management",
-         risk_class="ui",
+         risk_class="read",
 )
 def handle_show_cube(app, remainder):
     """Pins a numbered grid of your open windows to the screen."""
     global _pinned, _page, _app_ref
+    started = time.perf_counter()
+    logger.debug('[SHOW_LATENCY] cube handler_enter at=%.6f', started)
     _app_ref = app
     _page = 1
     slots = _rebuild(app)
     _pinned = True
     _render(app, slots)
+    logger.debug('[SHOW_LATENCY] cube handler_return_ms=%.3f', (time.perf_counter() - started) * 1000)
     print(f"[CUBE] pinned {len(slots)} windows")
     return True
 
@@ -366,7 +401,7 @@ def handle_hide_cube(app, remainder):
 
 @command("refresh cube", aliases=["update cube", "rescan cube"],
          pack="window-management",
-         risk_class="ui",
+         risk_class="read",
 )
 def handle_refresh_cube(app, remainder):
     """Rescans your open windows and redraws the numbered grid."""

@@ -6,7 +6,7 @@
     "plugins/commands/window_switcher.py": 1506,
     "samsara/audio_ducking.py": 1545,
     "samsara/audio_engine/wake_consumer.py": 1715,
-    "samsara/execution_policy.py": 2088,
+    "samsara/execution_policy.py": 2097,
     "samsara/session_modes.py": 3332,
     "samsara/streaming.py": 3212,
     "samsara/ui/history_view.py": 1789,

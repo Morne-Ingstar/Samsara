@@ -842,6 +842,9 @@ class CommandExecutor:
             if chain is not None:
                 return chain
         entry, remainder = self._matcher.match(match_text, context)
+        if entry is not None and entry.phrase in {'show cube', 'show commands'}:
+            logger.debug('[SHOW_LATENCY] route_matched command=%s at=%.6f',
+                         entry.phrase, time.perf_counter())
         if entry is None:
             entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
         if (entry is not None and getattr(entry.handler, '__module__', '') ==

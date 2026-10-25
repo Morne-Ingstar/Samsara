@@ -174,18 +174,27 @@ _METHOD_RISK = {
     "clear_dictation_draft": RISK_DESTRUCTIVE,
     "start_recording": RISK_UI,
     "cancel_recording": RISK_UI,
-    "show_tutorial": RISK_UI,
-    "show_cheat_sheet": RISK_UI,
-    "hide_cheat_sheet": RISK_UI,
+    # 772: reference windows do not alter user content or need a cancel delay.
+    "show_tutorial": RISK_READ,
+    "show_cheat_sheet": RISK_READ,
+    "hide_cheat_sheet": RISK_READ,
     "repeat_last_command": RISK_UNKNOWN,   # repeats whatever ran last -- cannot be classified statically
-    "open_log_file": RISK_UI,
-    "open_transcribe_file": RISK_UI,
+    "open_log_file": RISK_READ,
+    "open_transcribe_file": RISK_READ,
 }
 
 # 825f: these are the reviewed navigation methods, not a name-prefix exemption.
 # Built-in risk metadata alone must not relabel arbitrary methods or hotkeys.
 from samsara.samsara_navigation import PLACES as _SAMSARA_PLACES
 _METHOD_RISK.update({f"open_samsara_{place}": RISK_UI for place in _SAMSARA_PLACES})
+# 772: reviewed local navigation only. External links, display changes,
+# updates and action wizards retain their existing policy.
+_METHOD_RISK.update({f"open_samsara_{name}": RISK_READ
+                     for name, place in _SAMSARA_PLACES.items()
+                     if place.kind in {'hub', 'settings', 'tool', 'reference', 'guides',
+                                       'tutorial', 'reminders', 'tasks'}
+                     or name in {'quick_reference', 'diagnostics', 'live_log', 'log',
+                                 'benchmark_review', 'transcribe_file'}})
 
 _ACTION2_RISK = {"focus": RISK_UI, "open": RISK_UI, "close": RISK_DESTRUCTIVE}
 

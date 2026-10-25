@@ -36,7 +36,11 @@ from __future__ import annotations
 import ctypes
 import math
 import weakref
+import logging
+from time import perf_counter
 from dataclasses import dataclass
+
+_latency_log = logging.getLogger(__name__)
 
 from PySide6.QtCore import QEvent, QRect, Qt, Signal, Slot
 from PySide6.QtGui import QCursor, QKeySequence, QPainter, QShortcut
@@ -460,6 +464,10 @@ class _CubeWindow(QWidget):
 
     def event(self, event):
         result = super().event(event)
+        if event.type() == QEvent.Type.Paint and getattr(self, '_latency_request_at', None) is not None:
+            _latency_log.debug('[SHOW_LATENCY] cube request_to_paint_ms=%.3f',
+                               (perf_counter() - self._latency_request_at) * 1000)
+            self._latency_request_at = None
         # Some Qt platforms activate Tool windows despite the passive flags.
         # Keep the invoking Qt field active if such an activation slips through.
         if event.type() == QEvent.Type.WindowActivate and not self._reviewing:
@@ -548,6 +556,7 @@ class CubePanel:
         self._position = position
 
     def show(self, rows: list):
+        self._latency_request_at = perf_counter()
         self._pending_rows = list(rows)
         if self._window is not None:
             qt_runtime.post(self._show_rows)
@@ -580,6 +589,7 @@ class CubePanel:
         return dict(snapshot, offset=list(snapshot["offset"])) if snapshot else None
 
     def _show_rows(self):
+        self._window._latency_request_at = self._latency_request_at
         self._window._requested_position = self._position
         self._window._placement_screen = None  # choose cursor monitor on each show
         self._window._on_click = self._on_click
@@ -590,7 +600,9 @@ class CubePanel:
 
     def _init_window(self):
         """Runs on the Qt thread via qt_runtime.post()."""
+        started = perf_counter()
         self._window = _CubeWindow(self._on_click, self._opacity, self._position)
+        _latency_log.debug('[SHOW_LATENCY] cube construct_ms=%.3f', (perf_counter() - started) * 1000)
         self._show_rows()
 
 
