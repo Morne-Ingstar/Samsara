@@ -64,6 +64,10 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "plugins.personal_dir": {
+        "type": "str", "default": "", "tab": "commands", "settings_ui": False,
+        "ui_less_reason": "Optional external plugin folder; configured in the config file.",
+    },
     "home.show_recent_words": {
         "type": "bool", "default": True, "tab": "general",
     },

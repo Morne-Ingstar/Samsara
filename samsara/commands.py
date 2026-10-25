@@ -168,6 +168,9 @@ class CommandExecutor:
         if resources is None:
             try:
                 _plugin_commands.load_plugins(plugins_dir)
+                _plugin_commands.load_extra_plugins(
+                    getattr(app, 'config', {}) if app is not None else {},
+                    builtin_commands=self.commands)
             except Exception as e:
                 print(f"[PLUGINS] Failed to load plugins: {e}")
         registry = _plugin_commands._REGISTRY if self._plugin_registry is None else self._plugin_registry
@@ -586,9 +589,7 @@ class CommandExecutor:
                 registered = registry.get(canonical, {}).get('func') is entry.handler
                 module = getattr(entry.handler, '__module__', '')
                 name = getattr(entry.handler, '__name__', '')
-                guard = ((module == 'plugins.commands.local_app_lifecycle' and name in {
-                    'start_strata', 'stop_strata', 'restart_strata', 'start_ariadne',
-                    'stop_ariadne', 'restart_ariadne', 'start_sigil', 'stop_sigil', 'restart_sigil'})
+                guard = (registry.get(canonical, {}).get('source') == 'personal'
                     or (module == 'plugins.commands.core_utils' and name in {
                         'reset_floating_windows', 'move_preview_to_this_screen'})
                     or (module == 'plugins.commands.hands_free_voice' and name == 'handle_hands_free'))

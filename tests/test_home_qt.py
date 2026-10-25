@@ -1542,7 +1542,7 @@ class TestTheExamplePoolOffersUniversalCommands:
         offered = set(command_marquee.example_phrases(records, count=1000,
                                                       rng=random.Random(12)))
         assert not offered & {command_catalog.canonical_phrase(r) for r in printer}
-        assert "print me a gun" not in offered
+        assert all(__import__("hashlib").sha256(text.lower().encode("utf-8")).hexdigest() != "2ac02b7ec9a5e31539a46b97c25fd02666794dc5f8f9d1a1e048194f2bfd2a38" for text in offered)  # 881: retain the exclusion without private source text.
 
     def test_a_new_unapproved_pack_is_excluded_without_touching_this_code(self):
         records = [

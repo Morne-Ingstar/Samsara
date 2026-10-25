@@ -38,9 +38,11 @@ Example plugin:
 
 import importlib
 import importlib.util
+import hashlib
 import logging
 import sys
 import threading
+from contextvars import ContextVar
 from pathlib import Path
 from samsara.log import describe_text, safe_exception
 logger = logging.getLogger(__name__)
@@ -57,6 +59,7 @@ _STARTED_SERVICES = set()
 # module can re-install its commands after the registry was cleared.
 _MODULE_ENTRIES = {}
 _SERVICES_LOCK = threading.Lock()
+_PERSONAL_IMPORT = ContextVar('personal_plugin_import', default=None)
 
 # Marks a metadata argument the author did not pass, so the registry can
 # report it as unknown instead of as the decorator's default.
@@ -196,6 +199,16 @@ def _register(entry):
     longer declares -- instead of leaving a stale duplicate behind.
     """
     func = entry['func']
+    reserved = _PERSONAL_IMPORT.get()
+    if reserved is not None:
+        # A conflicting alias rejects the entire command, before any writes.
+        conflicts = [key for key in [entry['phrase'], *entry['aliases']]
+                     if key in reserved or (key in _REGISTRY and _REGISTRY[key] is not entry)]
+        if conflicts:
+            logger.warning("[PLUGINS] Skipped personal command %r: phrase or alias collision",
+                           entry['phrase'])
+            return
+        entry['source'] = 'personal'
     identity = (entry['source'], getattr(func, '__qualname__', None))
     previous = _REGISTRY.get(entry['phrase'])
     if previous is not None and previous is not entry:
@@ -209,7 +222,8 @@ def _register(entry):
     _REGISTRY[entry['phrase']] = entry
     for alias in entry['aliases']:
         _REGISTRY[alias] = entry
-    produced = _MODULE_ENTRIES.setdefault(entry['source'], {})
+    module_name = func.__module__ if entry['source'] == 'personal' else entry['source']
+    produced = _MODULE_ENTRIES.setdefault(module_name, {})
     produced[entry['phrase']] = entry
 
 
@@ -352,7 +366,7 @@ def _same_file(module, py_file):
         return False
 
 
-def _import_plugin(py_file):
+def _import_plugin(py_file, *, module_name=None):
     """Import one plugin file exactly once and return its module.
 
     Canonical package name when there is one (so `import plugins.commands.x`
@@ -363,8 +377,8 @@ def _import_plugin(py_file):
     """
     py_file = Path(py_file)
     resolved = py_file.resolve()
-    legacy_name = f"samsara_plugin_{py_file.stem}"
-    name = _canonical_module_name(py_file)
+    legacy_name = module_name or f"samsara_plugin_{py_file.stem}"
+    name = None if module_name else _canonical_module_name(py_file)
 
     module = None
     if name is not None:
@@ -439,6 +453,59 @@ def load_plugins(plugins_dir):
 
     unique_commands = len({id(e) for e in _REGISTRY.values()})
     logger.info(f"Plugin system: {loaded} file(s), {unique_commands} command(s) registered")
+    return loaded
+
+
+def load_extra_plugins(config=None, *, builtin_commands=None):
+    """Load per-user Python commands after bundled plugins, without replacing them.
+
+    Empty plugins.personal_dir selects <Samsara home>/personal_plugins.
+    Relative configured paths are resolved against the same home directory.
+    External source files use explicit path imports, including in frozen builds.
+    """
+    from samsara.paths import samsara_home_dir
+
+    settings = (config or {}).get('plugins', {})
+    configured = settings.get('personal_dir', '') if isinstance(settings, dict) else ''
+    home = samsara_home_dir()
+    directory = Path(configured).expanduser() if configured else Path('personal_plugins')
+    if not directory.is_absolute():
+        directory = home / directory
+    try:
+        if not directory.is_dir():
+            return 0
+        files = sorted(directory.glob('*.py'))
+    except OSError:
+        logger.warning("[PLUGINS] Cannot read personal plugin directory")
+        return 0
+
+    reserved = set()
+    for phrase, data in (builtin_commands or {}).items():
+        reserved.add(phrase.lower().strip())
+        reserved.update(alias.lower().strip() for alias in data.get('aliases', []))
+    loaded = 0
+    for py_file in files:
+        if py_file.name.startswith('_'):
+            continue
+        # Separate names prevent an external core_utils.py from reusing or
+        # replacing the bundled module with the same filename.
+        name = 'samsara_personal_' + hashlib.sha256(
+            str(py_file.resolve()).encode('utf-8')).hexdigest()
+        previous = dict(_REGISTRY)
+        declarations = {key: dict(value) for key, value in _MODULE_ENTRIES.items()}
+        token = _PERSONAL_IMPORT.set(reserved)
+        try:
+            _import_plugin(py_file, module_name=name)
+            loaded += 1
+        except (Exception, SystemExit) as error:
+            _REGISTRY.clear()
+            _REGISTRY.update(previous)
+            _MODULE_ENTRIES.clear()
+            _MODULE_ENTRIES.update(declarations)
+            logger.warning("[PLUGINS] Failed to load personal plugin %s (%s); skipped",
+                           py_file.name, type(error).__name__)
+        finally:
+            _PERSONAL_IMPORT.reset(token)
     return loaded
 
 
