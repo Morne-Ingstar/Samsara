@@ -37,7 +37,7 @@ from samsara.ui import qt_runtime
 
 from samsara.log import get_logger
 from samsara.ui import theme
-from samsara.ui.command_reference_detail import CommandDetailCard, CommandRowDelegate, style_search
+from samsara.ui.command_reference_detail import CommandDetailCard, CommandRowDelegate, row_help_lines, style_search
 from samsara.ui.settings.calm_layout import ScrollEdges
 
 logger = get_logger(__name__)
@@ -201,14 +201,16 @@ def live_filter(rows, live_only: bool) -> tuple:
 
 
 def row_text(row: dict) -> str:
-    """Accessible row text: canonical phrase, alternate phrases, then tags."""
+    """Accessible row text follows the painted phrases, help, then tags."""
     text = row.get("display_phrase", row["phrase"]).title()
     aliases = row.get("display_aliases", row.get("shown_aliases", ()))
     if aliases:
         text += "  -  also: " + ", ".join(aliases)
+    for line in row_help_lines(row):
+        text += "\n" + line
     tags = row_tags(row)
     if tags:
-        text += "  [" + ", ".join(tags) + "]"
+        text += "\n[" + ", ".join(tags) + "]"
     return text
 
 

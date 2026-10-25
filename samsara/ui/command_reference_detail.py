@@ -14,6 +14,18 @@ from samsara.ui.settings import sidebar
 NO_DESCRIPTION = "No description is available for this command."
 
 
+def row_help_lines(row):
+    """Use only catalog copy: a description and the first reviewed example."""
+    lines = []
+    description = row.get('description', '').strip()
+    if description:
+        lines.append(description)
+    examples = row.get('examples', ())
+    if examples:
+        lines.append('Say: ' + examples[0])  # PLACEHOLDER COPY (855)
+    return lines
+
+
 class _RunButton(QPushButton):
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -40,7 +52,7 @@ def style_search(edit, height=None):
 
 
 class CommandRowDelegate(QStyledItemDelegate):
-    """Wrapped primary/secondary tiers, measured with the same fonts we paint."""
+    """Wrapped phrases, catalog help and tags, measured with the paint fonts."""
 
     @staticmethod
     def tiers(index):
@@ -48,9 +60,6 @@ class CommandRowDelegate(QStyledItemDelegate):
         primary = row.get('display_phrase', row.get('phrase', index.data() or '')).title()
         aliases = row.get('display_aliases', row.get('shown_aliases', ()))
         secondary = 'also: ' + ', '.join(aliases) if aliases else ''
-        tags = row.get('row_tags', ())
-        if tags:
-            secondary += ('\n' if secondary else '') + '[' + ', '.join(tags) + ']'
         return primary, secondary
 
     @staticmethod
@@ -66,7 +75,14 @@ class CommandRowDelegate(QStyledItemDelegate):
         width = max(1, width - theme.SPACE_1)
         y = 8
         parts = []
-        for text, (font, colour) in zip(self.tiers(index), self.tier_styles()):
+        styles = self.tier_styles()
+        content = list(zip(self.tiers(index), styles))
+        row = index.data(Qt.ItemDataRole.UserRole + 3) or {}
+        content.extend((text, styles[1]) for text in row_help_lines(row))
+        tags = row.get('row_tags', ())
+        if tags:
+            content.append(('[' + ', '.join(tags) + ']', styles[1]))
+        for text, (font, colour) in content:
             if not text:
                 continue
             height = QFontMetrics(font).boundingRect(
