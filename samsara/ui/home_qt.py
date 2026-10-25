@@ -1738,6 +1738,7 @@ class HomePage(QWidget):
         recent_layout.addWidget(self._recent)
         col.addWidget(self._recent_slot)
         self._recent_fit_pending = False
+        self._recent._loaded.connect(lambda *_: self._queue_recent_fit())
         self._content.installEventFilter(self)
         self._identity = self._build_identity_strip()
         col.addWidget(self._identity)
@@ -2385,7 +2386,9 @@ class HomePage(QWidget):
         if obj is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
             self._relayout()
             self._queue_recent_fit()
-        if obj is getattr(self, '_content', None) and event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.Resize):
+        # A fit invalidates the content layout itself; treating that request as
+        # new input schedules fits forever. Resize, refresh and loaded rows own fits.
+        if obj is getattr(self, '_content', None) and event.type() == QEvent.Type.Resize:
             self._queue_recent_fit()
         if obj is self.window() and event.type() == QEvent.Type.WindowActivate:
             self.refresh()

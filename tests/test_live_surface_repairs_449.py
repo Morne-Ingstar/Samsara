@@ -90,7 +90,8 @@ def test_pending_does_not_replace_a_persistent_fault(surface):
     c.notice(NoticeKind.ERROR, 'Persistent fault'); c.drain()
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
     assert c.view().notice.kind is NoticeKind.PENDING
-    assert c.view().secondary_notice.message == 'Persistent fault'
+    # 888b / 775: result errors are timed even with no caller TTL; questions replace them.
+    assert c.view().secondary_notice is None
 
 
 @pytest.mark.parametrize('kind,ttl_ms,expires', [('success', 3000, 3.0), ('warning', 3000, 3.0),

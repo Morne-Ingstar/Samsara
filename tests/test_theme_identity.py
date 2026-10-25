@@ -142,6 +142,39 @@ def test_generated_assets_ignore_the_active_light_palette(qapp, gen_icons):
         theme.set_theme(previous, refresh=False)
 
 
+def test_ico_asset_check_accepts_reencoded_pixels(qapp, gen_icons, monkeypatch, tmp_path):
+    # 888b: Qt/zlib PNG encoding metadata must not make identical ICO artwork stale.
+    image = gen_icons.render('recording', 32)
+    expected = gen_icons.build_ico([(32, gen_icons.png_bytes(image))])
+    image.setText('encoder', 'synthetic alternate PNG metadata')
+    encoded = gen_icons.build_ico([(32, gen_icons.png_bytes(image))])
+    assert encoded != expected
+    path = tmp_path / 'reencoded.ico'
+    path.write_bytes(encoded)
+    monkeypatch.setattr(gen_icons, 'STATES_DIR', tmp_path / 'states')
+    monkeypatch.setattr(gen_icons, 'expected_outputs', lambda: {path: expected})
+    assert gen_icons.stale_assets() == []
+
+
+@pytest.mark.parametrize('damage', ['pixels', 'missing_frame', 'truncated'])
+def test_ico_asset_check_rejects_damaged_embedded_artwork(qapp, gen_icons, monkeypatch, tmp_path, damage):
+    # 888b: preserve artwork and container checks after allowing re-encoding.
+    image = gen_icons.render('recording', 32)
+    expected = gen_icons.build_ico([(32, gen_icons.png_bytes(image))])
+    if damage == 'pixels':
+        image.fill(0)
+        actual = gen_icons.build_ico([(32, gen_icons.png_bytes(image))])
+    elif damage == 'missing_frame':
+        actual = gen_icons.build_ico([])
+    else:
+        actual = expected[:-1]
+    path = tmp_path / 'damaged.ico'
+    path.write_bytes(actual)
+    monkeypatch.setattr(gen_icons, 'STATES_DIR', tmp_path / 'states')
+    monkeypatch.setattr(gen_icons, 'expected_outputs', lambda: {path: expected})
+    assert gen_icons.stale_assets() == [path]
+
+
 def _isolated_generated_asset(gen_icons, monkeypatch, tmp_path):
     with gen_icons._asset_palette():
         image = gen_icons.render("recording", 32)
@@ -746,7 +779,13 @@ def test_no_local_scrollbar_overrides_left_in_the_owned_windows():
         source = path.read_text(encoding="utf-8")
         # 515 deliberately gives Settings' destination scrollbars their own
         # quiet treatment. All other window/page sheets keep the shared rule.
-        if path.name == 'calm_layout.py':
+        if path.name == 'presentation.py':
+            # 888b / 840: data tables deliberately use their shared data-surface tokens.
+            assert 'QScrollBar {{ background: {theme.DATA_SURFACE}' in source
+            assert 'QScrollBar::handle {{ background: {theme.DATA_TEXT_SECONDARY}' in source
+            assert 'QScrollBar::handle:hover {{ background: {theme.ACCENT}' in source
+            assert not HEX_IN_TEXT.findall(source)
+        elif path.name == 'calm_layout.py':
             assert 'scroll.verticalScrollBar().setStyleSheet' in source
             assert not HEX_IN_TEXT.findall(source)
         else:

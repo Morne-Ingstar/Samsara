@@ -287,7 +287,8 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     partials.stop()
     c.begin_capture(Lane.HOLD)
     c.drain()
-    assert c.view().notice.kind is NoticeKind.ERROR
+    # 888b / 775: the next capture dismisses a transient error immediately.
+    assert c.view().notice.kind is NoticeKind.NONE
     clock[0] += 4.1; c.refresh_expired()
     assert c.view().notice.kind is NoticeKind.NONE
 

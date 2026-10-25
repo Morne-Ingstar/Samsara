@@ -224,7 +224,9 @@ def test_no_label_or_checkbox_in_the_view_paints_its_own_box(qapp, main_window):
         if view._list.isAncestorOf(widget) and not view._list.viewport().rect().contains(
                 widget.mapTo(view._list.viewport(), widget.rect().topLeft())):
             continue
-        assert image.pixelColor(top_left.x(), top_left.y()).name() == bg, widget.objectName() or widget.text()
+        # 888b / 839: labels inherit the filled History card, not the outer page.
+        expected = theme.BG0.lower() if isinstance(widget.parentWidget(), hv._HistoryRow) else bg
+        assert image.pixelColor(top_left.x(), top_left.y()).name() == expected, widget.objectName() or widget.text()
         checked += 1
     assert checked >= 6
 

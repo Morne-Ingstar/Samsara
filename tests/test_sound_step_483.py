@@ -178,7 +178,8 @@ def test_hold_failed_plugin_reports_once_without_success(tmp_path, monkeypatch, 
     with caplog.at_level(logging.INFO):
         run(app, "broken hold test")
     assert len(app.chips) == 1 and "broken hold test" in app.chips[0]
-    assert "synthetic device failure" not in app.chips[0] and "Traceback" not in app.chips[0]
+    # 888b / 877: preserve the specific failure reason on both displays.
+    assert "synthetic device failure" in app.chips[0] and "Traceback" not in app.chips[0]
     assert app.sounds == [("error", .5)] and not app.speech
     app.history_db.add.assert_called_once()
     assert app.history_db.add.call_args.kwargs["status"] == "error"

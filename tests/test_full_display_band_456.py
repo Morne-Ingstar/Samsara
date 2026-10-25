@@ -60,17 +60,17 @@ def test_roles_effective_font_ink_and_accessible_names(surface, qapp, palette, k
     assert w._state.font().pixelSize() == 16 and int(w._state.font().weight()) == 400
     feedback = w._chip if w._chip is not None else w._band
     label = feedback.label
-    # 517: old 14px bold ink-on-solid-fill -> 14px chip / 16px row,
-    # normal body ink on the card with a quiet tint or a thin accent rule.
-    assert label.font().pixelSize() == (14 if feedback.chip else 16)
-    assert int(label.font().weight()) == 400
+    # 888b / 775: body-size feedback; warnings, errors and pending work are stronger.
+    assert label.font().pixelSize() == theme.TYPE_BODY
+    assert int(label.font().weight()) == (600 if kind in ('warning', 'error', 'pending') else 400)
     assert label.palette().color(QPalette.ColorRole.WindowText).name() == theme.qcolor(theme.TEXT_PRIMARY).name()
     assert theme.contrast_ratio(theme.TEXT_PRIMARY, theme.BG1) >= 4.5
     assert theme.contrast_ratio(theme.TEXT_SECONDARY, theme.BG1) >= 4.5
     assert len({x.objectName() for x in [w._lane, w._state, label]}) == 3
     assert all(x.accessibleName() for x in [w._lane, w._state, feedback, label])
     assert w._lane.y() < w._state.y()
-    assert (feedback.y() < w._state.y()) if feedback.chip else (w._state.y() < feedback.y())
+    # 888b / 775: messages occupy their own row below the header.
+    assert w._state.y() < feedback.y()
 
 
 @pytest.mark.parametrize('kind, expected', [('success', NoticeKind.SUCCESS), ('warning', NoticeKind.WARNING),
@@ -89,7 +89,7 @@ def test_producer_severity_and_exact_lifetime(surface, kind, expected, ttl):
 def test_default_and_explicit_no_timer(surface):
     c, i, clock = surface
     i.show_outcome('Captured', 'success'); c.drain()
-    assert c.view().notice.expires_at == 1.5
+    assert c.view().notice.expires_at == 2.5  # 888b / 775 reading-time floor.
     i.show_outcome('Persistent result', 'warning', None); c.drain()
     clock[0] = 3600; assert c.view().notice.message == 'Persistent result'
 
@@ -207,8 +207,8 @@ def test_question_resolved_before_queued_handoff_does_not_reappear(surface):
 def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, edge):
     """517: old `height == before.height() + band_height` -> exact geometry.
 
-    Short receipts occupy the fixed header; every dock keeps mark, Clear,
-    transcript, position and size unchanged, including on expiry.
+    888b / 775: receipts occupy their own row. Every dock preserves width,
+    controls and transcript size; expiry restores the exact original geometry.
     """
     c, i, clock = surface
     c.app.config['ui']['live_surface']['placement'] = {'preferred_monitor': 'test',
@@ -224,7 +224,9 @@ def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, 
     for kind in ['success', 'warning', 'error', 'accent']:
         i.show_outcome('Synthetic receipt', kind, 1800); c.drain(); qapp.processEvents()
         band_height = w._band.required_height(w.card_content_rect.width())
-        assert band_height == 0 and w.geometry() == before
+        # 888b / 775: the message row grows the card by its measured height.
+        row_height = w._chip.required_height(w.card_content_rect.width())
+        assert band_height == 0 and w.height() == before.height() + row_height
         assert w._chip is not None and w._chip.isVisible()
         assert w.x() == before.x() and w.width() == before.width()
         assert w._clear.geometry() == clear
@@ -235,7 +237,7 @@ def test_ordinary_feedback_keeps_card_clear_words_and_mark_fixed(surface, qapp, 
         else:
             assert w.y() == before.y()
             assert w.mapToGlobal(w.mark_rect.topLeft()) == mark
-            assert w._transcript.y() == transcript.y()
+            assert w._transcript.y() == transcript.y() + row_height
         clock[0] = c.view().notice.expires_at; c.refresh_expired(); qapp.processEvents()
         assert w._band.required_height(w.card_content_rect.width()) == 0
         assert w._chip is None
@@ -257,9 +259,13 @@ def test_empty_status_reserves_band_and_long_question_wraps_completely(surface, 
     i.show_feedback(message, 'pending', None, Feedback(FeedbackKind.QUESTION, FeedbackPurpose.QUESTION, 'long')); c.drain(); qapp.processEvents()
     band = c.widget._band
     assert c.widget.height() == 76 + band.required_height(c.widget.card_content_rect.width())
-    assert band.label.text() == message and band.label.wordWrap()
+    # 888b / 775: explicit wrapping is bounded to two lines, full text remains on hover.
+    assert ' '.join(band.label.text().splitlines()) == message
+    assert not band.label.wordWrap() and len(band.label.text().splitlines()) <= 2
+    assert band.toolTip() == band.label.toolTip() == message
     assert band.label.height() >= band.label.heightForWidth(band.label.width())
-    assert c.widget.height() > 132 and band.rect().contains(band.label.geometry())
+    assert c.widget.height() == 76 + band.height()
+    assert band.rect().contains(band.label.geometry())
     assert message in c.widget.accessibleDescription()
 
 
@@ -321,7 +327,7 @@ def test_exact_dictation_handoff_forwards_source_detail_duration_and_hold_purpos
     c.app._show_hold_pending_chip(); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.RUNNING
     c.app._show_outcome_chip('Synthetic result', 'warning', 7000); c.drain()
-    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 1.5
+    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 2.5  # 888b / 775.
     c.app._show_dispatch_outcome_chip(SimpleNamespace(kind='command_awaiting_confirmation', detail={'phrase': 'synthetic action'})); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.QUESTION
     c.app._show_outcome_chip('Ordinary result', 'success', 1800); c.drain()

@@ -981,7 +981,7 @@ class TestHandleCommandModeUtteranceOnFinalHook:
         dictation.DictationApp._handle_command_mode_utterance(app, _buffer_for(), 16000)
         preview.on_utterance_final.assert_called_once_with(
             "hello world", scratch_success=False, dictate_committed=False,
-            draft_recovered=False)
+            draft_recovered=True)  # 888b / 814: resync the prepared staged draft.
 
     def test_scratch_success_outcome_is_threaded_through_as_the_real_signal(self):
         """dispatch_utterance's own outcome.kind == "scratch_success" -- not

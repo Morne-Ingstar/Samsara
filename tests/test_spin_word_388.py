@@ -171,13 +171,16 @@ def test_shown_status_and_links_geometry(qapp, monkeypatch):
         labs = [v.parentWidget().layout().itemAt(0).widget() for v in values]
         x = lambda w: w.mapTo(win, QPoint()).x()
         assert x(labs[0]) == 16
-        assert all(x(v) - (x(l)+l.width()) == 8 for l, v in zip(labs, values))
-        seps = [s for s in sb.findChildren(QFrame) if s.width() == 1 and s.height() == 16]
-        assert len(seps) == 2
+        # 888b / 824: compact captions use icons; only visible segments consume space.
+        assert all(x(v) - (x(l)+l.width()) == 8 for l, v in zip(labs, values)
+                   if v.isVisibleTo(win))
+        seps = [s for s in sb.findChildren(QFrame) if s.width() == 1 and s.height() == 16 and s.isVisibleTo(win)]
+        shown = [(l, v) for l, v in zip(labs, values) if v.isVisibleTo(win)]
+        assert len(seps) == len(shown) - 1
         for i, s in enumerate(seps):
-            assert x(s) - (x(values[i])+values[i].width()) == 14
-            assert x(labs[i+1]) - (x(s)+s.width()) == 14
-            assert abs(s.mapTo(win, QPoint()).y()+8 - (labs[i].mapTo(win, QPoint()).y()+labs[i].height()/2)) <= 1
+            assert x(s) - (x(shown[i][1])+shown[i][1].width()) == 14
+            assert x(shown[i+1][0]) - (x(s)+s.width()) == 14
+            assert abs(s.mapTo(win, QPoint()).y()+8 - (shown[i][0].mapTo(win, QPoint()).y()+shown[i][0].height()/2)) <= 1
         control = win._example_strip._next_btn
         painted_right = x(control)+control.width()/2+3+2+.875
         assert abs(win.width()-painted_right-16) <= 2
@@ -206,7 +209,10 @@ def test_shown_status_and_links_geometry(qapp, monkeypatch):
         # 679 made the links flow from the cell's left edge so they can wrap.
         # The support line and links row still share the same full-width cell.
         assert x(links[0]) == x(p._links_row)
-        assert abs(x(p._support_text)+p._support_text.width()-(x(p._links_row)+p._links_row.width())) <= 2
+        # 888b / 843: support belongs to stats; links occupy the separate footer.
+        assert p._identity.rect().contains(p._support_text.geometry())
+        assert x(p._links_row) == x(p._footer)
+        assert dots == []
         assert all(p._links_row.rect().contains(button.geometry()) for button in links)
         assert all(b.height() >= 44 for b in links)
         assert isinstance(p._support_text, SpinWordLabel)
@@ -321,7 +327,8 @@ def test_release_band_is_at_most_one_fifth_with_version_below_heading(qapp, monk
             qapp.processEvents()
         p = win._panel_cache["Home"]
         assert win.width() == 900 and win.height() == 650
-        assert p._hint_card.height() * 5 <= p._scroll.viewport().height()
+        # 888b / 843: the footer now lives outside the scroll viewport.
+        assert p._hint_card.height() * 5 <= p.height()
         heading, version, sentence = p._hint_heading, p._hint_text, p._hint_sub
         assert version.x() == heading.x() == sentence.x()
         assert version.y() >= heading.y() + heading.height()
@@ -342,7 +349,8 @@ def test_release_band_is_at_most_one_fifth_with_version_below_heading(qapp, monk
             assert point.y() - 1 >= home_qt._px(theme.SPACE_2)
             assert p._hint_card.height() - 1 - point.y() - btn.height() >= home_qt._px(theme.SPACE_2)
         assert action.mapTo(p._hint_card, QPoint()).x() < dismiss.mapTo(p._hint_card, QPoint()).x()
-        assert p._cards_cols == 3
+        # 888b / 843: enlarged text reflows the content column to two cards.
+        assert p._cards_cols == (3 if scale == 1 else 2)
         assert home_qt.overflowing_widgets(p) == []
         if scale == 1:
             assert p._scroll.verticalScrollBar().maximum() == 0
@@ -387,7 +395,8 @@ def test_status_icons_preserve_accessible_text_and_scale(qapp, size):
             plain.deleteLater()
 
 
-@pytest.mark.parametrize("scale, expected", [(1, 18), (1.5, 27)])
+# 888b / 843: Home creed uses the body token; keep the historical node IDs.
+@pytest.mark.parametrize("scale, expected", [(1, 16), (1.5, 24)], ids=["1-18", "1.5-27"])
 def test_smaller_creed_uses_existing_token_and_restores_second_dot(page, qapp, scale, expected):
     old = qapp.font()
     font = QFont(old)

@@ -470,14 +470,45 @@ def stale_assets() -> list[Path]:
         if not path.exists():
             stale.append(path)
         elif isinstance(value, bytes):
-            # Check embedded artwork as well as the frame-size directory.
-            if path.read_bytes() != value:
+            # PNG compression/metadata can differ across Qt/zlib versions.
+            # Check every frame with the same pixel policy as standalone PNGs.
+            if not ico_matches(path.read_bytes(), value):
                 stale.append(path)
         elif not image_diff(QImage(str(path)), value)["matches"]:
             stale.append(path)
     if STATES_DIR.exists():
         stale.extend(p for p in STATES_DIR.glob("*.png") if p not in expected)
     return stale
+
+
+def ico_matches(actual: bytes, expected: bytes) -> bool:
+    """Compare complete ICO containers and their decoded artwork, not compression."""
+    def frames(data):
+        reserved, kind, count = struct.unpack_from('<HHH', data)
+        if (reserved, kind) != (0, 1) or not count:
+            raise ValueError('invalid ICO header')
+        cursor = 6 + 16 * count
+        result = []
+        for index in range(count):
+            entry = struct.unpack_from('<BBBBHHII', data, 6 + 16 * index)
+            width, height, colours, reserved, planes, bits, length, offset = entry
+            if offset != cursor or not length or offset + length > len(data):
+                raise ValueError('invalid ICO payload bounds')
+            image = QImage.fromData(data[offset:offset + length])
+            if image.isNull() or (image.width(), image.height()) != (width or 256, height or 256):
+                raise ValueError('invalid ICO image')
+            result.append((entry[:6], image))
+            cursor += length
+        if cursor != len(data):
+            raise ValueError('unaccounted ICO data')
+        return result
+    try:
+        left, right = frames(actual), frames(expected)
+        return len(left) == len(right) and all(
+            a[0] == b[0] and image_diff(a[1], b[1])['matches']
+            for a, b in zip(left, right))
+    except (ValueError, struct.error):
+        return False
 
 
 def _ico_sizes(data: bytes) -> list[int]:

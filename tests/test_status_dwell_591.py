@@ -55,8 +55,10 @@ def display(request, qapp, monkeypatch):
     qapp.processEvents()
 
 
-@pytest.mark.parametrize('length, expected', [(1, 1500), (19, 1500), (20, 1550),
-                                            (50, 3350), (77, 4970), (78, 5000), (200, 5000)])
+# 888b / 775: retain historical node IDs while pinning the approved 2.5-8 s formula.
+@pytest.mark.parametrize('length, expected', [(1, 2500), (19, 2500), (20, 2500),
+                                            (50, 3000), (77, 4620), (78, 4680), (200, 8000)],
+                         ids=['1-1500', '19-1500', '20-1550', '50-3350', '77-4970', '78-5000', '200-5000'])
 def test_exact_shared_formula(length, expected):
     for kind in ('success', 'accent', 'warning', 'error'):
         assert message_duration_ms('x' * length, kind, 1) == expected
@@ -81,70 +83,74 @@ def test_receipt_survives_clear_hide_and_expires_at_its_dwell(display, label):
 
 
 def test_only_latest_waiter_shows_with_fresh_reading_time(display):
+    # 888b / 775: each new result replaces the preceding one on arrival.
     d = display
     d.show('First receipt')
-    end = d.deadline()
     d.clock[0] = .2
     d.show('Superseded waiter')
+    assert d.text() == 'Superseded waiter'
     d.clock[0] = .4
     d.show('Latest receipt')
-    assert d.text() == 'First receipt'
+    assert d.text() == 'Latest receipt'
+    end = .4 + message_duration_ms('Latest receipt', 'success') / 1000
     assert d.deadline() == end
-    # Polling may be late: reading time starts when the queued text is shown.
-    d.clock[0] = end + .25
+    d.clock[0] = end - .001
     d.expire()
     assert d.text() == 'Latest receipt'
-    promoted_end = d.clock[0] + message_duration_ms('Latest receipt', 'success') / 1000
-    assert d.deadline() == promoted_end
-    d.clock[0] = promoted_end
+    d.clock[0] = end
     d.expire()
     assert d.text() == ''
 
 
 def test_error_interrupts_and_lower_priority_waits(display):
+    # 888b / 775: newer results replace errors as well as ordinary receipts.
     d = display
     d.show('typed')
     d.clock[0] = .1
     d.show('Synthetic error', 'error')
     assert d.text() == 'Synthetic error'
-    end = d.deadline()
     d.clock[0] = .2
     d.show('Captured')
-    assert d.text() == 'Synthetic error'
+    assert d.text() == 'Captured'
+    end = .2 + message_duration_ms('Captured', 'success') / 1000
+    assert d.deadline() == end
     d.clock[0] = end
     d.expire()
-    assert d.text() == 'Captured'
-    assert d.deadline() == end + 1.5
+    assert d.text() == ''
 
 
 def test_arrival_after_missed_timer_keeps_waiters_in_order(display):
+    # 888b / 775: delayed expiry must never resurrect a replaced receipt.
     d = display
     d.show('First receipt')
     end = d.deadline()
     d.clock[0] = .1
     d.show('Waiting receipt')
+    assert d.text() == 'Waiting receipt'
     d.clock[0] = end + .2
     d.show('Latest arrival')
-    assert d.text() == 'Waiting receipt'
+    assert d.text() == 'Latest arrival'
     d.clock[0] = d.deadline()
     d.expire()
-    assert d.text() == 'Latest arrival'
+    assert d.text() == ''
 
 
 def test_full_queued_feedback_is_published_once_on_arrival():
+    # 888b / 775: visible feedback and the published event advance together.
     clock = [0.0]
     model = LiveSurfaceModel(clock=lambda: clock[0])
     from samsara.live_surface.model import NoticeKind
     model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.SUCCESS, message='First receipt'))
+    first_revision = model.view().feedback_revision
     clock[0] = .1
     model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.SUCCESS, message='Waiting receipt'))
     view = model.view()
-    assert view.notice.message == 'First receipt'
-    assert view.feedback_event.message == 'Waiting receipt'
+    assert view.notice.message == view.feedback_event.message == 'Waiting receipt'
+    assert view.feedback_revision == first_revision + 1
     clock[0] = view.notice.expires_at
-    promoted = model.view()
-    assert promoted.notice.message == 'Waiting receipt'
-    assert promoted.feedback_revision == view.feedback_revision
+    expired = model.view()
+    assert expired.notice.kind is NoticeKind.NONE
+    assert expired.feedback_revision == view.feedback_revision
 
 
 def test_recording_changes_immediately_while_receipt_remains(display):
@@ -174,7 +180,8 @@ def test_cancelled_queued_progress_never_reappears(display):
     end = d.deadline()
     d.show('Synthetic processing', 'pending', None,
            Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, 'hold'))
-    assert d.text() == 'typed'
+    # 888b / 775: progress replaces the result immediately; cancellation removes it.
+    assert d.text() == 'Synthetic processing'
     d.i.clear_feedback('hold')
     d.flush()
     d.clock[0] = end
@@ -212,13 +219,14 @@ def test_full_document_receipt_dwell_does_not_delay_document_or_capture():
     model = LiveSurfaceModel(clock=lambda: clock[0])
     model.consume(SurfaceEvent(EventKind.DELIVERY_FINISHED, text='Synthetic delivered content'))
     assert model.view().document is DocumentState.DELIVERED
-    clock[0] = 1.499
+    # 888b / 775: delivery document and receipt share the 2.5-second floor.
+    clock[0] = 2.499
     model.consume(SurfaceEvent(EventKind.NOTICE_CLEARED))
     assert model.view().document is DocumentState.DELIVERED
-    clock[0] = 1.5
+    clock[0] = 2.5
     assert model.view().document is DocumentState.EMPTY
     model.consume(SurfaceEvent(EventKind.DELIVERY_FINISHED, text='Synthetic delivered content'))
-    clock[0] = 1.6
+    clock[0] = 2.6
     model.consume(SurfaceEvent(EventKind.CAPTURE_STARTED, capture_id='new', lane=Lane.HOLD))
     assert model.view().capture is CaptureState.RECORDING
     assert model.view().document is DocumentState.EMPTY
@@ -265,11 +273,11 @@ def test_history_arrival_after_missed_timer_keeps_waiters_in_order(qapp, monkeyp
         clock[0] = end + .2
         window._show_toast('Latest arrival')
         assert window._status_lbl.text() == 'Waiting receipt'
-        assert window._toast.deadline == clock[0] + 1.5
+        assert window._toast.deadline == clock[0] + message_duration_ms(window._status_lbl.text(), 'success') / 1000
         clock[0] = window._toast.deadline
         window._restore_status()
         assert window._status_lbl.text() == 'Latest arrival'
-        assert window._toast.deadline == clock[0] + 1.5
+        assert window._toast.deadline == clock[0] + message_duration_ms(window._status_lbl.text(), 'success') / 1000
         clock[0] = window._toast.deadline
         window._restore_status()
         assert window._status_lbl.text() != 'Latest arrival'

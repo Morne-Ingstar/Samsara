@@ -12,6 +12,7 @@ from samsara.live_surface.model import (CaptureState, DocumentState, EventKind, 
                                         LiveSurfaceModel, NoticeKind, SurfaceEvent, VisibleForm)
 from samsara.live_surface.partials import CapturePartials
 from samsara.ui.live_surface_qt import LiveSurfaceWidget
+from samsara.message_durations import message_duration_ms
 
 
 @pytest.fixture
@@ -81,7 +82,8 @@ def test_successful_streaming_hold_returns_to_rest_within_receipt_time(hold):
     release_and_deliver(h)
     h.app._paste_preserving_clipboard.assert_called_once_with('Synthetic sentence.')
     assert h.c.view().document is DocumentState.DELIVERED
-    h.clock[0] = 2.0
+    # 888b / 775: the delivered receipt now gets 2.5 seconds of reading time.
+    h.clock[0] = message_duration_ms('typed', 'success') / 1000
     h.c.refresh_expired()
     save_full(h, 'delivered_hold')
     assert h.c.widget._state.text() == 'Idle'
@@ -96,7 +98,8 @@ def test_delivered_hold_rejects_late_partial_or_transcribing_update(hold, kind):
     h.c.post(SurfaceEvent(kind, capture_id=h.token, sequence=2 ** 31,
         lane=Lane.HOLD, capture=CaptureState.TRANSCRIBING, text='Synthetic late preview.'))
     h.flush()
-    h.clock[0] = 2.0
+    # 888b / 775: late producer work cannot outlive the current receipt.
+    h.clock[0] = message_duration_ms('typed', 'success') / 1000
     h.c.refresh_expired()
     assert h.c.view().capture is CaptureState.OFF
     assert h.c.view().provisional_text == ''

@@ -225,7 +225,8 @@ def test_catalogue_has_no_unexplained_unknown_risks(monkeypatch):
     # three non-UI exceptions visible; never declare arbitrary repeats safe.
     exceptions = {'redo that': 'redo_last_dictation',
                   'repeat': 'repeat_last_command', 'again': 'repeat_last_command'}
-    unknown = {p: c['method'] for p, c in COMMANDS.items()
+    # 888b: unknown records may be non-method commands; keep them visible to the assertion.
+    unknown = {p: c.get('method', c.get('type')) for p, c in COMMANDS.items()
                if policy.classify_builtin(c) == policy.RISK_UNKNOWN}
     assert unknown == exceptions
     document = json.loads((ROOT / 'commands_catalog.json').read_text(encoding='utf-8'))
@@ -249,7 +250,15 @@ def test_every_navigation_command_is_allowed_by_actual_policy(phrase, command):
     executor = SimpleNamespace(commands=COMMANDS)
     app = SimpleNamespace(_ava_cmd_generation=0)
     decision = policy.authorize(policy.Invocation(phrase, generation=0), executor=executor, app=app)
-    assert isinstance(decision, policy.Allowed) and decision.risk == 'ui'
+    # 888b / 772: reviewed local navigation is read-only; external/action UI stays UI.
+    from samsara.samsara_navigation import PLACES
+    destination = command['samsara_destination']
+    place = PLACES[destination]
+    expected = 'read' if (place.kind in {'hub', 'settings', 'tool', 'reference', 'guides',
+                                       'tutorial', 'reminders', 'tasks'}
+                         or destination in {'quick_reference', 'diagnostics', 'live_log', 'log',
+                                            'benchmark_review', 'transcribe_file'}) else 'ui'
+    assert isinstance(decision, policy.Allowed) and decision.risk == expected
 
 
 def test_risk_metadata_or_unknown_method_names_cannot_bypass_policy():
@@ -257,7 +266,8 @@ def test_risk_metadata_or_unknown_method_names_cannot_bypass_policy():
                                    'risk_class': 'ui'}) == policy.RISK_UNKNOWN
     assert policy.classify_builtin({'type': 'hotkey', 'keys': ['shift', 'delete'],
                                    'risk_class': 'ui'}) == policy.RISK_DESTRUCTIVE
-    assert policy.classify_builtin({'type': 'method', 'method': 'open_transcribe_file'}) == 'ui'
+    # 888b / 772: opening the reviewed file-transcription UI is read-only.
+    assert policy.classify_builtin({'type': 'method', 'method': 'open_transcribe_file'}) == 'read'
 
 
 @pytest.mark.parametrize('choice', ['full', 'compact'])

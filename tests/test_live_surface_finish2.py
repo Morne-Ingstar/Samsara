@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from samsara.live_surface.controller import LiveSurfaceController, LiveSurfaceIndicatorAdapter
 from samsara.live_surface.model import (CaptureState, DocumentState, EventKind, Lane,
-    LiveSurfaceModel, SurfaceEvent, VisibleForm, RESULT_RECEIPT_S)
+    LiveSurfaceModel, SurfaceEvent, VisibleForm, NoticeKind, RESULT_RECEIPT_S)
 from samsara.live_surface.partials import CapturePartials
 from samsara.streaming import DictatePreviewSession, StreamingSession, _LiveSurfaceDictateOverlay
 from tests.test_hold_park_220 import make_manager
@@ -134,13 +134,15 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
     assert not app.recording and app._streaming_session is None
     assert app._session_mode_manager.draft_document.text == ''
     assert c.view().text == '' and c.view().provisional_text == ''
-    # The cancellation error gets its protected reading time before the queued
-    # explicit Clear receipt. Safety effects above must already be complete.
-    assert c.view().notice.message == 'Recording failed'
-    clock[0] = c.view().notice.expires_at + .1
+    # 888b / 775: explicit Clear replaces the cancellation receipt immediately.
+    assert c.view().notice.message == 'cleared; nothing inserted'
+    clock[0] = c.view().notice.expires_at - .001
     c.refresh_expired()
     assert c.widget._chip.notice.message == 'cleared; nothing inserted'  # 517: result moved into header.
     assert c.widget._mark.capture != 'recording'
+    clock[0] += .001
+    c.refresh_expired()
+    assert c.view().notice.kind is NoticeKind.NONE
     app._paste_preserving_clipboard.assert_not_called()
     assert injected == []
     app._close_hold_capture_duck.assert_called_once()

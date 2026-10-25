@@ -168,12 +168,13 @@ def assert_delivered(h, app, window, callback, real_paste, expected):
     assert len(histories) == 1
     assert histories[0].kwargs['display_text'] == expected.strip()
     assert [c.args[0] for c in app.play_sound.call_args_list].count('success') == 1
-    # flash_success owns its reading time before the queued delivery receipt.
-    assert h.c.view().notice.message == 'Captured'
-    h.clock[0] = 2.0
+    # 888b / 775: the newer delivery receipt replaces Captured immediately.
+    assert h.c.view().notice.message == 'typed'
+    deadline = h.c.view().notice.expires_at
+    h.clock[0] = deadline - .001
     h.c.refresh_expired()
     assert h.c.view().notice.message == 'typed'
-    h.clock[0] = 4.0
+    h.clock[0] = deadline
     h.c.refresh_expired()
     assert h.c.widget._state.text() == 'Idle'
     assert h.c.view().form is VisibleForm.MARK

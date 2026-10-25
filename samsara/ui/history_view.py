@@ -941,7 +941,10 @@ class _HistoryRow(QWidget):
             child.ensurePolished()
 
     def text_width_for(self, row_width: int) -> int:
-        return max(row_width - 2 * _ROW_PAD_H - _ROW_SPACING - _COPY_BTN_WIDTH, 40)
+        # Use the actual item and layout margins, including the styled card border.
+        margins = self.layout().contentsMargins()
+        width = min(row_width, self.width())
+        return max(width - margins.left() - margins.right() - self.layout().spacing() - _COPY_BTN_WIDTH, 40)
 
     def relayout(self, row_width: int) -> int:
         """Re-wrap the text for `row_width` and return the height the row
