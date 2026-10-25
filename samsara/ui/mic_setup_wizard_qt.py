@@ -58,14 +58,15 @@ logger = get_logger(__name__)
 _ZONE_LOW   = 0.025    # below this (RMS < 0.005): near-silence, essentially off
 _ZONE_HIGH  = 0.90     # above this (RMS > 0.18):  very loud, risk of clipping
 _GREEN_DWELL_S = 1.5   # accumulated seconds of speech in the green zone
+_GREEN_UNLOCK_S = 8.0  # time after the meter first reaches green
 _SILENT_HINT_S = 1.5
 _SILENCE_RESET_S = 2.0
 _LOUD_RESET_S = 0.3
 _HINT_HOLD_S = 1.0
-# PLACEHOLDER COPY (866m): owner may replace the speaking-level guidance.
+# PLACEHOLDER COPY (894): owner may replace the speaking-level guidance.
 _LEVEL_CONDITION = (
     "Read a sentence out loud at your normal volume -- "
-    "Calibrate unlocks after a few seconds of speech."
+    "Calibrate unlocks after a few seconds of speech or 8 seconds in green."
 )
 
 _OWW_PASS_THRESHOLD = 2
@@ -263,6 +264,7 @@ class _WizardWindow(QDialog):
         self._level_history   = collections.deque(maxlen=20)
         self._pace_history = collections.deque(maxlen=300)  # 30s; calibration keeps its 2s average.
         self._speech_seconds = 0.0
+        self._green_since = None
         self._level_last_at = None
         self._level_zone = None
         self._quiet_since = None
@@ -442,7 +444,7 @@ class _WizardWindow(QDialog):
         self._speech_progress.setFixedHeight(6)
         self._speech_progress.setMaximumWidth(260)
         # PLACEHOLDER COPY (866m)
-        self._speech_progress.setAccessibleName("Speech progress toward unlocking Calibrate")
+        self._speech_progress.setAccessibleName("Unlock progress toward Calibrate")
         lay.addWidget(self._speech_progress, alignment=Qt.AlignmentFlag.AlignCenter)
         self._level_condition = _body(_LEVEL_CONDITION)
         lay.addWidget(self._level_condition)
@@ -600,6 +602,7 @@ class _WizardWindow(QDialog):
             self._level_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             self._cal_status.setText("")
             self._speech_seconds = 0.0
+            self._green_since = None
             self._level_last_at = None
             self._level_zone = None
             self._quiet_since = None
@@ -952,6 +955,7 @@ class _WizardWindow(QDialog):
         """
         self._selected_device = self._device_combo.currentData()
         self._capture_rate = _detect_capture_rate(self._selected_device)
+        self._green_since = None
 
     def _begin_microphone_switch(self):
         """Next on the Device step, without blocking the Qt thread.
@@ -1061,6 +1065,8 @@ class _WizardWindow(QDialog):
             now = time.monotonic()
 
             zone = "quiet" if level < _ZONE_LOW else "loud" if level > _ZONE_HIGH else "speech"
+            if zone == "speech" and self._green_since is None:
+                self._green_since = now
             # Audio arrives in 100 ms blocks. Never credit an unobserved UI stall
             # or a gap between entering this page and receiving the first block.
             elapsed = 0.0 if self._level_last_at is None else min(max(now - self._level_last_at, 0.0), 0.2)
@@ -1081,10 +1087,20 @@ class _WizardWindow(QDialog):
                 if self._level_zone == "speech":
                     self._speech_seconds = min(_GREEN_DWELL_S, self._speech_seconds + elapsed)
             self._level_last_at, self._level_zone = now, zone
-            ready = self._speech_seconds >= _GREEN_DWELL_S
+            speech_ready = self._speech_seconds >= _GREEN_DWELL_S
+            green_ready = (
+                self._green_since is not None
+                and now - self._green_since >= _GREEN_UNLOCK_S
+            )
+            ready = speech_ready or green_ready
             self._next_btn.setEnabled(ready)
             self._next_btn.setToolTip("" if ready else _LEVEL_CONDITION)
-            self._speech_progress.setValue(round(100 * self._speech_seconds / _GREEN_DWELL_S))
+            progress = max(
+                self._speech_seconds / _GREEN_DWELL_S,
+                0.0 if self._green_since is None else
+                (now - self._green_since) / _GREEN_UNLOCK_S,
+            )
+            self._speech_progress.setValue(round(100 * min(progress, 1.0)))
             # PLACEHOLDER COPY (866m)
             self._cal_status.setText("Got it -- choose Calibrate to continue." if ready else "")
             if zone == "quiet" and now - self._quiet_since >= _SILENT_HINT_S:

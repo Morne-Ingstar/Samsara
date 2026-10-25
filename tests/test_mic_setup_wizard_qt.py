@@ -94,6 +94,33 @@ def test_word_gap_preserves_progress_without_counting_as_speech(qapp, monkeypatc
     assert window._next_btn.isEnabled()
 
 
+def test_first_green_then_quiet_unlocks_at_eight_seconds_not_seven(qapp, monkeypatch):
+    window, feed, clock = _speaking_level(monkeypatch)
+    feed(0.02, 1)
+    first_green = clock[0]
+    feed(0.001, 69)
+    assert clock[0] - first_green < 7.0
+    assert not window._next_btn.isEnabled()
+    feed(0.001, 1)
+    assert clock[0] - first_green >= 7.0
+    assert clock[0] - first_green < 8.0
+    assert not window._next_btn.isEnabled()
+    feed(0.001, 9)
+    assert clock[0] - first_green < 8.0
+    assert not window._next_btn.isEnabled()
+    feed(0.001, 1)
+    assert clock[0] - first_green >= 8.0
+    assert window._next_btn.isEnabled()
+    assert window._speech_progress.value() == 100
+
+
+def test_never_green_stays_locked(qapp, monkeypatch):
+    window, feed, _ = _speaking_level(monkeypatch)
+    feed(0.001, 100)
+    assert not window._next_btn.isEnabled()
+    assert window._green_since is None
+
+
 def test_silent_hint_waits_and_two_second_silence_relocks(qapp, monkeypatch):
     window, feed, _ = _speaking_level(monkeypatch)
     feed(0.02, 18)
@@ -106,7 +133,9 @@ def test_silent_hint_waits_and_two_second_silence_relocks(qapp, monkeypatch):
     assert window._next_btn.isEnabled()  # warning precedes the two-second reset
     feed(0.0, 5)
     assert not window._next_btn.isEnabled()
-    assert window._speech_progress.value() == 0
+    # Prompt 894: speech resets, while first-green time keeps progressing.
+    assert window._speech_seconds == 0
+    assert 0 < window._speech_progress.value() < 100
     assert not window._cal_status.text()
     assert "unlocks" in window._next_btn.toolTip()
     feed(0.02, 18)
@@ -123,7 +152,9 @@ def test_loud_stretch_resets_but_one_loud_block_does_not(qapp, monkeypatch):
     assert window._next_btn.isEnabled()
     feed(0.19, 5)
     assert not window._next_btn.isEnabled()
-    assert window._speech_progress.value() == 0
+    # Prompt 894: speech resets, while first-green time keeps progressing.
+    assert window._speech_seconds == 0
+    assert 0 < window._speech_progress.value() < 100
 
 
 def test_level_hint_changes_are_at_least_one_second_apart(qapp, monkeypatch):
