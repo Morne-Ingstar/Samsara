@@ -211,7 +211,9 @@ def test_shown_status_and_links_geometry(qapp, monkeypatch):
         assert x(links[0]) == x(p._links_row)
         # 888b / 843: support belongs to stats; links occupy the separate footer.
         assert p._identity.rect().contains(p._support_text.geometry())
-        assert x(p._links_row) == x(p._footer)
+        # 861 / 890: links share the creed's row when both fit; otherwise wrap below.
+        beside, creed_width, *_ = p._footer._measure(p._footer.width())
+        assert x(p._links_row) == x(p._footer) + (creed_width + 16 if beside else 0)
         assert dots == []
         assert all(p._links_row.rect().contains(button.geometry()) for button in links)
         assert all(b.height() >= 44 for b in links)

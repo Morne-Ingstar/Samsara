@@ -164,6 +164,8 @@ AUDITED_KEYS = set([
 def window(qapp, monkeypatch, qt_widget_scope):
     # 785 / 888a: inventory tests include optional Hermes without a real PATH install.
     monkeypatch.setattr('samsara.ui.settings.hermes_section.installed', lambda: True)
+    # 785 / 890: the inventory and the rendered section use the same install state.
+    monkeypatch.setattr('samsara.agent_channel.hermes.installed', lambda: True)
     from samsara import autostart
     from samsara.ui.first_run_qt import ComponentsPage
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **kw: None)

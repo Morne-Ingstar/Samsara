@@ -72,7 +72,7 @@ class CommandRowDelegate(QStyledItemDelegate):
         primary.setPixelSize(theme.TYPE_BODY)
         primary.setWeight(QFont.Weight.DemiBold)
         secondary = QFont(theme.FONT_FAMILY)
-        secondary.setPixelSize(round(theme.TYPE_BODY * 0.875))
+        secondary.setPixelSize(theme.TYPE_MIN)
         return ((primary, theme.TEXT_PRIMARY), (secondary, theme.DATA_TEXT_SECONDARY))
 
     def header_height(self):

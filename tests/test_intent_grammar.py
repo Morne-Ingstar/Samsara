@@ -38,6 +38,20 @@ def resolver(records):
     return rs.IntentResolver(records, app_names=APPS)
 
 
+@pytest.mark.parametrize('text,cid', [
+    ('close twenty 2', 'window_switcher.close_22'),
+    ('window thirty 7', 'window_switcher.window_thirty_seven'),
+])
+def test_numeric_spelling_is_exact_without_a_homophone_waiver(resolver, text, cid):
+    # 890: mixed ASR digits/words name the same number; safety rules stay on.
+    context = MatchContext.for_app('notepad.exe', tags={'window_overview.visible'})
+    result = resolver.resolve(text, context=context)
+    assert result.kind == rs.RESOLVED and result.canonical_id == cid
+    assert result.word_penalty == 0
+    assert resolver.resolve('close twenty too', context=context).kind != rs.RESOLVED
+    assert resolver.resolve('2', context=context).kind == rs.DICTATION
+
+
 @pytest.fixture
 def browser_context():
     # 265 deliberately limits browser accelerators to a focused browser.

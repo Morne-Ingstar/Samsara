@@ -291,6 +291,14 @@ def classify_builtin(cmd: dict) -> str:
         return classify_keys([cmd.get("key")])
     if ctype == "release_all":
         return RISK_UI
+    if ctype == "text_selection":
+        # 823 / 890: selection moves the caret; deleting delivered text writes.
+        action = cmd.get("selection_action")
+        if action == "delete that":
+            return RISK_WRITE
+        if action in {"select last word", "select previous word", "select that", "sentence"}:
+            return RISK_UI
+        return RISK_UNKNOWN
     if ctype == "text":
         return RISK_WRITE
     if ctype == "launch":

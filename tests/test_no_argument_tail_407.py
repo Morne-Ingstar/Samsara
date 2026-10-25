@@ -197,10 +197,21 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
         # 888a: Python docstrings precede the actual remainder guard.
         if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
             body = body[1:]
+        # LP02 / 890: a platform guard and global declaration may precede refusal.
+        body = [statement for statement in body if not isinstance(statement, ast.Global)]
         if (body and isinstance(body[0], ast.If)
-                and ast.unparse(body[0].test) in {
-                    parameter, f'{parameter}.strip()',
-                    f"str({parameter} or '').strip()", f"({parameter} or '').strip()"}
+                and ast.unparse(body[0].test) == 'not _windows_supported()'
+                and not body[0].orelse and len(body[0].body) == 1
+                and isinstance(body[0].body[0], ast.Return)
+                and isinstance(body[0].body[0].value, ast.Constant)
+                and body[0].body[0].value.value is False):
+            body = body[1:]
+        refusal_forms = {parameter, f'{parameter}.strip()',
+                         f"str({parameter} or '').strip()", f"({parameter} or '').strip()"}
+        if (body and isinstance(body[0], ast.If)
+                and (ast.unparse(body[0].test) in refusal_forms
+                     or (isinstance(body[0].test, ast.BoolOp) and isinstance(body[0].test.op, ast.Or)
+                         and any(ast.unparse(value) in refusal_forms for value in body[0].test.values)))
                 and not body[0].orelse and len(body[0].body) == 1
                 and isinstance(body[0].body[0], ast.Return)
                 and isinstance(body[0].body[0].value, ast.Constant)
@@ -215,6 +226,14 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
             ('plugins.commands.window_cube', 'handle_refresh_cube'),
         }:
             assert not executor._takes_argument(entry), entry.phrase
+            continue
+        # 823 / 890: selection wrappers validate a legacy whole instruction;
+        # reading that validation input does not declare a free-text argument.
+        if (handler.__module__ == 'plugins.commands.selection_edit'
+                and not executor._takes_argument(entry)):
+            assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                       and n.func.id == 'command_for_utterance' for n in ast.walk(fn))
+            assert handler(None, 'sample argument') is False, entry.phrase
             continue
         if any(isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id == parameter
                for statement in body for n in ast.walk(statement)):

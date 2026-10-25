@@ -37,7 +37,7 @@ HUB_INLINE_HEIGHT = 28
 HUB_INPUT_WIDTH = 360
 HUB_LIST_WIDTH = 680
 HUB_TITLE_SIZE = 24
-HUB_PURPOSE_SIZE = 13
+HUB_PURPOSE_SIZE = 16
 
 
 def hub_header(title: str, purpose: str, parent=None):
@@ -62,9 +62,9 @@ def hub_header(title: str, purpose: str, parent=None):
         label.setTextFormat(Qt.TextFormat.PlainText)
         column.addWidget(label)
     block.title.setStyleSheet(
-        f"background: transparent; color: {TEXT_PRIMARY}; font-size: {HUB_TITLE_SIZE}px; font-weight: 600;")
+        f"background: transparent; color: {TEXT_PRIMARY}; font-size: {TYPE_HUB_TITLE}px; font-weight: 600;")
     block.purpose.setStyleSheet(
-        f"background: transparent; color: {TEXT_SECONDARY}; font-size: {HUB_PURPOSE_SIZE}px;")
+        f"background: transparent; color: {TEXT_SECONDARY}; font-size: {TYPE_BODY}px;")
     return block
 
 
@@ -654,6 +654,7 @@ TYPE_FLOOR_ABSOLUTE = TYPE_SCALE["caption"]
 TYPE_FLOOR_BODY = TYPE_SCALE["body"]
 FONT_WEIGHT_MIN = WEIGHT_SCALE["regular"]
 
+TYPE_HUB_TITLE = HUB_TITLE_SIZE       # 890: existing 24px hub heading, named type token
 TYPE_MIN = TYPE_SCALE["caption"]       # captions, badges, metadata, chips
 TYPE_BODY = TYPE_SCALE["body"]          # body copy, buttons, inputs, list rows
 TYPE_EMPHASIS = TYPE_SCALE["label"]     # nav rows, card titles, row titles

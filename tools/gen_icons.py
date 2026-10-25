@@ -394,6 +394,9 @@ def stale_brand_assets() -> list[Path]:
             committed = BRAND_DIR / generated.name
             if generated.suffix == ".png":
                 matches = image_diff(QImage(str(committed)), QImage(str(generated)))["matches"]
+            elif generated.suffix == ".ico":
+                # 890: the brand ICO needs the same decoded-frame check as the app ICO.
+                matches = committed.exists() and ico_matches(committed.read_bytes(), generated.read_bytes())
             else:
                 matches = committed.exists() and committed.read_bytes() == generated.read_bytes()
             if not matches:

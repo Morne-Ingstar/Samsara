@@ -304,7 +304,9 @@ def test_bottom_receipt_drop_saves_pill_origin_and_reshows_it(pill, qapp, label)
     pill.set_position('bottom-center')
     pill.show_outcome(label, 'pending', None)
     body = pill._layout()[2]
-    assert body.y() == 32
+    # 775 / 890: the receipt grows to its measured two-line height.
+    receipt = pill._layout()[3]
+    assert body.y() == receipt.bottom() + 6
     offset = QPoint(24, 18)
     start = pill.mapToGlobal(body.topLeft().toPoint()) + offset
     area = qapp.primaryScreen().availableGeometry()

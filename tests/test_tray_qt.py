@@ -983,6 +983,34 @@ class TestBandNoseReadsAsAHead:
         assert gen_icons.stale_assets() == []
         assert gen_icons.main(["--check"]) == 0
 
+    def test_brand_ico_checks_pixels_and_rejects_damaged_frames(self, qapp, tmp_path, monkeypatch):
+        # 890: brand and app ICOs use the same frame policy across Qt/zlib versions.
+        import io
+        import struct
+        from PIL import Image
+        gen = _load_gen_icons()
+        gen.write_brand_assets(tmp_path)
+        monkeypatch.setattr(gen, 'BRAND_DIR', tmp_path)
+        path = tmp_path / 'samsara.ico'
+        original = path.read_bytes()
+        frames = []
+        for index, size in enumerate(gen._ico_sizes(original)):
+            length, offset = struct.unpack_from('<II', original, 6 + 16*index + 8)
+            buffer = io.BytesIO()
+            Image.open(io.BytesIO(original[offset:offset+length])).save(buffer, format='PNG', compress_level=0)
+            frames.append((size, buffer.getvalue()))
+        reencoded = gen.build_ico(frames)
+        assert reencoded != original
+        path.write_bytes(reencoded)
+        assert gen.stale_brand_assets() == []
+        for damaged in (reencoded[:-1], gen.build_ico(frames[:-1])):
+            path.write_bytes(damaged)
+            assert gen.stale_brand_assets() == [path]
+        blank = io.BytesIO()
+        Image.new('RGBA', (frames[0][0], frames[0][0])).save(blank, format='PNG')
+        path.write_bytes(gen.build_ico([(frames[0][0], blank.getvalue()), *frames[1:]]))
+        assert gen.stale_brand_assets() == [path]
+
     def test_recording_spin_sheet_renders(self, qapp, tmp_path):
         gen_icons = _load_gen_icons()
         out = gen_icons.write_recording_spin(tmp_path / "recording_spin.png")

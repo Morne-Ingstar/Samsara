@@ -252,6 +252,8 @@ def test_strip_rows_fit_real_host_and_stats_never_move(qapp, monkeypatch, width,
         recent_height = recent.height() if recent.capacity else 0
         monkeypatch.setattr(recent, "fit", lambda free: recent.hide())
         recent.hide()
+        # 888b / 890: explicit input changes request a fit; layout requests do not.
+        home._queue_recent_fit()
         settle(qapp)
         expected = stats - (recent_height + 24 if recent_height else 0)
         assert home._identity.mapTo(home, home._identity.rect().topLeft()).y() == expected

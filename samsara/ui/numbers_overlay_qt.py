@@ -12,7 +12,7 @@ import re
 import sys
 
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QTimer
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QFont, QFontMetrics, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from samsara.log import get_logger
@@ -66,6 +66,7 @@ def layout_target_labels(elements):
     badges for target outlines; it never drops or renumbers a click target.
     """
     placed = []
+    metrics = QFontMetrics(theme.qfont(theme.TYPE_MIN, weight=QFont.Weight.DemiBold))
     for number, element in enumerate(elements, 1):
         l, t, r, b = element['rect']
         text, chosen = str(number), None
@@ -73,7 +74,9 @@ def layout_target_labels(elements):
             minimum = int(BADGE_STYLE['min-width'][:-2])
             padding = int(BADGE_STYLE['padding'].split()[-1][:-2])
             line_height = int(re.search(r'/(\d+)px', BADGE_STYLE['font'])[1])
-            w, h = (max(14, len(text)*6+2), 14) if compact else (minimum+2*padding+2, line_height+2)
+            text_width = metrics.horizontalAdvance(text)
+            w = max(14, text_width + 2) if compact else max(minimum, text_width) + 2*padding + 2
+            h = max(line_height, metrics.height()) + 2
             x0 = l if r-l >= w else (l+r-w)/2
             y0 = t if b-t >= h else (t+b-h)/2
             xs = {x0, max(x0, r-w)} if r-l >= w else {x0}
@@ -676,8 +679,7 @@ class NumbersOverlayWindow(QWidget):
                     pw * coord_scale, ph * coord_scale,
                 )
 
-        font = QFont(QApplication.font().family())
-        font.setPixelSize(int(re.search(r'(\d+)px/', BADGE_STYLE['font'])[1]))
+        font = theme.qfont(theme.TYPE_MIN)
         font.setWeight(QFont.DemiBold)
         painter.setFont(font)
 
@@ -690,8 +692,6 @@ class NumbersOverlayWindow(QWidget):
             # clamped inside the target window on this screen (pill_rect).
             if isinstance(label, TargetLabel):
                 ax, ay = sx, sy
-                font.setPixelSize(9 if label.compact else int(re.search(r'(\d+)px/', BADGE_STYLE['font'])[1]))
-                painter.setFont(font)
             else:
                 ax, ay, _pw, _ph = pill_rect(sx, sy, pw, ph, self._bounds)
             lx = (ax - ox) * coord_scale

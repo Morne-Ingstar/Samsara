@@ -600,7 +600,7 @@ class OverviewWindow(QWidget):
         heading.setSpacing(16)
         self.title = QLabel(f'{len(rows)} windows')
         self.title.setFont(_font(20, True))
-        self.title.setStyleSheet('font-size: 20px; font-weight: 700;')
+        self.title.setStyleSheet(f'font-size: {theme.TYPE_HEADING}px; font-weight: 700;')
         heading.addWidget(self.title, 0, 0)
         # PLACEHOLDER COPY (869)
         self.hint = QLabel('Say 3 to select · 3 left · 3 go · close 3 · read windows')

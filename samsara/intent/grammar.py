@@ -240,13 +240,22 @@ class Grammar:
 
     # -- token matching ----------------------------------------------------
 
+    @staticmethod
+    def _same_number(tok: str, word: str) -> bool:
+        # 890: decimal digits and their exact spelling are representations of
+        # one number. Homophones (to/two, for/four) still pay P_CONFUSION.
+        return ((tok.isascii() and tok.isdecimal() and len(tok) <= 2
+                 and nz.number_to_words(int(tok)) == word)
+                or (word.isascii() and word.isdecimal() and len(word) <= 2
+                    and nz.number_to_words(int(word)) == tok))
+
     def _match_head(self, u: list, i: int, word: str) -> list:
         """[(tokens consumed, penalty)] ways u[i:] can say the alias verb `word`."""
         out = []
         if i >= len(u):
             return out
         tok = u[i]
-        if tok == word:
+        if tok == word or self._same_number(tok, word):
             out.append((1, 0.0))
         elif _stem(tok) == _stem(word):
             out.append((1, P_STEM))
@@ -261,7 +270,7 @@ class Grammar:
 
     @staticmethod
     def _match_word(tok: str, word: str) -> Optional[float]:
-        if tok == word:
+        if tok == word or Grammar._same_number(tok, word):
             return 0.0
         if _stem(tok) == _stem(word):
             return P_STEM

@@ -162,15 +162,24 @@ def test_wrapped_question_and_error_keep_review_content_and_clear(qapp, form):
     try:
         w.show(); w.ensurePolished(); w.refresh(base, animate=False); qapp.processEvents()
         height = w.height(); clear = w._clear.geometry(); transcript_height = w._transcript.height()
+        clear_right_inset = w.width() - clear.right()
         w.refresh(replace(base, notice=question, secondary_notice=error), animate=False)
         qapp.processEvents()
         bands = [w._band, w._secondary_band]
         assert w.height() == height + sum(b.required_height(w.card_content_rect.width()) for b in bands)
         for band in bands:
-            assert band.isVisible() and band.label.wordWrap()
-            assert band.label.height() >= band.label.heightForWidth(band.label.width())
+            # 775 / 890: the shared renderer inserts the bounded line breaks.
+            assert band.isVisible()
+            lines = band.label.text().splitlines()
+            assert len(lines) == 2
+            assert all(band.label.fontMetrics().horizontalAdvance(line) <= band.label.width()
+                       for line in lines)
+            assert band.label.height() >= len(lines) * band.label.fontMetrics().lineSpacing()
             assert band.rect().contains(band.label.geometry())
-        assert w._clear.geometry() == clear and w._clear.isVisible()
+        # 775 / 890: a wider message widens the card; Clear keeps its right inset.
+        assert w._clear.isVisible() and w._clear.size() == clear.size()
+        assert w._clear.y() == clear.y()
+        assert w.width() - w._clear.geometry().right() == clear_right_inset
         assert w._transcript.height() == transcript_height
         assert w._transcript.verticalScrollBar().maximum() == 0
         assert w._transcript.toPlainText() == base.text

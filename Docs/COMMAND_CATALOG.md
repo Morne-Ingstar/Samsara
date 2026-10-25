@@ -102,7 +102,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `builtin.delete_line` | `delete line` | - | - | - | write | no |  | Selects and delete entire line. | `commands.json:1404` |
 | `builtin.delete_next_word` | `delete next word` | - | - | - | write | no |  | Deletes the word to the right of the cursor. | `commands.json:2274` |
 | `builtin.delete_selection` | `delete selection` | - | - | - | write | no |  | Deletes selected text. | `commands.json:2831` |
-| `builtin.delete_that` | `delete that` | - | - | - | destructive | no |  | Deletes the last delivered dictation only while its verified text, target and caret are unchanged; otherwise explains why it cannot. | `commands.json:3206` |
+| `builtin.delete_that` | `delete that` | - | - | - | write | no |  | Deletes the last delivered dictation only while its verified text, target and caret are unchanged; otherwise explains why it cannot. | `commands.json:3206` |
 | `builtin.delete_word` | `delete word` | - | - | - | write | no |  | Deletes previous word. | `commands.json:1143` |
 | `builtin.deselect` | `deselect` | - | - | - | ui | yes |  | Clears the selection by moving the caret to its right edge. | `commands.json:3218` |
 | `builtin.display_settings` | `display settings` | - | - | - | ui | yes |  | Opens display settings (text size, resolution). | `commands.json:2750` |

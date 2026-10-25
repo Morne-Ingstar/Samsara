@@ -23,6 +23,7 @@ faster_whisper, via other test modules/fixtures) by the time any test body
 runs, so sys.modules here can never show a clean "not yet imported" state.
 A fresh subprocess is the only way to observe a true first import.
 """
+import ast
 import json
 import os
 import subprocess
@@ -32,9 +33,18 @@ from pathlib import Path
 
 import pytest
 
-import dictation
-
 REPO_ROOT = Path(__file__).parents[1]
+
+
+def _model_factory():
+    # 893 / 890: exercise the exact factory without executing app bootstrap.
+    tree = ast.parse((REPO_ROOT / 'dictation.py').read_text(encoding='utf-8'))
+    factory = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                   and n.name == '_create_whisper_model')
+    namespace = {'os': os}
+    exec(compile(ast.Module(body=[factory], type_ignores=[]),
+                 '<isolated whisper factory>', 'exec'), namespace)
+    return namespace['_create_whisper_model']
 
 
 def test_dictation_import_is_hermetic(tmp_path):
@@ -85,11 +95,7 @@ def test_dictation_import_is_hermetic(tmp_path):
 
 
 def test_create_whisper_model_factory_delegates(monkeypatch):
-    """The factory must do nothing but forward to faster_whisper.WhisperModel
-    -- verified via a fake module injected into sys.modules ONLY for this
-    test (monkeypatch.setitem auto-restores it on teardown), never globally
-    from conftest, so a genuinely missing faster_whisper stays detectable
-    everywhere else."""
+    """893: cached model resolution stays offline and delegates the local path."""
     calls = {}
 
     class _FakeWhisperModel:
@@ -100,12 +106,20 @@ def test_create_whisper_model_factory_delegates(monkeypatch):
     fake_module = types.ModuleType("faster_whisper")
     fake_module.WhisperModel = _FakeWhisperModel
     monkeypatch.setitem(sys.modules, "faster_whisper", fake_module)
+    fake_utils = types.ModuleType('faster_whisper.utils')
+    def download_model(model, **kwargs):
+        calls['download'] = (model, kwargs)
+        return 'synthetic-cached-model'
+    fake_utils.download_model = download_model
+    monkeypatch.setitem(sys.modules, 'faster_whisper.utils', fake_utils)
 
-    result = dictation._create_whisper_model("base", device="cpu", compute_type="int8")
+    result = _model_factory()("base", device="cpu", compute_type="int8")
 
     assert isinstance(result, _FakeWhisperModel)
-    assert calls["args"] == ("base",)
-    assert calls["kwargs"] == {"device": "cpu", "compute_type": "int8"}
+    assert calls['download'] == ('base', {'local_files_only': True, 'cache_dir': None,
+                                         'revision': None, 'use_auth_token': None})
+    assert calls["args"] == ("synthetic-cached-model",)
+    assert calls["kwargs"] == {"device": "cpu", "compute_type": "int8", 'local_files_only': True}
 
 
 def test_create_whisper_model_factory_propagates_missing_dependency(monkeypatch):
@@ -116,4 +130,4 @@ def test_create_whisper_model_factory_propagates_missing_dependency(monkeypatch)
     monkeypatch.setitem(sys.modules, "faster_whisper", None)
 
     with pytest.raises(ModuleNotFoundError):
-        dictation._create_whisper_model("base")
+        _model_factory()("base")

@@ -1478,7 +1478,7 @@
       "pack": "core",
       "plugin": "builtin",
       "precondition": "",
-      "risk": "destructive",
+      "risk": "write",
       "source": "commands.json:3206",
       "undoable": false,
       "verb": "delete",

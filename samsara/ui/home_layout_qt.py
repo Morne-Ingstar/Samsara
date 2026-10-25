@@ -48,8 +48,8 @@ class HomeFooter(QWidget):
         self.creed.setParent(self)
         self.creed.setStyleSheet(_label_css("creed", theme.TEXT_SECONDARY, theme.FONT_WEIGHT_CREED,
                                            family=theme.FONT_FAMILY_DISPLAY).replace(
-                                               f"font-size: {_px(theme.HOME_TYPE_SCALE['creed'])}px",
-                                               f"font-size: {_px(16)}px"))
+                                               f"font-size: {_px(theme.TYPE_CREED)}px",
+                                               f"font-size: {_px(theme.TYPE_BODY)}px"))
         self.creed.setAccessibleName("Creed")
         self.creed.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.links = QWidget(self)

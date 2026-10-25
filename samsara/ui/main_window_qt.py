@@ -458,8 +458,9 @@ class _MainWindow(QMainWindow):
         sidebar.setStyleSheet(
             f"QWidget#hubSidebar {{ background: {theme.BG0}; border-right: 1px solid {theme.BORDER}; }}")
         slay = QVBoxLayout(sidebar)
-        slay.setContentsMargins(NAV_SIDE_MARGIN, 12, NAV_SIDE_MARGIN, 12)
-        slay.setSpacing(2)
+        # 890: eight 44-DIP targets and the version must fit at 700x500.
+        slay.setContentsMargins(NAV_SIDE_MARGIN, 4, NAV_SIDE_MARGIN, 4)
+        slay.setSpacing(0)
 
         self._nav_btns = {}
         for name in NAV_ORDER:
@@ -573,7 +574,7 @@ class _MainWindow(QMainWindow):
     def _nav_style(active: bool) -> str:
         """Settings' inset pill, with a heavier selected label (839)."""
         common = (f" border: none; border-radius: {NAV_RADIUS}px; text-align: left;"
-                  f" padding-left: 16px; padding-right: 12px; min-height: {NAV_ROW_H}px;"
+                    f" padding: 0 12px 0 16px; min-height: {NAV_ROW_H}px;"
                   f" font-size: {theme.TYPE_NAV}px;")
         if active:
             return (f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY};"

@@ -278,6 +278,13 @@ def test_every_text_slot_keeps_head_behavior(rig, canonical_id):
         return
     expected = TEXT_SLOT_FIXTURE[canonical_id]
     result = executor.process_text(expected['text'], force_commands=True)
+    # 890: newly generated rows freeze the full outcome, including legitimate
+    # literal text tails. Historical rows keep all their 399/806 checks below.
+    if expected.get('generated_by') == '890':
+        assert result.state.value == expected['state']
+        assert result.detail == expected['detail']
+        assert [list(call) for call in calls] == expected['calls']
+        return
     # 806: explicit known command suffixes now end free-text arguments.
     if canonical_id in REFUSED_ARGUMENT_CHAINS:
         assert result.state is State.REJECTED

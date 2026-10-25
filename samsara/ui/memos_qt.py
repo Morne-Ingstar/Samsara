@@ -170,12 +170,15 @@ class MemosPage(QWidget):
 
     # ---- Build ----------------------------------------------------------
 
-    def _label(self, text, size=16, muted=False):
+    def _label(self, text, size=theme.TYPE_BODY, muted=False):
         label = QLabel(text)
+        label.setFont(theme.qfont(size))
         label.setTextFormat(Qt.TextFormat.PlainText)
         label.setStyleSheet(
             f"background: transparent; border: none; color: {theme.TEXT_SECONDARY if muted else theme.TEXT_PRIMARY};"
-            f" font-size: {size}px;")
+            + {theme.TYPE_HUB_TITLE: f" font-size: {theme.TYPE_HUB_TITLE}px;",
+               theme.TYPE_BODY: f" font-size: {theme.TYPE_BODY}px;",
+               theme.TYPE_MIN: f" font-size: {theme.TYPE_MIN}px;"}[size])
         return label
 
     def _build(self):
@@ -183,7 +186,7 @@ class MemosPage(QWidget):
             f"QWidget {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; }}"
             f"QLineEdit, QComboBox, QPlainTextEdit {{ background: {theme.BG2};"
             f" color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER};"
-            " border-radius: 6px; padding: 0 10px; font-size: 16px; }"
+            f" border-radius: 6px; padding: 0 10px; font-size: {theme.TYPE_BODY}px; }}"
             f"QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid {theme.ACCENT}; }}"
             "QComboBox::drop-down { background: transparent; border: none;"
             " subcontrol-origin: padding; subcontrol-position: center right; width: 24px; }"
@@ -200,7 +203,7 @@ class MemosPage(QWidget):
         lay = QVBoxLayout(self._column)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(16)
-        title = self._label(TITLE, 24)
+        title = self._label(TITLE, theme.TYPE_HUB_TITLE)
         title.setStyleSheet(title.styleSheet() + "font-weight: 600;")
         lay.addWidget(title)
         # PLACEHOLDER COPY (854): purpose line from the approved 841 study.
@@ -244,7 +247,7 @@ class MemosPage(QWidget):
         controls.addWidget(menu_button)
         controls.addStretch()
         lay.addLayout(controls)
-        self._memo_keys = self._label("", 13, True)
+        self._memo_keys = self._label("", theme.TYPE_MIN, True)
         self._memo_keys.setAccessibleName("Memo recording keys")
         lay.addWidget(self._memo_keys)
 
@@ -275,7 +278,7 @@ class MemosPage(QWidget):
         detail = QVBoxLayout(self._editor_pane)
         detail.setContentsMargins(0, 0, 0, 0)
         detail.setSpacing(16)
-        self._selected_meta = self._label("", 13, True)
+        self._selected_meta = self._label("", theme.TYPE_MIN, True)
         detail.addWidget(self._selected_meta)
         self._detail = QPlainTextEdit()
         self._detail.setAccessibleName("Selected memo transcript")
@@ -299,7 +302,7 @@ class MemosPage(QWidget):
         actions.addStretch()
         detail.addLayout(actions)
         category_row = QHBoxLayout()
-        category_label = self._label(CATEGORY_LABEL, 13, True)
+        category_label = self._label(CATEGORY_LABEL, theme.TYPE_MIN, True)
         category_row.addWidget(category_label)
         self._category = QComboBox()
         self._category.setAccessibleName(CATEGORY_LABEL)
@@ -316,10 +319,10 @@ class MemosPage(QWidget):
         panes.addWidget(self._editor_pane, 1)
         panes.addStretch()
         lay.addLayout(panes, 1)
-        self._count = self._label("", 13, True)
+        self._count = self._label("", theme.TYPE_MIN, True)
         lay.addWidget(self._count)
         footer = QHBoxLayout()
-        self._status = self._label("", 13, True)
+        self._status = self._label("", theme.TYPE_MIN, True)
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Memo status")
         self._status.setMinimumWidth(320)
@@ -346,7 +349,7 @@ class MemosPage(QWidget):
         button.setStyleSheet(
             f"QPushButton {{ background: {theme.BG2}; color: {colour};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
-            " min-height: 32px; max-height: 32px; padding: 0 12px; font-size: 16px; }"
+            f" min-height: 32px; max-height: 32px; padding: 0 12px; font-size: {theme.TYPE_BODY}px; }}"
             f"QPushButton:hover, QPushButton:focus {{ border: 1px solid {theme.ACCENT}; }}"
             f"QPushButton:disabled {{ color: {theme.TEXT_DISABLED}; }}")
         button.setFixedWidth(button.sizeHint().width())
@@ -379,12 +382,12 @@ class MemosPage(QWidget):
             layout.setSpacing(8)
             meta = QHBoxLayout()
             meta.setSpacing(8)
-            meta.addWidget(self._label(str(record.get("at", "")).replace("T", " ")[:16], 13, True))
-            category = self._label(record.get("category") or UNCATEGORISED, 13, True)
+            meta.addWidget(self._label(str(record.get("at", "")).replace("T", " ")[:16], theme.TYPE_MIN, True))
+            category = self._label(record.get("category") or UNCATEGORISED, theme.TYPE_MIN, True)
             category.setStyleSheet(category.styleSheet() + f"background: {theme.BG2}; border-radius: 4px; padding: 3px 7px;")
             meta.addWidget(category)
             if record.get("video"):
-                meta.addWidget(self._label("Partial video" if record.get("partial") else "Video", 13, True))
+                meta.addWidget(self._label("Partial video" if record.get("partial") else "Video", theme.TYPE_MIN, True))
             meta.addStretch()
             layout.addLayout(meta)
             text = self._label(record.get("text", ""))

@@ -262,6 +262,10 @@ def test_every_navigation_command_is_allowed_by_actual_policy(phrase, command):
 
 
 def test_risk_metadata_or_unknown_method_names_cannot_bypass_policy():
+    # 823 / 890: receipt-guarded deletion is still a write; selection is UI.
+    assert policy.classify_builtin({'type': 'text_selection', 'selection_action': 'delete that'}) == 'write'
+    assert policy.classify_builtin({'type': 'text_selection', 'selection_action': 'select that'}) == 'ui'
+    assert policy.classify_builtin({'type': 'text_selection', 'selection_action': 'unreviewed'}) == 'unknown'
     assert policy.classify_builtin({'type': 'method', 'method': 'open_samsara_unreviewed',
                                    'risk_class': 'ui'}) == policy.RISK_UNKNOWN
     assert policy.classify_builtin({'type': 'hotkey', 'keys': ['shift', 'delete'],
