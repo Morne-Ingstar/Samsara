@@ -127,7 +127,7 @@ def _first_two_words(phrase) -> str:
 
 
 def _heard(detail: dict) -> str:
-    return _short(detail.get("heard"), _COMMAND_HEARD_MAX) or "(nothing)"
+    return _short(str(detail.get("heard") or "").rstrip(" \t\r\n.,!?;:…"), _COMMAND_HEARD_MAX) or "(nothing)"
 
 
 def _command_copy(key: str, **values) -> str:
@@ -289,6 +289,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
             reason = f"{CHIP_CROSS} {verb}"
         else:
             reason = f"{CHIP_CROSS} {_reason(kind, detail)}"
+        if state == "failed":
+            # PLACEHOLDER COPY (869s)
+            reason = f"Couldn't {detail.get('phrase') or 'run command'}: {_reason(kind, detail)}"
         return (_command_chip_label(
             _command_copy("failed", heard=_heard(detail), reason=reason), detail.get("phrase")),
             "error" if state not in ("rejected", "cancelled") else "warning")

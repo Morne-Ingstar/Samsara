@@ -15,6 +15,7 @@ class FakeUser32:
         self.cursor = (1800, 400)
         self.moves = []
         self.wheels = []
+        self.posts = []  # 869s: fallback addresses the foreground HWND.
         self.buttons = set()
         self.fail = None
         self.obscured = False
@@ -61,6 +62,10 @@ class FakeUser32:
         inp = pointer._obj
         self.wheels.append((self.cursor, inp._input.mi.dwFlags,
                             ctypes.c_int32(inp._input.mi.mouseData).value))
+        return 1
+
+    def PostMessageW(self, hwnd, message, wparam, lparam):
+        self.posts.append((hwnd, message, wparam, lparam))
         return 1
 
 
@@ -118,15 +123,17 @@ def test_held_button_never_moves_pointer(wheel, button):
 def test_targeting_failure_does_not_scroll_another_app(wheel, failure):
     scroll, api = wheel
     api.fail = failure
-    assert not scroll.scroll_down(SimpleNamespace(config={}), '')
+    assert scroll.scroll_down(SimpleNamespace(config={}), '')  # 869s: foreground fallback.
     assert api.moves == api.wheels == []
+    assert api.posts[0][0] == api.foreground
 
 
 def test_obscured_client_centre_does_not_scroll_covering_app(wheel):
     scroll, api = wheel
     api.obscured = True
-    assert not scroll.scroll_right(SimpleNamespace(config={}), '')
+    assert scroll.scroll_right(SimpleNamespace(config={}), '')  # 869s: bypass overlay.
     assert api.moves == api.wheels == []
+    assert api.posts[0][0] == api.foreground
 
 
 def test_focus_change_during_targeting_cancels_wheel(wheel, monkeypatch):

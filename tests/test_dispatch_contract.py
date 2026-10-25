@@ -152,7 +152,7 @@ class TestDispatchResult:
     @pytest.mark.parametrize("value,state", [
         (True, DispatchState.COMPLETED),
         (None, DispatchState.QUEUED),
-        (False, DispatchState.MISS),
+        (False, DispatchState.FAILED),  # 869s: a chosen handler's failure stays claimed.
         ("anything truthy", DispatchState.COMPLETED),
         (DispatchState.CANCELLED, DispatchState.CANCELLED),
         (DispatchResult(DispatchState.FAILED), DispatchState.FAILED),
@@ -216,9 +216,9 @@ class TestProcessTextStates:
         executor = self._executor(commands_file, tmp_path)
         dispatch = executor.process_text("start sample test please", _app(), force_commands=True)
 
-        assert dispatch.state is DispatchState.MISS
-        assert tuple(dispatch) == ("start sample test please", False)
-        assert dispatch.detail == {"declined_by": "start sample test"}
+        assert dispatch.state is DispatchState.FAILED  # 869s: untyped False is not a decline contract.
+        assert tuple(dispatch) == ("start sample test", True)
+        assert dispatch.detail == {"reason": "the command could not complete"}
 
     def test_failing_builtin_is_failed_not_dictation(self, commands_file, tmp_path, allow_policy):
         executor = self._executor(commands_file, tmp_path)
@@ -465,7 +465,7 @@ class TestChipForStates:
 
     def test_failed_is_an_error(self):
         assert sm.outcome_chip("command_failed", {"phrase": "copy", "state": "failed"}) == (
-            f"heard: (nothing) — {sm.CHIP_CROSS} copy", "error")
+            "heard: (nothing) — Couldn't copy: command failed", "error")  # 869s: name the failure.
 
     def test_rejected_is_a_refusal(self):
         assert sm.outcome_chip("command_failed", {"phrase": "next track", "state": "rejected"}) == (

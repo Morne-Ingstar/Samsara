@@ -20,7 +20,7 @@ import ctypes.wintypes as wintypes
 import sys
 
 from samsara.plugin_commands import command
-from samsara.scroll_target import prepare_scroll_target
+from samsara.scroll_target import prepare_scroll_target, post_foreground_wheel
 
 # ── Win32 constants ───────────────────────────────────────────────────────────
 
@@ -79,15 +79,29 @@ def _scroll(clicks: int, up: bool, app=None) -> bool:
     Returns:
         True if SendInput reported at least one event sent.
     """
+    delta = clicks * WHEEL_DELTA * (1 if up else -1)
+    return _wheel(delta, app=app)
+
+
+def _wheel(delta, *, app=None, horizontal=False) -> bool:
     if not _ensure_windows_bindings():
         return False
-    if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {}):
+    posted = False
+
+    def fallback(foreground):
+        nonlocal posted
+        posted = post_foreground_wheel(foreground, delta, horizontal=horizontal)
+        return posted
+
+    if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {},
+                                 fallback=fallback):
         return False
-    delta = clicks * WHEEL_DELTA * (1 if up else -1)
+    if posted:
+        return True
 
     inp = INPUT()
     inp.type = INPUT_MOUSE
-    inp._input.mi.dwFlags = MOUSEEVENTF_WHEEL
+    inp._input.mi.dwFlags = MOUSEEVENTF_HWHEEL if horizontal else MOUSEEVENTF_WHEEL
     inp._input.mi.mouseData = wintypes.DWORD(delta & 0xFFFFFFFF)
 
     sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
@@ -167,22 +181,8 @@ def scroll_down_fast(app, remainder):
 
 def _hscroll(clicks: int, right: bool, app=None) -> bool:
     """Send a horizontal wheel event at the current cursor position."""
-    if not _ensure_windows_bindings():
-        return False
-    if not prepare_scroll_target(getattr(app, "config", {}) if app is not None else {}):
-        return False
     delta = clicks * WHEEL_DELTA * (1 if right else -1)
-
-    inp = INPUT()
-    inp.type = INPUT_MOUSE
-    inp._input.mi.dwFlags = MOUSEEVENTF_HWHEEL
-    inp._input.mi.mouseData = wintypes.DWORD(delta & 0xFFFFFFFF)
-
-    sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
-    if sent == 0:
-        print("[SCROLL] SendInput failed — check permissions")
-        return False
-    return True
+    return _wheel(delta, app=app, horizontal=True)
 
 
 def _send_key_combo(*vkeys) -> bool:

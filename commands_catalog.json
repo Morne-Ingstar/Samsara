@@ -10557,7 +10557,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:126",
+      "source": "plugins/commands/scroll.py:140",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10576,7 +10576,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:114",
+      "source": "plugins/commands/scroll.py:128",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10595,7 +10595,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:162",
+      "source": "plugins/commands/scroll.py:176",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10614,7 +10614,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:150",
+      "source": "plugins/commands/scroll.py:164",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10633,7 +10633,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:138",
+      "source": "plugins/commands/scroll.py:152",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10692,7 +10692,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:120",
+      "source": "plugins/commands/scroll.py:134",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10711,7 +10711,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:108",
+      "source": "plugins/commands/scroll.py:122",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10730,7 +10730,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:156",
+      "source": "plugins/commands/scroll.py:170",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10749,7 +10749,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:144",
+      "source": "plugins/commands/scroll.py:158",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false
@@ -10768,7 +10768,7 @@
       "plugin": "scroll",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/scroll.py:132",
+      "source": "plugins/commands/scroll.py:146",
       "undoable": true,
       "verb": "scroll",
       "whole_utterance": false

@@ -577,7 +577,24 @@ class CommandExecutor:
                         effective_app, remainder, _source_text=source_text)
                 else:
                     handler_result = entry.handler(effective_app, remainder)
-                state = adapt_handler_return(handler_result)
+                # 869s: registered operations report False as failure; legacy
+                # callbacks outside registration retain False as a decline (107).
+                # Minimal/legacy executors may omit the optional resource port.
+                registry = getattr(self, '_plugin_registry', None)
+                if registry is None:
+                    registry = _plugin_commands._REGISTRY
+                registered = registry.get(canonical, {}).get('func') is entry.handler
+                module = getattr(entry.handler, '__module__', '')
+                name = getattr(entry.handler, '__name__', '')
+                guard = ((module == 'plugins.commands.local_app_lifecycle' and name in {
+                    'start_strata', 'stop_strata', 'restart_strata', 'start_ariadne',
+                    'stop_ariadne', 'restart_ariadne', 'start_sigil', 'stop_sigil', 'restart_sigil'})
+                    or (module == 'plugins.commands.core_utils' and name in {
+                        'reset_floating_windows', 'move_preview_to_this_screen'})
+                    or (module == 'plugins.commands.hands_free_voice' and name == 'handle_hands_free'))
+                state = adapt_handler_return(handler_result, declined=bool(
+                    not registered or
+                    (guard and remainder.strip() and source_text and route is Route.EXACT)))
             except Exception as e:
                 safe_exception(logger, "[ERROR] Plugin '%s' failed", canonical)
                 # Spoken dispatch owns its outcome; direct invocations need the same route.
@@ -593,13 +610,16 @@ class CommandExecutor:
                         logger.exception('[EXEC] Failure feedback unavailable for %r', canonical)
                 return DispatchResult(DispatchState.FAILED, canonical, canonical, {'error': str(e)})
             if state is DispatchState.MISS:
-                # The handler declined (documented `return False`): not this
-                # command after all.
+                # An explicit MISS or a legacy/remainder decline gives back
+                # the original utterance for the caller's dictation path.
                 return DispatchResult(DispatchState.MISS, source_text or canonical, canonical,
                                       {'declined_by': canonical})
             if state in (DispatchState.COMPLETED, DispatchState.QUEUED):
                 self._matcher.record_execution(entry)
-            detail = handler_result.detail if isinstance(handler_result, DispatchResult) else None
+            detail = dict(handler_result.detail) if isinstance(handler_result, DispatchResult) else {}
+            if state is DispatchState.FAILED:
+                # PLACEHOLDER COPY (869s)
+                detail.setdefault('reason', 'the command could not complete')
             return DispatchResult(state, canonical, canonical, detail)
 
         if builtin is None:

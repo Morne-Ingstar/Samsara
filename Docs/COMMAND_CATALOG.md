@@ -634,18 +634,18 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `scroll.bottom_of_page` | `bottom of page`, `go to bottom`, `jump to bottom` | - | - | - | ui | yes |  | Scrolls to the bottom of the page. | `plugins/commands/scroll.py:221` |
 | `scroll.page_down` | `down one page`, `page down`, `scroll page down` | - | - | - | ui | yes |  | Presses Page Down, moving one screenful forward. | `plugins/commands/scroll.py:243` |
 | `scroll.page_up` | `page up`, `scroll page up`, `up one page` | - | - | - | ui | yes |  | Presses Page Up, moving one screenful back. | `plugins/commands/scroll.py:232` |
-| `scroll.scroll_down` | `scroll down` | - | - | - | ui | yes |  | Scrolls down a page's worth in the app you are using. | `plugins/commands/scroll.py:126` |
-| `scroll.scroll_down_a_little` | `scroll down a little` | - | - | - | ui | yes |  | Scrolls down a few lines in the app you are using. | `plugins/commands/scroll.py:114` |
-| `scroll.scroll_down_fast` | `scroll down fast` | - | - | - | ui | yes |  | Scrolls down as far as one command goes, for very long pages. | `plugins/commands/scroll.py:162` |
-| `scroll.scroll_down_high` | `scroll down high` | - | - | - | ui | yes |  | Scrolls a long way down, for skimming forward through a page. | `plugins/commands/scroll.py:150` |
-| `scroll.scroll_down_medium` | `scroll down medium` | - | - | - | ui | yes |  | Scrolls down about twice as far as plain scroll down. | `plugins/commands/scroll.py:138` |
+| `scroll.scroll_down` | `scroll down` | - | - | - | ui | yes |  | Scrolls down a page's worth in the app you are using. | `plugins/commands/scroll.py:140` |
+| `scroll.scroll_down_a_little` | `scroll down a little` | - | - | - | ui | yes |  | Scrolls down a few lines in the app you are using. | `plugins/commands/scroll.py:128` |
+| `scroll.scroll_down_fast` | `scroll down fast` | - | - | - | ui | yes |  | Scrolls down as far as one command goes, for very long pages. | `plugins/commands/scroll.py:176` |
+| `scroll.scroll_down_high` | `scroll down high` | - | - | - | ui | yes |  | Scrolls a long way down, for skimming forward through a page. | `plugins/commands/scroll.py:164` |
+| `scroll.scroll_down_medium` | `scroll down medium` | - | - | - | ui | yes |  | Scrolls down about twice as far as plain scroll down. | `plugins/commands/scroll.py:152` |
 | `scroll.scroll_left` | `scroll left`, `scroll left a little` | - | - | - | ui | yes |  | Scrolls sideways to the left, for wide tables and timelines. | `plugins/commands/scroll.py:254` |
 | `scroll.scroll_right` | `scroll right`, `scroll right a little` | - | - | - | ui | yes |  | Scrolls sideways to the right, for wide tables and timelines. | `plugins/commands/scroll.py:265` |
-| `scroll.scroll_up` | `scroll up` | - | - | - | ui | yes |  | Scrolls up a page's worth in the app you are using. | `plugins/commands/scroll.py:120` |
-| `scroll.scroll_up_a_little` | `scroll up a little` | - | - | - | ui | yes |  | Scrolls up a few lines in the app you are using. | `plugins/commands/scroll.py:108` |
-| `scroll.scroll_up_fast` | `scroll up fast` | - | - | - | ui | yes |  | Scrolls up as far as one command goes, for very long pages. | `plugins/commands/scroll.py:156` |
-| `scroll.scroll_up_high` | `scroll up high` | - | - | - | ui | yes |  | Scrolls a long way up, for skimming back through a page. | `plugins/commands/scroll.py:144` |
-| `scroll.scroll_up_medium` | `scroll up medium` | - | - | - | ui | yes |  | Scrolls up about twice as far as plain scroll up. | `plugins/commands/scroll.py:132` |
+| `scroll.scroll_up` | `scroll up` | - | - | - | ui | yes |  | Scrolls up a page's worth in the app you are using. | `plugins/commands/scroll.py:134` |
+| `scroll.scroll_up_a_little` | `scroll up a little` | - | - | - | ui | yes |  | Scrolls up a few lines in the app you are using. | `plugins/commands/scroll.py:122` |
+| `scroll.scroll_up_fast` | `scroll up fast` | - | - | - | ui | yes |  | Scrolls up as far as one command goes, for very long pages. | `plugins/commands/scroll.py:170` |
+| `scroll.scroll_up_high` | `scroll up high` | - | - | - | ui | yes |  | Scrolls a long way up, for skimming back through a page. | `plugins/commands/scroll.py:158` |
+| `scroll.scroll_up_medium` | `scroll up medium` | - | - | - | ui | yes |  | Scrolls up about twice as far as plain scroll up. | `plugins/commands/scroll.py:146` |
 | `scroll.top_of_page` | `go to top`, `jump to top`, `top of page` | - | - | - | ui | yes |  | Scrolls to the top of the page. | `plugins/commands/scroll.py:210` |
 
 ## selection_edit (42)

@@ -102,7 +102,7 @@ class DispatchResult(tuple):
                 f"phrase={self.phrase!r})")
 
 
-def adapt_handler_return(value) -> DispatchState:
+def adapt_handler_return(value, *, declined=False) -> DispatchState:
     """Map a plugin handler's return value onto a DispatchState.
 
     The plugin API predates async work, so this is the one boundary adapter:
@@ -110,10 +110,8 @@ def adapt_handler_return(value) -> DispatchState:
       * True (or any other truthy value) -> COMPLETED
       * None -> QUEUED. Handlers such as ask_ollama.handle_ask_ava schedule a
         worker and return None; that is accepted work, never a miss.
-      * False (or another falsy non-None value) -> MISS. The documented plugin
-        contract is "return False to fall through" -- a decline, e.g.
-        app_lifecycle refusing a non-whole-utterance match. A handler that
-        tried and failed must raise or return DispatchState.FAILED.
+      * False (or another falsy non-None value) -> FAILED. Only an explicitly
+        identified remainder guard may set declined=True to retain MISS.
     """
     if isinstance(value, DispatchResult):
         return value.state
@@ -121,7 +119,8 @@ def adapt_handler_return(value) -> DispatchState:
         return value
     if value is None:
         return DispatchState.QUEUED
-    return DispatchState.COMPLETED if value else DispatchState.MISS
+    return (DispatchState.COMPLETED if value else
+            DispatchState.MISS if declined else DispatchState.FAILED)
 
 
 # ---------------------------------------------------------------------------
