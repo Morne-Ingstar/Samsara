@@ -251,7 +251,7 @@ from samsara.ui import tray_qt as _tray
 
 class TestBrandHeaderAndSidebar:
     def test_header_mark_has_accent_body_warm_head_and_empty_resting_centre(self, window, qapp):
-        """The approved mark keeps its cyan body and leaves the centre empty."""
+        """879a: the calm mark has an accent head/body and an open eye, no hub disc."""
         win, app = window
         app.pair = ("idle", "off")
         win._header_mark.refresh()
@@ -264,11 +264,13 @@ class TestBrandHeaderAndSidebar:
 
         pixels = [image.pixelColor(x, y) for y in range(image.height()) for x in range(image.width())]
         assert sum(near(c, accent) for c in pixels) > 20
-        assert any(c.alpha() > 200 and c.red() > c.blue() + 30 for c in pixels)
+        # 879a: the approved head is accent throughout, with the calm eye at rest.
+        assert not any(c.alpha() > 200 and c.red() > c.blue() + 30 for c in pixels)
         centre = image.pixelColor(image.width() // 2, image.height() // 2)
-        # QWidget.grab composites onto the header: an empty centre must match
-        # the untouched background, not the former cyan closed-eye stroke.
-        assert centre == image.pixelColor(0, 0)
+        # QWidget.grab composites the pupil and eye apertures onto the real header.
+        assert near(centre, accent)
+        aperture = image.pixelColor(image.width() // 4, image.height() // 2)
+        assert aperture == image.pixelColor(0, 0)  # negative space; no hub disc
 
     def test_wordmark_uses_the_display_face_on_a_bordered_band(self, window):
         win, _ = window

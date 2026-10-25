@@ -5,6 +5,8 @@ consume it, and the taskbar AUMID. dictation.py is read as source, never
 imported, here."""
 
 import ast
+import hashlib
+import xml.etree.ElementTree as ET
 import importlib.util
 import io
 import json
@@ -26,6 +28,25 @@ REPO = Path(__file__).resolve().parent.parent
 HEX = re.compile(r"^#[0-9a-f]{6}$")
 HEX_IN_TEXT = re.compile(r"#[0-9a-fA-F]{6}\b")
 NAMED_STATES = {"off", "asleep", "idle", "listening", "recording", "ava", "armed", "heard"}
+
+# 879a: independent fingerprints of the owner's approved compound paths.
+CALM_PATHS = {
+    "ring": "28cadaa0ca6343d21cbfddf932a27bbd45f59dcb7d841cb6736a6058aa89085e",
+    "eye": "92e4b7b76c4a2939ded119f375cc4668b02e49cb969263974f20eec07e88bf85",
+}
+
+
+def _approved_layers(small=False):
+    root = ET.parse(REPO / "assets/icon/samsara.svg").getroot()
+    assert root.get("viewBox") == "0 0 1254 1254"
+    suffix = "-small" if small else ""
+    by_id = {el.get("id"): el for el in root.iter()}
+    for part, expected in CALM_PATHS.items():
+        group = by_id[part + suffix]
+        assert group.get("fill-rule") == "evenodd"
+        assert len(group) == 1
+        assert hashlib.sha256(group[0].get("d").encode()).hexdigest() == expected
+    return by_id
 
 
 @pytest.fixture(scope="module")
@@ -70,7 +91,7 @@ def test_state_map_covers_all_eight_states_with_assets():
         assert capture in tray_qt.mark_capture() and eye in tray_qt.MARK_EYE
         for size in (16, 24, 32, 48, 64):
             assert (REPO / "assets" / "icon" / "states" / f"samsara_{state}_{size}.png").exists()
-    assert tray_qt.MARK_EYE["off"] is None                  # OFF = ring only
+    assert tray_qt.MARK_EYE["off"] == "eye-open"  # 879a: calm eye stays present.
     assert tray_qt.APP_MARK == ("listening", "asleep")       # cyan wheel, lid closed
 
 
@@ -94,12 +115,13 @@ def test_heard_keyframes_flash_then_close_then_hand_back():
 
 
 def test_armed_face_is_unchanged_open_eye():
-    svg = (REPO / "assets" / "icon" / "samsara.svg").read_text(encoding="utf-8")
-    assert 'd="M 20,32 Q 32,21 44,32"' in svg and 'd="M 20,32 Q 32,43 44,32"' in svg
-    assert '<circle data-role="pupil" cx="32" cy="32" r="2.5"' in svg
-    # 16-20 px (19): a solid pupil dot, no hairline ellipse.
-    assert '<circle data-role="pupil" cx="32" cy="32" r="7" fill="#8b929c" stroke="none"/>' in svg
-    assert 'rx="13" ry="8.5"' not in svg
+    # 879a replaces the old ellipse/pupil primitive with the approved calm eye.
+    for small in (False, True):
+        _approved_layers(small)
+        root = ET.fromstring(tray_qt.mark_svg("listening", "armed", small, "eye"))
+        eye = next(el for el in root.iter() if el.get("id") == ("eye-small" if small else "eye"))
+        assert eye.get("display") == "inline" and eye.get("fill") == theme.ACCENT
+        assert not any(el.tag.endswith(("circle", "ellipse")) for el in eye)
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +226,9 @@ def test_ico_holds_every_app_size(gen_icons):
     data = (REPO / "assets" / "icon" / "samsara.ico").read_bytes()
     reserved, kind, count = struct.unpack_from("<HHH", data, 0)
     assert (reserved, kind) == (0, 1)
-    assert gen_icons._ico_sizes(data) == [16, 24, 32, 48, 64, 128, 256]
-    assert count == 7
+    # 879a: 20 and 40 px frames added so 125%/150% scaling gets native frames
+    assert gen_icons._ico_sizes(data) == [16, 20, 24, 32, 40, 48, 64, 128, 256]
+    assert count == 9
 
 
 def test_gen_icons_draws_with_the_shared_routine(gen_icons):
@@ -234,12 +257,18 @@ def _centre_marks(image):
 
 @pytest.mark.parametrize("size", [16, 32])
 def test_armed_and_recording_states_have_a_distinct_shape(qapp, gen_icons, size):
-    assert _opaque_count(gen_icons.render("recording", size)) != _opaque_count(gen_icons.render("idle", size))
-    off = _centre_marks(gen_icons.render("off", size))
-    asleep = _centre_marks(gen_icons.render("asleep", size))
-    armed = _centre_marks(gen_icons.render("armed", size))
-    assert not off                                           # no eye, no disc
-    assert not asleep and armed  # no disconnected dash on the resting mark
+    # colour-only by owner decision 2026-10-25 (879a); shape distinction returns with 879b
+    for state, token in (("recording", theme.RECORDING), ("idle", theme.ICON_IDLE)):
+        image = gen_icons.render(state, size)
+        assert _colour_pixels(image, token, tolerance=2) >= size
+    assert max(abs(a-b) for a, b in zip(theme._hex_to_rgb(theme.RECORDING),
+                                      theme._hex_to_rgb(theme.ICON_IDLE))) >= 80
+    # 879a: the approved open eye replaces the obsolete empty-centre fixtures.
+    for state in ("off", "asleep", "armed"):
+        image = gen_icons.render(state, size)
+        assert image.pixelColor(size // 2, size // 2).alpha() > 200
+        assert _centre_marks(image)
+        assert image.pixelColor(3 * size // 8, size // 2).alpha() < 100  # subpixel aperture
 
 
 def test_heard_frame_eye_is_recording_red(qapp):
@@ -258,46 +287,41 @@ def test_ring_spins_but_eye_does_not(qapp):
 
 
 def test_resting_mark_has_two_articulated_joints_and_an_empty_centre(qapp):
-    """The body is a cycle of three parts, not a generic loading circle."""
+    # 879a: joints moved to left and lower right; eye has two empty apertures, no hub disc.
     image = tray_qt.render_mark("listening", "asleep", 256, brand=True)
-    assert image.pixelColor(128, 128).alpha() < 40
-    for angle in (28, 148):
-        a = math.radians(angle)
-        x = round(128 + tray_qt.RING_RADIUS * 4 * math.cos(a))
-        y = round(128 + tray_qt.RING_RADIUS * 4 * math.sin(a))
-        assert image.pixelColor(x, y).alpha() < 40, f"joint closed at {angle} degrees"
-    for angle in (90, 210):
-        a = math.radians(angle)
-        x = round(128 + tray_qt.RING_RADIUS * 4 * math.cos(a))
-        y = round(128 + tray_qt.RING_RADIUS * 4 * math.sin(a))
-        assert image.pixelColor(x, y).alpha() > 100
+    for x, y in ((7, 36), (48, 51), (24, 32), (40, 32)):
+        assert image.pixelColor(x * 4, y * 4).alpha() < 40, (x, y)
+    for x, y in ((7, 30), (32, 56), (32, 32)):
+        assert image.pixelColor(x * 4, y * 4).alpha() > 200, (x, y)
 
 
 def test_snake_head_has_negative_space_eye_not_a_floating_centre_eye(qapp):
+    # 879a: head eye moves to the upper-right; central calm eye retains negative space.
     image = tray_qt.render_mark("listening", "off", 256, brand=True)
-    assert image.pixelColor(27 * 4, 9 * 4).alpha() < 40
-    assert image.pixelColor(128, 128).alpha() < 40
+    assert image.pixelColor(37 * 4, 6 * 4).alpha() < 40
+    assert image.pixelColor(35 * 4, 8 * 4).alpha() > 200
+    assert image.pixelColor(24 * 4, 32 * 4).alpha() < 40
+    assert image.pixelColor(40 * 4, 32 * 4).alpha() < 40
 
 
 def test_head_has_two_distinct_jaws_around_the_tapered_tail(qapp):
+    # 879a replaces the old open jaws with the owner's nearly closed calm mouth.
+    _approved_layers()
     image = tray_qt.render_mark("listening", "off", 256, brand=True)
-    # Both jaws project forward beyond the blunt arc; the small dark bite
-    # between them carries the tail. Without these this is a rounded blob.
-    assert image.pixelColor(35 * 4, 7 * 4).alpha() > 200
-    assert image.pixelColor(34 * 4, 11 * 4).alpha() > 200
-    assert image.pixelColor(34 * 4, 8 * 4).alpha() < 100
-    assert image.pixelColor(36 * 4, 9 * 4).alpha() > 100  # tail between jaws
+    for x, y in ((40, 9), (40, 13), (44, 12)):
+        assert image.pixelColor(x * 4, y * 4).alpha() > 200, (x, y)
+    assert image.pixelColor(42 * 4, 42).alpha() < 100
 
 
 def test_brand_head_is_warm_but_recording_state_stays_distinct(qapp):
-    for capture in ("idle", "listening"):
-        brand = tray_qt.render_mark(capture, "off", 256, brand=True)
-        head = brand.pixelColor(22 * 4, 11 * 4)
-        body = brand.pixelColor(32 * 4, 54 * 4)
-        assert head.alpha() > 200 and body.alpha() > 200
-        assert head.red() > head.blue() + 30
-        assert body.blue() > body.red() + 30
-        assert head.name() != theme.RECORDING
+    # 879a: the approved monochrome head/body both use ACCENT; recording stays red.
+    for capture, token in (("idle", theme.ACCENT), ("listening", theme.ACCENT),
+                           ("recording", theme.RECORDING)):
+        image = tray_qt.render_mark(capture, "off", 256, brand=True)
+        for x, y in ((34, 7), (32, 56)):
+            colour = image.pixelColor(x * 4, y * 4)
+            assert colour.alpha() > 200 and colour.name() == token
+    assert theme.ACCENT != theme.RECORDING
 
 
 @pytest.mark.parametrize("capture", ("idle", "listening"))
@@ -316,13 +340,12 @@ def test_brand_ring_cache_preserves_state_independent_of_render_order(qapp, capt
 
 
 def test_small_tray_mark_keeps_two_legible_joints(qapp):
+    # 879a: both joint locations are pinned to the approved small calm drawing.
     image = tray_qt.render_mark("listening", "asleep", 32, small_max=32)
-    for angle in (30, 150):
-        a = math.radians(angle)
-        x = round(16 + 12.5 * math.cos(a))
-        y = round(16 + 12.5 * math.sin(a))
+    for x, y in ((3, 18), (24, 25)):
         assert image.pixelColor(x, y).alpha() < 40
-    assert image.pixelColor(16, 16).alpha() < 40
+    assert image.pixelColor(16, 16).alpha() > 200
+    assert image.pixelColor(12, 16).alpha() < 40  # eye aperture, no hub disc
 
 
 # ---------------------------------------------------------------------------
@@ -336,18 +359,16 @@ def _svg_regular_and_small():
 
 
 def test_svg_ring_is_the_shared_centreline_at_three_weights(gen_icons):
-    regular, _small = _svg_regular_and_small()
-    centrelines = re.findall(r'<path data-role="centreline" d="([^"]*)"', regular)
-    assert centrelines == [tray_qt.ring_centreline_path_data(i) for i in range(3)]
-    paths = re.findall(r'<path data-role="segment" d="([^"]*)"', regular)
-    hollow = [tray_qt.ring_segment_path_data(i, tray_qt.RING_LINE_WIDTH) for i in range(3)]
-    band = [tray_qt.ring_segment_path_data(i, tray_qt.RING_BAND_WIDTH) for i in range(3)]
-    brand = [tray_qt.ring_segment_path_data(i, tray_qt.RING_BRAND_WIDTH) for i in range(3)]
-    assert paths == hollow + band + brand          # #ring-hollow, #ring-filled, #ring-brand (38)
-    assert gen_icons.ring_segment_path_data is tray_qt.ring_segment_path_data
-    # Hollow is a filled thin stroke-expansion, never an outline stroke.
-    assert '<g id="ring-hollow" fill="#8b929c" fill-rule="evenodd" stroke="none">' in regular
-    assert '<g id="ring-brand" fill="#8b929c" fill-rule="evenodd" stroke="none" display="none">' in regular
+    # 879a replaces all three width-generated rings with the exact same calm paths.
+    for small in (False, True):
+        _approved_layers(small)
+        for brand in (False, True):
+            for capture in tray_qt.mark_capture():
+                root = ET.fromstring(tray_qt.mark_svg(capture, "off", small, "ring", brand=brand))
+                ring = next(el for el in root.iter() if el.get("id") ==
+                            ("ring-small" if small and not brand and capture != "recording" else "ring"))
+                assert ring.get("display") == "inline"
+                assert hashlib.sha256(ring[0].get("d").encode()).hexdigest() == CALM_PATHS["ring"]
 
 
 @pytest.mark.parametrize("segment", [0, 1, 2])
@@ -446,54 +467,43 @@ def test_head_and_tail_depend_on_weight():
 
 
 def test_recording_head_leaves_the_12_oclock_gap_open(qapp):
-    """19: on the ring's centreline, part of the gap between the band head and
-    the tail stays clear at 256 px."""
-    size = 256
-    image = tray_qt.render_mark("recording", "off", size)
-    k = size / 64.0
-    clear = 0
-    for tenth in range(-950, -870, 5):                  # head end -93 deg to tail start -88 deg
-        a = math.radians(tenth / 10.0)
-        x = size / 2 + tray_qt.RING_RADIUS * k * math.cos(a)
-        y = size / 2 + tray_qt.RING_RADIUS * k * math.sin(a)
-        clear += image.pixelColor(int(x), int(y)).alpha() < 40
-    assert clear >= 1                                   # a bite, not a closed ring
+    # 879a: the calm mouth opening is at the owner's upper-right head, not 12 o'clock.
+    image = tray_qt.render_mark("recording", "off", 256)
+    assert image.pixelColor(42 * 4, 42).alpha() < 100
+    assert image.pixelColor(40 * 4, 9 * 4).alpha() > 200
+    assert image.pixelColor(40 * 4, 13 * 4).alpha() > 200
 
 
 def test_small_drawing_is_heavy_with_no_hairlines():
-    """19: the #small ring is at least 6 units wide (1.5 px at 16 px), the
-    open eye a solid dot; the resting state has no centre bar."""
-    _regular, small = _svg_regular_and_small()
-    small_paths = re.findall(r'<path data-role="segment" d="([^"]*)"', small)
-    assert len(small_paths) == 9
-    assert all(" A 25 25 " in d and " L " not in d for d in small_paths)
-    widths = [float(w) for w in re.findall(r'stroke-width="([0-9.]+)"', small)]
-    assert widths and min(widths) >= 6
-    assert '<line data-role="eye" x1="21" y1="32" x2="43" y2="32" stroke="#8b929c" stroke-width="8"/>' in small
-    assert "<ellipse" not in small and "<circle" in small
+    # 879a: filled compound paths replace stroked arcs and the central hairline.
+    layers = _approved_layers(small=True)
+    for part in ("ring-small", "eye-small"):
+        assert all(el.get("stroke", "none") == "none" for el in layers[part].iter())
+    from PySide6.QtGui import QImage
+    for size in (16, 24, 32):
+        image = QImage(str(REPO / f"assets/icon/samsara_{size}.png"))
+        assert image.pixelColor(size // 2, size // 2).alpha() == 255
+        assert _opaque_count(image) >= size * 5
     assert tray_qt._SMALL_MAX == 20 and tray_qt.TASKBAR_SMALL_MAX == 32
 
 
 def test_taskbar_sizes_use_the_heavy_drawing(qapp):
-    for size in (16, 20):
-        assert tray_qt.render_mark("listening", "off", size) == \
-            tray_qt.render_mark("listening", "off", size, small_max=tray_qt.TASKBAR_SMALL_MAX)
-    for size in (24, 32):
-        heavy = tray_qt.render_mark("listening", "off", size, small_max=tray_qt.TASKBAR_SMALL_MAX)
-        regular = tray_qt.render_mark("listening", "off", size)
-        assert _opaque_count(heavy) >= 1.8 * _opaque_count(regular)
+    # 879a: raw calm art already reads at small sizes; both layers retain exact paths.
+    _approved_layers(small=True)
+    for size in (16, 20, 24, 32):
+        small = tray_qt.render_mark("listening", "off", size, small_max=tray_qt.TASKBAR_SMALL_MAX)
+        regular = tray_qt.render_mark("listening", "off", size, small_max=0)
+        assert small == regular
+        assert _opaque_count(small) >= size * 5
 
 
 def test_16px_is_the_plain_ring_without_head_or_tail(qapp):
-    # More than scale: the 24 px (ouroboros) drawing shrunk to 16 differs from
-    # the 16 px (plain) drawing by far more than resampling noise.
-    plain = tray_qt.render_mark("listening", "off", 16)
-    shrunk = tray_qt.render_mark("listening", "off", 24).scaled(
-        16, 16, tray_qt.Qt.AspectRatioMode.IgnoreAspectRatio,
-        tray_qt.Qt.TransformationMode.SmoothTransformation)
-    differing = sum(abs(plain.pixelColor(x, y).alpha() - shrunk.pixelColor(x, y).alpha()) > 96
-                    for x in range(16) for y in range(16))
-    assert differing >= 12
+    # 879a: even 16 px retains the owner's calm head, joints and central eye.
+    image = tray_qt.render_mark("listening", "off", 16)
+    assert image == tray_qt.render_mark("listening", "off", 16, small_max=0)
+    assert image.pixelColor(8, 8).alpha() == 255
+    assert 80 <= image.pixelColor(1, 9).alpha() <= 110  # approved subpixel left joint
+    assert _opaque_count(image) >= 80
 
 
 def test_small_sizes_cycle_24_frames_and_large_sizes_rotate_live(qapp):
@@ -519,10 +529,12 @@ def test_spin_sheet_renders(qapp, gen_icons, tmp_path):
 
 
 def test_check_flags_svg_drift(gen_icons, monkeypatch):
+    # 879a: detect edits to approved paths rather than regenerating retired geometry.
     regular, small = _svg_regular_and_small()
-    drifted = regular.replace(
-        tray_qt.ring_segment_path_data(0, tray_qt.RING_LINE_WIDTH), "M 0,0 L 1,1 Z", 1) + small
-    assert gen_icons.synced_svg_text(drifted) != drifted
+    drifted = regular.replace("M584.5,1203.4", "M584.5,1202.4", 1) + small
+    assert drifted != regular + small
+    with pytest.raises(ValueError, match="approved calm"):
+        gen_icons.synced_svg_text(drifted)
     assert gen_icons.synced_svg_text(regular + small) == regular + small
 
 
@@ -802,14 +814,14 @@ def test_brand_presentation_keeps_state_colours_and_resting_centre_empty():
     assert tray_qt.brand_capture()["recording"] == (theme.RECORDING, "ring-filled")
     assert theme.ICON_IDLE not in {c for c, _ in tray_qt.brand_capture().values()}
     assert set(tray_qt.BRAND_EYE) == set(tray_qt.MARK_EYE)
-    assert tray_qt.BRAND_EYE["off"] is None and tray_qt.BRAND_EYE["asleep"] is None
+    assert tray_qt.BRAND_EYE["off"] == tray_qt.BRAND_EYE["asleep"] == "eye-open"  # 879a
     assert tray_qt.BRAND_EYE["armed"] == "eye-open"
     for eye in tray_qt.MARK_EYE:
         assert tray_qt.mark_eye_id(eye, brand=True) == tray_qt.BRAND_EYE[eye]
     assert tray_qt.mark_colours("idle", "off", brand=True) == (theme.ACCENT, theme.ACCENT)
     assert tray_qt.mark_colours("recording", "armed", brand=True) == (theme.RECORDING, theme.RECORDING)
     # tray rules unchanged
-    assert tray_qt.mark_capture()["idle"][0] == theme.ICON_IDLE and tray_qt.MARK_EYE["off"] is None
+    assert tray_qt.mark_capture()["idle"][0] == theme.ICON_IDLE and tray_qt.MARK_EYE["off"] == "eye-open"  # 879a
     assert tray_qt.mark_colours("idle", "off") == (theme.ICON_IDLE, theme.ICON_IDLE)
 
 
@@ -835,27 +847,24 @@ def _colour_pixels(image, hex_colour, tolerance=28):
 
 @pytest.mark.parametrize("eye", ["off", "asleep", "armed"])
 def test_brand_mark_at_rest_renders_accent_never_grey(qapp, eye):
-    """The centre is empty until armed, at both header and Home sizes."""
+    # 879a: calm eye remains present at rest; its negative spaces rule out a hub disc.
     for size in (26, 60):
         image = tray_qt.render_mark("idle", eye, size, brand=True)
         assert _colour_pixels(image, theme.ACCENT) > size, (size, eye)
-        # The warm/cool bridge can pass through a greyish antialiased pixel;
-        # it must not produce a grey region that looks like an idle icon.
         assert _colour_pixels(image, theme.ICON_IDLE) <= 2, (size, eye)
-        centre = image.pixelColor(size // 2, size // 2)
-        if eye == "armed":
-            assert centre.alpha() > 100
-        else:
-            assert centre.alpha() < 40
+        assert image.pixelColor(size // 2, size // 2).alpha() > 100
+        assert image.pixelColor(size // 4, size // 2).alpha() < 40
     tray = tray_qt.render_mark("idle", "off", 60)
-    assert _colour_pixels(tray, theme.ICON_IDLE) > 60 and tray.pixelColor(30, 30).alpha() < 40
+    assert _colour_pixels(tray, theme.ICON_IDLE) > 60
+    assert tray.pixelColor(15, 30).alpha() < 40
 
 
 def test_brand_mark_is_heavier_than_the_tray_hollow_line(qapp):
-    size = 60
-    brand = _colour_pixels(tray_qt.render_mark("listening", "off", size, brand=True), theme.ACCENT)
-    tray = _colour_pixels(tray_qt.render_mark("listening", "off", size), theme.ACCENT)
-    assert brand > tray * 1.3
+    # 879a: brand and tray share exact approved art, without a new weight variant.
+    brand = tray_qt.render_mark("listening", "off", 60, brand=True)
+    tray = tray_qt.render_mark("listening", "off", 60)
+    assert brand == tray
+    assert _colour_pixels(brand, theme.ACCENT) > 60
 
 
 def test_hub_type_scale_is_additive_and_has_no_role_below_the_minimum():

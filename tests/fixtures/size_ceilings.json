@@ -12,6 +12,7 @@
     "samsara/ui/history_view.py": 1789,
     "samsara/ui/home_qt.py": 2522,
     "samsara/ui/mic_setup_wizard_qt.py": 1503,
+    "samsara/ui/tray_qt.py": 1515,
     "samsara/updater.py": 1630
   },
   "slack": 25,

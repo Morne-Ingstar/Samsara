@@ -8,7 +8,8 @@ import shutil
 import sys
 
 import pytest
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QIcon, QImage
 from PySide6.QtWidgets import QMainWindow
 
 from samsara.ui import tray_qt
@@ -64,6 +65,25 @@ def test_every_runtime_icon_path_exists_in_installed_onedir(qapp, frozen_root):
         assert path.is_file(), path
         assert not QIcon(str(path)).isNull(), path
     assert paths[0] == paths[1]
+    # 879a: a valid path/nonblank QIcon is insufficient; prove the bundled
+    # frame is the generated calm mark at every Windows taskbar/app size.
+    for size in (16, 20, 24, 32, 40, 48, 64, 128, 256):
+        expected = QImage(str(REPO / f"assets/brand/samsara_{size}.png"))
+        assert QIcon(str(paths[0])).pixmap(QSize(size, size), 1.0).toImage().convertToFormat(
+            QImage.Format.Format_ARGB32) == expected.convertToFormat(QImage.Format.Format_ARGB32)
+
+    # 879a: frame identity is independent of the desktop DPR; explicitly
+    # exercise Windows 125%/150% requests against native physical-size PNGs.
+    icon = QIcon(str(paths[0]))
+    for dpr in (1.25, 1.5):
+        for logical in (16, 32):
+            physical = round(logical * dpr)
+            pixmap = icon.pixmap(QSize(logical, logical), dpr)
+            expected = QImage(str(REPO / f"assets/brand/samsara_{physical}.png"))
+            assert (pixmap.width(), pixmap.height()) == (physical, physical)
+            assert pixmap.devicePixelRatio() == dpr
+            assert pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32) == (
+                expected.convertToFormat(QImage.Format.Format_ARGB32))
 
 
 def test_hub_sets_its_own_nonblank_icon_on_qt_thread(qapp, frozen_root):

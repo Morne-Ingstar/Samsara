@@ -1,0 +1,3 @@
+# Icon generation compares SVG bytes; keep them identical on Windows checkouts.
+/assets/icon/samsara.svg text eol=lf
+/assets/brand/samsara-mark.svg text eol=lf

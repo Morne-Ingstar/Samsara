@@ -8,7 +8,7 @@ assets/icon/_make_*.py / _pack_ico.py scripts and keeps their output
 filenames.
 
 Outputs (all under assets/icon/):
-  samsara_{16,24,32,48,64,128,256}.png   app icon (tray_qt.APP_MARK), one per size
+  samsara_{16,20,24,32,40,48,64,128,256}.png   app icon (tray_qt.APP_MARK), one per size
   samsara.ico                            multi-size container of those PNGs
   states/samsara_{state}_{size}.png      every tray_qt.MARK_STATES entry at TRAY_SIZES
                                          ("heard" is the animation's static fallback frame)
@@ -28,6 +28,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 from contextlib import contextmanager
 import json
 import logging
@@ -70,19 +72,18 @@ from samsara.ui.tray_qt import (  # noqa: E402
 ICON_DIR = REPO / "assets" / "icon"
 SVG_PATH = ICON_DIR / "samsara.svg"
 STATES_DIR = ICON_DIR / "states"
-# Queue 241: the app/taskbar identity is a deliberately still, high-contrast
-# raster family.  Keep it separate from the live-state assets above so a
-# recording/Ava frame can remain painted at runtime without changing the
-# executable, Start, or idle-tray mark.
+# 879a: the still app/taskbar family and live-state assets share the calm
+# source drawing. Runtime state colour/motion never changes the EXE icon.
 BRAND_DIR = REPO / "assets" / "brand"
 BRAND_SVG_PATH = BRAND_DIR / "samsara-mark.svg"
-BRAND_SIZES = (16, 20, 24, 32, 48, 256)
+BRAND_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256, 1024)
 SPIN_SHEET_ANGLES = (0, 45, 90, 135, 180, 225, 270, 315)
 WEIGHT_SHEET_ANGLES = (0, 45)
 _SEGMENT_PATH = re.compile(r'(<path data-role="segment" d=")([^"]*)(")')
 _CENTRELINE_PATH = re.compile(r'(<path data-role="centreline" d=")([^"]*)(")')
 
-APP_SIZES = (16, 24, 32, 48, 64, 128, 256)
+# 879a: native 125% frames keep 16/32 DIP icons sharp at 20/40 pixels.
+APP_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 TRAY_SIZES = (16, 24, 32, 48, 64)
 # Build checks allow sparse rounding noise, while preserving the silhouette.
 PIXEL_CHANNEL_TOLERANCE = 2
@@ -158,7 +159,7 @@ def write_diagnostics(directory: Path) -> Path:
                 records[relative.as_posix()] = {"error": "missing or invalid ICO container"}
     summary = directory / "pixel-diff.json"
     summary.write_text(json.dumps({
-        "runtime": {"python": platform.python_version(), "platform": platform.platform(),
+        "runtime": {"python": platform.python_version(), "platform": sys.platform,
                     "pyside": PySide6.__version__, "qt": qVersion()},
         "policy": {"max_channel_delta": PIXEL_CHANNEL_TOLERANCE,
                    "max_differing_pixel_share": MAX_DIFFERING_PIXEL_SHARE,
@@ -231,6 +232,20 @@ def synced_svg_text(text: str) -> str:
     then the same centrelines stroked at the hollow weight (#ring-hollow),
     at the band weight (#ring-filled) and at the brand weight (#ring-brand,
     the window header and Home, 38). The #small drawing is left untouched."""
+    # 879a: traced owner artwork must never be replaced by old centrelines.
+    root = ET.fromstring(text)
+    if root.get("data-artwork") == "calm-879a":
+        # 879a: flag source drift without reconstructing or altering owner paths.
+        approved = {"ring": "28cadaa0ca6343d21cbfddf932a27bbd45f59dcb7d841cb6736a6058aa89085e",
+                    "eye": "92e4b7b76c4a2939ded119f375cc4668b02e49cb969263974f20eec07e88bf85"}
+        by_id = {el.get("id"): el for el in root.iter()}
+        for part, digest in approved.items():
+            for suffix in ("", "-small"):
+                group = by_id.get(part + suffix)
+                if group is None or hashlib.sha256("".join(
+                        el.get("d", "") for el in group).encode()).hexdigest() != digest:
+                    raise ValueError("source differs from approved calm artwork: " + part + suffix)
+        return text
     split = text.index('<g id="small"')
     regular, small = text[:split], text[split:]
     regular = _replace_paths(regular, _CENTRELINE_PATH,
@@ -257,6 +272,8 @@ def missing_mark_ids(svg_text: str | None = None) -> list[str]:
     """Every ring the renderer can request, regular and taskbar-small."""
     root = ET.fromstring(svg_text if svg_text is not None else SVG_PATH.read_text(encoding="utf-8"))
     available = {element.get("id") for element in root.iter() if element.get("id")}
+    if root.get("data-artwork") == "calm-879a":
+        return sorted({"regular", "small", "ring", "eye", "ring-small", "eye-small"} - available)
     rings = {ring for table in (mark_capture(), brand_capture()) for _colour, ring in table.values()}
     return sorted(ring + suffix for ring in rings for suffix in ("", "-small") if ring + suffix not in available)
 
@@ -297,12 +314,14 @@ def _brand_metrics(size: int) -> tuple[float, float, float, float]:
 
 
 def render_brand(size: int) -> QImage:
-    """Render the still cyan app mark with its one-pixel dark outline.
+    """Render the still calm app mark, preserving the approved silhouette.
 
     Qt's built-in QSvgRenderer is intentionally used: no dependency beyond
     the running app, and the source is kept as a readable single SVG.
     """
     _ensure_gui_app()
+    if ET.parse(SVG_PATH).getroot().get("data-artwork") == "calm-879a":
+        return render_mark(*APP_MARK, size, brand=True)
     cyan, outlined, eye_inner, eye_outer = _brand_metrics(size)
     accent = QColor(theme.ACCENT).name()
     # A dark blue-black survives a white taskbar; the cyan interior carries
@@ -332,15 +351,25 @@ def render_brand(size: int) -> QImage:
 def brand_outputs(directory: Path) -> dict[Path, bytes]:
     """Deterministic generated brand PNG bytes, rooted at checkout or a temp dir.
 
-    The owner-supplied samsara.ico and samsara_1024.png are source artwork and
-    are deliberately outside this generator's output set.
+    879a: the SVG, every PNG and the ICO derive from the single calm source.
     """
     pngs: list[tuple[int, bytes]] = []
     output: dict[Path, bytes] = {}
     for size in BRAND_SIZES:
         data = png_bytes(render_brand(size))
         output[directory / f"samsara_{size}.png"] = data
-        pngs.append((size, data))
+        if size in APP_SIZES:
+            pngs.append((size, data))
+    output[directory / "samsara.ico"] = build_ico(pngs)
+    source = ET.parse(SVG_PATH).getroot()
+    brand = ET.Element(source.tag, {"viewBox": source.get("viewBox")})
+    regular = next(el for el in source if el.get("id") == "regular")
+    for element in regular:
+        element = copy.deepcopy(element)
+        element.attrib.pop("display", None)
+        element.set("fill", QColor(theme.ACCENT).name())
+        brand.append(element)
+    output[directory / "samsara-mark.svg"] = ET.tostring(brand, encoding="utf-8") + b"\n"
     return output
 
 
@@ -354,7 +383,7 @@ def write_brand_assets(directory: Path = BRAND_DIR) -> list[Path]:
 
 
 def stale_brand_assets() -> list[Path]:
-    """Regenerate generated brand PNGs in a temp dir, then compare committed output."""
+    """Regenerate the complete brand family in a temp dir and compare it."""
     if not BRAND_SVG_PATH.exists():
         return [BRAND_SVG_PATH]
     with tempfile.TemporaryDirectory(prefix="samsara-icons-") as temp:
@@ -363,7 +392,11 @@ def stale_brand_assets() -> list[Path]:
         stale = []
         for generated in temporary.iterdir():
             committed = BRAND_DIR / generated.name
-            if not image_diff(QImage(str(committed)), QImage(str(generated)))["matches"]:
+            if generated.suffix == ".png":
+                matches = image_diff(QImage(str(committed)), QImage(str(generated)))["matches"]
+            else:
+                matches = committed.exists() and committed.read_bytes() == generated.read_bytes()
+            if not matches:
                 stale.append(committed)
         return stale
 
@@ -427,14 +460,18 @@ def stale_assets() -> list[Path]:
         return [SVG_PATH]
     if missing_mark_ids(svg_text):
         return [SVG_PATH]
-    if synced_svg_text(svg_text) != svg_text:
-        stale.append(SVG_PATH)
+    try:
+        if synced_svg_text(svg_text) != svg_text:
+            stale.append(SVG_PATH)
+    except ValueError:
+        return [SVG_PATH]
     expected = expected_outputs()
     for path, value in expected.items():
         if not path.exists():
             stale.append(path)
         elif isinstance(value, bytes):
-            if path.suffix == ".ico" and _ico_sizes(path.read_bytes()) != list(APP_SIZES):
+            # Check embedded artwork as well as the frame-size directory.
+            if path.read_bytes() != value:
                 stale.append(path)
         elif not image_diff(QImage(str(path)), value)["matches"]:
             stale.append(path)

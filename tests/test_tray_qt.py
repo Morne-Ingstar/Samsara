@@ -163,7 +163,10 @@ class TestTrayDrawsTheMark:
     def test_missing_small_ring_falls_back_to_a_visible_regular_mark(self, qapp, monkeypatch, tmp_path, caplog):
         source = tray_qt.mark_svg_path().read_text(encoding="utf-8")
         broken = tmp_path / "broken-mark.svg"
-        broken.write_text(source.replace(' id="ring-brand-small"', ' id="missing-brand-small"'), encoding="utf-8")
+        # 879a: damage the current small-ring id; retain the visible fallback guarantee.
+        damaged = source.replace(' id="ring-small"', ' id="missing-ring-small"')
+        assert damaged != source
+        broken.write_text(damaged, encoding="utf-8")
         monkeypatch.setattr(tray_qt, "mark_svg_path", lambda: broken)
         tray_qt.clear_mark_caches()
         try:
@@ -902,16 +905,16 @@ def _alpha_bilinear(image, x, y):
 
 
 def _gap_alphas(image, size, rotation):
-    """Rendered alpha along the ring centreline across the 12 o'clock gap
-    (head end -96 deg to tail start -84 deg), turned with the ring."""
+    """879a: sample the approved left articulated joint, rotating with the ring."""
     k = size / 64.0
-    alphas = []
+    angle = math.radians(rotation)
+    values = []
     for i in range(241):
-        a = math.radians(-96.0 + 12.0 * i / 240 + rotation)
-        alphas.append(_alpha_bilinear(image,
-                                      size / 2 + tray_qt.RING_RADIUS * k * math.cos(a),
-                                      size / 2 + tray_qt.RING_RADIUS * k * math.sin(a)))
-    return alphas
+        x, y = 7 - 32, 32 + i * 8 / 240 - 32
+        rx = size / 2 + k * (x * math.cos(angle) - y * math.sin(angle))
+        ry = size / 2 + k * (x * math.sin(angle) + y * math.cos(angle))
+        values.append(_alpha_bilinear(image, rx, ry))
+    return values
 
 
 
@@ -989,10 +992,9 @@ class TestBandNoseReadsAsAHead:
 
 
 class TestTwelveOClockGapStaysOpen:
-    """The approved head meets its tail; its bite still has visible contrast.
+    """879a: the approved left joint stays legible through recording rotation.
 
-    Recording uses the regular brand snake, not the former band geometry.
-    Small marks blend across the narrow bite; large marks retain a clear run.
+    Historical node IDs remain; the old 12-o'clock bite moved in the calm art.
     """
 
     @pytest.mark.parametrize("size, max_alpha", [(26, 90), (34, 90), (44, 90)])
@@ -1006,14 +1008,13 @@ class TestTwelveOClockGapStaysOpen:
 
     def test_128px_has_a_clear_run(self, qapp):
         size = 128
-        arc_px = tray_qt.RING_RADIUS * (size / 64.0) * math.radians(12.0) / 240
+        arc_px = 8 * size / 64.0 / 240  # 879a: joint sample spacing
         for rotation in (0, 45, 90, 135, 180, 225, 270, 315):
             image = tray_qt.render_mark("recording", "off", size, rotation=float(rotation), brand=True)
             alphas = _gap_alphas(image, size, rotation)
             # Bilinear sampling between antialiased pixels need not land on
             # exact zero at diagonal rotations; allow one 8-bit alpha step.
             assert min(alphas) <= 1, rotation
-            # Approved geometry: head ends near 270 degrees; tail starts at
-            # 272. The former 12-degree opening is now a two-degree bite.
-            bite_px = tray_qt.RING_RADIUS * (size / 64.0) * math.radians(2.0)
+            # 879a: pin the clear joint against its new source-space span.
+            bite_px = 2 * size / 64.0  # 879a: at least two source units stay clear
             assert sum(arc_px for a in alphas if a < 96) >= bite_px, rotation

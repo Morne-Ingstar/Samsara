@@ -1,5 +1,6 @@
 """The recording snake keeps its head/tail; only small bodies gain weight."""
 import math
+import hashlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -93,13 +94,14 @@ def test_small_recording_uses_regular_head_and_tail_in_red_at_both_scales(qapp, 
     finally:
         painter.end()
     ring = seen[-1]
-    assert ring.get('id') == ('ring-brand' if brand else 'ring-hollow')
+    # 879a: small recording preserves exact approved calm paths, without body widening.
+    assert ring.get('id') == 'ring'
     assert ring.get('fill') == theme.RECORDING
     base = visible_ring(original('recording', 'off', False, 'ring', brand=brand))
     assert ring[-1].attrib == base[-1].attrib  # the approved jaw is unchanged
-    weight = tray_qt.RING_BRAND_WIDTH if brand else tray_qt.RING_LINE_WIDTH
-    assert [node.get('d') for node in ring if node.get('data-role') == 'segment'] == [
-        tray_qt.ring_segment_path_data(i, weight, 1.0 if brand else 1.5) for i in range(3)]
+    assert len(ring) == 1 and ring.get('fill-rule') == 'evenodd'
+    assert hashlib.sha256(ring[0].get('d').encode()).hexdigest() == (
+        '28cadaa0ca6343d21cbfddf932a27bbd45f59dcb7d841cb6736a6058aa89085e')
     assert any(image.pixelColor(x, y).alpha() > 0 for x in range(pixels) for y in range(pixels))
 
 

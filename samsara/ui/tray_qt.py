@@ -49,8 +49,8 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-#: Legacy state vocabulary. Recording rendering selects the listening path
-#: in mark_svg at every size; its colour token remains RECORDING.
+#: Legacy weight names remain the state vocabulary. The calm-879a source
+#: resolves all weights to the approved paths; recording keeps RECORDING red.
 def mark_capture():
     return {
         "idle":      (theme.ICON_IDLE, "ring-hollow"),
@@ -75,17 +75,18 @@ def brand_capture():
         "ava":       (theme.AVA, "ring-brand"),
     }
 BRAND_EYE = {
-    "off":    None,
-    "asleep": None,
+    "off":    "eye-open",  # 879a: the approved calm mark includes its eye at rest.
+    "asleep": "eye-open",
     "armed":  "eye-open",
     "heard":  "eye-open",
 }
-#: Hands-free state -> eye drawing (None = no eye). "heard" is the static
+#: Hands-free state -> eye drawing. 879a retains the approved eye at rest.
+#: "heard" is the static
 #: fallback frame of the heard animation: the open eye in RECORDING red with
 #: the ring brightened (capture is starting, so red is truthful).
 MARK_EYE = {
-    "off":    None,
-    "asleep": None,
+    "off":    "eye-open",
+    "asleep": "eye-open",
     "armed":  "eye-open",
     "heard":  "eye-open",
 }
@@ -102,7 +103,7 @@ MARK_STATES = {
     "armed":     ("listening", "armed"),
     "heard":     ("listening", "heard"),
 }
-#: App icon state: articulated wheel, empty centre until hands-free is armed.
+#: App icon state: the approved calm snake and eye in the accent colour.
 APP_MARK = ("listening", "asleep")
 #: Wake phrase heard: (ms from the hit, eye state). The eye flashes red and
 #: the ring brightens for ~1 s, then the lid closes as the command session
@@ -469,13 +470,28 @@ def mark_colours(capture: str, eye: str, brand: bool = False) -> tuple[str, str]
 
 
 def mark_eye_id(eye: str, brand: bool = False) -> Optional[str]:
-    """The hands-free drawing; resting marks have no detached centre mark."""
+    """The hands-free drawing; the approved calm eye stays present at rest."""
     return (BRAND_EYE if brand else MARK_EYE)[eye]
 
 
 def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | None = None,
              brand: bool = False, ring_id: str | None = None, body_scale: float = 1.0) -> bytes:
     """One SVG layer; recording uses the regular listening snake in red."""
+    root = ET.fromstring(source if source is not None else mark_svg_path().read_bytes())
+    if root.get("data-artwork") == "calm-879a":
+        # 879a: the owner's traced paths are authoritative. Never regenerate
+        # them from the legacy segment centreline or apply its head gradient.
+        small = small and not brand and capture != "recording"
+        ring_colour, eye_colour = mark_colours(capture, eye, brand)
+        by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
+        for group, visible in (("regular", not small), ("small", small)):
+            by_id[group].set("display", "inline" if visible else "none")
+        suffix = "-small" if small else ""
+        for part, colour in (("ring", ring_colour), ("eye", eye_colour)):
+            element = by_id[part + suffix]
+            element.set("display", "inline" if part == layer else "none")
+            element.set("fill", colour)
+        return ET.tostring(root, encoding="utf-8")
     if capture == "recording" and layer == "ring":
         small = False
         ring_id = (brand_capture() if brand else mark_capture())["listening"][1]
@@ -486,7 +502,6 @@ def mark_svg(capture: str, eye: str, small: bool, layer: str, source: bytes | No
     eye_id = mark_eye_id(eye, brand)
     suffix = "-small" if small else ""
 
-    root = ET.fromstring(source if source is not None else mark_svg_path().read_bytes())
     by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
     by_id["regular"].set("display", "none" if small else "inline")
     by_id["small"].set("display", "inline" if small else "none")

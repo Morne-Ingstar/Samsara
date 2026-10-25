@@ -68,12 +68,20 @@ def test_wake_debug_countdown_has_a_low_time_word(qapp):
 
 
 def test_tray_listening_and_ava_have_different_non_colour_geometry(qapp):
-    listening_capture, ava_capture = tray_qt.mark_capture()["listening"], tray_qt.mark_capture()["ava"]
-    listening = tray_qt.render_mark("listening", "off", 32)
-    ava = tray_qt.render_mark("ava", "off", 32)
-
-    assert listening_capture[1] != ava_capture[1]
-    assert _alpha_mask(listening) != _alpha_mask(ava)
+    # colour-only by owner decision 2026-10-25 (879a); shape distinction returns with 879b
+    for palette in ("dark", "light"):
+        theme.set_theme(palette, refresh=False)
+        assert tray_qt.mark_capture()["listening"][0] == theme.ACCENT
+        assert tray_qt.mark_capture()["ava"][0] == theme.AVA
+        assert max(abs(a-b) for a, b in zip(theme._hex_to_rgb(theme.ACCENT),
+                                          theme._hex_to_rgb(theme.AVA))) >= 60
+        for size in (16, 32):
+            for capture, token in (("listening", theme.ACCENT), ("ava", theme.AVA)):
+                image = tray_qt.render_mark(capture, "off", size)
+                colours = [image.pixelColor(x, y) for y in range(size) for x in range(size)
+                           if image.pixelColor(x, y).alpha() == 255]
+                assert len(colours) >= size
+                assert {colour.name() for colour in colours} == {token}
 
 
 def test_light_and_dark_surface_grabs_are_saved(qapp, tmp_path):
