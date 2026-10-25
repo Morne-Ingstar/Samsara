@@ -18,6 +18,17 @@ def test_commands_card_has_no_suggestion_and_fits_240px(qapp, monkeypatch, qt_wi
     with qt_widget_scope(window):
         home = window._stack.currentWidget()
         card = home._cards[0]
+        # Queue 882 restores the shared lower alignment after removing Try.
+        # Compare all three destinations in the same rendered grid row.
+        home._relayout_cards(home_qt.CONTENT_MAX_W)
+        qapp.processEvents()
+        cards = home._cards[:3]
+        assert len({item.y() for item in cards}) == 1
+        assert len({item.height() for item in cards}) == 1
+        title_ys = [item._title.mapTo(item, item._title.rect().topLeft()).y()
+                    for item in cards]
+        assert len(set(title_ys)) == 1
+
         card.setFixedSize(240, 220)
         card.show()
         qapp.processEvents()
@@ -25,7 +36,7 @@ def test_commands_card_has_no_suggestion_and_fits_240px(qapp, monkeypatch, qt_wi
         assert card.width() == 240
         assert card._value.text() == ""
         assert not card._value.isVisibleTo(card)
-        assert card.layout().count() == 3  # title, description, packs button; no stretch/value slot
+        assert card.layout().count() == 4  # title, description, spacer, packs button
         assert "phrases, including windows, text and music." in card._description.text()
         assert all("Try:" not in label.text() for label in home.findChildren(QLabel))
 
@@ -36,4 +47,5 @@ def test_commands_card_has_no_suggestion_and_fits_240px(qapp, monkeypatch, qt_wi
         assert card.rect().contains(description_rect)
         assert card.rect().contains(button.geometry())
         assert not description_rect.intersects(button.geometry())
+        assert button.y() > description_rect.bottom()
         assert button.width() < card.width()

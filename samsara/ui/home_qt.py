@@ -1415,8 +1415,11 @@ class _CapabilityCard(QPushButton):
         self._value = _label(value, role="card value", color=theme.ACCENT, weight=500, wrap=True)
         self._value.setAccessibleName(f"{title} value")
         self._value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        # Keep the destination cards' lower content aligned when one has no
+        # value line (878). Its vacant space belongs between the description
+        # and the action at the bottom of the card.
+        lay.addStretch(1)
         if value:
-            lay.addStretch(1)
             lay.addWidget(self._value, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
         else:
             self._value.hide()
