@@ -1,11 +1,8 @@
 @echo off
 setlocal
-title Building Samsara v0.30.0-beta.10
 cd /d "%~dp0"
 
-set VERSION=0.30.0-beta.10
 set INCLUDE_CUDA=0
-set ARCHIVE=dist\Samsara-Windows-v%VERSION%.7z
 set "PYTHON_ARGS="
 if defined SAMSARA_PYTHON (
     set "PYTHON_EXE=%SAMSARA_PYTHON:"=%"
@@ -22,12 +19,6 @@ if defined SAMSARA_PYTHON (
     )
 )
 
-echo ============================================
-echo  Building Samsara v%VERSION%
-echo ============================================
-echo.
-
-echo [1/3] Verifying release identity and that Samsara is closed...
 if not defined PYTHON_EXE (
     echo Python was not found. Set SAMSARA_PYTHON to a Python 3.11 executable.
     exit /b 1
@@ -37,6 +28,20 @@ if errorlevel 1 (
     echo Python could not run: %PYTHON_EXE% %PYTHON_ARGS%
     exit /b 1
 )
+set "VERSION="
+for /f "usebackq delims=" %%V in (`call "%PYTHON_EXE%" %PYTHON_ARGS% -c "from pathlib import Path; from tools.check_release_version import _string_assignment; print(_string_assignment(Path('samsara/__init__.py'), '__version__'))"`) do set "VERSION=%%V"
+if not defined VERSION (
+    echo Could not read __version__ from samsara\__init__.py. No build was started.
+    exit /b 1
+)
+title Building Samsara v%VERSION%
+set "ARCHIVE=dist\Samsara-Windows-v%VERSION%.7z"
+
+echo ============================================
+echo  Building Samsara v%VERSION%
+echo ============================================
+echo.
+echo [1/3] Verifying release identity and that Samsara is closed...
 "%PYTHON_EXE%" %PYTHON_ARGS% tools\check_release_version.py --expected "%VERSION%"
 if errorlevel 1 (
     echo Release version identity check FAILED. No build was started.

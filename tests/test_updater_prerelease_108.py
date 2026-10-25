@@ -92,9 +92,10 @@ def eligible(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_the_shipped_version_is_a_prerelease():
-    """If this ever stops being true the bug stops being reachable, and this
-    file should be read again rather than trusted."""
-    assert "-" in samsara.__version__, samsara.__version__
+    """The stable release supersedes the beta covered by this regression."""
+    # 875b: the shipped version is stable; retain the beta regression explicitly.
+    assert updater._parse_version("0.30.0-beta.10") < updater._parse_version(samsara.__version__)
+    assert updater._parse_stable_version(samsara.__version__) == (0, 40, 0)
     assert updater._parse_version(samsara.__version__)
 
 

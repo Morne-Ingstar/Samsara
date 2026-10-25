@@ -105,4 +105,4 @@ Source and packaged builds use the same default profile:
 
 `SAMSARA_HOME_DIR` can deliberately point an isolated test or preview process
 at another profile. A repository-root or EXE-folder `config.json` is not the
-normal v0.22 settings location.
+normal Samsara settings location.

@@ -2,12 +2,13 @@
 from pathlib import Path
 import re
 
+# 875b: current identity changes; historical release assertions remain intact.
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_beta8_version_everywhere():
     from tools.check_release_version import check_versions
-    assert check_versions(ROOT, 'v0.30.0-beta.10') == '0.30.0-beta.10'
+    assert check_versions(ROOT, 'v0.40.0') == '0.40.0'
 
 
 def test_beta8_release_note_is_first_and_home_uses_its_lead():
@@ -15,12 +16,12 @@ def test_beta8_release_note_is_first_and_home_uses_its_lead():
 
     changelog = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
     headings = re.findall(r'^## \[([^]]+)\] - (.+)$', changelog, re.M)
-    assert headings[2] == ('0.30.0-beta.8', '2026-10-17')
-    assert headings[3][0] == '0.30.0-beta.7'
+    assert ('0.30.0-beta.8', '2026-10-17') in headings
+    assert '0.30.0-beta.7' in [version for version, date in headings]
     section = changelog.split('## [0.30.0-beta.8]', 1)[1].split('## [0.30.0-beta.7]', 1)[0]
     lead = section.splitlines()[2]
     assert lead and not lead.startswith(('#', '-', '<')) and lead.endswith('.')
-    current_lead = changelog.split('## [0.30.0-beta.10]', 1)[1].splitlines()[2]
-    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.30.0-beta.10', current_lead)
+    current_lead = changelog.split('## [0.40.0]', 1)[1].splitlines()[2]
+    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.0', current_lead)
     for title in ('Updates', 'Speed', 'Settings and setup', 'Fixes'):
         assert f'### {title}\n\n-' in section

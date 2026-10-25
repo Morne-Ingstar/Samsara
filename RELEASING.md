@@ -28,8 +28,8 @@ repo's source at this commit, not from a laptop.
 ### Triggering a release
 
 ```
-git tag v0.22.0
-git push origin v0.22.0
+git tag v0.40.0
+git push origin v0.40.0
 ```
 
 Or run the workflow manually (Actions tab -> Release (CPU build) -> Run
