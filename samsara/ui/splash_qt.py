@@ -20,6 +20,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
 from samsara.runtime import thread_registry
+from samsara.model_load_feedback import is_model_loading_status
 from samsara.ui import qt_runtime, theme
 from samsara.ui.tray_qt import paint_mark
 
@@ -297,7 +298,11 @@ class _SplashWidget(QWidget):
 
         # The normal boot needs no dashboard or synthetic percentage. Only
         # prolonged startup or errors reveal the actual status/detail.
-        if self._error or (not self._complete and self._now_ms() >= _DETAIL_DELAY_MS):
+        if self._error or (
+            not self._complete
+            and (is_model_loading_status(self._status)
+                 or self._now_ms() >= _DETAIL_DELAY_MS)
+        ):
             painter.setPen(_color(theme.ERROR if self._error else theme.TEXT_PRIMARY))
             painter.setFont(theme.qfont(theme.TYPE_BODY, weight=QFont.Weight.DemiBold))
             painter.drawText(layout["status"],

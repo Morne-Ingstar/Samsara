@@ -2225,22 +2225,36 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         )
         if os.path.exists(_model_cache):
             self.update_splash(
-                "Loading speech model...", 50,
+                "Loading the speech model - first start can take a minute", 50,  # PLACEHOLDER COPY (893)
                 "Preparing local speech recognition",
             )
         else:
             self.update_splash(
-                "Downloading speech model...", 50,
+                "Loading the speech model - first start can take a minute", 50,  # PLACEHOLDER COPY (893)
                 "First download only; this may take a few minutes",
             )
 
+        # The splash is updated before starting the worker so its first visible
+        # status is already about the model load, not a generic boot milestone.
+        # This also covers the short interval between starting the worker and
+        # the worker reaching its first instruction on a busy CPU.
+        # The same text is emitted from inside the worker before construction,
+        # so the update order remains correct if Qt processes either callback
+        # after the other one has been queued from a different thread.
+        # Download callbacks keep the loading status recognizable while the
+        # model files are fetched; the detail line explains the network wait.
+        # Once construction returns, model_load_feedback publishes the normal
+        # ready state before startup moves on to VAD and audio services.
+        # That state transition is independent of the later capture setup.
+        # Keeping this message here also covers the initial cache check.
+        # From the worker, the shared helper repeats it before model creation.
         # Load model in background
         self.load_model_async()
         _boot("model load kicked off (async)")
         _bdiag("model load kicked off (async)")
 
         self.update_splash(
-            "Audio capture ready...", 60,
+            "Loading the speech model - first start can take a minute", 60,  # PLACEHOLDER COPY (893)
             "Preparing the interface while speech recognition loads",
         )
 
@@ -3687,19 +3701,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             compute_type = "float16" if device == "cuda" else "int8"
             logger.info(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
             
-            load_start = time.time()
-            self.model = _create_whisper_model(
-                self.config['model_size'],
-                device=device,
-                compute_type=compute_type,
-                cpu_threads=4,  # Use multiple CPU threads if on CPU
-                num_workers=2,  # Parallel workers for preprocessing
-                _on_download=lambda: self.update_splash(
-                    "Downloading the speech model...", 68,
-                    "A network connection is needed for this model",
-                ),
+            from samsara.model_load_feedback import load_speech_model
+            self.model, load_time = load_speech_model(
+                self.update_splash, _create_whisper_model, self.config['model_size'], device, compute_type
             )
-            load_time = time.time() - load_start
             
             # Store device info for logging
             self.device_type = device
@@ -3709,11 +3714,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self.loading_model = False
             logger.info(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
             _boot_log("async: Whisper model load (hotkey dictation ready)")
-            self.update_splash(
-                "Speech model ready...", 70,
-                f"Loaded on {device.upper()} in {load_time:.1f} seconds",
-            )
-
             logger.info("[INIT] Loading Silero VAD...")
             self.update_splash(
                 "Calibrating speech detection...", 76,
