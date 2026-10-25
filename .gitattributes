@@ -1,3 +1,17 @@
-# Icon generation compares SVG bytes; keep them identical on Windows checkouts.
+* text=auto
+
+# Binary files present in this repository.
+*.ico binary
+*.jpg binary
+*.mp4 binary
+*.png binary
+*.wav binary
+
+# 879a icon gates compare SVG bytes; preserve LF on Windows checkouts.
 /assets/icon/samsara.svg text eol=lf
 /assets/brand/samsara-mark.svg text eol=lf
+
+# These golden fixtures carry source_sha256_lf fingerprints and are read verbatim.
+/tests/fixtures/session_corrections_pre_move.json text eol=lf
+/tests/fixtures/session_feedback_pre_move.json text eol=lf
+/tests/fixtures/session_text_pre_move.json text eol=lf
