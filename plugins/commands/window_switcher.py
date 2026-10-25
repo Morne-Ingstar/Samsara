@@ -157,12 +157,8 @@ def _parse_letters(text: str) -> list:
 def _parse_monitor_index(text: str):
     """Return a 1-based monitor index from text, or None."""
     t = text.lower()
-    if any(w in t for w in ('left', 'main', 'primary')):
-        return 1
-    if any(w in t for w in ('right',)):
-        return 2
-    if any(w in t for w in ('middle', 'center')):
-        return 3
+    # 820b: directions are never monitor identities. Main is resolved against
+    # native primary metadata by overview_monitor_target, not a spatial index.
     from samsara.spoken_numbers import spoken_number_matches
     return next((number for _start, _end, number in spoken_number_matches(t)), None)
 
@@ -1059,12 +1055,22 @@ def handle_read_windows(app, remainder):
     if not overview_active(app):
         if not _show_overview(app, remainder):
             return False
-    for chunk in overview_read_chunks(_overview_rows):
-        coordinator = getattr(app, "audio_coordinator", None)
-        if coordinator is not None:
-            coordinator.speak(chunk, category="ava_response", queue_mode="append")
-        else:
+    global _overview_reader
+    _cancel_overview_read()
+    chunks = overview_read_chunks(_overview_rows)
+    coordinator = getattr(app, 'audio_coordinator', None)
+    if coordinator is None:
+        # No audio runtime (e.g. headless callers): bounded text-only fallback.
+        for chunk in chunks:
             _speak(app, chunk)
+        return True
+    from samsara.window_overview_flow import ReadSequence
+    reader = ReadSequence(coordinator,
+        [(row['number'], chunk) for row, chunk in zip(_overview_rows, chunks)],
+        lambda number: _overview_panel().focus_reading(number)
+            if _overview_reader is reader else None)
+    _overview_reader = reader
+    reader.start()
     return True
 
 
@@ -1102,6 +1108,7 @@ _overview_app = None
 _overview_visible = False
 _overview_keep = False
 _overview_pending_close = None
+_overview_reader = None
 
 
 def overview_active(app=None):
@@ -1128,15 +1135,41 @@ def order_overview_windows(windows, monitors, monitor_for_window):
 
 
 def overview_read_chunks(rows):
-    from collections import Counter
-    counts = Counter(row['app'].casefold() for row in rows)
-    if not rows:
-        return ["No windows found."]
-    chunks = [f"{len(rows)} window{'s' if len(rows) != 1 else ''}."]
+    chunks = []
     for row in rows:
-        detail = f" - {row['short_title']}" if counts[row['app'].casefold()] > 1 else ""
-        chunks.append(f"{row['number']}: {row['app']}{detail}.")
+        app_name = re.sub(r'^(?:Google|Microsoft)\s+', '', row['app'], flags=re.I)
+        chunks.append(f"{row['number']}, {app_name}")
     return chunks
+
+
+def _cancel_overview_read():
+    global _overview_reader
+    reader, _overview_reader = _overview_reader, None
+    if reader is not None:
+        reader.cancel()
+        _overview_panel().focus_reading(None)
+
+
+def overview_command_input(app, text, *, replies=False):
+    """Dispatcher seam: interrupt readback before any new command or reply."""
+    global _overview_pending_close
+    if not overview_active(app):
+        return False
+    _cancel_overview_read()
+    normalized = ' '.join(str(text or '').lower().strip(' .!?').split())
+    if _overview_pending_close:
+        if normalized in {'yes', 'confirm', 'confirm close'}:
+            if replies:
+                overview_action(app, 0, 'confirm close')
+                return True
+            return False
+        _overview_pending_close = None
+        _overview_panel().confirmation('')
+        if replies and normalized in {'no', 'cancel'}:
+            return True
+    if replies and normalized == 'stop':
+        return True
+    return False
 
 
 def _overview_panel():
@@ -1164,6 +1197,7 @@ def _overview_closed():
     global _overview_visible, _overview_pending_close
     _overview_visible = False
     _overview_pending_close = None
+    _cancel_overview_read()
 
 
 def _hide_overview():
@@ -1177,6 +1211,7 @@ def _show_overview(app, remainder=""):
     global _overview_rows, _overview_app, _overview_visible, _overview_keep
     global _overview_pending_close, _mapping
     from plugins.commands import windows as mover, window_cube as cube
+    _cancel_overview_read()
     started = time.perf_counter()
     windows = _get_all_windows(_own_hwnd(app))
     monitors = mover.get_monitors()
@@ -1231,6 +1266,14 @@ def parse_overview_action(text):
     if text.startswith('close '):
         number = parse_spoken_number(text[6:])
         return (number, 'close', keep) if number and number > 0 else None
+    target = re.fullmatch(r'(.+?) (to|(?:left|right|top left|top right|bottom left|bottom right|maximize) on) (.+)', text)
+    if target:
+        number = parse_spoken_number(target[1])
+        monitor = target[3]
+        if (number and number > 0 and
+                (parse_spoken_number(monitor) or monitor in {'main', 'primary'})):
+            return number, f'{target[2]} {monitor}', keep
+        return None
     for action in sorted(_OVERVIEW_ACTIONS - {'close', 'go'}, key=len, reverse=True):
         if text.endswith(' ' + action):
             number = parse_spoken_number(text[:-len(action)].strip())
@@ -1252,6 +1295,8 @@ def overview_action(app, number, action='go', keep=None):
     global _overview_pending_close, _overview_keep
     if not overview_active(app):
         return False
+    started = time.perf_counter()
+    _cancel_overview_read()
     if keep is not None:
         _overview_keep = keep
         _overview_panel().keep_open(keep)
@@ -1265,6 +1310,7 @@ def overview_action(app, number, action='go', keep=None):
             _speak(app, "Close confirmation expired. Say close and the window number again.")
             return True
         number, action = pending[0], 'confirmed close'
+        _overview_panel().confirmation('')
     else:
         _overview_pending_close = None
         _overview_panel().confirmation("")
@@ -1274,9 +1320,19 @@ def overview_action(app, number, action='go', keep=None):
         return True
     if action == 'close':
         _overview_pending_close = (number, time.monotonic() + 15)
-        text = f"Close {number}: {row['app']}? Say confirm close or cancel."
+        # PLACEHOLDER COPY (820b)
+        text = f"Close {number}: {row['app']}? Say yes or cancel."
         _overview_panel().confirmation(text)
-        _speak(app, text)
+        coordinator = getattr(app, 'audio_coordinator', None)
+        if coordinator is not None:
+            coordinator.cancel_speech()  # do not append behind an old readback
+            handle = coordinator.speak('Confirm', category='confirmation', queue_mode='append')
+            from samsara.window_overview_flow import observe_audio_start
+            observe_audio_start(handle, started)
+        else:
+            _speak(app, 'Confirm')
+        logger.info('Overview close prompt submitted: elapsed_ms=%.1f',
+                    (time.perf_counter() - started) * 1000)
         return True
     from plugins.commands import windows as mover
     import win32gui
@@ -1285,15 +1341,37 @@ def overview_action(app, number, action='go', keep=None):
     ready = lambda: _overview_is_live(row)
     success = True
     try:
+        target = None
+        explicit = re.fullmatch(r'(to|(.+) on) (.+)', action)
+        if explicit:
+            monitors = mover.get_monitors()
+            target = overview_monitor_target(explicit[3], monitors)
+            if target is None:
+                _speak(app, 'No matching monitor is available.')  # PLACEHOLDER COPY (820b)
+                return True
+            action = explicit[2] or 'to monitor'
         if action == 'go':
             success = _force_focus(hwnd)
         elif action in {'left', 'right', 'top left', 'top right', 'bottom left', 'bottom right'}:
-            success = mover.snap_window(hwnd, action, preflight=ready)
+            # Capture MonitorFromWindow before snap_window restores the window;
+            # its restored rectangle may belong to a different monitor.
+            target = target or _overview_monitor(hwnd, mover.get_monitors())
+            success = bool(target) and mover.snap_window(hwnd, action, preflight=ready,
+                                                        target_monitor=target)
         elif action in {'maximize', 'minimize'}:
+            if target is not None:
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                if not ready() or not mover.move_window_to_monitor(hwnd, target, preflight=ready):
+                    return True
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE if action == 'maximize' else win32con.SW_MINIMIZE)
+        elif action == 'to monitor':
+            if not ready():
+                return True
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            success = mover.move_window_to_monitor(hwnd, target, preflight=ready)
         elif action == 'next monitor':
             monitors = mover.get_monitors()
-            current = mover._get_monitor_for_window(hwnd, monitors)
+            current = _overview_monitor(hwnd, monitors)
             if len(monitors) < 2 or current not in monitors:
                 _speak(app, "No next monitor is available.")
                 return True
@@ -1315,6 +1393,19 @@ def overview_action(app, number, action='go', keep=None):
     if not _overview_keep:
         _hide_overview()
     return True
+
+
+def overview_monitor_target(text, monitors):
+    """An explicit on/to target; numeric identity follows Windows DISPLAYn."""
+    if text in {'main', 'primary'}:
+        return next((m for m in monitors if m.get('primary')), None)
+    index = _parse_monitor_index(text)
+    for monitor in monitors:
+        display = re.search(r'(\d+)$', monitor.get('device', ''))
+        number = int(display[1]) if display else monitor.get('index')
+        if number == index:
+            return monitor
+    return None
 
 
 def handle_overview_number(app, value, remainder=""):
@@ -1354,6 +1445,9 @@ def handle_confirm_overview_close(app, remainder):
     return overview_action(app, 0, 'confirm close') if not remainder else False
 
 
+handle_confirm_overview_close.handles_own_confirmation = True
+
+
 @command("keep it open", pack="window-management", risk_class="ui",
          scope={"tags": ["window_overview.visible"]})
 def handle_keep_overview_open(app, remainder):
@@ -1390,6 +1484,7 @@ def _register_overview_numbers():
             return overview_action(app, value, 'close')
         close.__name__ = close.__qualname__ = f'handle_overview_close_{number}'
         close.__doc__ = f'Asks before closing window {number} in the overview.'
+        close.handles_own_confirmation = True
         command(f'close {number}', aliases=[f'close {word}'], pack='window-management',
                 risk_class='destructive', ai_visible=False,
                 scope={'tags': ['window_overview.visible']})(close)

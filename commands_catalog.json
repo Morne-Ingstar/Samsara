@@ -14587,7 +14587,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14612,7 +14612,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14637,7 +14637,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14662,7 +14662,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14687,7 +14687,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14712,7 +14712,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14737,7 +14737,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14762,7 +14762,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14787,7 +14787,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14812,7 +14812,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14837,7 +14837,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14862,7 +14862,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14887,7 +14887,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14912,7 +14912,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14937,7 +14937,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14962,7 +14962,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -14987,7 +14987,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15012,7 +15012,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15037,7 +15037,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15062,7 +15062,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15087,7 +15087,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15112,7 +15112,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15137,7 +15137,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15162,7 +15162,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15187,7 +15187,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15212,7 +15212,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15237,7 +15237,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15262,7 +15262,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15287,7 +15287,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15312,7 +15312,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15337,7 +15337,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15362,7 +15362,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15387,7 +15387,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15412,7 +15412,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15437,7 +15437,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15462,7 +15462,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15487,7 +15487,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15512,7 +15512,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15537,7 +15537,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15562,7 +15562,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15587,7 +15587,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15612,7 +15612,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15637,7 +15637,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15662,7 +15662,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15687,7 +15687,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15712,7 +15712,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15737,7 +15737,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15762,7 +15762,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15787,7 +15787,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15812,7 +15812,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15837,7 +15837,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15862,7 +15862,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15887,7 +15887,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15912,7 +15912,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15937,7 +15937,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15962,7 +15962,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -15987,7 +15987,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16012,7 +16012,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16037,7 +16037,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16062,7 +16062,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16087,7 +16087,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16112,7 +16112,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16137,7 +16137,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16162,7 +16162,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16187,7 +16187,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16212,7 +16212,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16237,7 +16237,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16262,7 +16262,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16287,7 +16287,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16312,7 +16312,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16337,7 +16337,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16362,7 +16362,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16387,7 +16387,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16412,7 +16412,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16437,7 +16437,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16462,7 +16462,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16487,7 +16487,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16512,7 +16512,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16537,7 +16537,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16562,7 +16562,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16587,7 +16587,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16612,7 +16612,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16637,7 +16637,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16662,7 +16662,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16687,7 +16687,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16712,7 +16712,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16737,7 +16737,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16762,7 +16762,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16787,7 +16787,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16812,7 +16812,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16837,7 +16837,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16862,7 +16862,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16887,7 +16887,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16912,7 +16912,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16937,7 +16937,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16962,7 +16962,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -16987,7 +16987,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -17012,7 +17012,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -17037,7 +17037,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1387",
+      "source": "plugins/commands/window_switcher.py:1481",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -17061,7 +17061,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1348",
+      "source": "plugins/commands/window_switcher.py:1439",
       "undoable": false,
       "verb": "confirm",
       "whole_utterance": false
@@ -17082,7 +17082,7 @@
       "plugin": "window_switcher",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:1030",
+      "source": "plugins/commands/window_switcher.py:1026",
       "undoable": true,
       "verb": "hide",
       "whole_utterance": false
@@ -17106,7 +17106,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1357",
+      "source": "plugins/commands/window_switcher.py:1451",
       "undoable": true,
       "verb": "keep",
       "whole_utterance": false
@@ -17138,7 +17138,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1332",
+      "source": "plugins/commands/window_switcher.py:1423",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -17169,7 +17169,7 @@
       "plugin": "window_switcher",
       "precondition": "Shows the window overview and reads its numbered app names.",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:1050",
+      "source": "plugins/commands/window_switcher.py:1046",
       "undoable": true,
       "verb": "read",
       "whole_utterance": false
@@ -17201,7 +17201,7 @@
       "plugin": "window_switcher",
       "precondition": "Opens the window overview on the pointer's monitor.",
       "risk": "read",
-      "source": "plugins/commands/window_switcher.py:698",
+      "source": "plugins/commands/window_switcher.py:694",
       "undoable": true,
       "verb": "show",
       "whole_utterance": false
@@ -17230,7 +17230,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list. Brings that window to the front.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:740",
+      "source": "plugins/commands/window_switcher.py:736",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17257,7 +17257,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list. The app may ask you to save.",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:875",
+      "source": "plugins/commands/window_switcher.py:871",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -17286,7 +17286,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Select text in A and put the caret in B. Copies the selection from A into B.",
       "risk": "write",
-      "source": "plugins/commands/window_switcher.py:908",
+      "source": "plugins/commands/window_switcher.py:904",
       "undoable": false,
       "verb": "window",
       "whole_utterance": false
@@ -17323,7 +17323,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17360,7 +17360,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17397,7 +17397,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17434,7 +17434,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17471,7 +17471,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17508,7 +17508,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17545,7 +17545,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17582,7 +17582,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17619,7 +17619,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17656,7 +17656,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17693,7 +17693,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17730,7 +17730,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17767,7 +17767,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17804,7 +17804,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17841,7 +17841,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17878,7 +17878,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17915,7 +17915,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17952,7 +17952,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17989,7 +17989,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18026,7 +18026,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18063,7 +18063,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18100,7 +18100,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18137,7 +18137,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18174,7 +18174,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18211,7 +18211,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18248,7 +18248,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18285,7 +18285,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18322,7 +18322,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18359,7 +18359,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18396,7 +18396,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18433,7 +18433,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18470,7 +18470,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18507,7 +18507,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18544,7 +18544,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18577,7 +18577,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list and an existing monitor number.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:768",
+      "source": "plugins/commands/window_switcher.py:764",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18605,7 +18605,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:822",
+      "source": "plugins/commands/window_switcher.py:818",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18642,7 +18642,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18679,7 +18679,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18716,7 +18716,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18753,7 +18753,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18790,7 +18790,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18827,7 +18827,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18864,7 +18864,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18901,7 +18901,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18938,7 +18938,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -18975,7 +18975,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19012,7 +19012,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19049,7 +19049,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19086,7 +19086,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19123,7 +19123,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19160,7 +19160,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19197,7 +19197,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19234,7 +19234,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19271,7 +19271,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19308,7 +19308,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19345,7 +19345,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19382,7 +19382,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19419,7 +19419,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19456,7 +19456,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19493,7 +19493,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19530,7 +19530,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19567,7 +19567,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19604,7 +19604,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19641,7 +19641,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19678,7 +19678,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19715,7 +19715,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19752,7 +19752,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19789,7 +19789,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19826,7 +19826,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19856,7 +19856,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:711",
+      "source": "plugins/commands/window_switcher.py:707",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19893,7 +19893,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19930,7 +19930,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -19967,7 +19967,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20004,7 +20004,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20041,7 +20041,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20078,7 +20078,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20115,7 +20115,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20152,7 +20152,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20189,7 +20189,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20226,7 +20226,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20263,7 +20263,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20300,7 +20300,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20328,7 +20328,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use letters from that list. Places those windows side by side on the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:965",
+      "source": "plugins/commands/window_switcher.py:961",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20365,7 +20365,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20402,7 +20402,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20439,7 +20439,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20476,7 +20476,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20513,7 +20513,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20550,7 +20550,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20587,7 +20587,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20624,7 +20624,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20661,7 +20661,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20698,7 +20698,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20735,7 +20735,7 @@
           "window_overview.visible"
         ]
       },
-      "source": "plugins/commands/window_switcher.py:1399",
+      "source": "plugins/commands/window_switcher.py:1494",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -20763,7 +20763,7 @@
       "plugin": "window_switcher",
       "precondition": "First say show windows. Use a letter from that list.",
       "risk": "ui",
-      "source": "plugins/commands/window_switcher.py:847",
+      "source": "plugins/commands/window_switcher.py:843",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false

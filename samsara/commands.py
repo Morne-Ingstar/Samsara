@@ -537,6 +537,8 @@ class CommandExecutor:
         cid = (command_id or "").strip().lower()
         entry = self._registry_entry(cid)
         canonical = entry.phrase if entry is not None else cid
+        from samsara.window_overview_flow import before_command
+        before_command(effective_app, source_text or canonical)
         builtin = self.commands.get(canonical)
         if generation is None and route is Route.EXACT and not confirmed:
             # A direct exact invocation (cheat sheet, settings Test, a spoken
@@ -720,6 +722,9 @@ class CommandExecutor:
             return DispatchResult.miss(None)
 
         effective_app = app_instance if app_instance is not None else self._app
+        from samsara.window_overview_flow import before_command
+        if before_command(effective_app, text, replies=True):
+            return DispatchResult(DispatchState.COMPLETED, 'window overview reply', 'window overview reply')
         # 818: a local teaching reply outranks yes/no commands on every key.
         question = getattr(effective_app, '_ava_question', None)
         if question is not None and question.kind == 'teaching':

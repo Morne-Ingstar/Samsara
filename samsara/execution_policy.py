@@ -989,7 +989,12 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         return a
 
     # 6. The policy table.
-    if risk in (RISK_READ, RISK_UI):
+    handler = (_plugin_entry(cid) or {}).get('func')
+    # 820b: exact user commands may own a local confirmation; all earlier
+    # generation/argument/pack/scope checks and all model-route gates remain.
+    if inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True:
+        a = Allowed('handler_confirmation', risk=risk)
+    elif risk in (RISK_READ, RISK_UI):
         a = Allowed("low_risk", risk=risk)
     elif risk == RISK_UNKNOWN and inv.route == Route.EXACT and cid in _SAFE_UNKNOWN_VERBS:
         a = Allowed("known_safe_verb", risk=_SAFE_UNKNOWN_VERBS[cid], hint="unknown metadata; known ui verb")

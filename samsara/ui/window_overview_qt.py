@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, QTimer, QPoint, QRect, QSize
 from PySide6.QtGui import QCursor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                                QGridLayout, QLabel, QPushButton, QScrollArea,
-                               QCheckBox, QStyle)
+                               QCheckBox, QStyle, QSizePolicy)
 
 from samsara.ui import theme, qt_runtime
 
@@ -105,6 +105,7 @@ class OverviewWindow(QWidget):
         self._thumbnails = thumbnails if thumbnails is not None else DwmThumbnails()
         self.destroyed.connect(self._thumbnails.close)
         self._previews = []
+        self._tiles = {}
         self._closing = False
         # Match the shared large-text convention, independently of OS DPI scaling.
         points = QApplication.font().pointSizeF()
@@ -116,6 +117,7 @@ class OverviewWindow(QWidget):
             " border-radius: 6px; padding: 4px; }"
             f"QPushButton:hover {{ background: {theme.BG1}; }}"
             f"QWidget#overviewTile {{ border: 1px solid {theme.BORDER}; border-radius: 8px; }}"
+            'QWidget#overviewTile[reading="true"] { border: 2px solid #F0F2F5; background: #1F242D; }'
         )
         root = QVBoxLayout(self)
         heading = QHBoxLayout()
@@ -142,11 +144,12 @@ class OverviewWindow(QWidget):
         self.status.setFont(self.font())
         self.status.setWordWrap(True)
         self.confirm = QPushButton("Confirm close")
+        self.confirm.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.confirm.setFont(self.font())
         self.confirm.hide()
         self.confirm.clicked.connect(lambda: self._action(0, "confirm close", self.keep.isChecked()))
         root.addWidget(self.status)
-        root.addWidget(self.confirm)
+        root.addWidget(self.confirm, alignment=Qt.AlignmentFlag.AlignLeft)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setAccessibleName("Open windows and layout controls")
@@ -180,6 +183,8 @@ class OverviewWindow(QWidget):
     def _tile(self, row):
         tile = QWidget()
         tile.setObjectName("overviewTile")
+        tile.setProperty('reading', False)
+        self._tiles[row['number']] = tile
         layout = QVBoxLayout(tile)
         title = QLabel()
         _plain(title, f"{row['number']}  {row['app']}")
@@ -264,6 +269,15 @@ class OverviewWindow(QWidget):
         _plain(self.status, text)
         self.confirm.setVisible(bool(text))
 
+    def focus_reading(self, number):
+        for value, tile in self._tiles.items():
+            tile.setProperty('reading', value == number)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+            tile.update()
+        if number in self._tiles:
+            self.scroll.ensureWidgetVisible(self._tiles[number])
+
     def hideEvent(self, event):
         self._thumbnails.close()
         super().hideEvent(event)
@@ -311,9 +325,17 @@ class OverviewPanel:
         qt_runtime.post(hide)
 
     def confirmation(self, text):
+        generation = self._generation
         def update():
-            if self.window:
+            if self.window and generation == self._generation:
                 self.window.show_confirmation(text)
+        qt_runtime.post(update)
+
+    def focus_reading(self, number):
+        generation = self._generation
+        def update():
+            if self.window and generation == self._generation:
+                self.window.focus_reading(number)
         qt_runtime.post(update)
 
     def keep_open(self, checked):

@@ -104,7 +104,7 @@ def test_choose_is_scoped(matcher):
 def test_list_then_choose_uses_frozen_hwnd(app, overview_windows):
     assert ws.handle_read_windows(app, '')
     # 820: separate short utterances share the displayed frozen numbering.
-    assert app.spoken == ['2 windows.', '1: Editor.', '2: Browser.']
+    assert app.spoken == ['1, Editor', '2, Browser']  # 820b: names only, no count/title
     assert [row['hwnd'] for row in ws._overview_panel().show.call_args.args[0]] == [11, 22]
     overview_windows.reverse()
     assert cube.handle_choose(app, 'two')

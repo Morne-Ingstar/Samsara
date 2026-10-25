@@ -32,12 +32,23 @@ def overview(monkeypatch):
     monkeypatch.setattr(ws, '_overview_visible', True)
     monkeypatch.setattr(ws, '_overview_keep', False)
     monkeypatch.setattr(ws, '_overview_pending_close', None)
+    monkeypatch.setattr(ws, '_overview_reader', None)
+    # 820b: speech now advances on completion, with one producer and no sleeps.
+    from samsara.window_overview_flow import ReadSequence
+    monkeypatch.setattr('samsara.window_overview_flow.observe_audio_start', Mock())
+    monkeypatch.setattr(ReadSequence, 'start', lambda self: self.run())
+    monkeypatch.setattr(ReadSequence, '_pause', lambda self, seconds: False)
+    app.audio_coordinator.speak.side_effect = lambda text, **kw: (
+        kw.get('on_done', lambda: None)() or SimpleNamespace(utterance_id='fake'))
     monkeypatch.setattr(ws, '_overview_panel', lambda: panel)
     monkeypatch.setattr(ws, '_overview_is_live', lambda row: True)
     monkeypatch.setattr(ws, '_speak', Mock())
     monkeypatch.setattr(ws, '_force_focus', Mock(return_value=True))
     monkeypatch.setattr(mover, 'snap_window', Mock(return_value=True))
     monkeypatch.setattr(mover, 'move_window_to_monitor', Mock(return_value=True))
+    monitor = dict(index=1, primary=True, rect=(0, 0, 1920, 1080))
+    monkeypatch.setattr(mover, 'get_monitors', lambda: [monitor])
+    monkeypatch.setattr(ws, '_overview_monitor', lambda hwnd, monitors: monitors[0] if monitors else None)
     import win32gui
     monkeypatch.setattr(win32gui, 'ShowWindow', Mock())
     monkeypatch.setattr(win32gui, 'PostMessage', Mock())
@@ -217,7 +228,7 @@ def test_close_requires_confirmation_revalidates_and_expires(overview, monkeypat
     app, _, panel = overview
     assert ws.overview_action(app, 2, 'close')
     win32gui.PostMessage.assert_not_called()
-    assert 'confirm close' in panel.confirmation.call_args.args[0]
+    assert 'Say yes or cancel' in panel.confirmation.call_args.args[0]  # 820b: one panel prompt
     assert ws.handle_confirm_overview_close(app, '')
     win32gui.PostMessage.assert_called_once_with(102, 0x0010, 0, 0)
     assert not ws.overview_active()
@@ -255,8 +266,7 @@ def test_read_chunks_duplicates_only_and_full_title_opt_in(overview):
     app, rows, _ = overview
     assert ws.handle_read_windows(app, '')
     chunks = [call.args[0] for call in app.audio_coordinator.speak.call_args_list]
-    assert chunks == ['3 windows.', '1: Brave - Private full browser title.',
-                      '2: File Explorer.', '3: Brave - YouTube.']
+    assert chunks == ['1, Brave', '2, File Explorer', '3, Brave']  # 820b: names only
     assert rows[1]['title'] not in ' '.join(chunks)
     assert rows[0]['title'] not in ' '.join(chunks)
     assert all(call.kwargs['queue_mode'] == 'append'
