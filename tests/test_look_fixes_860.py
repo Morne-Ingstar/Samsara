@@ -1,5 +1,6 @@
 """860: rendered backgrounds in the shared theme, rather than QSS string checks."""
 from types import SimpleNamespace
+import re
 
 import pytest
 from PySide6.QtCore import QPoint
@@ -69,6 +70,13 @@ def test_tab_remainder_matches_page_and_tabs_have_outlines(host, qapp):
 
 def test_memo_arrows_have_no_inner_square(host, qapp, tmp_path):
     page = MemosPage(host[1], home=tmp_path)
+    # 862: keep the borderless subcontrol, but require a real shared arrow.
+    sheet = page.styleSheet()
+    drop_down = re.search(r"QComboBox::drop-down\s*\{([^}]+)\}", sheet).group(1)
+    down_arrow = re.search(r"QComboBox::down-arrow\s*\{([^}]+)\}", sheet).group(1)
+    assert "border: none" in drop_down
+    assert "background: transparent" in drop_down
+    assert f"image: url({theme.ARROW_PATH})" in down_arrow
     mount(host, page, qapp)
     page._editor_pane.show()
     qapp.processEvents()
@@ -82,6 +90,15 @@ def test_memo_arrows_have_no_inner_square(host, qapp, tmp_path):
         # now be uninterrupted control fill. Avoid the outer rounded border.
         assert image.pixelColor(arrow.left()+2, 3) == theme.qcolor(theme.BG2)
         assert image.pixelColor(arrow.left()+2, combo.height()//2) == theme.qcolor(theme.BG2)
+        # Only the arrow can paint this reserved area; a missing/unloadable
+        # image used to pass the uninterrupted-fill checks above.
+        ink = [(x, y) for x in range(arrow.left()+4, arrow.right()-4)
+               for y in range(4, combo.height()-4)
+               if image.pixelColor(x, y) != theme.qcolor(theme.BG2)]
+        assert len(ink) >= 12
+        assert max(y for _, y in ink) - min(y for _, y in ink) <= 8
+        assert abs((min(y for _, y in ink) + max(y for _, y in ink))/2
+                   - (combo.height()-1)/2) <= 2
 
 
 def test_caption_sections_share_card_background(host, qapp):
