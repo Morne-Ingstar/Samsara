@@ -1313,7 +1313,7 @@ class SamsaraTrayQt(QObject):
                     f"Mouse hotkey disabled: {mouse_status.get('reason', '')}"[:90]
                 )
                 info.setEnabled(False)
-            if (mouse_status.get("state") in ("active", "disabled")
+            if (mouse_status.get("state") == "disabled"
                     and hasattr(app, "reenable_mouse_hotkey")):
                 add(menu, "Re-enable mouse hotkey", lambda: app.reenable_mouse_hotkey())
             if getattr(app, "_mouse_hook", None) is not None and hasattr(app, "release_mouse_buttons"):

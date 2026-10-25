@@ -391,7 +391,7 @@ class TestWatchdog:
 
         def _fake_start():
             restarts.append('start')
-            hook._hook_id = None                       # ...and it is lost again every time
+            hook._hook_id = 999  # 867: installation and subsequent hook loss are separate.
 
         hook._start_hook_thread = _fake_start
         hook._stop_hook_thread = MagicMock()
@@ -409,12 +409,14 @@ class TestWatchdog:
         hook, restarts = self._lost_hook(on_failed=failed.append)
         with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
             for _ in range(4):
+                hook._hook_id = None  # 867: simulate four distinct losses, not install failures.
                 hook.watchdog_tick()
         assert restarts == ['start'] * 3
-        assert hook.gave_up and hook.suppress_buttons == frozenset()
-        assert len(failed) == 1 and "lost 4 times" in failed[0]
-        assert hook._stopping.is_set()
-        hook.watchdog_tick()                           # given up: no further reinstalls
+        # 867: budget exhaustion backs off; it never ends the dispatcher.
+        assert not hook.gave_up and hook.suppress_buttons == frozenset()
+        assert len(failed) == 1 and "hook handle cleared" in failed[0]
+        assert not hook._stopping.is_set() and hook._retry_due is not None
+        hook.watchdog_tick()                           # still waiting for the retry
         assert restarts == ['start'] * 3
 
     def test_reinstalls_older_than_a_minute_do_not_count(self, monkeypatch):
@@ -422,8 +424,10 @@ class TestWatchdog:
         now = [1000.0]
         monkeypatch.setattr(mh, '_perf', lambda: now[0])
         for _ in range(3):
+            hook._hook_id = None  # 867: each watchdog call represents a new loss.
             hook.watchdog_tick()
         now[0] += mh.REINSTALL_WINDOW_S + 1
+        hook._hook_id = None
         hook.watchdog_tick()
         assert restarts == ['start'] * 4 and not hook.gave_up
 
@@ -504,6 +508,7 @@ class TestLivenessDetector:
 
         hook._start_hook_thread = _fake_start
         hook._stop_hook_thread = MagicMock()
+        monkeypatch.setattr(hook, '_pump_responsive', lambda: True)  # 867: responsive pump, missing hook.
         return hook, clock, probes, restarts
 
     def _run(self, hook, clock, seconds, traffic_per_tick=0, step=mh.WATCHDOG_INTERVAL_S):
@@ -559,10 +564,11 @@ class TestLivenessDetector:
             self._run(hook, clock, 30.0)
         assert len(restarts) == 3
         assert all(b - a >= 3.0 for a, b in zip(restarts, restarts[1:]))   # the sustained window each time
-        assert hook.gave_up and hook.suppress_buttons == frozenset()
+        # 867: a dead hook backs off with suppression off, without giving up.
+        assert not hook.gave_up and hook.suppress_buttons == frozenset()
         hook.on_hook_failed.assert_called_once()
         assert "missed its own injected self-test" in hook.on_hook_failed.call_args.args[0]
-        assert "reinstalling (1/3" in caplog.text and "giving up" in caplog.text
+        assert "reinstalling (1/3" in caplog.text and "retry in 30s" in caplog.text
 
     def test_stationary_cursor_is_never_evidence(self, monkeypatch):
         hook, clock, probes, restarts = self._hook(monkeypatch, probe='dead', cursor=lambda: (10, 10))
@@ -986,7 +992,8 @@ class TestTrayMouseHotkeyItems:
     def test_active_offers_reenable_and_release(self, qapp):
         app = self._app({'state': 'active', 'reason': ''}, object())
         _tray, texts = self._menu(app)
-        assert "Re-enable mouse hotkey" in texts and "Release mouse buttons" in texts
+        # 867: retry is offered only for a disabled hook.
+        assert "Re-enable mouse hotkey" not in texts and "Release mouse buttons" in texts
         assert not any(t.startswith("Mouse hotkey disabled") for t in texts)
 
     def test_no_mouse_binding_shows_nothing(self, qapp):

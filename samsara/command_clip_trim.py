@@ -3,6 +3,7 @@
 Only measured speech and the capture's actual earcon endpoint locate the trim.
 Unknown VAD evidence leaves PCM intact. No recognizer thresholds are relaxed.
 """
+from contextvars import ContextVar
 from dataclasses import dataclass
 import logging
 from math import ceil
@@ -21,12 +22,27 @@ MAX_GAIN = 4.0
 FRAME = 512
 RATE = 16000
 logger = logging.getLogger('Samsara')
+_param_ownership = ContextVar('hotkey_param_ownership', default=None)
 
 
 def build_params(app, *, is_command=None):
-    """Resolve parameters from immutable ownership when release has cleared flags."""
+    """Honor the app's parameter builder using this capture's ownership.
+
+    The existing builder takes no arguments and delegates back here. Scope
+    ownership to that call, without rewriting flags shared with newer captures.
+    """
+    if is_command is not None:
+        builder = getattr(app, '_build_hotkey_transcribe_params', None)
+        if callable(builder):
+            token = _param_ownership.set((app, is_command))
+            try:
+                return builder()
+            finally:
+                _param_ownership.reset(token)
     if is_command is None:
-        is_command = bool(getattr(app, 'command_mode_recording', False))
+        ownership = _param_ownership.get()
+        is_command = (ownership[1] if ownership is not None and ownership[0] is app
+                      else bool(getattr(app, 'command_mode_recording', False)))
     return build_hotkey_transcribe_params(
         app.get_transcription_params(include_vocabulary=is_command),
         command_mode_recording=is_command,

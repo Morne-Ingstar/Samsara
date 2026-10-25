@@ -20,9 +20,9 @@ on_button_event and runs the watchdog. The callback takes no Python-level
 lock and never logs; it bumps counters the dispatcher reports.
 
 Watchdog: a callback slower than SLOW_CALLBACK_MS is logged at WARNING. A hook
-whose thread died is reinstalled; a fourth loss inside REINSTALL_WINDOW_S
-stops suppression, unhooks and calls on_hook_failed so the app can fall back
-to the keyboard hotkey.
+whose thread died is reinstalled. Repeated losses back off without abandoning
+recovery. Suppression stays off until callbacks prove the new hook works;
+on_hook_failed reports one temporary interruption per episode.
 
 Liveness (35, 2026-09-13): every callback -- move, wheel, any button --
 counts. Cursor movement with ZERO callbacks is only a SUSPICION: pointers
@@ -66,6 +66,7 @@ WM_XBUTTONUP   = 0x020C
 XBUTTON1 = 0x0001   # Mouse 4
 XBUTTON2 = 0x0002   # Mouse 5
 WM_QUIT  = 0x0012
+WM_HOOK_PING = 0x8000 + 867
 LLMHF_INJECTED = 0x0001   # MSLLHOOKSTRUCT.flags: event came from SendInput, not hardware
 
 #: Events waiting for the dispatcher beyond this drop the OLDEST.
@@ -73,9 +74,12 @@ QUEUE_BOUND = 32
 #: A hook callback slower than this is logged at WARNING (Windows removes a
 #: hook that exceeds LowLevelHooksTimeout, a few hundred ms by default).
 SLOW_CALLBACK_MS = 5.0
-#: Losses of the hook tolerated per window before giving up.
+#: Fast reinstalls per window, followed by bounded, persistent backoff.
 REINSTALL_LIMIT = 3
 REINSTALL_WINDOW_S = 60.0
+RETRY_BACKOFF_S = (30.0, 60.0, 120.0, 300.0)
+INSTALL_RETRY_S = 300.0
+HEALTHY_RESET_S = 60.0
 #: How often the dispatcher runs the watchdog.
 WATCHDOG_INTERVAL_S = 0.5
 #: Liveness is sampled this often: cursor position vs callbacks since the last check.
@@ -243,17 +247,31 @@ class MouseHook:
             accepted and coerced.
         suppress_button: legacy single-button spelling of suppress_buttons,
             used only when suppress_buttons is not given.
-        on_hook_failed: called as on_hook_failed(reason) on the dispatcher
-            thread after the hook was lost too often and has been released.
+        on_hook_failed: called once per interruption on the dispatcher thread.
+            Recovery continues until stop()/release().
+        on_hook_recovered: called on the dispatcher thread to clear fallback;
+            recovery is logged, without a user notification.
     """
 
     def __init__(self, on_button_event, suppress_buttons=None, *, suppress_button='mouse4',
-                 on_hook_failed=None):
+                 on_hook_failed=None, on_hook_recovered=None):
         self.on_button_event = on_button_event
         self.on_hook_failed = on_hook_failed
+        self.on_hook_recovered = on_hook_recovered
         self.suppress_buttons = _coerce_suppress_buttons(
             suppress_button if suppress_buttons is None else suppress_buttons
         )
+        self.requested_suppress_buttons = self.suppress_buttons
+        self.retries_automatically = sys.platform == 'win32'
+        self.recovering = False
+        self._retry_due = None
+        self._backoff_step = 0
+        self._episode_notified = False
+        self._healthy_since = None
+        self._recovery_count = 0
+        self._confirm_due = 0.0
+        self._pump_sequence = 0
+        self._pump_ack = 0
         self._hook_id = None
         self._thread = None
         self._thread_id = None
@@ -434,7 +452,8 @@ class MouseHook:
                 self._false_alarm_logged = True
             return ''
         if verdict == 'inconclusive':
-            logger.debug("[MOUSE HOOK] silent cursor movement; self-test could not inject (SendInput refused)")
+            logger.debug("[MOUSE HOOK] silent cursor movement; self-test inconclusive "
+                         "(injection refused or dispatcher/message pump delayed)")
             return ''
         return (f'no hook callbacks for {SILENT_CHECKS} checks of cursor movement and the hook missed '
                 f'its own injected self-test')
@@ -443,57 +462,131 @@ class MouseHook:
         """'alive' | 'dead' | 'inconclusive': inject a zero-motion move and wait
         for any callback to arrive."""
         before = self.callback_count
+        started = _perf()
         try:
             if not _send_zero_move():
                 return 'inconclusive'
         except Exception:
             return 'inconclusive'
-        deadline = _perf() + PROBE_WAIT_S
+        deadline = started + PROBE_WAIT_S
         while True:
             if self.callback_count != before:
                 return 'alive'
             if _perf() >= deadline:
-                return 'dead'
+                # A starved dispatcher or hook pump cannot deliver a timely
+                # probe. A missed injection alone is never evidence of loss.
+                if _perf() - started > PROBE_WAIT_S * 2 or not self._pump_responsive():
+                    return 'inconclusive'
+                return 'alive' if self.callback_count != before else 'dead'
             _sleep(0.01)
 
+    def _pump_responsive(self) -> bool:
+        """Measure a fresh round trip through the installing thread's pump."""
+        if self._thread_id is None:
+            return False
+        self._pump_sequence += 1
+        sequence = self._pump_sequence
+        started = _perf()
+        if not _user32.PostThreadMessageW(self._thread_id, WM_HOOK_PING, sequence, 0):
+            return False
+        while _perf() - started < PROBE_WAIT_S:
+            if self._pump_ack == sequence:
+                return True
+            _sleep(0.01)
+        return False
+
     def watchdog_tick(self) -> None:
-        """Report counters; reinstall a lost hook; give up after too many losses."""
+        """Report counters and keep retrying until explicitly stopped."""
         self._report_counters()
-        if self._stopping.is_set() or self.gave_up:
+        if self._stopping.is_set():
+            return
+        now = _perf()
+        if self.recovering:
+            self._begin_recovery(self.install_error or 'mouse hook interrupted')
+        if self.recovering and self.installed:
+            if self.callback_count != self._recovery_count:
+                self._recovered()
+            elif now >= self._confirm_due:
+                self._confirm_due = now + SILENT_CHECKS * LIVENESS_CHECK_S
+                verdict = self._self_test()
+                if verdict == 'alive':
+                    self._recovered()
+                elif verdict == 'dead':
+                    self._reinstall('replacement hook missed its own injected self-test')
+                return
+        elif self._healthy_since is not None and now - self._healthy_since >= HEALTHY_RESET_S:
+            self._episode_notified = False
+            self._backoff_step = 0
+            self._healthy_since = None
+        if self._retry_due is not None:
+            if now >= self._retry_due:
+                self._retry_due = None
+                self._attempt_install()
             return
         reason = self._hook_lost()
         if reason:
             self._reinstall(reason)
 
     def _reinstall(self, reason: str) -> None:
+        self._begin_recovery(reason)
+        self._stop_hook_thread()
+        if self._stopping.is_set():
+            return
         now = _perf()
         while self._reinstalls and now - self._reinstalls[0] > REINSTALL_WINDOW_S:
             self._reinstalls.popleft()
-        if len(self._reinstalls) >= REINSTALL_LIMIT:
-            self._give_up(f"{reason}; lost {REINSTALL_LIMIT + 1} times within {REINSTALL_WINDOW_S:.0f}s")
+        if len(self._reinstalls) >= REINSTALL_LIMIT or self._backoff_step:
+            self._schedule_retry(reason)
             return
         self._reinstalls.append(now)
         logger.warning("[MOUSE HOOK] hook lost (%s) -- reinstalling (%d/%d this minute)",
                        reason, len(self._reinstalls), REINSTALL_LIMIT)
-        self._stop_hook_thread()
+        self._attempt_install()
+
+    def _attempt_install(self) -> None:
+        if self._stopping.is_set():
+            return
+        self._recovery_count = self.callback_count
         self._start_hook_thread()
         self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
         self._live_due = 0.0
+        self._confirm_due = _perf() + SILENT_CHECKS * LIVENESS_CHECK_S
         if not self.installed:
             logger.error(f"[MOUSE HOOK] reinstall failed: {self.install_error or 'unknown reason'}")
+            self._schedule_retry(self.install_error or 'hook thread not ready', install_failed=True)
 
-    def _give_up(self, reason: str) -> None:
-        self.gave_up = True
-        self.suppress_buttons = frozenset()      # stop suppressing before anything else
-        logger.error(f"[MOUSE HOOK] giving up: {reason}. Suppression off, hook released.")
-        self._stopping.set()
-        self._stop_hook_thread()
-        _live_hooks.discard(self)
-        if self.on_hook_failed is not None:
+    def _schedule_retry(self, reason: str, *, install_failed=False) -> None:
+        delay = (INSTALL_RETRY_S if install_failed else
+                 RETRY_BACKOFF_S[min(self._backoff_step, len(RETRY_BACKOFF_S) - 1)])
+        self._backoff_step += 1
+        self._retry_due = _perf() + delay
+        logger.warning("[MOUSE HOOK] %s; suppression off, retry in %.0fs", reason, delay)
+
+    def _begin_recovery(self, reason: str) -> None:
+        self.suppress_buttons = frozenset()  # first: never eat a click while unhealthy
+        self.recovering = True
+        self._healthy_since = None
+        if not self._episode_notified and self.on_hook_failed is not None:
+            self._episode_notified = True
             try:
                 self.on_hook_failed(reason)
             except Exception as e:
                 logger.exception(f"[MOUSE HOOK] on_hook_failed raised: {e}")
+
+    def _recovered(self) -> None:
+        if self._stopping.is_set():
+            return
+        self.recovering = False
+        self._retry_due = None
+        self.install_error = ''
+        self.suppress_buttons = self.requested_suppress_buttons
+        self._healthy_since = _perf()
+        logger.info("[MOUSE HOOK] recovered; suppression restored")
+        if self.on_hook_recovered is not None:
+            try:
+                self.on_hook_recovered()
+            except Exception:
+                logger.exception("[MOUSE HOOK] recovery callback raised")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -509,7 +602,19 @@ class MouseHook:
             self._events = queue.SimpleQueue()   # no stale _STOP from a previous stop()
         self._stopping.clear()
         self.gave_up = False
+        self.recovering = False
+        self._retry_due = None
+        self._backoff_step = 0
+        self._reinstalls.clear()
+        self._episode_notified = False
+        self._healthy_since = None
+        self._recovery_count = self.callback_count
+        self.suppress_buttons = self.requested_suppress_buttons
         self._start_hook_thread()
+        if not self.installed:
+            self.suppress_buttons = frozenset()
+            self.recovering = True
+            self._schedule_retry(self.install_error or 'hook thread not ready', install_failed=True)
         self._watch_due = _perf() + WATCHDOG_INTERVAL_S
         self._live_due = 0.0
         self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
@@ -518,6 +623,10 @@ class MouseHook:
         _live_hooks.add(self)
 
     def _start_hook_thread(self):
+        # A starved old thread may outlive the join timeout. Never overlap it
+        # with a replacement that its finally block could accidentally unhook.
+        if self._stopping.is_set() or (self._thread is not None and self._thread.is_alive()):
+            return
         self._ready.clear()
         self._thread = thread_registry.spawn('mouse-hook', self._run, daemon=True)
         self._ready.wait(timeout=2.0)
@@ -548,8 +657,13 @@ class MouseHook:
 
         msg = ctypes.wintypes.MSG()
         try:
+            if self._stopping.is_set():
+                return
             # GetMessageW blocks until a message arrives; WM_QUIT breaks the loop.
             while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == WM_HOOK_PING:
+                    self._pump_ack = int(msg.wParam)
+                    continue
                 _user32.TranslateMessage(ctypes.byref(msg))
                 _user32.DispatchMessageW(ctypes.byref(msg))
         finally:
@@ -579,11 +693,14 @@ class MouseHook:
             logger.warning("[MOUSE HOOK] hook thread did not unhook in %.1fs; unhooking from %s",
                            timeout, threading.current_thread().name)
             self._unhook(f"fallback thread {threading.current_thread().name!r}")
-        self._thread_id = None
+        if thread is None or not thread.is_alive():
+            self._thread_id = None
 
     def stop(self):
         """Uninstall the hook, end its message loop and stop the dispatcher."""
         self._stopping.set()
+        self.suppress_buttons = frozenset()
+        self._retry_due = None
         _live_hooks.discard(self)
         self._stop_hook_thread()
         self._events.put(_STOP)
