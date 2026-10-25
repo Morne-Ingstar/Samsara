@@ -105,7 +105,8 @@ def test_spelled_teaching_routes_and_yes_saves_without_ai(rig, phrase, lane):
     assert rig.app._ava_question.opened
     assert rig.app._ava_question.deadline == 110.0  # 830: ten seconds after readback TTS.
     rig.app._ensure_wake_consumer.assert_called_with('ava_question')
-    assert rig.app.listening_indicator.show_outcome.call_args.args[0] == 'Say yes or no'
+    # 846: keep the spelling readback alongside the answer instruction.
+    assert rig.app.listening_indicator.show_outcome.call_args.args[0] == rig.spoken[0] + ' Say yes or no'
     ava.handle_ask_ava(rig.app, remainder='yes.')
     assert rig.store.custom_vocab == ['Morne']
     assert rig.app._ava_question is None

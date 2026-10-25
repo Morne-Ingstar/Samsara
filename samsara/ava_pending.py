@@ -78,6 +78,12 @@ def missed_capture(app, reason, *, question=None):
 
 
 def _feedback(app, label, question=None):
+    if question is not None and question.kind == "teaching":
+        from samsara.ui import ava_captions_qt as captions
+        label = question.text + " " + question.label
+        if captions.captions_enabled(getattr(app, "config", None)):
+            captions.show_caption(app, label, source="SAMSARA", hold=True,
+                                  minimum_hold_s=max(0, question.deadline - time.monotonic()))
     indicator = getattr(app, "listening_indicator", None)
     schedule = getattr(app, "_schedule_ui", None)
     if indicator is None or not callable(schedule):
@@ -97,6 +103,9 @@ def _clear(app, question, label=""):
     if getattr(app, "_ava_question", None) is not question:
         return
     app._ava_question = None
+    if question.kind == "teaching":
+        from samsara.ui import ava_captions_qt as captions
+        captions.release_caption(app)
     if question.timer:
         question.timer.cancel()
     if question.capture_owned:
@@ -205,6 +214,8 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
         q = Question(runner, kind, text, options, operation=operation,
                      deadline=time.monotonic() + 60, duration=duration, label=label)
         app._ava_question = q
+        if kind == "teaching":
+            _feedback(app, label, q)
         _tick(app, q)  # Also retires a question if speech is cancelled or AI is switched off.
         spoken = text + (" " + "; ".join(options) + "." if options else "")
         # The answer window starts after speech completes, including Silent mode.

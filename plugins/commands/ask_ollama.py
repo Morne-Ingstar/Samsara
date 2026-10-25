@@ -2671,10 +2671,10 @@ def _persist_correction(app, vt, wrong: str, right: str) -> None:
         from samsara.ui.dictionary_panel_qt import refresh_dictionary
         refresh_dictionary(app)
         added = f'{right} is already in your dictionary.' if duplicate else f'Added {right}.'
-        speak_as(app, f"{added} '{wrong}' will now come out as '{right}'.", source="SAMSARA")
+        _teach_notice(app, f"{added} '{wrong}' will now come out as '{right}'.")
     else:
         _teach_turn.outcome = 'failed to save'
-        speak_as(app, "Could not save that correction.", source="SAMSARA")
+        _teach_notice(app, "Could not save that correction.")
 
 
 def _grab_source_text(source_kind: str) -> "str | None":

@@ -466,12 +466,14 @@ def _post(fn) -> None:
     fn()
 
 
-def show_caption(app, text: str, *, source: str, hold: bool = True) -> None:
+def show_caption(app, text: str, *, source: str, hold: bool = True,
+                 minimum_hold_s: float = 0) -> None:
     """Show `text` with its explicit source. Safe from any thread.
 
     hold=True means speech is starting and the panel stays up until
     release_caption(); hold=False starts the linger immediately, which is the
     muted case, where there is no speech to wait for.
+    minimum_hold_s keeps a bounded question visible until its answer deadline.
     """
     text = str(text or "").strip()
     if not text:
@@ -481,6 +483,8 @@ def show_caption(app, text: str, *, source: str, hold: bool = True) -> None:
     def _run():
         try:
             _ensure_window(app).show_text(text, hold, linger, source)
+            if hold and minimum_hold_s:
+                _window._arm(max(linger + speech_allowance_s(text), minimum_hold_s))
         except Exception as exc:
             logger.warning("Ava captions: could not show a caption: %s", exc)
 
