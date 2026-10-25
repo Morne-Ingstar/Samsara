@@ -10824,7 +10824,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                             ), app=self)
                         except Exception as _diag_exc:
                             logger.debug(f"[DIAG] command-mode record failed: {describe_text(_diag_exc)}")
-
                         if stage_timing is not None:
                             stage_timing.mark("dispatch_start", words=len(text.split()))
                         dispatch = self.command_executor.process_text(text, self, force_commands=True,
@@ -10835,14 +10834,15 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         if was_command:
                             if getattr(getattr(dispatch, 'state', None), 'value', None) == 'failed':
                                 from samsara.session_modes import DispatchOutcome
-                                outcome = DispatchOutcome(kind='command_failed', detail={'phrase': result, 'state': 'failed', 'heard': text})
+                                outcome = DispatchOutcome(kind='command_failed', detail={**dict(dispatch.detail or {}), 'phrase': result, 'state': 'failed', 'heard': text})
                                 self._log_command_dispatch(text, result, 'failed')
                                 logger.info('[SESSION] mode=command outcome=%s detail=%r', outcome.kind, describe_text(outcome.detail))
                                 self._handle_session_dispatch_outcome(outcome, text)
                                 self.add_to_history(text, is_command=True)
                                 self._log_history(raw_text=text, duration_ms=int(audio_duration * 1000), mode='command', status='failed', entry_type='command', matched_command=str(result))
                                 return
-                            self._notify_tutorial('command', result or '')
+                            from samsara.result_messages import report_held_command
+                            report_held_command(self, dispatch, text)
                             _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
                             if (result and not _is_repeat_blacklisted(result, _store_cmd)
                                     and self.command_executor.find_command(result) == result):
