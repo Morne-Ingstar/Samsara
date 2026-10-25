@@ -1801,28 +1801,6 @@ class TestFiguresAndExamples:
         assert home_qt.format_count(None) == "None"
         assert home_qt.format_count("many") == "many"
 
-    def test_the_commands_card_shows_a_real_command_not_a_count(self):
-        app = _app()
-        records = home_qt.catalog_records(app)
-        cards = home_qt.capability_cards(app, records)
-        commands = [c for c in cards if c["action"] == "cheatsheet"][0]
-        example = home_qt.commands_card_example(records)
-        assert example
-        # 825: the plain-text example now explicitly invites trying it.
-        assert commands["value"] == f"Try: {home_qt.quoted(example)}"
-        assert "commands" not in commands["value"]
-
-    def test_the_example_is_sayable_not_merely_short(self):
-        """Shortest alone gave "yes", which is a reply, not a command anybody
-        would think to try."""
-        example = home_qt.commands_card_example(home_qt.catalog_records(_app()))
-        assert len(example.split()) >= 2, example
-
-    def test_the_example_comes_from_the_same_safe_pool_as_the_status_strip(self):
-        records = home_qt.catalog_records(_app())
-        example = home_qt.commands_card_example(records)
-        safe = set(command_marquee.example_phrases(records, count=10000))
-        assert example in safe
 
     def test_the_breadth_figure_moved_into_the_description(self):
         app = _app()
@@ -1836,7 +1814,8 @@ class TestFiguresAndExamples:
         app = _app()
         cards = home_qt.capability_cards(app, None)
         commands = [c for c in cards if c["action"] == "cheatsheet"][0]
-        assert commands["value"] == home_qt._CATALOG_UNAVAILABLE_SHORT
+        # 878: no value line is shown even when the catalog cannot be read.
+        assert commands["value"] == ""
         assert "Every phrase it knows" in commands["description"]
 
 

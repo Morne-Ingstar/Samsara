@@ -1,5 +1,4 @@
 """825: real hub routing, distinct rendered icons and setup-free card examples."""
-from copy import deepcopy
 import json
 from unittest.mock import Mock
 
@@ -8,7 +7,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtWidgets import QLabel, QPushButton
 
-from samsara import command_catalog
 from samsara.ui import command_cheatsheet_qt, home_qt, home_signals, main_window_qt
 from tests.test_home_qt import _app, _FakeSettings, _hub, _Store
 
@@ -25,7 +23,7 @@ def record(phrase='open notepad', **changes):
 def hub(qapp, monkeypatch, qt_widget_scope):
     _FakeSettings.values = {}
     monkeypatch.setattr(home_qt, 'QSettings', _FakeSettings)
-    monkeypatch.setattr(home_qt, '_user_word_count', lambda: 0)
+    monkeypatch.setattr(home_qt, '_user_word_count', lambda app: 0)
     monkeypatch.setattr(home_qt, 'whats_new_note', lambda *a, **kw: None)
     monkeypatch.setattr(home_signals, 'corrections_waiting', lambda app: 0)
     monkeypatch.setattr(home_signals, '_user_words_exist', lambda: True)
@@ -176,7 +174,8 @@ def test_card_is_plain_text_with_one_primary_action_and_a_visible_packs_button(h
     window, _ = hub
     home = window._stack.currentWidget()
     commands = home._cards[0]
-    assert commands._value.text().startswith('Try: "')
+    # 878: the value slot is removed; the description and packs action remain.
+    assert commands._value.text() == "" and not commands._value.isVisibleTo(commands)
     for label in commands.findChildren(QLabel):
         assert '<a' not in label.text().lower()
         assert not label.openExternalLinks()
@@ -189,69 +188,6 @@ def test_card_is_plain_text_with_one_primary_action_and_a_visible_packs_button(h
     assert 'border:' in buttons[0].styleSheet()
     assert 'Voice help' in home._cards[1]._description.text()
 
-
-@pytest.mark.parametrize('change', [
-    {'kind': 'plugin'}, {'plugin': 'ask_agent'}, {'scope': {'apps': ['notepad.exe']}},
-    {'scope': {'invalid': True}}, {'args': [{'required': True}]},
-    {'args': [{'required': False}]}, {'requires_ava': True}, {'needs_ava': True},
-    {'requires_provider': True}, {'provider': 'cloud'}, {'requires': ['account']},
-    {'requires_integration': True}, {'integration': 'spotify'}, {'requires_setup': True},
-    {'hidden': True}, {'hidden_from_help': True}, {'precondition': 'Sign in first.'},
-    {'pack': 'ai'}, {'pack': 'experimental'}, {'risk': 'destructive'},
-    {'whole_utterance': True},
-])
-def test_ineligible_preferred_record_never_selected_even_as_only_fallback(change):
-    bad = record(**change)
-    assert home_qt.commands_card_example([bad]) is None
-    assert home_qt.commands_card_example([bad, record('snap right')]) == 'snap right'
-
-
-def test_preference_order_is_catalog_driven_and_deterministic():
-    rows = [record('zoom out'), record('snap right'), record()]
-    assert home_qt.commands_card_example(rows) == 'open notepad'
-    assert home_qt.commands_card_example(list(reversed(rows))) == 'open notepad'
-    assert home_qt.commands_card_example(rows[:2]) == 'snap right'
-    assert home_qt.commands_card_example(rows[:1]) == 'zoom out'
-    assert home_qt.commands_card_example([]) is None
-    assert home_qt.commands_card_example(None) is None
-
-
-def test_real_fresh_catalog_example_works_with_ava_off_and_default_packs():
-    rows = command_catalog.load_catalog_json()
-    phrase = home_qt.commands_card_example(rows)
-    assert phrase == 'snap right'  # Utilities/Notepad is off by default.
-    selected = next(r for r in rows if command_catalog.canonical_phrase(r) == phrase)
-    assert selected['kind'] == selected['plugin'] == 'builtin'
-    assert not selected.get('scope') and not selected['args']
-    assert not selected.get('precondition')
-    assert home_qt.commands_card_example(rows, {'command_packs': {'utilities': True}}) == 'open notepad'
-
-
-def test_builtin_launchers_for_optional_installs_never_become_fallbacks():
-    rows = command_catalog.load_catalog_json()
-    config = {'command_packs': {'utilities': True}}
-    for phrase in ('open nvda', 'open jaws', 'open discord', 'open steam', 'open vs code'):
-        row = next(r for r in rows if command_catalog.canonical_phrase(r) == phrase)
-        assert not row.get('precondition')  # These dependencies are absent in catalog data.
-        assert home_qt.commands_card_example([row], config) is None
-
-
-def test_refresh_reselects_when_catalog_or_pack_state_changes(hub, monkeypatch):
-    window, app = hub
-    home = window._stack.currentWidget()
-    rows = [record('open notepad', pack='utilities'), record('snap right')]
-    monkeypatch.setattr(home_qt, 'catalog_records', lambda app: deepcopy(rows))
-    home.refresh()
-    assert home._cards[0]._value.text() == 'Try: "snap right"'
-    app.config['command_packs'] = {'utilities': True}
-    home.refresh()
-    assert home._cards[0]._value.text() == 'Try: "open notepad"'
-    rows[:] = [record('zoom out')]
-    home.refresh()
-    assert home._cards[0]._value.text() == 'Try: "zoom out"'
-    rows.clear()
-    home.refresh()
-    assert home._cards[0]._value.text() == '0 commands'
 
 
 def test_standalone_reference_keeps_its_window_controls(qapp, tmp_path, qt_widget_scope):

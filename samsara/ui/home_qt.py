@@ -42,7 +42,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import random
 import re
 import time
 import weakref
@@ -354,7 +353,6 @@ EM_DASH = chr(0x2014)
 CREED = f"Free {MIDDLE_DOT} Open source {MIDDLE_DOT} Accessibility first"
 # Interpunct-free form for callers that cannot show the middle dot.
 CREED_ASCII = "Free - Open source - Accessibility first"
-_CATALOG_UNAVAILABLE_SHORT = "command list unavailable"
 
 #: The conditional slot (89). It renders ONLY when it has something real to
 #: say, and collapses to ZERO height otherwise -- no padding, no placeholder,
@@ -899,11 +897,6 @@ def format_count(n) -> str:
         return str(n)
 
 
-def catalog_example(records) -> Optional[str]:
-    picks = command_catalog.pick_examples(records, 1)
-    return command_catalog.canonical_phrase(picks[0]) if picks else None
-
-
 def _user_word_count(app) -> Optional[int]:
     try:
         from samsara.dictionary_store import get_dictionary_store
@@ -935,74 +928,18 @@ def card_description(title: str, cfg: dict, count: str = "") -> str:
                            count=count)
 
 
-# Ordered preferences, checked against the same strict catalog filter as fallback.
-COMMAND_CARD_PREFERENCES = ("open notepad", "show numbers", "snap right", "scratch that")
-
-
-def commands_card_example(records, config=None) -> Optional[str]:
-    """A setup-free built-in phrase, using the status strip's safety pool (825).
-
-    The card is stricter than the strip: no plugin, scope, argument (even
-    optional), hidden record or setup precondition. Disabled packs are skipped.
-    Nothing is invented when the catalog is unavailable or has no safe example.
-    """
-    from samsara.command_packs import get_enabled_packs
-    from samsara.ui import command_marquee
-
-    enabled = get_enabled_packs(config or {})
-    dependency_fields = (
-        "requires", "requires_ava", "needs_ava", "requires_provider", "provider",
-        "requires_integration", "integration", "requires_setup", "hidden",
-        "hidden_from_help", "precondition",
-    )
-    eligible = [r for r in records or []
-                if r.get("kind") == "builtin" and r.get("plugin") == "builtin"
-                and not r.get("scope") and not r.get("args")
-                and r.get("pack") in enabled
-                and not any(r.get(key) for key in dependency_fields)]
-    try:
-        # Some built-in launchers (NVDA, Discord, etc.) still need an install,
-        # which the catalog does not currently describe as a precondition.
-        # Fail closed on those: native hotkeys or bundled Windows tools only.
-        builtins = json.loads((command_catalog.ROOT / 'commands.json').read_text(
-            encoding='utf-8')).get('commands', {})
-        native_launchers = {'notepad.exe', 'calc.exe', 'explorer.exe', 'mspaint.exe'}
-        setup_free = []
-        for row in eligible:
-            definition = builtins.get(command_catalog.canonical_phrase(row), {})
-            if (definition.get('type') == 'hotkey'
-                    or (definition.get('type') == 'launch'
-                        and str(definition.get('target', '')).lower() in native_launchers)):
-                setup_free.append(row)
-        phrases = command_marquee.example_phrases(
-            setup_free, count=len(setup_free) + 1, rng=random.Random(0))
-    except Exception as exc:
-        logger.debug(f"commands_card_example: {exc}")
-        return None
-    for phrase in COMMAND_CARD_PREFERENCES:
-        if phrase in phrases:
-            return phrase
-    instructions = [p for p in phrases if len(p.split()) >= 2]
-    return min(instructions or phrases, key=lambda p: (len(p), p), default=None)
-
-
 def capability_cards(app, records) -> list:
     """The six cards, in order. Each: {title, description, value, action,
     arg}. action is 'cheatsheet' (arg = filter text), 'settings' (arg = tab
     name), 'page' (arg = hub page name) or 'guides'."""
     cfg = _cfg(app)
     if records is None:
-        commands_value = _CATALOG_UNAVAILABLE_SHORT
         commands_count = "Every phrase it knows"
     else:
-        # 111: the VALUE is a phrase the user can say; the figure it replaced
-        # moved into the description, which already claimed breadth. The
-        # whole catalog, not the "window" subset: the card opens the
-        # unfiltered list, so its figure must count the unfiltered list (89).
-        example = commands_card_example(records, cfg)
-        # PLACEHOLDER COPY (825)
-        commands_value = f"Try: {quoted(example)}" if example else f"{format_count(len(records))} commands"
         commands_count = f"{format_count(len(records))} phrases"
+    # Queue 878: the Commands card keeps its count in the description; its
+    # separate suggestion/value line has been removed.
+    commands_value = ""
     phrase = wake_phrase(cfg)
     mode = str(_cfg_get(cfg, 'mode') or 'hold')
     hotkey = hotkey_label(_cfg_get(cfg, 'hotkey') or config_defaults.DEFAULTS['hotkey'])
@@ -1475,11 +1412,14 @@ class _CapabilityCard(QPushButton):
                                    color=theme.DATA_TEXT_SECONDARY, wrap=True)
         self._description.setAccessibleName(f"{title} description")
         lay.addWidget(self._description)
-        lay.addStretch(1)
         self._value = _label(value, role="card value", color=theme.ACCENT, weight=500, wrap=True)
         self._value.setAccessibleName(f"{title} value")
         self._value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        lay.addWidget(self._value, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
+        if value:
+            lay.addStretch(1)
+            lay.addWidget(self._value, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
+        else:
+            self._value.hide()
         for child in (self._title, self._description, self._value):
             child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._fit_width()
