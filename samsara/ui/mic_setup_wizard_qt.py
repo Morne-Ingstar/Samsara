@@ -57,7 +57,16 @@ logger = get_logger(__name__)
 # 1 ft will read 0.01-0.03 RMS, which puts it comfortably in the green.
 _ZONE_LOW   = 0.025    # below this (RMS < 0.005): near-silence, essentially off
 _ZONE_HIGH  = 0.90     # above this (RMS > 0.18):  very loud, risk of clipping
-_GREEN_DWELL_S = 1.5   # seconds level must stay green before Next enables
+_GREEN_DWELL_S = 1.5   # accumulated seconds of speech in the green zone
+_SILENT_HINT_S = 1.5
+_SILENCE_RESET_S = 2.0
+_LOUD_RESET_S = 0.3
+_HINT_HOLD_S = 1.0
+# PLACEHOLDER COPY (866m): owner may replace the speaking-level guidance.
+_LEVEL_CONDITION = (
+    "Read a sentence out loud at your normal volume -- "
+    "Calibrate unlocks after a few seconds of speech."
+)
 
 _OWW_PASS_THRESHOLD = 2
 _OWW_ATTEMPTS       = 3
@@ -253,7 +262,12 @@ class _WizardWindow(QDialog):
         # Level state
         self._level_history   = collections.deque(maxlen=20)
         self._pace_history = collections.deque(maxlen=300)  # 30s; calibration keeps its 2s average.
-        self._green_since     = None
+        self._speech_seconds = 0.0
+        self._level_last_at = None
+        self._level_zone = None
+        self._quiet_since = None
+        self._loud_since = None
+        self._hint_changed_at = None
         self._cal_threshold   = None
 
         # OWW state
@@ -422,7 +436,18 @@ class _WizardWindow(QDialog):
         self._level_bar = _LevelBar()
         self._level_bar._bar.setAccessibleName(self._STEP_TITLES[self._STEP_LEVEL])
         lay.addWidget(self._level_bar)
+        self._speech_progress = QProgressBar()
+        self._speech_progress.setRange(0, 100)
+        self._speech_progress.setTextVisible(False)
+        self._speech_progress.setFixedHeight(6)
+        self._speech_progress.setMaximumWidth(260)
+        # PLACEHOLDER COPY (866m)
+        self._speech_progress.setAccessibleName("Speech progress toward unlocking Calibrate")
+        lay.addWidget(self._speech_progress, alignment=Qt.AlignmentFlag.AlignCenter)
+        self._level_condition = _body(_LEVEL_CONDITION)
+        lay.addWidget(self._level_condition)
         self._level_hint = QLabel("")
+        self._level_hint.setWordWrap(True)
         self._level_hint.setStyleSheet(
             f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-style:italic;"
         )
@@ -553,6 +578,7 @@ class _WizardWindow(QDialog):
         self._step_indicator.set_progress(step, self._skipped_steps)
 
         # Nav bar
+        self._next_btn.setToolTip("")
         self._back_btn.setVisible(step > 0)
         if step == self._STEP_DONE:
             self._skip_btn.hide()
@@ -569,9 +595,18 @@ class _WizardWindow(QDialog):
         elif step == self._STEP_LEVEL:
             self._next_btn.setEnabled(False)
             self._next_btn.setText("Calibrate  ->")
-            self._level_hint.setText("")
+            # PLACEHOLDER COPY (866m)
+            self._level_hint.setText("Keep talking naturally; pauses between words are fine.")
+            self._level_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             self._cal_status.setText("")
-            self._green_since = None
+            self._speech_seconds = 0.0
+            self._level_last_at = None
+            self._level_zone = None
+            self._quiet_since = None
+            self._loud_since = None
+            self._hint_changed_at = time.monotonic()
+            self._speech_progress.setValue(0)
+            self._next_btn.setToolTip(_LEVEL_CONDITION)
             self._level_history.clear()
             self._pace_history.clear()
             self._ensure_audio_running()
@@ -1025,32 +1060,45 @@ class _WizardWindow(QDialog):
             self._pace_history.append(rms)
             now = time.monotonic()
 
-            if level < _ZONE_LOW:
-                self._level_hint.setText(
-                    "Essentially silent -- check the mic is connected and selected above."
-                )
-                self._level_hint.setStyleSheet(f"color:{theme.ERROR};font-size:{theme.TYPE_MIN}px;")
-                self._green_since = None
-            elif level > _ZONE_HIGH:
-                self._level_hint.setText(
-                    "Very loud -- you may get clipping. Back off slightly or reduce gain."
-                )
-                self._level_hint.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
-                self._green_since = None
+            zone = "quiet" if level < _ZONE_LOW else "loud" if level > _ZONE_HIGH else "speech"
+            # Audio arrives in 100 ms blocks. Never credit an unobserved UI stall
+            # or a gap between entering this page and receiving the first block.
+            elapsed = 0.0 if self._level_last_at is None else min(max(now - self._level_last_at, 0.0), 0.2)
+            if zone == "quiet":
+                if self._quiet_since is None:
+                    self._quiet_since = now
+                self._loud_since = None
+                if now - self._quiet_since >= _SILENCE_RESET_S:
+                    self._speech_seconds = 0.0
+            elif zone == "loud":
+                if self._loud_since is None:
+                    self._loud_since = now
+                self._quiet_since = None
+                if now - self._loud_since >= _LOUD_RESET_S:
+                    self._speech_seconds = 0.0
             else:
-                self._level_hint.setText("Level looks good -- keep talking naturally.")
-                self._level_hint.setStyleSheet(f"color:{theme.SUCCESS};font-size:{theme.TYPE_MIN}px;")
-                if self._green_since is None:
-                    self._green_since = now
-
-            if (level >= _ZONE_LOW and level <= _ZONE_HIGH
-                    and self._green_since is not None
-                    and (now - self._green_since) >= _GREEN_DWELL_S
-                    and not self._next_btn.isEnabled()):
-                self._next_btn.setEnabled(True)
-                self._cal_status.setText(
-                    "Calibrate & Continue when you're happy with the level."
-                )
+                self._quiet_since = self._loud_since = None
+                if self._level_zone == "speech":
+                    self._speech_seconds = min(_GREEN_DWELL_S, self._speech_seconds + elapsed)
+            self._level_last_at, self._level_zone = now, zone
+            ready = self._speech_seconds >= _GREEN_DWELL_S
+            self._next_btn.setEnabled(ready)
+            self._next_btn.setToolTip("" if ready else _LEVEL_CONDITION)
+            self._speech_progress.setValue(round(100 * self._speech_seconds / _GREEN_DWELL_S))
+            # PLACEHOLDER COPY (866m)
+            self._cal_status.setText("Got it -- choose Calibrate to continue." if ready else "")
+            if zone == "quiet" and now - self._quiet_since >= _SILENT_HINT_S:
+                hint, color = "Essentially silent -- check the mic is connected and selected above.", theme.ERROR
+            elif zone == "loud":
+                hint, color = "Very loud -- you may get clipping. Back off slightly or reduce gain.", theme.WARNING
+            elif zone == "speech":
+                hint, color = "Level looks good -- keep talking naturally.", theme.SUCCESS
+            else:
+                return  # Word gaps keep the readable hint already on screen.
+            if hint != self._level_hint.text() and now - self._hint_changed_at >= _HINT_HOLD_S:
+                self._level_hint.setText(hint)
+                self._level_hint.setStyleSheet(f"color:{color};font-size:{theme.TYPE_MIN}px;")
+                self._hint_changed_at = now
 
     def _do_calibrate(self):
         if not self._level_history:

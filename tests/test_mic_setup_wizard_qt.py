@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
+import pytest
 
 
 class _WizardApp:
@@ -48,6 +49,108 @@ def _window(monkeypatch):
     monkeypatch.setattr(wizard._WizardWindow, "_ensure_audio_running", lambda self: None)
     app = _WizardApp()
     return wizard, app, wizard._WizardWindow(app)
+
+
+def _speaking_level(monkeypatch):
+    wizard, _, window = _window(monkeypatch)
+    clock = [100.0]
+    monkeypatch.setattr(wizard, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    window._go_to(window._STEP_LEVEL)
+
+    def feed(rms, blocks):
+        for _ in range(blocks):
+            clock[0] = round(clock[0] + 0.1, 4)
+            window._on_level(rms)
+
+    return window, feed, clock
+
+
+@pytest.mark.parametrize("rms", [0.01, 0.02, 0.03])
+def test_normal_sentence_with_word_gaps_unlocks_within_four_seconds(qapp, monkeypatch, rms):
+    window, feed, clock = _speaking_level(monkeypatch)
+    assert not window._next_btn.isEnabled()
+    assert "normal volume" in window._level_condition.text()
+    assert window._next_btn.toolTip() == window._level_condition.text()
+    for _ in range(6):
+        feed(rms, 4)
+        feed(0.001, 2)
+        assert "Essentially silent" not in window._level_hint.text()
+    assert clock[0] <= 104
+    assert window._next_btn.isEnabled()
+    assert window._speech_progress.value() == 100
+    assert "Got it" in window._cal_status.text()
+    assert not window._next_btn.toolTip()
+
+
+def test_word_gap_preserves_progress_without_counting_as_speech(qapp, monkeypatch):
+    window, feed, _ = _speaking_level(monkeypatch)
+    feed(0.02, 10)
+    progress = window._speech_progress.value()
+    feed(0.001, 5)
+    assert window._speech_progress.value() == progress > 0
+    assert "Essentially silent" not in window._level_hint.text()
+    assert not window._next_btn.isEnabled()
+    feed(0.02, 8)
+    assert window._next_btn.isEnabled()
+
+
+def test_silent_hint_waits_and_two_second_silence_relocks(qapp, monkeypatch):
+    window, feed, _ = _speaking_level(monkeypatch)
+    feed(0.02, 18)
+    assert window._next_btn.isEnabled()
+    feed(0.0, 15)
+    assert "Essentially silent" not in window._level_hint.text()
+    assert window._next_btn.isEnabled()
+    feed(0.0, 2)
+    assert "Essentially silent" in window._level_hint.text()
+    assert window._next_btn.isEnabled()  # warning precedes the two-second reset
+    feed(0.0, 5)
+    assert not window._next_btn.isEnabled()
+    assert window._speech_progress.value() == 0
+    assert not window._cal_status.text()
+    assert "unlocks" in window._next_btn.toolTip()
+    feed(0.02, 18)
+    assert window._next_btn.isEnabled()
+
+
+def test_loud_stretch_resets_but_one_loud_block_does_not(qapp, monkeypatch):
+    window, feed, _ = _speaking_level(monkeypatch)
+    feed(0.02, 10)
+    progress = window._speech_progress.value()
+    feed(0.19, 1)
+    assert window._speech_progress.value() == progress
+    feed(0.02, 8)
+    assert window._next_btn.isEnabled()
+    feed(0.19, 5)
+    assert not window._next_btn.isEnabled()
+    assert window._speech_progress.value() == 0
+
+
+def test_level_hint_changes_are_at_least_one_second_apart(qapp, monkeypatch):
+    window, feed, clock = _speaking_level(monkeypatch)
+    changes = [clock[0]]
+    previous = window._level_hint.text()
+    for rms in [0.02] * 12 + [0.19] * 5 + [0.02] * 6 + [0.0] * 22 + [0.02] * 12:
+        feed(rms, 1)
+        current = window._level_hint.text()
+        if current != previous:
+            changes.append(clock[0])
+            previous = current
+    assert len(changes) >= 4
+    assert all(b - a >= 0.999 for a, b in zip(changes, changes[1:]))
+
+
+def test_reentering_level_step_clears_progress_and_old_timing(qapp, monkeypatch):
+    window, feed, clock = _speaking_level(monkeypatch)
+    feed(0.02, 18)
+    assert window._next_btn.isEnabled()
+    window._go_to(window._STEP_DEVICE)
+    assert not window._next_btn.toolTip()
+    window._go_to(window._STEP_LEVEL)
+    clock[0] += 20
+    feed(0.02, 1)
+    assert not window._next_btn.isEnabled()
+    assert window._speech_progress.value() == 0
 
 
 def test_guide_switches_runtime_before_persisting_new_selection(qapp, monkeypatch):
