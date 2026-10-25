@@ -18,13 +18,14 @@ hand-written list.
 """
 
 import json
+import random
 import shutil
 from time import perf_counter
 from pathlib import Path
 from typing import Callable, List
 
 from PySide6.QtCore import Qt, QTimer, QPoint, QRect, QSignalBlocker, QEvent
-from PySide6.QtGui import QCursor, QPalette, QGuiApplication, QPainter
+from PySide6.QtGui import QCursor, QPalette, QGuiApplication, QPainter, QFont
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListView, QListWidget, QListWidgetItem, QLineEdit, QPushButton,
@@ -200,6 +201,73 @@ def live_filter(rows, live_only: bool) -> tuple:
         return list(rows), 0
     shown = [r for r in rows if r.get("live", True)]
     return shown, len(rows) - len(shown)
+
+
+def starter_rows(rows: list[dict]) -> list[dict]:
+    """Stable first commands, using Home's existing safe example pool (892)."""
+    from samsara.ui.command_marquee import example_phrases
+
+    eligible = [row for row in rows
+                if row.get("plugin") == "builtin"
+                and not row.get("needs_ava")
+                and not any(arg.get("required") for arg in row.get("args", [])
+                            if isinstance(arg, dict))]
+    eligible_by_phrase = {row["phrase"]: row for row in eligible}
+    # Home shuffles this exact filtered pool. A fixed seed makes the pinned
+    # first three useful and repeatable each time the reference is opened.
+    phrases = example_phrases(eligible, count=len(eligible),
+                              rng=random.Random(825))
+    chosen = [eligible_by_phrase[phrase] for phrase in phrases[:3]
+              if phrase in eligible_by_phrase]
+    chosen_ids = {row["canonical_id"] for row in chosen}
+    by_id = {row["canonical_id"]: row for row in eligible}
+    for command_id in ("builtin.scratch_that", "builtin.new_line",
+                       "window_switcher.show_windows", "core_utils.what_can_i_say"):
+        row = by_id.get(command_id)
+        if row is not None and command_id not in chosen_ids and row["phrase"] in phrases:
+            chosen.append(row)
+            chosen_ids.add(command_id)
+    return chosen[:8]
+
+
+class _ReferenceRowDelegate(CommandRowDelegate):
+    """Section decoration belongs to catalog rows, never extra model items."""
+
+    def header_height(self):
+        height = super().header_height()
+        first = self.parent().item(0)
+        if (first is not None and first.data(Qt.ItemDataRole.UserRole + 4)
+                and first.data(Qt.ItemDataRole.UserRole) == self.expanded_phrase):
+            height *= 2
+        return height
+
+    def text_layout(self, index, width):
+        parts, _ = super().text_layout(index, width)
+        height = super().header_height()
+        offset = height if index.data(Qt.ItemDataRole.UserRole + 4) else 0
+        parts = [(text, font, colour, QRect(rect.x(), offset, rect.width(), height))
+                 for text, font, colour, rect in parts]
+        expanded = index.data(Qt.ItemDataRole.UserRole) == self.expanded_phrase
+        return parts, height + offset + (self.detail_height if expanded else 0)
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        painter.save()
+        painter.setPen(theme.qcolor(theme.BORDER))
+        if index.data(Qt.ItemDataRole.UserRole + 5):
+            painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
+        if index.data(Qt.ItemDataRole.UserRole + 4):
+            rect = QRect(option.rect)
+            rect.setHeight(super().header_height())
+            painter.fillRect(rect, theme.qcolor(theme.BG1))
+            font = QFont(theme.FONT_FAMILY)
+            font.setPixelSize(theme.TYPE_BODY)
+            font.setWeight(QFont.Weight.DemiBold)
+            painter.setFont(font)
+            painter.setPen(theme.qcolor(theme.ACCENT))
+            painter.drawText(rect.adjusted(16, 0, -16, 0),
+                             Qt.AlignmentFlag.AlignVCenter, "Start here")  # PLACEHOLDER COPY (892)
+        painter.restore()
 
 
 def row_text(row: dict) -> str:
@@ -886,7 +954,7 @@ class _CheatSheetWindow(QMainWindow):
         self._list.setAccessibleName("Command list")
         self._list.setStyleSheet(_ss())
         self._list.setViewportMargins(0, 0, 0, 0)
-        self._list.setItemDelegate(CommandRowDelegate(self._list))
+        self._list.setItemDelegate(_ReferenceRowDelegate(self._list))
         self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.setMouseTracking(True)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -1076,11 +1144,14 @@ class _CheatSheetWindow(QMainWindow):
         unpinned = (filtered if raw else
                     [c for c in filtered if c["phrase"] not in self._pinned])
 
+        starters = starter_rows(unpinned) if not raw and self._active_category == "All" else []
+        starter_ids = {row["canonical_id"] for row in starters}
+        ordered = starters + [row for row in unpinned if row["canonical_id"] not in starter_ids]
         with QSignalBlocker(self._list):
             self._item_generation = getattr(self, "_item_generation", 0) + 1
             item_generation = self._item_generation
             self._list.clear()
-            for cmd in unpinned:
+            for index, cmd in enumerate(ordered):
                 item = QListWidgetItem()
                 # Execution uses the canonical phrase; the id is kept for tests
                 # and tooling (every row resolves to a real catalog command).
@@ -1089,6 +1160,8 @@ class _CheatSheetWindow(QMainWindow):
                 item.setData(Qt.ItemDataRole.UserRole + 2, item_generation)
                 item.setText(row_text(cmd))
                 item.setData(Qt.ItemDataRole.UserRole + 3, dict(cmd, row_tags=row_tags(cmd)))
+                item.setData(Qt.ItemDataRole.UserRole + 4, bool(starters) and index == 0)
+                item.setData(Qt.ItemDataRole.UserRole + 5, bool(starters) and index == len(starters) - 1)
                 tooltip = cmd["phrase"] + "\n" + cmd.get("description", "")
                 if cmd.get("pack") not in (None, "", "core"):
                     tooltip += f"\nPack: {cmd['pack']}" + (" (off)" if cmd.get("pack_disabled") else "")

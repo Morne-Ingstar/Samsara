@@ -9,6 +9,7 @@
     "samsara/execution_policy.py": 2097,
     "samsara/session_modes.py": 3353,
     "samsara/streaming.py": 3212,
+    "samsara/ui/command_cheatsheet_qt.py": 1550,
     "samsara/ui/history_view.py": 1792,
     "samsara/ui/home_qt.py": 2525,
     "samsara/ui/mic_setup_wizard_qt.py": 1519,
