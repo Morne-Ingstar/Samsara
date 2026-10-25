@@ -19,10 +19,12 @@ _SKIP_KEYWORDS = {
     'stereo mix', 'wave out mix', 'what u hear', 'loopback',
     'cable', 'virtual audio', 'vb-audio', 'voicemeeter',
     'sound mapper', 'primary sound', 'wave speaker', 'wave microphone',
-    'stream wave', 'chat capture', 'hands-free', 'hf audio', 'input ()',
+    'stream wave', 'chat capture', 'input ()',
     'line in (', 'vdvad', 'steelseries sonar', 'oculusvad',
     'vad wave', 'wc4400_8200'
 }
+# Bluetooth hands-free / HF Audio endpoints can be genuine capture inputs;
+# their names alone do not identify virtual devices or failed streams.
 
 
 def pick_index_by_name(devices, name):
