@@ -47,7 +47,14 @@ def test_row_order_and_accessibility_match_catalog(panel):
     parts, _ = view.itemDelegate().text_layout(view.model().index(0, 0), view.viewport().width())
     expected = [row['phrase'].title(), 'also: ' + ', '.join(row['display_aliases']),
                 row['description'], 'Say: ' + row['examples'][0], '[destructive, whole utterance]']
-    assert [part[0] for part in parts] == expected
+    # 864: collapsed row shows phrase + description; remaining copy is disclosed.
+    assert [part[0] for part in parts] == [expected[0], expected[2]]
+    panel._on_item_clicked(item)
+    card = panel._detail_card
+    assert card.labels[1].text().lower() == expected[1]
+    assert card.labels[2].text() == expected[2]
+    assert card.labels[3].text() == 'Say it like this:\n' + '\n'.join(row['examples'])
+    assert card.metadata.text() == 'destructive, whole utterance'
     accessible = item.text()
     assert all(text in accessible for text in expected)
     assert [accessible.index(text) for text in expected] == sorted(accessible.index(text) for text in expected)
@@ -62,8 +69,13 @@ def test_help_wraps_and_last_row_is_fully_reachable(panel, qapp):
     width = view.viewport().width()
     parts, height = delegate.text_layout(index, width)
     assert height == view.visualItemRect(view.item(0)).height()
-    assert delegate.text_layout(index, width // 2)[1] > height
-    assert all(a[3].bottom() < b[3].top() for a, b in zip(parts, parts[1:]))
+    # 864: a compact line has parallel columns, expanded details wrap instead.
+    assert delegate.text_layout(index, width // 2)[1] == height
+    assert parts[0][3].right() < parts[1][3].left()
+    panel._on_item_clicked(view.item(0))
+    assert panel._detail_card.labels[1].wordWrap()
+    assert view.visualItemRect(view.item(0)).height() > height
+    panel._detail_card.dismiss()
     view.scrollToBottom()
     qapp.processEvents()
     last = view.visualItemRect(view.item(view.count() - 1))

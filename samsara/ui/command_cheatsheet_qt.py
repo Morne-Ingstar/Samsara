@@ -48,8 +48,9 @@ class _ExampleDetailCard(CommandDetailCard):
 
     def open(self, command, origin, anchor):
         command = dict(command)
-        command['aliases'] = command_catalog.display_aliases(
-            command, limit=len(command.get('aliases', ())))
+        command['row_tags'] = row_tags(command)
+        command['aliases'] = command.get('display_aliases', command_catalog.display_aliases(
+            command, limit=len(command.get('aliases', ()))))
         examples = command.get('examples', ())
         precondition = command.get('precondition', '')
         if precondition:
@@ -60,7 +61,7 @@ class _ExampleDetailCard(CommandDetailCard):
             self.labels[3].setText('Say it like this:\n' + '\n'.join(examples))
         elif precondition:
             self.labels[3].hide()
-        description = '\n'.join(label.text() for label in self.labels if not label.isHidden())
+        description = '\n'.join(label.text() for label in self.labels + [self.metadata] if not label.isHidden())
         self.setAccessibleDescription(description)
         self.run_button.setAccessibleDescription(description)
         self.place(anchor)
@@ -285,73 +286,7 @@ def _annotate_disabled(rows, disabled: set) -> list:
     return out
 
 
-def _ss():
-    return f"""
-QMainWindow {{ background: {theme.BG0}; }}
-QWidget {{ color: {theme.TEXT_PRIMARY}; font-family: {theme.FONT_FAMILY}; font-size: {theme.TYPE_BODY}px; }}
-QListWidget {{
-    background: {theme.BG0};
-    border: none;
-    outline: none;
-    color: {theme.TEXT_PRIMARY};
-    font-size: {theme.TYPE_BODY}px;
-}}
-QListWidget::item {{ padding: 0; }}
-QListWidget::item:hover {{ background: {theme.BG2}; }}
-QListWidget::item:selected {{ background: {_selected_bg()}; color: {theme.ACCENT}; }}
-QLineEdit {{
-    background: {theme.BG2};
-    border: 1px solid {theme.BORDER};
-    border-radius: 6px;
-    color: {theme.TEXT_PRIMARY};
-    font-size: {theme.TYPE_BODY}px;
-    padding: 6px 10px;
-}}
-QLineEdit:focus {{ border-color: {theme.ACCENT}; }}
-{theme.SCROLLBAR_QSS}
-QSlider::groove:horizontal {{
-    height: 4px;
-    background: {theme.BORDER};
-    border-radius: 2px;
-}}
-QSlider::handle:horizontal {{
-    background: {theme.ACCENT};
-    border: 2px solid {theme.BG1};
-    width: 14px;
-    height: 14px;
-    margin: -7px 0;
-    border-radius: 8px;
-}}
-QSlider::sub-page:horizontal {{ background: {theme.ACCENT}; border-radius: 1px; }}
-QMenu {{ background: {theme.BG1}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; }}
-QMenu::item:selected {{ background: {_selected_bg()}; color: {theme.ACCENT}; }}
-QComboBox {{
-    background: {theme.BG2};
-    color: {theme.TEXT_PRIMARY};
-    border: 1px solid {theme.BORDER};
-    border-radius: 4px;
-    padding: 0 8px;
-    min-height: 0;
-    font-size: {theme.TYPE_BODY}px;
-    min-width: 120px;
-}}
-QComboBox:hover {{ border-color: {theme.ACCENT}; }}
-QComboBox::drop-down {{ border: none; width: 22px; }}
-QComboBox::down-arrow {{
-    image: url({theme.ARROW_PATH});
-    width: 10px;
-    height: 6px;
-    margin-right: 8px;
-}}
-QComboBox QAbstractItemView {{
-    background: {theme.BG1};
-    color: {theme.TEXT_PRIMARY};
-    border: 1px solid {theme.BORDER};
-    selection-background-color: {_selected_bg()};
-    selection-color: {theme.ACCENT};
-    outline: none;
-}}
-"""
+from samsara.ui.command_reference_surfaces import ReferenceDisclosure, reference_qss as _ss
 
 
 # ---------------------------------------------------------------------------
@@ -513,7 +448,7 @@ class _TitleBar(QWidget):
 
         self._title_label = QLabel("Command Reference")
         self._title_label.setStyleSheet(
-            f"background:transparent;color:{theme.TEXT_PRIMARY};"
+            f"background:transparent;color:{theme.ACCENT};"
             f"font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;")
         self._title_label.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
         lay.addWidget(self._title_label, stretch=1)
@@ -615,7 +550,7 @@ class _StaticRow(_ActionButton):
 
         self.setFixedHeight(theme.HIT_TARGET_MIN)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self._set_background(theme.BG1)
+        self._set_background(theme.DATA_SURFACE)
         self.clicked.connect(self._activate)
 
         lay = QHBoxLayout(self)
@@ -668,7 +603,7 @@ class _StaticRow(_ActionButton):
     def _set_background(self, colour):
         # QLabel inherits QFrame: the former frame rule also filled its labels.
         self.setStyleSheet(
-            f"QAbstractButton{{background:{colour};border:none;border-bottom:1px solid {theme.BORDER_FAINT};}}"
+            f"QAbstractButton{{background:{colour};border:none;}}"
             f"QLabel{{background:transparent;border:none;}}")
 
     def _activate(self):
@@ -678,11 +613,11 @@ class _StaticRow(_ActionButton):
             print(f"[CHEATSHEET] Execute '{self._phrase}': {exc}")
 
     def enterEvent(self, e):
-        self._set_background(theme.BG2)
+        self._set_background(theme.DATA_ROW_HOVER)
         super().enterEvent(e)
 
     def leaveEvent(self, e):
-        self._set_background(theme.BG1)
+        self._set_background(theme.DATA_SURFACE)
         super().leaveEvent(e)
 
 
@@ -706,7 +641,7 @@ class _CategoryTabBar(QWidget):
 
         self.setFixedHeight(theme.HIT_TARGET_MIN)
         self.setStyleSheet(
-            f"background:{theme.BG0};"
+            f"background:{theme.BG1};"
         )
 
         lay = QHBoxLayout(self)
@@ -853,14 +788,15 @@ class _CheatSheetWindow(QMainWindow):
         # ---- Layout ---------------------------------------------------------
         # 1-px border via outer widget background
         outer = QWidget()
-        outer.setStyleSheet(f"background:{theme.BORDER};")
+        outer.setStyleSheet(f"background:{theme.BG1 if embedded else theme.BORDER};")
         self.setCentralWidget(outer)
         outer_lay = QVBoxLayout(outer)
-        outer_lay.setContentsMargins(1, 1, 1, 1)
+        edge = 0 if embedded else 1
+        outer_lay.setContentsMargins(edge, edge, edge, edge)
         outer_lay.setSpacing(0)
 
         inner = QWidget()
-        inner.setStyleSheet(f"background:{theme.BG0};")
+        inner.setStyleSheet(f"background:{theme.BG1};")
         outer_lay.addWidget(inner)
         lay = QVBoxLayout(inner)
         lay.setContentsMargins(0, 0, 0, 12)
@@ -879,7 +815,7 @@ class _CheatSheetWindow(QMainWindow):
         self._instruction.setWordWrap(True)
         self._instruction.setContentsMargins(12, 0, 12, 0)
         self._instruction.setStyleSheet(
-            f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_SECONDARY}px;background:{theme.BG0};')
+            f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_SECONDARY}px;background:transparent;')
         lay.addWidget(self._instruction)
         self.refresh_instruction()
         # Standalone references have no hub poll; keep their callback live too.
@@ -891,7 +827,7 @@ class _CheatSheetWindow(QMainWindow):
         # Search. The inset card remains visible on both palettes; the old
         # borderless white field disappeared into the light window.
         search_wrap = QWidget()
-        search_wrap.setStyleSheet(f"background:{theme.BG0};")
+        search_wrap.setStyleSheet(f"background:{theme.BG1};")
         search_layout = QHBoxLayout(search_wrap)
         search_layout.setContentsMargins(12, 12, 12, 12)
         search_layout.setSpacing(8)
@@ -928,11 +864,11 @@ class _CheatSheetWindow(QMainWindow):
         _sep = lambda: [s := QFrame(), s.setFixedHeight(1),
                         s.setStyleSheet(f"background:{theme.BORDER};")][0]
 
-        lay.addWidget(_sep())
+        # 864: whitespace replaces the permanent toolbar rule.
 
         # Static pane (Most Used + Pinned) — rebuilt on refresh/pin change
         self._static_pane = QWidget()
-        self._static_pane.setStyleSheet(f"background:{theme.BG0};")
+        self._static_pane.setStyleSheet(f"background:{theme.BG1};")
         self._static_layout = QVBoxLayout(self._static_pane)
         self._static_layout.setContentsMargins(12, 0, 12, 0)
         self._static_layout.setSpacing(0)
@@ -942,7 +878,7 @@ class _CheatSheetWindow(QMainWindow):
         self._list = QListWidget()
         self._list.setAccessibleName("Command list")
         self._list.setStyleSheet(_ss())
-        self._list.setViewportMargins(12, 0, 12, 0)
+        self._list.setViewportMargins(0, 0, 0, 0)
         self._list.setItemDelegate(CommandRowDelegate(self._list))
         self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.setMouseTracking(True)
@@ -957,7 +893,12 @@ class _CheatSheetWindow(QMainWindow):
         self._list.itemActivated.connect(self._on_item_clicked)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._on_context_menu)
-        lay.addWidget(self._list, stretch=1)
+        list_wrap = QWidget()
+        list_layout = QVBoxLayout(list_wrap)
+        list_layout.setContentsMargins(12, 0, 12, 0)
+        list_layout.setSpacing(0)
+        list_layout.addWidget(self._list)
+        lay.addWidget(list_wrap, stretch=1)
         self._scroll_edges = ScrollEdges(self._list)
 
         # Degraded path: no catalog -> one honest line and a Help link.
@@ -1000,11 +941,12 @@ class _CheatSheetWindow(QMainWindow):
         self._title_bar._close_button.setStyleSheet(self._title_bar._close_qss)
 
         self._most_used_qss = (
-            f'QPushButton{{background:{theme.BG0};color:{theme.TEXT_SECONDARY};border:none;'
+            f'QPushButton{{background:transparent;color:{theme.ACCENT};border:none;'
             f'text-align:left;padding:0;min-height:{theme.HIT_TARGET_MIN}px;max-height:{theme.HIT_TARGET_MIN}px;'
             f'font-size:{theme.TYPE_BODY}px;font-weight:600;}}'
             f'QPushButton:hover{{background:{theme.BG2};color:{theme.TEXT_PRIMARY};}}')
         self._detail_card = _ExampleDetailCard(self, inner)
+        self._disclosure = ReferenceDisclosure(self)
         self.refresh_commands()
 
     # ----------------------------------------------------------------
@@ -1136,7 +1078,7 @@ class _CheatSheetWindow(QMainWindow):
                 item.setData(Qt.ItemDataRole.UserRole + 2, item_generation)
                 item.setText(row_text(cmd))
                 item.setData(Qt.ItemDataRole.UserRole + 3, dict(cmd, row_tags=row_tags(cmd)))
-                tooltip = cmd.get("description", "")
+                tooltip = cmd["phrase"] + "\n" + cmd.get("description", "")
                 if cmd.get("pack") not in (None, "", "core"):
                     tooltip += f"\nPack: {cmd['pack']}" + (" (off)" if cmd.get("pack_disabled") else "")
                 if cmd.get("scope_note"):
@@ -1212,11 +1154,6 @@ class _CheatSheetWindow(QMainWindow):
         # ---- Pinned ----
         pinned_cmds = [c for c in self._all if c["phrase"] in self._pinned]
         if pinned_cmds:
-            if has_content and self._most_used_expanded:
-                sep = QFrame()
-                sep.setFixedHeight(1)
-                sep.setStyleSheet(f"background:{theme.BORDER};")
-                self._static_layout.addWidget(sep)
             self._static_layout.addWidget(self._section_label("PINNED"))
             for cmd in pinned_cmds:
                 row = _StaticRow(
@@ -1227,12 +1164,6 @@ class _CheatSheetWindow(QMainWindow):
                 )
                 self._static_layout.addWidget(row)
             has_content = True
-
-        if has_content:
-            sep = QFrame()
-            sep.setFixedHeight(1)
-            sep.setStyleSheet(f"background:{theme.BORDER};margin:2px 0;")
-            self._static_layout.addWidget(sep)
 
         self._static_has_content = has_content
         self._static_pane.setVisible(
@@ -1256,8 +1187,8 @@ class _CheatSheetWindow(QMainWindow):
     def _section_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;font-weight:bold;"
-            f"padding:3px 0 2px 0;background:{theme.BG0};"
+            f"color:{theme.ACCENT};font-size:{theme.TYPE_MIN}px;font-weight:bold;"
+            f"padding:3px 0 2px 0;background:transparent;"
         )
         return lbl
 

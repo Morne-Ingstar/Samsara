@@ -4,6 +4,7 @@ from PySide6.QtCore import QEvent, Qt
 
 from samsara import command_stats
 from samsara.ui import command_cheatsheet_qt as sheet, theme
+from samsara.ui.command_reference_surfaces import row_fill
 
 
 @pytest.mark.parametrize('palette', ['dark', 'light'])
@@ -41,11 +42,18 @@ def test_left_and_right_gutters_match_row_background(
                 if not 0 <= y < viewport.height():
                     continue
                 y += viewport.top()
-                xs = (viewport.left() - 2, viewport.left() + 2,
-                      viewport.right() + 2)
+                # 864: gutters now live inside each full-width striped row.
+                xs = (viewport.left() + 1, viewport.left() + 8,
+                      viewport.right() - 1)
                 pixels = [image.pixelColor(round(x * scale), round(y * scale))
                           for x in xs]
-                assert pixels == [theme.qcolor(theme.BG0)] * 3, (position, i, pixels)
+                assert pixels[0] == pixels[1] == pixels[2], (position, i, pixels)
+                # Scroll fades composite the same wash across the entire row.
+                point_y = y - viewport.top()
+                fades = (win._scroll_edges.top, win._scroll_edges.bottom)
+                if not any(fade.isVisible() and fade.geometry().top() <= point_y <= fade.geometry().bottom()
+                           for fade in fades):
+                    assert pixels[0] == theme.qcolor(row_fill(i)), (position, i, pixels)
                 checked += 1
             assert checked >= 2
     finally:

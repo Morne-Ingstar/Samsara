@@ -60,6 +60,9 @@ def item(win, phrase='open notepad'):
 
 def click_row(win, phrase='open notepad'):
     target = item(win, phrase)
+    # 864: the preceding selected row can now expand inside the list.
+    win._list.scrollToItem(target)
+    QApplication.processEvents()
     QTest.mouseClick(win._list.viewport(), Qt.MouseButton.LeftButton,
                      pos=win._list.visualItemRect(target).center())
 
@@ -208,7 +211,8 @@ def test_grid_control_heights_dropdown_clearance_and_corner_grip(reference, qapp
                    for i in range(win._list.count()))
         grip = win._resize_grip
         assert grip.geometry().bottomRight() == grip.parentWidget().rect().bottomRight()
-        assert win._list.geometry().bottom() == grip.parentWidget().rect().bottom() - 12  # 842: corner inset.
+        # 864: collection wrapper keeps its inset outside row painting.
+        assert win._list.mapTo(grip.parentWidget(), win._list.rect().bottomRight()).y() == grip.parentWidget().rect().bottom() - 12
     finally:
         win.hide()
 

@@ -16,13 +16,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Import the module under test. The plugin lives outside the samsara package
-# but is loaded by name at runtime; tests import it directly via the path.
-import importlib.util
-_PLUGIN_PATH = Path(__file__).parent.parent / "plugins" / "commands" / "smart_actions.py"
-_spec = importlib.util.spec_from_file_location("smart_actions", _PLUGIN_PATH)
-smart_actions = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(smart_actions)
+# 864: share the production module and its registered handler globals.
+from plugins.commands import smart_actions
 
 
 # ---------------------------------------------------------------------------

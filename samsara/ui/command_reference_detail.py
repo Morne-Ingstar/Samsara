@@ -1,6 +1,6 @@
 """Persistent, catalogue-backed command details inside the floating reference."""
 from PySide6.QtCore import QEvent, QRect, QSize, Qt
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QFont, QFontMetrics, QPalette
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QFont, QFontMetrics, QPalette, QPen
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QVBoxLayout, QWidget,
@@ -9,6 +9,7 @@ from shiboken6 import isValid
 
 from samsara.ui import theme
 from samsara.ui.settings import sidebar
+from samsara.ui.command_reference_surfaces import row_fill
 
 # Owner-editable stand-in; descriptions themselves always come from the catalogue.
 NO_DESCRIPTION = "No description is available for this command."
@@ -52,7 +53,10 @@ def style_search(edit, height=None):
 
 
 class CommandRowDelegate(QStyledItemDelegate):
-    """Wrapped phrases, catalog help and tags, measured with the paint fonts."""
+    """One-line scan rows; full catalog text stays in accessible item data."""
+
+    expanded_phrase = None
+    detail_height = 0
 
     @staticmethod
     def tiers(index):
@@ -65,31 +69,39 @@ class CommandRowDelegate(QStyledItemDelegate):
     @staticmethod
     def tier_styles():
         primary = QFont(theme.FONT_FAMILY)
-        primary.setPixelSize(14)
+        primary.setPixelSize(theme.TYPE_BODY)
         primary.setWeight(QFont.Weight.DemiBold)
         secondary = QFont(theme.FONT_FAMILY)
-        secondary.setPixelSize(12)
-        return ((primary, theme.TEXT_PRIMARY), (secondary, theme.TEXT_SECONDARY))
+        secondary.setPixelSize(round(theme.TYPE_BODY * 0.875))
+        return ((primary, theme.TEXT_PRIMARY), (secondary, theme.DATA_TEXT_SECONDARY))
+
+    def header_height(self):
+        return max(theme.HIT_TARGET_MIN, max(QFontMetrics(font).height()
+                   for font, _ in self.tier_styles()) + 20)
 
     def text_layout(self, index, width):
-        width = max(1, width - theme.SPACE_1)
-        y = 8
-        parts = []
         styles = self.tier_styles()
-        content = list(zip(self.tiers(index), styles))
         row = index.data(Qt.ItemDataRole.UserRole + 3) or {}
-        content.extend((text, styles[1]) for text in row_help_lines(row))
-        tags = row.get('row_tags', ())
-        if tags:
-            content.append(('[' + ', '.join(tags) + ']', styles[1]))
-        for text, (font, colour) in content:
-            if not text:
-                continue
-            height = QFontMetrics(font).boundingRect(
-                QRect(0, 0, width, 100000), Qt.TextFlag.TextWordWrap, text).height()
-            parts.append((text, font, colour, QRect(0, y, width, height)))
-            y += height + 4
-        return parts, max(theme.HIT_TARGET_MIN, y + 4)
+        primary = self.tiers(index)[0]
+        summary = ' '.join(row.get('description', '').split())
+        available = max(1, width - 32)
+        # One shared name column for the filtered list, capped for narrow hosts.
+        # Cache measurements across paints; filtering gives rows a new generation.
+        model = index.model()
+        key = (model.rowCount(), index.data(Qt.ItemDataRole.UserRole + 2), styles[0][0].toString())
+        if getattr(self, '_column_key', None) != key:
+            metrics = QFontMetrics(styles[0][0])
+            self._name_width = max((metrics.horizontalAdvance(self.tiers(model.index(i, 0))[0])
+                                    for i in range(model.rowCount())), default=100) + 8
+            self._column_key = key
+        name_width = min(available, max(100, min(self._name_width, available * 2 // 5)))
+        height = self.header_height()
+        parts = [(primary, *styles[0], QRect(16, 0, name_width, height))]
+        remaining = available - name_width - 16
+        if summary and remaining > 40:
+            parts.append((summary, *styles[1], QRect(32 + name_width, 0, remaining, height)))
+        expanded = row.get('phrase') == self.expanded_phrase
+        return parts, height + (self.detail_height if expanded else 0)
 
     def sizeHint(self, option, index):
         width = self.parent().viewport().width()
@@ -102,15 +114,17 @@ class CommandRowDelegate(QStyledItemDelegate):
         hovered = bool(styled.state & QStyle.StateFlag.State_MouseOver)
         painter.save()
         painter.setClipRect(styled.rect)
-        painter.fillRect(styled.rect, theme.qcolor(
-            theme._rgba(theme.ACCENT, 0.14) if selected else theme.BG2 if hovered else theme.BG0))
+        painter.fillRect(styled.rect, theme.qcolor(row_fill(index.row(), selected, hovered)))
+        if selected:
+            painter.fillRect(styled.rect.adjusted(0, 8, -styled.rect.width() + 3, -8), theme.qcolor(theme.ACCENT))
         for text, font, colour, rect in self.text_layout(index, styled.rect.width())[0]:
             painter.setFont(font)
-            painter.setPen(theme.qcolor(colour))
-            painter.drawText(rect.translated(styled.rect.topLeft()), Qt.TextFlag.TextWordWrap, text)
-        if index.row() < index.model().rowCount() - 1:
-            painter.setPen(theme.qcolor(theme.BORDER_FAINT))
-            painter.drawLine(styled.rect.bottomLeft(), styled.rect.bottomRight())
+            painter.setPen(theme.qcolor(theme.TEXT_PRIMARY if selected else colour))
+            visible = QFontMetrics(font).elidedText(text, Qt.TextElideMode.ElideRight, rect.width())
+            painter.drawText(rect.translated(styled.rect.topLeft()), Qt.AlignmentFlag.AlignVCenter, visible)
+        if styled.state & QStyle.StateFlag.State_HasFocus:
+            painter.setPen(QPen(theme.qcolor(theme.ACCENT), 2))
+            painter.drawRoundedRect(styled.rect.adjusted(2, 2, -2, -2), 6, 6)
         painter.restore()
 
 
@@ -123,7 +137,7 @@ class CommandDetailCard(QFrame):
         self.setObjectName('commandDetailCard')
         self.setAccessibleName('Command details')
         self.setStyleSheet(
-            f'QFrame#commandDetailCard{{background:{theme.BG1};border:1px solid {theme.BORDER};'
+            f'QFrame#commandDetailCard{{background:{theme.DATA_SURFACE};border:1px solid {theme.BORDER};'
             f'border-radius:{theme.CONTROL_RADIUS}px;}}'
             f'QLabel{{background:transparent;border:none;color:{theme.TEXT_PRIMARY};}}')
         layout = QVBoxLayout(self)
@@ -132,7 +146,7 @@ class CommandDetailCard(QFrame):
         self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll.setStyleSheet(f'QScrollArea,QScrollArea>QWidget>QWidget{{background:{theme.BG1};border:none;}}' + theme.SCROLLBAR_QSS)
+        self.scroll.setStyleSheet(f'QScrollArea,QScrollArea>QWidget>QWidget{{background:{theme.DATA_SURFACE};border:none;}}' + theme.SCROLLBAR_QSS)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.body = QWidget()
         self.column = QVBoxLayout(self.body)
@@ -143,10 +157,15 @@ class CommandDetailCard(QFrame):
             label = QLabel()
             label.setTextFormat(Qt.TextFormat.PlainText)
             label.setWordWrap(True)
+            label.setStyleSheet(f'font-size:{theme.TYPE_SECONDARY}px;color:{theme.DATA_TEXT_SECONDARY};')
             self.column.addWidget(label)
             self.labels.append(label)
         self.scroll.setWidget(self.body)
         layout.addWidget(self.scroll, 1)
+        self.metadata = QLabel()
+        self.metadata.setWordWrap(True)
+        self.metadata.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.metadata)
         self.pack_status = QLabel()
         self.pack_status.setWordWrap(True)
         layout.addWidget(self.pack_status)
@@ -176,14 +195,28 @@ class CommandDetailCard(QFrame):
         layout.addLayout(actions)
         self.hide()
         self._filter_installed = False
-        window._list.verticalScrollBar().valueChanged.connect(lambda _: self.dismiss())
+        window._list.verticalScrollBar().valueChanged.connect(self._scrolled)
+
+    def _scrolled(self, _value):
+        if not getattr(getattr(self.window, '_disclosure', None), 'placing', False):
+            self.dismiss()
 
     def open(self, command, origin, anchor):
+        self.dismiss()
         self.origin = origin
+        inline = origin is self.window._list
+        fill = theme.DATA_ROW_SELECTED if inline else theme.DATA_SURFACE
+        border = 'none' if inline else f'1px solid {theme.BORDER}'
+        self.setStyleSheet(
+            f'QFrame#commandDetailCard{{background:{fill};border:{border};border-radius:0;}}'
+            f'QLabel{{background:transparent;border:none;color:{theme.TEXT_PRIMARY};}}')
+        self.scroll.setStyleSheet(f'QScrollArea,QScrollArea>QWidget>QWidget{{background:{fill};border:none;}}' + theme.SCROLLBAR_QSS)
         self.phrase = command['phrase']
         self._pack_id = command.get('pack', 'core')
         self._anchor = anchor
         disabled = bool(command.get('pack_disabled'))
+        self.metadata.setText(', '.join(command.get('row_tags', ())))
+        self.metadata.setVisible(bool(self.metadata.text()))
         arguments = command.get('args', ())
         examples = command.get('examples', ())
         self._run_phrase = examples[0] if arguments and examples else self.phrase
@@ -205,7 +238,7 @@ class CommandDetailCard(QFrame):
             label.setVisible(bool(text))
         self.labels[0].setStyleSheet(f'font-size:{theme.TYPE_EMPHASIS}px;font-weight:600;')
         self.setAccessibleName('Command details: ' + self.phrase)
-        description = '\n'.join(text for text in fields if text)
+        description = '\n'.join(text for text in fields + [self.metadata.text()] if text)
         self.setAccessibleDescription(description)
         self.run_button.setAccessibleName('Run it: ' + self._run_phrase)
         self.run_button.setAccessibleDescription(description)
@@ -229,14 +262,23 @@ class CommandDetailCard(QFrame):
         if not self.pack_status.isHidden():
             area.setTop(max(area.top(), self.window._list.mapTo(self.parentWidget(), self.window._list.rect().topLeft()).y()))
         width = area.width()
+        disclosure = getattr(self.window, '_disclosure', None)
+        inline = self.origin is self.window._list and disclosure is not None and self.window._list.viewport().height() >= 160
+        if inline:
+            width = self.window._list.viewport().width()
         text_width = max(1, width - 2 * theme.SPACE_2 - 2)
         body_height = sum(label.heightForWidth(text_width) for label in self.labels if not label.isHidden())
         body_height += theme.SPACE_1 * (sum(not label.isHidden() for label in self.labels) - 1)
         height = min(area.height(), body_height + 2 * theme.SPACE_2 + theme.SPACE_1 + theme.HIT_TARGET_MIN + 4)
+        if not self.metadata.isHidden():
+            height = min(area.height(), height + self.metadata.heightForWidth(text_width) + theme.SPACE_1)
         if not self.pack_status.isHidden():
             height = min(area.height(), height + self.pack_status.heightForWidth(text_width) + theme.SPACE_1)
         if not self.enable_button.isHidden():
             height = min(area.height(), height + self.enable_button.sizeHint().height() + theme.SPACE_1)
+        if inline:
+            if disclosure.place(self, height):
+                return
         y = anchor.bottom() + theme.SPACE_1
         if y + height > area.bottom() + 1:
             y = anchor.top() - theme.SPACE_1 - height
@@ -248,6 +290,9 @@ class CommandDetailCard(QFrame):
             QApplication.instance().removeEventFilter(self)
             self._filter_installed = False
         self.hide()
+        disclosure = getattr(self.window, '_disclosure', None)
+        if disclosure is not None:
+            disclosure.collapse()
         self.phrase = None
         if restore_focus and self.origin is not None and isValid(self.origin):
             self.origin.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -289,6 +334,10 @@ class CommandDetailCard(QFrame):
             if watched is self.origin and event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down):
                 self.dismiss()
         elif kind == QEvent.Type.MouseButtonPress:
+            # Keep list geometry stable until native hit-testing has chosen the
+            # clicked row. Collapsing here moves that row out from under it.
+            if watched is self.window._list.viewport():
+                return False
             if isinstance(watched, QWidget) and watched is not self and not self.isAncestorOf(watched):
                 self.dismiss()
         elif watched is self.window and kind in (QEvent.Type.Hide, QEvent.Type.Resize, QEvent.Type.WindowDeactivate):

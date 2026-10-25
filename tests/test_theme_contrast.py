@@ -48,6 +48,13 @@ GRAPHIC_TOKENS = ("RECORDING",)
 GRAPHIC_SURFACES = {"RECORDING": ("BG0", "BG1")}
 
 AA_NORMAL_TEXT = 4.5
+
+
+def test_data_collection_text_contrast(palette):
+    # 864: actual normal/stripe/hover/selected collection roles, both themes.
+    for surface in ('DATA_SURFACE', 'DATA_ROW_ALT', 'DATA_ROW_HOVER', 'DATA_ROW_SELECTED'):
+        for ink in ('TEXT_PRIMARY', 'DATA_TEXT_SECONDARY'):
+            assert theme.contrast_ratio(getattr(theme, ink), getattr(theme, surface)) >= 4.5
 NON_TEXT = 3.0
 #: CIE76 dE. 2.3 is the "just noticeable difference"; a state colour has to be
 #: far past that to be told apart at a glance on a moving indicator. 20 is the

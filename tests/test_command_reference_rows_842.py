@@ -4,6 +4,7 @@ import inspect
 import pytest
 from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QFontInfo
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QCheckBox
 
 from samsara import command_stats
@@ -51,17 +52,23 @@ def test_tiers_wrap_without_elision(panel):
     assert primary == 'Command 00'
     assert 'alternate phrase 7' in aliases
     assert view.textElideMode() == Qt.TextElideMode.ElideNone
-    assert 'elidedText' not in inspect.getsource(CommandRowDelegate)
+    # 864: scan text is one line; complete aliases wrap in selected details.
+    assert 'elidedText' in inspect.getsource(CommandRowDelegate)
     (font1, colour1), (font2, colour2) = delegate.tier_styles()
-    assert font1.pixelSize() == 14 and font2.pixelSize() == 12
+    assert font1.pixelSize() == theme.TYPE_BODY and font2.pixelSize() == round(theme.TYPE_BODY * 0.875)
     assert QFontInfo(font1).pointSizeF() != QFontInfo(font2).pointSizeF()
     assert font1.weight() > font2.weight()
-    assert colour1 == theme.TEXT_PRIMARY and colour2 == theme.TEXT_SECONDARY
+    assert colour1 == theme.TEXT_PRIMARY and colour2 == theme.DATA_TEXT_SECONDARY
     assert colour1 != colour2
     wide = delegate.text_layout(index, view.viewport().width())[1]
     narrow = delegate.text_layout(index, view.viewport().width() // 2)[1]
-    assert narrow > wide > theme.HIT_TARGET_MIN
+    assert narrow == wide == delegate.header_height()
     assert view.visualItemRect(view.item(0)).height() == wide
+    panel._on_item_clicked(view.item(0))
+    card = panel._detail_card
+    assert 'alternate phrase 7' in card.labels[1].text()
+    assert card.labels[1].wordWrap()
+    assert view.visualItemRect(view.item(0)).height() > wide
 
 
 def test_filter_band_and_native_corner(panel):

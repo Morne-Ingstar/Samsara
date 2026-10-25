@@ -8,7 +8,6 @@ Covers:
     but not unrelated Samsara sounds
 """
 
-import importlib.util
 import io
 import sys
 import wave
@@ -36,12 +35,8 @@ NEW_EARCONS = [
 LEGACY_EARCONS = ['start', 'stop', 'success', 'error']
 
 
-# Load smart_actions the same way the Phase-1 test does -- the plugin lives
-# outside the samsara package.
-_SA_PATH = REPO_ROOT / "plugins" / "commands" / "smart_actions.py"
-_spec = importlib.util.spec_from_file_location("smart_actions", _SA_PATH)
-smart_actions = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(smart_actions)
+# 864: use the production module identity; path execution leaks orphan handlers.
+from plugins.commands import smart_actions
 
 
 # ---------------------------------------------------------------------------
