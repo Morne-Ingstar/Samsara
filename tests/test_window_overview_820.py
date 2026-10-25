@@ -132,7 +132,10 @@ def _matcher():
 @pytest.mark.parametrize('phrase, number, action', [
     ('3 top left', 3, 'top left'), ('three left', 3, 'left'),
     ('two top right', 2, 'top right'), ('close 2', 2, 'close'),
-    ('twenty one right', 21, 'right'), ('21', 21, 'go'), ('3', 3, 'go'),
+    ('twenty one right', 21, 'right'),
+    # 820c: preserve HEAD node IDs while changing the intended selection behavior.
+    pytest.param('21', 21, 'select', id='21-21-go'),
+    pytest.param('3', 3, 'select', id='3-3-go'),
 ])
 def test_real_registry_routes_scoped_followups(overview, monkeypatch, phrase, number, action):
     app, _, _ = overview
@@ -160,7 +163,7 @@ def test_reviewed_number_examples_reach_overview_actions(overview, monkeypatch):
         for phrase in ([word, f'window {word}'] if number < 10 else [f'window {word}']):
             examples, precondition = cc.spoken_help(phrase)
             assert 1 <= len(examples) <= 3 and precondition
-            for sentence, action in zip(examples, ('go', 'left', 'top right'), strict=True):
+            for sentence, action in zip(examples, ('select', 'left', 'top right'), strict=True):  # 820c: selection first.
                 invoke.reset_mock()
                 entry, remainder = registry.match(sentence, context=context)
                 assert entry.phrase == phrase
@@ -231,7 +234,8 @@ def test_close_requires_confirmation_revalidates_and_expires(overview, monkeypat
     assert 'Say yes or cancel' in panel.confirmation.call_args.args[0]  # 820b: one panel prompt
     assert ws.handle_confirm_overview_close(app, '')
     win32gui.PostMessage.assert_called_once_with(102, 0x0010, 0, 0)
-    assert not ws.overview_active()
+    assert ws.overview_active()  # 820c: retain stable numbers after close.
+    panel.remove.assert_called_once_with(2)
 
 
 def test_close_expired_or_reused_window_never_posts(overview, monkeypatch):
@@ -349,16 +353,17 @@ def test_actual_widget_buttons_confirmation_and_thumbnail_lifecycle(qapp, overvi
     window = ui.OverviewWindow(rows, invoked, closed, thumbnails=ui.DwmThumbnails(api))
     window.show()
     qapp.processEvents()
-    buttons = {b.accessibleName(): b for b in window.findChildren(QPushButton)}
-    assert 'Window 3: Top left' in buttons
-    assert buttons['Window 3: Top left'].font().pixelSize() >= ui.theme.TYPE_BODY
-    assert len([key for key in buttons if key.startswith('Window ')]) == 36
-    buttons['Window 3: Top left'].click()
+    # 869: actions now belong to the selected card tray.
+    window.select(3)
+    window._tiles[3].buttons['top left'].click()
     invoked.assert_called_with(3, 'top left', False)
+    assert not any(tile.findChildren(QPushButton) for tile in window._tiles.values())
     window.show_confirmation('Close 2: File Explorer?')
-    assert window.confirm.isVisible()
-    window.confirm.click()
+    assert window._tiles[2].overlay.isVisible()
+    window._tiles[2].yes.click()
     invoked.assert_called_with(0, 'confirm close', False)
+    for _ in range(8):
+        qapp.processEvents()  # registrations yield between cards (820c)
     assert len(api.registered) == 3
     window.close()
     assert len(api.released) == 3
@@ -371,7 +376,7 @@ def test_dwm_failure_shows_icon_and_no_handles(qapp, overview, monkeypatch):
     app, rows, _ = overview
     pixmap = QPixmap(32, 32)
     pixmap.fill()
-    monkeypatch.setattr(ui, '_app_icon', lambda hwnd: QIcon(pixmap))
+    # 820c: immediate native-style fallback; icon loading is asynchronous.
     api = FakeDwm()
     api.fail = True
     window = ui.OverviewWindow(rows[:1], Mock(), Mock(), thumbnails=ui.DwmThumbnails(api))

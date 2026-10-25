@@ -263,7 +263,7 @@ DEFAULT_THEME = "dark"
 PALETTE_TOKENS = tuple(_DARK)
 DERIVED_TOKENS = (
     "ACCENT_HOVER", "ACCENT_PRESSED", "ACCENT_DISABLED", "ACCENT_DIM",
-    "BRAND_RED", "ICON_HUB",
+    "BRAND_RED", "ICON_HUB", "OVERVIEW_WELL", "OVERVIEW_CONFIRM", "OVERVIEW_ACTION_SURFACE",
 )
 
 #: The palette currently bound to the module attributes. Read it with
@@ -339,6 +339,10 @@ def _install(name: str) -> None:
     # Hub disc behind the eye, so the eye reads on any taskbar colour.
     values["ICON_HUB"] = bg1
 
+    # Overview preview/confirmation stay dark in both palettes (820c).
+    values["OVERVIEW_ACTION_SURFACE"] = values["BG0"]
+    values["OVERVIEW_WELL"] = values["INK_DARK"]
+    values["OVERVIEW_CONFIRM"] = "rgba(%d,%d,%d,0.92)" % _hex_to_rgb(values["INK_DARK"])
     globals().update(values)
     _ACTIVE = name
     # Derived artefacts that bake token values in. Rebuilt on every switch,

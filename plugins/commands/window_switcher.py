@@ -1223,9 +1223,12 @@ def _show_overview(app, remainder=""):
         if pid not in names:
             names[pid] = cube._friendly_app_name(hwnd)
         app_name = names[pid]
+        monitor = _overview_monitor(hwnd, monitors)
         rows.append(dict(number=number, hwnd=hwnd, pid=pid, title=title,
                          short_title=short_window_title(title, app_name),
-                         app=app_name, minimized=minimized))
+                         app=app_name, minimized=minimized, monitor_count=len(monitors),
+                         monitor=overview_monitor_number(monitor),
+                         primary=bool(monitor and monitor.get('primary'))))
     # Legacy letter commands can still refer to the same enumerated windows.
     with _lock:
         _mapping = _assign_letters(windows)
@@ -1242,7 +1245,8 @@ def _show_overview(app, remainder=""):
     try:
         _overview_panel().show(rows,
             lambda number, action, keep: overview_action(app, number, action, keep),
-            _overview_closed, _overview_keep)
+            _overview_closed, _overview_keep,
+            listening_indicator=getattr(app, 'listening_indicator', None))
     except Exception:
         _overview_closed()
         logger.exception("Window overview could not open")
@@ -1274,7 +1278,7 @@ def parse_overview_action(text):
                 (parse_spoken_number(monitor) or monitor in {'main', 'primary'})):
             return number, f'{target[2]} {monitor}', keep
         return None
-    for action in sorted(_OVERVIEW_ACTIONS - {'close', 'go'}, key=len, reverse=True):
+    for action in sorted(_OVERVIEW_ACTIONS - {'close'}, key=len, reverse=True):
         if text.endswith(' ' + action):
             number = parse_spoken_number(text[:-len(action)].strip())
             return (number, action, keep) if number and number > 0 else None
@@ -1301,6 +1305,12 @@ def overview_action(app, number, action='go', keep=None):
         _overview_keep = keep
         _overview_panel().keep_open(keep)
     if action == 'keep open':
+        _overview_pending_close = None
+        _overview_panel().confirmation('')
+        return True
+    if action == 'cancel close':
+        _overview_pending_close = None
+        _overview_panel().confirmation('')
         return True
     if action == 'confirm close':
         pending = _overview_pending_close
@@ -1317,6 +1327,9 @@ def overview_action(app, number, action='go', keep=None):
     row = next((r for r in _overview_rows if r['number'] == number), None)
     if row is None or not _overview_is_live(row):
         _speak(app, "That window is no longer available. Say show windows again.")
+        return True
+    if action == 'select':
+        _overview_panel().select(number)
         return True
     if action == 'close':
         _overview_pending_close = (number, time.monotonic() + 15)
@@ -1382,6 +1395,8 @@ def overview_action(app, number, action='go', keep=None):
             handle_show_cube(app, '')
         elif action == 'confirmed close':
             win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+            _overview_rows.remove(row)
+            _overview_panel().remove(number)
         else:
             return False
     except Exception:
@@ -1390,9 +1405,22 @@ def overview_action(app, number, action='go', keep=None):
     if success is False:
         _speak(app, "Could not change that window.")
         return True
-    if not _overview_keep:
+    if action not in {'go', 'confirmed close', 'cube'}:
+        monitors = mover.get_monitors()
+        monitor = _overview_monitor(hwnd, monitors)
+        row.update(monitor=overview_monitor_number(monitor),
+                   primary=bool(monitor and monitor.get('primary')))
+        _overview_panel().monitor(number, row['monitor'], row['primary'])
+    if not _overview_keep and action != 'confirmed close':
         _hide_overview()
     return True
+
+
+def overview_monitor_number(monitor):
+    if not monitor:
+        return 1
+    display = re.search(r'(\d+)$', monitor.get('device', ''))
+    return int(display[1]) if display else monitor.get('index', 1)
 
 
 def overview_monitor_target(text, monitors):
@@ -1417,10 +1445,13 @@ def handle_overview_number(app, value, remainder=""):
     if parsed is None:
         return False
     number, action, keep = parsed
+    # Bare-number dispatch selects; explicit choose N retains its Go behavior.
+    if action == 'go' and (remainder or '').strip().lower() in {'', 'keep it open'}:
+        action = 'select'
     return overview_action(app, number, action, True if keep else None)
 
 
-@command("read window", pack="window-management", risk_class="read",
+@command("read window", aliases=["read"], pack="window-management", risk_class="read",
          scope={"tags": ["window_overview.visible"]},
          param_schema={"number": {"type": "int", "required": True}})
 def handle_read_window(app, remainder):
