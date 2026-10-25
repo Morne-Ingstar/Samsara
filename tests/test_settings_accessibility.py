@@ -2,7 +2,7 @@ import threading
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QPushButton, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import QLabel, QPushButton, QScrollArea, QSizePolicy, QWidget
 
 from samsara.ui import settings_qt, theme
 from samsara.ui_scale import UI_SCALE_OPTIONS
@@ -108,10 +108,11 @@ def test_commands_page_scrolls_vertically_without_horizontal_overflow(qapp):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
 
-        pack_scroll = commands_page.findChild(QScrollArea, "commandPacksScroll")
-        assert pack_scroll is not None
-        assert pack_scroll.minimumHeight() == 210
-        assert pack_scroll.maximumHeight() > pack_scroll.minimumHeight()
+        # 887: landed 840 removes nested scrolling; the page owns it.
+        pack_panel = commands_page.findChild(QWidget, "commandPacksContent")
+        assert pack_panel is not None
+        assert commands_page.findChild(QScrollArea, "commandPacksScroll") is None
+        assert pack_panel.maximumWidth() == 640
 
         descriptions = [
             label for label in commands_page.findChildren(QLabel)

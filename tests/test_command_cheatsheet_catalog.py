@@ -30,6 +30,8 @@ SURFACES = (
 #: no allowlist at all.
 NOT_COMMAND_PHRASES = {
     "next": "tutorial navigation button label",
+    "back": "tutorial navigation button label (887: landed 837)",
+    "show": "tutorial display-step title (887: landed 837)",
     "ava": "section / row / mode NAME in the quick reference, not an utterance",
     "escape": "cancel_hotkey fallback KEY name (pynput key), not an utterance",
     "silence": "continuous_commit_trigger enum VALUE, not an utterance",

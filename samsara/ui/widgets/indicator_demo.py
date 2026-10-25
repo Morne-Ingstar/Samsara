@@ -48,6 +48,7 @@ def compact_stand_in(*, thinking=False, command_mode=False, listening=False, mod
     from types import SimpleNamespace
     return SimpleNamespace(
         _pulse_step=0, _unlocked=False, _flash_bg=None, _flash_fg=None,
+        _chip_feedback=None, _chip_kind=None, _report_width=lambda: 0,
         _snoozed=False, _agent_waiting=None, _session_mode_name=None,
         _session_mode_color=theme.ACCENT, _thinking=thinking,
         _command_mode=command_mode, _listening=listening, _mode_text=mode_text)

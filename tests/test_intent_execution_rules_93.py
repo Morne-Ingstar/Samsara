@@ -121,7 +121,8 @@ def test_tier_three_can_never_execute(resolver):
     construction. It had one execution in the shadow log ("Could you copy
     that, please?" -> builtin.copy at confidence 1.0)."""
     res = resolver.resolve("Could you copy that, please?")
-    assert res.kind != rs.RESOLVED
+    # 887: landed 823 gives copy-that an exact identity; it is no fuzzy execution.
+    assert (res.kind, res.canonical_id, res.tier) == (rs.RESOLVED, "builtin.copy_that", "exact")
     assert all(r.tier != "similarity" for r in
                [resolver.resolve(t) for t in ("tab next", "Check.", "the light weight?")]
                if r.kind == rs.RESOLVED)

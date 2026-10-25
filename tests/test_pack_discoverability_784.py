@@ -83,7 +83,8 @@ def test_home_and_reference_open_visible_packs_at_top(tools, qapp, monkeypatch, 
         assert window._stack.currentWidget() is page
         assert packs.isVisible()
         assert page.verticalScrollBar().value() == 0
-        packs.verticalScrollBar().setValue(packs.verticalScrollBar().maximum())
+        # 887: landed 840 puts packs in a filled panel; the page owns scrolling.
+        page.verticalScrollBar().setValue(page.verticalScrollBar().maximum())
         window.open_tool('Music')
         monkeypatch.setattr(cs, 'catalog_rows', lambda _: [])
         monkeypatch.setattr(cs, '_disabled_packs', lambda: set())
@@ -94,7 +95,7 @@ def test_home_and_reference_open_visible_packs_at_top(tools, qapp, monkeypatch, 
             _settle(qapp)
             assert window._stack.currentWidget() is page
             assert page.verticalScrollBar().value() == 0
-            assert packs.verticalScrollBar().value() == 0
+            assert page.verticalScrollBar().value() == 0
             assert not ref._title_bar._packs_button.font().underline()
         finally:
             ref.deleteLater()
@@ -215,6 +216,8 @@ def test_runtime_replaces_frozen_matcher_without_restart(owner, monkeypatch, pac
     owner.config['hermes']['notice_accepted'] = True
     owner.config['command_packs'][pack] = not enabled
     executor = CommandExecutor.__new__(CommandExecutor)
+    executor._resources = None  # 887: desktop constructor state added by landed 851.
+    executor._plugin_registry = None
     executor._matcher_lock = threading.RLock()
     executor._app = owner
     executor.commands = {}

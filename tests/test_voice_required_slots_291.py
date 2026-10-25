@@ -36,6 +36,15 @@ REQUIRED_VOICE_PHRASES = {
     "expand",
     "focus control",
     "toggle",
+    # 887: landed 632/823 and keyboard-selection required text slots.
+    "make selection",
+    "change selection",
+    "edit selection",
+    "reformat selection",
+    "rewrite selection",
+    "reword selection",
+    "rephrase selection",
+    "select previous",
 }
 
 # 345b's controller identities have required tokens, but are never voice slots.
@@ -102,7 +111,9 @@ def test_required_slots_accept_the_actual_exact_voice_remainder(live_voice_regis
     for phrase, entry in entries.items():
         actual = captured[phrase]
         assert actual["route"] is Route.EXACT
-        assert actual["args"] == {"remainder": "foo"}
+        # 887: selection routing intentionally preserves its full request.
+        expected = f"{phrase} foo" if phrase in {'rephrase selection', 'change selection', 'reword selection', 'make selection', 'rewrite selection', 'edit selection', 'reformat selection'} else "foo"
+        assert actual["args"] == {"remainder": expected}
         assert validate_args(entry.param_schema, actual["args"], route=actual["route"]) is None
 
 

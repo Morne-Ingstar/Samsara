@@ -134,7 +134,8 @@ class RecentActivity(QWidget):
             except RuntimeError:
                 pass  # Qt owner was destroyed; never log a row or exception.
 
-        threading.Thread(target=read, name="home-recent-history", daemon=True).start()
+        from samsara.runtime import thread_registry
+        thread_registry.spawn("home-recent-history", read, daemon=True)
 
     def _accept(self, rows, generation):
         if generation != self._generation:

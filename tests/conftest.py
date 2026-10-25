@@ -423,7 +423,8 @@ def pytest_itemcollected(item):
 @pytest.fixture(autouse=True)
 def _speech_presence_unknown_for_decoder_fixtures(request, monkeypatch):
     """Synthetic decoder inputs are not a speech-detector corpus (534)."""
-    if request.path.name != 'test_speech_presence_534.py':
+    # 887: LP05 is a stdlib-only composition gate, not a decoder fixture.
+    if request.path.name not in {'test_speech_presence_534.py', 'test_linux_lp05.py'}:
         from samsara import speech_presence
         monkeypatch.setattr(speech_presence._presence, 'measure',
                             lambda *args: speech_presence.Presence(False))

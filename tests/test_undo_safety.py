@@ -44,11 +44,12 @@ def _paste_app():
 
 def test_matching_foreground_uses_only_native_ctrl_z(monkeypatch):
     app = _undo_app(text="a fairly long dictated sentence", target_hwnd=700)
+    # 887: landed paste extraction uses the shared module, not the lazy proxy.
     hotkey = Mock()
     press = Mock()
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", Mock(return_value=700))
-    monkeypatch.setattr(dictation.pyautogui, "hotkey", hotkey)
-    monkeypatch.setattr(dictation.pyautogui, "press", press)
+    monkeypatch.setattr("pyautogui.hotkey", hotkey)
+    monkeypatch.setattr("pyautogui.press", press)
 
     assert app.undo_last_dictation() is True
 
@@ -65,7 +66,7 @@ def test_successful_undo_is_one_shot(monkeypatch):
     app = _undo_app(target_hwnd=700)
     hotkey = Mock()
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", Mock(return_value=700))
-    monkeypatch.setattr(dictation.pyautogui, "hotkey", hotkey)
+    monkeypatch.setattr("pyautogui.hotkey", hotkey)
 
     assert app.undo_last_dictation() is True
     assert app.undo_last_dictation() is False
@@ -80,8 +81,8 @@ def test_mismatched_foreground_fails_closed_and_retains_retry(monkeypatch):
     hotkey = Mock()
     press = Mock()
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", Mock(return_value=222))
-    monkeypatch.setattr(dictation.pyautogui, "hotkey", hotkey)
-    monkeypatch.setattr(dictation.pyautogui, "press", press)
+    monkeypatch.setattr("pyautogui.hotkey", hotkey)
+    monkeypatch.setattr("pyautogui.press", press)
 
     assert app.undo_last_dictation() is False
 
@@ -112,8 +113,8 @@ def test_missing_window_identity_fails_closed(
     monkeypatch.setattr(
         dictation, "_get_foreground_hwnd", Mock(return_value=foreground_hwnd),
     )
-    monkeypatch.setattr(dictation.pyautogui, "hotkey", hotkey)
-    monkeypatch.setattr(dictation.pyautogui, "press", press)
+    monkeypatch.setattr("pyautogui.hotkey", hotkey)
+    monkeypatch.setattr("pyautogui.press", press)
 
     assert app.undo_last_dictation() is False
 
@@ -127,7 +128,7 @@ def test_ctrl_z_injection_failure_retains_undo_for_retry(monkeypatch):
     timer = app._undo_timer
     hotkey = Mock(side_effect=RuntimeError("input injection unavailable"))
     monkeypatch.setattr(dictation, "_get_foreground_hwnd", Mock(return_value=500))
-    monkeypatch.setattr(dictation.pyautogui, "hotkey", hotkey)
+    monkeypatch.setattr("pyautogui.hotkey", hotkey)
 
     assert app.undo_last_dictation() is False
 

@@ -39,6 +39,15 @@ VOICE_SLOTS = {
     'expand': ('Foo', {'remainder': 'Foo'}),
     'collapse': ('Foo', {'remainder': 'Foo'}),
     'focus control': ('Foo', {'remainder': 'Foo'}),
+    # 887: required text slots from landed 632/823 and keyboard selection.
+    'make selection': ('Foo', {'remainder': 'make selection Foo'}),
+    'change selection': ('Foo', {'remainder': 'change selection Foo'}),
+    'edit selection': ('Foo', {'remainder': 'edit selection Foo'}),
+    'reformat selection': ('Foo', {'remainder': 'reformat selection Foo'}),
+    'rewrite selection': ('Foo', {'remainder': 'rewrite selection Foo'}),
+    'reword selection': ('Foo', {'remainder': 'reword selection Foo'}),
+    'rephrase selection': ('Foo', {'remainder': 'rephrase selection Foo'}),
+    'select previous': ('three words', {'remainder': 'three words'}),
 }
 CONTROLLER_SLOTS = {
     'interact focus': {'subject_token': 'opaque-controller-token'},
@@ -55,7 +64,8 @@ def production():
     executor = build_executor()
     required = {entry.phrase for entry in executor._matcher._sorted
                 if any(spec.get('required') for spec in entry.param_schema.values())}
-    assert required == set(VOICE_SLOTS) | set(CONTROLLER_SLOTS)
+    # 887: 820b's scoped read-window command has an integer, not a text slot.
+    assert required == set(VOICE_SLOTS) | set(CONTROLLER_SLOTS) | {'read window'}
     return executor, dict(plugin_commands._REGISTRY)
 
 
@@ -120,7 +130,9 @@ def test_every_required_voice_slot_has_the_same_policy_decision_as_typed(live, m
     captured, _result = _capture(executor, app, monkeypatch, f'{phrase} {remainder}')
     assert captured['command_id'] == phrase
     assert captured['route'] is ep.Route.EXACT
-    assert captured['args']['remainder'] == remainder
+    # 887: selection requests retain the whole utterance for their intent parser.
+    expected_remainder = typed.get('remainder', remainder)
+    assert captured['args']['remainder'] == expected_remainder
     assert _decision(executor, app, phrase, captured['args']) == _decision(executor, app, phrase, typed)
     assert not isinstance(_decision(executor, app, phrase, typed), ep.Denied)
 

@@ -153,5 +153,6 @@ def test_ava_reply_helper_requests_interruptible_speech(monkeypatch):
     assert ask_ollama.speak(app, "Wake me with the word.") is True
 
     coordinator.speak.assert_called_once_with(
-        "Wake me with the word.", category="ava_response", interruptible=True,
+        # 887: landed 834r explicitly attributes Ava speech.
+        "Wake me with the word.", category="ava_response", interruptible=True, caption_source="AVA",
     )

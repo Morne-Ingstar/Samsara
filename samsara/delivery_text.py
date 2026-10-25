@@ -74,7 +74,7 @@ class SessionTextDelivery:
         formatted = clean_text(formatted, mode=mode)
         if app.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
             formatted = smart_correct(formatted, app)
-        if not draft and app.config.get('add_trailing_space', False):
+        if not draft and app.config.get('add_trailing_space', True):
             formatted += ' '
         formatted = app._apply_formatting_tokens(formatted)
         if draft and mode != 'verbatim':

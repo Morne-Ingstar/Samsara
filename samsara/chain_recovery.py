@@ -83,6 +83,14 @@ def parse_command_chain(text, records):
     original = grammar.parse(text, records)
     if len(original) > 1:
         return original
+    # 887: "cube tile three and four" is one complete numeric-list command.
+    # Recovering another boundary would reinterpret its last number as a pick.
+    if len(original) == 1:
+        cid, values, _span, _confidence = original[0]
+        record = next(r for r in records if r['canonical_id'] == cid)
+        if any(arg.get('type') == 'int' and isinstance(values.get(arg['name']), list)
+               for arg in record.get('args', ())):
+            return original
     explicit = _explicit_chain(text, records)
     if explicit:
         return explicit

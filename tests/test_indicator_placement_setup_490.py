@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from samsara.onboarding import display_placement as placement
+from samsara.config_seed import incomplete_setup_config
 from samsara.ui import first_run_wizard_qt as wizard, tutorial_qt, theme
 
 # 522: the picker owns the sole desktop and the shared demo loop now.
@@ -50,7 +51,8 @@ def config_nodes():
 
 def execute(nodes, app, defaults):
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<config boundary>', 'exec'),
-         dict(self=app, default_config=defaults, display_placement=placement))
+         dict(self=app, default_config=defaults, display_placement=placement,
+              incomplete_setup_config=incomplete_setup_config))
 
 
 @pytest.mark.parametrize('display', ['full', 'compact'])
@@ -59,7 +61,8 @@ def test_fresh_without_setup_seeds_only_true_absent_file_branch(qapp, display):
     # The corrupt-file branch must retain legacy defaults; only the final else seeds.
     assert not any('seed_fresh' in ast.unparse(n) for n in branch.body)
     nodes = branch.orelse[:2]
-    assert ast.unparse(nodes[0]) == 'self.config = default_config'
+    # 887: landed 886 preserves incomplete first-run state in a fresh profile.
+    assert ast.unparse(nodes[0]) == 'self.config = incomplete_setup_config(default_config)'
     defaults = {'listening_indicator_position': 'bottom-center', 'ui': {}}
     app = SimpleNamespace(config={})
     execute(nodes, app, defaults)

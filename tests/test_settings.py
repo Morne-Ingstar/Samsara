@@ -722,6 +722,7 @@ class TestApplyAndCloseSnapshot:
         expected['command_mode']['dictation_literal_commands_only'] = True
         expected['hands_free'] = {'send_mode': 'staged'}
         expected['ava'] = {'conversation_log_enabled': False}
+        expected['home'] = {'show_recent_words': True}  # 887: landed 826b privacy control.
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()

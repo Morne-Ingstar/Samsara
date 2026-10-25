@@ -238,7 +238,9 @@ def test_spec_wires_standalone_console_relay_into_shared_internal():
             calls[name] = (args, kwargs)
             return name
         return call
-    context = dict(app_dir=ROOT, Analysis=analysis, PYZ=capture('PYZ'), EXE=capture('EXE'),
+    # 887: landed 866 generates this resource before the extracted relay nodes.
+    context = dict(_relay_version_resource=ROOT / 'relay-version-info.txt',
+                   app_dir=ROOT, Analysis=analysis, PYZ=capture('PYZ'), EXE=capture('EXE'),
                    COLLECT=capture('COLLECT'), exe='GUI exe',
                    a=SimpleNamespace(binaries=['main DLLs'], zipfiles=[], datas=['main data']))
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<relay spec contract>', 'exec'), context)

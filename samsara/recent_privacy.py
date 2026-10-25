@@ -69,7 +69,8 @@ def focused_target(timeout=.15):
             _PROBE_SLOT.release()
             done.set()
 
-    threading.Thread(target=read, name="recent-privacy-uia", daemon=True).start()
+    from samsara.runtime import thread_registry
+    thread_registry.spawn("recent-privacy-uia", read, daemon=True)
     return result[0] if done.wait(timeout) else TargetPrivacy()
 
 

@@ -106,7 +106,9 @@ class TestDestinationGrammar:
         target = wm._parse_destination(text, _App(), monitors=monitors)
         assert isinstance(target, wm.UnresolvedDestination)
         assert not target
-        assert reason_part in target.reason, target
+        # 887: LP02/820b uses the shared numeric monitor error for ordinals.
+        expected_reason = "no monitor 4" if text == "fourth screen" else reason_part
+        assert expected_reason in target.reason, target
 
 
 # ---------------------------------------------------------------------------

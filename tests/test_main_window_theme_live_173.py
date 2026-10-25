@@ -158,8 +158,8 @@ def test_picker_rethemes_every_constructed_hub_page_without_recreation(qapp, dar
     assert theme.PALETTES["light"]["BG0"] in hub.styleSheet()
     assert theme.PALETTES["dark"]["BG0"] not in hub.styleSheet()
 
-    light_surfaces = {QColor(theme.PALETTES["light"][key]).name() for key in ("BG0", "BG1", "BG2")}
-    dark_surfaces = {QColor(theme.PALETTES["dark"][key]).name() for key in ("BG0", "BG1", "BG2")}
+    light_surfaces = {QColor(theme.PALETTES["light"][key]).name() for key in ("BG0", "BG1", "BG2", "DATA_SURFACE")}
+    dark_surfaces = {QColor(theme.PALETTES["dark"][key]).name() for key in ("BG0", "BG1", "BG2", "DATA_SURFACE")}
     for name, page in hub._panel_cache.items():
         hub._stack.setCurrentWidget(page)
         _pump(qapp)

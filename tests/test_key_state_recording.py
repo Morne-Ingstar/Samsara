@@ -16,11 +16,12 @@ def polling(monkeypatch):
     source_path = Path(__file__).resolve().parents[1] / "dictation.py"
     source = source_path.read_text(encoding="utf-8")
     start = source.index("_VK_BY_NAME =")
-    end = source.index("\nfrom pynput.mouse", start)
+    # 887: landed 851 defers pynput; bound the same pure polling seam.
+    end = source.index("\nButton, MouseController = LazyImport", start)
     recorder = SimpleNamespace(record=Mock())
     logger = Mock()
     namespace = {"flight_recorder": recorder, "logger": logger}
-    exec(compile(ast.parse(source[start:end]), str(source_path), "exec"), namespace)
+    exec(compile(ast.parse(source[start:end]), __file__, "exec"), namespace)
 
     ga = Mock(return_value=0)
     monkeypatch.setattr(

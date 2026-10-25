@@ -35,6 +35,7 @@ def _commands_host(tmp_path):
     host._widgets = {}
     host._save_fns = []
     host._section_title = lambda text: QLabel(text)
+    host._tool_section_title = host._section_title  # 887: landed 840 Tools heading seam.
     return host
 
 
