@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from math import ceil, hypot
+
 from PySide6.QtCore import QLineF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QStyledItemDelegate
@@ -58,12 +60,14 @@ class _StepDelegate(QStyledItemDelegate):
         painter.restore()
 
     def _label(self, painter, box, step, state, color, scale, *, top) -> None:
+        if not self.indicator.all_labels:
+            return
         font = theme.qfont(round(theme.TYPE_MIN * scale))
         font.setWeight(QFont.Weight.DemiBold if state == "current" else QFont.Weight.Normal)
         painter.setFont(font)
         painter.setPen(color)
         painter.drawText(
-            QRectF(box.left(), top, box.width(), box.bottom() - top),
+            self.indicator.geometry_for(step)[1],
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
             self.indicator.steps[step],
         )
@@ -75,7 +79,7 @@ class _StepDelegate(QStyledItemDelegate):
         painter.setPen(QPen(outline, theme.TYPE_MIN * scale / 7))
         painter.drawEllipse(center, radius, radius)
         painter.setPen(theme.qcolor(theme.TEXT_ON_ACCENT) if state == "done" else outline)
-        painter.setFont(theme.qfont(round(theme.TYPE_MIN * scale), weight=QFont.Weight.DemiBold))
+        painter.setFont(self.indicator.marker_font())
         glyph = "✓" if state == "done" else "–" if state == "skipped" else str(step + 1)
         painter.drawText(
             QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2),
@@ -84,9 +88,8 @@ class _StepDelegate(QStyledItemDelegate):
         )
 
     def _circle(self, painter, box, step, state, ink, accent, scale) -> None:
-        radius = theme.TYPE_BODY * scale * 0.76
-        center = box.center()
-        center.setY(box.top() + theme.TYPE_TITLE * scale * 0.85)
+        circle, label = self.indicator.geometry_for(step)
+        radius, center = circle.width() / 2, circle.center()
         gap = theme.TYPE_MIN * scale / 2
         pen_width = theme.TYPE_MIN * scale / 7
         if step:
@@ -110,9 +113,8 @@ class _StepDelegate(QStyledItemDelegate):
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, f"{prefix}  {self.indicator.steps[step]}")
 
     def _track(self, painter, box, step, state, ink, accent, scale) -> None:
-        center = box.center()
-        center.setY(box.top() + theme.TYPE_MIN * scale)
-        radius = theme.TYPE_MIN * scale * 0.55
+        circle, label = self.indicator.geometry_for(step)
+        center, radius = circle.center(), circle.width() / 2
         painter.setPen(QPen(accent if state == "done" else _upcoming_ink(), theme.TYPE_MIN * scale / 7))
         if step:
             painter.drawLine(QLineF(box.left(), center.y(), center.x() - radius, center.y()))
@@ -121,9 +123,11 @@ class _StepDelegate(QStyledItemDelegate):
         self._marker(painter, center, radius, step, state, accent, _upcoming_ink(), scale)
         self._label(painter, box, step, state, ink, scale, top=box.top() + theme.TYPE_TITLE * scale)
         if state == "current":
-            painter.setPen(QPen(accent, theme.TYPE_MIN * scale / 4))
+            pen_width = theme.TYPE_MIN * scale / 4
+            painter.setPen(QPen(accent, pen_width))
             margin = theme.TYPE_TITLE * scale
-            painter.drawLine(QLineF(box.left() + margin, box.bottom() - margin / 4, box.right() - margin, box.bottom() - margin / 4))
+            bottom = box.bottom() - pen_width / 2
+            painter.drawLine(QLineF(box.left() + margin, bottom, box.right() - margin, bottom))
 
 
 class StepIndicator(QListWidget):
@@ -218,11 +222,68 @@ class StepIndicator(QListWidget):
         self._size_items()
         self.viewport().update()
 
+    def marker_font(self):
+        return theme.qfont(round(theme.TYPE_MIN * self.ui_scale), weight=QFont.Weight.DemiBold)
+
+    def marker_padding(self) -> float:
+        return theme.SPACE_1 * self.ui_scale
+
+    def marker_diameter(self) -> int:
+        metrics = QFontMetrics(self.marker_font())
+        glyphs = [str(index + 1) for index in range(self.count())] + ["✓", "–"]
+        width = max(max(metrics.horizontalAdvance(glyph), metrics.boundingRect(glyph).width())
+                    for glyph in glyphs)
+        height = max(metrics.height(), *(metrics.boundingRect(glyph).height() for glyph in glyphs))
+        # A square text box needs its diagonal inside the ring, not just its height.
+        return ceil(hypot(width, height) + 2 * self.marker_padding()
+                    + theme.TYPE_MIN * self.ui_scale / 7)
+
+    def geometry_for(self, index):
+        box = QRectF(self.visualItemRect(self.item(index)))
+        diameter = self.marker_diameter()
+        padding = self.marker_padding()
+        top, gap, _ = self._layout_spacing()
+        circle = QRectF(box.center().x() - diameter / 2, box.top() + top,
+                        diameter, diameter)
+        metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * self.ui_scale)))
+        label = QRectF(box.left(), circle.bottom() + gap, box.width(), metrics.height())
+        if not self.all_labels:
+            width = metrics.horizontalAdvance(self.steps[index]) + 2 * padding
+            left = max(0, min(box.center().x() - width / 2, self.viewport().width() - width))
+            label.setRect(left, label.top(), width, label.height())
+        return circle, label
+
+    def _layout_spacing(self):
+        # Keep the measured ring roomy without consuming the compact page's height.
+        margin = self.marker_padding() / 2
+        return margin, margin, margin
+
     def _size_items(self) -> None:
-        width = max(self.viewport().width(), theme.HIT_TARGET_MIN * len(self.steps))
-        item_width = width // len(self.steps)
+        width = max(1, self.viewport().width())
+        padding = self.marker_padding()
+        columns = max(1, min(self.count(), int(width // (self.marker_diameter() + 2 * padding))))
+        item_width = width // columns
+        metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * self.ui_scale)))
+        self.all_labels = all(metrics.horizontalAdvance(step) + padding <= width // self.count()
+                              for step in self.steps)
+        self._cell_height = ceil(self.marker_diameter() + metrics.height() + sum(self._layout_spacing()))
+        height = max(round(theme.HIT_TARGET_MIN * self.ui_scale),
+                     self._cell_height * ceil(self.count() / columns))
+        self.setWrapping(columns < self.count())
+        self.setFixedHeight(height)
         for index in range(len(self.steps)):
-            self.item(index).setSizeHint(QSize(item_width, self.height()))
+            self.item(index).setSizeHint(QSize(item_width, self._cell_height))
+            self.item(index).setToolTip(self.steps[index])
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self.all_labels and self.variant != "B":
+            painter = QPainter(self.viewport())
+            painter.setFont(theme.qfont(round(theme.TYPE_MIN * self.ui_scale), weight=QFont.Weight.DemiBold))
+            painter.setPen(theme.qcolor(theme.ACCENT))
+            painter.drawText(self.geometry_for(self._current)[1], Qt.AlignmentFlag.AlignCenter,
+                             self.steps[self._current])
+            painter.end()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
