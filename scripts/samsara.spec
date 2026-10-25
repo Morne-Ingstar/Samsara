@@ -44,7 +44,7 @@ app_dir = Path(SPECPATH).parent
 # to prove its import inventory.  It is generated under PyInstaller's build
 # directory rather than becoming a second application entry point or a shipped
 # source file.  ``os._exit`` prevents dictation.py from starting in this mode.
-_build_work = Path(os.environ.get('SAMSARA_BUILD_WORK', str(app_dir / 'build')))
+_build_work = Path(os.environ.get('SAMSARA_BUILD_WORK', str(app_dir / 'build'))).resolve()  # 866: a relative work dir (build_and_smoke's default 'build') was written from the repo root but read by PyInstaller relative to scripts\
 _build_dist = Path(os.environ.get('SAMSARA_BUILD_DIST', str(app_dir / 'dist')))
 # Run the stdlib-only component transaction before package imports can load
 # Pillow/native libraries. Copying the module avoids samsara.__init__ here.
