@@ -302,7 +302,7 @@ def _named_transport_handler(row, action):
         result = _media_transport(action, row[1])
         message = result.detail.get('reason') if result.state is DispatchState.FAILED else (
             f'{row[2]} ' + ('paused' if action == 'pause' else 'playing'))
-        _announce(app, message)
+        _announce(app, message, state=result.state)
         return _music_result(result.state, row[2], message, **{
             key: value for key, value in result.detail.items() if key != 'message'})
     handler.__doc__ = f'{"Pauses" if action == "pause" else "Resumes"} {row[2]}, whatever else is playing.'
@@ -328,7 +328,7 @@ def _named_volume_handler(row, direction):
             logger.debug('[MEDIA] named volume unavailable', exc_info=True)
             message = f'{row[2]} volume unavailable'
             state = DispatchState.FAILED
-        _announce(app, message)
+        _announce(app, message, state=state)
         return _music_result(state, row[2], message)
     handler.__doc__ = f'{"Raises" if direction > 0 else "Lowers"} {row[2]}\'s own volume by ten points.'
     return handler
@@ -503,12 +503,12 @@ def resolve_music_name(app, requested, preferred_type=None):
     return "none", []
 
 
-def _announce(app, message):
-    """Give the user the same plain outcome in the chip and by speech."""
+def _announce(app, message, *, state=None):
+    """Use confirmed completion for success; keep uncertain replies as warnings."""
     show = getattr(app, "_show_outcome_chip", None)
     if callable(show):
         try:
-            show(message, "warning", 3500)
+            show(message, "success" if state is DispatchState.COMPLETED else "warning", 3500)
         except Exception:
             logger.debug("[MUSIC] outcome chip unavailable", exc_info=True)
     coordinator = getattr(app, "audio_coordinator", None)

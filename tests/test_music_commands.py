@@ -381,7 +381,8 @@ def test_named_volume_all_sessions_and_exact_reply(monkeypatch, initial, action,
     message = f'Spotify volume {expected}%' + (' (already)' if already else '')
     assert result.state is DispatchState.COMPLETED
     assert result.detail['message'] == message
-    announce.assert_called_once_with(app, message)
+    # 880: completed named volume commands carry their success to the display.
+    announce.assert_called_once_with(app, message, state=DispatchState.COMPLETED)
     for volume in volumes:
         volume.set_volume.assert_called_once_with(expected)
 
