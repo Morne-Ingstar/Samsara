@@ -290,7 +290,7 @@ def _ss():
 QMainWindow {{ background: {theme.BG0}; }}
 QWidget {{ color: {theme.TEXT_PRIMARY}; font-family: {theme.FONT_FAMILY}; font-size: {theme.TYPE_BODY}px; }}
 QListWidget {{
-    background: {theme.BG1};
+    background: {theme.BG0};
     border: none;
     outline: none;
     color: {theme.TEXT_PRIMARY};
