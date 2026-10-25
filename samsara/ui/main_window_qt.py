@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSizePolicy, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
-from samsara import config_defaults
+from samsara import __version__, config_defaults
 from samsara.ui import qt_runtime, theme, window_activation, window_geometry
 from samsara.ui.tray_qt import MarkFrame, idle_brand_icon_path, paint_mark
 from samsara.ui.command_marquee import build_example_strip, example_phrases, example_text
@@ -463,6 +463,14 @@ class _MainWindow(QMainWindow):
 
         self._nav_btns = {}
         for name in NAV_ORDER:
+            if name == "Settings":
+                version = QLabel(f"v{__version__}")
+                version.setObjectName("runningVersion")
+                version.setAccessibleName("App version")
+                version.setStyleSheet(
+                    f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_MIN}px; "
+                    "background: transparent; padding-left: 16px;")
+                slay.addWidget(version)
             btn = QPushButton(name)
             btn.setAccessibleName(name)
             btn.setMinimumHeight(NAV_ROW_H)

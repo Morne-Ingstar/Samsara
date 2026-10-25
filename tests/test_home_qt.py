@@ -562,7 +562,9 @@ class TestProblemNotice:
         font.setPointSizeF(old_size * scale)
         qapp.setFont(font)
         try:
-            home = page()
+            # Queue 843 moved the version to the sidebar; keep containment at large text.
+            win = _hub(qapp)
+            home = win.findChild(QWidget, "hubSidebar")
             version = home.findChild(QWidget, "runningVersion")
             assert version is not None
             top_left = version.mapTo(home, version.rect().topLeft())
@@ -954,9 +956,9 @@ class TestIdentityLinks:
         own row rather than squeeze the links (89)."""
         home = page()
         for width in (760, 700, 640, 560, 480, 420):
-            home._relayout_identity(width)
-            home._identity_box.resize(width, home._identity_box.height())
-            home._identity_box.layout().activate()
+            # 843 / 861: links now belong to the root footer.
+            home._footer.setFixedSize(width, home._footer.heightForWidth(width))
+            home._footer.arrange()
             for label, btn in home._links.items():
                 assert btn.width() + 1 >= btn.sizeHint().width(), (
                     f"{label} clipped at strip width {width}: "
@@ -966,12 +968,16 @@ class TestIdentityLinks:
         """The measurement that decides it is the links' REAL width, not the
         44 px floor a squeezed button would accept."""
         home = page()
-        cards = 2 * home._stat_floor + 2 * home_qt.GRID
-        links = home._links_row.sizeHint().width()
-        home._relayout_identity(cards + links + 8)
-        assert home._identity_rows == 1
-        home._relayout_identity(cards + links - 8)
-        assert home._identity_rows == 2
+        # 843 / 861: measure the independent footer's natural line breaks.
+        home._footer.setFixedSize(760, home._footer.heightForWidth(760))
+        home._footer.arrange()
+        wide_height = home._footer.height()
+        home._footer.setFixedSize(200, home._footer.heightForWidth(200))
+        home._footer.arrange()
+        assert home._footer.height() > wide_height
+        assert home._links_row.y() >= home._creed.height() + 8
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -1219,6 +1225,9 @@ class TestHomeFitsTheDefaultWindow:
 
     @pytest.mark.parametrize("slot", ["empty", "diagnostic", "whatsnew"])
     def test_home_does_not_scroll_at_the_default_window_size(self, qapp, monkeypatch, slot):
+        # 843 / 861: provide a desktop that can contain the requested logical client.
+        monkeypatch.setattr(main_window_qt._MainWindow, "_geometry_screens",
+                            lambda self: ([(0, 0, 1920, 1080)], (0, 0, 1920, 1080)))
         if slot == "diagnostic":
             monkeypatch.setattr(home_signals, "diagnostic_hints", lambda a: [HINT])
         else:
@@ -1231,12 +1240,23 @@ class TestHomeFitsTheDefaultWindow:
                    height=main_window_qt.DEFAULT_HEIGHT)
         home = win._panel_cache["Home"]
         bar = home._scroll.verticalScrollBar()
-        assert bar.maximum() == 0, (
-            f"Home scrolls at the default window size with the slot {slot}: "
-            f"{bar.maximum()} px over a {home._scroll.viewport().height()} px viewport")
+        # 843 / 861: required notices may reflow below the fold; recent never forces them out.
+        if slot == "empty":
+            assert bar.maximum() == 0
+        elif bar.maximum():
+            assert home._recent.capacity == 0
+            bar.setValue(bar.maximum())
+            qapp.processEvents()
+            bottom = home._identity.mapTo(home._scroll.viewport(), home._identity.rect().bottomLeft()).y()
+            assert bottom < home._scroll.viewport().height()
         assert home_qt.overflowing_widgets(home) == []
 
     def test_the_three_destination_cards_sit_on_one_row(self, qapp, monkeypatch):
+        # 843 / 861: provide a desktop that can contain the requested logical client.
+        monkeypatch.setattr(main_window_qt._MainWindow, "_geometry_screens",
+                            lambda self: ([(0, 0, 1920, 1080)], (0, 0, 1920, 1080)))
+        # 843 / 861: no-notice default has room for three measured columns.
+        monkeypatch.setattr(home_qt, "whats_new_note", lambda *a, **k: None)
         win = _hub(qapp, monkeypatch, width=main_window_qt.DEFAULT_WIDTH,
                    height=main_window_qt.DEFAULT_HEIGHT)
         home = win._panel_cache["Home"]
@@ -1460,18 +1480,34 @@ class TestTheStatsSitOnTheFloor:
         assert strip.y() + strip.height() == column.height(), "dead band under the stats"
 
     def test_the_stretch_is_above_the_strip_not_below_it(self, qapp, monkeypatch):
-        from PySide6.QtWidgets import QSpacerItem
+        from PySide6.QtCore import QPoint
 
+        # 843 / 861: stats stay in content flow; spare height belongs above the root footer.
+        monkeypatch.setattr(main_window_qt._MainWindow, "_geometry_screens",
+                            lambda self: ([(0, 0, 1920, 1080)], (0, 0, 1920, 1080)))
         home = self._column(qapp, monkeypatch, 1065, 906)
         column = home._content.layout()
         items = [column.itemAt(i) for i in range(column.count())]
-        stretch_at = [i for i, it in enumerate(items) if isinstance(it, QSpacerItem)]
-        strip_at = [i for i, it in enumerate(items)
-                    if it.widget() is home._identity]
-        assert stretch_at and strip_at
-        assert max(stretch_at) < strip_at[0], "the stretch must push the strip down, not follow it"
-        # And it really is carrying height at this size.
-        assert items[max(stretch_at)].geometry().height() > 0
+        assert all(item.spacerItem() is None for item in items), "content sections must not float"
+        stats_at = column.indexOf(home._identity)
+        assert column.indexOf(home._recent_slot) == stats_at - 1
+        assert home._recent_slot.isVisible()
+        stats_y = home._identity.y()
+        footer_y = home._footer.mapTo(home, QPoint()).y()
+        for height in (906, 1006):
+            home.window().resize(1065, height)
+            for _ in range(60):
+                qapp.processEvents()
+            assert home._identity.y() == stats_y, "extra height must not move the stats"
+            assert stats_y - (home._recent_slot.y() + home._recent_slot.height()) == 24
+            assert not home._footer_in_scroll
+            assert home._footer_host.parentWidget() is home
+            assert home.layout().indexOf(home._footer_host) == home.layout().count() - 1
+            footer_top = home._footer.mapTo(home, QPoint()).y()
+            assert home.height() - footer_top - home._footer.height() == 12
+            content_bottom = home._content.mapTo(home, QPoint()).y() + home._content.height()
+            assert footer_top - content_bottom >= 24
+            assert footer_top == footer_y + height - 906, "footer must follow the window bottom"
 
     def test_nothing_the_owner_asked_to_keep_moved_out_of_the_strip(self, page):
         """The band change is a layout change only: words today, the infinity
@@ -1931,25 +1967,25 @@ class TestHomeBottom384:
             assert btn.height() >= 44
             rest = btn.styleSheet().split("}", 1)[0]
             assert "text-decoration: none" in rest
-            # 384 finish: owner's L2 pick forbids underlines in every state.
-            assert "font-weight: 700" in rest
+            # Queue 843 keeps Home links plain and quiet.
+            assert "font-weight: 400" in rest
             assert "underline" not in btn.styleSheet()
-            assert f"letter-spacing: {theme.LETTER_SPACING_SECTION}" in rest
-            assert btn.font().capitalization() == QFont.Capitalization.AllUppercase
+            assert btn.font().capitalization() == QFont.Capitalization.MixedCase
             for state in ("hover", "focus"):
                 selector = 'QPushButton[keyboardFocus="true"]' if state == "focus" else "QPushButton"
                 assert f"{selector}:{state} {{ color: {theme.ACCENT};" in btn.styleSheet()
             assert f"border: 1px solid {theme.ACCENT}" in btn.styleSheet()
         dots = home._links_row.findChildren(QLabel, "homeLinkSeparator")
-        assert len(dots) == 2
-        assert all(dot.text() == "\u00b7" and dot.focusPolicy() == Qt.FocusPolicy.NoFocus and not isinstance(dot, QPushButton) for dot in dots)
+        # 843 / 861: target gaps replace decorative separator widgets.
+        assert dots == []
 
     def test_creed_font_and_owner_strings_unchanged(self, page):
         home = page()
-        assert home._creed.font().capitalization() == QFont.Capitalization.AllUppercase
+        # Queue 843: the Home tagline reads in normal case.
+        assert home._creed.font().capitalization() == QFont.Capitalization.MixedCase
         assert home._creed.font().weight() == theme.FONT_WEIGHT_CREED
         # FINISH IT 3: the inscription uses the existing emphasis size.
-        assert home._creed.font().pixelSize() == theme.TYPE_EMPHASIS
+        assert home._creed.font().pixelSize() == 16  # 843 / 861 base creed size
         assert theme.FONT_WEIGHT_CREED == 400
         assert home_qt.SUPPORT_LINE == "Your support spins the wheel"
         # FINISH IT 4: owner restored the second dot; smaller type stays.

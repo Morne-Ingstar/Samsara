@@ -79,6 +79,7 @@ class RecentActivity(QWidget):
 
     def __init__(self, app, open_page, instruction, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.app, self.open_page, self.instruction = app, open_page, instruction
         self.rows, self.error = [], False
         self.capacity = 0
@@ -154,11 +155,17 @@ class RecentActivity(QWidget):
         return row
 
     def fit(self, free):
-        from samsara.ui.home_qt import text_scale
-        scale = text_scale()
-        capacity = row_budget(free, scale)
-        height = round((44 + 56 * (min(capacity, len(self.rows)) if self.rows else 1)) * scale)
+        from samsara.ui.home_qt import _px
+        # 16 vertical padding + 28 heading region + actual row target/text.
+        row_height = max(_px(56), *(
+            max(button.sizeHint().height(), _px(44), _px(52))
+            for _, _, _, button in self._slots))
+        header = _px(44)
+        empty_height = max(_px(80), header + self.empty.heightForWidth(max(1, self.width() - 24)) + _px(8))
+        capacity = min(3, max(0, int((free - header) // row_height))) if self.rows else int(free >= empty_height)
         self.capacity = capacity
+        height = header + row_height * min(capacity, len(self.rows)) if self.rows else empty_height
+        self._row_height = row_height
         if capacity:
             if self.height() != height:
                 self.setFixedHeight(height)
@@ -171,15 +178,18 @@ class RecentActivity(QWidget):
         from samsara.ui.home_qt import _px, _label_css
         reveal = recent_privacy.show_recent_words(getattr(self.app, "config", {})) and not self._sharing
         width, top = self.width(), _px(44)
-        self.heading.setGeometry(0, _px(12), width, _px(24))
-        self.heading.setStyleSheet(_label_css("section label", theme.TEXT_SECONDARY, 400))
+        inset = _px(12)
+        width = max(0, width - 2 * inset)
+        self.setStyleSheet(f"RecentActivity {{ background: {theme.DATA_SURFACE}; border: none; border-radius: 10px; }}")
+        self.heading.setGeometry(inset, _px(12), width, _px(24))
+        self.heading.setStyleSheet(_label_css("section label", theme.ACCENT, 700))
         self.heading.setVisible(bool(self.capacity))
         empty = not self.rows and bool(self.capacity)
         self.empty.setVisible(empty)
         self.empty.setText(("Recent history unavailable" if self.error else
                             f"Nothing heard yet. {self.instruction()}.") if empty else "")
-        self.empty.setStyleSheet(_label_css("outcome text", theme.TEXT_SECONDARY, 400))
-        self.empty.setGeometry(0, top, width, _px(48))
+        self.empty.setStyleSheet(_label_css("outcome text", theme.DATA_TEXT_SECONDARY, 400))
+        self.empty.setGeometry(inset, top, width, max(_px(28), self.height() - top - _px(8)))
         self.empty.setWordWrap(True)
         for i, (age, heard, outcome, button) in enumerate(self._slots):
             visible = i < min(self.capacity, len(self.rows))
@@ -196,23 +206,23 @@ class RecentActivity(QWidget):
             button.setStyleSheet(_label_css("section label", theme.ACCENT, 400) +
                                 " border: none; padding: 0 6px; background: transparent;")
             button_width = max(_px(112), button.sizeHint().width())
-            button.setGeometry(max(0, width - button_width), top, button_width, _px(44))
+            button.setGeometry(inset + max(0, width - button_width), top, button_width, _px(44))
             age_width = _px(68)
             text_width = max(0, width - age_width - button_width - _px(12))
             for label, text, role, color, y in (
-                (age, relative_time(row.get("timestamp")), "section label", theme.TEXT_SECONDARY, top),
+                (age, relative_time(row.get("timestamp")), "section label", theme.DATA_TEXT_SECONDARY, top),
                 (heard, speech, "outcome kind", theme.TEXT_PRIMARY, top),
-                (outcome, result, "outcome text", theme.TEXT_SECONDARY, top + _px(26)),
+                (outcome, result, "outcome text", theme.DATA_TEXT_SECONDARY, top + _px(26)),
             ):
                 label.setStyleSheet(_label_css(role, color, 400))
-                label.setGeometry(0 if label is age else age_width, y,
+                label.setGeometry(inset if label is age else inset + age_width, y,
                                   age_width if label is age else text_width, _px(25))
                 # Only the actually visible elided string enters accessibility.
                 label.setText(label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight,
                                                             label.width()))
                 label.setToolTip("")
                 label.setAccessibleDescription("")
-            top += _px(56)
+            top += getattr(self, "_row_height", _px(56))
 
     def _activate(self, index):
         # Recheck the guard at the moment an explicit action might reveal text.

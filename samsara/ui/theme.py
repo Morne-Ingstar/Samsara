@@ -172,6 +172,11 @@ def mix(hex_a: str, hex_b: str, t: float) -> str:
 #: and must not shift -- this is the app every existing screenshot shows.
 _DARK = {
     "POLARITY": "dark",
+    "DATA_SURFACE": "#23313d",
+    "DATA_ROW_ALT": "#293946",
+    "DATA_ROW_HOVER": "#324957",
+    "DATA_ROW_SELECTED": "#174c59",
+    "DATA_TEXT_SECONDARY": "#b9c7d4",
     "BG0": "#0b0e14",
     "BG1": "#131820",
     "BG2": "#1a2030",
@@ -210,6 +215,11 @@ _DARK = {
 #: red on purpose, but they must not become the same red.
 _LIGHT = {
     "POLARITY": "light",
+    "DATA_SURFACE": "#dce5ee",
+    "DATA_ROW_ALT": "#cfdce7",
+    "DATA_ROW_HOVER": "#c4d6e3",
+    "DATA_ROW_SELECTED": "#afd3dd",
+    "DATA_TEXT_SECONDARY": "#415469",
     "BG0": "#f3f6fa",
     "BG1": "#ffffff",
     "BG2": "#e8edf4",

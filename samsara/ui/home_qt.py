@@ -64,9 +64,7 @@ from samsara.ui.command_cheatsheet_qt import UNAVAILABLE_TEXT
 # One wrapping row layout, shared with the History view that introduced it
 # (queue 79): controls wrap to the next line instead of clipping.
 from samsara.ui.history_view import _FlowLayout as FlowLayout
-from samsara.ui.home_notice_qt import (
-    build_problem_notice, build_version_row, refresh_problem_notice,
-)
+from samsara.ui.home_notice_qt import build_problem_notice, refresh_problem_notice
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 
 logger = get_logger(__name__)
@@ -1372,15 +1370,15 @@ def _link(text: str, url: str) -> QPushButton:
     btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     btn.setStyleSheet(
         f"QPushButton {{ background: transparent; border: 1px solid transparent; padding: 0;"
-        f" color: {theme.TEXT_SECONDARY}; text-decoration: none; font-weight: 700;"
-        f" font-size: {_px(theme.TYPE_SECTION_LABEL)}px; letter-spacing: {theme.LETTER_SPACING_SECTION}; text-align: left; }}"
+        f" color: {theme.TEXT_SECONDARY}; text-decoration: none; font-weight: 400;"
+        f" font-size: {_px(theme.TYPE_MIN)}px; text-align: left; }}"
         f"QPushButton:hover {{ color: {theme.ACCENT}; }}"
         f"QPushButton:focus {{ color: {theme.ACCENT};"
         f" border: 1px solid {theme.ACCENT}; border-radius: 3px; }}"
     )
     btn.ensurePolished()
     font = btn.font()
-    font.setCapitalization(QFont.Capitalization.AllUppercase)
+    font.setCapitalization(QFont.Capitalization.MixedCase)
     btn.setFont(font)
     btn.clicked.connect(lambda _=False, u=url: open_url(u))
     return btn
@@ -1448,15 +1446,15 @@ class _CapabilityCard(QPushButton):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setStyleSheet(
-            f"QPushButton {{ background: {theme.BG1}; color: transparent;"
-            f" border: 1px solid {theme.BORDER}; border-radius: 8px; text-align: left;"
+            f"QPushButton {{ background: {theme.DATA_SURFACE}; color: transparent;"
+            f" border: 2px solid transparent; border-radius: 10px; text-align: left;"
             f" font-size: {_px(TYPE['card title'])}px; }}"
             f"QPushButton:hover {{ border-color: {theme.ACCENT}; }}"
             f"QPushButton:focus {{ border: 2px solid {theme.ACCENT}; }}"
         )
         lay = QVBoxLayout(self)
         # Wrapped titles keep three destinations in the bounded default window.
-        lay.setContentsMargins(_px(10), _px(6), _px(10), _px(6))
+        lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(_px(6))
 
         head = QHBoxLayout()
@@ -1474,12 +1472,13 @@ class _CapabilityCard(QPushButton):
         lay.addLayout(head)
 
         self._description = _label(description, role="card description",
-                                   color=theme.TEXT_SECONDARY, wrap=True)
+                                   color=theme.DATA_TEXT_SECONDARY, wrap=True)
         self._description.setAccessibleName(f"{title} description")
         lay.addWidget(self._description)
         lay.addStretch(1)
-        self._value = _label(value, role="card value", color=theme.ACCENT, weight=500)
+        self._value = _label(value, role="card value", color=theme.ACCENT, weight=500, wrap=True)
         self._value.setAccessibleName(f"{title} value")
+        self._value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         lay.addWidget(self._value, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
         for child in (self._title, self._description, self._value):
             child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -1490,19 +1489,20 @@ class _CapabilityCard(QPushButton):
         m = self.layout().contentsMargins()
         head = self.layout().itemAt(0).minimumSize().width()
         need = max(head, self._value.sizeHint().width()) + m.left() + m.right() + 4
-        self.setMinimumWidth(max(MIN_TARGET, need, self.layout().minimumSize().width()))
+        self._measured_minimum = max(_px(208), head + m.left() + m.right() + 4)
+        self.setMinimumWidth(0)
 
     def sizeHint(self):
         return self.layout().sizeHint().expandedTo(QSize(MIN_TARGET, MIN_TARGET))
 
     def minimumSizeHint(self):
-        return self.layout().minimumSize().expandedTo(QSize(MIN_TARGET, MIN_TARGET))
+        return QSize(0, self.heightForWidth(max(1, self.width())))
 
     def hasHeightForWidth(self):
         return True
 
     def heightForWidth(self, width):
-        return max(MIN_TARGET, self.layout().totalHeightForWidth(width))
+        return max(180, self.layout().totalHeightForWidth(width))
 
     @property
     def value_text(self) -> str:
@@ -1752,44 +1752,34 @@ class HomePage(QWidget):
             f" border: none; max-height: 1px; min-height: 1px; }}"
             f"QScrollArea {{ border: none; background: transparent; }}"
         )
-        outer = QGridLayout(self)
+        outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        version = _label(f"v{__version__}", role="note", color=theme.TEXT_SECONDARY)
-        version.setObjectName("runningVersion")
-        version_row = build_version_row(version, GRID)
-
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.viewport().installEventFilter(self)
-        outer.addWidget(self._scroll, 0, 0)
-        # Overlay the version in the scroll area's unused top gutter. This
-        # preserves its position while giving the Home content the old row's
-        # height back in the visible viewport.
-        outer.addWidget(version_row, 0, 0, alignment=Qt.AlignmentFlag.AlignTop)
-
+        outer.addWidget(self._scroll, 1)
         host = QWidget()
         host.setStyleSheet("background: transparent;")
         host_lay = QHBoxLayout(host)
         # Keep horizontal gutters; save vertical room for the conditional slot.
-        host_lay.setContentsMargins(GRID, version_row.sizeHint().height(), GRID, 0)
+        host_lay.setContentsMargins(28, 24, 28, 24)
         host_lay.setSpacing(0)
         self._content = _ContentColumn()
         self._content.setObjectName("homeContent")
         self._content.setStyleSheet("background: transparent;")
         self._content.setMaximumWidth(CONTENT_MAX_W)
         self._content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        host_lay.addStretch(0)
-        host_lay.addWidget(self._content, stretch=1)
-        host_lay.addStretch(0)
+        host_lay.addWidget(self._content, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
+        host_lay.addStretch(1)
         self._scroll.setWidget(host)
 
         col = QVBoxLayout(self._content)
         col.setContentsMargins(0, 0, 0, 0)
         # Compact section gaps keep all three conditional slots above the fold.
-        col.setSpacing(_px(5))
+        col.setSpacing(24)
 
         col.addWidget(self._build_title())
         col.addWidget(self._build_notice())
@@ -1798,18 +1788,28 @@ class HomePage(QWidget):
         from samsara.ui.home_recent_qt import RecentActivity
         self._recent = RecentActivity(self._app, self._open_page,
                                       lambda: talk_instructions(self._app)[0], self._content)
-        col.addWidget(self._recent)
+        self._recent_slot = QWidget(self._content)
+        recent_layout = QVBoxLayout(self._recent_slot)
+        recent_layout.setContentsMargins(0, 0, 0, 0)
+        recent_layout.setSpacing(0)
+        recent_layout.addWidget(self._recent)
+        col.addWidget(self._recent_slot)
         self._recent_fit_pending = False
         self._content.installEventFilter(self)
-        # Queue 95: the stretch sits ABOVE the identity strip, not below it.
-        # 89 put it below, which top-aligned the whole column and left ~180 px
-        # of dead window under the stats. The stats belong on the floor, where
-        # they were: spare height now opens as a gap between the cards and the
-        # strip, and the strip stays put at the bottom edge at every size.
-        # When there is no spare height the stretch is 0 and nothing moves.
-        col.addStretch(1)
         self._identity = self._build_identity_strip()
         col.addWidget(self._identity)
+        from samsara.ui.home_layout_qt import HomeFooter
+        self._footer = HomeFooter(self)
+        self._footer_host = QWidget(self)
+        self._footer_host.setStyleSheet(f"background: {theme.BG1};")
+        footer_layout = QHBoxLayout(self._footer_host)
+        footer_layout.setContentsMargins(28, 0, 28, 12)
+        footer_layout.setSpacing(0)
+        footer_layout.addWidget(self._footer, alignment=Qt.AlignmentFlag.AlignLeft)
+        footer_layout.addStretch(1)
+        outer.addWidget(self._footer_host)
+        self._footer_in_scroll = False
+        self._reserved_scrollbar = False
 
         # 111: the Details disclosure sits in the chain where it sits on
         # screen -- after the slot's own action, before "Another suggestion"
@@ -1916,8 +1916,11 @@ class HomePage(QWidget):
         box.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(box)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(_px(10))
-        lay.addWidget(_section_label(WHERE_TO_GO))
+        lay.setSpacing(12)
+        heading = _section_label(WHERE_TO_GO)
+        heading.setStyleSheet(_label_css("section label", theme.ACCENT, 700))
+        heading.setMinimumHeight(_px(22))
+        lay.addWidget(heading)
         self._catalog_note = _label(UNAVAILABLE_TEXT, role="note", color=theme.TEXT_SECONDARY,
                                     wrap=True)
         self._catalog_note.setTextFormat(Qt.TextFormat.RichText)
@@ -1938,7 +1941,8 @@ class HomePage(QWidget):
             if spec['title'] == 'Commands':
                 from samsara.ui.command_pack_actions import open_packs
                 packs = _button('Command packs')
-                packs.setStyleSheet(theme.secondary_button_qss() + f'QPushButton{{font-family:{theme.FONT_FAMILY};font-size:{_px(theme.TYPE_MIN)}px;padding:0 {_px(8)}px;}}')
+                packs.setStyleSheet(theme.secondary_button_qss() + f'QPushButton{{font-family:{theme.FONT_FAMILY};font-size:{_px(theme.TYPE_MIN)}px;padding:0 {_px(8)}px;margin:{_px(6)}px 0;}}')
+                packs.setFixedHeight(_px(44))
                 packs.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
                 packs.ensurePolished()
                 packs.clicked.connect(lambda: open_packs(self._app))
@@ -1949,28 +1953,41 @@ class HomePage(QWidget):
         self._relayout_cards(CONTENT_MAX_W)
         lay.addLayout(self._cards_grid)
 
-        self._guides_row = QWidget()
-        self._guides_row.setStyleSheet("background: transparent;")
+        self._guides_tray = QFrame()
+        self._guides_tray.setObjectName("homeGuidesTray")
+        self._guides_tray.setStyleSheet(
+            f"QFrame#homeGuidesTray {{ background: {theme.BG2}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 8px; }}")
+        self._guides_row = self._guides_tray
+        self._guides_row.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                       QSizePolicy.Policy.Preferred)
         self._guides_row.setAccessibleName("Guides")
-        glay = QHBoxLayout(self._guides_row)
-        glay.setContentsMargins(0, 0, 0, 0)
-        glay.setSpacing(GRID)
+        from samsara.ui.home_layout_qt import InsetFlowLayout
+        glay = InsetFlowLayout(self._guides_row, h_spacing=_px(8), v_spacing=_px(8))
+        glay.setContentsMargins(12, 12, 12, 12)
         self._guide_btns = {}
         for label, _kind, _target in GUIDES:
             btn = _button(label)
+            # The tray's compact face has no vertical padding; the shared
+            # button's 8px padding would clip text inside the 32px painted face.
+            btn.setStyleSheet(btn.styleSheet() + f"QPushButton {{ padding: 0 {_px(14)}px; }}")
+            btn.setFixedHeight(_px(44))
+            btn.setStyleSheet(btn.styleSheet() + f"QPushButton {{ margin: {_px(6)}px 0; }}")
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             btn.clicked.connect(lambda _=False, l=label: self._on_guide(l))
             glay.addWidget(btn)
             self._guide_btns[label] = btn
-        glay.addStretch(1)
         self._guides_row.setVisible(False)
-        lay.addWidget(self._guides_row)
+        guide_slot = QWidget()
+        guide_grid = QHBoxLayout(guide_slot)
+        guide_grid.setContentsMargins(0, 0, 0, 0)
+        guide_grid.addWidget(self._guides_row, stretch=1)
+        self._guides_slot = guide_slot
+        guide_slot.hide()
         return box
 
     def _build_identity_strip(self) -> QWidget:
-        """Restored unchanged from before queue 86 cut it (89): words today,
-        the infinity card, the creed -- the owner's own design choices --
-        with the three small text links added into the same strip so they
-        cost no row of their own."""
+        """Content-sized stats and the existing animated support sentence (861)."""
         box = QWidget()
         box.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(box)
@@ -1979,11 +1996,6 @@ class HomePage(QWidget):
         # last block on the page and every pixel it gives back is a pixel
         # Home does not have to scroll.
         lay.setSpacing(_px(8))
-        divider = QFrame()
-        divider.setObjectName("homeDivider")
-        divider.setFrameShape(QFrame.Shape.NoFrame)
-        lay.addWidget(divider)
-
         self._identity_grid = QGridLayout()
         self._identity_grid.setHorizontalSpacing(GRID)
         self._identity_grid.setVerticalSpacing(GRID)
@@ -2013,109 +2025,19 @@ class HomePage(QWidget):
         self._stat_size = None
         self._words_val.setText("0")
 
-        self._creed = _label(CREED, role="creed", color=theme.TEXT_SECONDARY, weight=theme.FONT_WEIGHT_CREED,
-                             family=theme.FONT_FAMILY_DISPLAY, spacing="0.12em")
-        self._creed.setStyleSheet(self._creed.styleSheet().replace(
-            f"font-size: {_px(TYPE['creed'])}px",
-            f"font-size: {_px(theme.TYPE_EMPHASIS)}px"))
-        self._creed.ensurePolished()
-        creed_font = self._creed.font()
-        creed_font.setCapitalization(QFont.Capitalization.AllUppercase)
-        self._creed.setFont(creed_font)
-        self._creed.setAccessibleName("Creed")
-        self._creed.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._creed.setWordWrap(True)
-        self._creed.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-
-        # Creed, support and links share one right-aligned cell beside the stats.
-        # The support line used to be a fourth full-width row below the grid;
-        # folding it into the cell gave Home back 50 px, which is what let
-        # the conditional slot show a diagnostic hint at 900 x 650 without a
-        # scrollbar. Nothing was dropped -- the same creed, the same three
-        # links, the owner's sentence word for word.
-        self._creed_box = QWidget()
-        self._creed_box.setStyleSheet("background: transparent;")
-        self._creed_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        cbl = QVBoxLayout(self._creed_box)
-        cbl.setContentsMargins(0, 0, 0, 0)
-        # The larger Light creed needs the existing identity cell's height;
-        # line boxes already separate these three rows (384 finish).
-        cbl.setSpacing(0)
-        # No stretch around these lines: a stretch competes for the same
-        # pixels as a wrapped label, and squeezed the creed to one line's
-        # height when a larger font pushed it onto two (89, caught by the
-        # scaling gate).
-        cbl.addWidget(self._creed)
-
         from samsara.ui.widgets.spin_word_label import SpinWordLabel
-        support_text = SpinWordLabel(SUPPORT_LINE, word="spins")
-        support_text.setProperty("typeRole", "note")
-        support_text.setStyleSheet(_label_css("note", theme.TEXT_DISABLED, 400))
-        support_text.setWordWrap(True)
-        support_text.setAccessibleName(SUPPORT_LINE)
-        support_text.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         from PySide6.QtGui import QFontMetrics
-        support_text.ensurePolished()
-        # A sideways word needs its width in vertical room; QLabel still
-        # supplies the same intrinsic size hints and ordinary rest painting.
-        support_text.setMinimumHeight(QFontMetrics(support_text.font()).horizontalAdvance("spins") + 2)
-        # Ignored horizontally, like the creed: the sentence wraps to the
-        # room the cell has instead of demanding its unwrapped width and
-        # clipping when a wide face or a large scale factor makes it longer.
-        support_text.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        cbl.addWidget(support_text)
-        self._support_text = support_text
-
-        self._links = {}
-        links_row = QWidget()
-        links_row.setStyleSheet("background: transparent;")
-        links_row.setAccessibleName("Links")
-        lrl = FlowLayout(links_row, h_spacing=8, v_spacing=_px(4))
-        lrl.setContentsMargins(0, 0, 0, 0)
-        from PySide6.QtGui import QFontMetrics
-
-        class InkLink(QPushButton):
-            def sizeHint(self):
-                # Include the style's content insets and full advance, not
-                # just the ink bounds: the style clips inside those insets.
-                return QSize(max(MIN_TARGET, super().sizeHint().width(),
-                                 QFontMetrics(self.font()).horizontalAdvance(self.text()) + 4), MIN_TARGET)
-
-            def minimumSizeHint(self):
-                return self.sizeHint()
-
-        for index, (text, url) in enumerate((*IDENTITY_LINKS, (KOFI_LINK, KOFI_URL))):
-            prototype = _link(text, url)
-            btn = InkLink(text)
-            btn.setAccessibleName(prototype.accessibleName())
-            btn.setAccessibleDescription(url)
-            btn.setProperty("typeRole", prototype.property("typeRole"))
-            btn.setProperty("homeLink", True)
-            btn.setFlat(True)
-            btn.setCursor(prototype.cursor())
-            btn.setFocusPolicy(prototype.focusPolicy())
-            btn.setStyleSheet(prototype.styleSheet())
-            btn.setFont(prototype.font())
-            btn.setMinimumHeight(MIN_TARGET)
-            btn.setSizePolicy(prototype.sizePolicy())
-            btn.clicked.connect(lambda _=False, u=url: open_url(u))
-            prototype.deleteLater()
-            btn.ensurePolished()
-            # Let Qt remeasure after parenting/theme font inheritance. A width
-            # fixed here used the pre-parent font and clipped the final ink.
-            if index:
-                dot = _label("\u00b7", role="note", color=theme.TEXT_DISABLED)
-                dot.setObjectName("homeLinkSeparator")
-                dot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                dot.ensurePolished()
-                lrl.addWidget(dot)
-            lrl.addWidget(btn)
-            self._links[text] = btn
-        cbl.addWidget(links_row)
-        self._links_row = links_row
-        self._support_row = links_row
-
-        self._identity_rows = 0
+        support = SpinWordLabel(SUPPORT_LINE, word="spins")
+        support.setStyleSheet(_label_css("note", theme.DATA_TEXT_SECONDARY, 400))
+        support.setWordWrap(True)
+        support.setAccessibleName(SUPPORT_LINE)
+        support.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        support.ensurePolished()
+        support.setMinimumHeight(QFontMetrics(support.font()).horizontalAdvance("spins") + 2)
+        support.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._support_text = support
+        self._stat_w = max(_px(158), self._stat_w)
+        self._stat_h = max(_px(88), self._stat_h)
         self._relayout_identity(CONTENT_MAX_W)
         lay.addLayout(self._identity_grid)
         self._identity_box = box
@@ -2123,13 +2045,10 @@ class HomePage(QWidget):
 
     def _fit_stat_cards(self, width: int):
         """Both stat cards at one size: their natural size while the strip
-        has room for the pair, shrunk in step when it does not, never below
-        the width the live figure needs. The label wraps rather than clips,
-        so the height follows the width (89)."""
-        from PySide6.QtGui import QFontMetrics
-        links = max(self._links_row.sizeHint().width(),
-                    QFontMetrics(self._creed.font()).horizontalAdvance(self._creed.text()) + 4)
-        w = max(self._stat_floor, min(self._stat_w, (width - links - 2 * GRID) // 2))
+        natural size; shrink only when the pair itself cannot fit the page.
+        The tagline and links are below the cards and do not take their width
+        budget (queue 843)."""
+        w = max(self._stat_floor, min(self._stat_w, width if 2 * self._stat_floor + GRID > width else (width - GRID) // 2))
         h = max(self._stat_h, *(card.layout().totalHeightForWidth(w)
                                 for card in (self._words_card, self._infinity_card)))
         if (w, h) == self._stat_size:
@@ -2139,41 +2058,30 @@ class HomePage(QWidget):
             card.setFixedSize(w, h)
 
     def _relayout_identity(self, width: int):
-        """Cards left, creed right on one row when it fits; otherwise the
-        creed takes its own row beneath the cards, still right-aligned."""
+        """Stats follow activity; only the footer consumes spare window height (861)."""
         self._fit_stat_cards(width)
-        # The creed and the support sentence WRAP, so their minimum is
-        # honest: squeezing them costs a line, not a letter. The links row
-        # cannot wrap and a QPushButton does not elide -- its
-        # minimumSizeHint is three 44 px targets, which the layout will
-        # happily grant and then clip the labels inside. At 150% text that
-        # drew "Website and d(", "GitH", "Ko-f" (89, caught by rendering).
-        # So the links are measured at the width they actually need.
-        need = (self._words_card.width() + self._infinity_card.width() + 2 * GRID
-                + max(self._creed.minimumSizeHint().width(),
-                      self._links_row.sizeHint().width()))
-        rows = 1 if need <= width else 2
-        if rows == self._identity_rows:
-            return
-        self._identity_rows = rows
         grid = self._identity_grid
-        for w in (self._words_card, self._infinity_card, self._creed_box):
-            grid.removeWidget(w)
-        grid.addWidget(self._words_card, 0, 0)
-        grid.addWidget(self._infinity_card, 0, 1)
+        for widget in (self._words_card, self._infinity_card, self._support_text):
+            grid.removeWidget(widget)
+        for c in range(3):
+            grid.setColumnStretch(c, 0)
+        stacked = 2 * self._stat_floor + GRID > width
+        grid.addWidget(self._words_card, 0, 0, Qt.AlignmentFlag.AlignLeft)
+        grid.addWidget(self._infinity_card, int(stacked), 0 if stacked else 1,
+                       Qt.AlignmentFlag.AlignLeft)
         grid.setColumnStretch(2, 1)
-        # The creed block under the cards is a continuation of the same
-        # strip, not a second row of cards, so when it wraps it gets the
-        # tighter gap: 8 px, not GRID (89).
-        grid.setVerticalSpacing(_px(8) if rows == 2 else GRID)
-        if rows == 1:
-            grid.addWidget(self._creed_box, 0, 2)
+        grid.setVerticalSpacing(8)
+        support_width = self._support_text.sizeHint().width()
+        if not stacked and 2 * self._stat_size[0] + 2 * GRID + support_width <= width:
+            grid.addWidget(self._support_text, 0, 2)
         else:
-            grid.addWidget(self._creed_box, 1, 0, 1, 3)
+            grid.addWidget(self._support_text, 2 if stacked else 1, 0, 1, 3)
+        self._identity_rows = 2
 
     def _stat_card(self, label: str, value: str, color: str) -> tuple:
         card = _card()
         card.setAccessibleName(label)
+        card.setStyleSheet(f"QFrame#homeCard {{ background: {theme.DATA_SURFACE}; border: none; border-radius: 10px; }}")
         card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         lay = QVBoxLayout(card)
         lay.setContentsMargins(GRID, _px(12), GRID, _px(12))
@@ -2188,22 +2096,40 @@ class HomePage(QWidget):
         return card, val
 
     def _relayout_cards(self, width: int):
-        """As many columns (at most 3) as the widest card allows at this
-        width, so a large text scale wraps instead of clipping."""
-        widest = max((c.minimumWidth() for c in self._cards), default=1)
+        """Measured 3/2/1 grid, keeping the expanded tray beside its owning card."""
+        widest = max((c._measured_minimum for c in self._cards), default=_px(208))
         cols = max(1, min(3, (width + GRID) // (widest + GRID)))
-        if cols == self._cards_cols:
-            return
         self._cards_cols = cols
         grid = self._cards_grid
         for card in self._cards:
             grid.removeWidget(card)
+        slot = getattr(self, '_guides_slot', None)
+        if slot is not None:
+            grid.removeWidget(slot)
+        opened = slot is not None and not slot.isHidden()
         for c in range(3):
-            grid.setColumnStretch(c, 0)
+            grid.setColumnStretch(c, int(c < cols))
+            grid.setColumnMinimumWidth(c, 0)
+        grid.setVerticalSpacing(0)
+        for row in range(9):
+            grid.setRowMinimumHeight(row, 0)
         for i, card in enumerate(self._cards):
-            grid.addWidget(card, i // cols, i % cols)
-        for c in range(cols):
-            grid.setColumnStretch(c, 1)
+            row = i // cols
+            if opened and cols == 1 and i == 2:
+                row += 1
+            elif opened and cols == 2 and i == 2:
+                row += 1
+            grid.addWidget(card, row * 2, i % cols)
+            if row:
+                grid.setRowMinimumHeight(row * 2 - 1, GRID)
+            card.setMinimumHeight(card.heightForWidth(max(1, (width - (cols - 1) * GRID) // cols)))
+        if slot is not None:
+            tray_row = 4 if cols == 1 else 2
+            grid.addWidget(slot, tray_row, 1 if cols == 3 else 0,
+                           1, 2 if cols == 3 else cols)
+            if opened:
+                grid.setRowMinimumHeight(tray_row - 1, 8)
+        grid.invalidate()
 
     # ---- Refresh --------------------------------------------------------
 
@@ -2427,18 +2353,39 @@ class HomePage(QWidget):
 
     def show_guides(self, visible: bool = True):
         self._guides_row.setVisible(visible)
+        self._guides_slot.setVisible(visible)
+        self._relayout()
+        self._queue_recent_fit()
 
     def _on_guide(self, label: str):
         open_guide(self._app, label)
 
     def _relayout(self):
         """Re-flow the two grids for the room the VIEWPORT has now."""
-        avail = max(1, min(CONTENT_MAX_W, self._scroll.viewport().width() - 2 * GRID))
+        avail = max(1, min(CONTENT_MAX_W, self._scroll.viewport().width() - 56))
+        self._content.setFixedWidth(avail)
         from samsara.ui.home_notice_qt import layout_problem_notice
         layout_problem_notice(self._notice_card, self._notice_text, self._notice_btn, avail, GRID)
         actions, grid = self._hint_action_btn.parentWidget(), self._hint_card.layout(); stacked = bool(self._whats_new and avail < self._hint_heading.minimumSizeHint().width() + self._hint_action_btn.parentWidget().minimumWidth() + 3 * GRID)
         if self._whats_new and (grid.getItemPosition(grid.indexOf(actions))[1] == 0) != stacked: grid.removeWidget(actions); grid.addWidget(actions, 3 if stacked else 0, 0 if stacked else 1, 1 if stacked else 3, 1, Qt.AlignmentFlag.AlignVCenter)
         self._relayout_cards(avail); self._relayout_identity(avail)
+        if hasattr(self, '_footer'):
+            self._footer.setFixedWidth(avail)
+            footer_height = self._footer.heightForWidth(avail)
+            in_scroll = self.height() - footer_height - 12 < 160
+            if in_scroll != self._footer_in_scroll:
+                self._footer_in_scroll = in_scroll
+                if in_scroll:
+                    self._footer_host.layout().removeWidget(self._footer)
+                    self._content.layout().addWidget(self._footer)
+                else:
+                    self._content.layout().removeWidget(self._footer)
+                    self._footer_host.layout().insertWidget(0, self._footer)
+                self._footer.show()
+            self._footer.setFixedHeight(footer_height)
+            self._footer_host.setVisible(not in_scroll)
+            self._footer_host.setFixedHeight(footer_height + 12)
+            self._scroll.widget().layout().setContentsMargins(28, 24, 28, 12 if in_scroll else 24)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -2454,14 +2401,37 @@ class HomePage(QWidget):
     def _fit_recent(self):
         self._recent_fit_pending = False
         col = self._content.layout()
+
+        def required_height(width):
+            sections = []
+            for i in range(col.count()):
+                item = col.itemAt(i)
+                widget = item.widget()
+                if widget is self._recent_slot or widget is None or widget.isHidden():
+                    continue
+                sections.append(item.heightForWidth(width) if item.hasHeightForWidth() else item.sizeHint().height())
+            return sum(sections) + max(0, len(sections) - 1) * col.spacing() + 48
+
+        # Test the full viewport first. Otherwise an initial narrow layout
+        # can keep a scrollbar alive forever even though three columns fit.
+        full_width = max(1, min(CONTENT_MAX_W, self._scroll.width() - 56))
+        self._relayout_cards(full_width)
+        self._relayout_identity(full_width)
+        footer_height = self._footer.heightForWidth(full_width)
+        prospective_viewport = self.height() - (0 if self._footer_in_scroll else footer_height + 12)
+        reserve = required_height(full_width) > prospective_viewport
+        self._reserved_scrollbar = reserve
+        self._scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn if reserve else Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._relayout()
         col.activate()
-        # Recover the budget without hiding/re-showing the strip (no flicker).
-        stretch = next(col.itemAt(i) for i in range(col.count())
-                       if col.itemAt(i).spacerItem() is not None)
-        free = stretch.geometry().height()
-        if not self._recent.isHidden():
-            free += self._recent.height() + col.spacing()
+        width = self._content.width()
+        used = required_height(width)
+        free = max(0, self._scroll.viewport().height() - used - col.spacing())
         self._recent.fit(free)
+        visible = self._recent.capacity > 0 and not self._recent.isHidden()
+        self._recent_slot.setVisible(visible)
+        self._recent_slot.setFixedHeight(self._recent.height() if visible else 0)
 
     def eventFilter(self, obj, event):
         # The page's own resizeEvent fires BEFORE the scroll area has given
