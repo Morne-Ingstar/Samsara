@@ -37,6 +37,11 @@ def structural_error(config_obj):
     return None
 
 
+def incomplete_setup_config(defaults):
+    """Use fresh-profile defaults without claiming that setup was finished."""
+    return {**defaults, "first_run_complete": False}
+
+
 def build_default_config(*, home, macro_defaults, notification_defaults):
     """Build independent defaults using the caller's home and factory values."""
     return {

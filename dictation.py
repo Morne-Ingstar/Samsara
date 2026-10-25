@@ -1484,7 +1484,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     json.dump(wizard_result, f, indent=2)
                 logger.info("Setup wizard completed successfully!")
             else:
-                # Wizard was cancelled, use defaults but mark as complete
+                # Wizard was cancelled; keep fresh-profile setup incomplete
                 logger.info("Setup wizard cancelled - using default settings")
             # No splash after wizard - user already saw UI
             # Auto-launch tutorial after wizard (first run only)
@@ -2580,7 +2580,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         logger.debug("[CONFIG] load_config: entry")
 
         from samsara.config_seed import (
-            build_default_config, structural_error as _structural_error,
+            build_default_config, incomplete_setup_config, structural_error as _structural_error,
         )
 
         default_config = build_default_config(
@@ -2679,7 +2679,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         else:
             # True first run: no config file existed at all -- the ONLY
             # case where writing defaults to disk is correct.
-            self.config = default_config
+            self.config = incomplete_setup_config(default_config)
             display_placement.seed_fresh(self.config, fresh=True, monitor=None)
             wake_profiles.validate_wake_profiles(self.config['wake_profiles'])
             # save_config() requires _config_lock to be held; load_config is
