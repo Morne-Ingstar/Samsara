@@ -1051,7 +1051,8 @@ class _CheatSheetWindow(QMainWindow):
 
     def _refill_list(self, text: str):
         self._detail_card.dismiss()
-        raw = text.strip().lower()
+        from samsara.delivery_text import normalize_search_query
+        raw = normalize_search_query(text)
         self._static_pane.setVisible(not raw and getattr(self, "_static_has_content", False))
         if raw:
             filtered = [

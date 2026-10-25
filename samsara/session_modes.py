@@ -1234,6 +1234,8 @@ class SessionModeManager(UtteranceUndoMixin):
         command_suggestion_fn: Optional[CommandSuggestionFn] = None,
         foreground_hwnd_resolver: Optional[ForegroundHwndResolver] = None,
         format_dictate_fn: Optional[FormatDictateFn] = None,
+        prepare_dictate_fn: Optional[FormatDictateFn] = None,
+        inject_prepared_fn: Optional[InjectFn] = None,
         on_mode_change: Optional[Callable[[SessionMode], None]] = None,
         on_focus_lock_revert: Optional[Callable[[], None]] = None,
         on_scratch_result: Optional[Callable[[bool], None]] = None,
@@ -1365,6 +1367,8 @@ class SessionModeManager(UtteranceUndoMixin):
         self._foreground_hwnd_resolver = foreground_hwnd_resolver or (lambda: None)
         self._inject_fn = inject_fn
         self._format_dictate_fn = format_dictate_fn or (lambda t: t)
+        self._prepare_dictate_fn = prepare_dictate_fn
+        self._inject_prepared_fn = inject_prepared_fn
         self._remove_chars_fn = remove_chars_fn
         # Queue 102. inject_fn runs the FULL formatting pipeline
         # (process_transcription -> clean_text -> smart_correct -> trailing
@@ -2790,7 +2794,16 @@ class SessionModeManager(UtteranceUndoMixin):
     def _stage_dictate_chunk(
         self, chunk_raw: str, audio_ref: Any = None,
     ) -> DispatchOutcome:
-        """Stage a chunk; formatting and pasting run once at commit."""
+        """Prepare a chunk before it enters the displayed draft."""
+        prepared = chunk_raw
+        if self._prepare_dictate_fn is not None:
+            try:
+                prepared = self._prepare_dictate_fn(chunk_raw.strip())
+            except Exception as exc:
+                log.warning('[SESSION] draft preparation failed; previous draft retained (%s)', describe_text(exc))
+                return DispatchOutcome(kind="dictate_commit_failed", detail={"pending_chars": self._draft.chars})
+            if not prepared:
+                return DispatchOutcome(kind="empty")
         stripped_suffix = ""
         ellipsis_seam = None
         if self._last_dictate_ended_terminal is not None:
@@ -2801,7 +2814,7 @@ class SessionModeManager(UtteranceUndoMixin):
             ellipsis_seam = decide_ellipsis_seam(
                 self._dictate_pending_buffer, chunk_raw, previous_fragment)
         if self._last_dictate_ended_terminal is None:
-            to_stage = chunk_raw.strip()
+            to_stage = prepared.strip()
             stripped_terminal_period = False
         elif ellipsis_seam is not None:
             # Queue 81: the previous fragment trailed off. Join only on the
@@ -2812,9 +2825,9 @@ class SessionModeManager(UtteranceUndoMixin):
                 stripped_suffix = ellipsis_seam.stripped
                 self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(stripped_suffix)]
             # Remove decoder-leading dots; preserve a spoken trailing ellipsis.
-            chunk_body = chunk_raw
+            chunk_body = prepared
             if ellipsis_seam.lead_stripped:
-                chunk_body = chunk_raw[len(ellipsis_seam.lead_stripped):]
+                chunk_body = prepared[len(ellipsis_seam.lead_stripped):]
             to_stage = " " + chunk_body.strip()
             log.debug("[SESSION] DICTATE seam after ellipsis: %s join=%s lead_stripped=%r",
                       ellipsis_seam.clause, ellipsis_seam.join, ellipsis_seam.lead_stripped)
@@ -2825,10 +2838,14 @@ class SessionModeManager(UtteranceUndoMixin):
                 if self._dictate_pending_buffer.rstrip().endswith("."):
                     self._dictate_pending_buffer = self._dictate_pending_buffer.rstrip()[:-1]
                     stripped_terminal_period = True
-                to_stage = " " + chunk_raw.strip()
+                continuation = prepared.strip()
+                if (chunk_raw[:1].islower() and continuation
+                        and continuation[0].lower() == chunk_raw[0]):
+                    continuation = continuation[0].lower() + continuation[1:]
+                to_stage = " " + continuation
             else:
                 stripped_terminal_period = False
-                to_stage = " " + seam_join(self._last_dictate_ended_terminal, chunk_raw)
+                to_stage = " " + seam_join(self._last_dictate_ended_terminal, prepared)
 
         if not to_stage:
             return DispatchOutcome(kind="empty")
@@ -2844,6 +2861,7 @@ class SessionModeManager(UtteranceUndoMixin):
             pass  # Missing provenance keeps the optional re-decode path.
         self._dictate_audio_models = models
         self._draft.append(to_stage)
+        self._draft.delivery_prepared = self._prepare_dictate_fn is not None
         self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)
         self._stack.push(StackItem(
             kind="dictation_staged_chunk", payload=to_stage,
@@ -2918,7 +2936,9 @@ class SessionModeManager(UtteranceUndoMixin):
         delivery_unverified = verdict is not None and not getattr(verdict, "confirmed_ok", False)
 
         final_text = text
-        if "  " in final_text:
+        exact_draft = self._inject_prepared_fn is not None and (
+            getattr(self._draft, 'delivery_prepared', False) or self._parked_hold)
+        if not exact_draft and "  " in final_text:
             final_text = re.sub(r" {2,}", " ", final_text)
         owner = getattr(self._commit_redecode_fn, '__self__', None)
         refs = self._dictate_pending_audio
@@ -2932,7 +2952,7 @@ class SessionModeManager(UtteranceUndoMixin):
             stable_chunks = False
         if stable_chunks:
             log.info('[SESSION] Skipping commit re-decode: same_model_no_short_fragments')
-        if (not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
+        if (not exact_draft and not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
                 and not self._parked_hold):
             try:
                 redecode_text = self._commit_redecode_fn(
@@ -2958,9 +2978,10 @@ class SessionModeManager(UtteranceUndoMixin):
                     exc_info=True,
                 )
 
-        # Preserve the legacy injection callback and formatting/history path.
-        # The scoped receipt carries refusal/consent through its bool result.
-        delivered = clipboard_recovery.inject_commit(self, final_text, commit_target_still_focused, target_mode)
+        # A displayed draft is immutable at delivery, including clipboard retries.
+        delivered = clipboard_recovery.inject_commit(
+            self, final_text, commit_target_still_focused, target_mode,
+            inject_fn=self._inject_prepared_fn if exact_draft else None)
         if delivered is False:
             return clipboard_recovery.failed_commit(self, text, foreground, current_hwnd)
 

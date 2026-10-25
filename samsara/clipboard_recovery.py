@@ -52,12 +52,12 @@ def draft_key(manager):
     return document.document_id, document.revision
 
 
-def inject_commit(manager, text, guard, target_mode):
+def inject_commit(manager, text, guard, target_mode, *, inject_fn=None):
     receipt = current_attempt() or Attempt()
     manager._clipboard_attempt = receipt
     token = _attempt.set(receipt)
     try:
-        return manager._inject_fn(text, guard)
+        return (inject_fn or manager._inject_fn)(text, guard)
     finally:
         _attempt.reset(token)
         if receipt.image and receipt.mode == "normal":

@@ -4233,71 +4233,15 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # session while its one permitted fallback is still in flight.
             return CommandDispatchResult(matched=False, phrase=None, disabled_pack=disabled_pack)
 
+        from samsara.delivery_text import SessionTextDelivery
+        _delivery_text = SessionTextDelivery(self)
+
         def _inject_fn(text: str, commit_focus_guard=None):
-            """Commit one complete unified-session DICTATE thought.
-
-            Format each explicit thought or automatic sentence once through
-            the shared wake-lane pipeline, in its established order:
-
-                process_transcription (auto_capitalize, format_numbers)
-                -> clean_text (cleanup_mode, including verbatim)
-                -> smart_correct (gated on smart_corrections.modes.wake)
-                -> add_trailing_space
-                -> _apply_formatting_tokens (last, immediately before delivery)
-
-            Return delivered bytes for accurate undo and History. Leading seam
-            spacing is added afterward, so cleanup cannot strip it.
-            False signals formatting or delivery failure to the caller.
-            Automatic sends honor clipboard-only output.
-            """
             try:
-                raw = text  # pre-pipeline accumulated thought, for history's raw_text
-                # VERBATIM profile: replaces the whole pipeline below, since
-                # capitalisation/cleanup/smart-corrections/auto-punctuation
-                # are precisely what it exists to suppress.
-                formatted = self._apply_verbatim_if_active(text)
-                if formatted is None:
-                    formatted = self.process_transcription(text)
-                    cleanup_mode = (
-                        'verbatim' if getattr(self, '_skip_cleanup', False)
-                        else self.config.get('cleanup_mode', 'clean')
-                    )
-                    formatted = clean_text(formatted, mode=cleanup_mode)
-                    if self.config.get('smart_corrections', {}).get('modes', {}).get('wake', True):
-                        formatted = smart_correct(formatted, self)
-                    if self.config['add_trailing_space']:
-                        formatted = formatted + " "
-                    formatted = self._apply_formatting_tokens(formatted)
+                return _delivery_text.inject(text, commit_focus_guard)
             except Exception as e:
                 safe_exception(logger, f'[SESSION] DICTATE commit formatting failed: {describe_text(e)}')
                 return False
-
-            formatted = getattr(self._session_mode_manager, '_sentence_prefix', '') + formatted
-            clipboard_only = getattr(self._session_mode_manager, '_sentence_clipboard', False)
-            if clipboard_only:
-                pyperclip.copy(formatted)
-                paste_ok, delivery_confirmed = True, False
-            else:
-                paste_ok, delivery_confirmed = self._paste_preserving_clipboard(
-                    formatted, before_paste=commit_focus_guard,
-                    return_delivery_confirmation=True,
-                    **tutorial_capture.kwargs(tutorial_capture.current()))
-            if not paste_ok:
-                return False
-
-            display = formatted.strip()
-            if display:
-                self.add_to_history(display, is_command=False)
-                self._log_history(
-                    raw_text=raw,
-                    display_text=display,
-                    mode="dictate",
-                    status="buffered" if clipboard_only else "success",
-                    entry_type="dictation",
-                )
-                self._notify_main_window(display)
-            return InjectionDelivery(formatted, confirmed=delivery_confirmed,
-                                     undo_unit=getattr(self, '_undo_unit', None))
 
         from functools import partial
         from samsara.utterance_undo import remove_legacy_chars
@@ -4437,6 +4381,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             foreground_exe_resolver=_get_foreground_exe_lower,
             foreground_hwnd_resolver=_get_foreground_hwnd,
             inject_fn=_inject_fn,
+            prepare_dictate_fn=_delivery_text.prepare,
+            inject_prepared_fn=_delivery_text.inject_prepared,
             format_dictate_fn=self._apply_formatting_tokens,
             remove_chars_fn=_remove_chars_fn,
             window_integrity_fn=injection_safety.window_integrity,
@@ -6060,7 +6006,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         dictate_committed=(outcome.kind == 'dictate_committed' and
                                           not self._session_mode_manager.dictate_pending_buffer),
                         # Re-read an earlier draft alongside an immediate receipt.
-                        draft_recovered=(outcome.kind == 'dictate_draft_recovered' or
+                        draft_recovered=(outcome.kind in ('dictate_draft_recovered', 'dictate_staged') or
                                          bool(outcome.detail.get('immediate')) and
                                          bool(self._session_mode_manager.dictate_pending_buffer)),
                     )
