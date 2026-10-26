@@ -84,6 +84,39 @@ def test_first_utterance_recovers_after_two_second_gpu_and_two_second_cpu_load(m
     assert not posted  # a second delivery never repeats the notice
 
 
+def test_recovery_after_gpu_fallback_keeps_retry_temperature(monkeypatch):
+    app, session, worker, audio, events, _, params = harness(monkeypatch)
+    guarded = []
+
+    def guard(segments, text, decode_params, **kwargs):
+        guarded.append(text)
+        return 'bad_decode' if len(guarded) == 1 else None
+
+    worker._decoder_guard = guard
+    incoming = dict(beam_size=8, best_of=5, temperature=(0, .2, .4),
+                    max_new_tokens=448, language='en')
+    assert recovery.stream_final(worker, audio, incoming)[2]
+    assert app.device_type == 'cpu' and events == ['load']
+    assert len(params) == 2 and len(guarded) == 3
+    assert params[0]['temperature'] == 0.0
+    assert params[1]['temperature'] == .2
+    assert all(p['beam_size'] == 3 and p['best_of'] == 1 for p in params)
+    assert all(p['max_new_tokens'] <= 192 and p['language'] == 'en' for p in params)
+    assert params[1]['initial_prompt'] is None and not params[1]['vad_filter']
+
+
+def test_later_cpu_calls_preserve_explicit_temperature_and_still_apply_caps(monkeypatch):
+    app, _, _, audio, _, _, params = harness(monkeypatch)
+    app.model.transcribe(audio, temperature=.2, beam_size=8, best_of=5, max_new_tokens=448)
+    app.model.transcribe(audio, temperature=.2, beam_size=8, best_of=5, max_new_tokens=448)
+    app.model.transcribe(audio, beam_size=2, max_new_tokens=64)
+    assert params == [
+        dict(temperature=0.0, beam_size=3, best_of=1, max_new_tokens=192),
+        dict(temperature=.2, beam_size=3, best_of=1, max_new_tokens=192),
+        dict(temperature=0.0, beam_size=2, best_of=1, max_new_tokens=64),
+    ]
+
+
 def test_sparse_speech_region_final_shares_fallback_caps_and_load_exclusion(monkeypatch):
     app, session, worker, _, events, posted, params = harness(
         monkeypatch, gpu_delay=.04, load_delay=.2, timeout=.12)
