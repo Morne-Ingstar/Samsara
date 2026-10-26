@@ -220,6 +220,22 @@ def _cursor_pos():
 _live_hooks = weakref.WeakSet()
 
 
+def stall_snapshot():
+    """Read callback timestamps off-thread without waiting for the hook pump."""
+    now = _perf()
+    result = []
+    for hook in list(_live_hooks):
+        started = hook._callback_started_at
+        last = hook.last_callback_at
+        result.append({
+            'thread_id': hook._thread_id,
+            'callback_count': hook.callback_count,
+            'last_callback_age_s': None if last is None else max(0.0, now - last),
+            'callback_running_s': 0.0 if started is None else max(0.0, now - started),
+        })
+    return tuple(result)
+
+
 def release_all_hooks() -> None:
     """Uninstall every live mouse hook. Registered with atexit; safe to call twice."""
     for hook in list(_live_hooks):
@@ -294,6 +310,8 @@ class MouseHook:
         self.slow_callback_max_ms = 0.0
         self.callback_errors = 0
         self.last_callback_ms = 0.0
+        self.last_callback_at = None
+        self._callback_started_at = None
         self._reported = {'dropped': 0, 'slow': 0, 'errors': 0}
         self._drop_burst_open = False
         # Watchdog state.
@@ -316,40 +334,43 @@ class MouseHook:
     # ------------------------------------------------------------------
 
     def _hook_callback(self, n_code, w_param, l_param):
-        """Read, decide suppression, enqueue, return. Nothing else, ever."""
+        """Time the entire callback, including a downstream native hook wait."""
         t0 = _perf()
-        suppress = False
+        self._callback_started_at = self.last_callback_at = t0
         try:
-            self.callback_count += 1   # EVERY callback is liveness: move, wheel, any button (35)
-            if n_code >= 0 and (w_param == WM_XBUTTONDOWN or w_param == WM_XBUTTONUP):
-                info = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                name = 'mouse4' if ((info.mouseData >> 16) & 0xFFFF) == XBUTTON1 else 'mouse5'
-                events = self._events
-                events.put((name, w_param == WM_XBUTTONDOWN, t0, bool(info.flags & LLMHF_INJECTED)))
-                if events.qsize() > QUEUE_BOUND:
-                    try:
-                        events.get_nowait()   # drop the OLDEST; a wedged dispatcher never stalls us
-                        self.dropped_events += 1
-                    except queue.Empty:
-                        pass
-                suppress = name in self.suppress_buttons
-        except BaseException:
-            self.callback_errors += 1
-            suppress = False           # broken callback: never eat a click
+            suppress = False
+            try:
+                self.callback_count += 1   # EVERY callback is liveness: move, wheel, any button (35)
+                if n_code >= 0 and (w_param == WM_XBUTTONDOWN or w_param == WM_XBUTTONUP):
+                    info = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    name = 'mouse4' if ((info.mouseData >> 16) & 0xFFFF) == XBUTTON1 else 'mouse5'
+                    events = self._events
+                    events.put((name, w_param == WM_XBUTTONDOWN, t0, bool(info.flags & LLMHF_INJECTED)))
+                    if events.qsize() > QUEUE_BOUND:
+                        try:
+                            events.get_nowait()   # drop the OLDEST; a wedged dispatcher never stalls us
+                            self.dropped_events += 1
+                        except queue.Empty:
+                            pass
+                    suppress = name in self.suppress_buttons
+            except BaseException:
+                self.callback_errors += 1
+                suppress = False           # broken callback: never eat a click
+            if suppress:
+                return 1  # consume -- the OS does not see this X button
+            try:
+                return _call_next_hook_ex(self._hook_id, n_code, w_param, l_param)
+            except BaseException:
+                self.callback_errors += 1
+                return 0
         finally:
             elapsed = (_perf() - t0) * 1000.0
+            self._callback_started_at = None
             self.last_callback_ms = elapsed
             if elapsed > SLOW_CALLBACK_MS:
                 self.slow_callbacks += 1
                 if elapsed > self.slow_callback_max_ms:
                     self.slow_callback_max_ms = elapsed
-        if suppress:
-            return 1  # consume -- the OS does not see this X button
-        try:
-            return _call_next_hook_ex(self._hook_id, n_code, w_param, l_param)
-        except BaseException:
-            self.callback_errors += 1
-            return 0
 
     # ------------------------------------------------------------------
     # Dispatcher (its own thread): delivery + watchdog
