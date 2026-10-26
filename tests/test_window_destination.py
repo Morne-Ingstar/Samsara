@@ -165,6 +165,9 @@ def desktop(monkeypatch):
     """Two monitors; 'warp' has one window, 'claude' has two (topmost first),
     'obsidian' none; records every move."""
     moves = []
+    # 900: the fuzzy fallback (landed with window placement) is synthetic too.
+    import plugins.commands.app_verbs as av
+    monkeypatch.setattr(av, 'resolve_window', lambda name: None)
     monkeypatch.setattr(wm, 'get_monitors', lambda: TWO)
     monkeypatch.setattr(wm, 'move_window_to_monitor', lambda hwnd, mon: moves.append((hwnd, mon['index'])))
     windows = {'warp': [101], 'claude': [202, 201], 'obsidian': []}

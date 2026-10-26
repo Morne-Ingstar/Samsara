@@ -418,9 +418,11 @@ def test_saying_scratch_that_cancels_the_correction_instead_of_replacing(preview
 
 
 def test_a_control_word_still_does_its_own_job_while_a_click_waits(preview):
+    from samsara import session_modes
     _say(preview, "I met Morn yesterday.")
     _click(preview, "Morn")
-    outcome = preview.manager.dispatch_utterance("end", GOOD)
+    # 900: 142 made the commit word configurable; use the active control word.
+    outcome = preview.manager.dispatch_utterance(session_modes.DICTATE_COMMIT_PHRASE, GOOD)
     assert outcome.kind == "dictate_committed"
     assert preview.manager.pending_word_correction() is None
 

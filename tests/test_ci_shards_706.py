@@ -54,7 +54,9 @@ def partition_collection(hook, root, original):
     counts = list(map(len, partitions))
     if len(original) >= 1000 and not already_sharded:
         # Test counts approximate work; timings still depend on individual files.
-        assert min(counts) > 0 and max(counts) / min(counts) <= 1.35, counts
+        # 900: 706 keeps files whole, so an oversized file is a hard lower bound.
+        largest_file = max(Counter(item.path for item in original).values())
+        assert min(counts) > 0 and max(counts) <= max(largest_file, min(counts) * 1.35), counts
     return {'tests': counts, 'files': list(map(len, files)), 'total': len(original)}
 
 
@@ -163,6 +165,13 @@ def test_greedy_packing_balances_large_files_and_ignores_collection_order(
     large_file = [Mock(path=ROOT / 'tests/test_large.py', nodeid=f'large::{n}')
                   for n in range(1000)]
     assert partition_collection(shard_hook, ROOT, large_file)['total'] == 1000
+    # 900: an unsharded local chunk can have one indivisible dominating file.
+    monkeypatch.delenv(INDEX)
+    monkeypatch.delenv(TOTAL)
+    chunk = [Mock(path=ROOT / f'tests/test_{name}.py', nodeid=f'{name}::{n}')
+             for name, count in [('large', 5237), ('a', 693), ('b', 694), ('c', 692)]
+             for n in range(count)]
+    assert partition_collection(shard_hook, ROOT, chunk)['tests'] == [5237, 694, 693, 692]
 
 
 def test_single_shard_keeps_every_item_without_deselection(shard_hook, monkeypatch):

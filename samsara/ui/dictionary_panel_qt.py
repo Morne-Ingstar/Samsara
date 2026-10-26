@@ -298,7 +298,7 @@ class DictionaryPanelQt(QWidget):
         page = QWidget()
         lay  = QVBoxLayout(page)
         lay.setContentsMargins(14, 14, 14, 16)
-        lay.setSpacing(6)
+        lay.setSpacing(5)  # 900: fit five rows while preserving the hub's bottom margin.
 
         self._voice_settings = QSettings("Samsara", "Samsara")
         self._voice_expander = QToolButton()
