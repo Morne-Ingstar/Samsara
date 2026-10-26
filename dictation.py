@@ -10569,7 +10569,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     from samsara.speech_presence import skip_decode
-                    skip_decode(audio, self, path="batch", skip_reason="not_decoded")  # 899 / 481: silent tap.
+                    skip_decode(audio, self, path="batch", skip_reason="not_decoded"); from samsara.failure_reasons import show_empty_capture; show_empty_capture(self, audio_duration, tutorial_owner=tutorial_owner)
                     logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     flight_recorder.record(
                         'hold_recording.stop_reason', reason='audio_too_short',
@@ -10598,7 +10598,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 )
                 from samsara.speech_presence import skip_decode; from samsara.failure_reasons import show_empty_capture
                 if skip_decode(audio_faded, self, path="batch", existing_gate=_gate, capture=presence_capture):
-                    show_empty_capture(self, audio_duration)
+                    show_empty_capture(self, audio_duration, tutorial_owner=tutorial_owner)
                     return
                 if _gate:
                     logger.info(_gate.describe() if isinstance(_gate, _GateDecision) else
@@ -10623,7 +10623,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         ), app=self)
                     except Exception as _diag_exc:
                         logger.debug(f"[DIAG] gated record failed: {describe_text(_diag_exc)}")
-                    return  # 899 / 481: pre-decode silence returns to rest quietly.
+                    show_empty_capture(self, audio_duration, tutorial_owner=tutorial_owner); return  # 921: same owner at both gates.
 
                 if stage_timing is not None:
                     stage_timing.mark(

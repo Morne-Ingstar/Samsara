@@ -1,4 +1,4 @@
-"""Capture failure copy and small producer seams; no detection policy changes."""
+"""Capture failure classification, feedback and small producer seams."""
 from __future__ import annotations
 
 import logging
@@ -84,8 +84,16 @@ def skip_decode(pcm, app, **kwargs):
     return detect(pcm, app, **kwargs)
 
 
-def show_empty_capture(app, duration_s, mode='hold'):
-    """Preserve the empty-history record while settling silently (481 / 899)."""
+def _explain_empty_capture(app, duration_s, owner):
+    # 921: tutorial practice is deliberate; ordinary empty holds keep 481/899 quiet.
+    from samsara import tutorial_capture
+    return duration_s > 0 and tutorial_capture.alive(app, owner)
+
+
+def show_empty_capture(app, duration_s, mode='hold', *, tutorial_owner=None):
+    """Explain tutorial attempts; preserve ordinary empty-capture silence/history."""
+    if _explain_empty_capture(app, duration_s, tutorial_owner):
+        post_reason(app, 'short_tap' if duration_s < .51 else 'near_silent')
     if duration_s > .5:
         try:
             app._log_history(raw_text='', display_text='(no speech detected)',
@@ -102,12 +110,27 @@ def finish_streaming_if_empty(worker, audio):
     duration = len(audio) / session.app.model_rate if audio is not None else 0
     session._empty_capture_kind_891 = 'short_tap' if duration < .51 else 'near_silent'
     # The detector can synchronously deliver on_final; mark ownership first.
-    session._quiet_empty_capture_899 = True
+    session._quiet_empty_capture_899 = not _explain_empty_capture(
+        session.app, duration, getattr(session, '_tutorial_owner', None))
+    if duration < .51:
+        from samsara.speech_presence import skip_decode
+        skip_decode([] if audio is None else audio, session.app,
+                    path='streaming', skip_reason='not_decoded')
+        session.on_final(None, duration_s=duration)
+        return True
     finished = finish(worker, audio)
     if not finished:
         session._empty_capture_kind_891 = None
         session._quiet_empty_capture_899 = False
     return finished
+
+
+def stream_empty_message(session):
+    """The streaming result and listening receipt share one classification."""
+    if getattr(session, '_quiet_empty_capture_899', False):
+        return ''
+    kind = getattr(session, '_empty_capture_kind_891', None)
+    return reason_for(kind, {'config': session.app.config})[0] if kind else 'No speech'
 
 
 def stream_decode_failed(session):

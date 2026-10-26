@@ -2087,7 +2087,7 @@ class StreamingSession:
             logger.exception(f"[STREAM] Auto-stop after timeout failed: {e}")
 
     def _deliver_final(self, text, raw_text, duration_s, elapsed_ms):
-        from samsara import tutorial_capture
+        from samsara import tutorial_capture, failure_reasons
         with self._state_lock:
             live = tutorial_capture.final_current(self)
             if live:
@@ -2118,9 +2118,9 @@ class StreamingSession:
                 thread_registry.spawn("streaming-empty-undo", self._undo_direct_paste,
                                  daemon=True)
             if isinstance(self._overlay, _LiveSurfaceStreamingOverlay):
-                self._overlay.show_empty_result()
+                self._overlay.show_empty_result(failure_reasons.stream_empty_message(self))
             else:
-                self._overlay.update_text("No speech",
+                self._overlay.update_text(failure_reasons.stream_empty_message(self),
                                           StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
             return

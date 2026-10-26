@@ -157,7 +157,8 @@ def test_only_error_floor_changes():
 @pytest.mark.parametrize('duration,finished,expected', [(.1, True, 'short_tap'), (2., True, 'near_silent'), (2., False, None)])
 def test_streaming_gate_keeps_silent_speech_distinct_from_decode_failure(monkeypatch, duration, finished, expected):
     monkeypatch.setattr('samsara.speech_presence.finish_streaming_if_empty', lambda *_: finished)
-    worker = SimpleNamespace(_session=SimpleNamespace(app=host()))
+    # 921: real sessions own this callback; ordinary captures still obey 481/899.
+    worker = SimpleNamespace(_session=SimpleNamespace(app=host(), on_final=Mock()))
     assert reasons.finish_streaming_if_empty(worker, np.zeros(int(duration*16000))) is finished
     assert worker._session._empty_capture_kind_891 == expected
     session = worker._session
@@ -168,6 +169,8 @@ def test_streaming_gate_keeps_silent_speech_distinct_from_decode_failure(monkeyp
         reasons.deliver_stream_final(session, None, None, duration, 0)
         # 899 / 481: pre-decode silent/short streaming exits show no failure.
         session.app.listening_indicator.show_outcome.assert_not_called()
+    if duration < .51:
+        session.on_final.assert_called_once_with(None, duration_s=duration)
 
 
 def test_stream_exception_keeps_its_failure_kind_without_a_duration():
