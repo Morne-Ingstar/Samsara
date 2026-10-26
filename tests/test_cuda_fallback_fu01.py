@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from samsara.gpu_fallback import ResilientSpeechModel, load_resilient_model
+from samsara.gpu_fallback import ResilientSpeechModel, load_resilient_model, report_delivered
 from tools import gen_release_manifest as gen
 
 
@@ -42,16 +42,24 @@ def test_decode_retries_exact_audio_once_on_cpu_and_notifies_once(stage, message
 
     gpu = Mock(transcribe=Mock(side_effect=fail))
     model = ResilientSpeechModel(app, gpu, factory, device='cuda', notify=notice)
+    app.model = model
     segments, returned_info = model.transcribe(audio, beam_size=5, language='en')
     assert list(segments) == ['cpu result'] and returned_info is info
-    assert gpu.transcribe.call_args == cpu.transcribe.call_args
+    # 917b: the same audio/language is retried with bounded CPU parameters.
+    assert gpu.transcribe.call_args.args == cpu.transcribe.call_args.args
+    assert cpu.transcribe.call_args.kwargs == dict(beam_size=3, language='en', best_of=1,
+                                                  temperature=0.0, max_new_tokens=192)
     assert cpu.transcribe.call_args.args[0] is audio
     factory.assert_called_once_with()
+    # 917b: decoding alone must not announce a result the caller can reject.
+    notice.assert_not_called()
+    report_delivered(app)
     notice.assert_called_once_with()
     assert app.device_type == 'cpu' and app.compute_type == 'int8'
     assert app.config == saved
     assert list(model.transcribe(audio, beam_size=1)[0]) == ['cpu result']
     factory.assert_called_once()
+    report_delivered(app)
     notice.assert_called_once()
     assert sum('[GPU-FALLBACK]' in r.message for r in caplog.records) == 1
 
@@ -66,7 +74,8 @@ def test_encode_failure_also_retries_same_features():
     assert gpu.encode.call_args == cpu.encode.call_args
     assert cpu.encode.call_args.args[0] is features
     factory.assert_called_once()
-    notice.assert_called_once()
+    # 917b: encode is preparation, not final delivery.
+    notice.assert_not_called()
 
 
 @pytest.mark.parametrize('error', [ValueError('invalid audio'), RuntimeError('invalid model shape'),
@@ -108,18 +117,27 @@ def test_failed_cpu_construction_is_attempted_once():
 def test_concurrent_decodes_share_one_cpu_reload():
     cpu = Mock(transcribe=Mock(side_effect=lambda *a, **k: (iter(['result']), None)))
     factory, notice = Mock(return_value=cpu), Mock()
-    model = ResilientSpeechModel(app_stub(), Mock(transcribe=Mock(side_effect=RuntimeError(CUDA_ERROR))),
+    app = app_stub()
+    model = ResilientSpeechModel(app, Mock(transcribe=Mock(side_effect=RuntimeError(CUDA_ERROR))),
                                 factory, device='cuda', notify=notice)
+    app.model = model
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _: list(model.transcribe(object())[0]), range(2)))
     assert results == [['result'], ['result']]
     factory.assert_called_once()
+    # 917b: concurrent final delivery still announces the switch only once.
+    notice.assert_not_called()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: report_delivered(app), range(2)))
     notice.assert_called_once()
 
 
 @pytest.mark.parametrize('startup_failure', [False, True])
 def test_startup_installs_shared_wrapper_and_cpu_uses_int8(monkeypatch, startup_failure):
     from samsara import cuda_detect
+    from samsara.ui import qt_runtime
+    ready = []
+    monkeypatch.setattr(qt_runtime, 'post_when_ready', lambda cb: ready.append(cb))
     monkeypatch.setattr(cuda_detect, 'prepare_cuda_dll_search', Mock())
     app, calls = app_stub(), []
     cpu = Mock(transcribe=Mock(side_effect=lambda *a, **k: (iter(['cpu']), None)))
@@ -134,12 +152,19 @@ def test_startup_installs_shared_wrapper_and_cpu_uses_int8(monkeypatch, startup_
     model, elapsed, device, compute = load_resilient_model(
         app, Mock(), factory, 'small', 'cuda', 'float16')
     notice = model._notify = Mock()
+    app.model = model
     assert isinstance(model, ResilientSpeechModel) and elapsed >= 0
     assert (device, compute) == (('cpu', 'int8') if startup_failure else ('cuda', 'float16'))
+    # 917b: startup recovery is announced when UI is ready, before dictation.
+    assert len(ready) == int(startup_failure)
+    for callback in ready:
+        callback()
+    assert notice.call_count == int(startup_failure)
     app.config['model_size'] = 'large-v3'  # Retry the loaded model, not a later saved choice.
     assert list(model.transcribe(object())[0]) == ['cpu']
     assert len(calls) == 2 and calls[-1][0] == 'small'
     assert calls[-1][1]['device'] == 'cpu' and calls[-1][1]['compute_type'] == 'int8'
+    report_delivered(app)
     notice.assert_called_once()
 
 

@@ -43,6 +43,7 @@ _state:  int                           = _IDLE
 _thread: "threading.Thread | None"     = None
 _app:    "QApplication | None"         = None
 _watchdog = None
+_ready_callbacks = []
 
 
 def _qt_input_snapshot():
@@ -184,6 +185,18 @@ def post(cb) -> None:
     QTimer.singleShot(0, app, cb)
 
 
+def post_when_ready(cb) -> bool:
+    """Retain startup feedback until the UI loop runs, without starting it."""
+    with _lock:
+        if _state in (_IDLE, _STARTING):
+            _ready_callbacks.append(cb)
+            return True
+        if _state != _RUNNING:
+            return False
+    post(cb)
+    return True
+
+
 def is_alive() -> bool:
     """Return True while the Qt event loop is active."""
     with _lock:
@@ -249,6 +262,10 @@ def _run_loop() -> None:
         _app   = app
         _state = _RUNNING
         _watchdog = watchdog
+        callbacks = list(_ready_callbacks)
+        _ready_callbacks.clear()
+    for callback in callbacks:
+        post(callback)
     thread_registry.spawn("qt-stall-watchdog", watchdog.run, daemon=True)
     _ready.set()
     log.debug("samsara-qt: event loop started")

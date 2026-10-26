@@ -10,7 +10,7 @@ def hardware_signature(config):
     return config.get('device', 'auto'), config.get('compute_type', 'float16')
 
 
-def _notice(text, *, restart=None):
+def _notice(text, *, restart=None, non_activating=False):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QMessageBox
     from samsara.ui import theme
@@ -28,13 +28,17 @@ def _notice(text, *, restart=None):
     _dialogs.add(dialog)
     dialog.finished.connect(lambda _result: _dialogs.discard(dialog))
     dialog.destroyed.connect(lambda _object=None: _dialogs.discard(dialog))
+    if non_activating:
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        dialog.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus)
     dialog.show()
     return dialog
 
 
 def show_fallback_notice():
     from samsara.gpu_fallback import FALLBACK_NOTICE
-    return _notice(FALLBACK_NOTICE)
+    return _notice(FALLBACK_NOTICE, non_activating=True)
 
 
 def request_settings_restart(app, previous):

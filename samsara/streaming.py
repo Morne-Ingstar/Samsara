@@ -2178,8 +2178,8 @@ class StreamingSession:
         if self.app.config.get('auto_paste', True) or tutorial_waiting:
             if self._parking_enabled or tutorial_waiting:
                 try:
-                    delivered = self.app._paste_preserving_clipboard(
-                        text, **tutorial_capture.kwargs(tutorial_waiting)) is not False
+                    from samsara.gpu_fallback import paste_final; delivered = paste_final(
+                        self, text, **tutorial_capture.kwargs(tutorial_waiting)) is not False
                 except Exception:
                     logger.exception("[STREAM] Final insertion failed; retaining draft")
                     delivered = False
@@ -2210,7 +2210,7 @@ class StreamingSession:
             self.cancel()
             return
         try:
-            self.app._paste_preserving_clipboard(text)
+            from samsara.gpu_fallback import paste_final; paste_final(self, text)
             return
         except Exception as e:
             logger.exception(f"[STREAM] Paste failed once: {e} -- retrying in 100ms")
@@ -2224,7 +2224,7 @@ class StreamingSession:
         if not tutorial_capture.final_current(self, allow_done=True):
             return
         try:
-            self.app._paste_preserving_clipboard(text, before_paste=lambda: tutorial_capture.final_current(self, allow_done=True))
+            from samsara.gpu_fallback import paste_final; paste_final(self, text, before_paste=lambda: tutorial_capture.final_current(self, allow_done=True))
         except Exception as e:
             logger.exception(f"[STREAM] Paste retry failed: {e}")
             if pyperclip is not None and tutorial_capture.final_current(self, allow_done=True):
@@ -2318,7 +2318,7 @@ class StreamingSession:
                 if self._last_pasted:
                     pyautogui.hotkey('ctrl', 'z')
                     time.sleep(UNDO_SETTLE_S)
-                self.app._paste_preserving_clipboard(sanitized, before_paste=lambda: tutorial_capture.final_current(self, allow_done=True))
+                from samsara.gpu_fallback import paste_final; paste_final(self, sanitized, before_paste=lambda: tutorial_capture.final_current(self, allow_done=True))
                 self._last_pasted = False
                 if PASTE_SETTLE_S:
                     time.sleep(PASTE_SETTLE_S)

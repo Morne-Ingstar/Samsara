@@ -40,6 +40,24 @@ def _cpu(app):
     return getattr(app, 'device_type', None) == 'cpu'
 
 
+class _Deadline(float):
+    """The cold CPU model load is preparation, not decoding budget (917b)."""
+    def __new__(cls, value, app):
+        from samsara.gpu_fallback import ResilientSpeechModel
+        result = super().__new__(cls, value)
+        model = getattr(app, 'model', None)
+        result.model = model if isinstance(model, ResilientSpeechModel) else None
+        result.load_seconds = result.model.recovery_load_seconds() if result.model else 0.0
+        return result
+
+
+def _remaining(deadline):
+    loading = 0.0
+    if isinstance(deadline, _Deadline) and deadline.model is not None:
+        loading = max(0.0, deadline.model.recovery_load_seconds() - deadline.load_seconds)
+    return float(deadline) - time.monotonic() + loading
+
+
 def _deadline(app):
     default = 8.0 if _cpu(app) else 15.0
     try:
@@ -48,13 +66,13 @@ def _deadline(app):
             seconds = default
     except (AttributeError, TypeError, ValueError):
         seconds = default
-    return time.monotonic() + min(30.0, max(.05, seconds))
+    return _Deadline(time.monotonic() + min(30.0, max(.05, seconds)), app)
 
 
 def _run(app, operation, deadline, cancel):
     """Bound lock waiting AND lazy iteration; at most one outstanding job/app."""
     while True:
-        if cancel.is_set() or time.monotonic() >= deadline:
+        if cancel.is_set() or _remaining(deadline) <= 0:
             raise TimeoutError('hold decode deadline or cancellation')
         with _admission:
             previous = getattr(app, '_hold_decode_job', None)
@@ -62,13 +80,16 @@ def _run(app, operation, deadline, cancel):
                 job = _Job()
                 app._hold_decode_job = job
                 break
-        cancel.wait(min(.02, max(0, deadline - time.monotonic())))
+        cancel.wait(min(.02, max(0, _remaining(deadline))))
 
     def work():
         acquired = False
         try:
-            acquired = app.model_lock.acquire(timeout=max(0, deadline - time.monotonic()))
-            if not acquired or job.abandoned.is_set() or cancel.is_set():
+            while not acquired:
+                if job.abandoned.is_set() or cancel.is_set() or _remaining(deadline) <= 0:
+                    return
+                acquired = app.model_lock.acquire(timeout=min(.02, max(0, _remaining(deadline))))
+            if job.abandoned.is_set() or cancel.is_set() or _remaining(deadline) <= 0:
                 return
             job.result = operation(job.abandoned)
         except Exception as exc:
@@ -83,12 +104,12 @@ def _run(app, operation, deadline, cancel):
     except Exception:
         job.done.set()
         raise
-    while not job.done.wait(min(.02, max(0, deadline - time.monotonic()))):
-        if cancel.is_set() or time.monotonic() >= deadline:
+    while not job.done.wait(min(.02, max(0, _remaining(deadline)))):
+        if cancel.is_set() or _remaining(deadline) <= 0:
             job.abandoned.set()
             logger.info('[DECODE] hold final abandoned; native completion will be ignored')
             raise TimeoutError('hold decode deadline or cancellation')
-    if cancel.is_set() or time.monotonic() >= deadline:
+    if cancel.is_set() or _remaining(deadline) <= 0:
         raise TimeoutError('hold decode deadline or cancellation')
     if job.error is not None:
         raise job.error
@@ -97,15 +118,22 @@ def _run(app, operation, deadline, cancel):
     return job.result
 
 
+def cpu_decode_params(params, audio_s=None, *, retry=False):
+    """Shared CPU bounds for ordinary holds and a CUDA fallback retry."""
+    result = dict(params)
+    tokens = 192 if audio_s is None else min(192, max(32, int(audio_s * 12 + 24)))
+    result.update(temperature=.2 if retry else 0.0, best_of=1,
+                  beam_size=min(3, result.get('beam_size', 3)),
+                  max_new_tokens=min(tokens, result.get('max_new_tokens') or tokens))
+    return result
+
+
 def _params(app, params, audio_s, *, retry=False):
     result = dict(params)
     result['condition_on_previous_text'] = False
     if _cpu(app):
         # The single recovery pass IS the retry; no hidden temperature ladder.
-        result.update(temperature=.2 if retry else 0.0, best_of=1,
-                      beam_size=min(3, result.get('beam_size', 3)),
-                      # Leave room for Whisper's up-to-half-window prompt.
-                      max_new_tokens=min(192, max(32, int(audio_s * 12 + 24))))
+        result = cpu_decode_params(result, audio_s, retry=retry)
     if retry:
         result.update(initial_prompt=None, temperature=.2 if _cpu(app) else 0.0,
                       vad_filter=False, condition_on_previous_text=False)
@@ -116,8 +144,15 @@ def _transcribe(app, audio, params, deadline, cancel):
     def decode(abandoned):
         segments, info = app.model.transcribe(audio, **params)
         kept = []
-        for segment in segments:
-            if abandoned.is_set() or cancel.is_set() or time.monotonic() >= deadline:
+        segments = iter(segments)
+        while True:
+            if abandoned.is_set() or cancel.is_set() or _remaining(deadline) <= 0:
+                raise TimeoutError('hold decode deadline or cancellation')
+            try:
+                segment = next(segments)
+            except StopIteration:
+                break
+            if abandoned.is_set() or cancel.is_set() or _remaining(deadline) <= 0:
                 raise TimeoutError('hold decode deadline or cancellation')
             kept.append(segment)
         return kept, info
@@ -158,6 +193,7 @@ def stream_final(worker, audio, params):
     """Recover only after the caller's whole-capture speech gate admitted PCM."""
     session = worker._session
     app = session.app
+    session._fallback_notice_rejected = False
     session._decode_audio = audio
     session._decode_params = dict(params)
     deadline, cancel = _deadline(app), session.cancel_event
@@ -176,6 +212,7 @@ def stream_final(worker, audio, params):
         partial = getattr(session, '_last_partial', '')
         if isinstance(partial, str) and partial and reason != 'explicit_retry':
             # Only on_partial's already-guarded text; never the rejected final.
+            session._fallback_notice_rejected = True
             retain(app, audio, params, 'partial_only')
             return [], info, partial
         recovered, pieces = [], []

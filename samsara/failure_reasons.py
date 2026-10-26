@@ -71,6 +71,9 @@ def post_clipping(app, audio):
 def post_delivery_clipping(app, audio, delivered):
     if delivered is not False:
         post_clipping(app, audio)
+        if delivered is not None:
+            from samsara.gpu_fallback import report_delivered
+            report_delivered(app, delivered)
 
 
 def preserve_clipping(label, kind, owner, protected):
