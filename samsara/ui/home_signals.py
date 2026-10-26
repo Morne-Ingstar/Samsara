@@ -398,6 +398,16 @@ def problem_notice(app) -> Optional[Notice]:
             return Notice(capability=name, headline=state.detail,
                           consequence=state.consequence, evidence=state.evidence,
                           action_label=state.action_label, action=state.action)
+    from samsara.wake_setup import calibration_needed, FALLBACK_NOTE
+    if (_cfg(app).get('wake_word_config') or {}).get('phrase_fallback_pending'):
+        return Notice(capability=HANDS_FREE, headline=FALLBACK_NOTE,
+                      consequence="", action_label="Got it",  # PLACEHOLDER COPY (919)
+                      action="acknowledge_wake_fallback", evidence="Wake phrase updated at load")
+    if calibration_needed(_cfg(app)):
+        return Notice(capability=HANDS_FREE,
+                      headline="Your wake word needs a quick calibration",  # PLACEHOLDER COPY (919)
+                      consequence="", action_label="Calibrate wake word",  # PLACEHOLDER COPY (919)
+                      action="calibrate_wake_word", evidence="No calibration for the selected microphone")
     return None
 
 

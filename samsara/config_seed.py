@@ -2,6 +2,8 @@
 from copy import deepcopy
 
 from samsara.constants import (
+    DEFAULT_WAKE_PHRASE,
+    DEFAULT_WAKE_PHRASE_OPTIONS,
     DEFAULT_CONTINUOUS_COMMIT_HOTKEY,
     DEFAULT_CONTINUOUS_COMMIT_TRIGGER,
     DEFAULT_CONTINUOUS_MAX_BUFFER_S,
@@ -139,8 +141,8 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
         "premium_license": "",
         # New nested wake word config
         "wake_word_config": {
-            "phrase": "jarvis",
-            "phrase_options": ["jarvis", "hey jarvis", "computer", "hey computer", "samsa", "hey samsa"],
+            "phrase": DEFAULT_WAKE_PHRASE,
+            "phrase_options": list(DEFAULT_WAKE_PHRASE_OPTIONS),
             "quick_silence_timeout": 1.0,
             "end_words": ["over", "done", "end dictation"],
             "wake_abort_phrase": ["cancel", "cancel dictation", "abort"],
@@ -169,35 +171,7 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
         #       arc_20260629_170545.md). Never shared with another profile.
         # Phrases are validated at config load (samsara.wake_profiles.validate_wake_profiles):
         # under 3 syllables or a duplicate of another enabled profile's phrase disables it.
-        "wake_profiles": [
-            {
-                "id": "claude",
-                "phrase": "okay claude",
-                "oww_model": "okay_claude.onnx",
-                "target_process": "claude.exe",
-                "enabled": True,
-                "mode": "focus_dictate",
-                "send_word": "over",
-            },
-            {
-                "id": "hermes",
-                "phrase": "activate hermes",
-                "oww_model": "activate_hermes.onnx",
-                "target_process": "Hermes.exe",
-                "enabled": True,
-                "mode": "stage_send",
-                "send_word": "send",
-            },
-            {
-                "id": "warp",
-                "phrase": "activate warp",
-                "oww_model": "activate_warp.onnx",
-                "target_process": "warp.exe",
-                "enabled": False,
-                "mode": "focus_dictate",
-                "send_word": "over",
-            },
-        ],
+        "wake_profiles": [],  # 919: personal profiles belong only in user configuration.
         # Echo cancellation (removes system audio from mic input).
         # Default OFF (2026-07-10): the homegrown NLMS adaptive filter
         # converges to only 3-8% echo reduction and adversarial review

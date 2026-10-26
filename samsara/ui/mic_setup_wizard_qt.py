@@ -178,6 +178,24 @@ _AUDIO_JOIN_TIMEOUT_S = 3.0
 # Public wrapper
 # ---------------------------------------------------------------------------
 
+def open_wake_calibration(app, *, parent=None):
+    """Open the reusable wake step directly; skip/close leave calibration pending (919)."""
+    existing = getattr(app, '_wake_calibration_window', None)
+    if existing is not None and existing.isVisible():
+        existing.raise_()
+        existing.activateWindow()
+        return existing
+    window = _WizardWindow(app, wake_only=True)
+    if parent is not None:
+        window.setParent(parent, window.windowFlags())
+        window.setWindowModality(Qt.WindowModality.WindowModal)
+    app._wake_calibration_window = window
+    window.show()
+    window.raise_()
+    window.activateWindow()
+    return window
+
+
 class MicSetupWizardQt:
     """Drop-in Qt wizard -- same open/close pattern as other Qt windows."""
 
@@ -242,9 +260,10 @@ class _WizardWindow(QDialog):
         "You're all set",
     ]
 
-    def __init__(self, app):
+    def __init__(self, app, *, wake_only=False):
         super().__init__()
         self._app = app
+        self._wake_only = wake_only
 
         # One guide-owned preview stream at a time. It is paused while the
         # production ACE stream is switched or performs quiet calibration.
@@ -307,7 +326,7 @@ class _WizardWindow(QDialog):
         self._oww_hit_sig.connect(self._on_oww_hit)
         self._wake_cal_done_sig.connect(self._on_wake_calibration_result)
         self._mic_switch_done_sig.connect(self._on_microphone_switch_done)
-        self._go_to(self._STEP_DEVICE)
+        self._go_to(self._STEP_WAKE if wake_only else self._STEP_DEVICE)
 
     # ----------------------------------------------------------------
     # UI construction
@@ -582,6 +601,8 @@ class _WizardWindow(QDialog):
         # Nav bar
         self._next_btn.setToolTip("")
         self._back_btn.setVisible(step > 0)
+        if self._wake_only:
+            self._back_btn.hide()
         if step == self._STEP_DONE:
             self._skip_btn.hide()
             self._next_btn.setText("Finish")
@@ -632,6 +653,9 @@ class _WizardWindow(QDialog):
     def _go_next(self):
         if self._switch_in_flight:
             return
+        if self._wake_only:
+            self.close()
+            return
         step = self._current_step
         self._skipped_steps.discard(step)
         if step == self._STEP_DEVICE:
@@ -654,6 +678,9 @@ class _WizardWindow(QDialog):
 
     def _skip_step(self):
         if self._switch_in_flight:
+            return
+        if self._wake_only:
+            self.close()
             return
         if self._current_step < self._STEP_DONE:
             self._skipped_steps.add(self._current_step)
@@ -1208,6 +1235,13 @@ class _WizardWindow(QDialog):
                 self._oww_result_lbl.setStyleSheet(f"color:{theme.WARNING};font-size:{theme.TYPE_MIN}px;")
             logger.warning(f"[WIZARD] Wake calibration not saved: {message}")
         else:
+            # 919: save only an accepted, current measurement on the Qt thread.
+            from copy import deepcopy
+            cfg = deepcopy(self._app.config.get('wake_word_config') or {})
+            cfg.setdefault('audio', {}).update(
+                measured_noise_floor=float(floor),
+                calibrated_microphone=self._app.config.get('microphone'))
+            self._app.update_config({'wake_word_config': cfg}, save=True)
             detail = ""
             if report.get("frames"):
                 detail = f": floor {float(floor):.4f} from {report['frames']} frames ({report['seconds']:.1f} s)"
@@ -1406,7 +1440,7 @@ class _WizardWindow(QDialog):
         if self._oww_poll_timer is not None:
             self._oww_poll_timer.stop()
             self._oww_poll_timer = None
-        e.accept()
+        super().closeEvent(e)
 
 
 # ---------------------------------------------------------------------------

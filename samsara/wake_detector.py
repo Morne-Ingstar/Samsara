@@ -24,6 +24,7 @@ PHRASE_TO_MODEL = {
     "hey jarvis":  "hey_jarvis",
     "alexa":       "alexa",
     "hey mycroft": "hey_mycroft",
+    "hey rhasspy": "hey_rhasspy",
 }
 
 # Phrases that have no pre-built OWW model fall back to Whisper-based

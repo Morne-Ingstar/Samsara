@@ -95,7 +95,10 @@ def test_all_legacy_migrations_persist_once_and_preserve_original_backup(loader)
     assert len(app.writes) == 1
     disk = json.loads(app.config_path.read_text(encoding="utf-8"))
     assert disk["mode"] == "hold" and disk["wake_word_enabled"] is True
-    assert disk["wake_word_config"]["phrase"] == "activate assistant"
+    # 919: unsupported legacy phrases fall back; the original survives in backup.
+    assert disk["wake_word_config"]["phrase"] == "jarvis"
+    assert disk["wake_word_config"]["phrase_fallback_pending"] is True
+    assert "wake_word" not in disk
     assert disk["command_mode"]["command_matching_enabled"] is False
     assert "command_mode_enabled" not in disk and "ai_command_mode" not in disk
     assert disk["ava_command_session"]["model"] == "legacy-model"
@@ -108,6 +111,45 @@ def test_all_legacy_migrations_persist_once_and_preserve_original_backup(loader)
     assert json.loads(app.config_path.with_suffix(".json.bak").read_text()) == original
     backups = list((app.config_path.parent / "config_backups").glob("config-*.json"))
     assert len(backups) == 1 and json.loads(backups[0].read_text()) == original
+
+    # A second load must neither rewrite the config nor rotate the original away.
+    before = app.config_path.read_bytes()
+    app.writes.clear()
+    with app._config_lock:
+        app.load_config()
+    assert app.writes == []
+    assert app.config_path.read_bytes() == before
+    assert json.loads(app.config_path.with_suffix(".json.bak").read_text()) == original
+    assert list((app.config_path.parent / "config_backups").glob("config-*.json")) == backups
+
+
+@pytest.mark.parametrize("phrase", ["hey jarvis", "computer", "alexa", "hey mycroft", "hey rhasspy"])
+def test_wake_fallback_alone_persists_once_and_preserves_backup(loader, phrase):
+    app, original = loader
+    original["wake_word_enabled"] = True
+    wake = original["wake_word_config"]
+    wake["phrase"] = phrase
+    wake["audio"].update(measured_noise_floor=0.005, calibrated_microphone=7)
+    app.config_path.write_text(json.dumps(original), encoding="utf-8")
+    with app._config_lock:
+        app.load_config()
+    assert len(app.writes) == 1
+    disk = json.loads(app.config_path.read_text(encoding="utf-8"))
+    assert disk["wake_word_config"]["phrase"] == "jarvis"
+    assert disk["wake_word_config"]["phrase_fallback_pending"] is True
+    assert "measured_noise_floor" not in disk["wake_word_config"]["audio"]
+    assert "calibrated_microphone" not in disk["wake_word_config"]["audio"]
+    backup = app.config_path.with_suffix(".json.bak")
+    assert json.loads(backup.read_text()) == original
+    snapshots = list((app.config_path.parent / "config_backups").glob("config-*.json"))
+    assert len(snapshots) == 1 and json.loads(snapshots[0].read_text()) == original
+    before = app.config_path.read_bytes()
+    app.writes.clear()
+    with app._config_lock:
+        app.load_config()
+    assert app.writes == [] and app.config_path.read_bytes() == before
+    assert json.loads(backup.read_text()) == original
+    assert list((app.config_path.parent / "config_backups").glob("config-*.json")) == snapshots
 
 
 def test_settings_save_does_not_reintroduce_retired_key_or_repeat_migration(loader):

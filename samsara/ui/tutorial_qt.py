@@ -824,6 +824,9 @@ class TutorialWindow(QMainWindow):
             # PLACEHOLDER COPY (378)
             off = '\nOff — turn it on in Settings -> Dictation.' if not row['enabled'] else ''
             detail = QLabel(row['start'] + '\n' + row['purpose'] + off)
+            if row['key'] == 'wake':
+                detail.setObjectName('tutorialWakeInstruction')
+                detail.setProperty('wakeInstruction', detail.text())
             detail.setTextFormat(Qt.TextFormat.PlainText)
             detail.setWordWrap(True)
             detail.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
@@ -1184,6 +1187,10 @@ class TutorialWindow(QMainWindow):
         if key == 'display':
             self._display_demo._restart()
         self._current_page = page
+
+        if key == 'ways':
+            from samsara.ui.wake_setup_qt import refresh_tutorial_wake
+            refresh_tutorial_wake(self)
 
         key, title = self._steps[self._step]
         self._step_lbl.setText(f"Step {self._step + 1} of {len(self._steps)}")

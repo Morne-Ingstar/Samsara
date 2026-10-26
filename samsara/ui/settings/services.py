@@ -472,6 +472,7 @@ class SettingsServices:
         from samsara.ui.speech_hardware_qt import hardware_signature, request_settings_restart
         previous_hardware = hardware_signature(self.app.config)
         previous_ava = ava_readiness.settings_signature(self.app)
+        wake_was_enabled = bool(self.app.config.get('wake_word_enabled', False))
         listening_display.run_display(self.app)
         updates: dict = {}
         for save_fn in self._save_fns:
@@ -574,6 +575,10 @@ class SettingsServices:
                 logger.debug(f"[SETTINGS] Smart Corrections warm_up call failed: {e}")
 
         self.close()
+        from samsara.wake_setup import calibration_needed
+        if not wake_was_enabled and calibration_needed(self.app.config):
+            from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
+            open_wake_calibration(self.app)
         request_settings_restart(self.app, previous_hardware)
         listening_display.request_restart_once(
             self.app, lambda text: QMessageBox.information(self, "Samsara", text),

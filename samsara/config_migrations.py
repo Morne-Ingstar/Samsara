@@ -28,6 +28,15 @@ def migrate_loaded_config(self, default_config):
         logger.debug("[CONFIG] load_config: starting _migrate_wake_word_config")
         self._migrate_wake_word_config(default_config)
         logger.debug("[CONFIG] load_config: _migrate_wake_word_config done")
+        from samsara.wake_setup import normalize_wake_phrase
+        wake_changed = normalize_wake_phrase(self.config)
+        # 919: the nested phrase is authoritative after migration. Retire the
+        # flat source in this same batch so it cannot replay on later loads.
+        if 'wake_word' in self.config:
+            del self.config['wake_word']
+            wake_changed = True
+        if wake_changed:
+            self.save_config()
         self._migrate_command_matching_enabled_flag()
         self._migrate_ai_command_mode_config()
         self._migrate_retired_ava_command_session_config()

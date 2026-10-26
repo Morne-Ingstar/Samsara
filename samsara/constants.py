@@ -43,7 +43,7 @@ WAKE_COMMAND_TIMEOUT = 5.0         # seconds to wait for command after wake word
 # (tutorial, wizards, tray menu, Ava guide, quick reference) reads one
 # canonical value instead of each hardcoding its own literal.
 DEFAULT_WAKE_PHRASE = 'jarvis'
-DEFAULT_WAKE_PHRASE_OPTIONS = ['jarvis', 'hey jarvis', 'computer', 'hey computer', 'samsa', 'hey samsa']
+DEFAULT_WAKE_PHRASE_OPTIONS = ['jarvis']
 
 # Tray icon animation speeds
 ICON_TICK_FAST = 0.08              # seconds per frame (recording)

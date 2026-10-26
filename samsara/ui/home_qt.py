@@ -2127,6 +2127,17 @@ class HomePage(QWidget):
         immediately, so the notice disappears when -- and only when -- the
         capability actually came back."""
         notice = self._notice
+        if notice is not None and notice.action == "acknowledge_wake_fallback":
+            wake = dict(self._app.config.get('wake_word_config') or {})
+            wake['phrase_fallback_pending'] = False
+            self._app.update_config({'wake_word_config': wake})
+            self.refresh()
+            return
+        if notice is not None and notice.action == "calibrate_wake_word":
+            from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
+            guide = open_wake_calibration(self._app, parent=self)
+            guide.finished.connect(lambda _: self.refresh())
+            return
         if notice is not None and notice.action == home_signals.ACTION_RESTART_HANDS_FREE:
             restart_hands_free(self._app)
             self.refresh()

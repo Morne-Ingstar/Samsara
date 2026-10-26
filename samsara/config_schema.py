@@ -244,25 +244,9 @@ SETTINGS_SCHEMA = {
     "wake_profiles": {
         "type": "list",
         "item_type": "dict",
-        "default": [
-            {
-                "id": "claude", "phrase": "okay claude",
-                "oww_model": "okay_claude.onnx", "target_process": "claude.exe",
-                "enabled": True, "mode": "focus_dictate", "send_word": "over",
-            },
-            {
-                "id": "hermes", "phrase": "activate hermes",
-                "oww_model": "activate_hermes.onnx", "target_process": "Hermes.exe",
-                "enabled": True, "mode": "stage_send", "send_word": "send",
-            },
-            {
-                "id": "warp", "phrase": "activate warp",
-                "oww_model": "activate_warp.onnx", "target_process": "warp.exe",
-                "enabled": False, "mode": "focus_dictate", "send_word": "over",
-            },
-        ],
+        "default": [],  # 919: never seed personal application profiles.
         "tab": "dictation",
-        "help": {"why": "Each profile pairs a spoken phrase with a target app, and an optional send word can finish the handoff. Use separate profiles when different apps need different wake phrases. The default Claude profile is enabled; a phrase without its matching trained model may not activate.", "docs": "https://morneis.com/samsara/docs/settings/#wake_profiles"},
+        "help": {"why": "Each profile pairs a spoken phrase with a target app, and an optional send word can finish the handoff. Use separate profiles when different apps need different wake phrases. No profiles are enabled by default. A phrase without its matching trained model uses more processing and is less reliable.", "docs": "https://morneis.com/samsara/docs/settings/#wake_profiles"},
     },
     # -------------------------------------------------------------------------
     # General tab

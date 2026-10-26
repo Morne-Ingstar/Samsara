@@ -344,11 +344,9 @@ def _builtin_hotkeys_text(config: dict) -> str:
 
 
 def _wake_options_text(phrase: str = DEFAULT_WAKE_PHRASE) -> str:
-    """Row 879: the alternatives exist today -- name them instead of
-    promising them."""
-    alternates = [p for p in DEFAULT_WAKE_PHRASE_OPTIONS if p != phrase]
-    return ("Also answers to: " + ", ".join(alternates)
-            + ". Change the phrase later in Settings -> Modes.")
+    """919: only the owner-verified wake phrase is available this round."""
+    from samsara.wake_setup import MORE_WAKE_WORDS
+    return MORE_WAKE_WORDS  # PLACEHOLDER COPY (919)
 
 _DEFAULTS = {
     "tts": {"feedback_level": config_defaults.cfg_get({}, "tts.feedback_level"), "enabled": True},
@@ -921,6 +919,12 @@ class _WizardWindow(QMainWindow):
 
     def _go_next(self):
         self._collect_step()
+        if _STEPS[self._step][0] == 'Talking':
+            from samsara.wake_setup import calibration_needed
+            if calibration_needed(self._config) and not getattr(self, '_wake_calibration_offered', False):
+                guide = self._calibrate_wake()
+                guide.finished.connect(lambda _: self._go_next() if not getattr(self, '_closing', False) else None)
+                return
         if _STEPS[self._step][0] == "Microphone" and not self._mic_capture_ready:
             if self._mic_status:
                 self._mic_status.setText("Select a working microphone before continuing.")
@@ -937,6 +941,14 @@ class _WizardWindow(QMainWindow):
         if self._step > 0:
             self._step -= 1
             self._show_step()
+
+    def _calibrate_wake(self):
+        from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
+        from samsara.ui.wake_setup_qt import SetupWakeApp
+        self._decisions.collect('Talking')
+        self._wake_calibration_offered = True
+        self._wake_setup_app = SetupWakeApp(self._config, self._mics)
+        return open_wake_calibration(self._wake_setup_app, parent=self)
 
     def _collect_step(self):
         step_name = _STEPS[self._step][0]
@@ -973,6 +985,10 @@ class _WizardWindow(QMainWindow):
         self.close()
 
     def closeEvent(self, event):
+        self._closing = True
+        guide = getattr(getattr(self, '_wake_setup_app', None), '_wake_calibration_window', None)
+        if guide is not None:
+            guide.close()
         self._decisions.shutdown()
         self._stop_meter()
         # A window close is a cancel, not a successful first run. The caller

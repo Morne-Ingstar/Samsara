@@ -595,18 +595,11 @@ class ModesPage:
             width=240,
         )
 
-        phrases = ww_cfg.get('phrase_options', DEFAULT_WAKE_PHRASE_OPTIONS)
-        if isinstance(phrases, str):
-            phrases = [phrases]
-        phrases = [str(phrase) for phrase in (phrases or []) if str(phrase).strip()]
-        if not phrases:
-            phrases = [DEFAULT_WAKE_PHRASE]
+        from samsara.wake_setup import modelled_phrases
+        from samsara.ui.wake_setup_qt import configure_phrase_choice
+        phrases = modelled_phrases()
         current_phrase = str(ww_cfg.get('phrase') or phrases[0])
-        if current_phrase not in phrases:
-            current_phrase = phrases[0]
         wake_phrase_combo = QComboBox()
-        wake_phrase_combo.addItems(phrases)
-        wake_phrase_combo.setCurrentText(current_phrase)
         wake_phrase_combo.setObjectName("wakePhraseCombo")
         self._widgets['wake_word_phrase'] = wake_phrase_combo
         # Compatibility alias for callers that only need the page's control.
@@ -634,9 +627,11 @@ class ModesPage:
             width=170,
         )
 
-        # OWNER COPY — REVIEW
+        configure_phrase_choice(wake_phrase_combo, current_phrase, hands_free_layout,
+                                fallback_pending=bool(ww_cfg.get('phrase_fallback_pending')))
+        # PLACEHOLDER COPY (919)
         wake_note = QLabel(
-            "Wake phrases are trained models. Custom phrases need a custom model."
+            "When you turn wake activation on, Apply opens a quick wake-word calibration."
         )
         wake_note.setWordWrap(True)
         wake_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
@@ -1128,8 +1123,8 @@ class ModesPage:
                 ww_cfg['oww_threshold'] = max(0.01, min(1.0, self._widgets['oww_threshold'].value()))
                 phrase_combo = self._widgets.get('wake_word_phrase')
                 if (isinstance(phrase_combo, QComboBox)
-                        and ('phrase' in ww_cfg or phrase_combo.currentText() != phrases[0])):
-                    ww_cfg['phrase'] = phrase_combo.currentText()
+                        and ('phrase' in ww_cfg or phrase_combo.currentData() != phrases[0])):
+                    ww_cfg['phrase'] = phrase_combo.currentData()
                 updates['wake_word_config'] = ww_cfg
 
             # Command mode nested config -- button/suppress_button now live

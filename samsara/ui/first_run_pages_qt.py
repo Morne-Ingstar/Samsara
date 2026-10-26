@@ -123,6 +123,8 @@ def initial_config(defaults, config_path):
     except (OSError, ValueError):
         logger.warning('First-run existing config could not be read', exc_info=True)
     merge(config, existing)
+    from samsara.wake_setup import normalize_wake_phrase
+    normalize_wake_phrase(config)
     return config, existing
 
 
@@ -574,12 +576,11 @@ class Decisions(QObject):
         phrase_layout.addStretch()
         self.phrase = QComboBox(phrase_row)
         self.phrase.setAccessibleName(COPY['talking.phrase'])
-        for phrase in self.wake_phrases():
-            self.phrase.addItem(phrase, phrase)
         saved = config_defaults.cfg_get(self.owner._config, 'wake_word_config.phrase')
-        if self.phrase.findText(saved) < 0:
-            self.phrase.addItem(saved, saved)
-        self.phrase.setCurrentText(saved)
+        from samsara.ui.wake_setup_qt import configure_phrase_choice
+        self.wake_fallback_note = configure_phrase_choice(
+            self.phrase, saved, layout, fallback_pending=bool(
+                self.owner._config['wake_word_config'].get('phrase_fallback_pending')))
         self.phrase.ensurePolished()
         phrase_width = max(self.phrase.fontMetrics().horizontalAdvance(self.phrase.itemText(i))
                            for i in range(self.phrase.count()))
@@ -589,14 +590,25 @@ class Decisions(QObject):
         self.wake._row.layout().addWidget(phrase_row)
         self.wake.buttonToggled.connect(lambda *_: phrase_row.setVisible(bool(self.selected(self.wake))))
         phrase_row.setVisible(bool(self.selected(self.wake)))
+        self.wake_calibrate = QPushButton('Calibrate wake word')  # PLACEHOLDER COPY (919)
+        theme.make_secondary(self.wake_calibrate)
+        self.wake_calibrate.clicked.connect(self.owner._calibrate_wake)
+        layout.addWidget(self.wake_calibrate, alignment=Qt.AlignmentFlag.AlignLeft)
+        def wake_visibility(*_):
+            enabled = bool(self.selected(self.wake))
+            self.wake_calibrate.setVisible(enabled)
+        self.wake.buttonToggled.connect(wake_visibility)
+        wake_visibility()
+        self.wake.buttonClicked.connect(
+            lambda button: self.owner._calibrate_wake() if button.property('_value') else None)
         layout.addWidget(label(COPY['talking.tutorial']))
         layout.addStretch()
         return w
 
     @staticmethod
     def wake_phrases():
-        from samsara.constants import DEFAULT_WAKE_PHRASE_OPTIONS
-        return DEFAULT_WAKE_PHRASE_OPTIONS
+        from samsara.wake_setup import modelled_phrases
+        return modelled_phrases()
 
     def music(self):
         w, layout = page(self.owner)
@@ -652,7 +664,7 @@ class Decisions(QObject):
                 put(config, path, button.combo)
             put(config, 'command_mode.enabled', self.hands_free_offer.combo.currentData())
             config['wake_word_enabled'] = self.selected(self.wake)
-            put(config, 'wake_word_config.phrase', self.phrase.currentText().strip())
+            put(config, 'wake_word_config.phrase', self.phrase.currentData())
         elif name == 'Music':
             put(config, 'ducking.recording_mode', self.selected(self.music_group))
         elif name == 'Voice':
