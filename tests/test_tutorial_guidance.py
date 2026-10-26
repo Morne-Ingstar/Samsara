@@ -60,3 +60,23 @@ class TestHandsFreeText:
         assert f'"{session_modes.SCRATCH_THAT_PHRASE}"' in text
         assert "Ctrl+Alt+U" in text and "F14" in text
         assert "F13" not in text and "to start" not in text and "to paste" not in text
+
+
+class TestDoneCopy934:
+    def test_command_help_uses_catalog_phrase_and_configured_key(self):
+        records = [{'canonical_id': tut._HELP_COMMAND_ID, 'phrase': 'available commands'}]
+        # Catalog phrase format is shared with all other tutorial command hints.
+        phrase = tut._catalog_phrase(records, tut._HELP_COMMAND_ID)
+        text = tut._more_text(records, {'command_hotkey': 'ctrl+alt+shift+f12'})
+        assert phrase and f'"{phrase}"' in text
+        assert '"available commands"' in text
+        assert 'Ctrl+Alt+Shift+F12' in text
+        assert 'command route' not in text
+        assert '"' not in tut._more_text([])
+
+    def test_unavailable_number_command_is_not_promised(self):
+        assert tut._pointer_text([]) == 'Manage Ava in Settings > Ava.'
+        records = [{'canonical_id': tut._NUMBERS_COMMAND_ID, 'phrase': 'number controls'}]
+        phrase = tut._catalog_phrase(records, tut._NUMBERS_COMMAND_ID)
+        assert phrase and f'"{phrase}"' in tut._pointer_text(records)
+        assert '"number controls"' in tut._pointer_text(records)

@@ -140,22 +140,24 @@ def _command_hint(examples) -> str:
     return f"Try saying {joined}."
 
 
-def _more_text(records) -> str:
+def _more_text(records, config=None) -> str:
     phrase = _catalog_phrase(records, _HELP_COMMAND_ID)
     if phrase:
-        # OWNER COPY: command voice help requires a capture route.
-        return (f'Say "{phrase}" while a command route is listening, or open '
+        from samsara.ui.quick_reference_qt import _pretty_key_combo
+        key = _pretty_key_combo(facts_from_config(config).command_hotkey)
+        # PLACEHOLDER COPY (934)
+        return (f'Hold {key} and say "{phrase}", or open '
                 "the Command Reference from the tray menu.")
     return "Open the Command Reference from the tray menu for the full command list."
 
 
 def _pointer_text(records) -> str:
     phrase = _catalog_phrase(records, _NUMBERS_COMMAND_ID)
-    # OWNER COPY: provider and numbered targets vary with readiness and scope.
+    # PLACEHOLDER COPY (934)
     if phrase:
-        return (f'Ava availability follows Settings > Ava. "{phrase}" labels exposed '
-                "controls when Show Numbers is available.")
-    return "Ava availability follows Settings > Ava."
+        return (f'Manage Ava in Settings > Ava. Say "{phrase}" to number '
+                "the buttons and other controls Samsara can find.")
+    return "Manage Ava in Settings > Ava."
 
 
 # ---------------------------------------------------------------------------
@@ -678,10 +680,7 @@ class TutorialWindow(QMainWindow):
             return
         layout.activate()
         if self._steps[self._step][0] in ('ways', 'try', 'done'):
-            if (self._steps[self._step][0] == 'try' or
-                    (self._steps[self._step][0] == 'done' and self.maximumWidth() >= 1000)):
-                # Widen Done where two cards fit comfortably; smaller screens
-                # retain the user's pre-Try width and can scroll internally.
+            if self._steps[self._step][0] == 'try':
                 self.resize(min(self.maximumWidth(), max(self.width(), 1000)), self.height())
                 self._fit_available_screen()
                 content.resize(page.viewport().width(), content.height())
@@ -1040,6 +1039,7 @@ class TutorialWindow(QMainWindow):
         ]
 
         card = QFrame()
+        card.setObjectName("tutorialDoneSummary")
         theme.style_card(card)
         cl = QVBoxLayout(card)
         cl.setContentsMargins(14, 8, 14, 8)
@@ -1070,20 +1070,21 @@ class TutorialWindow(QMainWindow):
             cl.addLayout(row)
             self._done_checks[step_idx] = (icon_lbl, text_lbl)
 
-        recap = QHBoxLayout()
-        recap.setSpacing(12)
-        recap.addWidget(card, stretch=1)
         self._try_summary = QLabel('')
         self._try_summary.setTextFormat(Qt.TextFormat.PlainText)
         self._try_summary.setWordWrap(True)
         self._try_summary.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
-        recap.addWidget(self._try_summary, stretch=1)
-        lay.addLayout(recap)
+        cl.addWidget(self._try_summary)
+        lay.addWidget(card)
 
         records = getattr(self, '_catalog', None)
         if records is None:
             records = _tutorial_catalog(self._app)
-        more_lbl = QLabel(_more_text(records))
+        config = getattr(self._app, 'config', {}) or {}
+        packs = _enabled_packs(config)
+        if packs is not None:
+            records = [r for r in records or [] if r.get('pack', 'core') in packs]
+        more_lbl = QLabel(_more_text(records, config))
         more_lbl.setWordWrap(True)
         more_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(more_lbl)
@@ -1263,12 +1264,15 @@ class TutorialWindow(QMainWindow):
         open_guide(self, method)
 
     def _refresh_done_checks(self):
-        self._try_summary.setText('\n'.join(getattr(getattr(self, '_try_page', None), 'kept', {}).values()))
+        kept = getattr(getattr(self, '_try_page', None), 'kept', {})
+        self._try_summary.setText('\n'.join(kept.values()))
         self._try_summary.setVisible(bool(self._try_summary.text()))
         for step_idx, (icon, label) in self._done_checks.items():
             completed = step_idx in self._completed
             icon.setText("✓" if completed else "—")
-            icon.setAccessibleName("Completed" if completed else "Skipped")
+            # PLACEHOLDER COPY (934): an unfinished exercise need not be skipped.
+            state = "Completed" if completed else ("Skipped" if step_idx in self._skipped_steps else "Not completed")
+            icon.setAccessibleName(state)
             icon.setStyleSheet(
                 f"color:{theme.ACCENT if completed else theme.TEXT_DISABLED};"
                 f"font-size:{theme.TYPE_HEADING}px;font-weight:bold;"
