@@ -9,7 +9,6 @@ Hands-free dictation lets you speak a thought, then send it to the text box you'
 Samsara is free. No word limits, subscriptions, or paid feature tiers—and no email address or username required.
 
 **[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
-· [Try the beta](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.10)
 · [Website](https://morneis.com/samsara)
 · [Discord](https://discord.gg/tPYvf369hQ)
 
@@ -29,20 +28,23 @@ You need **Windows 10 or 11 and a microphone**. The packaged app includes
 Python; you do not need to install it. A CPU is enough to get started.
 Compatible NVIDIA GPUs can use the optional [CUDA add-on](https://morneis.com/samsara/docs/cuda/).
 
-1. Open the [Samsara install page](https://morneis.com/samsara/install/).
+1. Open the [Samsara install guide](Docs/INSTALL.md).
    Choose the **installer** for a normal Windows install with a Start-menu
    shortcut and uninstall entry, or the **ZIP** for a portable extracted folder;
    do not download GitHub's source-code archives.
 2. Run the installer, or extract the ZIP and run **Samsara.exe** from the
    extracted folder.
-3. Follow the setup wizard to select your microphone and download a
-   transcription model. An internet connection is needed for those downloads.
+3. Follow the setup wizard to select and test your microphone and choose a
+   transcription model. Samsara downloads the model on first use if it is not
+   already cached; an internet connection is needed for that download.
 4. Try a sentence in a blank note. The default hold-to-dictate shortcut is
    **Ctrl+Shift**: hold, speak, release. If holding a key is uncomfortable,
    configure **Hands Free** or wake-word listening in Settings.
 
 Hotkeys and listening behavior are configurable. The in-app Quick Reference
-shows your bindings. [Open the full quick start →](https://morneis.com/samsara/docs/quick-start/)
+shows your bindings (tray menu → **Quick Reference**). Open **Settings** from
+the main window; **Settings → Help** has setup and support tools.
+[Open the full quick start →](https://morneis.com/samsara/docs/quick-start/)
 
 In a Hands Free Dictate session, say the default commit word **“finish”** to commit the staged text.
 After saying **“show numbers,”** name a target: **“click 7,” “right click 7,”**
@@ -52,7 +54,11 @@ or **“double click 7.”**
 
 | Download | Who it is for |
 | --- | --- |
-| [**v0.30.0-beta.10 — tester build**](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.30.0-beta.10) | Try newer hands-free and command workflows and report rough edges. |
+| [**Latest published release**](https://github.com/Morne-Ingstar/Samsara/releases/latest) | Install the published Windows build. |
+
+v0.40.0 is currently an unpublished draft. Its exact download filenames are
+listed in the [install guide](Docs/INSTALL.md); the link above continues to
+open the latest published release until v0.40.0 is published.
 
 Samsara is still evolving; “public release” does not mean every workflow is
 finished. The screenshot above comes from beta/development work, and features

@@ -13,8 +13,8 @@ Older packaged releases may not include every feature listed here.
   stored locally.
 - Ava can use an Ollama model running on your own computer. Windows speech
   voices provide local text-to-speech.
-- The Task List plugin stores tasks locally. Its former external sync was
-  removed in v0.21.1; see the [changelog](CHANGELOG.md). If Edge TTS is
+- The Task List plugin stores tasks locally. Optional Todoist sync sends
+  task text to Todoist when enabled and connected; it is off by default. If Edge TTS is
   selected, spoken task confirmations use the same online speech service
   as other spoken text.
 
@@ -32,27 +32,33 @@ is not a promise that every file is encrypted or automatically deleted.
 | --- | --- |
 | **Optional component check** | When you select “Check what's available” in first-run setup, Samsara contacts GitHub for the component manifest. GitHub receives ordinary connection metadata, including your IP address, request time and user agent. |
 | **Optional component downloads** | When you select Get, Samsara downloads the component you chose from the host named in its manifest. That host receives ordinary connection metadata. |
-| **Speech model downloads** | When a speech model is first needed, Samsara downloads its files from the model host. That host receives ordinary connection metadata. |
+| **Speech model downloads** | When a speech model is first needed and is not cached or its cache is unusable, Samsara downloads its files from the model host. That host receives ordinary connection metadata. |
 | **Cloud Ava** | Sends the prompt and relevant conversation context to the provider you configure, using your API key. Each turn also sends your PC's local date, time and time zone to that provider. |
-| **Ollama on another computer** | Sends requests to the Ollama endpoint you configure. The other computer or service receives the request. Ollama on your own computer stays local. |
+| **Local Ollama** | Sends requests to Ollama on your own computer. The shared AI transport rejects non-loopback endpoints. |
 | **Optional Ava web search** | Sends the question and request context to the configured supported cloud search service when enabled. |
-| **Smart Corrections cloud backend or fallback** | Sends text for correction when the cloud path is configured and enabled. Cloud fallback is off by default. |
+| **Smart Corrections cloud backend** | Sends text for correction when the cloud path is configured and enabled. A failed local request does not automatically fall back to cloud. |
 | **Edge TTS** | Sends the text selected for speech to Microsoft's online speech service. It needs internet but no personal API key. Choose Windows voices for local speech. |
 | **Smart Actions bridge** | Sends the request text, session context and observations to the endpoint you configure. That endpoint can be local or remote. |
+| **Ask GPT / ask Claude commands** | Send your question to installed, signed-in CLI tools independently of Ava's setting. Those tools use their own provider and data policies. Desktop-app handoffs can also send text through the chosen app. |
 | **Web searches, links and integrations** | Contact the website, service or network device involved in the requested action. Their own data policies apply. |
 | **Packaged-app update checks** | Contact GitHub Releases. GitHub receives ordinary connection metadata, including IP address, request time and user agent. |
 
 API providers may charge for usage independently of Samsara.
+Cloud Ava is off by default. Turning Ava off stops Ava's model requests;
+it does not disable the separate commands and integrations above.
 
 Update checks do not send dictation, audio, history, configuration, API keys,
 or device names. Automatic checks are off by default; a manual check or an
 explicitly enabled periodic check makes an outbound request. Source launches
-do not use the packaged-app updater. See [updating Samsara](Docs/QUICKSTART.md#updates).
+do not use the packaged-app updater. Open **Settings → Help → Updates** for
+a manual check.
 
 ## The local intent-observation log
 
 In current beta/development builds, `intent.shadow_enabled` defaults to
-`true`. After a hands-free DICTATE utterance has been handled as text, an
+`false` for fresh profiles. Legacy profiles with an explicit `intent.shadow_dir`
+and no explicit enable/disable setting keep logging enabled. When enabled,
+after a hands-free DICTATE utterance has been handled as text, an
 observer records what the experimental intent resolver would have decided.
 This observer does not execute the proposed command.
 

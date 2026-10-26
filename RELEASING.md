@@ -4,7 +4,7 @@
 
 - Before tagging, run `python tools\probes\inject_matrix.py --gate` on the machine that will produce the build.
 
-Pushing a version tag (`v*`) triggers `.github/workflows/release.yml` on a
+Pushing a version tag (`v*`) triggers `.github/workflows/release-build.yml` on a
 `windows-latest` GitHub-hosted runner:
 
 1. Checkout, Python 3.11, `requirements.txt` (including the pinned CPU ONNX
@@ -14,12 +14,16 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release.yml` on a
 3. A trimmed, blocking smoke check (`tools\ci_smoke.py`) launches the frozen
    EXE and requires the explicit startup-complete marker with no unexplained crash. See
    "Why the smoke check is trimmed" below.
-4. `dist\Samsara\*` is zipped as `Samsara-Windows-<version>.zip` (same
-   naming convention v0.20.0 shipped:
-   `release\release_staging\Samsara-Windows-v0.20.0.zip`).
+4. `dist\Samsara\*` is zipped as `Samsara-Windows-<tag>.zip`, for example
+   `Samsara-Windows-v0.40.0.zip`.
 5. A matching `Samsara-Windows-<version>.zip.sha256` sidecar is generated from
    the final archive. The ZIP and sidecar are uploaded as workflow artifacts
-   and, on a tag push, attached to the GitHub Release.
+   and, on a tag push, attached to a draft GitHub Release alongside the
+   installer, optional components and manifest.
+
+After that build succeeds, `.github/workflows/release.yml` consumes its verified
+artifacts through `workflow_run`; it does not build a second application.
+Publication remains a separate release decision.
 
 This is the CI-traceability piece SignPath Foundation's code-signing program
 asks for: a build a third party can point at and confirm came from this
@@ -32,7 +36,7 @@ git tag v0.40.0
 git push origin v0.40.0
 ```
 
-Or run the workflow manually (Actions tab -> Release (CPU build) -> Run
+Or run the workflow manually (Actions tab -> Release Build (CPU, SignPath-ready) -> Run
 workflow) to sanity-check the build without cutting a tag — this uploads
 the artifact but does not create a GitHub Release.
 
@@ -40,10 +44,15 @@ the artifact but does not create a GitHub Release.
 
 - Every run: a `Samsara-Windows-<version>.zip` workflow artifact and matching
   `.zip.sha256` sidecar (Actions run page -> Artifacts), retained 30 days.
-- Every run: a `ci-smoke-log-<version>` artifact with the smoke check's
+- Every run: a `smoke-log-<version>` artifact with the smoke check's
   `samsara.log`, retained 14 days — read this first if a run looks off.
 - Tag pushes only: the ZIP and mandatory SHA-256 sidecar are also attached to
-  the GitHub Release for that tag.
+  the draft GitHub Release for that tag.
+
+For v0.40.0, the draft asset list is `SamsaraSetup-0.40.0.exe`,
+`Samsara-Windows-v0.40.0.zip`, `Samsara-GestureControl-v0.40.0.zip`,
+`Samsara-WakeWord-Models-v0.40.0.zip`, their matching `.sha256` sidecars,
+and `manifest.json`. See [installation](Docs/INSTALL.md) for the newcomer path.
 
 ## Updater release gate
 
@@ -54,9 +63,12 @@ v0.22.1 onward may install a later release in-app; source launches and explicit
 
 Before publishing every updater-compatible release:
 
-1. Produce the exact `Samsara-Windows-<tag>.zip` name and its mandatory
+1. For portable copies, produce the exact `Samsara-Windows-<tag>.zip` name and its mandatory
    `.zip.sha256` sidecar from the final CI archive. Verify a fresh download
    against that sidecar before publishing.
+   Installed per-user copies require `SamsaraSetup-<version>.exe` and its own
+   `.exe.sha256` sidecar instead; never replace an installed folder with the
+   portable ZIP. All-users installs require a manual installer update.
 2. Prove the release is **in-place compatible** with the current portable-folder
    updater. The exact ZIP plus sidecar names are the updater's compatibility
    signal. If a release requires a clean install, change the update protocol
@@ -108,9 +120,10 @@ runner does not reliably have:
   fine. `tools\ci_smoke.py` knows about this one specific caught-exception
   pattern and treats it as a warning, not a failure — everything else
   matching `Traceback`/`CRITICAL` still fails the check.
-- **A warm Hugging Face model cache.** `WhisperModel(...)` loads (and, on a
-  fresh machine, downloads from Hugging Face Hub — the default `model_size`
-  is `base`) *before* `"[INIT] Startup complete."` is logged. On a fresh CI
+- **A warm Hugging Face model cache.** The model factory resolves cached
+  snapshots locally first; an absent or unusable speech model downloads from
+  Hugging Face Hub. The seed `model_size` is `base`; setup can recommend a
+  different size. Loading happens *before* `"[INIT] Startup complete."` is logged. On a fresh CI
   runner this is a real network call of unknown duration on the very first
   runs. The release gate still requires the startup marker; a timeout is a
   failure. Increase the bounded workflow timeout if model-host latency proves
@@ -120,7 +133,7 @@ runner does not reliably have:
   creation is expected to work — but this is unverified on this specific
   app until a real CI run confirms it. See the risk list below.
 
-The `release.yml` smoke step is blocking. `tools/ci_smoke.py` allowlists only
+The `release-build.yml` smoke step is blocking. `tools/ci_smoke.py` allowlists only
 known, caught hardware-availability tracebacks; an unexplained traceback,
 critical error, or early process exit fails the release job. The smoke log is
 uploaded on every run for inspection.
@@ -147,7 +160,7 @@ build begins.
   `samsara.ui.numbers_overlay_qt` / `workflow_capture_qt`) initialize
   cleanly on a `windows-latest` runner's session. If not, `ci_smoke.py`
   will report a genuine (not benign-pattern) crash — check the uploaded
-  `ci-smoke-log-*` artifact first.
+  `smoke-log-*` artifact first.
 - **The bundled VAD asset and ONNX Runtime both reach the frozen app.** A
   successful boot must log the local Silero ONNX load rather than the RMS
   fallback. The spec explicitly collects `faster_whisper/assets`; its
@@ -171,14 +184,10 @@ build begins.
 - **Version identity is enforced before build.** The release tag,
   `samsara.__version__`, and `samsara.smart_actions_bridge.SAMSARA_VERSION`
   must agree or `tools/check_release_version.py` fails the workflow.
-- **`softprops/action-gh-release` and `actions/*` are pinned to major-version
-  tags** (`@v5`, `@v6`, `@v2`), not exact commit SHAs. Standard practice, but
-  stricter supply-chain pinning (exact SHA) is a future hardening option,
-  not done here.
-- **Concurrency group** (`release-${{ github.ref }}`) cancels an in-flight
-  run if the same tag/ref is pushed again — intentional, but means a retry
-  push while a build is running kills the first one rather than queuing
-  behind it.
+- **`softprops/action-gh-release` is pinned to an exact commit SHA** in both
+  release workflows. Several `actions/*` dependencies still use major-version tags.
+- **Publisher concurrency group** (`release-${{ github.event.workflow_run.head_branch }}`)
+  queues runs for the same tag (`cancel-in-progress: false`).
 
 ## Code signing policy and release notes
 
