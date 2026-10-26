@@ -461,6 +461,9 @@ def test_release_inventory_covers_every_manifest_addon_and_compares_actual_targe
     assert set(rows) == {s["id"] for s in ADDONS}
     assert rows["command-model"] == dict(id="command-model", install_dir="_internal/models/command",
                                           status="unavailable", files=[])
+    # 917: the legacy CUDA pack is withheld, so it has no offered file inventory.
+    assert rows["cuda-pack"] == dict(id="cuda-pack", install_dir="_internal/ctranslate2",
+                                      status="unavailable", files=[])
     for spec in ADDONS:
         if not spec["available"]:
             continue
@@ -476,11 +479,17 @@ def test_release_inventory_covers_every_manifest_addon_and_compares_actual_targe
                 assert record["sha256"] != record["core_sha256"]
             else:
                 assert record["core_sha256"] is None
-    # Missing pinned files must remain unknown, not be reported as core-free.
-    cuda = next(s for s in specs if s["id"] == "cuda-pack")
-    (tmp_path / cuda["filename"]).unlink()
-    again = manifest.audit_addon_overlaps({"components": specs}, tmp_path)
-    assert next(r for r in again["components"] if r["id"] == "cuda-pack")["status"] == "artifact-missing"
+    # 917: missing OFFERED artifacts remain unknown, never reported as core-free.
+    for spec in specs:
+        if spec["id"] == "core" or not spec["available"]:
+            continue
+        path = tmp_path / spec["filename"]
+        payload = path.read_bytes()
+        path.unlink()
+        again = manifest.audit_addon_overlaps({"components": specs}, tmp_path)
+        missing = next(r for r in again["components"] if r["id"] == spec["id"])
+        assert missing["status"] == "artifact-missing" and missing["files"] == []
+        path.write_bytes(payload)
     (tmp_path / "release_overlap.synthetic.json").write_text(manifest.dumps(audit))
 
 

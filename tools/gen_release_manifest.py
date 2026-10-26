@@ -73,14 +73,14 @@ def component_specs(tag: str) -> list:
         {
             "id": "cuda-pack",
             "name": "NVIDIA CUDA acceleration",
-            "description": "cuDNN, cuBLAS and CUDA runtime DLLs for GPU transcription (docs/CUDA.md).",
+            "description": "GPU acceleration is unavailable until a pack is verified for this release.",  # PLACEHOLDER COPY (917)
             "kind": "acceleration",
-            "source": "pinned",
-            "filename": PINNED_ASSETS["cuda-pack"]["filename"],
+            "source": "built",
+            "filename": f"Samsara-CUDA-Pack-{tag}.zip",
             "install_dir": "_internal/ctranslate2",
             "requires": ["nvidia_gpu"],
             "default": False,
-            "available": True,
+            "available": False,
         },
         {
             "id": "wake-word-models",
@@ -123,6 +123,18 @@ def component_specs(tag: str) -> list:
 
 def asset_url(repo: str, tag: str, filename: str) -> str:
     return f"https://github.com/{repo}/releases/download/{tag}/{filename}"
+
+
+def verify_cuda_identity(entry: dict, tag: str, app_version: str, repo: str) -> None:
+    """An enabled CUDA pack must belong to this exact application release (917)."""
+    if entry["id"] != "cuda-pack" or not entry["available"]:
+        return
+    expected = f"Samsara-CUDA-Pack-{tag}.zip"
+    if (tag != f"v{app_version}" or entry["filename"] != expected
+            or entry["url"] != asset_url(repo, tag, expected)):
+        raise ManifestGenerationError(
+            "cuda-pack version does not match app/release version; "
+            "build and verify a matching pack before enabling it")
 
 
 def verify_wake_word_archive(path: Path) -> None:
@@ -201,6 +213,7 @@ def build_manifest(*, artifacts_dir, tag: str, repo: str, git_sha: str, build_da
                     raise ManifestGenerationError(
                         f"local {path.name} does not match its pin: size {size} sha256 {digest}")
             entry.update(url=pin["url"], size_bytes=pin["size_bytes"], sha256=pin["sha256"])
+        verify_cuda_identity(entry, tag, app_version, repo)
         if not re.fullmatch(r"[0-9a-f]{64}", str(entry["sha256"])):
             raise ManifestGenerationError(f"component {entry['id']!r}: refusing to emit hash {entry['sha256']!r}")
         # Download plus unpack: the archive and its contents, rounded up.

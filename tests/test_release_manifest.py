@@ -158,6 +158,17 @@ def _generate(artifacts_dir, **over):
     return gen.build_manifest(**kwargs)
 
 
+@pytest.fixture
+def pinned_cuda():
+    # 917: exercise pin guarantees with an offered same-release synthetic asset.
+    spec = dict(next(s for s in gen.component_specs(TAG) if s["id"] == "cuda-pack"),
+                source="pinned", available=True)
+    payload = b"verified same-release synthetic pack"
+    pin = dict(filename=spec["filename"], url=gen.asset_url("o/r", TAG, spec["filename"]),
+               size_bytes=len(payload), sha256=_sha(payload))
+    return spec, pin, payload
+
+
 class TestGenerator:
     def test_sizes_hashes_and_urls_come_from_the_files(self, build):
         doc = _generate(build)
@@ -170,7 +181,18 @@ class TestGenerator:
         assert by_id["core"]["min_disk_bytes"] >= by_id["core"]["size_bytes"]
         models = build / f"Samsara-WakeWord-Models-{TAG}.zip"
         assert by_id["wake-word-models"]["sha256"] == _sha(models.read_bytes())
-        assert by_id["cuda-pack"]["sha256"] == gen.PINNED_ASSETS["cuda-pack"]["sha256"]
+        # 917: only offered artifacts carry download metadata; CUDA is withheld.
+        for entry in by_id.values():
+            if entry["available"]:
+                artifact = build / entry["filename"]
+                assert entry["size_bytes"] == artifact.stat().st_size
+                assert entry["sha256"] == _sha(artifact.read_bytes())
+                assert entry["url"] == gen.asset_url("o/r", TAG, artifact.name)
+                assert entry["min_disk_bytes"] >= entry["size_bytes"]
+        assert by_id["cuda-pack"]["available"] is False
+        assert by_id["cuda-pack"]["filename"] == f"Samsara-CUDA-Pack-{TAG}.zip"
+        assert all(by_id["cuda-pack"][field] is None
+                   for field in ("url", "sha256", "size_bytes", "min_disk_bytes"))
         assert by_id["cuda-pack"]["requires"] == ["nvidia_gpu"] and by_id["cuda-pack"]["default"] is False
         assert by_id["command-model"]["available"] is False
         assert by_id["command-model"]["sha256"] is None and by_id["command-model"]["url"] is None
@@ -192,20 +214,31 @@ class TestGenerator:
         with pytest.raises(gen.ManifestGenerationError, match=name):
             _generate(build)
 
-    def test_never_emits_a_placeholder_hash(self, build):
-        pins = {"cuda-pack": dict(gen.PINNED_ASSETS["cuda-pack"], sha256="TBD")}
+    def test_never_emits_a_placeholder_hash(self, build, pinned_cuda):
+        spec, pin, _payload = pinned_cuda
+        # 917: an unavailable legacy pack must not bypass the offered-pin check.
+        assert _generate(build, specs=[spec], pins={"cuda-pack": pin})["components"][0]["sha256"] == pin["sha256"]
+        pins = {"cuda-pack": dict(pin, sha256="TBD")}
         with pytest.raises(gen.ManifestGenerationError, match="refusing to emit a placeholder"):
-            _generate(build, pins=pins)
-        pins = {"cuda-pack": dict(gen.PINNED_ASSETS["cuda-pack"], sha256="")}
+            _generate(build, specs=[spec], pins=pins)
+        pins = {"cuda-pack": dict(pin, sha256="")}
         with pytest.raises(gen.ManifestGenerationError, match="refusing"):
-            _generate(build, pins=pins)
+            _generate(build, specs=[spec], pins=pins)
         with pytest.raises(gen.ManifestGenerationError, match="refusing"):
-            _generate(build, pins={})
+            _generate(build, specs=[spec], pins={})
 
-    def test_local_copy_of_a_pinned_asset_must_match_its_pin(self, build):
-        (build / gen.PINNED_ASSETS["cuda-pack"]["filename"]).write_bytes(b"not the real pack")
-        with pytest.raises(gen.ManifestGenerationError, match="does not match its pin"):
-            _generate(build)
+    def test_local_copy_of_a_pinned_asset_must_match_its_pin(self, build, pinned_cuda):
+        spec, pin, payload = pinned_cuda
+        # 917: preserve local pin verification for an enabled matching-release pack.
+        path = build / spec["filename"]
+        path.write_bytes(payload)
+        entry = _generate(build, specs=[spec], pins={"cuda-pack": pin})["components"][0]
+        assert (entry["size_bytes"], entry["sha256"], entry["url"]) == (
+            len(payload), _sha(payload), pin["url"])
+        for tampered in (b"x" * len(payload), payload + b"extra"):
+            path.write_bytes(tampered)
+            with pytest.raises(gen.ManifestGenerationError, match="does not match its pin"):
+                _generate(build, specs=[spec], pins={"cuda-pack": pin})
 
     def test_two_runs_are_byte_identical(self, build, tmp_path):
         first = gen.dumps(_generate(build))

@@ -89,7 +89,7 @@ class AdvancedPage:
         self._widgets['adv_device_map'] = device_display_to_value
         layout.addLayout(self._setting_row(
             "Compute device",
-            "Device changes require restart.",
+            "Apply, then restart Samsara to use the selected device.",  # PLACEHOLDER COPY (917)
             device_combo,
         ))
         cuda_status = QLabel("checking...")  # Stand-in copy (619).

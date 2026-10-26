@@ -28,10 +28,12 @@ _request_lock = threading.Lock()
 _pending_callbacks = []
 _probe_running = False
 _session_status = None
+_dll_directory_handles = {}  # Keep AddDllDirectory cookies alive for late native loads.
 
 
 # Keep this aligned with the CUDA pack assembled in scripts/samsara.spec.
 _REQUIRED_CUDA_DLLS = (
+    "cudnn64_9.dll",
     "cudnn_adv64_9.dll",
     "cudnn_cnn64_9.dll",
     "cudnn_engines_precompiled64_9.dll",
@@ -45,8 +47,8 @@ _REQUIRED_CUDA_DLLS = (
 )
 
 
-def _probable_search_paths() -> list[Path]:
-    """Where Samsara would look for CUDA DLLs at runtime."""
+def _package_search_paths() -> list[Path]:
+    """Trusted package locations; exclude arbitrary PATH directories."""
     paths: list[Path] = []
 
     # When frozen by PyInstaller, exe lives next to _internal/
@@ -68,6 +70,12 @@ def _probable_search_paths() -> list[Path]:
     except Exception as e:
         logger.debug(f"_probable_search_paths: {e}")
 
+    return paths
+
+
+def _probable_search_paths() -> list[Path]:
+    """Where Samsara would look for CUDA DLLs at runtime."""
+    paths = _package_search_paths()
     # Anywhere on PATH (in case user installed CUDA system-wide)
     for p in os.environ.get("PATH", "").split(os.pathsep):
         if p:
@@ -91,6 +99,32 @@ def _missing_cuda_dlls() -> tuple[str, ...]:
     return tuple(dll for dll in _REQUIRED_CUDA_DLLS if dll in remaining)
 
 
+def prepare_cuda_dll_search() -> None:
+    """Keep package DLLs discoverable by Python and late native LoadLibrary calls.
+
+    AddDllDirectory cookies must survive for the session. Native calls using
+    legacy flags also need PATH. Register package locations, never arbitrary
+    PATH entries or the current working directory (917).
+    """
+    if os.name != "nt":
+        return
+    with _probe_lock:
+        for directory in _package_search_paths():
+            if not (directory / "ctranslate2.dll").is_file():
+                continue
+            directory = directory.resolve()
+            key = str(directory).casefold()
+            if key in _dll_directory_handles:
+                continue
+            try:
+                _dll_directory_handles[key] = os.add_dll_directory(str(directory))
+            except OSError:
+                logger.warning('[GPU] Could not register CUDA DLL directory')
+            entries = os.environ.get("PATH", "").split(os.pathsep)
+            if key not in {str(Path(p)).casefold() for p in entries if p}:
+                os.environ["PATH"] = str(directory) + os.pathsep + os.environ.get("PATH", "")
+
+
 def is_cuda_available() -> bool:
     """Return True iff every required CUDA DLL is findable.
 
@@ -98,6 +132,7 @@ def is_cuda_available() -> bool:
     the filesystem on every dropdown rebuild.
     """
     with _probe_lock:
+        prepare_cuda_dll_search()
         cached = getattr(is_cuda_available, "_cache", None)
         if cached is not None:
             return cached

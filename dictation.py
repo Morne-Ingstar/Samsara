@@ -3701,9 +3701,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             compute_type = "float16" if device == "cuda" else "int8"
             logger.info(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
             
-            from samsara.model_load_feedback import load_speech_model
-            self.model, load_time = load_speech_model(
-                self.update_splash, _create_whisper_model, self.config['model_size'], device, compute_type
+            from samsara.gpu_fallback import load_resilient_model
+            self.model, load_time, device, compute_type = load_resilient_model(
+                self, self.update_splash, _create_whisper_model, self.config['model_size'], device, compute_type
             )
             
             # Store device info for logging

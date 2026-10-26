@@ -469,6 +469,8 @@ class SettingsServices:
         """
         from samsara import listening_display
         from samsara import ava_readiness
+        from samsara.ui.speech_hardware_qt import hardware_signature, request_settings_restart
+        previous_hardware = hardware_signature(self.app.config)
         previous_ava = ava_readiness.settings_signature(self.app)
         listening_display.run_display(self.app)
         updates: dict = {}
@@ -572,6 +574,7 @@ class SettingsServices:
                 logger.debug(f"[SETTINGS] Smart Corrections warm_up call failed: {e}")
 
         self.close()
+        request_settings_restart(self.app, previous_hardware)
         listening_display.request_restart_once(
             self.app, lambda text: QMessageBox.information(self, "Samsara", text),
         )
