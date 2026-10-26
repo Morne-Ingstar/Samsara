@@ -13510,7 +13510,7 @@
       "plugin": "timer",
       "precondition": "Starts a countdown; Samsara alerts you when it ends.",
       "risk": "write",
-      "source": "plugins/commands/timer.py:124",
+      "source": "plugins/commands/timer.py:144",
       "undoable": false,
       "verb": "set",
       "whole_utterance": false

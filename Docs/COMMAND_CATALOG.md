@@ -790,7 +790,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `timer.set_a_timer` | `remind me in`, `set a timer`, `set timer`, `start a timer`, `start timer`, `timer`, `timer for` | text:text | `set a timer for five minutes`<br>`set a timer for two minutes thirty seconds` | Starts a countdown; Samsara alerts you when it ends. | write | no |  | Sets a countdown timer for the length you say. | `plugins/commands/timer.py:124` |
+| `timer.set_a_timer` | `remind me in`, `set a timer`, `set timer`, `start a timer`, `start timer`, `timer`, `timer for` | text:text | `set a timer for five minutes`<br>`set a timer for two minutes thirty seconds` | Starts a countdown; Samsara alerts you when it ends. | write | no |  | Sets a countdown timer for the length you say. | `plugins/commands/timer.py:144` |
 
 ## verbatim_toggle (2)
 

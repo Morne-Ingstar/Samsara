@@ -2,18 +2,18 @@
 
 Say "Jarvis, set a timer for 5 minutes" or "Jarvis, timer 30 seconds".
 Parses natural language durations, runs in background, plays notification
-sound and shows system toast when done.
+sound and shows a nonactivating themed toast when done.
 
 Trigger phrases:
   "set a timer"   / "set timer"   / "timer for"   / "timer"
   "remind me in"  / "start a timer"
 """
 
+from html import escape
+import math
 import re
 import threading
 import time
-import subprocess
-import sys
 
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
@@ -22,52 +22,72 @@ from samsara.log import get_logger
 
 logger = get_logger(__name__)
 
+# Bound converter work and timer lifetime: at most 512 characters / 64 words
+# per request, and a positive duration no longer than seven days. Fractions of
+# a second are preserved rather than rounded down to an immediate completion.
+_MAX_INPUT_CHARS = 512
+_MAX_INPUT_WORDS = 64
+_MAX_SECONDS = 7 * 24 * 3600
+_AMOUNT = r'(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:\s+and\s+(?:a\s+)?half)?|(?:a\s+)?half(?:\s+(?:a|an))?'
+_UNIT = r'hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s'
+_PART = re.compile(rf'(?P<amount>{_AMOUNT})\s*(?P<unit>{_UNIT})\b')
+
 
 def _parse_duration(text):
-    """Parse natural language duration into seconds.
-    
-    Handles: "5 minutes", "30 seconds", "1 hour", "90 seconds",
-             "2 minutes 30 seconds", "1 and a half minutes",
-             "5 min", "10 sec", "1 hr"
+    """Parse a duration prefix, leaving an optional trailing label as text.
+
+    Whole bare numbers mean minutes. Mixed units, decimals and halves retain
+    their named unit. Signs, exponents, nonfinite and incomplete durations
+    are invalid; duration-like junk cannot be skipped to find a later number.
     """
-    if not text:
-        return None, "no duration specified"
-    
+    # PLACEHOLDER COPY (929): ordinary parser error text.
+    invalid = "Use a positive timer duration of at most seven days."
+    if not isinstance(text, str) or not text.strip():
+        return None, "no duration specified"  # PLACEHOLDER COPY (929)
+    if len(text) > _MAX_INPUT_CHARS or len(text.split()) > _MAX_INPUT_WORDS:
+        return None, "Timer request is too long."  # PLACEHOLDER COPY (929)
     from samsara.spoken_numbers import number_words_to_digits
-    text = number_words_to_digits(text.lower().strip())
-    
-    # Handle "a half" / "half a" / "and a half"
-    text = text.replace("and a half", "30 seconds")
-    text = text.replace("a half", "30 seconds")
-    text = text.replace("half a minute", "30 seconds")
-    text = text.replace("half an hour", "30 minutes")
-    
-    total_seconds = 0
-    found = False
-    
-    # Pattern: number + unit
-    patterns = [
-        (r'(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b', 3600),
-        (r'(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|m)\b', 60),
-        (r'(\d+(?:\.\d+)?)\s*(?:seconds?|secs?|s)\b', 1),
-    ]
-    
-    for pattern, multiplier in patterns:
-        for match in re.finditer(pattern, text):
-            total_seconds += float(match.group(1)) * multiplier
-            found = True
-    
-    # Handle bare numbers: assume minutes if no unit
-    if not found:
-        bare = re.search(r'(\d+)', text)
-        if bare:
-            total_seconds = int(bare.group(1)) * 60
-            found = True
-    
-    if not found or total_seconds <= 0:
-        return None, f"couldn't parse duration from '{text}'"
-    
-    return int(total_seconds), None
+    # "second" is also an ordinal to the shared converter. Protect unit
+    # tokens so "one second" / "half a second" retain their seconds unit.
+    pieces = re.split(rf'(\b(?:{_UNIT})\b)', text.lower().strip())
+    text = ''.join(piece if i % 2 else number_words_to_digits(piece)
+                   for i, piece in enumerate(pieces))
+    text = re.sub(r'^for\s+', '', text)
+    total_seconds = 0.0
+    rest = text
+    while match := _PART.match(rest):
+        amount = match['amount']
+        if 'half' in amount:
+            whole = amount.split(' and ', 1)[0] if ' and ' in amount else '0'
+            value = float(whole) + 0.5
+        else:
+            value = float(amount)
+        if value < 0 or not math.isfinite(value):
+            return None, invalid
+        unit = match['unit'][0]
+        total_seconds += value * {'h': 3600, 'm': 60, 's': 1}[unit]
+        rest = rest[match.end():].strip()
+        if not rest:
+            break
+        # Only consume a separator when another complete duration follows.
+        following = re.sub(r'^(?:,\s*(?:and\s+)?|and\s+)', '', rest)
+        if _PART.match(following):
+            rest = following
+        else:
+            break
+    if total_seconds == 0:
+        bare = re.match(r'([0-9]+)(?=\s|$)', text)
+        if not bare:
+            return None, invalid
+        total_seconds = float(bare[1]) * 60
+        rest = text[bare.end():].strip()
+    # Labels begin after the complete duration. Reject an unfinished numeric
+    # clause (including a dangling connector), rather than silently shorten it.
+    if rest and re.match(rf'(?:[\d.+\-,]|and\b|half\b|a\s+half\b|minus\b|negative\b|nan\b|inf(?:inity)?\b|(?:{_UNIT})\b)', rest):
+        return None, invalid
+    if not math.isfinite(total_seconds) or not 0 < total_seconds <= _MAX_SECONDS:
+        return None, invalid
+    return int(total_seconds) if total_seconds.is_integer() else total_seconds, None
 
 
 def _format_duration(seconds):
@@ -75,13 +95,13 @@ def _format_duration(seconds):
     if seconds >= 3600:
         h = seconds // 3600
         m = (seconds % 3600) // 60
-        return f"{h}h {m}m" if m else f"{h} hour{'s' if h > 1 else ''}"
+        return f"{h:g}h {m:g}m" if m else f"{h:g} hour{'s' if h > 1 else ''}"
     elif seconds >= 60:
         m = seconds // 60
         s = seconds % 60
-        return f"{m}m {s}s" if s else f"{m} minute{'s' if m > 1 else ''}"
+        return f"{m:g}m {s:g}s" if s else f"{m:g} minute{'s' if m > 1 else ''}"
     else:
-        return f"{seconds} second{'s' if seconds != 1 else ''}"
+        return f"{seconds:g} second{'s' if seconds != 1 else ''}"
 
 
 def _timer_thread(seconds, label, app):
@@ -89,6 +109,7 @@ def _timer_thread(seconds, label, app):
     time.sleep(seconds)
     
     duration_str = _format_duration(seconds)
+    # PLACEHOLDER COPY (929): timer completion and title below.
     msg = f"Timer done: {duration_str}"
     if label:
         msg = f"Timer done ({label}): {duration_str}"
@@ -104,14 +125,13 @@ def _timer_thread(seconds, label, app):
         except Exception as e:
             logger.debug(f"_timer_thread: {e}")
     
-    # Windows toast notification
-    if sys.platform == 'win32':
+    # The manager posts through ReminderToast -> qt_runtime.post. It never
+    # opens a shell or activates a modal window. QLabel auto-detects rich text:
+    # an explicit escaped span keeps markup in labels literal, too.
+    manager = getattr(app, 'notification_manager', None)
+    if manager is not None:
         try:
-            subprocess.Popen([
-                'powershell', '-Command',
-                f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; '
-                f'[System.Windows.Forms.MessageBox]::Show("{msg}", "Samsara Timer", "OK", "Information")'
-            ], creationflags=subprocess.CREATE_NO_WINDOW)
+            manager.show_notification("Samsara Timer", f"<span>{escape(msg)}</span>")
         except Exception as e:
             logger.debug(f"_timer_thread: {e}")
 
