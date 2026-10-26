@@ -442,7 +442,7 @@ def text_colour_pairs() -> list:
         ("detail copy original", theme.TYPE_BODY, [theme.TEXT_PRIMARY], card),
         ("detail delete", theme.TYPE_BODY, [theme.TEXT_SECONDARY], card),
         ("menu item", theme.TYPE_BODY, [theme.TEXT_PRIMARY], [theme.BG2]),
-        ("menu item (selected)", theme.TYPE_BODY, [theme.ACCENT], [theme.BG2, _tint(theme.ACCENT, 0.16)]),
+        ("menu item (selected)", theme.TYPE_BODY, [theme.TEXT_PRIMARY], [theme.BG2, _tint(theme.ACCENT, 0.16)]),
     ]
     return pairs
 
@@ -673,7 +673,7 @@ QMenu {{
 QMenu::item {{ padding: 8px 24px 8px 16px; }}
 QMenu::item:selected {{
     background-color: {_tint(theme.ACCENT, 0.16)};
-    color: {theme.ACCENT};
+    color: {theme.TEXT_PRIMARY};
 }}
 QMessageBox {{
     background-color: {theme.BG1};

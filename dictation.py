@@ -5835,7 +5835,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self._log_cmd_utt_dropped('signoff_hallucination', _capture_mode, audio_duration)
                 try:
                     from samsara.session_modes import CHIP_CROSS
-                    failure_reasons.post_reason(self, 'near_silent', handsfree=True)
+                    from samsara import failure_reasons; failure_reasons.post_reason(self, 'near_silent', handsfree=True)
                 except Exception as exc:
                     logger.debug(f'[CMD-UTT] sign-off chip failed: {exc}')
                 return
@@ -5843,7 +5843,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if not text:
                 _timing_outcome = "empty"
                 logger.debug('[CMD-UTT] Empty transcription')
-                self._log_cmd_utt_dropped('empty_transcription', _capture_mode, audio_duration); failure_reasons.post_reason(self, 'long_failure', handsfree=True)
+                from samsara import failure_reasons; self._log_cmd_utt_dropped('empty_transcription', _capture_mode, audio_duration); failure_reasons.post_reason(self, 'long_failure', handsfree=True)
                 return
 
             # Hallucination screening -- this toggle-session path runs its
@@ -5884,14 +5884,14 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if _trimmed != text:
                 if not _trimmed:
                     logger.info(f'[GUARD] Suppressed hallucination: {describe_text(text)!r}')
-                    self._log_cmd_utt_dropped('hallucination_trailing_garbage', _capture_mode, audio_duration); failure_reasons.post_reason(self, 'near_silent', handsfree=True)
+                    from samsara import failure_reasons; self._log_cmd_utt_dropped('hallucination_trailing_garbage', _capture_mode, audio_duration); failure_reasons.post_reason(self, 'near_silent', handsfree=True)
                     return
                 logger.info(f'[GUARD] Trimmed trailing garbage: {describe_text(text)!r} -> {describe_text(_trimmed)!r}')
                 text = _trimmed
 
             if _is_hallucinated_segments(_kept_segs, text):
                 logger.info(f'[GUARD] Suppressed hallucination: {describe_text(text)!r}')
-                self._log_cmd_utt_dropped('hallucination_segments', _capture_mode, audio_duration); failure_reasons.post_reason(self, 'near_silent', handsfree=True)
+                from samsara import failure_reasons; self._log_cmd_utt_dropped('hallucination_segments', _capture_mode, audio_duration); failure_reasons.post_reason(self, 'near_silent', handsfree=True)
                 return
 
             # An exhausted Whisper fallback can emit plausible text while its
@@ -6025,7 +6025,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 # outcome was handled -- it gets a copy of the text and the
                 # outcome kind, queues them, and returns; the decision runs on
                 # a background worker. It never raises.
-                self._intent_shadow_observe(text, outcome); failure_reasons.post_clipping(self, audio)
+                from samsara import failure_reasons; self._intent_shadow_observe(text, outcome); failure_reasons.post_clipping(self, audio)
         except Exception as exc:
             # Any exception here (transcription error, injection failure,
             # a lane's dispatch blowing up) must earcon and leave the
@@ -6037,7 +6037,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if not _dispatched:
                 self._log_cmd_utt_dropped(f'error:{type(exc).__name__}', _capture_mode, audio_duration)
             try:
-                self.play_sound('error'); failure_reasons.post_reason(self, 'long_failure', handsfree=True)
+                from samsara import failure_reasons; self.play_sound('error'); failure_reasons.post_reason(self, 'long_failure', handsfree=True)
             except Exception as e:
                 logger.debug(f'[CMD-UTT] Error earcon failed: {e}')
         finally:
@@ -10569,7 +10569,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 # Guard: Whisper hallucinates on very short audio (<0.5s)
                 if audio_duration < 0.51:
                     from samsara.speech_presence import skip_decode
-                    skip_decode(audio, self, path="batch", skip_reason="not_decoded"); failure_reasons.post_reason(self, "short_tap")
+                    skip_decode(audio, self, path="batch", skip_reason="not_decoded")  # 899 / 481: silent tap.
                     logger.info(f"[SKIP] Audio too short ({audio_duration:.2f}s) — skipping")
                     flight_recorder.record(
                         'hold_recording.stop_reason', reason='audio_too_short',
@@ -10623,7 +10623,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         ), app=self)
                     except Exception as _diag_exc:
                         logger.debug(f"[DIAG] gated record failed: {describe_text(_diag_exc)}")
-                    failure_reasons.post_reason(self, 'near_silent'); return
+                    return  # 899 / 481: pre-decode silence returns to rest quietly.
 
                 if stage_timing is not None:
                     stage_timing.mark(
@@ -10675,7 +10675,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     ownership.is_command,
                 ))
                 if _decode_result.diag_path == 'failed_618':
-                    failure_reasons.report_retained_failure(self); return
+                    from samsara import failure_reasons; failure_reasons.report_retained_failure(self); return
                 text = _decode_result.text
                 _low_confidence = _decode_result.low_confidence
                 _diag_all_segs = list(_decode_result.seg_list)
@@ -11082,7 +11082,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         stage_timing.mark("action_done", outcome=(
                             "error" if (self.config['auto_paste'] or tutorial_waiting) and delivered is False
                             else "typed" if self.config['auto_paste'] or tutorial_waiting else "buffered"))
-                    failure_reasons.post_delivery_clipping(self, audio, locals().get('delivered'))
+                    from samsara import failure_reasons; failure_reasons.post_delivery_clipping(self, audio, locals().get('delivered'))
                     if hasattr(self, 'hints'):
                         self.hints.maybe_show(
                             'first_dictation_undo',
@@ -11117,7 +11117,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         stage_timing.mark("transcribe_end", outcome="empty")
                     if hasattr(self, 'listening_indicator'):
                         from samsara.session_modes import CHIP_CROSS
-                        failure_reasons.post_reason(self, "long_failure")
+                        from samsara import failure_reasons; failure_reasons.post_reason(self, "long_failure")
                     # Only log "empty" when there was actually audio to transcribe.
                     # Whisper hallucination guard above already filtered <0.5s.
                     if audio_duration > 0.5:
@@ -11168,7 +11168,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 if hasattr(self, 'listening_indicator'):
                     self._schedule_ui(self.listening_indicator.flash_error)
                     from samsara.session_modes import CHIP_CROSS
-                    failure_reasons.post_reason(self, "long_failure")
+                    from samsara import failure_reasons; failure_reasons.post_reason(self, "long_failure")
                 self._log_history(
                     raw_text="",
                     display_text=f"[FAILED] {e}",

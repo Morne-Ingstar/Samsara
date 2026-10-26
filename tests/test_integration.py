@@ -314,11 +314,16 @@ class TestAudioProcessing:
 class TestHistoryIntegration:
     """Tests for history with the full pipeline"""
 
-    def test_dictation_added_to_history(self, sample_config, tmp_path):
+    def test_dictation_added_to_history(self, sample_config, tmp_path, monkeypatch):
         """Test that dictations are added to history"""
-        from tests.test_dictation_app import create_test_app
+        from dictation import DictationApp
+        from samsara import recent_privacy
 
-        app = create_test_app(sample_config, tmp_path)
+        # 899: history delivery needs a verified ordinary target, not the real desktop.
+        monkeypatch.setattr(recent_privacy, 'focused_target', lambda: recent_privacy.TargetPrivacy('', 'notepad.exe'))
+
+        app = object.__new__(DictationApp)  # 899: exercise real history without unrelated startup patches.
+        app.config, app.history, app.max_history = sample_config, [], 100
         app.save_history = Mock()
 
         app.add_to_history("hello world", is_command=False)

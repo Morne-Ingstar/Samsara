@@ -49,7 +49,7 @@ def display(request, qapp, monkeypatch):
 @pytest.mark.parametrize('length', [1, 50, 160])
 def test_each_kind_stays_its_computed_reading_time(display, kind, length):
     d, label = display, 'x' * length
-    expected = max(4000 if kind == 'error' else 2500, min(8000, 60 * length))  # 891: error floor.
+    expected = max(2500, min(8000, 60 * length))  # 899 / 591: one formula for every result.
     d.i.show_outcome(label, kind, 500); d.flush()
     assert d.deadline() == expected / 1000
     d.clock[0] = expected / 1000 - .001
@@ -203,7 +203,7 @@ def test_unrelated_result_does_not_answer_a_question(display, owner):
 def test_routine_receipts_and_persistent_status_contracts():
     assert message_duration_ms('typed', 'success', 900) == 2500
     assert message_duration_ms('Captured', 'success', 1000) == 2500
-    assert message_duration_ms('Persistent fault', 'error', None) == 4000  # 891: error floor.
+    assert message_duration_ms('Persistent fault', 'error', None) == 2500  # 899 / 591: shared formula.
     assert message_duration_ms('Question', 'warning', 8000, purpose='question') is None
     assert message_duration_ms('Short result', 'success', 0) == 2500
 

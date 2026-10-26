@@ -1,5 +1,13 @@
 # Settings and Tools
 
+## Personal command plugins
+
+`plugins.personal_dir` is an optional configuration-file setting, outside the
+Settings pages. An empty value uses `personal_plugins` inside the Samsara data
+folder. Set it to an absolute folder path or a path relative to that data folder
+to load your own command plugins on the next start. A missing folder is ignored;
+personal plugins remain separate from the commands shipped with Samsara.
+
 Settings has six pages. Names and new explanatory copy are provisional (prompt 285).
 
 | Page | Everyday rows | Advanced details |

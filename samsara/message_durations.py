@@ -28,8 +28,8 @@ def message_duration_ms(label: str, kind: str, requested_ms=1800, *, purpose='re
     kind, purpose = getattr(kind, 'value', kind), getattr(purpose, 'value', purpose)
     if purpose != 'result' or kind in ('pending', 'live') or (requested_ms is None and kind != 'error'):
         return None
-    minimum = 4000 if kind == 'error' else MIN_MESSAGE_MS  # 891: errors need four seconds.
-    return max(minimum, min(MAX_MESSAGE_MS, MESSAGE_BASE_MS + MESSAGE_CHAR_MS * len(str(label))))
+    # 899: capture reasons and ordinary results share 591's reading formula.
+    return max(MIN_MESSAGE_MS, min(MAX_MESSAGE_MS, MESSAGE_BASE_MS + MESSAGE_CHAR_MS * len(str(label))))
 
 
 def message_protected(label, kind, expires_at, now, *, purpose='result') -> bool:

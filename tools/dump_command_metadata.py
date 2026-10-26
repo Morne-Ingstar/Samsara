@@ -49,9 +49,19 @@ def build_executor():
     ONE way the registry gets loaded for tooling. Never imports dictation.py.
     """
     from samsara.commands import CommandExecutor
+    from samsara import plugin_commands
+    from samsara.headless import ResourcePort, ResourcePorts
 
     with _stdout_to_stderr():
-        return CommandExecutor(ROOT / "commands.json")
+        # 899: shipped metadata must never discover the user's personal folder.
+        plugin_commands.load_plugins(ROOT / 'plugins' / 'commands')
+        modules = {f'plugins.commands.{path.stem}'
+                   for path in (ROOT / 'plugins' / 'commands').glob('*.py')
+                   if not path.stem.startswith('_') and path.stem != 'demo_commands'}
+        registry = {phrase: entry for phrase, entry in plugin_commands._REGISTRY.items()
+                    if entry.get('source') in modules}
+        resources = ResourcePorts(ports={'plugin_registry': ResourcePort(registry)})
+        return CommandExecutor(ROOT / "commands.json", resources=resources)
 
 
 def build_dump():

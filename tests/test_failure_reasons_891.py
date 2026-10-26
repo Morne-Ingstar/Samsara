@@ -44,7 +44,7 @@ def test_clipping_uses_pcm_amplitude_at_the_boundary(peak, shown):
     if shown:
         label, kind, duration = app.listening_indicator.show_outcome.call_args.args
         assert label == 'Captured\nMic is too loud - turn the mic level down'
-        assert kind == 'accent' and duration >= 4000
+        assert kind == 'accent' and duration == message_duration_ms(label, kind)  # 899: shared formula.
 
 
 @pytest.mark.parametrize('level,count', [('silent', 0), ('brief', 0), ('full', 1)])
@@ -82,7 +82,8 @@ def test_real_display_receives_reason_and_shared_reading_time(qapp, monkeypatch,
         else:
             label, deadline = app.listening_indicator._chip_label, app.listening_indicator._chip_deadline
         assert reasons.reason_for(kind, {'config': app.config, 'peak': .99})[0] in label
-        assert deadline >= 4. if kind != 'clipping' else deadline >= 2.5
+        # 899: reason receipts use the same formula on both displays.
+        assert deadline == message_duration_ms(label, 'accent' if kind == 'clipping' else 'error') / 1000
     finally:
         if controller:
             controller.close()
@@ -110,10 +111,8 @@ def test_handsfree_detector_keeps_its_verdict_and_has_no_hold_key_instruction(mo
     monkeypatch.setattr('samsara.speech_presence.skip_decode', detector)
     app = host()
     assert reasons.skip_decode(np.zeros(int(duration*16000)), app, path='handsfree') is rejected
-    if word:
-        assert app.listening_indicator.show_outcome.call_args.args[0].startswith(word)
-    else:
-        assert not app.listening_indicator.show_outcome.called
+    # 899 / 481: rejected/short pre-decode captures settle without a receipt.
+    assert not app.listening_indicator.show_outcome.called
 
 
 def test_batch_exit_seams_use_reasons_without_changing_detection():
@@ -124,7 +123,8 @@ def test_batch_exit_seams_use_reasons_without_changing_detection():
     calls = [n for n in ast.walk(batch) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
              and isinstance(n.func.value, ast.Name) and n.func.value.id == 'failure_reasons']
     kinds = [n.args[1].value for n in calls if n.func.attr == 'post_reason' and len(n.args) > 1]
-    assert {'short_tap', 'near_silent', 'long_failure'} <= set(kinds)
+    # 899 / 481: only attempted decodes report failure; taps remain silent.
+    assert set(kinds) == {'long_failure'}
     assert any(n.func.attr == 'post_delivery_clipping' for n in calls)
 
 
@@ -149,7 +149,7 @@ def test_cancelled_streaming_result_has_no_new_notice(monkeypatch):
 
 
 def test_only_error_floor_changes():
-    assert message_duration_ms('x', 'error', 500) == 4000
+    assert message_duration_ms('x', 'error', 500) == 2500  # 899: ordinary errors follow 591.
     assert message_duration_ms('x', 'success', 500) == 2500
     assert message_duration_ms('x', 'warning', 500) == 2500
 
@@ -166,7 +166,8 @@ def test_streaming_gate_keeps_silent_speech_distinct_from_decode_failure(monkeyp
     monkeypatch.setattr('samsara.tutorial_capture.final_current', lambda _: True)
     if finished:
         reasons.deliver_stream_final(session, None, None, duration, 0)
-        assert reasons.reason_for(expected, {'config': session.app.config})[0] in session.app.listening_indicator.show_outcome.call_args.args[0]
+        # 899 / 481: pre-decode silent/short streaming exits show no failure.
+        session.app.listening_indicator.show_outcome.assert_not_called()
 
 
 def test_stream_exception_keeps_its_failure_kind_without_a_duration():

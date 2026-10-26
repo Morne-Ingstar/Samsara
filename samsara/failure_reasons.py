@@ -45,9 +45,13 @@ def post_reason(app, kind, *, handsfree=False, peak=0.0, headline=None):
     label = 'Captured\n' + text if quiet else text
     severity = 'accent' if quiet else 'error'
     try:
-        schedule_feedback(app, label, severity, 4000, source='capture_' + kind)
-        duration = message_duration_ms(label, severity, 4000)
-        app._schedule_ui(_home_message, app, text, duration)
+        duration = message_duration_ms(label, severity)
+        if getattr(app, 'listening_indicator', None) is not None:
+            schedule_feedback(app, label, severity, duration, source='capture_' + kind)
+        else:
+            app._show_outcome_chip(label, severity, duration)
+        if callable(getattr(app, '_schedule_ui', None)):
+            app._schedule_ui(_home_message, app, text, duration)
         if config.get('tts', {}).get('feedback_level') == 'full':
             app._speak_session_notice(text)
     except Exception:
@@ -75,18 +79,13 @@ def preserve_clipping(label, kind, owner, protected):
 
 
 def skip_decode(pcm, app, **kwargs):
-    """Hands-free call seam: keep the detector and its return value intact."""
+    """Pre-decode silence is an accidental capture, not a failed attempt (899)."""
     from samsara.speech_presence import skip_decode as detect
-    rejected = detect(pcm, app, **kwargs)
-    duration = len(pcm) / app.model_rate
-    if duration < .3 or rejected:
-        post_reason(app, 'short_tap' if duration < .3 else 'near_silent', handsfree=True)
-    return rejected
+    return detect(pcm, app, **kwargs)
 
 
 def show_empty_capture(app, duration_s, mode='hold'):
-    """Preserve the existing failed-history record, replace its vague notice."""
-    post_reason(app, 'near_silent', handsfree=mode == 'handsfree')
+    """Preserve the empty-history record while settling silently (481 / 899)."""
     if duration_s > .5:
         try:
             app._log_history(raw_text='', display_text='(no speech detected)',
@@ -102,9 +101,12 @@ def finish_streaming_if_empty(worker, audio):
     session._capture_peak_891 = capture_peak(audio)
     duration = len(audio) / session.app.model_rate if audio is not None else 0
     session._empty_capture_kind_891 = 'short_tap' if duration < .51 else 'near_silent'
+    # The detector can synchronously deliver on_final; mark ownership first.
+    session._quiet_empty_capture_899 = True
     finished = finish(worker, audio)
     if not finished:
         session._empty_capture_kind_891 = None
+        session._quiet_empty_capture_899 = False
     return finished
 
 
@@ -126,6 +128,8 @@ def deliver_stream_final(session, text, raw_text, duration_s, elapsed_ms):
     if not live:
         return
     if not text or not text.strip():
+        if getattr(session, '_quiet_empty_capture_899', False):
+            return
         existing = getattr(session, '_decode_failure', None)
         kind = getattr(session, '_empty_capture_kind_891', None) or (
             'long_failure' if existing or duration_s >= .51 else

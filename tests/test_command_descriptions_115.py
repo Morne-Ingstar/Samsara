@@ -26,6 +26,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from samsara import plugin_commands
+
+LIVE_LOAD_PLUGINS_899 = plugin_commands.load_plugins
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -238,6 +241,27 @@ def test_the_soft_length_target_is_mostly_met():
     over = [r["canonical_id"] for r in RECORDS
             if len(r.get("description") or "") > SOFT_LEN]
     assert len(over) <= 10, f"{len(over)} descriptions over {SOFT_LEN} chars: {over[:12]}"
+
+
+def test_metadata_tools_never_discover_or_include_personal_plugins(monkeypatch):
+    """899: generated shipped metadata is independent of a user's plugins."""
+    from samsara import plugin_commands
+    from tools.dump_command_metadata import build_executor
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('metadata tooling tried to discover personal plugins')
+
+    monkeypatch.setattr(plugin_commands, 'load_extra_plugins', forbidden)
+    monkeypatch.setattr(plugin_commands, 'load_plugins', LIVE_LOAD_PLUGINS_899)
+    monkeypatch.setattr(plugin_commands, '_REGISTRY', {})
+    executor = build_executor()
+    entry = dict(next(iter(plugin_commands._REGISTRY.values())))
+    entry.update(source='personal', phrase='synthetic personal command', aliases=[])
+    monkeypatch.setitem(plugin_commands._REGISTRY, entry['phrase'], entry)
+    records = build_executor()._matcher.list_commands()
+    assert records
+    assert not any(row['phrase'] == entry['phrase'] for row in records)
+    assert not any(row['source'] == 'personal' for row in records)
 
 
 # ---------------------------------------------------------------------------

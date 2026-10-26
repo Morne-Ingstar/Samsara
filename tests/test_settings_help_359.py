@@ -18,6 +18,8 @@ DECISIONS = FIXTURES / "help_decisions.md"
 # Explicit changes since the historical synthetic 359 inventory. New schema
 # keys still fail unless a decision is recorded here or in that inventory.
 DECISION_UPDATES = {
+    # 899: 881's optional folder has its documented config-only home.
+    'plugins.personal_dir': ('DROP', 'Optional external plugin folder; see Docs/SETTINGS.md#personal-command-plugins.'),
     # 826b/834r/862/877 / 888a: explicitly account for landed preference additions.
     'home.show_recent_words': ('DROP', 'The Home privacy row explains recent words.'),
     'ava.reply_window_seconds': ('DROP', 'The reply-window timing is configured outside Settings.'),

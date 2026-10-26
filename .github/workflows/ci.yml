@@ -103,6 +103,7 @@ jobs:
         timeout-minutes: 15
         run: |
           Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+          $env:QT_QPA_PLATFORM = 'windows' # 899: collection imports must not select offscreen for native tests.
           python -m pytest -m requires_desktop -p no:cacheprovider --timeout=120 --timeout-method=thread -v
 
       # File balancing can move the icon tests between shards. Capture on

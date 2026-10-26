@@ -65,7 +65,8 @@ def test_batch_guard_prevents_phantom_staging(lane, text, weak, kept):
             manager.stage_parked_hold(result)
     assert bool(manager.dictate_pending_buffer) is kept
     if not kept and lane == "hands-free":
-        assert "no speech" in app._show_outcome_chip.call_args.args[0].lower()
+        # 899: pin 891's specific recovery copy after an attempted decode.
+        assert app._show_outcome_chip.call_args.args[0] == 'Nothing heard - check the mic, or speak louder'
 
 
 @pytest.mark.parametrize("text,weak,kept", [("Thanks.", True, False), ("Thanks.", False, True), ("Thanks for helping with the document.", True, True)])

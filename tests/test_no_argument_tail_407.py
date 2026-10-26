@@ -208,6 +208,19 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
             body = body[1:]
         refusal_forms = {parameter, f'{parameter}.strip()',
                          f"str({parameter} or '').strip()", f"({parameter} or '').strip()"}
+        # 899: `return action() if not remainder else False` is refusal-only,
+        # just like the leading guard below; inspect the action arm as usual.
+        if (len(body) == 1 and isinstance(body[0], ast.Return)
+                and isinstance(body[0].value, ast.IfExp)):
+            expression = body[0].value
+            if (isinstance(expression.test, ast.UnaryOp)
+                    and isinstance(expression.test.op, ast.Not)
+                    and ast.unparse(expression.test.operand) in refusal_forms
+                    and isinstance(expression.orelse, ast.Constant)
+                    and expression.orelse.value is False):
+                assert not executor._takes_argument(entry), entry.phrase
+                assert handler(None, 'sample argument') is False, entry.phrase
+                body = [ast.Expr(value=expression.body)]
         if (body and isinstance(body[0], ast.If)
                 and (ast.unparse(body[0].test) in refusal_forms
                      or (isinstance(body[0].test, ast.BoolOp) and isinstance(body[0].test.op, ast.Or)

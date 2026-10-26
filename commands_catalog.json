@@ -10851,7 +10851,7 @@
         }
       ],
       "canonical_id": "selection_edit.capitalise_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "capitalise the selection"
       ],
@@ -10890,7 +10890,7 @@
         }
       ],
       "canonical_id": "selection_edit.change_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "change the selection to a friendlier tone"
       ],
@@ -10956,7 +10956,7 @@
         }
       ],
       "canonical_id": "selection_edit.clean_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "clean the selection"
       ],
@@ -11036,7 +11036,7 @@
         }
       ],
       "canonical_id": "selection_edit.correct_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "correct the selection"
       ],
@@ -11095,7 +11095,7 @@
         }
       ],
       "canonical_id": "selection_edit.edit_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "edit the selection for clarity"
       ],
@@ -11134,7 +11134,7 @@
         }
       ],
       "canonical_id": "selection_edit.expand_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "expand the selection"
       ],
@@ -11186,7 +11186,7 @@
         }
       ],
       "canonical_id": "selection_edit.fix_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "fix the selection"
       ],
@@ -11238,7 +11238,7 @@
         }
       ],
       "canonical_id": "selection_edit.formalise_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "formalise the selection"
       ],
@@ -11277,7 +11277,7 @@
         }
       ],
       "canonical_id": "selection_edit.lengthen_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "lengthen the selection"
       ],
@@ -11316,7 +11316,7 @@
         }
       ],
       "canonical_id": "selection_edit.make_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "make the selection shorter",
         "make the selection more formal",
@@ -11357,7 +11357,7 @@
         }
       ],
       "canonical_id": "selection_edit.polish_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "polish the selection"
       ],
@@ -11396,7 +11396,7 @@
         }
       ],
       "canonical_id": "selection_edit.punctuate_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "punctuate the selection"
       ],
@@ -11463,7 +11463,7 @@
         }
       ],
       "canonical_id": "selection_edit.reformat_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "reformat the selection as a paragraph"
       ],
@@ -11502,7 +11502,7 @@
         }
       ],
       "canonical_id": "selection_edit.rephrase_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "rephrase the selection more clearly"
       ],
@@ -11541,7 +11541,7 @@
         }
       ],
       "canonical_id": "selection_edit.reword_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "reword the selection more politely"
       ],
@@ -11580,7 +11580,7 @@
         }
       ],
       "canonical_id": "selection_edit.rewrite_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "rewrite the selection more simply"
       ],
@@ -11619,7 +11619,7 @@
         }
       ],
       "canonical_id": "selection_edit.shorten_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "shorten the selection"
       ],
@@ -11658,7 +11658,7 @@
         }
       ],
       "canonical_id": "selection_edit.simplify_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "simplify the selection"
       ],
@@ -11784,7 +11784,7 @@
         }
       ],
       "canonical_id": "selection_edit.tidy_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "tidy the selection"
       ],
@@ -11823,7 +11823,7 @@
         }
       ],
       "canonical_id": "selection_edit.tighten_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "tighten the selection"
       ],
@@ -12268,7 +12268,7 @@
         }
       ],
       "canonical_id": "selection_edit.trim_selection",
-      "description": "Ava: rewrites selected text; then say apply or discard; needs Ava for AI; goes to your AI provider if cloud is chosen.",
+      "description": "Ava: rewrites selection; say apply or discard; cloud sends text to your AI provider.",
       "examples": [
         "trim the selection"
       ],

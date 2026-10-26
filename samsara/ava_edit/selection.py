@@ -308,8 +308,9 @@ def register_commands(module_name: str) -> None:
                                   ("in place of" if utterance.endswith("replace") else "below") +
                                   " selected text, then say apply or discard.")
             if utterance.split()[0] in intent.EDIT_VERBS and utterance.endswith(" selection"):
-                handle.__doc__ = ("Ava: rewrites selected text; then say apply or discard; "
-                                  "needs Ava for AI; goes to your AI provider if cloud is chosen.")
+                # PLACEHOLDER COPY (899): retain the action, decision and cloud disclosure.
+                handle.__doc__ = ("Ava: rewrites selection; say apply or discard; "
+                                  "cloud sends text to your AI provider.")
                 if utterance.split()[0] in _CLEANUP_VERBS:
                     handle.__doc__ += " Simple dictation cleanup also works offline."
             return handle
