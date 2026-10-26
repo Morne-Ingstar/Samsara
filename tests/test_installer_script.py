@@ -199,7 +199,8 @@ class TestBuildCommand:
 
     def test_docs_explain_both_routes_and_signing(self):
         install = INSTALL_DOC.read_text(encoding="utf-8")
-        assert "/ComponentsDir=" in install and "Samsara-Windows-<version>.zip" in install
+        # 914: the guide names the exact assets for its versioned release page.
+        assert "/ComponentsDir=" in install and "Samsara-Windows-v0.40.0.zip" in install
         assert "SmartScreen" in install
         readme = README.read_text(encoding="utf-8")
         assert "SignPath" in readme and "--fetch-components" in readme

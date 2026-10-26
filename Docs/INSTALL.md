@@ -3,7 +3,9 @@
 Two routes. Both end with the same application; pick by your situation.
 
 Open the [latest published release](https://github.com/Morne-Ingstar/Samsara/releases/latest).
-v0.40.0 is currently an unpublished draft. When it is published, its assets are:
+The [v0.40.0 release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.40.0)
+is the source for the versioned assets below. The latest-release link may point
+to a different version.
 
 | File | Purpose |
 | --- | --- |

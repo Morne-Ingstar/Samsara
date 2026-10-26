@@ -474,10 +474,18 @@ class TestLivenessCounter:
         assert hook.callback_count == before + 1, label
 
     def test_counter_increment_is_the_first_thing_the_callback_does(self):
+        # 914: inspect the guarded callback block, not the timing wrapper's outer try.
         import inspect
-        body = inspect.getsource(MouseHook._hook_callback).split("try:", 1)[1]
-        first = next(line.strip() for line in body.splitlines() if line.strip())
-        assert first.startswith("self.callback_count += 1")
+        import ast
+        import textwrap
+        source = textwrap.dedent(inspect.getsource(MouseHook._hook_callback))
+        function = ast.parse(source).body[0]
+        guarded = [node for node in ast.walk(function) if isinstance(node, ast.Try)
+                   and node.body and isinstance(node.body[0], ast.AugAssign)
+                   and isinstance(node.body[0].target, ast.Attribute)
+                   and node.body[0].target.attr == "callback_count"]
+        assert guarded
+        assert isinstance(guarded[0].body[0].op, ast.Add)
 
 
 class TestLivenessDetector:
