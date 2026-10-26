@@ -198,10 +198,13 @@ def test_completed_install_can_start_hidden_without_a_mic():
 
 def test_reconciliation_keeps_saved_index_even_when_name_returns_elsewhere():
     config = {'microphone': 9, 'microphone_name': MIC}
-    app = types.SimpleNamespace(config=config, available_mics=[{'id': 1, 'name': MIC}])
+    app = types.SimpleNamespace(config=config, available_mics=[{'id': 1, 'name': MIC}],
+                                persist_config=Mock())
     app_method('_reconcile_microphone_selection', sd=Audio([dev('Other'), dev(MIC)], default=0))(app)
     assert app._capture_device == 1
-    assert config == {'microphone': 9, 'microphone_name': MIC}
+    # 901: retain the preferred name and persist its corrected runtime index.
+    assert config == {'microphone': 1, 'microphone_name': MIC}
+    app.persist_config.assert_called_once_with()
 
 
 def test_refresh_closes_output_before_portaudio_and_restarts_capture(monkeypatch):
@@ -250,6 +253,8 @@ def recovery_app(audio):
     from samsara import microphone_recovery as recovery
     app = types.SimpleNamespace(config={'microphone': 9, 'microphone_name': MIC},
         _audio_refresh_lock=threading.RLock(), _ace_engine=None, capture_rate=16000,
+        # 901: these long-running hotplug scenarios begin after startup grace.
+        _mic_boot_ready=True, persist_config=Mock(),
         _rescan_idle_since=float("-inf"),
         _no_microphone=True, available_mics=[], _mic_refresh_blocked=lambda: False,
         _run_calibration_if_auto=Mock(), _start_ace_engine=Mock())
@@ -282,7 +287,7 @@ def test_cold_start_poll_rescans_only_after_windows_capture_list_changes(monkeyp
     assert app._capture_device == 0
     app._run_calibration_if_auto.assert_called_once()
     app._start_ace_engine.assert_called_once()
-    assert app.config['microphone'] == 9
+    assert app.config['microphone'] == 0  # 901: persist the returned name's new index.
 
 
 def test_removed_then_returned_uses_public_engine_recovery_and_fresh_index(monkeypatch):
@@ -303,7 +308,7 @@ def test_removed_then_returned_uses_public_engine_recovery_and_fresh_index(monke
     assert capture.refresh(app.config)
     assert audio.opened == [0, 1]
     assert not capture.device_lost
-    assert app.config['microphone'] == 9
+    assert app.config['microphone'] == 1  # 901: persist the returned name's new index.
     capture.stop()
 
 
@@ -460,7 +465,8 @@ def test_missing_feedback_persists_and_only_one_tray_warning_per_outage():
 def test_fallback_is_explained_without_overwriting_the_saved_choice():
     from samsara import microphone_recovery as recovery
     app = types.SimpleNamespace(config={'microphone': 9, 'microphone_name': MIC},
-        _using_default_mic=True, tray_icon=Mock())
+        _using_default_mic=True, tray_icon=Mock(),
+        _mic_boot_ready=True)  # 901: fallback wording after startup grace.
     recovery.set_state(app, False)
     recovery.set_state(app, False)
     assert 'chosen microphone not connected' in app.tray_icon.title
@@ -507,7 +513,8 @@ def test_missing_state_reaches_both_displays_and_survives_idle(qapp, tmp_path):
     full = LiveSurfaceIndicatorAdapter(controller)
     app = types.SimpleNamespace(config={'ui': {'live_surface': {'enabled': True}}},
         listening_indicator=full, _schedule_ui=lambda fn, *args: fn(*args),
-        _update_tray_tooltip=Mock())
+        _update_tray_tooltip=Mock(),
+        _mic_boot_ready=True)  # 901: both displays still report later outages.
     recovery.set_state(app, True)
     assert model.view().capture is CaptureState.UNAVAILABLE
     full_widget = LiveSurfaceWidget(model.view(), reduced_motion=True)

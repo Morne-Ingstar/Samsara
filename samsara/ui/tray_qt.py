@@ -1364,20 +1364,8 @@ class SamsaraTrayQt(QObject):
                 checked=app.config.get("wake_word_enabled", False), report_as="Wake Word")
 
         with self._optional_menu_section(menu, "Microphone"):
-            mic_label = f"[MIC]  {app.get_current_microphone_name()}"
-            mic_sub = QMenu(mic_label)
-            if not app._mic_refresh_blocked():
-                try:
-                    app.available_mics = app.get_available_microphones()
-                    app._reconcile_microphone_selection()
-                except Exception as exc:
-                    logger.debug("_rebuild_menu microphone refresh: %s", exc)
-            current_mic = app.config.get("microphone")
-            for mic in app.available_mics:
-                add(mic_sub, mic["name"],
-                    lambda _checked, mid=mic["id"]: app.switch_microphone_and_refresh(mid),
-                    checked=mic["id"] == current_mic, report_as="Switch microphone")
-            menu.addMenu(mic_sub)
+            from samsara.ui.tray_microphones import build_microphone_menu
+            menu.addMenu(build_microphone_menu(app, add))
 
         with self._optional_menu_section(menu, "Mode"):
             mode = app.config.get("mode", "hold")

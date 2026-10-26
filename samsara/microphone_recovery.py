@@ -1,8 +1,8 @@
 """Device recovery orchestration, separate from the desktop bootstrap.
 
 Endpoint callbacks only schedule work. The existing output watcher thread does
-the debounced work; missing and fallback inputs are compared when needed. Saved preferences never
-become a cache of PortAudio's current numeric device IDs.
+the debounced work; missing and fallback inputs are compared when needed. A saved
+name remains the preference; its numeric index is corrected only on a name match.
 """
 from contextlib import nullcontext, ExitStack, contextmanager
 import logging
@@ -17,6 +17,7 @@ log = logging.getLogger('Samsara')
 # Stand-in wording (550), reviewed in ASK.json.
 MISSING_MESSAGE = 'No microphone. Connect a microphone to dictate.'
 FALLBACK_MESSAGE = 'Your chosen microphone is not connected. Using the system default microphone.'
+BOOT_MIC_GRACE_SECONDS = 5.0
 
 
 def needs_setup(config_path, *, sleep=time.sleep):
@@ -39,10 +40,89 @@ def needs_setup(config_path, *, sleep=time.sleep):
 
 
 def reconcile(app, sd):
+    lock = getattr(app, '_config_lock', None)
+    persist = getattr(app, 'persist_config', None)
+    corrected = False
+    with lock or nullcontext():
+        choice = dict(app.config)
     try:
-        app._capture_device, app._using_default_mic = device_resolver.select_input(sd, app.config)
+        device, fallback = device_resolver.select_input(sd, choice)
     except device_resolver.DeviceNotFound:
-        app._capture_device, app._using_default_mic = None, False
+        device, fallback = None, False
+    with lock or nullcontext():
+        if any(app.config.get(key) != choice.get(key) for key in
+               ('microphone', 'microphone_name', 'microphone_hostapi')):
+            return  # A deliberate selection made during enumeration wins.
+        app._capture_device, app._using_default_mic = device, fallback
+        name = choice.get('microphone_name')
+        if (callable(persist) and device is not None and not fallback and name
+                and name not in ('System default', 'Default')
+                and device != choice.get('microphone')):
+            app.config['microphone'] = device
+            corrected = True
+    if corrected:
+        persist()  # Recovery-only owners without a config writer retain their saved choice.
+
+
+def selection_name(app):
+    """The saved identity remains readable even while its endpoint is absent."""
+    name = app.config.get('microphone_name')
+    if name in ('System default', 'Default') or (not name and app.config.get('microphone') is None):
+        return 'System default'
+    return name or app.get_current_microphone_name()
+
+
+def select_system_default(app, switch=None):
+    """Use the existing selection service, including its same-null-ID recovery."""
+    old_id = app.config.get('microphone')
+    old_name = app.config.get('microphone_name')
+    if old_id is None and old_name == 'System default':
+        return
+    lock = vars(app).get('_config_lock')
+    with lock or nullcontext():
+        app.config['microphone_name'] = 'System default'
+    try:
+        if old_id is not None:
+            (switch or app.switch_microphone)(None)
+        else:
+            app.refresh_audio_devices()
+    except Exception:
+        with lock or nullcontext():
+            if old_name is None:
+                app.config.pop('microphone_name', None)
+            else:
+                app.config['microphone_name'] = old_name
+        raise
+    if old_id is None and old_name != 'System default':
+        app.persist_config()  # switch_microphone's same-ID guard skips saving.
+    ace = vars(app).get('_ace_engine')
+    if ace is None:
+        if old_id is not None:
+            app.refresh_audio_devices()  # The old switch only restarts an existing engine.
+    else:
+        import sounddevice as sd
+        reconcile(app, sd)
+        set_state(app, ace.device_lost)
+
+
+def _boot_grace(app, lost, notify=False):
+    if getattr(app, '_mic_boot_ready', False):
+        return False
+    deadline = getattr(app, '_mic_boot_deadline', None)
+    if deadline is None and hasattr(app, '_no_microphone'):
+        # A watcher observing an established outage/fallback is not a boot.
+        app._mic_boot_ready = True
+        return False
+    if notify or (not lost and not getattr(app, '_using_default_mic', False)):
+        app._mic_boot_ready = True
+        app._mic_boot_scan_complete = True
+        return False
+    if deadline is None:
+        deadline = app._mic_boot_deadline = time.monotonic() + BOOT_MIC_GRACE_SECONDS
+    if time.monotonic() >= deadline:
+        app._mic_boot_ready = True
+        return False
+    return True
 
 
 def input_available(app, sd):
@@ -60,7 +140,10 @@ def calibration_identity(app, sd):
 
 def set_state(app, lost, *, notify=False):
     changed = getattr(app, '_no_microphone', None) != bool(lost)
+    deferred = _boot_grace(app, lost, notify)
     app._no_microphone = bool(lost)
+    if deferred:
+        return  # Keep actual availability; defer only startup warning surfaces.
     indicator = getattr(app, 'listening_indicator', None)
     # Repeat the idempotent update: the chosen display/tray may be constructed
     # after ACE's initial failure, or replaced when the display setting changes.
@@ -386,6 +469,13 @@ class DeviceChanges:
             return
         now = self.clock()
         set_state(self.app, self.app._no_microphone)
+        deadline = getattr(self.app, '_mic_boot_deadline', None)
+        if deadline is not None and not getattr(self.app, '_mic_boot_scan_complete', False):
+            # Re-enumerate cached PortAudio endpoints through the existing idle
+            # transaction even if Windows has not delivered a notification yet.
+            self.request_input()
+            if time.monotonic() >= deadline:
+                self.app._mic_boot_scan_complete = True
         with self._lock:
             pending = self._pending
             due = pending is not None and now - pending >= 0.75
