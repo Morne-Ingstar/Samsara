@@ -185,6 +185,56 @@
     "state": "completed",
     "text": "what can i say alpha and volume down"
   },
+  "dictionary.add_that_to_the_dictionary": {
+    "calls": [
+      [
+        "add that to the dictionary",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "add that to the dictionary",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "add that to the dictionary alpha and volume down"
+  },
+  "dictionary.add_word": {
+    "calls": [
+      [
+        "add word",
+        "add word alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "add word alpha and volume down"
+  },
+  "dictionary.spell_word": {
+    "calls": [
+      [
+        "spell word",
+        "spell word alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "spell word alpha and volume down"
+  },
   "flashforge_printer.start_print": {
     "calls": [
       [
@@ -436,6 +486,454 @@
     "state": "miss",
     "text": "record this window alpha and volume down"
   },
+  "selection_edit.capitalise_selection": {
+    "calls": [
+      [
+        "capitalise selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "capitalise selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "capitalise selection alpha and volume down"
+  },
+  "selection_edit.change_selection": {
+    "calls": [
+      [
+        "change selection",
+        "change selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "change selection alpha and volume down"
+  },
+  "selection_edit.clean_selection": {
+    "calls": [
+      [
+        "clean selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "clean selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "clean selection alpha and volume down"
+  },
+  "selection_edit.correct_selection": {
+    "calls": [
+      [
+        "correct selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "correct selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "correct selection alpha and volume down"
+  },
+  "selection_edit.edit_selection": {
+    "calls": [
+      [
+        "edit selection",
+        "edit selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "edit selection alpha and volume down"
+  },
+  "selection_edit.expand_selection": {
+    "calls": [
+      [
+        "expand selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "expand selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "expand selection alpha and volume down"
+  },
+  "selection_edit.fix_selection": {
+    "calls": [
+      [
+        "fix selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "fix selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "fix selection alpha and volume down"
+  },
+  "selection_edit.formalise_selection": {
+    "calls": [
+      [
+        "formalise selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "formalise selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "formalise selection alpha and volume down"
+  },
+  "selection_edit.lengthen_selection": {
+    "calls": [
+      [
+        "lengthen selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "lengthen selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "lengthen selection alpha and volume down"
+  },
+  "selection_edit.make_selection": {
+    "calls": [
+      [
+        "make selection",
+        "make selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "make selection alpha and volume down"
+  },
+  "selection_edit.polish_selection": {
+    "calls": [
+      [
+        "polish selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "polish selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "polish selection alpha and volume down"
+  },
+  "selection_edit.punctuate_selection": {
+    "calls": [
+      [
+        "punctuate selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "punctuate selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "punctuate selection alpha and volume down"
+  },
+  "selection_edit.reformat_selection": {
+    "calls": [
+      [
+        "reformat selection",
+        "reformat selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "reformat selection alpha and volume down"
+  },
+  "selection_edit.rephrase_selection": {
+    "calls": [
+      [
+        "rephrase selection",
+        "rephrase selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "rephrase selection alpha and volume down"
+  },
+  "selection_edit.reword_selection": {
+    "calls": [
+      [
+        "reword selection",
+        "reword selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "reword selection alpha and volume down"
+  },
+  "selection_edit.rewrite_selection": {
+    "calls": [
+      [
+        "rewrite selection",
+        "rewrite selection alpha and volume down"
+      ]
+    ],
+    "detail": {},
+    "generated_by": "890",
+    "state": "completed",
+    "text": "rewrite selection alpha and volume down"
+  },
+  "selection_edit.shorten_selection": {
+    "calls": [
+      [
+        "shorten selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "shorten selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "shorten selection alpha and volume down"
+  },
+  "selection_edit.simplify_selection": {
+    "calls": [
+      [
+        "simplify selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "simplify selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "simplify selection alpha and volume down"
+  },
+  "selection_edit.tidy_selection": {
+    "calls": [
+      [
+        "tidy selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "tidy selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "tidy selection alpha and volume down"
+  },
+  "selection_edit.tighten_selection": {
+    "calls": [
+      [
+        "tighten selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "tighten selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "tighten selection alpha and volume down"
+  },
+  "selection_edit.trim_selection": {
+    "calls": [
+      [
+        "trim selection",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "trim selection",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "trim selection alpha and volume down"
+  },
   "show_numbers.mouse_grid": {
     "calls": [
       [
@@ -546,6 +1044,32 @@
     "state": "completed",
     "text": "add to list alpha and volume down"
   },
+  "text_selection.select_previous": {
+    "calls": [
+      [
+        "select previous",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "select previous",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "select previous alpha and volume down"
+  },
   "timer.set_a_timer": {
     "calls": [],
     "detail": {},
@@ -565,6 +1089,76 @@
     "state": "miss",
     "text": "search for alpha and volume down"
   },
+  "window_cube.eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "eight alpha and volume down"
+  },
+  "window_cube.five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "five alpha and volume down"
+  },
+  "window_cube.four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "four alpha and volume down"
+  },
+  "window_cube.nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "nine alpha and volume down"
+  },
+  "window_cube.one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "one alpha and volume down"
+  },
   "window_cube.refresh_cube": {
     "calls": [
       [
@@ -575,6 +1169,1608 @@
     "detail": {},
     "state": "completed",
     "text": "refresh cube alpha and volume down"
+  },
+  "window_cube.seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "seven alpha and volume down"
+  },
+  "window_cube.six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "six alpha and volume down"
+  },
+  "window_cube.three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "three alpha and volume down"
+  },
+  "window_cube.two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "two alpha and volume down"
+  },
+  "window_cube.window_eight": {
+    "calls": [
+      [
+        "window eight",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window eight",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window eight alpha and volume down"
+  },
+  "window_cube.window_five": {
+    "calls": [
+      [
+        "window five",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window five",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window five alpha and volume down"
+  },
+  "window_cube.window_four": {
+    "calls": [
+      [
+        "window four",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window four",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window four alpha and volume down"
+  },
+  "window_cube.window_nine": {
+    "calls": [
+      [
+        "window nine",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window nine",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window nine alpha and volume down"
+  },
+  "window_cube.window_one": {
+    "calls": [
+      [
+        "window one",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window one",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window one alpha and volume down"
+  },
+  "window_cube.window_seven": {
+    "calls": [
+      [
+        "window seven",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window seven",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window seven alpha and volume down"
+  },
+  "window_cube.window_six": {
+    "calls": [
+      [
+        "window six",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window six",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window six alpha and volume down"
+  },
+  "window_cube.window_three": {
+    "calls": [
+      [
+        "window three",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window three",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window three alpha and volume down"
+  },
+  "window_cube.window_two": {
+    "calls": [
+      [
+        "window two",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "window two",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "window two alpha and volume down"
+  },
+  "window_switcher.read_windows": {
+    "calls": [
+      [
+        "read windows",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "read windows",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "read windows alpha and volume down"
+  },
+  "window_switcher.show_windows": {
+    "calls": [
+      [
+        "show windows",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "show windows",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "show windows alpha and volume down"
+  },
+  "window_switcher.window_eighteen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighteen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighteen alpha and volume down"
+  },
+  "window_switcher.window_eighty": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty alpha and volume down"
+  },
+  "window_switcher.window_eighty_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty eight alpha and volume down"
+  },
+  "window_switcher.window_eighty_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty five alpha and volume down"
+  },
+  "window_switcher.window_eighty_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty four alpha and volume down"
+  },
+  "window_switcher.window_eighty_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty nine alpha and volume down"
+  },
+  "window_switcher.window_eighty_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty one alpha and volume down"
+  },
+  "window_switcher.window_eighty_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty seven alpha and volume down"
+  },
+  "window_switcher.window_eighty_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty six alpha and volume down"
+  },
+  "window_switcher.window_eighty_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty three alpha and volume down"
+  },
+  "window_switcher.window_eighty_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eighty two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eighty two alpha and volume down"
+  },
+  "window_switcher.window_eleven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window eleven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window eleven alpha and volume down"
+  },
+  "window_switcher.window_fifteen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifteen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifteen alpha and volume down"
+  },
+  "window_switcher.window_fifty": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty alpha and volume down"
+  },
+  "window_switcher.window_fifty_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty eight alpha and volume down"
+  },
+  "window_switcher.window_fifty_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty five alpha and volume down"
+  },
+  "window_switcher.window_fifty_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty four alpha and volume down"
+  },
+  "window_switcher.window_fifty_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty nine alpha and volume down"
+  },
+  "window_switcher.window_fifty_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty one alpha and volume down"
+  },
+  "window_switcher.window_fifty_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty seven alpha and volume down"
+  },
+  "window_switcher.window_fifty_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty six alpha and volume down"
+  },
+  "window_switcher.window_fifty_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty three alpha and volume down"
+  },
+  "window_switcher.window_fifty_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fifty two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fifty two alpha and volume down"
+  },
+  "window_switcher.window_forty": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty alpha and volume down"
+  },
+  "window_switcher.window_forty_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty eight alpha and volume down"
+  },
+  "window_switcher.window_forty_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty five alpha and volume down"
+  },
+  "window_switcher.window_forty_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty four alpha and volume down"
+  },
+  "window_switcher.window_forty_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty nine alpha and volume down"
+  },
+  "window_switcher.window_forty_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty one alpha and volume down"
+  },
+  "window_switcher.window_forty_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty seven alpha and volume down"
+  },
+  "window_switcher.window_forty_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty six alpha and volume down"
+  },
+  "window_switcher.window_forty_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty three alpha and volume down"
+  },
+  "window_switcher.window_forty_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window forty two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window forty two alpha and volume down"
+  },
+  "window_switcher.window_fourteen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window fourteen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window fourteen alpha and volume down"
+  },
+  "window_switcher.window_nineteen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window nineteen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window nineteen alpha and volume down"
+  },
+  "window_switcher.window_ninety": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety alpha and volume down"
+  },
+  "window_switcher.window_ninety_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety eight alpha and volume down"
+  },
+  "window_switcher.window_ninety_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety five alpha and volume down"
+  },
+  "window_switcher.window_ninety_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety four alpha and volume down"
+  },
+  "window_switcher.window_ninety_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety nine alpha and volume down"
+  },
+  "window_switcher.window_ninety_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety one alpha and volume down"
+  },
+  "window_switcher.window_ninety_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety seven alpha and volume down"
+  },
+  "window_switcher.window_ninety_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety six alpha and volume down"
+  },
+  "window_switcher.window_ninety_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety three alpha and volume down"
+  },
+  "window_switcher.window_ninety_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ninety two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ninety two alpha and volume down"
+  },
+  "window_switcher.window_seventeen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventeen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventeen alpha and volume down"
+  },
+  "window_switcher.window_seventy": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy alpha and volume down"
+  },
+  "window_switcher.window_seventy_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy eight alpha and volume down"
+  },
+  "window_switcher.window_seventy_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy five alpha and volume down"
+  },
+  "window_switcher.window_seventy_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy four alpha and volume down"
+  },
+  "window_switcher.window_seventy_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy nine alpha and volume down"
+  },
+  "window_switcher.window_seventy_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy one alpha and volume down"
+  },
+  "window_switcher.window_seventy_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy seven alpha and volume down"
+  },
+  "window_switcher.window_seventy_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy six alpha and volume down"
+  },
+  "window_switcher.window_seventy_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy three alpha and volume down"
+  },
+  "window_switcher.window_seventy_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window seventy two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window seventy two alpha and volume down"
+  },
+  "window_switcher.window_sixteen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixteen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixteen alpha and volume down"
+  },
+  "window_switcher.window_sixty": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty alpha and volume down"
+  },
+  "window_switcher.window_sixty_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty eight alpha and volume down"
+  },
+  "window_switcher.window_sixty_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty five alpha and volume down"
+  },
+  "window_switcher.window_sixty_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty four alpha and volume down"
+  },
+  "window_switcher.window_sixty_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty nine alpha and volume down"
+  },
+  "window_switcher.window_sixty_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty one alpha and volume down"
+  },
+  "window_switcher.window_sixty_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty seven alpha and volume down"
+  },
+  "window_switcher.window_sixty_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty six alpha and volume down"
+  },
+  "window_switcher.window_sixty_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty three alpha and volume down"
+  },
+  "window_switcher.window_sixty_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window sixty two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window sixty two alpha and volume down"
+  },
+  "window_switcher.window_ten": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window ten",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window ten alpha and volume down"
+  },
+  "window_switcher.window_thirteen": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirteen",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirteen alpha and volume down"
+  },
+  "window_switcher.window_thirty": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty alpha and volume down"
+  },
+  "window_switcher.window_thirty_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty eight alpha and volume down"
+  },
+  "window_switcher.window_thirty_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty five alpha and volume down"
+  },
+  "window_switcher.window_thirty_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty four alpha and volume down"
+  },
+  "window_switcher.window_thirty_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty nine alpha and volume down"
+  },
+  "window_switcher.window_thirty_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty one alpha and volume down"
+  },
+  "window_switcher.window_thirty_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty seven alpha and volume down"
+  },
+  "window_switcher.window_thirty_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty six alpha and volume down"
+  },
+  "window_switcher.window_thirty_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty three alpha and volume down"
+  },
+  "window_switcher.window_thirty_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window thirty two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window thirty two alpha and volume down"
+  },
+  "window_switcher.window_twelve": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twelve",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twelve alpha and volume down"
+  },
+  "window_switcher.window_twenty": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty alpha and volume down"
+  },
+  "window_switcher.window_twenty_eight": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty eight",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty eight alpha and volume down"
+  },
+  "window_switcher.window_twenty_five": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty five",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty five alpha and volume down"
+  },
+  "window_switcher.window_twenty_four": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty four",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty four alpha and volume down"
+  },
+  "window_switcher.window_twenty_nine": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty nine",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty nine alpha and volume down"
+  },
+  "window_switcher.window_twenty_one": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty one",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty one alpha and volume down"
+  },
+  "window_switcher.window_twenty_seven": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty seven",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty seven alpha and volume down"
+  },
+  "window_switcher.window_twenty_six": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty six",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty six alpha and volume down"
+  },
+  "window_switcher.window_twenty_three": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty three",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty three alpha and volume down"
+  },
+  "window_switcher.window_twenty_two": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "window twenty two",
+      "reason": "out_of_scope",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "window twenty two alpha and volume down"
   },
   "windows.delete_layout": {
     "calls": [],

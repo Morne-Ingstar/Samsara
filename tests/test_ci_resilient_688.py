@@ -77,8 +77,10 @@ def test_ci_routes_desktop_tests_to_a_bounded_native_step():
     for scope in (workflow, workflow['jobs']['test'], desktop):
         assert 'SAMSARA_TEST_SHARD_INDEX' not in scope.get('env', {})
         assert 'SAMSARA_TEST_SHARD_TOTAL' not in scope.get('env', {})
-    unset, command = desktop['run'].strip().splitlines()
+    # 906: 899 explicitly selects windows so collection cannot restore offscreen.
+    unset, platform, command = desktop['run'].strip().splitlines()
     assert unset == 'Remove-Item Env:\\QT_QPA_PLATFORM -ErrorAction SilentlyContinue'
+    assert platform.split('#', 1)[0].strip() == "$env:QT_QPA_PLATFORM = 'windows'"
     assert shlex.split(command) == [
         'python', '-m', 'pytest', '-m', 'requires_desktop', '-p', 'no:cacheprovider',
         '--timeout=120', '--timeout-method=thread', '-v',
