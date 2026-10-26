@@ -315,6 +315,17 @@ def show_tutorial(app) -> None:
 # Tutorial window
 # ---------------------------------------------------------------------------
 
+class _HelpLabel(QLabel):
+    """The single recovery link also activates with either Enter key."""
+
+    def keyPressEvent(self, event):
+        if HELP_LINK in self.text() and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.linkActivated.emit(HELP_LINK)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class _ModeDetailButton(QPushButton):
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -723,7 +734,16 @@ class TutorialWindow(QMainWindow):
         if label is None or HELP_LINK not in label.text():
             return
         label.setTextFormat(Qt.TextFormat.RichText)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        label.setText(label.text().replace(
+            f'<a href="{HELP_LINK}">',
+            f'<a href="{HELP_LINK}" style="color:{theme.ACCENT};text-decoration:none;">'))
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse |
+                                      Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+        label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        label.setAccessibleName("Help and Support for command examples")  # PLACEHOLDER COPY (933)
+        label.setStyleSheet("QLabel {" + label.styleSheet() +
+                            "border:1px solid transparent; border-radius:4px; }"
+                            f"QLabel:focus {{ border-color:{theme.ACCENT}; }}")
         label.linkActivated.connect(lambda _href: open_support_tab(self._app))
 
     def _instruction_box(self, text: str) -> QFrame:
@@ -732,7 +752,7 @@ class TutorialWindow(QMainWindow):
         theme.style_instruction_box(frame)
         fl = QVBoxLayout(frame)
         fl.setContentsMargins(16, 12, 16, 12)
-        lbl = QLabel(text)
+        lbl = _HelpLabel(text)
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
         fl.addWidget(lbl)
@@ -999,10 +1019,10 @@ class TutorialWindow(QMainWindow):
         self._cmd_success.setVisible(False)
         lay.addWidget(self._cmd_success)
 
-        self._cmd_hint = QLabel(_command_hint(self._examples))
-        self._link_help(self._cmd_hint)
+        self._cmd_hint = _HelpLabel(_command_hint(self._examples))
         self._cmd_hint.setWordWrap(True)
         self._cmd_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._link_help(self._cmd_hint)
         self._cmd_hint.setVisible(False)
         lay.addWidget(self._cmd_hint)
 
