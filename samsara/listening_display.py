@@ -71,6 +71,8 @@ def build_display(app, compact_factory, full_factory=None, adapter_factory=None)
         app.listening_indicator = adapter_factory(app.live_surface)
     else:
         app.listening_indicator = compact_factory()
+    from samsara.speech_readiness import show
+    show(app)  # 918: the shell can precede the async model by minutes.
     return choice.full
 
 

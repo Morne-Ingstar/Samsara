@@ -165,8 +165,13 @@ def _cfg_get(cfg: dict, dotted: str, default=None):
 
 
 def mic_available(app) -> Optional[bool]:
-    """True/False, or None when the app has not enumerated microphones yet --
-    which is UNKNOWN, not healthy."""
+    """Read capture truth first, then legacy enumeration; no evidence is UNKNOWN."""
+    engine = getattr(app, '_ace_engine', None)
+    if engine is not None and hasattr(engine, 'device_lost'):
+        return not bool(engine.device_lost)
+    lost = getattr(app, '_no_microphone', None)
+    if lost is not None:
+        return not bool(lost)
     mics = getattr(app, "available_mics", None)
     if mics is None:
         return None
@@ -178,10 +183,28 @@ def mic_available(app) -> Optional[bool]:
     return any(m.get("id") == chosen for m in mics if isinstance(m, dict))
 
 
+def microphone_name(app) -> str:
+    """Name the live capture endpoint, not a cached PortAudio index."""
+    if mic_available(app) is False:
+        return 'No microphone'  # PLACEHOLDER COPY (918)
+    engine = getattr(app, '_ace_engine', None)
+    name = getattr(engine, 'capture_name', None)
+    if name:
+        return str(name)
+    if getattr(app, '_using_default_mic', False):
+        return 'System default'  # PLACEHOLDER COPY (918)
+    chosen = _cfg(app).get('microphone')
+    for mic in getattr(app, 'available_mics', ()) or ():
+        if mic.get('id') == chosen:
+            return str(mic.get('name') or 'Default')
+    return 'Default'
+
+
 def dictation_state(app) -> CapabilityState:
-    if getattr(app, "snoozed", False):
-        return CapabilityState(DICTATION, PAUSED, "You paused listening.")
     mic = mic_available(app)
+    from samsara.speech_readiness import status
+    if mic is not False and status(app):
+        return CapabilityState(DICTATION, WARMING, status(app))
     if mic is None:
         return CapabilityState(
             DICTATION, UNKNOWN, "Samsara has not checked your microphone yet.",
@@ -191,6 +214,8 @@ def dictation_state(app) -> CapabilityState:
             DICTATION, UNAVAILABLE,
             "Your selected device is unavailable. Choose another in Settings > Audio > Microphone.",  # PLACEHOLDER COPY (838b)
             action_label=SETUP_MICROPHONE_LABEL, action=ACTION_SETUP_MICROPHONE)
+    if getattr(app, "snoozed", False):
+        return CapabilityState(DICTATION, PAUSED, "You paused listening.")
     return CapabilityState(DICTATION, READY, "", "Samsara has a microphone selected")
 
 
@@ -366,6 +391,9 @@ def problem_notice(app) -> Optional[Notice]:
     states = capability_states(app)
     for name in NOTICE_ORDER:
         state = states.get(name)
+        if name == DICTATION and state.status == WARMING:
+            return Notice(capability=name, headline=state.detail, consequence='',
+                          action='speech_model_loading')
         if state is not None and state.is_fault:
             return Notice(capability=name, headline=state.detail,
                           consequence=state.consequence, evidence=state.evidence,

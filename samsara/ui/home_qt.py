@@ -32,7 +32,8 @@ Runtime sources (the "what will happen when I speak" facts):
     listening   DictationApp.recording / snoozed / wake_word_active /
                 continuous_active / command_mode_active / toggle_active --
                 the same flags _tray_mark reads (dictation.py) -- plus
-                available_mics vs config['microphone'] for mic presence.
+                live capture loss and endpoint name (cached devices only
+                when no runtime capture signal exists).
     destination ava_command_session_active / ava_mode_active /
                 command_mode_active, SessionModeManager.mode, and
                 SessionModeManager._dictate_target_hwnd (session_modes.py)
@@ -287,6 +288,8 @@ TEACH_A_WORD = "Teach a word"
 #: snooze blocks every dictation hotkey (dictation.py on_key_press).
 #: listening_state_id() picks the row; the order there is the precedence.
 STATE_TABLE = {
+    "getting_ready": ("Getting ready.", "Getting ready", "none"),  # PLACEHOLDER COPY (918)
+    "unavailable": ("No microphone.", "No microphone", "none"),  # PLACEHOLDER COPY (918)
     "recording":   ("Listening now.", STOP_LISTENING, "stop"),
     "ava_session": ("Ava is listening.", STOP_LISTENING, "stop"),
     "hands_free":  ("Hands-free is on.", STOP_LISTENING, "stop"),
@@ -555,17 +558,8 @@ def capturing(app) -> bool:
 
 
 def mic_present(app) -> bool:
-    """False when the configured microphone is not among the devices the app
-    last enumerated (available_mics), or when it enumerated none. An app
-    that never enumerated (no attribute) makes no claim -> True."""
-    mics = getattr(app, 'available_mics', None)
-    if mics is None:
-        return True
-    ids = {m.get('id') for m in mics if isinstance(m, dict)}
-    mic_id = _cfg(app).get('microphone')
-    if mic_id is None:
-        return bool(ids)
-    return mic_id in ids
+    """Share the notice's live capture truth; unknown retains legacy behavior."""
+    return home_signals.mic_available(app) is not False
 
 
 def quoted(phrase) -> str:
@@ -599,6 +593,11 @@ def destination_sentence(app) -> str:
 def listening_state_id(app) -> str:
     """The STATE_TABLE row for the app's runtime flags, in precedence order.
     Read from runtime flags, never from config alone."""
+    from samsara.speech_readiness import status
+    if not mic_present(app):
+        return 'unavailable'
+    if status(app):
+        return 'getting_ready'
     if getattr(app, 'recording', False) or getattr(app, 'toggle_active', False):
         return "recording"
     if getattr(app, 'ava_command_session_active', False):
@@ -618,6 +617,9 @@ def state_view(app) -> tuple:
     """(state id, headline, primary label, primary action) -- the one row of
     STATE_TABLE the page shows."""
     state = listening_state_id(app)
+    if state == 'getting_ready':
+        from samsara.speech_readiness import status
+        return state, status(app), 'Getting ready', 'none'
     headline, label, action = STATE_TABLE[state]
     return state, headline.format(phrase=quoted(wake_phrase(_cfg(app)))), label, action
 
@@ -626,7 +628,7 @@ def state_line(app) -> str:
     """The page's ONE state line: the headline, then where speech goes (not
     while paused: nothing is going anywhere)."""
     state, headline, _label, _action = state_view(app)
-    if state == "paused":
+    if state in ("paused", "getting_ready", "unavailable"):
         return headline
     return f"{headline} {destination_sentence(app)}"
 
@@ -673,6 +675,9 @@ def talk_instructions(app) -> tuple:
     """Primary key, optional wake phrase, separate Ava key; runtime gates wake."""
     from samsara.ai_preferences import ava_master_enabled
     cfg = _cfg(app)
+    from samsara.speech_readiness import status
+    if status(app):
+        return status(app), '', ''
     key = hotkey_label(_cfg_get(cfg, 'hotkey') or config_defaults.DEFAULTS['hotkey'])
     mode = str(_cfg_get(cfg, 'mode') or 'hold')
     if mode == 'hold':
@@ -699,7 +704,8 @@ def talk_instructions(app) -> tuple:
 # PLACEHOLDER COPY (824): accent means a speech capture/session is active.
 LISTENING_BADGE_STATES = {
     'ready': ('Mic ready', 'TEXT_SECONDARY', 'pause'),  # PLACEHOLDER COPY (824)
-    'waiting': ('Mic ready', 'TEXT_SECONDARY', 'pause'),  # PLACEHOLDER COPY (824)
+    'waiting': ('Waiting for {phrase}', 'TEXT_SECONDARY', 'pause'),  # PLACEHOLDER COPY (918)
+    'getting_ready': ('Getting ready', 'TEXT_SECONDARY', 'none'),  # PLACEHOLDER COPY (918)
     'recording': ('Recording', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
     'hands_free': ('Hands-free on', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
     'continuous': ('Hands-free on', 'ACCENT', 'stop'),  # PLACEHOLDER COPY (824)
@@ -715,6 +721,11 @@ def listening_badge_view(app) -> tuple:
     if state in ('ready', 'waiting') and not mic_present(app):
         state = 'unavailable'
     label, colour, action = LISTENING_BADGE_STATES[state]
+    if state == 'waiting':
+        label = label.format(phrase=quoted(wake_phrase(_cfg(app))))
+    if state == 'getting_ready':
+        from samsara.speech_readiness import status
+        return label, theme.TEXT_SECONDARY, status(app), action
     # PLACEHOLDER COPY (824)
     click = {'pause': 'Click to pause listening.', 'stop': 'Click to stop listening.',  # PLACEHOLDER COPY (824)
              'resume': 'Click to resume listening.', 'none': 'Choose a microphone in Settings.'}[action]  # PLACEHOLDER COPY (824)
@@ -2104,6 +2115,8 @@ class HomePage(QWidget):
         refresh_problem_notice(
             self._notice_card, self._notice_text, self._notice_btn, notice,
             home_signals.DICTATION, OPEN_VOICE_HELP)
+        self._notice_btn.parentWidget().setVisible(
+            notice is not None and notice.action != 'speech_model_loading')
 
     def _on_report_notice(self):
         from samsara.bug_report.coordinator import report_notice

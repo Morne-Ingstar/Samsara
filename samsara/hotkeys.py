@@ -267,6 +267,8 @@ class HotkeyCluster:
             self.current_keys.add(key_name)
             self.key_press_times[key_name] = time.time()
 
+        from samsara.speech_readiness import show_for_keyboard_hotkey
+        show_for_keyboard_hotkey(self)
         self._check_command_mode_key(key, pressed=True)
 
         # While snoozed, still track key state and allow alarm hotkeys,
@@ -738,6 +740,8 @@ class HotkeyCluster:
             if not self.config.get('streaming_mode', False):
                 return  # event still suppressed; we just don't trigger
             if not self.model_loaded:
+                from samsara.speech_readiness import show
+                show(self)
                 return
 
             if event.event_type == keyboard.KEY_DOWN:
@@ -1109,6 +1113,9 @@ class HotkeyCluster:
         """
         mode = self.config.get('mode', 'hold')
         if pressed:
+            from samsara.speech_readiness import show, status
+            if not self.snoozed and status(self):
+                show(self)
             from samsara.decode_recovery import supersede_final
             supersede_final(self)
             if getattr(self, '_hold_down_mouse', False):

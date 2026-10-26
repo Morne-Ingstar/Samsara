@@ -57,7 +57,7 @@ DEFAULT_WIDTH  = 900
 DEFAULT_HEIGHT = 650
 MIN_WIDTH      = 700
 MIN_HEIGHT     = 500
-STATUS_POLL_MS = 2000
+STATUS_POLL_MS = 500  # 918: leave margin within the two-second capture-state target.
 SIDEBAR_W      = 180
 HISTORY_LIMIT  = 500
 #: 42: 26 px read too small beside the display wordmark; 34 px, vertically
@@ -740,12 +740,8 @@ class _MainWindow(QMainWindow):
             except Exception as e:
                 logger.debug(f"_refresh_status home: {e}")
 
-        mic_id   = cfg.get('microphone')
-        mic_name = "Default"
-        for m in getattr(self._app, 'available_mics', []) or []:
-            if m.get('id') == mic_id:
-                mic_name = m.get('name', 'Default')
-                break
+        from samsara.ui.home_signals import microphone_name
+        mic_name = microphone_name(self._app)
         if len(mic_name) > 36:
             mic_name = mic_name[:35] + '...'
         primary, wake, ava = talk_instructions(self._app)
@@ -860,6 +856,7 @@ class _MainWindow(QMainWindow):
 
     def showEvent(self, e):
         super().showEvent(e)
+        self._refresh_status()  # 918: refresh immediately after a tray reopen.
         self._header_mark.start()
 
     def hideEvent(self, e):
