@@ -868,6 +868,13 @@ class CommandExecutor:
                          entry.phrase, time.perf_counter())
         if entry is None:
             entry, remainder = self._repair_plugin_matcher_drift(match_text, context)
+        if entry is None:
+            from .command_catalog import compact_command_match
+            compact = compact_command_match(match_text, self._matcher, context)
+            if compact is not None:
+                entry, matched_phrase = compact
+                remainder = ''
+                logger.info('[CMD-COMPACT] "%s" -> "%s"', text, matched_phrase)
         if (entry is not None and getattr(entry.handler, '__module__', '') ==
                 'plugins.commands.selection_edit' and edit_command is None):
             return DispatchResult.miss(text)

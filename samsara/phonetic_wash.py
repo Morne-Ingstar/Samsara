@@ -143,6 +143,7 @@ _DEFAULT_PHRASE_CORRECTIONS = {
 # command text and on matcher input (where false matches are already the
 # common case); the executor's dictation fallthrough uses the ORIGINAL text.
 _DEFAULT_WORD_CORRECTIONS = {
+    "openlog": "open log",
     "fine": "find",
     "mike": "mic",
     "tub": "tab",

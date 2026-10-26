@@ -164,6 +164,26 @@ def normalize_phrase(phrase: str) -> str:
     return " ".join(tok for tok, _s, _e in view_tokens(phrase or ""))
 
 
+def compact_command_match(text: str, matcher, context=None):
+    """Return the unique live command whose phrase matches compact text.
+
+    This is an exact fallback for decoders that join words. It removes only
+    whitespace and hyphens, and refuses ambiguous compact spellings.
+    """
+    if not isinstance(text, str) or not text:
+        return None
+    compact = re.sub(r"[\s-]", "", text).casefold()
+    candidates = {}
+    for command in matcher.list_commands():
+        for phrase in [command["phrase"], *command.get("aliases", [])]:
+            if not isinstance(phrase, str) or re.sub(r"[\s-]", "", phrase).casefold() != compact:
+                continue
+            entry, remainder = matcher.match(phrase, context)
+            if entry is not None and not remainder:
+                candidates[entry.phrase] = (entry, phrase)
+    return next(iter(candidates.values())) if len(candidates) == 1 else None
+
+
 def matches_short_command(text: str, executor, *, allow_chain: bool = True) -> bool:
     """Accept only whole, live catalogue literals from a short final decode.
 
