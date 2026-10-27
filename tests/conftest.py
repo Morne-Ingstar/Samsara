@@ -10,6 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 from time import monotonic as _watchdog_monotonic_701
+from time import sleep as _watchdog_retry_sleep_944
 from unittest.mock import Mock, MagicMock, patch
 
 # Add parent directory to path for imports
@@ -248,7 +249,6 @@ class _ProcessWatchdog705:
 
     def close(self):
         import subprocess
-        import time
 
         # 940: the Windows watchdog may still be reading this file at exit.
         for attempt in range(50):
@@ -258,7 +258,7 @@ class _ProcessWatchdog705:
             except PermissionError:
                 if attempt == 49:
                     raise
-                time.sleep(0.01)
+                _watchdog_retry_sleep_944(0.01)
         try:
             self.process.wait(timeout=2)
         except subprocess.TimeoutExpired:

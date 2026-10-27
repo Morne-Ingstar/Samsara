@@ -54,11 +54,15 @@ def expired_items(states, now):
                   and now >= state['deadline'])
 
 
-def heartbeat_state(directory):
+def heartbeat_state(directory, *, pids=None):
     states = {}
     for path in directory.glob('*.json'):
         try:
-            states[path.name] = json.loads(path.read_text(encoding='utf-8'))
+            state = json.loads(path.read_text(encoding='utf-8'))
+            # 944: crashed workers leave files behind. Their deadlines must
+            # not terminate the replacement workers or the rest of the shard.
+            if pids is None or state.get('pid') in pids:
+                states[path.name] = state
         except (OSError, ValueError):
             continue  # An atomic replacement can briefly deny access on Windows.
     return states
@@ -135,7 +139,7 @@ def report_interrupted_session(path, states, elapsed, emit):
             # Retain the partial writer output for diagnosis.
             shutil.copyfile(path, path.with_suffix(path.suffix + '.interrupted'))
     pending = sorted({state.get('nodeid') for state in states.values()
-                      if state.get('nodeid')})
+                      if state.get('phase') == 'test' and state.get('nodeid')})
     names = pending or ['pytest session (no completed progress available)']
     suite = ElementTree.SubElement(root, 'testsuite', name='ci-interrupted-session',
                                    tests=str(len(names)), failures=str(len(names)),
@@ -193,17 +197,17 @@ def supervise(command, directory, *, idle_seconds=600, report_seconds=300,
         with owned_command(command, env) as child:
             root = psutil.Process(child.pid)
             started = progress = last_report = time.monotonic()
-            previous = heartbeat_state(directory)
+            previous = heartbeat_state(directory, pids={p.pid for p in process_tree(root)})
             emit(f'started pytest pid={child.pid}; idle limit={idle_seconds:g}s')
             while child.poll() is None:
                 now = time.monotonic()
-                current = heartbeat_state(directory)
+                processes = process_tree(root)
+                current = heartbeat_state(directory, pids={p.pid for p in processes})
                 if current != previous:
                     previous, progress = current, now
                 overdue = expired_items(current, now)
                 expired = bool(overdue) or now - progress >= idle_seconds or now - started >= max_seconds
                 if expired or now - last_report >= report_seconds:
-                    processes = process_tree(root)
                     emit(json.dumps(dict(processes=describe(processes), heartbeats=current),
                                     sort_keys=True))
                     last_report = now

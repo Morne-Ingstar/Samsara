@@ -265,7 +265,8 @@ def test_process_watchdog_close_retries_windows_reader(monkeypatch, tmp_path):
     watchdog.heartbeat.unlink.side_effect = [PermissionError('reader open'), None]
     watchdog.process = Mock()
     pause = Mock()
-    monkeypatch.setattr(time, 'sleep', pause)
+    # 944: leave the concurrent CI stack listener's sleep untouched.
+    monkeypatch.setattr(support, '_watchdog_retry_sleep_944', pause)
     watchdog.close()
     assert watchdog.heartbeat.unlink.call_count == 2
     pause.assert_called_once_with(0.01)
