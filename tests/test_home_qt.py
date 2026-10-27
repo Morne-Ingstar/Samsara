@@ -132,7 +132,9 @@ def _app(**over):
     app = types.SimpleNamespace(
         config={'mode': 'hold', 'hotkey': 'ctrl+shift', 'microphone': 7,
                 'wake_word_enabled': True, 'wake_word_configured': True,
-                'wake_word_config': {'phrase': 'jarvis'},
+                # 940: a healthy 919-era app carries microphone calibration.
+                'wake_word_config': {'phrase': 'jarvis', 'audio': {
+                    'measured_noise_floor': 0.012, 'calibrated_microphone': 7}},
                 'command_mode': {'mode': 'toggle'},
                 'ollama': {'enabled': True}, 'ava_declined': True},
         available_mics=[{'id': 7, 'name': 'USB mic'}],

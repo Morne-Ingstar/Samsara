@@ -16,7 +16,7 @@ samsara/_stale/speech.py:98
 # (ensure_started() is idempotent/lock-guarded startup code we don't want to
 # touch). It IS registered -- see thread_registry.register(_thread,
 # "samsara-qt") immediately after .start() in this same function.
-samsara/ui/qt_runtime.py:158
+samsara/ui/qt_runtime.py:159
 
 # Duck-restore timer must land in _duck_timers *before* it starts so a
 # concurrent _cancel_duck_timers() can never race a freshly-started one;

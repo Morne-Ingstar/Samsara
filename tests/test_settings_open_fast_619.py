@@ -1,6 +1,7 @@
 """Settings opens without waiting for hardware or unvisited destinations."""
 from types import SimpleNamespace
 from time import perf_counter
+from unittest.mock import Mock
 import threading
 
 import pytest
@@ -179,6 +180,30 @@ def test_pending_cuda_does_not_change_saved_device(window):
     window.show()
     assert not window._widgets['adv_device'].isEnabled()
     assert window._collect_destination_updates({})['device'] == 'cuda'
+
+
+@pytest.mark.parametrize('saved', ['auto', 'cuda'])
+@pytest.mark.parametrize('available', [False, True])
+def test_saved_device_survives_probe_and_unrelated_apply(window, qapp, monkeypatch, saved, available):
+    # 940: incidental CPU coercion opened a modal and blocked the next visit.
+    from samsara.ui import speech_hardware_qt
+    notice = Mock()
+    monkeypatch.setattr(speech_hardware_qt, '_notice', notice)
+    window.app.config['device'] = saved
+    window.show()
+    window.close()
+    window.show()
+    combo = window._widgets['adv_device']
+    window._test_cuda_callbacks[-1](available, 'Synthetic GPU probe')
+    qapp.processEvents()
+    assert window._collect_destination_updates({})['device'] == saved
+    window._apply_and_close()
+    assert window.app.config['device'] == saved
+    notice.assert_not_called()
+    window.show()
+    combo = window._widgets['adv_device']
+    combo.setCurrentText('CPU')
+    assert window._collect_destination_updates({})['device'] == 'cpu'
 
 
 def test_voice_enumeration_waits_for_worker_and_delivers_on_ui(window, qapp, monkeypatch):

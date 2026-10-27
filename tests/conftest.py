@@ -244,8 +244,17 @@ class _ProcessWatchdog705:
 
     def close(self):
         import subprocess
+        import time
 
-        self.heartbeat.unlink(missing_ok=True)
+        # 940: the Windows watchdog may still be reading this file at exit.
+        for attempt in range(50):
+            try:
+                self.heartbeat.unlink(missing_ok=True)
+                break
+            except PermissionError:
+                if attempt == 49:
+                    raise
+                time.sleep(0.01)
         try:
             self.process.wait(timeout=2)
         except subprocess.TimeoutExpired:

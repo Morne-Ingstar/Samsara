@@ -8,15 +8,14 @@ from samsara.wake_profiles import count_syllables, validate_wake_profiles
 
 def test_warp_profile_is_in_schema_defaults_and_disabled():
     defaults = SETTINGS_SCHEMA["wake_profiles"]["default"]
-    claude = next(profile for profile in defaults if profile["id"] == "claude")
-    warp = next(profile for profile in defaults if profile["id"] == "warp")
-
-    assert claude["phrase"] == "okay claude"
-    assert claude["oww_model"] == "okay_claude.onnx"
-
+    # 940: 919 ships no personal profiles; Warp remains explicitly opt-in.
+    assert defaults == []
     assert SETTINGS_SCHEMA["wake_profiles"]["type"] == "list"
     assert SETTINGS_SCHEMA["wake_profiles"]["item_type"] == "dict"
-    assert warp == {
+
+
+def _warp_profile():
+    return {
         "id": "warp",
         "phrase": "activate warp",
         "oww_model": "activate_warp.onnx",
@@ -28,7 +27,7 @@ def test_warp_profile_is_in_schema_defaults_and_disabled():
 
 
 def test_activate_warp_passes_wake_phrase_validation():
-    defaults = deepcopy(SETTINGS_SCHEMA["wake_profiles"]["default"])
+    defaults = [_warp_profile()]  # 940: explicit user-profile validation fixture.
     warp = next(profile for profile in defaults if profile["id"] == "warp")
     warp["enabled"] = True
 

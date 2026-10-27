@@ -20,8 +20,8 @@ def test_release_stamps_and_derived_consumers_agree():
     assert not re.search(r'^set VERSION=', batch, re.M)
     assert 'title Building Samsara v%VERSION%\n' in batch
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-    # 875b: keep download selectors on the published release until v0.40.0 exists.
-    assert set(re.findall(r'releases/tag/v([^/)]+)', readme)) == {'0.30.0-beta.10'}
+    # 940: 914 moved public downloads to the now-published stamped release.
+    assert set(re.findall(r'releases/tag/v([^/)]+)', readme)) == {version}
     installer = (ROOT / 'installer/samsara.iss').read_text(encoding='utf-8')
     builder = (ROOT / 'tools/build_installer.cmd').read_text(encoding='utf-8')
     assert 'AppVersion={#AppVersion}' in installer

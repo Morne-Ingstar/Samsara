@@ -108,7 +108,9 @@ class _App:
         for name in APP_METHODS:
             setattr(self, name, getattr(policy, name).__get__(self, type(self)))
         self.config = {'wake_word_enabled': wake_enabled, 'microphone': 7,
-                       'wake_word_config': {'phrase': 'jarvis'}}
+                       # 940: unrelated calibration must not mask recovery.
+                       'wake_word_config': {'phrase': 'jarvis', 'audio': {
+                           'measured_noise_floor': 0.012, 'calibrated_microphone': 7}}}
         self.available_mics = [{'id': 7, 'name': 'USB mic'}]
         self.snoozed = False
         self.wake_word_active = True

@@ -138,6 +138,15 @@ def test_command_free_text(monkeypatch, caplog):
     assert caplog.records[-1].exc_info
 
 
+def test_compact_command_repair_log_only_contains_metadata(caplog):
+    # 940: joined-word repair diagnostics must never log recognized words.
+    log_seam("samsara/commands.py", "[CMD-COMPACT]",
+             {"text": PRIVATE, "matched_phrase": "open log"})
+    assert "[CMD-COMPACT]" in caplog.text
+    assert describe_text(PRIVATE) in caplog.text
+    assert "open log" in caplog.text
+
+
 def test_error_message_cannot_echo_private_input(caplog):
     try:
         raise ValueError(PRIVATE)

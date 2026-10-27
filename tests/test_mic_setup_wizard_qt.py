@@ -38,6 +38,13 @@ class _WizardApp:
         self.saved_updates.append(dict(updates))
         self.config.update(updates)
 
+    def update_config(self, updates, *, save=False):
+        # 940: mirror the API used by 919's production calibration callback.
+        if save:
+            self.update_config_and_save(updates)
+        else:
+            self.config.update(updates)
+
     def calibrate_wake_mic(self, *, seconds, cancel_event):
         self.calibration_calls.append((seconds, cancel_event))
         return 0.012

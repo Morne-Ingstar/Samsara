@@ -122,9 +122,15 @@ def test_missing_wake_profiles_agree_in_guidance_and_matching():
     implicit = facts_from_config({})
     explicit = facts_from_config({"wake_profiles": DEFAULTS["wake_profiles"]})
     assert implicit.wake_profile_send_words == explicit.wake_profile_send_words
-    assert implicit.wake_profile_send_words
-    profile = next(p for p in DEFAULTS["wake_profiles"] if p["enabled"])
+    # 940: 919 ships no personal profiles; explicit profiles still match.
+    assert implicit.wake_profile_send_words == ()
+    assert DEFAULTS["wake_profiles"] == []
+    profile = {"id": "synthetic", "phrase": "okay helper", "enabled": True}
     app = SimpleNamespace(config={})
+    assert dictation.DictationApp._check_wake_profiles(
+        app, profile["phrase"], session_open=True
+    ) is None
+    app.config["wake_profiles"] = [profile]
     assert dictation.DictationApp._check_wake_profiles(
         app, profile["phrase"], session_open=True
     ) == profile

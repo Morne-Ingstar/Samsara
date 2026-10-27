@@ -256,6 +256,24 @@ def test_default_exceeds_ci_soft_timeout(monkeypatch):
     assert support._hard_timeout_seconds_700() == 180
 
 
+def test_process_watchdog_close_retries_windows_reader(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+    watchdog = object.__new__(support._ProcessWatchdog705)
+    watchdog.directory = tmp_path / 'watchdog'
+    watchdog.directory.mkdir()
+    watchdog.heartbeat = Mock()
+    watchdog.heartbeat.unlink.side_effect = [PermissionError('reader open'), None]
+    watchdog.process = Mock()
+    pause = Mock()
+    monkeypatch.setattr(time, 'sleep', pause)
+    watchdog.close()
+    assert watchdog.heartbeat.unlink.call_count == 2
+    pause.assert_called_once_with(0.01)
+    watchdog.process.wait.assert_called_once_with(timeout=2)
+    watchdog.process.kill.assert_not_called()
+    assert not watchdog.directory.exists()
+
+
 @pytest.mark.parametrize('phase', ['collection', 'sessionfinish', 'atexit', 'native'])
 def test_step_supervisor_covers_gaps_outside_item_watchdogs(tmp_path, phase):
     hook = NATIVE_BLOCK + '''

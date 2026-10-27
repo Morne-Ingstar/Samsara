@@ -15,11 +15,13 @@ def _window(monkeypatch, tmp_path):
     from samsara.ui.first_run_qt import ComponentsPage
     monkeypatch.setattr(autostart, "sync_run_entry", lambda *a, **kw: None)
     monkeypatch.setattr(ComponentsPage, "refresh_async", lambda self: None)
-    return settings_qt._SettingsWindow(_StubApp(_schema_defaults()))
+    config = deepcopy(_schema_defaults())
+    config['wake_profiles'] = _sample_profiles()  # 940: explicit editor fixtures.
+    return settings_qt._SettingsWindow(_StubApp(config))
 
 
-def test_schema_default_is_the_shipped_profile_list():
-    shipped = [
+def _sample_profiles():
+    return [
         {
             "id": "claude", "phrase": "okay claude", "oww_model": "okay_claude.onnx",
             "target_process": "claude.exe", "enabled": True, "mode": "focus_dictate", "send_word": "over",
@@ -33,6 +35,9 @@ def test_schema_default_is_the_shipped_profile_list():
             "target_process": "warp.exe", "enabled": False, "mode": "focus_dictate", "send_word": "over",
         },
     ]
+def test_schema_default_is_the_shipped_profile_list():
+    # 940: 919 removed personal profiles from the shipped defaults.
+    shipped = []
     assert SETTINGS_SCHEMA["wake_profiles"]["type"] == "list"
     assert SETTINGS_SCHEMA["wake_profiles"]["item_type"] == "dict"
     assert SETTINGS_SCHEMA["wake_profiles"]["default"] == shipped

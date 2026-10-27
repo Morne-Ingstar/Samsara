@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from samsara.ui import theme
+from samsara import config_defaults
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox
 
 from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH
@@ -74,12 +75,14 @@ class AdvancedPage:
         layout.addWidget(self._section_title("Hardware Acceleration"))
         layout.addSpacing(4)
 
-        device_display_to_value = {'CPU': 'cpu'}
+        # 940: retain the canonical auto choice during probes and unrelated Apply.
+        # PLACEHOLDER COPY (940): Auto.
+        device_display_to_value = {'Auto': 'auto', 'CPU': 'cpu'}
         if cfg.get('device') == 'cuda':
             device_display_to_value['CUDA (NVIDIA GPU)'] = 'cuda'
         device_value_to_display = {v: k for k, v in device_display_to_value.items()}
 
-        current_device = cfg.get('device', 'cpu')
+        current_device = cfg.get('device', config_defaults.DEFAULTS['device'])
         current_device_display = device_value_to_display.get(current_device, 'CPU')
 
         device_combo = QComboBox()
@@ -101,8 +104,8 @@ class AdvancedPage:
         def cuda_ready(available, message):
             selected = device_display_to_value.get(device_combo.currentText(), current_device)
             device_display_to_value.clear()
-            device_display_to_value['CPU'] = 'cpu'
-            if available:
+            device_display_to_value.update({'Auto': 'auto', 'CPU': 'cpu'})
+            if available or selected == 'cuda':
                 device_display_to_value['CUDA (NVIDIA GPU)'] = 'cuda'
             blocked = device_combo.blockSignals(True)
             device_combo.clear()

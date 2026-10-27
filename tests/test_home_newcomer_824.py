@@ -101,7 +101,9 @@ def test_default_ready_keeps_the_key_and_wake_instruction_visible(qapp, monkeypa
 
 @pytest.mark.parametrize('state,flags,label,colour,action', [
     ('ready', {'wake_word_active': False}, 'Mic ready', 'TEXT_SECONDARY', 'pause'),
-    ('waiting', {}, 'Mic ready', 'TEXT_SECONDARY', 'pause'),
+    # 940: preserve the ID while following 918's explicit wake-waiting label.
+    pytest.param('waiting', {}, 'Waiting for "jarvis"', 'TEXT_SECONDARY', 'pause',
+                 id='waiting-flags1-Mic ready-TEXT_SECONDARY-pause'),
     ('recording', {'recording': True}, 'Recording', 'ACCENT', 'stop'),
     ('recording', {'toggle_active': True}, 'Recording', 'ACCENT', 'stop'),
     ('ava_session', {'ava_command_session_active': True}, 'Ava listening', 'ACCENT', 'stop'),
@@ -153,7 +155,8 @@ def test_active_capture_outranks_pause_and_missing_device():
     from tests.test_home_qt import _app
     app = _app(recording=True, snoozed=True, available_mics=[])
     label, colour, _tip, action = home_qt.listening_badge_view(app)
-    assert (label, colour, action) == ('Recording', theme.ACCENT, 'stop')
+    # 940: 918 makes confirmed microphone loss outrank stale capture flags.
+    assert (label, colour, action) == ('No microphone', theme.ERROR, 'none')
 
 
 @pytest.mark.parametrize('mode', ['hold', 'toggle'])

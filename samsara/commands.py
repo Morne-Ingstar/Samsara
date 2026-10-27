@@ -874,7 +874,7 @@ class CommandExecutor:
             if compact is not None:
                 entry, matched_phrase = compact
                 remainder = ''
-                logger.info('[CMD-COMPACT] "%s" -> "%s"', text, matched_phrase)
+                logger.info('[CMD-COMPACT] %s -> "%s"', describe_text(text), matched_phrase)
         if (entry is not None and getattr(entry.handler, '__module__', '') ==
                 'plugins.commands.selection_edit' and edit_command is None):
             return DispatchResult.miss(text)

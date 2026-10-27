@@ -172,7 +172,7 @@ def test_header_badge_never_paints_over_the_header_divider(qapp, main_window, st
         assert "background: transparent" in badge.styleSheet()
         return
     _pump(qapp, 50)
-    assert badge.text() == {"ready": "Mic ready", "listening": "Mic ready", "recording": "Recording"}[state]  # 824: explicit state labels.
+    assert badge.text() == {"ready": "Mic ready", "listening": 'Waiting for "jarvis"', "recording": "Recording"}[state]  # 940: follow 918's explicit wake-waiting label.
     assert "background: transparent" in badge.styleSheet()
     header = badge.parentWidget()
     image = header.grab().toImage()

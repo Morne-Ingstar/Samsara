@@ -9,6 +9,7 @@ import pytest
 
 from samsara import wake_profiles
 from samsara.config_schema import SETTINGS_SCHEMA
+from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from tools import train_wake_model
 
 
@@ -24,10 +25,10 @@ def _short_profile():
 
 def test_default_claude_phrase_and_model():
     profiles = SETTINGS_SCHEMA["wake_profiles"]["default"]
-    claude = next(item for item in profiles if item["id"] == "claude")
-    assert claude["phrase"] == "okay claude"
-    assert claude["oww_model"] == "okay_claude.onnx"
-    assert wake_profiles.count_syllables(claude["phrase"]) >= 3
+    # 940: 919 removed personal profiles from shipped defaults, keeping Jarvis.
+    assert profiles == []
+    assert DEFAULT_WAKE_PHRASE == "jarvis"
+    assert DEFAULT_WAKE_PHRASE_OPTIONS == ["jarvis"]
 
 
 def test_short_phrase_without_model_is_disabled(tmp_path, monkeypatch):
@@ -62,7 +63,9 @@ def test_short_phrase_requires_passing_metrics_and_matching_bytes(tmp_path, monk
 
 def test_settings_phrase_change_updates_hidden_model_name(tmp_path, monkeypatch):
     monkeypatch.setattr(wake_profiles, "WAKE_MODELS_DIR", tmp_path)
-    profile = deepcopy(SETTINGS_SCHEMA["wake_profiles"]["default"][0])
+    # 940: exercise explicit user profiles independently of shipped defaults.
+    profile = {"id": "claude", "phrase": "okay claude",
+               "oww_model": "okay_claude.onnx", "enabled": True}
     profile["phrase"] = "hey claude"
     wake_profiles.validate_wake_profiles([profile])
     assert profile["oww_model"] == "hey_claude.onnx"

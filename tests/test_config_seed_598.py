@@ -31,10 +31,12 @@ def test_factory_preserves_inputs_and_owns_every_nested_container(tmp_path):
     assert first["smart_actions"]["allowed_directories"] == [str(tmp_path / "Documents")]
     assert set(_containers(first)).isdisjoint(_containers(second))
     assert set(_containers(first)).isdisjoint(_containers([macros, notifications]))
-    first["wake_profiles"][0]["enabled"] = False
+    # 940: 919 ships no personal profiles; retain the list-ownership mutation.
+    assert first["wake_profiles"] == second["wake_profiles"] == []
+    first["wake_profiles"].append({"id": "synthetic", "enabled": False})
     first["key_macros"]["bindings"][0]["keys"].append("f10")
     first["notifications"]["reminders"].clear()
-    assert second["wake_profiles"][0]["enabled"] is True
+    assert second["wake_profiles"] == []
     assert (macros, notifications) == before
     assert structural_error(second) is None
 

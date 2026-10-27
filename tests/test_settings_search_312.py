@@ -53,7 +53,8 @@ def test_search_matches_collapsed_advanced_wake_profile(qapp, monkeypatch, tmp_p
         window.show_tab("Dictation")
         page = window._pages["Dictation"]
         assert not page.advanced.toggle.isChecked()
-        window._search_edit.setText("claude")
+        # 940: 919 ships no personal Claude profile; search the retained row.
+        window._search_edit.setText("wake profiles")
         window._apply_search_filter()
         assert page.advanced.toggle.isChecked()
         row = next(row for row in window._destination_rows if row.title == "Wake profiles")

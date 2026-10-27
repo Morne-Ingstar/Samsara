@@ -210,6 +210,10 @@ class _GuideApp:
     def get_available_microphones(self):
         return [{"id": 1, "name": "Mic"}]
 
+    def update_config(self, updates, *, save=True):
+        # 940: 919 persists microphone calibration through the production API.
+        self.config.update(updates)
+
     def calibrate_wake_mic(self, *, seconds, cancel_event):
         return self._calibrate(self, seconds, cancel_event)
 
