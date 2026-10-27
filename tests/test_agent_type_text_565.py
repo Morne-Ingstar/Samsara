@@ -753,7 +753,10 @@ def test_failed_command_hotkey_cannot_approve_next_dictation_hold(rig, started):
 def test_command_key_capture_provenance_is_explicit():
     import ast
     tree = ast.parse((Path(__file__).resolve().parents[1] / 'dictation.py').read_text(encoding='utf-8'))
-    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+    # 945: Ava has its own tag; inspect the command-key transcription caller.
+    owner = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+                 and node.name == '_stop_recording_impl')
+    calls = [node for node in ast.walk(owner) if isinstance(node, ast.Call)
              and isinstance(node.func, ast.Attribute) and node.func.attr == 'process_text']
     tagged = [keyword.value for node in calls for keyword in node.keywords if keyword.arg == 'capture_path']
     assert len(tagged) == 1

@@ -6,6 +6,7 @@ from types import SimpleNamespace, MethodType
 from unittest.mock import Mock
 import ast
 import threading
+import time
 
 import pytest
 from PySide6.QtCore import Qt
@@ -185,7 +186,14 @@ def test_recording_timer_in_both_lanes_obeys_reduced_motion(surface,reduced):
     for lane in (Lane.HOLD,Lane.HANDS_FREE_DICTATE):
         app.is_speaking = True
         c.begin_capture(lane); c.drain()
-        angle = c.widget._mark.rotation; QTest.qWait(170)
+        angle = c.widget._mark.rotation
+        # 945: a busy event loop may deliver no animation ticks in 170 ms.
+        if reduced:
+            QTest.qWait(170)
+        else:
+            deadline = time.monotonic() + 3.0
+            while c.widget._mark.rotation == angle and time.monotonic() < deadline:
+                QTest.qWait(10)
         assert c.widget._mark.capture == 'recording'
         assert c.widget._spin_timer.isActive() is not reduced
         assert (c.widget._mark.rotation == angle) is reduced
