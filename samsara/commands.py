@@ -813,7 +813,7 @@ class CommandExecutor:
 
         # 943: whole help requests stay ahead of ordinary command matching.
         from .help_intents import route_request
-        help_result = route_request(self, text, effective_app, command_mode=command_lane(effective_app, force_commands), route=route, generation=generation)
+        help_result = route_request(self, text, effective_app, command_mode=command_lane(effective_app, force_commands), route=route, generation=generation, capture_path=None if payload is not None else capture_path)
         if help_result is not None:
             return help_result
 

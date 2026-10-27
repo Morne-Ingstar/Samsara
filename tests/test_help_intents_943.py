@@ -330,3 +330,52 @@ def test_open_only_guidance_does_not_mutate_settings(rig):
         assert executor.process_text(text, force_commands=True).succeeded
     assert app.config == {}
     assert opened == ["ava", "audio", "dictation"]
+
+
+# 943b: Ava's forced registry probe must not become help-discovery intent.
+@pytest.mark.parametrize("legacy", [False, True])
+def test_ava_capture_leaves_help_questions_for_conversation(rig, monkeypatch, legacy):
+    executor, app, opened = rig
+    app.config = {"command_mode": {"dictation_literal_commands_only": not legacy}}
+    authorize = Mock(wraps=policy.authorize)
+    monkeypatch.setattr(policy, "authorize", authorize)
+    questions = [text for text, _ in EXAMPLES] + [
+        "what is the capital of france", "how do I fly a kite", "I'm lost",
+        "help fly a kite", "help change my mic", "please help",
+        "please how do I change my mic", "help with the dictionary",
+    ]
+    for text in questions:
+        result = executor.process_text(text, force_commands=True, capture_path="ava_hold")
+        assert result.state is DispatchState.MISS, text
+        assert result.result == text
+    assert not authorize.called
+    assert not opened and not app.cheat_sheet.show_scoped.called
+    assert not app.audio_coordinator.speak.called
+
+
+@pytest.mark.parametrize("text,place", [
+    ("command how do I change my mic", "general"),
+    ("command help change my mic", "general"),
+    ("command how do I fly a kite", None),
+])
+def test_ava_capture_keeps_explicit_command_prefix_help(rig, text, place):
+    executor, app, opened = rig
+    app.command_matching_enabled = False
+    assert executor.process_text(text, force_commands=True, capture_path="ava_hold").succeeded
+    assert opened == ([place] if place else [])
+    assert app.cheat_sheet.show_scoped.called == (place is None)
+
+
+@pytest.mark.parametrize("text", ["help", "what can I say", "how do I"])
+def test_ava_capture_keeps_exact_registered_help_commands(rig, text):
+    executor, app, opened = rig
+    assert executor.process_text(text, force_commands=True, capture_path="ava_hold").succeeded
+    assert app.cheat_sheet.show_scoped.called
+    assert not opened
+
+
+def test_ava_capture_keeps_exact_personal_help_shaped_command(executor, monkeypatch):
+    monkeypatch.setitem(executor._matcher._entries, "show me the commands", object())
+    assert hi.route_request(executor, "Show me the commands?!", None,
+                            command_mode=True, route=policy.Route.EXACT,
+                            generation=0, capture_path="ava_hold") is None

@@ -15638,46 +15638,46 @@
 {"id": "core_utils.save_alias", "kind": "sentence", "polarity": "negative", "reject": "core_utils.save_alias", "text": "last night he wrote in the notes that you can remove alias whenever it feels right"}
 {"id": "core_utils.save_alias", "kind": "other_command", "polarity": "negative", "reject": "core_utils.save_alias", "text": "save"}
 {"id": "core_utils.save_alias", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.save_alias", "text": "cobalt lantern remove zeppelin purple"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "what can i say"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the are my commands call mom at five"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "could you just what are my commands"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "numeral", "polarity": "positive", "text": "what can i say call mom at 5"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What, can i say call mom at five?"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "what are my commands call mom at five"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "what commands do i have"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "help the check the oven"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "could you just what can i say call mom at five"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "numeral", "polarity": "positive", "text": "what are my commands call mom at 5"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What are my commands call mom at five."}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "what commands do i have the build is green"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "help"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the are my commands"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "help check the oven please"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "Help check the oven."}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "what can i say call mom at five"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "is there a way to"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "how the can i call mom at five"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "could you what commands do i have the build is green"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "mishear", "polarity": "positive", "text": "what is the command two water the plants"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "numeral", "polarity": "positive", "text": "help me call mom at 5"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "Help, check the oven?"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "reorder", "polarity": "positive", "text": "me help"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "what can i say buy milk"}
 {"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "what are my commands"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the can i say call mom at five"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "go ahead and what are my commands call mom at five"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What, commands do i have the build is green?"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "help check the oven"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the commands do i have"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "what can i say thanks"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What, commands do i have?"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the can i say"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "can you please help"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What, are my commands?"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the commands do i have the build is green"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "go ahead and what commands do i have the build is green"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What can i say."}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "um what commands do i have the build is green"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "Help."}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "uh what can i say"}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What can i say call mom at five."}
-{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "i need you to what can i say"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the is the command to water the plants"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "please is there a way to"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "mishear", "polarity": "positive", "text": "is there a way two call mom at five"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "numeral", "polarity": "positive", "text": "how can i call mom at 5"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What, is the command to water the plants?"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "how can i call mom at five"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "help"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "how the do i"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "where do i the build is green please"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "mishear", "polarity": "positive", "text": "what is the command two"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "numeral", "polarity": "positive", "text": "is there a way to call mom at 5"}
 {"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What commands do i have."}
-{"id": "core_utils.what_can_i_say", "kind": "sentence", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "our manager keeps asking whether anyone remembered to help last week"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "how do i the build is green"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "where do i"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "where the do i the build is green"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "help me call mom at five for me"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "mishear", "polarity": "positive", "text": "is there a way two"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "How, can i?"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "where do i the build is green"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "what can i say"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the can i say buy milk"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "what commands do i have for me"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What can i say."}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "slot", "polarity": "positive", "text": "help me call mom at five"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "alias", "polarity": "positive", "text": "what is the command to"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "determiner", "polarity": "positive", "text": "what the commands do i have"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "filler", "polarity": "positive", "text": "where do i thanks"}
+{"accept": ["core_utils.what_can_i_say"], "id": "core_utils.what_can_i_say", "kind": "punct", "polarity": "positive", "text": "What are my commands check the oven."}
+{"id": "core_utils.what_can_i_say", "kind": "sentence", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "honestly the whole point of the meeting was to help and nobody did"}
 {"id": "core_utils.what_can_i_say", "kind": "other_command", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "what alarms do i have"}
-{"id": "core_utils.what_can_i_say", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "cobalt quartz help velvet banana"}
+{"id": "core_utils.what_can_i_say", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.what_can_i_say", "text": "octopus banana help thunderous wobble"}
 {"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "alias", "polarity": "positive", "text": "what just happened"}
 {"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "determiner", "polarity": "positive", "text": "what the just happened"}
 {"accept": ["core_utils.why_didnt_that_work"], "id": "core_utils.why_didnt_that_work", "kind": "filler", "polarity": "positive", "text": "please what just happened"}

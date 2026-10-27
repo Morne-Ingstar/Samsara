@@ -146,7 +146,7 @@ def match_help(text, *, command_mode):
     return None
 
 
-def route_request(executor, text, app, *, command_mode, route, generation):
+def route_request(executor, text, app, *, command_mode, route, generation, capture_path=None):
     """Enter the existing registered help handler through canonical policy."""
     intent = match_help(text, command_mode=True)
     if intent is None:
@@ -154,6 +154,13 @@ def route_request(executor, text, app, *, command_mode, route, generation):
     # Literal existing commands (including aliases, personal/scoped/disabled
     # commands) retain ownership; never steal an exact registered utterance.
     from samsara.command_catalog import normalize_phrase
+    if capture_path == "ava_hold":
+        # 943b: forced matching on Ava's key is not help-discovery intent.
+        # Only a whole registered phrase may take a question away from Ava.
+        if normalize_phrase(text) in executor._matcher._entries:
+            return None
+        from samsara.command_registry import DispatchResult
+        return DispatchResult.miss(text)
     if (normalize(text) in executor._matcher._entries
             or normalize_phrase(text) in executor._matcher._entries):
         return None

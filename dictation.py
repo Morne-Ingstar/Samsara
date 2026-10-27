@@ -5417,7 +5417,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         if self._try_stop_utterance(text, 'hold ava'):
             return
         result, was_command = self.command_executor.process_text(
-            text, self, force_commands=True)
+            text, self, force_commands=True, capture_path='ava_hold')
         if was_command:
             _store_cmd = self.command_executor.commands.get(result) or {'type': 'plugin'}
             if (result and not _is_repeat_blacklisted(result, _store_cmd)
