@@ -1,6 +1,8 @@
 """857: command-list gutters must blend into the painted command rows."""
 import pytest
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication
 
 from samsara import command_stats
 from samsara.ui import command_cheatsheet_qt as sheet, theme
@@ -29,9 +31,24 @@ def test_left_and_right_gutters_match_row_background(
         win.show()
         view = win._list
         # Check rows at both ends: this catches the gutter even after scrolling.
-        for position in ('top', 'bottom'):
+        for position, hovered in (('top', False), ('bottom', False),
+                                  ('top', True), ('bottom', True)):
             view.scrollToTop() if position == 'top' else view.scrollToBottom()
             qapp.processEvents()
+            # 941: a hosted runner's pointer can hover a row. Pin the pointer
+            # state rather than treating the intended hover fill as a defect.
+            QApplication.sendEvent(view.viewport(), QEvent(QEvent.Type.Leave))
+            view.clearSelection()
+            hovered_row = -1
+            if hovered:
+                point = view.viewport().rect().center()
+                hovered_row = view.indexAt(point).row()
+                assert hovered_row >= 0
+                QApplication.sendEvent(view.viewport(), QMouseEvent(
+                    QEvent.Type.MouseMove, QPointF(point),
+                    QPointF(view.viewport().mapToGlobal(point)),
+                    Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+                    Qt.KeyboardModifier.NoModifier))
             image = view.grab().toImage()
             scale = image.devicePixelRatio()
             viewport = view.viewport().geometry()
@@ -53,7 +70,7 @@ def test_left_and_right_gutters_match_row_background(
                 fades = (win._scroll_edges.top, win._scroll_edges.bottom)
                 if not any(fade.isVisible() and fade.geometry().top() <= point_y <= fade.geometry().bottom()
                            for fade in fades):
-                    assert pixels[0] == theme.qcolor(row_fill(i)), (position, i, pixels)
+                    assert pixels[0] == theme.qcolor(row_fill(i, hovered=i == hovered_row)), (position, i, pixels)
                 checked += 1
             assert checked >= 2
     finally:

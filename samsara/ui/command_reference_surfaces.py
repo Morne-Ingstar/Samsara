@@ -41,7 +41,7 @@ class ReferenceDisclosure(QObject):
                 if item is not None:
                     win._on_item_clicked(item)
                 return True
-        elif event.type() == QEvent.Type.Resize:
+        elif event.type() == QEvent.Type.Resize and not self.placing:
             win._detail_card.dismiss()
         return False
 

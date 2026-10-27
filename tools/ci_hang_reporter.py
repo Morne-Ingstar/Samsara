@@ -9,11 +9,49 @@ import json
 import os
 from pathlib import Path
 import shutil
+import queue
+import threading
 import subprocess
 import time
 from xml.etree import ElementTree
 
 import psutil
+
+
+class ConsoleRelay:
+    """Console backpressure must never hold the deadline/termination loop."""
+
+    def __init__(self):
+        self.pending = queue.Queue(maxsize=128)
+        self.thread = threading.Thread(target=self._run, name='ci-console', daemon=True)
+        self.thread.start()
+
+    def _run(self):
+        while True:
+            line = self.pending.get()
+            if line is None:
+                return
+            try:
+                print(line, flush=True)
+            except (OSError, ValueError):
+                return  # The durable reporter log remains authoritative.
+
+    def emit(self, line):
+        try:
+            self.pending.put_nowait(line)
+        except queue.Full:
+            pass  # Every line was already written to reporter.log.
+
+    def close(self):
+        self.emit(None)
+        self.thread.join(timeout=0.1)
+
+
+def expired_items(states, now):
+    # A different worker's progress cannot extend this item's hard deadline.
+    return sorted(state['nodeid'] for state in states.values()
+                  if state.get('phase') == 'test' and state.get('deadline') is not None
+                  and now >= state['deadline'])
 
 
 def heartbeat_state(directory):
@@ -142,11 +180,13 @@ def supervise(command, directory, *, idle_seconds=600, report_seconds=300,
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, SAMSARA_CI_HEARTBEAT_DIR=str(directory.resolve()),
                PYTHONUNBUFFERED='1')
-    with (directory / 'reporter.log').open('a', encoding='utf-8', buffering=1) as log:
+    from contextlib import closing
+    with closing(ConsoleRelay()) as console, (directory / 'reporter.log').open(
+            'a', encoding='utf-8', buffering=1) as log:
         def emit(message):
             line = f'[CI hang reporter {time.strftime("%H:%M:%S")}] {message}'
             log.write(line + '\n')
-            print(line, flush=True)
+            console.emit(line)
 
         # Start the supervisor first, then pytest as its background child. This
         # avoids a PowerShell job owning/losing the reporter's console handles.
@@ -160,14 +200,16 @@ def supervise(command, directory, *, idle_seconds=600, report_seconds=300,
                 current = heartbeat_state(directory)
                 if current != previous:
                     previous, progress = current, now
-                expired = now - progress >= idle_seconds or now - started >= max_seconds
+                overdue = expired_items(current, now)
+                expired = bool(overdue) or now - progress >= idle_seconds or now - started >= max_seconds
                 if expired or now - last_report >= report_seconds:
                     processes = process_tree(root)
                     emit(json.dumps(dict(processes=describe(processes), heartbeats=current),
                                     sort_keys=True))
                     last_report = now
                 if expired:
-                    emit('deadline exceeded; dumping stacks before terminating workers/controller')
+                    emit('deadline exceeded; overdue items=' + repr(overdue) +
+                         '; dumping stacks before terminating workers/controller')
                     try:
                         dump_stacks(processes, directory, emit)
                     finally:

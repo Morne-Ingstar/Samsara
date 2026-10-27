@@ -29,8 +29,12 @@ def _ci_progress_711(phase, nodeid=''):
     root.mkdir(parents=True, exist_ok=True)
     path = root / f'{os.getpid()}.json'
     pending = path.with_suffix('.tmp')
-    pending.write_text(json.dumps(dict(pid=os.getpid(), phase=phase, nodeid=nodeid,
-                                       progress=_watchdog_monotonic_701())), encoding='utf-8')
+    now = _watchdog_monotonic_701()
+    state = dict(pid=os.getpid(), phase=phase, nodeid=nodeid, progress=now)
+    seconds = _hard_timeout_seconds_700()
+    if phase == 'test' and seconds:
+        state['deadline'] = now + seconds  # 941: visible to the independent supervisor.
+    pending.write_text(json.dumps(state), encoding='utf-8')
     for attempt in range(50):
         try:
             os.replace(pending, path)
@@ -267,6 +271,7 @@ def pytest_sessionstart(session):
     _ci_progress_711('collection')
     _ci_dump_listener_711()
     config = session.config
+    _ci_native_crash_log_941(config)
     if _hard_timeout_seconds_700() == 0:
         return
     if getattr(config.option, 'numprocesses', 0) and not hasattr(config, 'workerinput'):
@@ -278,6 +283,23 @@ def pytest_sessionstart(session):
     watchdog = _ProcessWatchdog705(fd)
     config.stash[_PROCESS_WATCHDOG_705] = watchdog
     config.add_cleanup(watchdog.close)
+
+
+def _ci_native_crash_log_941(config):
+    """Retain native crash stacks even when execnet redirects fd 2 to NUL."""
+    directory = os.environ.get('SAMSARA_CI_HEARTBEAT_DIR')
+    if not directory:
+        return
+    import faulthandler
+
+    stream = (Path(directory) / f'native-crash-{os.getpid()}.txt').open('a')
+    faulthandler.enable(file=stream, all_threads=True)
+
+    def close():
+        faulthandler.disable()
+        stream.close()
+
+    config.add_cleanup(close)
 
 
 def _hard_timeout_seconds_700():

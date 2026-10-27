@@ -723,6 +723,7 @@ class TestApplyAndCloseSnapshot:
         expected['hands_free'] = {'send_mode': 'staged'}
         expected['ava'] = {'conversation_log_enabled': False}
         expected['home'] = {'show_recent_words': True}  # 887: landed 826b privacy control.
+        expected['device'] = 'auto'  # 941: 940 preserves Auto when CUDA is unavailable.
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()

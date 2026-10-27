@@ -202,7 +202,7 @@ class ActionButton(QToolButton):
             self.setToolTip(self.accessibleDescription())
         self.clicked.connect(lambda: card.owner.act(card.number, action))
         self.pressed.connect(self._pressed)
-        self.released.connect(lambda: QTimer.singleShot(0, card.quick_actions))
+        self.released.connect(lambda: QTimer.singleShot(0, card, card.quick_actions))
         self.installEventFilter(card)
 
     def _pressed(self):
@@ -232,7 +232,7 @@ class ActionButton(QToolButton):
         self.setDown(False)
         if pressed and self.rect().contains(event.position().toPoint()):
             self.click()
-        QTimer.singleShot(0, self.card.quick_actions)
+        QTimer.singleShot(0, self.card, self.card.quick_actions)
         event.accept()
 
     def mouseMoveEvent(self, event):
@@ -459,7 +459,7 @@ class OverviewCard(QWidget):
             self.hovered = True
             self.quick_actions()
         elif kind in (QEvent.Type.Leave, QEvent.Type.FocusOut, QEvent.Type.MouseButtonRelease):
-            QTimer.singleShot(0, self._pointer_left)
+            QTimer.singleShot(0, self, self._pointer_left)
         elif kind == QEvent.Type.FocusIn:
             self.quick_actions()
         # An empty tray click selects, and never bubbles into the card's Go.
@@ -475,7 +475,7 @@ class OverviewCard(QWidget):
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        QTimer.singleShot(0, self._pointer_left)
+        QTimer.singleShot(0, self, self._pointer_left)
         super().leaveEvent(event)
 
     def focusInEvent(self, event):
@@ -487,7 +487,7 @@ class OverviewCard(QWidget):
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
-        QTimer.singleShot(0, self.quick_actions)
+        QTimer.singleShot(0, self, self.quick_actions)
 
     def mouseReleaseEvent(self, event):
         if not self.confirming:
@@ -796,7 +796,7 @@ class OverviewWindow(QWidget):
             self.select(successor)
             self._tiles[successor].setFocus()
         self.title.setText(f'{len(self._tiles)} windows')
-        QTimer.singleShot(0, self._update_thumbnails)
+        QTimer.singleShot(0, self, self._update_thumbnails)
 
     def set_monitor(self, number, index, primary):
         card = self._tiles.get(number)
@@ -863,7 +863,7 @@ class OverviewWindow(QWidget):
                 QThreadPool.globalInstance().start(_IconTask(card.row['hwnd'], number, self._icons))
         if not self._registered:
             self._pending_previews = iter(tuple(self._previews))
-            QTimer.singleShot(0, self._register_thumbnails)
+            QTimer.singleShot(0, self, self._register_thumbnails)
 
     def _register_thumbnails(self):
         if not self.isVisible():
@@ -884,7 +884,7 @@ class OverviewWindow(QWidget):
             if not registered:
                 preview.setPixmap(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon).pixmap(QSize(48, 48)))
             self._update_thumbnails()
-        QTimer.singleShot(0, self._register_thumbnails)
+        QTimer.singleShot(0, self, self._register_thumbnails)
 
     def _update_thumbnails(self, *_):
         if not self.isVisible():
@@ -912,7 +912,7 @@ class OverviewWindow(QWidget):
         if self._registration_done is not None and not self.paint_metrics and not self._paint_pending:
             self._paint_pending = True
             # Deliver after this paint traversal, including all child cards.
-            QTimer.singleShot(0, self._record_painted)
+            QTimer.singleShot(0, self, self._record_painted)
 
     def _record_painted(self):
         self._paint_pending = False
@@ -927,7 +927,7 @@ class OverviewWindow(QWidget):
         super().resizeEvent(event)
         if hasattr(self, 'grid'):
             self._reflow()
-            QTimer.singleShot(0, self._update_thumbnails)
+            QTimer.singleShot(0, self, self._update_thumbnails)
 
     def hideEvent(self, event):
         self._state_timer.stop()

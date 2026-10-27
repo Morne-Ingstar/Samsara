@@ -133,6 +133,14 @@ jobs:
             junit.xml
             coverage.xml
 
+      - name: Upload CI hang diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-hang-report-${{ matrix.shard }}
+          path: ci-hang-report/
+          if-no-files-found: warn
+
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
         if: always()
