@@ -8125,9 +8125,15 @@
     "object": "can_i_say",
     "aliases": [
       "help",
+      "help me",
+      "how can i",
+      "how do i",
+      "is there a way to",
       "what are my commands",
       "what can i say",
-      "what commands do i have"
+      "what commands do i have",
+      "what is the command to",
+      "where do i"
     ],
     "args": [
       {

@@ -811,6 +811,12 @@ class CommandExecutor:
             if effective_app and not effective_app.command_matching_enabled:
                 return DispatchResult.miss(text)
 
+        # 943: whole help requests stay ahead of ordinary command matching.
+        from .help_intents import route_request
+        help_result = route_request(self, text, effective_app, command_mode=command_lane(effective_app, force_commands), route=route, generation=generation)
+        if help_result is not None:
+            return help_result
+
         # 632: whole selection requests share Ava's filler/quote rules, then
         # enter the normal canonical policy path (also for apply/discard).
         from samsara import teach_patterns

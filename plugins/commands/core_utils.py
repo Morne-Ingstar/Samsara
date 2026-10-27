@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from samsara.plugin_commands import command
+from samsara.help_intents import HELP_PREFIXES
 from samsara.log import get_logger
 
 logger = get_logger(__name__)
@@ -100,7 +101,7 @@ def reload_config(app, remainder="", **kwargs):
 
 @command(
     "what can I say",
-    aliases=["help", "what are my commands", "what commands do I have"],
+    aliases=["help", "what are my commands", "what commands do I have", *HELP_PREFIXES],
     pack="core",
     risk_class="read",
     param_schema={"remainder": {"type": "str", "required": False}},
@@ -129,6 +130,10 @@ def what_can_i_say(app, remainder="", **kwargs):
     focused_pack = pack_for_exe(exe)
     if focused_pack is not None:
         allowed_packs.add(focused_pack)
+
+    from samsara.help_intents import handle_request
+    if handle_request(app, remainder, allowed_packs=allowed_packs, live_text=live_text, **kwargs):
+        return True
 
     def _show_scoped_sheet():
         cheat_sheet = getattr(app, "cheat_sheet", None)

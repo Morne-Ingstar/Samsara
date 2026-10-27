@@ -7996,7 +7996,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:60",
+      "source": "plugins/commands/core_utils.py:61",
       "undoable": false,
       "verb": "check",
       "whole_utterance": false
@@ -8016,7 +8016,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:335",
+      "source": "plugins/commands/core_utils.py:340",
       "undoable": true,
       "verb": "move",
       "whole_utterance": false
@@ -8038,7 +8038,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:225",
+      "source": "plugins/commands/core_utils.py:230",
       "undoable": true,
       "verb": "read",
       "whole_utterance": true
@@ -8060,7 +8060,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:78",
+      "source": "plugins/commands/core_utils.py:79",
       "undoable": true,
       "verb": "reload",
       "whole_utterance": false
@@ -8083,7 +8083,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/core_utils.py:298",
+      "source": "plugins/commands/core_utils.py:303",
       "undoable": true,
       "verb": "reset",
       "whole_utterance": false
@@ -8104,7 +8104,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:280",
+      "source": "plugins/commands/core_utils.py:285",
       "undoable": false,
       "verb": "reset",
       "whole_utterance": false
@@ -8125,7 +8125,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "destructive",
-      "source": "plugins/commands/core_utils.py:33",
+      "source": "plugins/commands/core_utils.py:34",
       "undoable": false,
       "verb": "restart",
       "whole_utterance": false
@@ -8154,7 +8154,7 @@
       "plugin": "core_utils",
       "precondition": "Save only after an alias offer. To remove one, say remove alias and its exact wording.",
       "risk": "write",
-      "source": "plugins/commands/core_utils.py:361",
+      "source": "plugins/commands/core_utils.py:366",
       "undoable": false,
       "verb": "save",
       "whole_utterance": false
@@ -8162,9 +8162,15 @@
     {
       "aliases": [
         "help",
+        "help me",
+        "how can i",
+        "how do i",
+        "is there a way to",
         "what are my commands",
         "what can i say",
-        "what commands do i have"
+        "what commands do i have",
+        "what is the command to",
+        "where do i"
       ],
       "args": [
         {
@@ -8184,7 +8190,7 @@
       "plugin": "core_utils",
       "precondition": "Searches the command reference for window.",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:101",
+      "source": "plugins/commands/core_utils.py:102",
       "undoable": true,
       "verb": "what",
       "whole_utterance": false
@@ -8205,7 +8211,7 @@
       "plugin": "core_utils",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/core_utils.py:530",
+      "source": "plugins/commands/core_utils.py:535",
       "undoable": true,
       "verb": "why",
       "whole_utterance": false
