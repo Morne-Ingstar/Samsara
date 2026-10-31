@@ -10,6 +10,7 @@ in sync. This module is a thin voice-command wrapper around it.
 
 import subprocess
 import sys
+import re
 from pathlib import Path
 
 from samsara.plugin_commands import command
@@ -51,7 +52,6 @@ except ImportError:
         import stremio_control  # noqa: E402 -- re-raises ImportError if this also fails
     else:
         raise
-
 
 @command("pause stremio", aliases=[
     "pause the video", "pause the movie", "pause the show",
@@ -132,3 +132,35 @@ def handle_close_stremio(app, remainder):
     # a companion process some builds also spawn).
     stremio_control.kill_stremio()
     return True
+
+
+STREMIO_EXES = {"stremio-shell-ng.exe", "stremio.exe"}
+
+
+def repair_couch_command(text, context):
+    """Bounded whole-phrase repairs, offered only by the command-lane wash.
+
+    Never fuzzy-match arbitrary prose or pass repaired words as music arguments.
+    The caller checks the resulting command's pack and scope before accepting it.
+    """
+    words = " ".join(text.lower().strip().rstrip(".!?,;:").split())
+    foreground = context.resolved and not context.own_window and context.exe in STREMIO_EXES
+    if words in {"postremia", "pazdremium"}:
+        return "pause stremio"
+    # Known phonetic app spellings, including split and possessive forms.
+    app_name = r"(?:stremio(?:['’]s)?|stremia|strenio|strami out|stream io|stremium|stramio)"
+    explicit = re.fullmatch(
+        rf"(pause|paul|pull|paz|resume|play|unpause|open|launch|start|close|quit|exit|mute|unmute) ({app_name})", words)
+    if explicit:
+        verb = explicit[1]
+        canonical = {"paul": "pause", "pull": "pause", "paz": "pause",
+                     "play": "resume", "unpause": "resume", "launch": "open",
+                     "start": "open", "quit": "close", "exit": "close", "unmute": "mute"}
+        return canonical.get(verb, verb) + " stremio"
+    if foreground and words in {"pause", "resume", "play", "unpause"}:
+        return "pause stremio" if words == "pause" else "resume stremio"
+    skip = re.fullmatch(r"(skip forward|skip back|skip backward)(?: (\w+))?", words)
+    if skip and (foreground or skip[2] == "stremio"):
+        # One extra token is tolerated only for these explicit transport phrases.
+        return "skip forward" if skip[1] == "skip forward" else "skip back"
+    return None

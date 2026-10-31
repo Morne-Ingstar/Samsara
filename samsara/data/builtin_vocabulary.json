@@ -7,6 +7,13 @@
     ]
   },
   {
+    "word": "stremio",
+    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
+    "packs": [
+      "stremio"
+    ]
+  },
+  {
     "word": "Ava",
     "why": "Product or assistant name used in voice requests and assistant settings.",
     "packs": [
@@ -106,13 +113,6 @@
   },
   {
     "word": "brave",
-    "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
-    "packs": [
-      "core"
-    ]
-  },
-  {
-    "word": "stremio",
     "why": "Accepted app name: plugins/commands/windows.py APP_ALIASES; focus/open/close <app>.",
     "packs": [
       "core"

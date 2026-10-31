@@ -71,7 +71,7 @@ APP_ALIASES = {
     'firefox': 'firefox.exe',
     'edge': 'msedge.exe',
     'brave': 'brave.exe',
-    'stremio': 'stremio.exe',
+    'stremio': 'stremio-shell-ng.exe',
     'discord': 'Discord.exe',
     'spotify': 'Spotify.exe',
     'vscode': 'Code.exe',
@@ -258,7 +258,7 @@ def find_windows_by_app(app_name, extra_ignore=None):
             return True
 
         if target_exe:
-            if proc_name == target_exe.lower():
+            if proc_name == target_exe.lower() or (name_lower == 'stremio' and proc_name == 'stremio.exe'):
                 results.append(hwnd)
         else:
             if name_lower in proc_name:

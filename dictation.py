@@ -6435,9 +6435,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self._outcome_ring = collections.deque(maxlen=8)
             self._outcome_ring.append(
                 outcome_ring.record(label, kind, time.time(), source))
-        indicator = getattr(self, 'listening_indicator', None)
-        if indicator is None or not hasattr(indicator, 'show_outcome'):
-            return
         if ttl_ms == "default":
             from samsara.session_modes import CHIP_TTL_MS
             ttl_ms = None if kind in ('pending', 'live') else CHIP_TTL_MS

@@ -331,10 +331,10 @@ def prepare_hands_free_command(text, app):
 
 
 def repair_command_near_miss(text, executor):
-    """One observed phonetic step, whole active command, no argument capture.
+    """Bounded phonetic repairs, whole active commands, no argument capture.
 
-    Scrawl/scroll differ by one vowel sound. Keep this wash bounded to that
-    observed confusion; generic spelling distance would turn unrelated prose
+    Scrawl/scroll and the Stremio plugin's couch phrases cover observed
+    confusions; generic spelling distance would turn unrelated prose
     into commands. The live matcher supplies catalogue, pack and scope checks.
     No pronunciation-dictionary load or catalogue scan on the CPU command path.
     Callers must opt in from a command lane or the hands-free command probe.
@@ -342,12 +342,20 @@ def repair_command_near_miss(text, executor):
     if not isinstance(text, str) or executor is None:
         return None
     words = text.lower().strip().rstrip(".!?,;:").split()
-    if len(words) < 2 or words[0] != "scrawl":
-        return None
     matcher = getattr(executor, "_matcher", None)
     if matcher is None:
         return None
     context = matcher.current_context()
+    # Stremio owns its bounded app-name/transport repairs. Require a live
+    # registered command in its enabled pack before overriding music aliases.
+    if matcher._pack_enabled("stremio"):
+        from plugins.commands.stremio import repair_couch_command
+        candidate = repair_couch_command(text, context)
+        entry, remainder = matcher.match(candidate, context) if candidate else (None, "")
+        if entry is not None and entry.pack == "stremio" and not remainder:
+            return candidate
+    if len(words) < 2 or words[0] != "scrawl":
+        return None
     # An actual literal command always wins over the repair.
     original, remainder = matcher.match(" ".join(words), context)
     if original is not None and not remainder:

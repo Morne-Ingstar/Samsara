@@ -5,7 +5,7 @@ No message text is parsed to decide severity, purpose or interaction ownership.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from contextlib import contextmanager
 from enum import Enum
 import sys
@@ -155,10 +155,18 @@ def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
     if context is not None and context[0] is app:
         _, source, detail = context
     feedback = producer_feedback(app, kind, source, detail)
+    if source == "command_miss":
+        # A miss belongs in History even if the display drops/filters its notice.
+        remember_feedback(app, label, feedback, raw_text=(detail or {}).get("heard", ""))
+        # Owner survives the adapter/model's event conversion; dataclass-only
+        # flags do not. The eventual display must not write a duplicate row.
+        feedback = replace(feedback, owner="command_miss_history")
     from samsara.bug_report.coordinator import remember
     remember(app, label, kind, source, detail)
     if not getattr(indicator, "_records_feedback", False):
         remember_feedback(app, label, feedback)
+    if indicator is None or not hasattr(indicator, "show_outcome"):
+        return
     if callable(getattr(type(indicator), "show_feedback", None)):
         app._schedule_ui(indicator.show_feedback, label, kind, ttl_ms,
                          feedback)
@@ -166,14 +174,14 @@ def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
         app._schedule_ui(indicator.show_outcome, label, kind, ttl_ms)
 
 
-def remember_feedback(app, label, feedback):
+def remember_feedback(app, label, feedback, *, raw_text=""):
     """Keep exact result/refusal words searchable in existing History > All."""
     store = getattr(app, "history_db", None)
     kind = getattr(feedback, "feedback", feedback.kind)
-    if feedback.owner == "tutorial_sample" or not label or store is None or feedback.purpose is not FeedbackPurpose.RESULT or routine_receipt(label, kind):
+    if feedback.owner in {"command_miss_history", "tutorial_sample"} or not label or store is None or feedback.purpose is not FeedbackPurpose.RESULT or routine_receipt(label, kind):
         return
     try:
-        store.add(raw_text="", display_text=str(label), mode="feedback",
+        store.add(raw_text=raw_text, display_text=str(label), mode="feedback",
                   status=kind.value, entry_type="feedback")
     except Exception:
         logging.getLogger(__name__).debug("Feedback history unavailable", exc_info=True)
