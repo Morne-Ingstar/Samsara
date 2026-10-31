@@ -5,6 +5,7 @@ settings/tray seams remain stable.  These methods accept the app object as
 ``self`` and intentionally retain their existing behavior.
 """
 import logging
+from functools import wraps
 import sys
 import threading
 import time
@@ -29,6 +30,56 @@ _OTHER_HOTKEY_KEYS = (
 _host_module = None
 _listener_error_types = set()
 _listener_error_lock = threading.Lock()
+_main_hotkey_lock_init = threading.Lock()
+
+
+def _main_hotkey_lock(app):
+    # Legacy app delegates and small stand-ins do not initialize this field.
+    with _main_hotkey_lock_init:
+        lock = getattr(app, '_main_hotkey_event_lock', None)
+        if lock is None:
+            lock = app._main_hotkey_event_lock = threading.RLock()
+    return lock
+
+
+def _serialized_main_hotkey(callback):
+    @wraps(callback)
+    def serialized(self, *args, **kwargs):
+        # start_recording is synchronous: keep ownership until activation has
+        # completed so a concurrent release cannot consume an unfinished start.
+        with _main_hotkey_lock(self):
+            return callback(self, *args, **kwargs)
+    return serialized
+
+
+def _finish_main_hotkey_stop(app):
+    """Replay only a still-held press, atomically with physical callbacks."""
+    while True:
+        with _main_hotkey_lock(app):
+            pending = getattr(app, '_release_tail_repress', None)
+            replay = False
+            if pending is not None:
+                if pending[0] == 'mouse':
+                    replay = getattr(app, '_hold_down_mouse', False)
+                else:
+                    combo = getattr(app, '_main_hotkey_override', None) or app.config['hotkey']
+                    replay = (app.check_hotkey_state(combo)
+                              and app.parse_hotkey(combo).issubset(app.current_keys))
+            if not (replay and getattr(app, '_streaming_session', None) is not None):
+                app._release_tail_repress = None
+                app._streaming_tail_abort = False
+                app._stop_in_flight = False
+                if replay:
+                    if pending[0] == 'mouse':
+                        app._hold_down_mouse = False
+                        app._on_main_hotkey_mouse(True)
+                    else:
+                        app._hold_down_key = app.hotkey_pressed = False
+                        app.on_key_press(pending[1])
+                return
+        # The asynchronous finalizer still owns capture. Let physical releases
+        # and re-presses update their state while waiting for that owner.
+        time.sleep(0.01)
 
 
 def bind_host_module(module):
@@ -260,6 +311,7 @@ class HotkeyCluster:
         pause = getattr(self, 'pause_hold_capture', None)
         return bool(pause and pause())
 
+    @_serialized_main_hotkey
     def on_key_press(self, key):
         """Handle key press - uses state-based checking for reliable simultaneous key detection"""
         key_name = self.get_key_name(key)
@@ -561,6 +613,7 @@ class HotkeyCluster:
             f" mode={cfg.get('mode', 'hold')} hotkey={cfg.get('hotkey')!r}"
         )
 
+    @_serialized_main_hotkey
     def on_key_release(self, key):
         """Handle key release - uses state-based checking for reliable detection"""
         key_name = self.get_key_name(key)
@@ -601,30 +654,7 @@ class HotkeyCluster:
             try:
                 self.stop_recording()
             finally:
-                # Finalize is asynchronous: do not overwrite its capture owner.
-                pending = getattr(self, '_release_tail_repress', None)
-                def held():
-                    if pending is None:
-                        return False
-                    if pending[0] == 'mouse':
-                        return getattr(self, '_hold_down_mouse', False)
-                    combo = getattr(self, '_main_hotkey_override', None) or self.config['hotkey']
-                    return (self.check_hotkey_state(combo)
-                            and self.parse_hotkey(combo).issubset(self.current_keys))
-                while pending and held() and getattr(self, '_streaming_session', None) is not None:
-                    time.sleep(0.01)
-                    pending = getattr(self, '_release_tail_repress', None)
-                replay = held()
-                self._release_tail_repress = None
-                self._streaming_tail_abort = False
-                self._stop_in_flight = False
-                if replay:
-                    if pending[0] == 'mouse':
-                        self._hold_down_mouse = False
-                        self._on_main_hotkey_mouse(True)
-                    else:
-                        self._hold_down_key = self.hotkey_pressed = False
-                        self.on_key_press(pending[1])
+                _finish_main_hotkey_stop(self)
 
         # The keyboard's main-hotkey key-down is over once the combo is up,
         # whatever other combos are held.
@@ -1099,6 +1129,7 @@ class HotkeyCluster:
     def _mouse_guard(self, why: str) -> None:
         logger.debug("[HOTKEY] Mouse main hotkey: %s | %s", why, self._hotkey_state_text())
 
+    @_serialized_main_hotkey
     def _on_main_hotkey_mouse(self, pressed):
         """Main record hotkey bound to Mouse 4/5 -- the keyboard main-hotkey
         semantics (on_key_press / on_key_release) driven by the button.
@@ -1135,6 +1166,18 @@ class HotkeyCluster:
                 logger.debug("[HOTKEY] Main hotkey (mouse) toggle-off | %s", self._hotkey_state_text())
                 self._main_hotkey_toggle_off('mouse')
                 return
+            if (mode == 'hold' and self.recording
+                    and not getattr(self, '_hold_down_key', False)
+                    and (getattr(self, '_main_hotkey_source', 'key') == 'mouse'
+                         or getattr(self, '_hotkey_recording', False))
+                    and not any(getattr(self, flag, False) for flag in
+                                ('command_mode_recording', 'ava_mode_recording', '_memo_recording'))):
+                # The edge guard above proves the mouse was up. Adopt an
+                # ordinary stranded hold so this press's release can end it,
+                # including old captures whose owner was prematurely reset.
+                self._main_hotkey_source = 'mouse'
+                logger.warning('[HOTKEY] stale hold recovered | %s', self._hotkey_state_text())
+                return
             if self.recording or getattr(self, '_streaming_session', None) is not None:
                 logger.info("[HOTKEY] Mouse main hotkey ignored -- another recording owns capture | %s",
                             self._hotkey_state_text())
@@ -1144,6 +1187,9 @@ class HotkeyCluster:
             if mode == 'hold':
                 self.start_recording(streaming=False)
                 if not self.recording:
+                    # Startup has returned without capture; do not leave a
+                    # mouse owner that could later adopt a wake recording.
+                    self._main_hotkey_source = 'key'
                     self._mouse_guard("start_recording declined the hold press")
             elif mode == 'toggle':
                 self.toggle_active = True
@@ -1171,36 +1217,15 @@ class HotkeyCluster:
             # stopped, so the keyboard path (on_key_press) leaves it alone.
             self._mouse_guard("release: toggle stays on until the next press")
             return
-        self._main_hotkey_source = 'key'
+        if mode != 'hold':
+            self._main_hotkey_source = 'key'
         if mode == 'hold' and self.recording:
+            self._main_hotkey_source = 'key'
             def _deferred_stop():
                 try:
                     self.stop_recording()
                 finally:
-                    # Finalize is asynchronous: do not overwrite its capture owner.
-                    pending = getattr(self, '_release_tail_repress', None)
-                    def held():
-                        if pending is None:
-                            return False
-                        if pending[0] == 'mouse':
-                            return getattr(self, '_hold_down_mouse', False)
-                        combo = getattr(self, '_main_hotkey_override', None) or self.config['hotkey']
-                        return (self.check_hotkey_state(combo)
-                                and self.parse_hotkey(combo).issubset(self.current_keys))
-                    while pending and held() and getattr(self, '_streaming_session', None) is not None:
-                        time.sleep(0.01)
-                        pending = getattr(self, '_release_tail_repress', None)
-                    replay = held()
-                    self._release_tail_repress = None
-                    self._streaming_tail_abort = False
-                    self._stop_in_flight = False
-                    if replay:
-                        if pending[0] == 'mouse':
-                            self._hold_down_mouse = False
-                            self._on_main_hotkey_mouse(True)
-                        else:
-                            self._hold_down_key = self.hotkey_pressed = False
-                            self.on_key_press(pending[1])
+                    _finish_main_hotkey_stop(self)
 
             logger.debug("[HOTKEY] Main hotkey (mouse) released, stopping recording")
             flight_recorder.record(
