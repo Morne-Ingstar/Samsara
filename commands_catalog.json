@@ -12886,7 +12886,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "destructive",
-      "source": "plugins/commands/stremio.py:171",
+      "source": "plugins/commands/stremio.py:189",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -12909,7 +12909,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:141",
+      "source": "plugins/commands/stremio.py:159",
       "undoable": true,
       "verb": "fullscreen",
       "whole_utterance": false
@@ -12930,7 +12930,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:151",
+      "source": "plugins/commands/stremio.py:169",
       "undoable": true,
       "verb": "mute",
       "whole_utterance": false
@@ -12958,7 +12958,7 @@
           "stremio.exe"
         ]
       },
-      "source": "plugins/commands/stremio.py:128",
+      "source": "plugins/commands/stremio.py:146",
       "undoable": true,
       "verb": "next",
       "whole_utterance": false
@@ -12980,7 +12980,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:158",
+      "source": "plugins/commands/stremio.py:176",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -13036,7 +13036,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:68",
+      "source": "plugins/commands/stremio.py:67",
       "undoable": true,
       "verb": "resume",
       "whole_utterance": false
@@ -13073,7 +13073,7 @@
           "stremio.exe"
         ]
       },
-      "source": "plugins/commands/stremio.py:116",
+      "source": "plugins/commands/stremio.py:134",
       "undoable": true,
       "verb": "skip",
       "whole_utterance": false
@@ -13111,9 +13111,29 @@
           "stremio.exe"
         ]
       },
-      "source": "plugins/commands/stremio.py:108",
+      "source": "plugins/commands/stremio.py:126",
       "undoable": true,
       "verb": "skip",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "play pause stremio",
+        "toggle stremio"
+      ],
+      "args": [],
+      "canonical_id": "stremio.toggle_stremio",
+      "description": "Explicitly switches Stremio between playing and paused.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "stremio",
+      "pack": "stremio",
+      "plugin": "stremio",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/stremio.py:86",
+      "undoable": true,
+      "verb": "toggle",
       "whole_utterance": false
     },
     {

@@ -61,8 +61,7 @@ except ImportError:
 ], pack="stremio")
 def handle_pause(app, remainder):
     """Pauses what is playing in Stremio."""
-    print("[STREMIO] Pausing")
-    return stremio_control.pause_play()
+    return _handle_playback(app, True)
 
 
 @command("resume stremio", aliases=[
@@ -72,8 +71,27 @@ def handle_pause(app, remainder):
 ], pack="stremio")
 def handle_resume(app, remainder):
     """Resumes what was playing in Stremio."""
-    print("[STREMIO] Resuming")
-    return stremio_control.pause_play()
+    return _handle_playback(app, False)
+
+
+def _handle_playback(app, paused):
+    result = stremio_control.set_paused(paused)
+    _seek_feedback(app, result.message, failed=not result.success)
+    if not result.success:
+        return DispatchResult(DispatchState.FAILED, detail={
+            "reason": result.message, "unavailable": True})
+    return True
+
+
+@command("toggle stremio", aliases=["play pause stremio"], pack="stremio")
+def handle_toggle_stremio(app, remainder):
+    """Explicitly switches Stremio between playing and paused."""
+    if not stremio_control.pause_play():
+        message = "Stremio playback control unavailable"
+        _seek_feedback(app, message, failed=True)
+        return DispatchResult(DispatchState.FAILED, detail={"reason": message})
+    _seek_feedback(app, "Playback toggle requested")
+    return True
 
 
 _PLAYER_SCOPE = {"apps": ["stremio-shell-ng.exe", "stremio.exe"]}

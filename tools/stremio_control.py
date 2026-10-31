@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from dataclasses import dataclass
 
 from samsara.runtime import thread_registry
 
@@ -189,9 +190,206 @@ def _send_stremio_send_body(send_body: str) -> bool:
 
 # ── Public control functions ──────────────────────────────────────────────────
 
+@dataclass(frozen=True)
+class PlaybackSnapshot:
+    """Fresh externally observed state, bound to one window/process identity."""
+
+    hwnd: int
+    pid: int
+    paused: bool
+
+
+@dataclass(frozen=True)
+class PlaybackResult:
+    success: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class PlaybackTarget:
+    hwnd: int
+    pid: int
+    created: int  # Process creation FILETIME; protects against recycled PIDs.
+
+
+@dataclass(frozen=True)
+class _PlaybackMemory:
+    target: PlaybackTarget
+    paused: bool
+    sent_at: float
+
+
+PLAYBACK_MEMORY_SECONDS = 30 * 60
+_playback_memory: _PlaybackMemory | None = None
+_transport_lock = threading.Lock()
+
+
+def _find_playback_target() -> PlaybackTarget | None:
+    """Read visible Stremio HWND/PID/creation time without activating it."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes as wt
+
+    try:
+        user = ctypes.WinDLL("user32", use_last_error=True)
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        callback_type = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+        user.EnumWindows.argtypes = [callback_type, wt.LPARAM]
+        user.EnumWindows.restype = wt.BOOL
+        user.IsWindowVisible.argtypes = [wt.HWND]
+        user.IsWindowVisible.restype = wt.BOOL
+        user.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+        user.GetWindowThreadProcessId.restype = wt.DWORD
+        kernel.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+        kernel.OpenProcess.restype = wt.HANDLE
+        kernel.QueryFullProcessImageNameW.argtypes = [
+            wt.HANDLE, wt.DWORD, wt.LPWSTR, ctypes.POINTER(wt.DWORD)]
+        kernel.QueryFullProcessImageNameW.restype = wt.BOOL
+        kernel.GetProcessTimes.argtypes = [wt.HANDLE] + [ctypes.POINTER(wt.FILETIME)] * 4
+        kernel.GetProcessTimes.restype = wt.BOOL
+        kernel.CloseHandle.argtypes = [wt.HANDLE]
+        kernel.CloseHandle.restype = wt.BOOL
+        targets = []
+
+        def visit(hwnd, _):
+            if not user.IsWindowVisible(hwnd):
+                return True
+            pid = wt.DWORD()
+            user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            handle = kernel.OpenProcess(0x1000, False, pid.value)
+            if not handle:
+                return True
+            try:
+                path = ctypes.create_unicode_buffer(32768)
+                size = wt.DWORD(len(path))
+                if not kernel.QueryFullProcessImageNameW(handle, 0, path, ctypes.byref(size)):
+                    return True
+                exe = path.value.rsplit("\\", 1)[-1].lower()
+                if exe not in ("stremio-shell-ng.exe", "stremio.exe"):
+                    return True
+                created, exited, cpu_kernel, cpu_user = (wt.FILETIME() for _ in range(4))
+                if kernel.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited),
+                                          ctypes.byref(cpu_kernel), ctypes.byref(cpu_user)):
+                    stamp = (created.dwHighDateTime << 32) | created.dwLowDateTime
+                    targets.append((exe, PlaybackTarget(hwnd, pid.value, stamp)))
+            finally:
+                kernel.CloseHandle(handle)
+            return True
+
+        if not user.EnumWindows(callback_type(visit), 0):
+            return None
+        # Keep shell-ng preference and the first window in desktop Z order.
+        for exe in ("stremio-shell-ng.exe", "stremio.exe"):
+            for name, target in targets:
+                if name == exe:
+                    return target
+    except Exception:
+        logger.debug("[STREMIO] Window identity unavailable", exc_info=True)
+    return None
+
+
+def probe_playback_state() -> PlaybackSnapshot | None:
+    """Unknown until an external state interface is verified for this build.
+
+    951 inspected installed shell-ng 5.0.27: no running player/UIA target,
+    accessible SMTC session, player HTTP or default CDP endpoint was observed.
+    Internal mpv properties are not an external API. Intent memory is a
+    separate fallback, not a reading of actual playback state.
+    """
+    return None
+
+
+def _build_transport_script(target: PlaybackTarget | None = None) -> str:
+    """Space with executable, HWND, PID and final foreground checks.
+
+    State-dependent actions use the discovered target. An explicit toggle
+    can still select a current Stremio window if identity reading failed.
+    """
+    if target is None:
+        select = '''target := WinExist("ahk_exe stremio-shell-ng.exe")
+if !target
+    target := WinExist("ahk_exe stremio.exe")
+WinGet, expectedPid, PID, ahk_id %target%'''
+    else:
+        select = f"target := {target.hwnd}\nexpectedPid := {target.pid}"
+    return f'''#NoEnv
+#SingleInstance Force
+{select}
+if (!target || !expectedPid)
+    ExitApp, 1
+WinGet, targetExe, ProcessName, ahk_id %target%
+WinGet, targetPid, PID, ahk_id %target%
+if ((targetExe != "stremio-shell-ng.exe" && targetExe != "stremio.exe") || targetPid != expectedPid)
+    ExitApp, 1
+WinActivate, ahk_id %target%
+WinWaitActive, ahk_id %target%,, 2
+if ErrorLevel
+    ExitApp, 1
+Sleep, 150
+WinGet, targetExe, ProcessName, ahk_id %target%
+WinGet, targetPid, PID, ahk_id %target%
+if (!WinActive("ahk_id " target) || targetPid != expectedPid || (targetExe != "stremio-shell-ng.exe" && targetExe != "stremio.exe"))
+    ExitApp, 1
+Send, {{Space}}
+ExitApp, 0
+'''
+
+
+def _playback_state(target: PlaybackTarget | None) -> bool | None:
+    """Prefer a matching live probe; otherwise use unexpired send memory.
+
+    Caller holds _transport_lock. Only successful sends create memory;
+    repeats do not extend expiry and probe observations are never cached.
+    """
+    global _playback_memory
+    memory = _playback_memory
+    if (target is None or memory is None or memory.target != target
+            or time.monotonic() - memory.sent_at >= PLAYBACK_MEMORY_SECONDS):
+        _playback_memory = None
+    if target is None:
+        return None
+    try:
+        snapshot = probe_playback_state()
+    except Exception:
+        logger.debug("[STREMIO] Playback state probe unavailable", exc_info=True)
+        snapshot = None
+    if (isinstance(snapshot, PlaybackSnapshot) and type(snapshot.paused) is bool
+            and type(snapshot.hwnd) is int and type(snapshot.pid) is int
+            and snapshot.hwnd == target.hwnd and snapshot.pid == target.pid):
+        _playback_memory = None  # Observed state supersedes previous intent.
+        return snapshot.paused
+    return _playback_memory.paused if _playback_memory else None
+
+
+def set_paused(paused: bool) -> PlaybackResult:
+    """Suppress repeated intent; real state takes precedence when available."""
+    global _playback_memory
+    with _transport_lock:
+        target = _find_playback_target()
+        current = _playback_state(target)
+        if target is None:
+            return PlaybackResult(False, "Stremio playback control unavailable")
+        if current == paused:
+            state = "paused" if paused else "playing"
+            return PlaybackResult(True, f"Already {state} — say 'toggle stremio' if it isn't")
+        if not _run_ahk(_build_transport_script(target)):
+            _playback_memory = None
+            return PlaybackResult(False, "Stremio playback control unavailable")
+        _playback_memory = _PlaybackMemory(target, paused, time.monotonic())
+        return PlaybackResult(True, "Pause requested" if paused else "Resume requested")
+
+
 def pause_play() -> bool:
-    """Toggle play/pause (Space)."""
-    return _send_stremio_key("Space")
+    """Always request Space; flip known intent only after a successful send."""
+    global _playback_memory
+    with _transport_lock:
+        target = _find_playback_target()
+        current = _playback_state(target)
+        sent = _run_ahk(_build_transport_script(target))
+        _playback_memory = (_PlaybackMemory(target, not current, time.monotonic())
+                            if sent and target is not None and current is not None else None)
+        return sent
 
 
 def skip_forward(seconds: float = DEFAULT_SEEK_SECONDS) -> bool:
