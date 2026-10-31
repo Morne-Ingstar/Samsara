@@ -12886,7 +12886,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "destructive",
-      "source": "plugins/commands/stremio.py:126",
+      "source": "plugins/commands/stremio.py:171",
       "undoable": true,
       "verb": "close",
       "whole_utterance": false
@@ -12909,7 +12909,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:96",
+      "source": "plugins/commands/stremio.py:141",
       "undoable": true,
       "verb": "fullscreen",
       "whole_utterance": false
@@ -12930,9 +12930,37 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:106",
+      "source": "plugins/commands/stremio.py:151",
       "undoable": true,
       "verb": "mute",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "next episode",
+        "next video",
+        "play the next episode",
+        "skip episode"
+      ],
+      "args": [],
+      "canonical_id": "stremio.next_episode",
+      "description": "Requests the next episode using Stremio's verified Shift+N shortcut.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "episode",
+      "pack": "stremio",
+      "plugin": "stremio",
+      "precondition": "",
+      "risk": "ui",
+      "scope": {
+        "apps": [
+          "stremio-shell-ng.exe",
+          "stremio.exe"
+        ]
+      },
+      "source": "plugins/commands/stremio.py:128",
+      "undoable": true,
+      "verb": "next",
       "whole_utterance": false
     },
     {
@@ -12952,7 +12980,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:113",
+      "source": "plugins/commands/stremio.py:158",
       "undoable": true,
       "verb": "open",
       "whole_utterance": false
@@ -12979,7 +13007,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:56",
+      "source": "plugins/commands/stremio.py:57",
       "undoable": true,
       "verb": "pause",
       "whole_utterance": false
@@ -13008,7 +13036,7 @@
       "plugin": "stremio",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:67",
+      "source": "plugins/commands/stremio.py:68",
       "undoable": true,
       "verb": "resume",
       "whole_utterance": false
@@ -13021,17 +13049,31 @@
         "skip back",
         "skip backward"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "stremio.skip_back",
       "description": "Jumps back in what is playing in Stremio.",
-      "examples": [],
+      "examples": [
+        "back a minute"
+      ],
       "kind": "plugin",
       "object": "back",
       "pack": "stremio",
       "plugin": "stremio",
-      "precondition": "",
+      "precondition": "Enable the Stremio pack and focus Stremio with a video playing.",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:87",
+      "scope": {
+        "apps": [
+          "stremio-shell-ng.exe",
+          "stremio.exe"
+        ]
+      },
+      "source": "plugins/commands/stremio.py:116",
       "undoable": true,
       "verb": "skip",
       "whole_utterance": false
@@ -13040,21 +13082,36 @@
       "aliases": [
         "fast forward",
         "forward",
+        "jump ahead",
         "next bit",
         "skip ahead",
         "skip forward"
       ],
-      "args": [],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
       "canonical_id": "stremio.skip_forward",
       "description": "Jumps forward in what is playing in Stremio.",
-      "examples": [],
+      "examples": [
+        "forward 30 seconds"
+      ],
       "kind": "plugin",
       "object": "forward",
       "pack": "stremio",
       "plugin": "stremio",
-      "precondition": "",
+      "precondition": "Enable the Stremio pack and focus Stremio with a video playing.",
       "risk": "ui",
-      "source": "plugins/commands/stremio.py:78",
+      "scope": {
+        "apps": [
+          "stremio-shell-ng.exe",
+          "stremio.exe"
+        ]
+      },
+      "source": "plugins/commands/stremio.py:108",
       "undoable": true,
       "verb": "skip",
       "whole_utterance": false

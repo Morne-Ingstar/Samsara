@@ -76,22 +76,19 @@ class TestPublicControlFunctions:
         script = mock_run.call_args.args[0]
         assert "Send, {m}" in script
 
-    def test_skip_forward_sends_right_6(self):
-        """Mirrors the original plugin's handle_skip_forward exactly:
-        6x Right-arrow presses."""
+    def test_skip_forward_sends_right_1(self):
+        """Bare forward and back use one 10-second tap (948)."""
         with patch.object(sc, "_run_ahk", return_value=True) as mock_run:
             assert sc.skip_forward() is True
         script = mock_run.call_args.args[0]
-        assert "Send, {Right 6}" in script
+        assert "Send, {Right 1}" in script
 
-    def test_skip_back_sends_left_2(self):
-        """Mirrors the original plugin's handle_skip_back exactly:
-        2x Left-arrow presses (intentionally asymmetric with
-        skip_forward -- inherited as-is, not reconciled)."""
+    def test_skip_back_sends_left_1(self):
+        """Bare back uses the same default as forward (948)."""
         with patch.object(sc, "_run_ahk", return_value=True) as mock_run:
             assert sc.skip_back() is True
         script = mock_run.call_args.args[0]
-        assert "Send, {Left 2}" in script
+        assert "Send, {Left 1}" in script
 
     def test_control_function_propagates_run_ahk_failure(self):
         with patch.object(sc, "_run_ahk", return_value=False):

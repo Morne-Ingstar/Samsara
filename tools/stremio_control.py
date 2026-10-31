@@ -17,7 +17,9 @@ the plugin, which now imports from here).
 """
 
 import logging
+import math
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -32,6 +34,75 @@ AHK_EXE = r'C:\Program Files\AutoHotkey\v1.1.37.02\AutoHotkeyU64.exe'
 # stremio-runtime.exe is a companion process some builds also spawn --
 # kill both if present. See is_stremio_running() / kill_stremio().
 STREMIO_PROCESS_NAMES = ("stremio-shell-ng.exe", "stremio-runtime.exe")
+
+# Owner's verified arrow step. Stremio makes both arrow steps configurable;
+# Shift+arrow is a separate setting, not a guaranteed larger jump.
+SEEK_STEP_SECONDS = 10
+DEFAULT_SEEK_SECONDS = 10
+MAX_SEEK_SECONDS = 30 * 60
+
+_SMALL_NUMBERS = dict(zip(
+    "zero one two three four five six seven eight nine ten eleven twelve "
+    "thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(), range(20)))
+_TENS = dict(zip("twenty thirty forty fifty sixty seventy eighty ninety".split(), range(20, 100, 10)))
+
+
+def _spoken_number(text: str) -> float:
+    if re.fullmatch(r"\d+(?:\.\d+)?", text):
+        return float(text)
+    if text in ("a", "an", "one"):
+        return 1
+    if text in ("a couple", "a couple of", "couple", "couple of"):
+        return 2
+    if text in ("half", "half a", "half an"):
+        return 0.5
+    words = text.replace("-", " ").split()
+    # Deliberately a number grammar, not a bag of number-like words.
+    def under_hundred(parts):
+        if len(parts) == 1:
+            return _SMALL_NUMBERS.get(parts[0], _TENS.get(parts[0]))
+        if len(parts) == 2 and parts[0] in _TENS and parts[1] in _SMALL_NUMBERS:
+            unit = _SMALL_NUMBERS[parts[1]]
+            if 1 <= unit <= 9:
+                return _TENS[parts[0]] + unit
+        return None
+
+    value = under_hundred(words)
+    if value is None and len(words) >= 2 and words[1] in ("hundred", "thousand"):
+        leading = _SMALL_NUMBERS.get(words[0], 1 if words[0] == "a" else None)
+        if leading is not None and 1 <= leading <= 9:
+            tail = words[2:]
+            if tail[:1] == ["and"]:
+                tail = tail[1:]
+            rest = under_hundred(tail) if tail else 0
+            if rest is not None:
+                value = leading * (100 if words[1] == "hundred" else 1000) + rest
+    if value is None:
+        raise ValueError("Say a number of seconds or minutes")
+    return value
+
+
+def seek_presses(seconds: float) -> int:
+    """Round to the nearest arrow tap (ties up), bounded to 1..180."""
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("Seek amount must be positive and finite")
+    return max(1, math.floor(min(seconds, MAX_SEEK_SECONDS) / SEEK_STEP_SECONDS + 0.5))
+
+
+def parse_seek_seconds(remainder: str) -> int:
+    """Parse a complete spoken duration; missing units mean seconds."""
+    text = remainder.lower().strip().rstrip(".!?")
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"(?:\s+)?stremio$", "", text).strip()
+    if not text:
+        return DEFAULT_SEEK_SECONDS
+    text = re.sub(r"^by\s+", "", text)
+    match = re.fullmatch(r"(.+?)(?:\s+(seconds?|secs?|minutes?|mins?))?", text)
+    if match is None:
+        raise ValueError("Say a number of seconds or minutes")
+    amount, unit = match.groups()
+    seconds = _spoken_number(amount) * (60 if unit and unit.startswith("min") else 1)
+    return seek_presses(seconds) * SEEK_STEP_SECONDS
 
 
 # ── AHK script templates (pure string builders -- unit-testable without
@@ -123,18 +194,24 @@ def pause_play() -> bool:
     return _send_stremio_key("Space")
 
 
-def skip_forward() -> bool:
-    """Skip ahead. Mirrors plugins/commands/stremio.py's original
-    handle_skip_forward exactly: 6x Right-arrow presses (Stremio seeks
-    ~5s per press per the original plugin's comment)."""
-    return _send_stremio_send_body("Send, {Right 6}")
+def skip_forward(seconds: float = DEFAULT_SEEK_SECONDS) -> bool:
+    """Seek ahead with one bounded AHK Send (10-second arrow taps)."""
+    return _send_stremio_send_body(f"Send, {{Right {seek_presses(seconds)}}}")
 
 
-def skip_back() -> bool:
-    """Skip back. Mirrors the original handle_skip_back exactly: 2x
-    Left-arrow presses. NOTE: asymmetric with skip_forward's 6 presses --
-    inherited as-is from the original plugin, not reconciled here."""
-    return _send_stremio_send_body("Send, {Left 2}")
+def skip_back(seconds: float = DEFAULT_SEEK_SECONDS) -> bool:
+    """Seek back with the same default and bounds as forward."""
+    return _send_stremio_send_body(f"Send, {{Left {seek_presses(seconds)}}}")
+
+
+def next_episode() -> bool:
+    """Shift+N: stremio-web's playNext shortcut (no previous counterpart).
+
+    Verified: Stremio/stremio-web c34935cc, common/Shortcuts/shortcuts.json
+    and routes/Player/Player.js. Sending the shortcut does not verify that
+    another episode exists or that playback has started.
+    """
+    return _send_stremio_send_body("Send, +{n}")
 
 
 def fullscreen() -> bool:

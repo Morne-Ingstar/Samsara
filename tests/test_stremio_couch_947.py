@@ -73,12 +73,21 @@ def test_explicit_stremio_repairs_outside_foreground(rig, heard):
     "skip forward ten chapters", "volume down the street",
     "Paul Stremio wrote a letter", "resume streaming documentaries",
 ], ids=lambda _: "case")
-def test_prose_is_not_a_stremio_command(rig, heard):
+def test_prose_is_not_a_stremio_command(rig, heard, monkeypatch):
     executor, app, calls = rig
+    # 948 seek commands accept arguments; exercise their real parser while
+    # keeping the key boundary inert, so invalid units cannot cause a seek.
+    from plugins.commands import stremio
+    send = Mock()
+    monkeypatch.setattr(stremio.stremio_control, '_run_ahk', send)
+    for phrase, handler in [('skip forward', stremio.handle_skip_forward),
+                            ('skip back', stremio.handle_skip_back)]:
+        monkeypatch.setattr(executor._registry_entry(phrase), 'handler', handler)
     executor._matcher.set_context_provider(lambda: MatchContext.for_app("stremio-shell-ng.exe"))
     executor._matcher.set_enabled_packs({"core", "media", "stremio"})
     executor.process_text(heard, force_commands=True)
     assert all("stremio" not in phrase and not phrase.startswith("skip ") for phrase, _ in calls)
+    send.assert_not_called()
 
 
 @pytest.mark.parametrize("heard", ["postremia", "resume strami out", "pause", "skip forward ten"], ids=lambda _: "case")

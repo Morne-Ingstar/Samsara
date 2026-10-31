@@ -51,6 +51,8 @@ def _context(monkeypatch, executor, phrase):
         tags.update(entry.scope.argument_tags)
     context = MatchContext.for_app('winword.exe' if phrase in {'font size', 'set font', 'line spacing'} else 'chrome.exe',
                                    tags=tags)
+    if entry.pack == 'stremio':  # 948 player examples require the scoped foreground.
+        context = MatchContext.for_app('stremio-shell-ng.exe', tags=tags)
     monkeypatch.setattr(executor._matcher, 'current_context', lambda: context)
 
 
@@ -275,6 +277,8 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
         stub('_grid_area', ((0, 0, 1920, 1080), 'sample screen'))
         import win32gui
         monkeypatch.setattr(win32gui, 'GetForegroundWindow', lambda: 42)
+    elif stem == 'stremio':
+        monkeypatch.setattr(module.stremio_control, '_run_ahk', effect('stremio_keys'))
     elif stem == 'smart_actions':
         stub('_do_capture')
     elif stem == 'snippets':

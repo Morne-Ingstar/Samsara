@@ -514,6 +514,12 @@ class CommandMatcher:
             self._entries[canonical] = entry
             # Register aliases (skip individually if shadowed)
             for alias in entry.aliases:
+                # Builtin aliases live in the prefix table, not _entries.
+                # An exact plugin alias would hide them even out of scope.
+                # Leave this spelling to the scope-aware prefix scan (948).
+                if any(e.source == 'builtin' and alias in e.aliases
+                       for e in self._entries.values()):
+                    continue
                 if alias not in self._entries:
                     self._entries[alias] = entry
                 else:
@@ -546,6 +552,8 @@ class CommandMatcher:
         scoped = [e for e in self._sorted if e.scope is not None]
         self._has_scoped = bool(scoped)
         self._needs_foreground = any(e.scope.needs_foreground for e in scoped)
+        self._amount_entries = [e for e in self._sorted
+                                if getattr(e.handler, 'spoken_amount_prefixes', None)]
 
         self._frozen = True
 
@@ -613,6 +621,28 @@ class CommandMatcher:
             # out-of-scope command's: a miss, never a different command
             # (queue 58 / 68). disabled_pack_for() / out_of_scope_for() say why.
             return None
+
+        # Amount syntax is validated before matching, rather than registering
+        # a bare alias (948: "back a minute" must not claim browser "back").
+        for entry in self._amount_entries:
+            prefixes = getattr(entry.handler, 'spoken_amount_prefixes', {})
+            if not prefixes or not self._pack_enabled(entry.pack):
+                continue
+            for prefix, parse_amount in prefixes.items():
+                prefix_tokens = prefix.split()
+                n = len(prefix_tokens)
+                if len(tokens) <= n or text_tokens[:n] != prefix_tokens:
+                    continue
+                start = tokens[n - 1][2]
+                remainder = argument_text(text, start)
+                if not self.is_live(entry, context, remainder):
+                    continue
+                try:
+                    parse_amount(remainder)
+                except ValueError:
+                    continue
+                return CommandMatch(entry, prefix_tokens, start, remainder,
+                                    ' '.join(text_tokens[n:]))
 
         # Token prefix matching: longest registered phrase first.
         # Skip entries whose pack is disabled or whose scope is not live --

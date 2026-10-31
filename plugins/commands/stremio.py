@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 from samsara.plugin_commands import command
+from samsara.command_registry import DispatchResult, DispatchState
 
 from samsara.log import get_logger
 
@@ -75,22 +76,66 @@ def handle_resume(app, remainder):
     return stremio_control.pause_play()
 
 
+_PLAYER_SCOPE = {"apps": ["stremio-shell-ng.exe", "stremio.exe"]}
+_SEEK_ARGS = {"remainder": {"type": "str", "required": False}}
+
+
+def _seek_feedback(app, message, failed=False):
+    show = getattr(app, "_show_outcome_chip", None)
+    if callable(show):
+        show(message, "warning" if failed else "success", 3500)
+    coordinator = getattr(app, "audio_coordinator", None)
+    if coordinator is not None:
+        coordinator.speak(message, category="error" if failed else "command")
+
+
+def _handle_seek(app, remainder, forward):
+    try:
+        seconds = stremio_control.parse_seek_seconds(remainder)
+    except ValueError:
+        message = "Say a positive number of seconds or minutes"
+        _seek_feedback(app, message, failed=True)
+        return DispatchResult(DispatchState.FAILED, detail={"reason": message})
+    action = stremio_control.skip_forward if forward else stremio_control.skip_back
+    if not action(seconds):
+        message = "Stremio seek failed"
+        _seek_feedback(app, message, failed=True)
+        return DispatchResult(DispatchState.FAILED, detail={"reason": message})
+    _seek_feedback(app, f"{'Forward' if forward else 'Back'} {seconds} seconds")
+    return True
+
+
 @command("skip forward", aliases=[
-    "skip ahead", "fast forward", "forward", "next bit"
-], pack="stremio")
+    "skip ahead", "fast forward", "forward", "next bit", "jump ahead"
+], pack="stremio", scope=_PLAYER_SCOPE, param_schema=_SEEK_ARGS)
 def handle_skip_forward(app, remainder):
     """Jumps forward in what is playing in Stremio."""
-    print("[STREMIO] Skipping forward")
-    return stremio_control.skip_forward()
+    return _handle_seek(app, remainder, True)
 
 
 @command("skip back", aliases=[
     "rewind", "back up", "skip backward", "go backwards"
-], pack="stremio")
+], pack="stremio", scope=_PLAYER_SCOPE, param_schema=_SEEK_ARGS)
 def handle_skip_back(app, remainder):
     """Jumps back in what is playing in Stremio."""
-    print("[STREMIO] Skipping back")
-    return stremio_control.skip_back()
+    return _handle_seek(app, remainder, False)
+
+
+# A duration is required after this prefix; bare "back" belongs to the browser.
+handle_skip_back.spoken_amount_prefixes = {"back": stremio_control.parse_seek_seconds}
+
+
+@command("next episode", aliases=[
+    "next video", "play the next episode", "skip episode"
+], pack="stremio", scope=_PLAYER_SCOPE)
+def handle_next_episode(app, _remainder):
+    """Requests the next episode using Stremio's verified Shift+N shortcut."""
+    if not stremio_control.next_episode():
+        message = "Stremio next episode failed"
+        _seek_feedback(app, message, failed=True)
+        return DispatchResult(DispatchState.FAILED, detail={"reason": message})
+    _seek_feedback(app, "Next episode requested")
+    return True
 
 
 @command("fullscreen", aliases=[

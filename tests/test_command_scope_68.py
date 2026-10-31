@@ -347,6 +347,10 @@ def _expected_scopes():
     expected.update({p: {'apps': ['winword.exe']} for p in (
         'heading one', 'heading two', 'heading three', 'normal text',
     )})
+    # 948: player transport commands require Stremio in the foreground.
+    expected.update({p: {'apps': ['stremio-shell-ng.exe', 'stremio.exe']} for p in (
+        'next episode', 'skip forward', 'skip back',
+    )})
     # 781/820 / 888a: picks and overview follow-ups are live only with their overlay.
     expected['pick number'] = {'tags': ['show_numbers.visible']}
     expected.update({p: {'tags': ['window_overview.visible']} for p in (
@@ -477,7 +481,7 @@ def test_cheatsheet_window_hides_not_live_and_says_how_many(
             lambda p: None, lambda: rows, tmp_path / "palette.json")) as win:
         ids = {win._list.item(i).data(Qt.ItemDataRole.UserRole + 1) for i in range(win._list.count())}
         assert "window_cube.two" not in ids and "window_cube.window_two" in ids
-        # Overlay/selection-only, browser and Word commands are hidden in Warp;
+        # Overlay/selection-only, browser, Word and 948 Stremio commands are hidden in Warp;
         # the bare click forms and named-control discovery stay global.
         hidden = {'window_cube.' + word for word in (
             'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine')}
