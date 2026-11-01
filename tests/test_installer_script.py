@@ -1,7 +1,7 @@
 """installer/samsara.iss and tools/build_installer.cmd, parsed as text (Inno
 Setup is not needed to run these): every component the installer offers
-maps to a manifest component id; the GPU component is disabled with its
-reason rather than removed; the command model follows the manifest's
+maps to a manifest component id; a published GPU pack is disabled with its
+hardware reason; every optional pack follows the manifest's
 `available` flag through a build-time define; the fetch is the app's own
 headless mode; the build command versions from the same source as the
 build and names the output as required."""
@@ -95,10 +95,8 @@ class TestGpuAndComingSoon:
         assert "cuda_pack" in _component_names(iss)
         assert "No NVIDIA GPU detected" in code
         assert "ItemEnabled[Idx] := False" in code
-        # never conditionally compiled out: no preprocessor branch in
-        # [Components], and no #if on the CUDA size define beyond its default
-        assert "#if" not in _section(iss, "Components")
-        assert "#if CudaPack" not in iss
+        # 994: unpublished packs are hidden; hardware reasons remain for published packs.
+        assert '#if CudaPackAvailable != 0' in _section(iss, "Components")
         # detection failure keeps it selectable with a neutral note
         assert "Could not detect a GPU" in code
         assert "Result := -1" in code and "except" in code
@@ -112,8 +110,9 @@ class TestGpuAndComingSoon:
     def test_command_model_follows_the_manifest_available_flag(self, iss):
         assert "#ifndef CommandModelAvailable" in iss and "#define CommandModelAvailable 0" in iss
         code = _section(iss, "Code")
-        assert "#if CommandModelAvailable == 0" in code and "Coming soon" in code
-        assert "#else" in code and "ItemEnabled[Idx] := True" in code
+        # 994: availability now controls the row itself instead of a disabled placeholder.
+        assert "#if CommandModelAvailable != 0" in _section(iss, "Components")
+        assert "Coming soon" not in code
 
     def test_build_cmd_generates_the_availability_define_from_the_manifest(self):
         cmd = CMD.read_text(encoding="utf-8")

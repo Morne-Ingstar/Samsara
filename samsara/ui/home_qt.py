@@ -373,7 +373,7 @@ WHATS_NEW_SEEN_KEY = "home/whats_new_seen"
 #: skipped: it is not a version anybody is running.
 _RELEASE_HEADING = re.compile(r"^##\s*\[(?P<version>[^\]]+)\]")
 _UNRELEASED = "unreleased"
-
+_MISSING_CHANGELOGS: set[Path] = set()
 
 def changelog_summary(path: Optional[Path] = None) -> tuple:
     """(version, one-sentence summary) from the top released section of
@@ -385,11 +385,11 @@ def changelog_summary(path: Optional[Path] = None) -> tuple:
     an empty slot is honest, a manufactured one is not.
     """
     path = Path(path) if path is not None else CHANGELOG_PATH
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+    try:  # 994: a missing changelog is remembered, not re-read and re-logged every poll
+        lines = [] if path in _MISSING_CHANGELOGS else path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
-        logger.debug(f"changelog_summary: {exc}")
-        return None, None
+        _MISSING_CHANGELOGS.add(path), logger.debug(f"changelog_summary: {exc}")
+    if path in _MISSING_CHANGELOGS: return None, None  # noqa: E701
     version = None
     paragraph = []
     for line in lines:

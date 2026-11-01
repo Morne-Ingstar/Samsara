@@ -11,7 +11,7 @@ rem sizes and the command model's availability are read from manifest.json
 rem (tools\gen_release_manifest.py's output; default: .\manifest.json, or the
 rem path given as the first argument) and written to
 rem installer\manifest_defines.iss, which samsara.iss includes. Without a
-rem manifest the installer still builds, with unknown sizes.
+rem manifest the installer still builds, with optional packs hidden.
 rem
 rem Requires: dist\Samsara\Samsara.exe (build first), ISCC.exe (Inno Setup 6;
 rem set SAMSARA_ISCC to override the lookup), Python 3.11 for the two reads.
@@ -80,7 +80,7 @@ if exist "%MANIFEST%" (
         popd & exit /b 1
     )
 ) else (
-    echo No manifest at %MANIFEST% -- component sizes will show as unknown.
+    echo No manifest at %MANIFEST% -- optional packs will be hidden.
     if exist "installer\manifest_defines.iss" del "installer\manifest_defines.iss"
 )
 

@@ -428,8 +428,8 @@ class AdvancedPage:
         layout.addWidget(self._section_title("Components"))
         layout.addSpacing(4)
         components_note = QLabel(
-            "Optional downloads are verified before installation. Installed, missing, "
-            "and coming-soon components are shown here."
+            # PLACEHOLDER COPY (994)
+            "Published optional downloads are shown here and verified before installation."
         )
         components_note.setWordWrap(True)
         components_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")

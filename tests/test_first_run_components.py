@@ -291,11 +291,12 @@ class TestComponentsPage:
     def test_lists_exactly_the_missing_components(self, page, world):
         p, _, _ = page
         listed = p.refresh()
-        assert [c["id"] for c in listed] == ["cuda-pack", "wake-word-models", "command-model"]
+        # 994: unavailable assets have no row.
+        assert [c["id"] for c in listed] == ["cuda-pack", "wake-word-models"]
         # install one by hand (marker + files) and it drops off the list
         fq.install_component(io.BytesIO(world["blobs"]["wake-word-models.zip"]),
                              world["manifest"]["components"][1], world["app_root"], world["downloads"])
-        assert [c["id"] for c in p.refresh()] == ["cuda-pack", "command-model"]
+        assert [c["id"] for c in p.refresh()] == ["cuda-pack"]
 
     def test_rows_show_size_benefit_and_reasons(self, page):
         from PySide6.QtWidgets import QLabel
@@ -306,8 +307,8 @@ class TestComponentsPage:
         assert any("Wake-word models" in t and "KB" in t for t in texts)
         assert fq.COMPONENT_BENEFITS["wake-word-models"] in texts
         assert p._rows["cuda-pack"]["note"].text() == fq.NO_NVIDIA and not p._rows["cuda-pack"]["get"].isEnabled()
-        assert p._rows["command-model"]["note"].text() == fq.COMING_SOON
-        assert not p._rows["command-model"]["get"].isEnabled()
+        # 994: no disabled Coming soon placeholder.
+        assert "command-model" not in p._rows
         assert p._rows["wake-word-models"]["get"].isEnabled()
 
     def test_get_now_fetches_and_installs_and_later_advances(self, page, world, qapp):

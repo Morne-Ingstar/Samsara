@@ -23,6 +23,7 @@ from typing import Any
 
 ERROR_ALREADY_EXISTS = 183
 DEFAULT_MUTEX_NAME = r"Local\Samsara.SingleInstance"
+UNINSTALL_QUIT_MESSAGE = "Samsara.QuitForUninstall"
 _PROFILE_MUTEX_PREFIX = DEFAULT_MUTEX_NAME + ".Profile."
 _USE_ENVIRONMENT = object()
 
@@ -335,6 +336,14 @@ def _activate_existing_window(last=None):
     return api.GetForegroundWindow() == hwnd
 
 
+def _request_uninstall_quit():
+    """Use the same draft-aware shutdown as the tray's Exit action."""
+    app = getattr(sys.modules.get('__main__'), 'app', None)
+    quitter = getattr(app, 'quit_app', None)
+    if callable(quitter):
+        quitter()
+
+
 def _create_activation_receiver(mutex_name):
     """Only called on qt_runtime's thread; retained until process exit."""
     global _activation_receiver
@@ -345,7 +354,8 @@ def _create_activation_receiver(mutex_name):
     if _activation_receiver is not None:
         return
     message_id = _activation_user32().RegisterWindowMessageW(_ACTIVATION_MESSAGE)
-    if not message_id:
+    quit_message_id = _activation_user32().RegisterWindowMessageW(UNINSTALL_QUIT_MESSAGE)
+    if not message_id or not quit_message_id:
         raise ctypes.WinError(ctypes.get_last_error())
 
     class ActivationReceiver(QWidget):
@@ -368,6 +378,10 @@ def _create_activation_receiver(mutex_name):
 
         def nativeEvent(self, event_type, message):
             msg = wintypes.MSG.from_address(int(message))
+            if msg.message == quit_message_id:
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, _request_uninstall_quit)
+                return True, 1
             if msg.message == message_id:
                 try:
                     last = self.last if self.last is not None and isValid(self.last) else None

@@ -29,7 +29,12 @@ or point `SAMSARA_ISCC` at `ISCC.exe`.
 | core | core | fixed, always installed | never |
 | wake_word_models | wake-word-models | selected | never |
 | cuda_pack | cuda-pack | selected only when an NVIDIA GPU is detected | disabled with "(No NVIDIA GPU detected)"; when detection itself fails it stays selectable with "(Could not detect a GPU; choose it if you have an NVIDIA card)" |
-| command_model | command-model | not selected | disabled with "(Coming soon)" while the manifest says `available: false`; lights up at the next build once the manifest says otherwise, no installer change |
+| command_model | command-model | not selected | hidden while the manifest says `available: false`; appears at the next build once published |
+| gesture_control | gesture-control | not selected | hidden until published |
+
+Every optional pack is hidden when the release manifest marks it unavailable
+or its availability is unknown. Published CUDA packs retain the hardware
+explanation above. Settings and first-run setup also list only published packs.
 
 GPU detection: `nvcuda.dll` in the system folder (it ships with the NVIDIA
 driver), then a WMI `Win32_VideoController` query for "NVIDIA". Any error in
@@ -37,6 +42,14 @@ detection means "could not detect", never "no GPU".
 
 Pressing Enter through every page yields a working install: core plus the
 wake-word models, plus the CUDA pack on a machine with an NVIDIA GPU.
+
+## Uninstall
+
+Uninstall checks processes by their full executable path. If this installation
+is running, choose **Close Samsara** or **Cancel**. Samsara receives its normal,
+draft-aware quit request; after 10 seconds an unresponsive process is force-closed.
+Silent uninstall cancels if Samsara is running. File locks are checked before
+removal. If removal fails, the uninstaller and Apps entry remain for retry.
 
 ## After the files are copied
 

@@ -177,11 +177,11 @@ def component_installed(component: dict, app_root, downloads_dir) -> bool:
 
 
 def missing_components(manifest: dict, app_root, downloads_dir) -> list:
-    """Components not installed, in manifest order: available ones first,
-    then declared-but-unavailable ones (shown as coming soon)."""
+    """Published optional components that are not installed, sorted by id."""
     rows = [c for c in manifest["components"]
-            if c.get("id") != "core" and not component_installed(c, app_root, downloads_dir)]
-    return sorted(rows, key=lambda c: (not c.get("available"), c["id"]))
+            if c.get("available") and c.get("id") != "core"
+            and not component_installed(c, app_root, downloads_dir)]
+    return sorted(rows, key=lambda c: c["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -720,7 +720,7 @@ class ComponentsPage:
             return
         gpu = None
         self._listed = (
-            list(self._manifest["components"])
+            [c for c in self._manifest["components"] if c.get("available")]
             if self._include_installed else
             missing_components(self._manifest, self._app_root, self._downloads)
         )
