@@ -1,14 +1,14 @@
 {
   "ceilings": {
-    "dictation.py": 12386,
+    "dictation.py": 12385,
     "plugins/commands/ask_ollama.py": 3692,
     "plugins/commands/show_numbers.py": 1976,
     "plugins/commands/window_switcher.py": 1537,
     "samsara/audio_ducking.py": 1545,
-    "samsara/audio_engine/wake_consumer.py": 1715,
+    "samsara/audio_engine/wake_consumer.py": 1710,
     "samsara/execution_policy.py": 2105,
     "samsara/session_modes.py": 3353,
-    "samsara/streaming.py": 3212,
+    "samsara/streaming.py": 3211,
     "samsara/ui/command_cheatsheet_qt.py": 1550,
     "samsara/ui/history_view.py": 1792,
     "samsara/ui/home_qt.py": 2549,

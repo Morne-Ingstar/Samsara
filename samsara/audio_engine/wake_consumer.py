@@ -54,7 +54,7 @@ from samsara.session_modes import SessionMode
 from samsara.subjects import OnsetContext
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
-from samsara import flight_recorder, tutorial_capture
+from samsara import flight_recorder, tutorial_capture, mic_score
 
 logger = get_logger(__name__)
 
@@ -998,13 +998,8 @@ class WakeConsumer:
 
     def _process_frame(self, frame) -> None:  # noqa: C901 (complexity mirrors legacy callback)
         app = self._app
-
-        if app.app_state == 'wake_session':
-            app._expire_wake_session()
-        if getattr(app, '_wake_rearm_needs_onset', False) is True:
-            self.abort_utterance()
-            self._await_wake_onset = True
-            app._wake_rearm_needs_onset = False
+        if not mic_score.prepare_wake_frame(self):
+            return
         if self._mouth_shadow is not None:
             self._mouth_shadow.observe(self, frame)
 

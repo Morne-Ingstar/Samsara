@@ -150,7 +150,8 @@ def deliver_stream_final(session, text, raw_text, duration_s, elapsed_ms):
     """Let delivery retain its capture ownership, then publish its receipt."""
     from samsara import tutorial_capture
     live = not session.cancel_event.is_set() and tutorial_capture.final_current(session)
-    session._deliver_final(text, raw_text, duration_s, elapsed_ms)
+    from samsara.mic_score import deliver_with_history
+    deliver_with_history(session, session._deliver_final, text, raw_text, duration_s, elapsed_ms)
     if not live:
         return
     if not text or not text.strip():

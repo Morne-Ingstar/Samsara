@@ -3520,28 +3520,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                      mode="hold", status="success", app_context=None,
                      entry_type="dictation", log_prob=None,
                      matched_command=None):
-        """Write one entry to the persistent SQLite history (best-effort).
-
-        Wrapped so callers don't need to null-check or try/except every site.
-        Failures here must never break a transcription.
-        """
-        if self.history_db is None:
-            return
-        try:
-            from samsara.recent_privacy import write_history
-            write_history(self,
-                raw_text=raw_text,
-                display_text=display_text if display_text is not None else raw_text,
-                app_context=app_context if app_context is not None else self._get_foreground_app(),
-                duration_ms=int(duration_ms),
-                mode=mode,
-                status=status,
-                entry_type=entry_type,
-                log_prob=log_prob,
-                matched_command=matched_command,
-            )
-        except Exception as e:
-            safe_exception(logger, f"[HISTORY] log failed: {describe_text(e)}")
+        """Write one persistent history entry without breaking transcription."""
+        from samsara.mic_score import log_history
+        log_history(self, raw_text, display_text, duration_ms, mode, status,
+                    app_context, entry_type, log_prob, matched_command)
     def _notify_main_window(self, text):
         """Direct callback into the hub window (no event bus).
 
@@ -5662,6 +5644,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             stage_timing.mark("speech_end", segment_index=segment_index,
                               last_voice_source="vad_unavailable")
         timing_token = set_current_stage_timing(stage_timing)
+        from samsara import mic_score
+        mic_history_token = mic_score.open_history(self)
         token = self._transcription_owners.claim('toggle')
         # 2026-09-14 (queue 54): every capture logs its session mode, and
         # every return before dispatch_utterance names why -- a user must
@@ -5784,7 +5768,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             )
             transcribe_start = time.time()
             seg_list, info = self._decode_session_audio(audio, transcribe_params, command_lane=_is_command_lane)
-            text = ''.join(s.text for s in seg_list).strip()
+            text = mic_score.transcript_text(self, seg_list)
             stage_timing.mark("transcribe_end", words=len(text.split()))
             transcribe_time = time.time() - transcribe_start
             # Hands-free uses this VAD-bounded per-utterance path instead of
@@ -6045,6 +6029,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             stage_timing.complete(outcome=_timing_outcome)
             self._transcription_owners.release('toggle', token)
             self._vad_reset()
+            mic_score.close_history(mic_history_token)
 
     def _is_dictate_context_echo(self, text, context_tail) -> bool:
         """_is_context_echo, with the one exemption that predicate cannot
@@ -6588,9 +6573,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         self.capture_rate for backward compatibility. Pass SAMPLE_RATE
         (16000) when buffer comes from the ACE ring (already at model rate).
         """
-        from samsara import tutorial_capture
+        from samsara import tutorial_capture, mic_score
         if src_rate is None:
             src_rate = self.capture_rate
+        mic_history_token = mic_score.open_history(self)
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
@@ -6626,7 +6612,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             with self.model_lock:
                 segments, info = self.model.transcribe(audio, **transcribe_params)
             
-            text = "".join([segment.text for segment in segments]).strip()
+            text = mic_score.transcript_text(self, segments)
             text = self._filter_dictation_language(text, info)
             transcribe_time = time.time() - transcribe_start
             
@@ -6716,6 +6702,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
             except Exception as _snd_err:
                 logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
+
+        finally:
+            mic_score.close_history(mic_history_token)
 
     def _notify_tutorial(self, kind, text):
         from samsara import tutorial_capture
@@ -8378,6 +8367,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if self.app_state == 'wake_session' else None
         )
         token = self._transcription_owners.claim('wake')
+        from samsara import mic_score
+        mic_history_token = mic_score.open_history(self)
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
@@ -8452,6 +8443,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 # Whisper returns a lazy iterator: decoding runs while it is
                 # consumed, so the cross-lane lock must cover iteration too.
                 _seg_list = list(segments)
+                mic_score.remember_segments(self, _seg_list)
             text = "".join([segment.text for segment in _seg_list]).strip()
             if stage_timing is not None:
                 stage_timing.mark("transcribe_end", words=len(text.split()))
@@ -8913,6 +8905,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # Retain the utterance-boundary cleanup hook. The bundled ONNX VAD
             # is stateless between calls, so this is currently a no-op.
             self._vad_reset()
+            mic_score.close_history(mic_history_token)
 
     def _wake_opens_session(self) -> bool:
         """wake_word_config.opens_session (default False): a wake-word hit
@@ -9738,6 +9731,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         self.add_to_history(text.strip(), is_command=False)
         self._log_history(
             raw_text=raw,
+            log_prob=_diag_acc.get('avg_logprob'),
             display_text=text.strip(),
             mode="wake",
             status="success",
@@ -10092,6 +10086,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         """Serialize capture startup with release, cancellation and shutdown."""
         with self._hold_capture_lifecycle_lock:
             if (not self._running or self.recording
+                    or getattr(self, '_mic_score_active', False) is True
                     or getattr(self, '_streaming_session', None) is not None
                     or self._stop_in_flight or not self.model_loaded):
                 if not self.recording:
@@ -10550,6 +10545,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         presence_capture = capture_context(self)
 
         def transcribe():
+            from samsara import mic_score
+            mic_history_token = mic_score.open_history(self)
             _timing_token = (
                 set_current_stage_timing(stage_timing) if stage_timing is not None else None
             )
@@ -10676,6 +10673,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 text = _decode_result.text
                 _low_confidence = _decode_result.low_confidence
                 _diag_all_segs = list(_decode_result.seg_list)
+                mic_score.remember_segments(self, _diag_all_segs)
                 _detected_lang = _decode_result.detected_lang
                 _diag_path = _decode_result.diag_path
                 if stage_timing is not None:
@@ -11180,6 +11178,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 except Exception as _snd_err:
                     logger.debug(f"Failure earcon (winsound) unavailable: {_snd_err}")
             finally:
+                mic_score.close_history(mic_history_token)
                 if stage_timing is not None:
                     reset_current_stage_timing(_timing_token)
                     stage_timing.complete(outcome=stage_timing.outcome or "discarded")

@@ -64,6 +64,7 @@ class HistoryManager:
             ("matched_command",  "TEXT DEFAULT NULL"),
             ("privacy_reason",   "TEXT DEFAULT ''"),
             ("target_app",       "TEXT DEFAULT ''"),
+            ("microphone_name",  "TEXT DEFAULT ''"),
         ]
         with self._lock:
             existing = {
@@ -79,7 +80,7 @@ class HistoryManager:
     def add(self, raw_text, display_text="", app_context="",
             duration_ms=0, mode="hold", status="success",
             audio_path=None, entry_type="dictation",
-            log_prob=None, matched_command=None, privacy_reason="", target_app=""):
+            log_prob=None, matched_command=None, privacy_reason="", target_app="", microphone_name=""):
         """Add a transcription to history. Returns the row id."""
         if not display_text:
             display_text = raw_text
@@ -92,11 +93,11 @@ class HistoryManager:
                 INSERT INTO history
                     (timestamp, app_context, raw_text, display_text,
                      duration_ms, mode, status, audio_path,
-                     session_id, entry_type, log_prob, matched_command, privacy_reason, target_app)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     session_id, entry_type, log_prob, matched_command, privacy_reason, target_app, microphone_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (timestamp, app_context, raw_text, display_text,
                   duration_ms, mode, status, audio_path,
-                  self.session_id, entry_type, log_prob, matched_command, privacy_reason, target_app))
+                  self.session_id, entry_type, log_prob, matched_command, privacy_reason, target_app, microphone_name))
             self._conn.commit()
             return cursor.lastrowid
 
@@ -154,6 +155,13 @@ class HistoryManager:
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
             """, (status, limit, offset)).fetchall()
+
+    def recent_for_microphone(self, name, limit=100):
+        """Read a device's own recent attempts without scanning other mics."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT * FROM history WHERE microphone_name=? AND privacy_reason='' "
+                "ORDER BY id DESC LIMIT ?", (name, limit)).fetchall()
 
     def recent_windowed(self, search=None, entry_type=None, limit=200, before_id=None,
                          on_date=None, since=None):

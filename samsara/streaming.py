@@ -51,7 +51,7 @@ try:
 except ImportError:
     pyperclip = None
 
-from samsara import kept_session_draft, listening_display, tutorial_capture
+from samsara import kept_session_draft, listening_display, tutorial_capture, mic_score
 from samsara.cleanup import clean_text
 from samsara.dictionary_store import get_dictionary_store
 from samsara.hold_decode_params import final_base_params, free_form_prompt
@@ -1683,7 +1683,7 @@ class StreamingWorker(threading.Thread):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
-            from samsara.speech_regions import stream_final, LOST
+            from samsara.speech_regions import LOST
             if getattr(consumer, 'capture_loss', False) is True:
                 self._session._decode_failure = LOST
                 self._session.on_final(None, duration_s=len(audio) / app.model_rate if audio is not None else 0)
@@ -1693,7 +1693,7 @@ class StreamingWorker(threading.Thread):
                 return
             params = self._final_params()
             t0 = time.time()
-            seg_list, info, text = stream_final(self, audio, params)
+            seg_list, info, text = mic_score.stream_final(self, audio, params)
             detected_lang = getattr(info, 'language', None)
             duration_s = len(audio) / app.model_rate
             elapsed_ms = int((time.time() - t0) * 1000)
@@ -1960,8 +1960,7 @@ class StreamingSession:
     STATE_DONE = "done"
 
     def __init__(self, app):
-        self.app = app
-        self.start_time = time.time()
+        mic_score.start_streaming_history(self, app)
         self.stop_event = threading.Event()
         self.cancel_event = threading.Event()
         self._state = self.STATE_RECORDING

@@ -153,7 +153,10 @@ def build(owner):
     guide_button.clicked.connect(
         lambda: getattr(owner.app, "open_mic_setup_guide", lambda: None)()
     )
-    guide_row = SettingRow("Microphone", "Choose and test the microphone Samsara listens to.", [guide_button], parent=page.container)
+    from samsara.ui.mic_score_qt import open_mic_score
+    score_button = QPushButton("Mic score...")
+    score_button.clicked.connect(lambda: open_mic_score(owner.app))
+    guide_row = SettingRow("Microphone", "Choose and test the microphone Samsara listens to.", [guide_button, score_button], parent=page.container)
     guide_row.setObjectName("microphoneSetupGuide")
     page.base.insertWidget(0, guide_row)
     owner._widgets["audio_mic_setup_guide_button"] = guide_button

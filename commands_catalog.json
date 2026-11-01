@@ -9840,6 +9840,47 @@
     },
     {
       "aliases": [
+        "how is my mic doing",
+        "hows my mic doing"
+      ],
+      "args": [],
+      "canonical_id": "mic_score_voice.hows_my_mic_doing",
+      "description": "Keep measured accuracy, recognition estimates and router outcomes separate.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "my_mic_doing",
+      "pack": "core",
+      "plugin": "mic_score_voice",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/mic_score_voice.py:14",
+      "undoable": true,
+      "verb": "hows",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "mic score",
+        "test my mic",
+        "which mic is best"
+      ],
+      "args": [],
+      "canonical_id": "mic_score_voice.test_my_mic",
+      "description": "Opens a five-sentence microphone comparison.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "my_mic",
+      "pack": "core",
+      "plugin": "mic_score_voice",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/mic_score_voice.py:5",
+      "undoable": true,
+      "verb": "test",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "import my spotify playlists",
         "import spotify playlists"
       ],
