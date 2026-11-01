@@ -16478,6 +16478,46 @@
 {"id": "dictionary.spell_word", "kind": "sentence", "polarity": "negative", "reject": "dictionary.spell_word", "text": "last night he wrote in the notes that you can spell word whenever it feels right"}
 {"id": "dictionary.spell_word", "kind": "other_command", "polarity": "negative", "reject": "dictionary.spell_word", "text": "add word"}
 {"id": "dictionary.spell_word", "kind": "nonsense", "polarity": "negative", "reject": "dictionary.spell_word", "text": "zeppelin sideways spell banana glimmer"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "alias", "polarity": "positive", "text": "digest that"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "determiner", "polarity": "positive", "text": "summarize the that reply buy milk"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "could you just digest the reply water the plants"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest that check the oven."}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "reorder", "polarity": "positive", "text": "that digest"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "slot", "polarity": "positive", "text": "summarize that reply buy milk"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "alias", "polarity": "positive", "text": "digest the reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "determiner", "polarity": "positive", "text": "summarize the that reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "digest the reply for me"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest that."}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "slot", "polarity": "positive", "text": "digest that check the oven"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "alias", "polarity": "positive", "text": "summarize that reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "determiner", "polarity": "positive", "text": "digest the that check the oven"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "could you just digest the reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest, that check the oven?"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "slot", "polarity": "positive", "text": "digest the reply water the plants"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "determiner", "polarity": "positive", "text": "digest the that"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "please summarize that reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest, the reply water the plants?"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "would you please digest the reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Summarize that reply buy milk."}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "go ahead and summarize that reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Summarize that reply."}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "digest that please"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest, the reply?"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "digest that for me"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Summarize, that reply buy milk?"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "summarize that reply right now"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest, that?"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "i need you to digest that check the oven"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Summarize, that reply?"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "uh summarize that reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest the reply."}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "could you digest the reply"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "punct", "polarity": "positive", "text": "Digest the reply water the plants."}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "i need you to digest the reply water the plants"}
+{"accept": ["digest_reply.digest_that"], "id": "digest_reply.digest_that", "kind": "filler", "polarity": "positive", "text": "can you please summarize that reply"}
+{"id": "digest_reply.digest_that", "kind": "sentence", "polarity": "negative", "reject": "digest_reply.digest_that", "text": "yesterday afternoon we argued for an hour about who would digest that first"}
+{"id": "digest_reply.digest_that", "kind": "other_command", "polarity": "negative", "reject": "digest_reply.digest_that", "text": "stop the reply"}
+{"id": "digest_reply.digest_that", "kind": "nonsense", "polarity": "negative", "reject": "digest_reply.digest_that", "text": "saxophone velvet digest cobalt marmalade"}
 {"accept": ["example_greet.greet_me"], "id": "example_greet.greet_me", "kind": "alias", "polarity": "positive", "text": "say hello"}
 {"accept": ["example_greet.greet_me"], "id": "example_greet.greet_me", "kind": "determiner", "polarity": "positive", "text": "say the hello"}
 {"accept": ["example_greet.greet_me"], "id": "example_greet.greet_me", "kind": "filler", "polarity": "positive", "text": "say hello for me"}

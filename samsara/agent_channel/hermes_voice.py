@@ -6,6 +6,7 @@ from samsara.command_registry import DispatchState
 from samsara.config_defaults import cfg_get
 from samsara.runtime import thread_registry
 from . import cli_agents
+from . import reply_digest
 from .claude_reply import spoken_form
 from .spoken_digest import first_reply
 from .hermes import BusyError, Cancelled, EFFORTS, permitted
@@ -139,6 +140,7 @@ def ask(app, question):
         notice(app, "Ask Hermes what?")
         return DispatchState.FAILED
     agent = channel(app)
+    generation = reply_digest.generation("hermes")
     try:
         turn = agent.begin()
     except BusyError as exc:
@@ -161,6 +163,7 @@ def ask(app, question):
                 if not valid():
                     return
                 app._cli_agent_last = result
+                reply_digest.remember_reply("hermes", result, generation)
                 app._cli_agent_voice_state = {"agent": "hermes", "turn": turn,
                     "last": first, "rest": result.text, "expires": time.monotonic() + 60}
             chip(app, first[:220] or "Answered", valid=valid)

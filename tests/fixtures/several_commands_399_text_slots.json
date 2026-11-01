@@ -413,6 +413,32 @@
     "state": "completed",
     "text": "spell word alpha and volume down"
   },
+  "digest_reply.digest_that": {
+    "calls": [
+      [
+        "digest that",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "digest that",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "digest that alpha and volume down"
+  },
   "favorites.add_favorite": {
     "calls": [
       [

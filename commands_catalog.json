@@ -275,7 +275,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up the GPT agent and sign in first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:75",
+      "source": "plugins/commands/ask_agent.py:77",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -303,7 +303,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up your Hermes connection first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:103",
+      "source": "plugins/commands/ask_agent.py:105",
       "undoable": true,
       "verb": "ask",
       "whole_utterance": false
@@ -331,7 +331,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up the agent you name first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:86",
+      "source": "plugins/commands/ask_agent.py:88",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -359,7 +359,7 @@
       "plugin": "ask_agent",
       "precondition": "Set up your Hermes connection first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:111",
+      "source": "plugins/commands/ask_agent.py:113",
       "undoable": true,
       "verb": "new",
       "whole_utterance": false
@@ -378,7 +378,7 @@
       "plugin": "ask_agent",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_agent.py:119",
+      "source": "plugins/commands/ask_agent.py:121",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -8726,6 +8726,33 @@
       "source": "plugins/commands/dictionary.py:20",
       "undoable": true,
       "verb": "spell",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "digest that",
+        "digest the reply",
+        "summarize that reply"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "digest_reply.digest_that",
+      "description": "Reads a short summary of your last CLI agent reply; say again, longer for more.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "digest_reply",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/digest_reply.py:64",
+      "undoable": true,
+      "verb": "digest",
       "whole_utterance": false
     },
     {

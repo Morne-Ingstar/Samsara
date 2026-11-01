@@ -181,6 +181,7 @@ class HermesAgent(cli.CliAgent):
                 data = self._sessions(home)
                 data.pop(self.name, None)
                 self._save_sessions(home, data)
+                cli.clear_reply(self.name)
 
     def _remember_session(self, session, home, turn):
         if not isinstance(session, str) or not SESSION.fullmatch(session):
@@ -193,7 +194,7 @@ class HermesAgent(cli.CliAgent):
                 data[self.name] = session
                 self._save_sessions(home, data)
 
-    def ask(self, question: str, config=None, *, home=None, progress=None, turn=None):
+    def ask(self, question: str, config=None, *, home=None, progress=None, turn=None, deadline=None):
         turn = turn or self.begin()
         process = None
         code = -1  # No process exit code for launch/configuration/timeout errors.
@@ -219,6 +220,8 @@ class HermesAgent(cli.CliAgent):
                 if not exe[0]:
                     raise FileNotFoundError("hermes")
                 argv = hermes_argv(exe, session, settings, timeout)
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError()
                 process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False,
                     text=True, encoding="utf-8", errors="replace",
@@ -251,6 +254,8 @@ class HermesAgent(cli.CliAgent):
                 if not self.valid(turn):
                     raise Cancelled()
                 remaining = timeout - (time.monotonic() - started)
+                if deadline is not None:
+                    remaining = min(remaining, deadline - time.monotonic())
                 if remaining <= 0:
                     raise TimeoutError()
                 try:

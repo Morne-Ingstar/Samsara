@@ -15,6 +15,7 @@ from typing import Callable
 
 from samsara.agent_channel.claude_reply import spoken_form
 from samsara.agent_channel.spoken_digest import first_reply
+from samsara.agent_channel.reply_digest import ask_before, clear_reply
 from samsara.config_defaults import DEFAULTS
 from samsara.paths import samsara_home_dir
 from samsara.runtime import thread_registry
@@ -239,16 +240,19 @@ class CliAgent:
             data = self._sessions(home)
             data.pop(self.name, None)
             self._save_sessions(home, data)
+            clear_reply(self.name)
 
     def ask(self, question: str, config: dict | None = None, *, home: Path | None = None,
-            progress: Callable[[str], None] | None = None) -> AgentReply:
+            progress: Callable[[str], None] | None = None, deadline: float | None = None) -> AgentReply:
+        if deadline is not None:
+            return ask_before(self, question, config, deadline, home=home, progress=progress)
         with _turn_locks[self.name]:
             if _closing.is_set():
                 raise RuntimeError("Samsara is shutting down")
             return self._ask_unlocked(question, config, home=home, progress=progress)
 
     def _ask_unlocked(self, question: str, config: dict | None = None, *, home: Path | None = None,
-                      progress: Callable[[str], None] | None = None) -> AgentReply:
+                      progress: Callable[[str], None] | None = None, deadline: float | None = None) -> AgentReply:
         config = config or {}
         home = home or samsara_home_dir()
         cwd = Path(config.get("cwd") or DEFAULT_CWD)
@@ -265,10 +269,13 @@ class CliAgent:
         exe = self.executable or resolve_executable(self.name)
         argv = self.argv_builder(exe, prompt, session, cwd, allow_writes)
         started = time.monotonic()
+        env = _codex_env(home) if self.name == "gpt" else os.environ.copy()
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError()
         process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, encoding="utf-8", errors="replace",
-                                   env=_codex_env(home) if self.name == "gpt" else os.environ.copy(),
+                                   env=env,
                                    **_console_popen_kwargs())
         with _active_lock:
             _active.add(process)
@@ -282,15 +289,22 @@ class CliAgent:
         thread_registry.spawn(f"{self.name}.stdout", drain, args=(process.stdout, "out"))
         thread_registry.spawn(f"{self.name}.stderr", drain, args=(process.stderr, "err"))
         if process.stdin:
-            if self.name == "gpt":
-                process.stdin.write(prompt)
-            process.stdin.close()
+            def send():
+                try:
+                    if self.name == "gpt":
+                        process.stdin.write(prompt)
+                    process.stdin.close()
+                except (OSError, ValueError):
+                    pass  # The process exit/deadline supplies the failure.
+            thread_registry.spawn(f"{self.name}.stdin", send, args=())
         output: list[str] = []
         errors: list[str] = []
         closed = set()
         try:
             while len(closed) < 2:
                 remaining = timeout - (time.monotonic() - started)
+                if deadline is not None:
+                    remaining = min(remaining, deadline - time.monotonic())
                 if remaining <= 0:
                     raise TimeoutError(f"{self.name} didn't answer in time")
                 try:

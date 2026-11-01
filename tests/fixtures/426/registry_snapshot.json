@@ -8687,6 +8687,33 @@
     "precondition": "Say yes after the spelling readback to save."
   },
   {
+    "canonical_id": "digest_reply.digest_that",
+    "plugin": "digest_reply",
+    "phrase": "digest that",
+    "verb": "digest",
+    "object": "that",
+    "aliases": [
+      "digest that",
+      "digest the reply",
+      "summarize that reply"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "Reads a short summary of your last CLI agent reply; say again, longer for more.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "example_greet.greet_me",
     "plugin": "example_greet",
     "phrase": "greet me",
