@@ -47,6 +47,21 @@ def pick_index_by_name(devices, name):
     return None
 
 
+def microphone_choice(devices, config):
+    """The available named choice, or None for the system-default selection.
+
+    A missing name never matches an unrelated endpoint reusing its saved ID.
+    The preference itself stays intact for the existing reconnect recovery.
+    """
+    name, index = config.get('microphone_name'), config.get('microphone')
+    if name in ('System default', 'Default') or (not name and index is None):
+        return None
+    if name:
+        wanted = name.strip().casefold()
+        return next((d for d in devices if d['name'].strip().casefold() == wanted), None)
+    return next((d for d in devices if d['id'] == index), None)
+
+
 def _ensure_com_initialized() -> bool:
     """Ensure COM is initialized before PortAudio-side WASAPI enumeration.
 

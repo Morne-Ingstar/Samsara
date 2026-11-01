@@ -187,12 +187,16 @@ def microphone_name(app) -> str:
     """Name the live capture endpoint, not a cached PortAudio index."""
     if mic_available(app) is False:
         return 'No microphone'  # PLACEHOLDER COPY (918)
+    config = _cfg(app)
+    name = config.get('microphone_name')
+    if (getattr(app, '_using_default_mic', False)
+            or name in ('System default', 'Default')
+            or (not name and config.get('microphone') is None)):
+        return 'System default'
     engine = getattr(app, '_ace_engine', None)
     name = getattr(engine, 'capture_name', None)
     if name:
         return str(name)
-    if getattr(app, '_using_default_mic', False):
-        return 'System default'  # PLACEHOLDER COPY (918)
     chosen = _cfg(app).get('microphone')
     for mic in getattr(app, 'available_mics', ()) or ():
         if mic.get('id') == chosen:

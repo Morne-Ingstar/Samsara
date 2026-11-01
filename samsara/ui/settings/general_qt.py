@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
 from datetime import datetime
 
 from samsara import autostart
+from samsara.audio_devices import microphone_choice
+from samsara.microphone_recovery import FALLBACK_MESSAGE
 from samsara.config_transfer import (
     ConfigTransferError,
     export_config,
@@ -70,15 +72,22 @@ _MIC_CHOICE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
 
 def _populate_microphone_combo(combo, devices, config):
-    """A missing saved input is a choice, not an implicit default selection."""
+    """Show the active fallback without saving over the reconnect preference."""
     saved_id = config.get('microphone')
     saved_name = config.get('microphone_name')
     default = saved_name in ('System default', 'Default') or (
-        saved_name is None and saved_id is None)
-    # A named preference must not match an unrelated device reusing its old ID.
-    match = next((d for d in devices if d['name'] == saved_name), None)
-    if match is None and not saved_name and saved_id is not None:
-        match = next((d for d in devices if d['id'] == saved_id), None)
+        not saved_name and saved_id is None)
+    match = microphone_choice(devices, config)
+    if not combo.property('_mic_choice_connected'):
+        def choose_default(index):
+            if index == 0:
+                combo.setItemData(0, {'microphone': None, 'microphone_name': 'System default'},
+                                  _MIC_CHOICE_ROLE)
+                combo.setToolTip('')
+                combo.setItemData(0, None, Qt.ItemDataRole.ToolTipRole)
+        combo.currentIndexChanged.connect(choose_default)
+        combo.activated.connect(choose_default)  # A deliberate reselect of the fallback wins.
+        combo.setProperty('_mic_choice_connected', True)
     blocked = combo.blockSignals(True)
     try:
         combo.clear()
@@ -93,14 +102,12 @@ def _populate_microphone_combo(combo, devices, config):
                                      'microphone_name': device['name']}, _MIC_CHOICE_ROLE)
             if not default and device is match:
                 selected = index
-        if not default and match is None and saved_name:
-            # Stand-in copy (549): owner reviews the disconnected suffix. An
-            # unnamed id that matches nothing keeps the System default row.
-            combo.addItem(f'{saved_name} (not connected)', userData=saved_id)
-            selected = combo.count() - 1
-            combo.setItemData(selected, {'microphone': saved_id,
-                                        'microphone_name': saved_name,
-                                        '_missing': True}, _MIC_CHOICE_ROLE)
+        missing = not default and match is None
+        if missing:
+            combo.setItemData(0, {'microphone': saved_id, 'microphone_name': saved_name,
+                                  '_missing': True}, _MIC_CHOICE_ROLE)
+            combo.setItemData(0, FALLBACK_MESSAGE, Qt.ItemDataRole.ToolTipRole)
+        combo.setToolTip(FALLBACK_MESSAGE if missing else '')
         combo.setCurrentIndex(selected)
     finally:
         combo.blockSignals(blocked)

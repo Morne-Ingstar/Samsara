@@ -65,11 +65,19 @@ def reconcile(app, sd):
 
 
 def selection_name(app):
-    """The saved identity remains readable even while its endpoint is absent."""
+    """Label the active selection while retaining the saved reconnect preference."""
+    from samsara.audio_devices import microphone_choice
+
     name = app.config.get('microphone_name')
-    if name in ('System default', 'Default') or (not name and app.config.get('microphone') is None):
+    if (getattr(app, '_using_default_mic', False)
+            or name in ('System default', 'Default')
+            or (not name and app.config.get('microphone') is None)):
         return 'System default'
-    return name or app.get_current_microphone_name()
+    devices = getattr(app, 'available_mics', None)
+    if devices is not None:
+        choice = microphone_choice(devices, app.config)
+        return choice['name'] if choice else 'System default'
+    return name or app.get_current_microphone_name() or 'System default'
 
 
 def select_system_default(app, switch=None):

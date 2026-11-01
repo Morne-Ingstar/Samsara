@@ -37,7 +37,7 @@ from samsara.runtime import thread_registry
 from samsara.speech_pace import measured_interword_pauses, pace_recommendation
 from samsara.ui import qt_runtime, theme
 from samsara.ui.widgets.step_indicator import StepIndicator
-from samsara.audio_devices import pick_index_by_name
+from samsara.audio_devices import pick_index_by_name, microphone_choice
 
 from samsara.log import get_logger
 
@@ -919,15 +919,13 @@ class _WizardWindow(QDialog):
         self._device_combo.blockSignals(True)
         self._device_combo.clear()
         self._input_devices = self._app.get_available_microphones()
-        current_cfg = self._app.config.get('microphone')
+        choice = microphone_choice(self._input_devices, self._app.config)
         default_idx = 0
         self._device_combo.addItem("System default", userData=None)
         for i, dev in enumerate(self._input_devices):
             self._device_combo.addItem(dev['name'], userData=dev['id'])
-            if dev['id'] == current_cfg:
+            if dev is choice:
                 default_idx = i + 1
-        if current_cfg is None:
-            default_idx = 0
         self._device_combo.setCurrentIndex(default_idx)
         self._device_combo.blockSignals(False)
         self._selected_device = self._device_combo.currentData()

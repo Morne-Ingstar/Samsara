@@ -97,7 +97,7 @@ def test_fallback_never_overwrites_chosen_identity_or_saves_its_index():
     assert (app._capture_device, app._using_default_mic) == (0, True)
     assert app.config == {'microphone': 27, 'microphone_name': MIC}
     assert app.saved == []
-    assert recovery.selection_name(app) == MIC
+    assert recovery.selection_name(app) == 'System default'  # 993: label the active fallback.
 
 
 def test_selection_changed_during_enumeration_wins(monkeypatch):

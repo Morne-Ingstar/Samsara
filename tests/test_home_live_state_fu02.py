@@ -83,7 +83,7 @@ def test_legacy_capture_signal_and_current_fallback_name():
     assert home_signals.microphone_name(app) == 'System default'
     app._ace_engine = SimpleNamespace(device_lost=False, capture_name='Laptop mic')
     assert home_signals.mic_available(app) is True
-    assert home_signals.microphone_name(app) == 'Laptop mic'
+    assert home_signals.microphone_name(app) == 'System default'  # 993: label active fallback.
 
 
 def test_wake_waiting_listening_and_paused_are_distinct():
