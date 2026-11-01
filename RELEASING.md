@@ -23,6 +23,8 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release-build.yml` on a
 
 After that build succeeds, `.github/workflows/release.yml` consumes its verified
 artifacts through `workflow_run`; it does not build a second application.
+Both workflows explicitly keep the release a draft with `draft: true` and
+`make_latest: false`, including when attaching assets to an existing draft.
 Publication remains a separate release decision.
 
 This is the CI-traceability piece SignPath Foundation's code-signing program
@@ -31,13 +33,30 @@ repo's source at this commit, not from a laptop.
 
 ### Triggering a release
 
-Publish v0.40.1 as a GitHub pre-release. Keep Latest on v0.30.0-beta.10
-until the owner decides otherwise.
+Tagging v0.40.1 prepares a draft; it does not publish or select Latest.
 
 ```
 git tag v0.40.1
 git push origin v0.40.1
 ```
+
+After both workflows succeed and the release gates below pass, the runner
+publishes the draft as a pre-release without selecting Latest:
+
+```
+gh release edit <tag> --draft=false --prerelease --latest=false
+```
+
+Only on the owner's explicit word, promote the published pre-release to a full
+release and select Latest:
+
+```
+gh release edit <tag> --prerelease=false --latest
+```
+
+Replace `<tag>` with the release tag (for example, `v0.40.1`). These commands are
+separate manual decisions and must not be added to either automated workflow.
+See the [GitHub CLI release edit reference](https://cli.github.com/manual/gh_release_edit).
 
 Or run the workflow manually (Actions tab -> Release Build (CPU, SignPath-ready) -> Run
 workflow) to sanity-check the build without cutting a tag — this uploads
