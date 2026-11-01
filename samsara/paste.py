@@ -27,6 +27,9 @@ logger = logging.getLogger("Samsara")
 _UNDO_TARGET_UNSET = object()
 _WAKE_PRIMER_DELAY = 0.12
 UNVERIFIED_DELIVERY = "Sent, but not confirmed. Your words are in History."
+# PLACEHOLDER COPY (986)
+FAILED_DELIVERY = "Text wasn't inserted. Copy your words from History."
+CLIPBOARD_FAILED_DELIVERY = "Clipboard backup failed. Copy your words from History."
 
 
 def _editor_snapshot():
@@ -205,6 +208,7 @@ class DeliveryResult(tuple):
         return result
 
 
+@recovery.scoped_attempt
 def paste_preserving_clipboard(
     app,
     text,
@@ -330,9 +334,13 @@ def paste_preserving_clipboard(
     typed_fallback_used = {"value": False}
 
     def _typed_fallback_without_clipboard():
-        if not app._foreground_wants_typed_injection() or not _capture_target_before_paste():
+        # 986: the allowlist chooses typed-first delivery, not whether a full
+        # clipboard may prevent dictation. Do not repeat a failed typing try.
+        if _typed_failed or not _capture_target_before_paste():
             return False
-        typed_fallback_used["value"] = type_text_unicode_fn(text, key_interval=0.05)
+        # Preserve the existing debounce pacing for configured typed targets.
+        typed_fallback_used["value"] = (type_text_unicode_fn(text, key_interval=0.05)
+            if app._foreground_wants_typed_injection() else type_text_unicode_fn(text))
         return typed_fallback_used["value"]
 
     # Keep one clipboard implementation. The centralized path captures
@@ -420,6 +428,14 @@ def show_delivery_result(app, sent, outcome, *, feedback=True):
         return sent
     if isinstance(outcome, bool):
         outcome = DeliveryOutcome.CONFIRMED if outcome else DeliveryOutcome.UNVERIFIED
+    attempt = recovery.current_attempt()
+    if attempt is not None and attempt.restore_failed:
+        if callable(show := getattr(app, '_show_outcome_chip', None)):
+            # PLACEHOLDER COPY (986)
+            message = (recovery.RESTORE_MESSAGE if sent else
+                       "Text wasn't inserted and the old clipboard couldn't be fully restored. Your words are in History.")
+            show(message, 'warning' if sent else 'error')
+        return sent
     if sent and outcome in (DeliveryOutcome.CONFIRMED, DeliveryOutcome.SENT):
         if not feedback:
             return sent
@@ -433,7 +449,22 @@ def show_delivery_result(app, sent, outcome, *, feedback=True):
     elif sent:
         if callable(show := getattr(app, '_show_outcome_chip', None)):
             show(UNVERIFIED_DELIVERY, 'warning')
+    else:
+        if callable(show := getattr(app, '_show_outcome_chip', None)):
+            show(CLIPBOARD_FAILED_DELIVERY if attempt is not None and attempt.backup_failed
+                 else FAILED_DELIVERY, 'error')
     return sent
+
+
+def retain_failed_dictation(app, text, raw):
+    """Keep wake dictation in History too, before reporting failed delivery."""
+    app.add_to_history(text, is_command=False)
+    app._log_history(raw_text=raw, display_text=text, mode='wake',
+                     status='failed', entry_type='dictation')
+    if callable(show := getattr(app, '_show_outcome_chip', None)):
+        # PLACEHOLDER COPY (986)
+        show(FAILED_DELIVERY if getattr(app, 'config', {}).get('auto_paste', True)
+             else 'Auto-paste off. Copy your words from History.', 'error')
 
 
 def deliver_text_to_focused_editor(app, text):

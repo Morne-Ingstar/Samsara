@@ -9716,13 +9716,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self.wake_dictation_buffer.append(text.strip())
                 self._wake_failed_draft = ' '.join(self.wake_dictation_buffer)
             self.play_sound("error")
-            if hasattr(self, '_show_outcome_chip'):
-                if self.app_state == 'wake_session':
-                    label = ('Auto-paste off; draft kept' if not self.config['auto_paste']
-                             else 'Paste failed; draft kept')
-                else:
-                    label = 'Auto-paste off; text not sent' if not self.config['auto_paste'] else 'Paste failed'
-                self._show_outcome_chip(label, 'error')
+            from samsara.paste import retain_failed_dictation
+            retain_failed_dictation(self, text, raw)  # 986: History on failure too.
             return False
 
         logger.info("[DELIVERY] Wake dictation sent; receipt reported by paste seam")

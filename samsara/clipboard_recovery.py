@@ -6,6 +6,7 @@ target window and clipboard sequence; none of these receipts are persisted.
 """
 from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import wraps
 
 
 IMAGE_MESSAGE = "Clipboard has a large image Samsara can't put back."
@@ -13,6 +14,8 @@ BITMAP_MESSAGE = "Clipboard has an image Samsara can't put back."
 CHOICE_SUFFIX = ' Say "type it" or "paste anyway" (image lost), or click.'
 CHOICE_MESSAGE = IMAGE_MESSAGE + CHOICE_SUFFIX
 LOSS_MESSAGE = "Image removed from clipboard."
+# PLACEHOLDER COPY (986); kept in sync with the pure feedback mapping by tests.
+RESTORE_MESSAGE = "Your words were sent, but the old clipboard couldn't be fully restored."
 _attempt = ContextVar("clipboard_delivery_attempt", default=None)
 
 
@@ -23,10 +26,26 @@ class Attempt:
     reason: str = ""
     image: bool = False
     replaced: bool = False
+    restore_failed: bool = False
+    backup_failed: bool = False
 
 
 def current_attempt():
     return _attempt.get()
+
+
+def scoped_attempt(deliver):
+    """Give standalone dictation the same per-attempt receipt as a commit."""
+    @wraps(deliver)
+    def wrapped(*args, **kwargs):
+        if current_attempt() is not None:
+            return deliver(*args, **kwargs)
+        token = _attempt.set(Attempt())
+        try:
+            return deliver(*args, **kwargs)
+        finally:
+            _attempt.reset(token)
+    return wrapped
 
 
 def fail(reason, *, image=False, sequence=None):
@@ -81,6 +100,9 @@ def failed_commit(manager, text, foreground, hwnd):
         return DispatchOutcome(kind="dictate_clipboard_choice", detail={
             "pending_chars": len(text), "reason": receipt.reason + CHOICE_SUFFIX})
     reason = receipt.reason or clipboard_failure_message()
+    if receipt.restore_failed:
+        # PLACEHOLDER COPY (986)
+        reason = "Text wasn't inserted and the old clipboard couldn't be fully restored. Draft kept."
     if receipt.replaced:
         reason = LOSS_MESSAGE + " Text wasn't inserted. Draft kept."
     if manager._on_switch_dispatch_error:
@@ -90,6 +112,8 @@ def failed_commit(manager, text, foreground, hwnd):
 
 
 def complete_commit(manager, detail):
+    if manager._clipboard_attempt.restore_failed:
+        detail["clipboard_restore_failed"] = True
     if manager._clipboard_attempt.replaced:
         detail["clipboard_image_removed"] = True
     manager._clipboard_choice = None

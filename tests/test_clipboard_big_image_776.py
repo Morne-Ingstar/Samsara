@@ -52,12 +52,16 @@ def session(fake, target, monkeypatch):
 
 
 def offer(s):
+    # 986: choices are now needed only when automatic safe typing fails.
+    s.typed.return_value = False
     outcome = s.manager.commit_pending_dictation()
     assert outcome.kind == 'dictate_clipboard_choice'
     assert "image Samsara can't put back." in sm.outcome_chip(outcome.kind, outcome.detail)[0]
     assert s.manager.dictate_pending_buffer
     assert s.fake.empties == 0 and not s.target.pasted
-    s.typed.assert_not_called()
+    s.typed.assert_called_once()
+    s.typed.reset_mock()
+    s.typed.return_value = True
     return outcome
 
 
@@ -236,11 +240,13 @@ def test_old_popup_cannot_answer_a_new_offer(session):
 
 
 def test_mixed_unreadable_content_refuses_without_image_only_consent(session):
+    session.typed.return_value = False  # 986: exercise recovery after safe typing fails.
     session.fake.formats[cb.CF_HDROP] = b'synthetic file copy'
     session.fake.no_data_formats.add(cb.CF_HDROP)
     result = session.manager.commit_pending_dictation()
     assert result.kind == 'dictate_commit_failed'
-    assert 'CF_HDROP' in result.detail['error']
+    # 986: the user gets a plain recovery instruction; format IDs stay in logs.
+    assert 'clipboard' in result.detail['error'] and 'Say finish' in result.detail['error']
     assert session.manager._clipboard_choice is None
     assert session.fake.empties == 0
 

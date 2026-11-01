@@ -1,6 +1,6 @@
 {
   "ceilings": {
-    "dictation.py": 12383,
+    "dictation.py": 12378,
     "plugins/commands/ask_ollama.py": 3683,
     "plugins/commands/show_numbers.py": 1976,
     "plugins/commands/window_switcher.py": 1537,

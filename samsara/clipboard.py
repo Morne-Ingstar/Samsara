@@ -151,6 +151,12 @@ _USER_CONTENT_FORMAT_NAMES = frozenset({
 })
 
 _MAX_FORMAT_BYTES = 100 * 1024 * 1024  # skip anything implausibly large
+_MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024
+_MAX_SNAPSHOT_FORMATS = 128
+_SNAPSHOT_TIMEOUT_S = 0.75
+# GetClipboardData cannot be interrupted. At most one read-only worker may
+# outlive its caller; subsequent attempts type without touching the clipboard.
+_snapshot_worker_lock = threading.Lock()
 _OPEN_CLIPBOARD_MAX_RETRIES = 15
 _OPEN_CLIPBOARD_INITIAL_DELAY = 0.02
 _OPEN_CLIPBOARD_MAX_DELAY = 0.1
@@ -410,12 +416,39 @@ def save_clipboard() -> "ClipboardSnapshot":
         callers never replace clipboard content they could not preserve.
     """
     try:
-        return _save_clipboard_impl()
+        if sys.platform != 'win32':
+            return _save_clipboard_impl()
+        if not _snapshot_worker_lock.acquire(blocking=False):
+            return _failed_snapshot("clipboard backup still busy")
+        finished = threading.Event()
+        result = []
+
+        def snapshot():
+            try:
+                result.append(_save_clipboard_impl())
+            except Exception:
+                result.append(_failed_snapshot("clipboard snapshot failed"))
+            finally:
+                _snapshot_worker_lock.release()
+                finished.set()
+
+        try:
+            threading.Thread(target=snapshot, name='clipboard-snapshot', daemon=True).start()
+        except Exception:
+            _snapshot_worker_lock.release()
+            raise
+        if not finished.wait(_SNAPSHOT_TIMEOUT_S):
+            return _failed_snapshot("clipboard backup timed out")
+        return result[0]
     except Exception as e:
         _log_error("save_clipboard failed unexpectedly", e)
-        failed = ClipboardSnapshot()
-        failed.lost[0] = "clipboard snapshot failed"
-        return failed
+        return _failed_snapshot("clipboard snapshot failed")
+
+
+def _failed_snapshot(reason):
+    failed = ClipboardSnapshot()
+    failed.lost[0] = reason
+    return failed
 
 
 def _save_clipboard_impl() -> "ClipboardSnapshot":
@@ -434,6 +467,8 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
     skipped = 0
     not_saved: Dict[int, str] = {}   # candidate losses; synthesis-filtered at the end
     started = time.monotonic()
+    total_bytes = 0
+    format_count = 0
 
     if not _open_clipboard_with_retry():
         _log_error("Could not open clipboard for save after retries")
@@ -459,8 +494,15 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
 
         fmt = 0
         while True:
+            if time.monotonic() - started >= _SNAPSHOT_TIMEOUT_S:
+                saved.lost[0] = "clipboard backup timed out"
+                break
             fmt = _user32.EnumClipboardFormats(fmt)
             if fmt == 0:
+                break
+            format_count += 1
+            if format_count > _MAX_SNAPSHOT_FORMATS:
+                saved.lost[0] = "too many clipboard formats"
                 break
 
             # Skip formats that aren't memory handles, or that we
@@ -478,6 +520,11 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
                 # never a placeholder -- no separate "force render" step
                 # needed.
                 handle = _user32.GetClipboardData(fmt)
+                # A provider can answer WM_NULL, then stall while rendering.
+                # Never copy a late result or publish it as a usable backup.
+                if time.monotonic() - started >= _SNAPSHOT_TIMEOUT_S:
+                    saved.lost[0] = "clipboard backup timed out"
+                    break
                 if not handle:
                     skipped += 1
                     not_saved[fmt] = "owner provided no data"
@@ -488,6 +535,9 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
                     skipped += 1
                     not_saved[fmt] = "over the 100 MB cap" if size > _MAX_FORMAT_BYTES else "empty"
                     continue
+                if total_bytes + size > _MAX_SNAPSHOT_BYTES:
+                    saved.lost[0] = "over the 100 MB total snapshot cap"
+                    break
 
                 ptr = _kernel32.GlobalLock(handle)
                 if not ptr:
@@ -503,6 +553,7 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
                 # actually non-empty -- an empty "success" is a lie.
                 if is_nonempty_payload(raw):
                     saved[fmt] = raw
+                    total_bytes += size
                 else:
                     skipped += 1
                     not_saved[fmt] = "empty"
@@ -540,7 +591,8 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
             continue
         if reason == "owner provided no data" and is_known_private_format(fmt):
             continue
-        if is_user_content_format(fmt):
+        if (is_user_content_format(fmt)
+                or reason in {"over the 100 MB cap", "could not lock its memory", "read error"}):
             saved.lost[fmt] = reason
         else:
             saved.omitted[fmt] = reason
@@ -566,7 +618,7 @@ def _mark_whole_clipboard_lost(snapshot: "ClipboardSnapshot", reason: str) -> No
             _log_error(f"clipboard content could not be snapshotted ({reason}); "
                        "a paste will not be able to put it back")
     except Exception:
-        pass
+        snapshot.lost[0] = reason
 
 
 def _owner_answers_ping(owner) -> bool:
@@ -1100,18 +1152,21 @@ def paste_with_preservation(
             saved.lost[0] = "clipboard snapshot failed"
 
         if isinstance(saved, ClipboardSnapshot) and not saved.complete:
+            if receipt is not None:
+                receipt.backup_failed = True
             _log_error("clipboard paste refused because the original content cannot be restored: "
                        + saved.describe_lost())
             image = bool(saved.lost) and set(saved.lost) <= {CF_BITMAP, CF_DIB, CF_DIBV5}
             image_reason = recovery.IMAGE_MESSAGE if any('cap' in r for r in saved.lost.values()) else recovery.BITMAP_MESSAGE
+            # PLACEHOLDER COPY (986)
             recovery.fail(image_reason if image else
-                          "Clipboard content couldn't be preserved: " + saved.describe_lost(),
+                          "Your clipboard couldn't be backed up. Draft kept. Say finish to try again.",
                           image=image, sequence=getattr(saved, 'source_seq', None))
-            # An image always needs an explicit answer; the process allowlist
-            # is not consent to pick a recovery route for the user.
+            # 986: non-destructive typing is safe for images too. Explicit
+            # consent is still required before replacing an unpreserved image.
             if receipt is not None and receipt.mode == 'paste':
                 pass
-            elif incomplete_snapshot_fallback is not None and not image:
+            elif incomplete_snapshot_fallback is not None:
                 try:
                     return bool(incomplete_snapshot_fallback())
                 except Exception as e:
@@ -1186,6 +1241,8 @@ def paste_with_preservation(
             if saved or (isinstance(saved, ClipboardSnapshot) and hasattr(saved, 'pasted_text')):
                 if not restore_clipboard(saved):
                     logger.error('[CLIP] Original clipboard restore failed; exact preservation not confirmed')
+                    if receipt is not None:
+                        receipt.restore_failed = True
 
 
 

@@ -74,9 +74,10 @@ def test_rejected_first_chunk_keeps_draft_and_never_sends(app):
     assert instance.wake_dictation_buffer == ["synthetic draft"]
     assert instance._wake_failed_draft == "synthetic draft"
     assert instance._wake_session_first_chunk is True
-    instance.add_to_history.assert_not_called()
+    # 986: failed wake delivery now preserves the exact final in History too.
+    instance.add_to_history.assert_called_once_with('synthetic draft', is_command=False)
     instance.play_sound.assert_any_call("error")
-    assert "draft kept" in instance._show_outcome_chip.call_args.args[0].lower()
+    assert "History" in instance._show_outcome_chip.call_args.args[0]  # 986: actionable recovery.
 
 
 def test_auto_paste_off_refuses_enter(app):
