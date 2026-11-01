@@ -292,6 +292,25 @@ def build(owner):
 
     owner._source_saves['general'][0] = save_sends
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    pace = owner._widgets['speech_pace']
+    pace_row = owner._rows_by_widget['speech_pace']
+    explanation = QLabel(pace_row)
+    explanation.setObjectName('speechPaceExplanation')
+    explanation.setProperty('role', 'description')
+    explanation.setTextFormat(Qt.TextFormat.PlainText)
+    explanation.setWordWrap(True)
+    explanation.setMinimumWidth(0)
+    explanation.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    pace_row.detail.hide()
+    pace_row.grid.addWidget(explanation, 2, 0, 1, 3)
+
+    def explain_pace(index):
+        text = pace.itemData(index, Qt.ItemDataRole.AccessibleDescriptionRole) or ''
+        explanation.setText(text)
+        pace.setAccessibleDescription(text)
+
+    pace.currentIndexChanged.connect(explain_pace)
+    explain_pace(pace.currentIndex())
     profiles = copy.deepcopy(owner.app.config.get("wake_profiles", []))
     if "wake_profiles" not in owner.app.config:
         profiles = copy.deepcopy(SETTINGS_SCHEMA["wake_profiles"]["default"])

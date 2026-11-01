@@ -481,10 +481,14 @@ class ModesPage:
             "unhurried": "Unhurried — allows long pauses before finishing speech.",
             "custom": "Custom — uses the advanced timing values you choose.",
         }
-        pace_combo.addItems(list(pace_options.values()))
+        for key, explanation in pace_options.items():
+            pace_combo.addItem(explanation.split(' — ', 1)[0], key)
+            index = pace_combo.count() - 1
+            pace_combo.setItemData(index, explanation, Qt.ItemDataRole.ToolTipRole)
+            pace_combo.setItemData(index, explanation, Qt.ItemDataRole.AccessibleDescriptionRole)
         accessibility = cfg.get('accessibility', {}) or {}
         selected_pace = str(accessibility.get('speech_pace', 'standard'))
-        pace_combo.setCurrentText(pace_options.get(selected_pace, pace_options['standard']))
+        pace_combo.setCurrentIndex(max(0, pace_combo.findData(selected_pace)))
         self._widgets['speech_pace'] = pace_combo
         _add_row(hands_free_layout, "Speech pace", "Choose how much room Samsara gives pauses in speech.",
                  pace_combo, width=340)
@@ -1105,9 +1109,7 @@ class ModesPage:
                 )
             if 'speech_pace' in self._widgets:
                 accessibility = dict(_acc.get('accessibility', self.app.config.get('accessibility', {})) or {})
-                accessibility['speech_pace'] = next(
-                    key for key, label in pace_options.items()
-                    if label == self._widgets['speech_pace'].currentText())
+                accessibility['speech_pace'] = self._widgets['speech_pace'].currentData()
                 updates['accessibility'] = accessibility
             if 'wake_word_enabled' in self._widgets:
                 updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
