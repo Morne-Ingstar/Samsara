@@ -8,6 +8,7 @@ single source-of-truth implementation.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from typing import Any
 
@@ -74,7 +75,33 @@ def preferred_microphone_name(devices, config):
 def microphone_label(name, preferred, *, connected=True):
     """Decorate display text only; callers retain the unmodified identity."""
     starred = preferred and name.strip().casefold() == preferred.strip().casefold()
-    return f"{'★ ' if starred else ''}{name}{'' if connected else ' (not connected)'}"
+    # PLACEHOLDER COPY (997b)
+    quality = ' (low quality - phone call mode)' if is_handsfree_profile(name) else ''
+    return f"{'★ ' if starred else ''}{name}{quality}{'' if connected else ' (not connected)'}"
+
+
+def is_handsfree_profile(name):
+    """Recognize Windows Bluetooth phone-call endpoint names."""
+    return bool(re.search(r'\b(?:hands[ -]free|hf audio|ag audio)\b', name, re.I))
+
+
+def handsfree_warning(name, devices):
+    """One sentence, suggesting a matching available capture endpoint if known."""
+    if not is_handsfree_profile(name):
+        return None
+
+    def headset_words(value):
+        value = re.sub(r'\b(?:hands[ -]free|hf audio|ag audio)\b', '', value, flags=re.I)
+        return set(re.findall(r'\w+', value.casefold())) - {
+            'headset', 'headphones', 'microphone', 'mic', 'stereo', 'audio', 'bluetooth'}
+
+    identity = headset_words(name)
+    alternative = next((d['name'] for d in devices
+                        if not is_handsfree_profile(d['name']) and identity
+                        and headset_words(d['name']) == identity), None)
+    # PLACEHOLDER COPY (997b)
+    suggestion = f'choose “{alternative}”' if alternative else 'choose a non-Hands-Free microphone if available'
+    return f'This microphone uses low-quality phone call mode; for better recognition, {suggestion}.'
 
 
 def _ensure_com_initialized() -> bool:

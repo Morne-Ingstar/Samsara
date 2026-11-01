@@ -1,4 +1,5 @@
 """Preferred mic priority, idle return and display-only stars with fake audio."""
+# 997b: HFP display labels include the phone call quality suffix.
 from unittest.mock import Mock
 
 import pytest
@@ -21,16 +22,16 @@ def test_preference_star_and_active_check_are_independent(qapp, present):
     combo, menu = QComboBox(), tray_menu(app)
     try:
         _populate_microphone_combo(combo, app.available_mics, app.config)
-        label = '★ ' + HEADSET + ('' if present else ' (not connected)')
+        label = '★ ' + HEADSET + ' (low quality - phone call mode)' + ('' if present else ' (not connected)')
         starred = [a for a in menu.actions() if a.text().startswith('★')]
         assert len(starred) == 1 and starred[0].text() == label
         assert starred[0].isEnabled() == present
         assert [a.text() for a in menu.actions() if a.isChecked()] == [
-            '★ ' + HEADSET if present else 'System default']
+            '★ ' + HEADSET + ' (low quality - phone call mode)' if present else 'System default']
         row = next(i for i in range(combo.count()) if combo.itemText(i) == label)
         assert bool(combo.model().flags(combo.model().index(row, 0)) & Qt.ItemFlag.ItemIsEnabled) == present
         assert combo.currentIndex() >= 0
-        assert combo.currentText() == ('★ ' + HEADSET if present else 'System default')
+        assert combo.currentText() == ('★ ' + HEADSET + ' (low quality - phone call mode)' if present else 'System default')
         assert combo.itemData(row) == (3 if present else SAVED['microphone'])
         assert _microphone_updates(combo) == (
             {'microphone': 3, 'microphone_name': HEADSET} if present else {})

@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from datetime import datetime
 
 from samsara import autostart
-from samsara.audio_devices import microphone_choice, microphone_label, preferred_microphone_name
+from samsara.audio_devices import handsfree_warning, microphone_choice, microphone_label, preferred_microphone_name
 from samsara.microphone_recovery import FALLBACK_MESSAGE
 from samsara.config_transfer import (
     ConfigTransferError,
@@ -105,6 +105,18 @@ def _populate_microphone_combo(combo, devices, config):
                 combo.blockSignals(blocked)
         combo.currentIndexChanged.connect(choose_microphone)
         combo.activated.connect(choose_microphone)
+        def warn_handsfree(index):
+            choice = combo.itemData(index, _MIC_CHOICE_ROLE) or {}
+            if index <= 0 or choice.get('_missing'):
+                return
+            entries = [combo.itemData(row, _MIC_CHOICE_ROLE) or {}
+                       for row in range(1, combo.count())]
+            message = handsfree_warning(choice['microphone_name'], [
+                {'name': entry['microphone_name']} for entry in entries if not entry.get('_missing')])
+            if message:
+                QMessageBox.information(combo.window(), 'Microphone quality', message)
+        # activated fires once per deliberate pick, including a reselect.
+        combo.activated.connect(warn_handsfree)
         combo.setProperty('_mic_choice_connected', True)
     blocked = combo.blockSignals(True)
     try:
@@ -135,6 +147,9 @@ def _populate_microphone_combo(combo, devices, config):
         combo.setCurrentIndex(selected)
     finally:
         combo.blockSignals(blocked)
+    mirror = getattr(combo, '_audio_mic_combo', None)
+    if mirror is not None:
+        mirror.setCurrentIndex(combo.currentIndex())
 
 
 def _microphone_updates(combo):

@@ -1,5 +1,6 @@
 """885: Bluetooth capture inputs survive filtering and first-run setup."""
 
+# 997b: HFP display labels include the phone call quality suffix.
 from unittest.mock import Mock
 
 import pytest
@@ -151,9 +152,9 @@ def test_settings_combo_keeps_same_filtered_bluetooth_input(qapp, devices, name)
     try:
         _populate_microphone_combo(combo, audio_devices.list_microphones(), config)
         assert [combo.itemText(i) for i in range(combo.count())] == [
-            "System default", '★ ' + name,  # 993b: saved Bluetooth input is preferred.
+            "System default", '★ ' + name + ' (low quality - phone call mode)',  # 993b: saved Bluetooth input is preferred.
         ]
-        assert combo.currentText() == '★ ' + name  # 993b: display-only star.
+        assert combo.currentText() == '★ ' + name + ' (low quality - phone call mode)'  # 993b: display-only star.
         assert _microphone_updates(combo) == config
     finally:
         combo.deleteLater()

@@ -1,5 +1,6 @@
 """993: active default selection and the remembered reconnect preference agree."""
 from types import SimpleNamespace
+# 997b: HFP display labels include the phone call quality suffix.
 from unittest.mock import Mock
 import sys
 
@@ -118,8 +119,9 @@ def test_reconnect_preserves_master_automatic_return_then_disconnect_falls_back(
     try:
         _populate_microphone_combo(combo, app.available_mics, app.config)
         # 993b: preferred entries carry a display-only star; Home keeps the raw name.
-        assert combo.currentText() == '★ ' + microphone_name(app) == '★ ' + HEADSET
-        assert [a.text() for a in menu.actions() if a.isChecked()] == ['★ ' + HEADSET]
+        assert microphone_name(app) == HEADSET  # 997b: quality text is display-only.
+        assert combo.currentText() == '★ ' + HEADSET + ' (low quality - phone call mode)'
+        assert [a.text() for a in menu.actions() if a.isChecked()] == ['★ ' + HEADSET + ' (low quality - phone call mode)']
     finally:
         combo.deleteLater()
         menu.deleteLater()
@@ -173,7 +175,7 @@ def test_settings_refresh_retains_preference_and_returns_on_reconnect(qapp):
         assert _microphone_updates(combo) == {}
         app.available_mics.append({'id': 3, 'name': HEADSET})
         refresh.click()
-        assert combo.currentText() == '★ ' + HEADSET  # 993b: preferred label.
+        assert combo.currentText() == '★ ' + HEADSET + ' (low quality - phone call mode)'  # 993b: preferred label.
         assert _microphone_updates(combo) == {'microphone': 3, 'microphone_name': HEADSET}
         app.available_mics.pop()
         refresh.click()

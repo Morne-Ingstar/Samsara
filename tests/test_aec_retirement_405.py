@@ -99,7 +99,7 @@ def test_calibration_only_logs_retirement():
 def test_schema_defaults_and_audio_page_exclude_retired_rows(qapp):
     from samsara.config_schema import SETTINGS_SCHEMA
     from samsara.ui.settings import audio_page
-    from PySide6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QComboBox, QWidget
     assert SETTINGS_SCHEMA["echo_cancellation.enabled"]["default"] is False
     assert SETTINGS_SCHEMA["echo_cancellation.latency_ms"]["default"] == 30.0
     for key in ("echo_cancellation.enabled", "echo_cancellation.latency_ms"):
@@ -112,7 +112,9 @@ def test_schema_defaults_and_audio_page_exclude_retired_rows(qapp):
     empty_layout = SimpleNamespace(count=lambda: 0, insertWidget=lambda *args: None)
     page = SimpleNamespace(container=QWidget(), base=empty_layout,
                            advanced=SimpleNamespace(rows=empty_layout))
-    owner = SimpleNamespace(make_page=Mock(return_value=page), _widgets={})
+    # 997b: Audio shares the microphone model already built by General.
+    owner = SimpleNamespace(make_page=Mock(return_value=page),
+                            _widgets={'mic_combo': QComboBox(page.container)})
     audio_page.build(owner)
     _, _, base, advanced = owner.make_page.call_args.args
     assert all(not row[3].startswith("echo_cancellation.") for row in base + advanced)

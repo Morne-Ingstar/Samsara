@@ -1,9 +1,9 @@
 """Microphone submenu, sharing the tray's action/error boundary."""
 import logging
 
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QMenu, QMessageBox
 
-from samsara.audio_devices import microphone_choice, microphone_label, preferred_microphone_name
+from samsara.audio_devices import handsfree_warning, microphone_choice, microphone_label, preferred_microphone_name
 from samsara.microphone_recovery import selection_name, select_microphone, select_system_default
 from samsara.ui import theme
 
@@ -22,13 +22,19 @@ def build_microphone_menu(app, add):
     current_name = selection_name(app)
     preferred = preferred_microphone_name(app.available_mics, app.config)
     default_selected = current_name == 'System default'
+    def pick(mic):
+        message = handsfree_warning(mic['name'], app.available_mics)
+        if message:
+            QMessageBox.information(None, 'Microphone quality', message)
+        select_microphone(app, mic['id'], app.switch_microphone_and_refresh)
+
     add(menu, 'System default',
         lambda _checked: select_system_default(app, app.switch_microphone_and_refresh),
         checked=default_selected, report_as='Switch microphone')
     for mic in app.available_mics:
         selected = mic['name'] == current_name
         add(menu, microphone_label(mic['name'], preferred),
-            lambda _checked, mid=mic['id']: select_microphone(app, mid, app.switch_microphone_and_refresh),
+            lambda _checked, entry=mic: pick(entry),
             checked=not default_selected and selected, report_as='Switch microphone')
     if preferred and microphone_choice(app.available_mics, app.config) is None:
         missing = menu.addAction(microphone_label(preferred, preferred, connected=False))

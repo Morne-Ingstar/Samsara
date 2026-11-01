@@ -341,13 +341,15 @@ def test_test_readings_cannot_reach_wake_commands():
 
 
 def test_settings_button_opens_score_window(qapp, monkeypatch):
-    from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
+    from PySide6.QtWidgets import QComboBox, QWidget, QVBoxLayout, QPushButton
     from samsara.ui.settings import audio_page, calm_layout
     from samsara.ui import mic_score_qt
     container = QWidget()
     page = SimpleNamespace(container=container, base=QVBoxLayout(container))
     app = SimpleNamespace()
-    owner = SimpleNamespace(app=app, _widgets={}, make_page=lambda *a: page)
+    # 997b: Audio shares the microphone model already built by General.
+    owner = SimpleNamespace(app=app, _widgets={'mic_combo': QComboBox(container)},
+                            make_page=lambda *a: page)
     monkeypatch.setattr(calm_layout, "group_page", lambda *a: None)
     opened = Mock()
     monkeypatch.setattr(mic_score_qt, "open_mic_score", opened)
