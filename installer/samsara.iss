@@ -106,6 +106,11 @@ UninstallDisplayIcon={app}\{#AppExeName}
 LicenseFile=..\LICENSE
 SetupLogging=yes
 ShowComponentSizes=yes
+; Authenticode signing is enabled only when the build defines SignedBuild.
+#ifdef SignedBuild
+SignTool=samsara
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

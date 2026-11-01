@@ -50,6 +50,8 @@ if defined SAMSARA_ISCC (
     set "ISCC=%SAMSARA_ISCC:"=%"
 ) else if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
     set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+) else if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
+    set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 ) else if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
     set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
 ) else (
@@ -83,7 +85,9 @@ if exist "%MANIFEST%" (
 )
 
 echo Building SamsaraSetup-%APP_VERSION%.exe with "%ISCC%"
-"%ISCC%" /Qp "/DAppVersion=%APP_VERSION%" "/DDistDir=%REPO%\dist\Samsara" "/DOutputDir=%REPO%\dist" "installer\samsara.iss"
+set "SIGN_ARGS="
+if "%SAMSARA_SIGN%"=="1" set SIGN_ARGS=/DSignedBuild=1 "/Ssamsara=powershell -NoProfile -ExecutionPolicy Bypass -File $q%REPO%\scripts\sign.ps1$q $f"
+"%ISCC%" /Qp %SIGN_ARGS% "/DAppVersion=%APP_VERSION%" "/DDistDir=%REPO%\dist\Samsara" "/DOutputDir=%REPO%\dist" "installer\samsara.iss"
 if errorlevel 1 (
     echo ISCC failed.
     popd & exit /b 1

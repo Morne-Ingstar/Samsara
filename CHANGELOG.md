@@ -6,6 +6,12 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.40.2] - 2026-11-01
+
+0.40.2 - Windows executables and installer are now code-signed.
+
+No functional changes.
+
 ## [0.40.1] - 2026-10-31
 
 Recording is easier to stop, Stremio understands more voice commands, and Mic score helps you compare microphones.

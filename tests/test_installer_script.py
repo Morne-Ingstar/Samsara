@@ -179,7 +179,23 @@ class TestBuildCommand:
         cmd = CMD.read_text(encoding="utf-8")
         assert 'if not exist "dist\\Samsara\\Samsara.exe"' in cmd
         assert "Inno Setup 6\\ISCC.exe" in cmd and "SAMSARA_ISCC" in cmd
+        assert "%LOCALAPPDATA%\\Programs\\Inno Setup 6\\ISCC.exe" in cmd
         assert 'installer\\samsara.iss' in cmd
+
+    def test_signed_build_is_opt_in_and_unsigned_path_has_no_signing_args(self):
+        cmd = CMD.read_text(encoding="utf-8")
+        compile_line = next(line for line in cmd.splitlines() if '"%ISCC%" /Qp' in line)
+        assert 'if "%SAMSARA_SIGN%"=="1"' in cmd
+        assert "/DSignedBuild=1" in cmd and "/Ssamsara=" in cmd
+        assert "%SIGN_ARGS%" in compile_line
+        assert compile_line.split("%SIGN_ARGS%", 1)[1].startswith(' "/DAppVersion=')
+
+    def test_installer_signing_directives_are_conditional(self):
+        setup = _section(ISS.read_text(encoding="utf-8"), "Setup")
+        assert re.search(
+            r"#ifdef SignedBuild\s+SignTool=samsara\s+SignedUninstaller=yes\s+#endif",
+            setup,
+        )
 
     def test_ci_has_one_installer_step_and_uploads_the_exe(self):
         import yaml
