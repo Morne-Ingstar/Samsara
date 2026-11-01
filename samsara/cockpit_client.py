@@ -1,0 +1,86 @@
+"""Fixed loopback Cockpit v1 client. No redirects, proxy, fallback or UI secret.
+
+Voice confirm/cancel require an independently installed trusted owner adapter.
+The browser capability is deliberately neither fetched nor accepted here.
+"""
+from __future__ import annotations
+
+from copy import deepcopy
+import json
+import re
+
+import requests
+
+BASE_URL = "http://127.0.0.1:8790"
+MAX_RESPONSE = 2_000_000
+
+
+class CockpitError(ValueError):
+    """Safe local disposition; never include a response body/transcript."""
+
+
+class CockpitClient:
+    def __init__(self, *, owner_adapter=None, request=None):
+        self._owner = owner_adapter
+        self._request_override = request
+
+    @property
+    def can_confirm(self):
+        return self._owner is not None
+
+    def _json(self, method, path, body=None):
+        with requests.Session() as session:
+            session.trust_env = False
+            request = self._request_override or session.request
+            try:
+                response = request(method, BASE_URL + path, json=body,
+                                   timeout=(3, 30), allow_redirects=False)
+            except requests.RequestException as exc:
+                raise CockpitError("Cockpit response lost or unavailable; recover by request ID.") from exc
+            try:
+                if response.status_code != 200:
+                    raise CockpitError(f"Cockpit refused the request ({response.status_code}).")
+                if len(response.content) > MAX_RESPONSE:
+                    raise CockpitError("Cockpit response exceeds the safe limit.")
+                value = json.loads(response.content)
+                if not isinstance(value, dict):
+                    raise CockpitError("Invalid Cockpit response.")
+                return value
+            finally:
+                response.close()
+
+    def context(self):
+        value = self._json("GET", "/api/context?purpose=memo")
+        if (value.get("schema_version") != "cockpit.context.v1" or not value.get("available")
+                or not value.get("snapshot_consistent")
+                or not value.get("coverage", {}).get("state_complete")):
+            raise CockpitError("Cockpit context is incomplete or unavailable.")
+        return value
+
+    def preview(self, envelope):
+        return self._json("POST", "/api/changes/preview", deepcopy(envelope))
+
+    def recover(self, request_id):
+        if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", request_id):
+            raise CockpitError("Invalid request ID.")
+        return self._json("GET", "/api/changes/" + request_id)
+
+    def confirm(self, binding, operation):
+        if self._owner is None:
+            raise CockpitError("Cockpit voice approval is not available yet.")
+        # An actual resolved policy object, never a dict/flag from an extractor.
+        from samsara import execution_policy as policy
+        if (not isinstance(operation, policy.PendingOperation) or operation.approved is not True
+                or operation.invocation.args != binding or operation.is_expired()
+                or not policy.is_fresh(operation._app, operation.generation)):
+            raise CockpitError("A current owner approval is required.")
+        return self._owner.confirm(deepcopy(binding), operation)
+
+    def apply(self, binding, authorization):
+        body = {key: binding[key] for key in ("proposal_id", "proposal_hash", "request_id")}
+        body["authorization"] = authorization
+        return self._json("POST", "/api/changes/apply", body)
+
+    def cancel(self):
+        if self._owner is not None:
+            self._owner.cancel()

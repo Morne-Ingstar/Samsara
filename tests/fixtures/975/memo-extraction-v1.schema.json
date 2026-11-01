@@ -1,0 +1,785 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cockpit:memo-extraction:1",
+  "title": "975 proposed extraction contract; all examples synthetic",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "cockpit.memo-extraction.v1"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "item_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "action": {
+                "const": "create_task"
+              },
+              "target_id": {
+                "type": "null"
+              },
+              "fields": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "due_date": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due_time": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "enum": [
+                      "open",
+                      "done"
+                    ]
+                  },
+                  "notes_append": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "priority": {
+                    "enum": [
+                      "high",
+                      "normal",
+                      "low"
+                    ]
+                  },
+                  "effort_minutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "blocked_by": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "maxItems": 20
+                  },
+                  "start_after": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "title"
+                ],
+                "additionalProperties": false,
+                "minProperties": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "match": {
+                "type": "null"
+              },
+              "time_resolution": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time_resolution"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_key",
+              "action",
+              "target_id",
+              "fields",
+              "evidence",
+              "match",
+              "time_resolution"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "action": {
+                "const": "update_task"
+              },
+              "target_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "fields": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "due_date": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due_time": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "enum": [
+                      "open",
+                      "done"
+                    ]
+                  },
+                  "notes_append": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "priority": {
+                    "enum": [
+                      "high",
+                      "normal",
+                      "low"
+                    ]
+                  },
+                  "effort_minutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "blocked_by": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "maxItems": 20
+                  },
+                  "start_after": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [],
+                "additionalProperties": false,
+                "minProperties": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "match": {
+                "$ref": "#/$defs/match"
+              },
+              "time_resolution": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time_resolution"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_key",
+              "action",
+              "target_id",
+              "fields",
+              "evidence",
+              "match",
+              "time_resolution"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "action": {
+                "const": "create_event"
+              },
+              "target_id": {
+                "type": "null"
+              },
+              "fields": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "time": {
+                    "type": "string",
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "end_time": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "notes_append": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "related_task_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "title",
+                  "date",
+                  "time",
+                  "timezone"
+                ],
+                "additionalProperties": false,
+                "minProperties": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "match": {
+                "type": "null"
+              },
+              "time_resolution": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time_resolution"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_key",
+              "action",
+              "target_id",
+              "fields",
+              "evidence",
+              "match",
+              "time_resolution"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "action": {
+                "const": "update_event"
+              },
+              "target_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "fields": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "time": {
+                    "type": "string",
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "end_time": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "notes_append": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "related_task_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [],
+                "additionalProperties": false,
+                "minProperties": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "match": {
+                "$ref": "#/$defs/match"
+              },
+              "time_resolution": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time_resolution"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_key",
+              "action",
+              "target_id",
+              "fields",
+              "evidence",
+              "match",
+              "time_resolution"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "action": {
+                "const": "append_note"
+              },
+              "target_id": {
+                "type": "null"
+              },
+              "fields": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "related_task_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "text",
+                  "date"
+                ],
+                "additionalProperties": false
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "match": {
+                "type": "null"
+              },
+              "time_resolution": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time_resolution"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "item_key",
+              "action",
+              "target_id",
+              "fields",
+              "evidence",
+              "match",
+              "time_resolution"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "maxItems": 100
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unresolved"
+      },
+      "maxItems": 100
+    },
+    "no_change": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "enum": [
+              "duplicate",
+              "already_done",
+              "non_action",
+              "unsupported_media",
+              "unsupported_target",
+              "unsafe_instruction"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/evidence"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "related_item_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "evidence",
+          "related_item_key"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "schema_version",
+    "items",
+    "unresolved",
+    "no_change"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "memo_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "memo_id",
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "match": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "explicit_id",
+            "exact_title",
+            "semantic"
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 250
+              }
+            },
+            "required": [
+              "id",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "needs_resolution": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "method",
+        "candidates",
+        "needs_resolution"
+      ],
+      "additionalProperties": false
+    },
+    "time_resolution": {
+      "type": "object",
+      "properties": {
+        "basis_memo_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phrase_start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "phrase_end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "anchor_local_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "rule": {
+          "enum": [
+            "explicit",
+            "today",
+            "tomorrow",
+            "next_weekday"
+          ]
+        }
+      },
+      "required": [
+        "basis_memo_id",
+        "phrase_start",
+        "phrase_end",
+        "anchor_local_date",
+        "timezone",
+        "rule"
+      ],
+      "additionalProperties": false
+    },
+    "unresolved": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "reason": {
+          "enum": [
+            "ambiguous_target",
+            "ambiguous_time",
+            "contradiction",
+            "missing_transcript",
+            "unsupported_target",
+            "missing_details"
+          ]
+        },
+        "candidate_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "maxItems": 5
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "minItems": 1,
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "key",
+        "reason",
+        "candidate_ids",
+        "question",
+        "evidence"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

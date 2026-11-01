@@ -15038,6 +15038,326 @@
 {"id": "click_by_name.toggle", "kind": "sentence", "polarity": "negative", "reject": "click_by_name.toggle", "text": "our manager keeps asking whether anyone remembered to toggle buy milk last week"}
 {"id": "click_by_name.toggle", "kind": "other_command", "polarity": "negative", "reject": "click_by_name.toggle", "text": "toggle this"}
 {"id": "click_by_name.toggle", "kind": "nonsense", "polarity": "negative", "reject": "click_by_name.toggle", "text": "noodle quartz toggle banana lantern"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "determiner", "polarity": "positive", "text": "approve the cockpit memo batch check the oven"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "could you just approve cockpit memo batch water the plants"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "numeral", "polarity": "positive", "text": "approve cockpit memo batch call mom at 5"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve, cockpit memo batch water the plants?"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "slot", "polarity": "positive", "text": "approve cockpit memo batch water the plants"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "determiner", "polarity": "positive", "text": "approve the cockpit memo batch call mom at five"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "approve cockpit memo batch check the oven now"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "numeral", "polarity": "positive", "text": "approve cockpit memo batch 5"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve, cockpit memo batch five?"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "slot", "polarity": "positive", "text": "approve cockpit memo batch the build is green"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "determiner", "polarity": "positive", "text": "approve the cockpit memo batch five"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "okay approve cockpit memo batch five"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve cockpit memo batch the build is green."}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "slot", "polarity": "positive", "text": "approve cockpit memo batch call mom at five"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "determiner", "polarity": "positive", "text": "approve the cockpit memo batch water the plants"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "approve cockpit memo batch water the plants for me please"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve, cockpit memo batch check the oven?"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "slot", "polarity": "positive", "text": "approve cockpit memo batch five"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "determiner", "polarity": "positive", "text": "approve the cockpit memo batch buy milk"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "could you approve cockpit memo batch the build is green"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve cockpit memo batch check the oven."}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "slot", "polarity": "positive", "text": "approve cockpit memo batch buy milk"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "determiner", "polarity": "positive", "text": "approve the cockpit memo batch the build is green"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "please approve cockpit memo batch water the plants"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve cockpit memo batch water the plants."}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "slot", "polarity": "positive", "text": "approve cockpit memo batch check the oven"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "approve cockpit memo batch water the plants right now"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve cockpit memo batch call mom at five."}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "i need you to approve cockpit memo batch water the plants"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve cockpit memo batch five."}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "please approve cockpit memo batch the build is green"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve, cockpit memo batch buy milk?"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "can you approve cockpit memo batch five"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve, cockpit memo batch call mom at five?"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "can you please approve cockpit memo batch the build is green"}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "punct", "polarity": "positive", "text": "Approve cockpit memo batch buy milk."}
+{"accept": ["cockpit.approve_cockpit_memo_batch"], "id": "cockpit.approve_cockpit_memo_batch", "kind": "filler", "polarity": "positive", "text": "approve cockpit memo batch the build is green please"}
+{"id": "cockpit.approve_cockpit_memo_batch", "kind": "sentence", "polarity": "negative", "reject": "cockpit.approve_cockpit_memo_batch", "text": "during the lecture she explained how to approve cockpit memo batch water the plants without breaking anything"}
+{"id": "cockpit.approve_cockpit_memo_batch", "kind": "other_command", "polarity": "negative", "reject": "cockpit.approve_cockpit_memo_batch", "text": "review cockpit batch"}
+{"id": "cockpit.approve_cockpit_memo_batch", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.approve_cockpit_memo_batch", "text": "octopus glimmer approve quartz lantern"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "determiner", "polarity": "positive", "text": "choose the cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "could you just choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "numeral", "polarity": "positive", "text": "choose cockpit target call mom at 5"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "punct", "polarity": "positive", "text": "Choose cockpit target call mom at five."}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "slot", "polarity": "positive", "text": "choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "determiner", "polarity": "positive", "text": "choose the cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "uh choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "punct", "polarity": "positive", "text": "Choose, cockpit target call mom at five?"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "slot", "polarity": "positive", "text": "choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target call mom at five for me"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "punct", "polarity": "positive", "text": "Choose cockpit target check the oven."}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "please choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "punct", "polarity": "positive", "text": "Choose, cockpit target check the oven?"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target call mom at five thanks"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target check the oven now"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target call mom at five now"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target call mom at five for me please"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "would you please choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "so choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target check the oven thanks"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "go ahead and choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "i need you to choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "please choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "hey choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "uh choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "okay choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "could you choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "so choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target check the oven for me please"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "um choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "would you please choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "can you choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "i need you to choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "um choose cockpit target call mom at five"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "can you please choose cockpit target check the oven"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "choose cockpit target call mom at five right now"}
+{"accept": ["cockpit.choose_cockpit_target"], "id": "cockpit.choose_cockpit_target", "kind": "filler", "polarity": "positive", "text": "could you just choose cockpit target call mom at five"}
+{"id": "cockpit.choose_cockpit_target", "kind": "sentence", "polarity": "negative", "reject": "cockpit.choose_cockpit_target", "text": "yesterday afternoon we argued for an hour about who would choose cockpit target call mom at five first"}
+{"id": "cockpit.choose_cockpit_target", "kind": "other_command", "polarity": "negative", "reject": "cockpit.choose_cockpit_target", "text": "choose"}
+{"id": "cockpit.choose_cockpit_target", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.choose_cockpit_target", "text": "purple quartz cockpit zeppelin sideways"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "alias", "polarity": "positive", "text": "use memos for cockpit"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "determiner", "polarity": "positive", "text": "use the memos for cockpit water the plants"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "um preview cockpit memos"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "mishear", "polarity": "positive", "text": "use memos four cockpit"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Turn, my last memo into a cockpit update?"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "slot", "polarity": "positive", "text": "use memos for cockpit water the plants"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "alias", "polarity": "positive", "text": "preview cockpit memos"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "determiner", "polarity": "positive", "text": "use the memos for cockpit"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "go ahead and turn my last memo into a cockpit update"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "mishear", "polarity": "positive", "text": "use memos four cockpit water the plants"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Turn my last memo into a cockpit update."}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "slot", "polarity": "positive", "text": "preview cockpit memos the build is green"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "alias", "polarity": "positive", "text": "turn my last memo into a cockpit update"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "determiner", "polarity": "positive", "text": "preview the cockpit memos the build is green"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "please use memos for cockpit"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Use, memos for cockpit?"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "slot", "polarity": "positive", "text": "turn my last memo into a cockpit update check the oven"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "determiner", "polarity": "positive", "text": "preview the cockpit memos"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "please use memos for cockpit water the plants"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Use, memos for cockpit water the plants?"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "turn my last memo into a cockpit update check the oven please"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Preview cockpit memos."}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "so use memos for cockpit"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Use memos for cockpit."}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "okay turn my last memo into a cockpit update"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Preview, cockpit memos?"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "hey turn my last memo into a cockpit update check the oven"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Preview cockpit memos the build is green."}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "go ahead and use memos for cockpit water the plants"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Turn, my last memo into a cockpit update check the oven?"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "go ahead and use memos for cockpit"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Turn my last memo into a cockpit update check the oven."}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "i need you to turn my last memo into a cockpit update"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Preview, cockpit memos the build is green?"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "can you please turn my last memo into a cockpit update"}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "punct", "polarity": "positive", "text": "Use memos for cockpit water the plants."}
+{"accept": ["cockpit.preview_cockpit_memos"], "id": "cockpit.preview_cockpit_memos", "kind": "filler", "polarity": "positive", "text": "use memos for cockpit right now"}
+{"id": "cockpit.preview_cockpit_memos", "kind": "sentence", "polarity": "negative", "reject": "cockpit.preview_cockpit_memos", "text": "honestly the whole point of the meeting was to preview cockpit memos and nobody did"}
+{"id": "cockpit.preview_cockpit_memos", "kind": "other_command", "polarity": "negative", "reject": "cockpit.preview_cockpit_memos", "text": "use todays memos for cockpit"}
+{"id": "cockpit.preview_cockpit_memos", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.preview_cockpit_memos", "text": "pickle saxophone preview cobalt glimmer"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "alias", "polarity": "positive", "text": "read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "determiner", "polarity": "positive", "text": "read the next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "can you read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "mishear", "polarity": "positive", "text": "red next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "punct", "polarity": "positive", "text": "Read, next cockpit changes water the plants?"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "slot", "polarity": "positive", "text": "read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "synonym", "polarity": "positive", "text": "read out next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "determiner", "polarity": "positive", "text": "read the next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "hey read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "mishear", "polarity": "positive", "text": "red next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "punct", "polarity": "positive", "text": "Read, next cockpit changes?"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "synonym", "polarity": "positive", "text": "say next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes for me please"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "punct", "polarity": "positive", "text": "Read next cockpit changes water the plants."}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "synonym", "polarity": "positive", "text": "say next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes water the plants thanks"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "punct", "polarity": "positive", "text": "Read next cockpit changes."}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "synonym", "polarity": "positive", "text": "read out next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "okay read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "so read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "go ahead and read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "hey read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "go ahead and read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes please"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes right now"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "can you please read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "please read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "would you please read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes thanks"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "okay read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes for me"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "could you read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "i need you to read next cockpit changes"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "so read next cockpit changes water the plants"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes water the plants for me please"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "read next cockpit changes water the plants right now"}
+{"accept": ["cockpit.read_next_cockpit_changes"], "id": "cockpit.read_next_cockpit_changes", "kind": "filler", "polarity": "positive", "text": "could you just read next cockpit changes"}
+{"id": "cockpit.read_next_cockpit_changes", "kind": "sentence", "polarity": "negative", "reject": "cockpit.read_next_cockpit_changes", "text": "yesterday afternoon we argued for an hour about who would read next cockpit changes first"}
+{"id": "cockpit.read_next_cockpit_changes", "kind": "other_command", "polarity": "negative", "reject": "cockpit.read_next_cockpit_changes", "text": "read next sentence"}
+{"id": "cockpit.read_next_cockpit_changes", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.read_next_cockpit_changes", "text": "velvet banana cockpit noodle thunderous"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "alias", "polarity": "positive", "text": "recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "determiner", "polarity": "positive", "text": "recover the cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Recover, cockpit batch water the plants?"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "slot", "polarity": "positive", "text": "recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "determiner", "polarity": "positive", "text": "recover the cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "hey recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Recover, cockpit batch?"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "i need you to recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Recover cockpit batch."}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "hey recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Recover cockpit batch water the plants."}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch right now"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch now"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch water the plants for me"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch thanks"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch water the plants now"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch water the plants please"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "would you please recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "would you please recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "go ahead and recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch please"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "go ahead and recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "please recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "please recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "uh recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "so recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "i need you to recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch for me please"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch water the plants right now"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you please recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "okay recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "um recover cockpit batch"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "could you just recover cockpit batch water the plants"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "recover cockpit batch water the plants for me please"}
+{"accept": ["cockpit.recover_cockpit_batch"], "id": "cockpit.recover_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "could you just recover cockpit batch"}
+{"id": "cockpit.recover_cockpit_batch", "kind": "sentence", "polarity": "negative", "reject": "cockpit.recover_cockpit_batch", "text": "in the story the old captain decides to recover cockpit batch as the storm arrives"}
+{"id": "cockpit.recover_cockpit_batch", "kind": "other_command", "polarity": "negative", "reject": "cockpit.recover_cockpit_batch", "text": "review cockpit batch"}
+{"id": "cockpit.recover_cockpit_batch", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.recover_cockpit_batch", "text": "thunderous marmalade recover wobble sideways"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "alias", "polarity": "positive", "text": "review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "determiner", "polarity": "positive", "text": "review the cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "um review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Review cockpit batch."}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "slot", "polarity": "positive", "text": "review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "determiner", "polarity": "positive", "text": "review the cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch now"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Review, cockpit batch check the oven?"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch check the oven please"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Review cockpit batch check the oven."}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch check the oven for me"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "punct", "polarity": "positive", "text": "Review, cockpit batch?"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "okay review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "could you just review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "go ahead and review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "hey review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "hey review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "uh review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "please review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "so review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "i need you to review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you please review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch check the oven for me please"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "uh review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch check the oven thanks"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "could you review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you please review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "would you please review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "go ahead and review cockpit batch check the oven"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch for me"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch check the oven right now"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "can you review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch please"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "review cockpit batch right now"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "i need you to review cockpit batch"}
+{"accept": ["cockpit.review_cockpit_batch"], "id": "cockpit.review_cockpit_batch", "kind": "filler", "polarity": "positive", "text": "um review cockpit batch check the oven"}
+{"id": "cockpit.review_cockpit_batch", "kind": "sentence", "polarity": "negative", "reject": "cockpit.review_cockpit_batch", "text": "our manager keeps asking whether anyone remembered to review cockpit batch last week"}
+{"id": "cockpit.review_cockpit_batch", "kind": "other_command", "polarity": "negative", "reject": "cockpit.review_cockpit_batch", "text": "recover cockpit batch"}
+{"id": "cockpit.review_cockpit_batch", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.review_cockpit_batch", "text": "cobalt zeppelin cockpit banana velvet"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "determiner", "polarity": "positive", "text": "skip the cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "okay skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "numeral", "polarity": "positive", "text": "skip cockpit item call mom at 5"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "punct", "polarity": "positive", "text": "Skip cockpit item the build is green."}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "slot", "polarity": "positive", "text": "skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "determiner", "polarity": "positive", "text": "skip the cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "can you skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "punct", "polarity": "positive", "text": "Skip, cockpit item call mom at five?"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "slot", "polarity": "positive", "text": "skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item call mom at five for me please"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "punct", "polarity": "positive", "text": "Skip cockpit item call mom at five."}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "uh skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "punct", "polarity": "positive", "text": "Skip, cockpit item the build is green?"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "i need you to skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "can you skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "could you just skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "could you skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "go ahead and skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item call mom at five thanks"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "um skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item the build is green for me please"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "please skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item the build is green thanks"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item the build is green now"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "so skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item the build is green please"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "can you please skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "um skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item the build is green for me"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item the build is green right now"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "i need you to skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "so skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "please skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "would you please skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "could you skip cockpit item the build is green"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "would you please skip cockpit item call mom at five"}
+{"accept": ["cockpit.skip_cockpit_item"], "id": "cockpit.skip_cockpit_item", "kind": "filler", "polarity": "positive", "text": "skip cockpit item call mom at five now"}
+{"id": "cockpit.skip_cockpit_item", "kind": "sentence", "polarity": "negative", "reject": "cockpit.skip_cockpit_item", "text": "yesterday i told my sister we should skip cockpit item the build is green before dinner"}
+{"id": "cockpit.skip_cockpit_item", "kind": "other_command", "polarity": "negative", "reject": "cockpit.skip_cockpit_item", "text": "skip"}
+{"id": "cockpit.skip_cockpit_item", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.skip_cockpit_item", "text": "pickle saxophone cockpit purple lantern"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "alias", "polarity": "positive", "text": "use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "determiner", "polarity": "positive", "text": "use the todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "so use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "mishear", "polarity": "positive", "text": "use todays memos four cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "punct", "polarity": "positive", "text": "Use todays memos for cockpit water the plants."}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "slot", "polarity": "positive", "text": "use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "determiner", "polarity": "positive", "text": "use the todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "okay use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "mishear", "polarity": "positive", "text": "use todays memos four cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "punct", "polarity": "positive", "text": "Use, todays memos for cockpit water the plants?"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "i need you to use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "punct", "polarity": "positive", "text": "Use todays memos for cockpit."}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit please"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "punct", "polarity": "positive", "text": "Use, todays memos for cockpit?"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "i need you to use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "so use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit water the plants for me please"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "hey use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "um use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit now"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "please use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit water the plants right now"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "could you just use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "hey use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "uh use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "would you please use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "could you use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit for me"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "go ahead and use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "can you please use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "can you use todays memos for cockpit"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "would you please use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "can you please use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "can you use todays memos for cockpit water the plants"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit for me please"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "use todays memos for cockpit water the plants for me"}
+{"accept": ["cockpit.use_todays_memos_for_cockpit"], "id": "cockpit.use_todays_memos_for_cockpit", "kind": "filler", "polarity": "positive", "text": "okay use todays memos for cockpit"}
+{"id": "cockpit.use_todays_memos_for_cockpit", "kind": "sentence", "polarity": "negative", "reject": "cockpit.use_todays_memos_for_cockpit", "text": "during the lecture she explained how to use todays memos for cockpit without breaking anything"}
+{"id": "cockpit.use_todays_memos_for_cockpit", "kind": "other_command", "polarity": "negative", "reject": "cockpit.use_todays_memos_for_cockpit", "text": "use memos for cockpit"}
+{"id": "cockpit.use_todays_memos_for_cockpit", "kind": "nonsense", "polarity": "negative", "reject": "cockpit.use_todays_memos_for_cockpit", "text": "sideways velvet cockpit lantern purple"}
 {"accept": ["comfy.cancel_the_image"], "id": "comfy.cancel_the_image", "kind": "alias", "polarity": "positive", "text": "cancel the image"}
 {"accept": ["comfy.cancel_the_image"], "id": "comfy.cancel_the_image", "kind": "filler", "polarity": "positive", "text": "so cancel the image"}
 {"accept": ["comfy.cancel_the_image"], "id": "comfy.cancel_the_image", "kind": "punct", "polarity": "positive", "text": "Cancel the image."}

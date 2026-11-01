@@ -7785,6 +7785,233 @@
     "precondition": "The focused window must contain a toggle named Word wrap."
   },
   {
+    "canonical_id": "cockpit.approve_cockpit_memo_batch",
+    "plugin": "cockpit",
+    "phrase": "approve cockpit memo batch",
+    "verb": "approve",
+    "object": "cockpit_memo_batch",
+    "aliases": [
+      "approve cockpit memo batch"
+    ],
+    "args": [
+      {
+        "name": "proposal_id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "proposal_hash",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "request_id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "source_hash",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "context_hash",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "generation",
+        "type": "int",
+        "required": true
+      }
+    ],
+    "description": "Registry identity for bound policy only.",
+    "risk": "destructive",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.choose_cockpit_target",
+    "plugin": "cockpit",
+    "phrase": "choose cockpit target",
+    "verb": "choose",
+    "object": "cockpit_target",
+    "aliases": [
+      "choose cockpit target"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "PLACEHOLDER: choose cockpit target item two candidate one.",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.preview_cockpit_memos",
+    "plugin": "cockpit",
+    "phrase": "preview cockpit memos",
+    "verb": "preview",
+    "object": "cockpit_memos",
+    "aliases": [
+      "preview cockpit memos",
+      "turn my last memo into a cockpit update",
+      "use memos for cockpit"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "preview cockpit memos",
+    "risk": "read",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.read_next_cockpit_changes",
+    "plugin": "cockpit",
+    "phrase": "read next cockpit changes",
+    "verb": "read",
+    "object": "next_cockpit_changes",
+    "aliases": [
+      "read next cockpit changes"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "read next cockpit changes",
+    "risk": "read",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.recover_cockpit_batch",
+    "plugin": "cockpit",
+    "phrase": "recover cockpit batch",
+    "verb": "recover",
+    "object": "cockpit_batch",
+    "aliases": [
+      "recover cockpit batch"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "recover cockpit batch",
+    "risk": "read",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.review_cockpit_batch",
+    "plugin": "cockpit",
+    "phrase": "review cockpit batch",
+    "verb": "review",
+    "object": "cockpit_batch",
+    "aliases": [
+      "review cockpit batch"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "review cockpit batch",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.skip_cockpit_item",
+    "plugin": "cockpit",
+    "phrase": "skip cockpit item",
+    "verb": "skip",
+    "object": "cockpit_item",
+    "aliases": [
+      "skip cockpit item"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "skip cockpit item",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.use_todays_memos_for_cockpit",
+    "plugin": "cockpit",
+    "phrase": "use todays memos for cockpit",
+    "verb": "use",
+    "object": "todays_memos_for_cockpit",
+    "aliases": [
+      "use todays memos for cockpit"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "use todays memos for cockpit",
+    "risk": "read",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "comfy.cancel_the_image",
     "plugin": "comfy",
     "phrase": "cancel the image",

@@ -7828,6 +7828,233 @@
     },
     {
       "aliases": [
+        "approve cockpit memo batch"
+      ],
+      "args": [
+        {
+          "name": "proposal_id",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "proposal_hash",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "request_id",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "source_hash",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "context_hash",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "name": "generation",
+          "required": true,
+          "type": "int"
+        }
+      ],
+      "canonical_id": "cockpit.approve_cockpit_memo_batch",
+      "description": "Registry identity for bound policy only.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_memo_batch",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "destructive",
+      "source": "plugins/commands/cockpit.py:207",
+      "undoable": false,
+      "verb": "approve",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "choose cockpit target"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.choose_cockpit_target",
+      "description": "PLACEHOLDER: choose cockpit target item two candidate one.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_target",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:181",
+      "undoable": false,
+      "verb": "choose",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "preview cockpit memos",
+        "turn my last memo into a cockpit update",
+        "use memos for cockpit"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.preview_cockpit_memos",
+      "description": "preview cockpit memos",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_memos",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "read",
+      "source": "plugins/commands/cockpit.py:102",
+      "undoable": true,
+      "verb": "preview",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "read next cockpit changes"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.read_next_cockpit_changes",
+      "description": "read next cockpit changes",
+      "examples": [],
+      "kind": "plugin",
+      "object": "next_cockpit_changes",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "read",
+      "source": "plugins/commands/cockpit.py:120",
+      "undoable": true,
+      "verb": "read",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "recover cockpit batch"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.recover_cockpit_batch",
+      "description": "recover cockpit batch",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_batch",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "read",
+      "source": "plugins/commands/cockpit.py:148",
+      "undoable": true,
+      "verb": "recover",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "review cockpit batch"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.review_cockpit_batch",
+      "description": "review cockpit batch",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_batch",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:134",
+      "undoable": false,
+      "verb": "review",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "skip cockpit item"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.skip_cockpit_item",
+      "description": "skip cockpit item",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_item",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:163",
+      "undoable": false,
+      "verb": "skip",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "use todays memos for cockpit"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.use_todays_memos_for_cockpit",
+      "description": "use todays memos for cockpit",
+      "examples": [],
+      "kind": "plugin",
+      "object": "todays_memos_for_cockpit",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "read",
+      "source": "plugins/commands/cockpit.py:114",
+      "undoable": true,
+      "verb": "use",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "cancel the image"
       ],
       "args": [],

@@ -32,11 +32,11 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer, QUrl, QSize, QEvent
+from PySide6.QtCore import Qt, QTimer, QUrl, QSize, QEvent, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
-    QPlainTextEdit, QMenu, QToolButton, QWidgetAction, QFrame, QStyledItemDelegate,
+    QPlainTextEdit, QMenu, QToolButton, QWidgetAction, QFrame, QStyledItemDelegate, QCheckBox, QScrollArea, QDialog,
 )
 from PySide6.QtGui import QDesktopServices
 
@@ -157,14 +157,22 @@ class _MemoCardDelegate(QStyledItemDelegate):
 class MemosPage(QWidget):
     """The hub's Memos page."""
 
+    _batch_ready = Signal(object, str)
+
     def __init__(self, app, parent=None, home=None, player=None):
         super().__init__(parent)
+        self.setFont(theme.qfont(theme.TYPE_BODY))
         self._app = app
         self._home = home
         self._player = player if player is not None else _Player()
         self._records = []
         self._filtered = []
         self._pending_delete = None
+        self._checked_ids = set()
+        self._drafts = {}
+        self._editing_id = None
+        self._batch_runner = None
+        self._batch_ready.connect(self._show_batch_preview)
         self._build()
         self.reload()
 
@@ -251,6 +259,79 @@ class MemosPage(QWidget):
         self._memo_keys.setAccessibleName("Memo recording keys")
         lay.addWidget(self._memo_keys)
 
+        # PLACEHOLDER COPY (975c): checked batch is independent of editor row.
+        batch = QHBoxLayout()
+        self._batch_mode = QCheckBox("Select a batch")
+        self._batch_mode.setAccessibleName(self._batch_mode.text())
+        self._batch_mode.setMinimumHeight(40)
+        self._batch_mode.toggled.connect(lambda _checked: self._render_cards())
+        batch.addWidget(self._batch_mode)
+        self._today_btn = self._button("Select today's memos", self.select_today_batch)
+        self._clear_batch_btn = self._button("Clear selection", self.clear_batch)
+        self._preview_batch_btn = self._button("Preview Cockpit changes (0)", self.preview_batch)
+        for button in (self._today_btn, self._clear_batch_btn, self._preview_batch_btn):
+            batch.addWidget(button)
+        batch.addStretch()
+        lay.addLayout(batch)
+        self._batch_total = self._label("0 checked; 0 hidden", theme.TYPE_MIN, True)
+        lay.addWidget(self._batch_total)
+
+        # A modeless review keeps the memo list/editor usable and avoids
+        # forcing the hub taller than a normal desktop display.
+        self._batch_review = QDialog(self)
+        self._batch_review.setFont(theme.qfont(theme.TYPE_BODY))
+        self._batch_review.setWindowTitle("Review Cockpit changes")
+        self._batch_review.setModal(False)
+        self._batch_review.resize(1050, 800)
+        self._batch_review.finished.connect(lambda _result: self.cancel_batch())
+        review_layout = QVBoxLayout(self._batch_review)
+        review_layout.setContentsMargins(20, 20, 20, 20)
+        review_layout.setSpacing(12)
+        self._batch_preview = QPlainTextEdit()
+        self._batch_preview.setFont(theme.qfont(theme.TYPE_BODY))
+        self._batch_preview.setReadOnly(True)
+        self._batch_preview.setAccessibleName("Cockpit proposed changes and exclusions")
+        self._batch_preview.setMinimumHeight(180)
+        self._batch_preview.setMaximumWidth(1180)
+        self._batch_preview.hide()
+        review_layout.addWidget(self._batch_preview, 1)
+        self._batch_choices_area = QScrollArea()
+        self._batch_choices_area.setWidgetResizable(True)
+        self._batch_choices_area.setMaximumHeight(180)
+        self._batch_choices_widget = QWidget()
+        self._batch_choices_layout = QVBoxLayout(self._batch_choices_widget)
+        self._batch_choices_area.setWidget(self._batch_choices_widget)
+        self._batch_choices_area.hide()
+        review_layout.addWidget(self._batch_choices_area)
+        self._revise_batch_btn = self._button("Update preview with these choices", self.revise_batch)
+        self._revise_batch_btn.hide()
+        review_layout.addWidget(self._revise_batch_btn)
+        review = QHBoxLayout()
+        self._approve_batch_btn = self._button("Review and approve batch", self.approve_batch)
+        self._cancel_batch_btn = self._button("Cancel batch", self.cancel_batch)
+        self._approve_batch_btn.hide()
+        self._cancel_batch_btn.hide()
+        review.addWidget(self._approve_batch_btn)
+        review.addWidget(self._cancel_batch_btn)
+        review.addStretch()
+        review_layout.addLayout(review)
+        source_row = QHBoxLayout()
+        self._batch_source_choice = QComboBox()
+        self._batch_source_choice.setFont(theme.qfont(theme.TYPE_BODY))
+        self._batch_source_choice.setMaximumWidth(520)
+        self._batch_source_choice.setMinimumHeight(40)
+        self._batch_source_choice.setAccessibleName("Review a selected memo source")
+        self._batch_source_choice.hide()
+        self._batch_source_btn = self._button("Show selected source", self.show_batch_source)
+        self._batch_source_btn.hide()
+        source_row.addWidget(self._batch_source_choice)
+        source_row.addWidget(self._batch_source_btn)
+        source_row.addStretch()
+        review_layout.addLayout(source_row)
+        self._batch_review_status = self._label("", theme.TYPE_MIN, True)
+        self._batch_review_status.setWordWrap(True)
+        review_layout.addWidget(self._batch_review_status)
+
         panes = QHBoxLayout()
         panes.setSpacing(32)
         self._list = QListWidget()
@@ -332,7 +413,9 @@ class MemosPage(QWidget):
         footer.addStretch()
         lay.addLayout(footer)
         chain = [self._record_voice_btn, self._record_video_btn, self._settings_link,
-                 self._search, self._list, self._detail, self._save_btn,
+                 self._search, self._list,
+                 self._batch_mode, self._today_btn, self._clear_batch_btn, self._preview_batch_btn,
+                 self._detail, self._save_btn,
                  self._play_btn, self._copy_btn, self._delete_btn, self._confirm_btn,
                  self._cancel_btn, self._category, self._raw_btn, self._filter_category, menu_button]
         for first, second in zip(chain, chain[1:]):
@@ -341,6 +424,7 @@ class MemosPage(QWidget):
 
     def _button(self, text, slot, danger=False):
         button = QPushButton(text)
+        button.setFont(theme.qfont(theme.TYPE_BODY))
         button.setAccessibleName(text)
         button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -373,7 +457,9 @@ class MemosPage(QWidget):
             item = self._list.item(i)
             card = QFrame()
             selected = i == self._list.currentRow()
-            card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not self._batch_mode.isChecked())
+            if self._batch_mode.isChecked():
+                card.mousePressEvent = lambda _event, row=i: self._list.setCurrentRow(row)
             card.setFixedWidth(width)
             card.setStyleSheet(
                 f"QFrame {{ background: {theme.BG0}; border: 1px solid {theme.ACCENT if selected else theme.BORDER_FAINT}; border-radius: 8px; }}")
@@ -382,6 +468,16 @@ class MemosPage(QWidget):
             layout.setSpacing(8)
             meta = QHBoxLayout()
             meta.setSpacing(8)
+            if self._batch_mode.isChecked():
+                check = QCheckBox()
+                check.setFont(theme.qfont(theme.TYPE_BODY))
+                memo_id = record["id"]
+                check.setAccessibleName("Include memo " + str(record.get("at", "")))
+                check.setMinimumSize(40, 40)
+                check.setStyleSheet(self._batch_checkbox_style())
+                check.setChecked(memo_id in self._checked_ids)
+                check.toggled.connect(lambda value, key=memo_id: self._check_memo(key, value))
+                meta.addWidget(check)
             meta.addWidget(self._label(str(record.get("at", "")).replace("T", " ")[:16], theme.TYPE_MIN, True))
             category = self._label(record.get("category") or UNCATEGORISED, theme.TYPE_MIN, True)
             category.setStyleSheet(category.styleSheet() + f"background: {theme.BG2}; border-radius: 4px; padding: 3px 7px;")
@@ -422,6 +518,8 @@ class MemosPage(QWidget):
             self._status.setText("Memo changes could not be saved.")
             return False
         memo_id = record.get("id")
+        self._drafts.pop(memo_id, None)
+        self._editing_id = None
         self.reload()
         for i, entry in enumerate(self._filtered):
             if entry.get("id") == memo_id:
@@ -434,6 +532,7 @@ class MemosPage(QWidget):
 
     def reload(self):
         """Re-read the store. Cheap enough to call whenever the page opens."""
+        self._remember_draft()
         self._refresh_memo_keys()
         try:
             self._records = list(reversed(quick_memo.load_memos(self._home)))
@@ -441,6 +540,7 @@ class MemosPage(QWidget):
             logger.warning("[MEMO] Could not load memos: %s", exc)
             self._records = []
         self._reload_categories()
+        self._checked_ids.intersection_update(r["id"] for r in self._records)
         self._apply_filter()
 
     def _config(self):
@@ -528,6 +628,8 @@ class MemosPage(QWidget):
         self._category.blockSignals(False)
 
     def _apply_filter(self):
+        self._remember_draft()
+        self._editing_id = None
         needle = self._search.text()
         self._filtered = quick_memo.search_memos(self._records, needle)
         category = self._filter_category.currentText()
@@ -549,6 +651,7 @@ class MemosPage(QWidget):
         if self._filtered:
             self._list.setCurrentRow(0)
         self._count.setText(f"{len(self._filtered)} memos")
+        self._update_batch_total()
         self.cancel_delete()
         self._on_selection(self._list.currentRow())
 
@@ -570,6 +673,7 @@ class MemosPage(QWidget):
         return self._filtered[row]
 
     def _on_selection(self, _row=None):
+        self._remember_draft()
         record = self.selected
         has = record is not None
         self.cancel_delete()
@@ -588,11 +692,13 @@ class MemosPage(QWidget):
         self._delete_btn.setEnabled(has)
         self._category.setEnabled(has)
         if not has:
+            self._editing_id = None
             self._detail.setPlainText("")
             self._status.setText(NO_MATCHES if self._records and not self._filtered else "")
             return
         self._selected_meta.setText(self._spoken(record).split(". ", 1)[0])
-        self._detail.setPlainText(record.get("text", ""))
+        self._editing_id = record["id"]
+        self._detail.setPlainText(self._drafts.get(record["id"], record.get("text", "")))
         self._category.blockSignals(True)
         self._category.setCurrentText(record.get("category") or "")
         self._category.blockSignals(False)
@@ -607,6 +713,225 @@ class MemosPage(QWidget):
             self._status.setText(NO_VIDEO)
         else:
             self._status.setText(NO_AUDIO)
+
+    # ---- Cockpit batch (PLACEHOLDER COPY for Morne) -----------------------
+
+    @staticmethod
+    def _batch_checkbox_style():
+        return (f"QCheckBox::indicator {{ width: 30px; height: 30px; border: 2px solid {theme.TEXT_SECONDARY};"
+                f" border-radius: 4px; background: {theme.BG2}; }}"
+                f"QCheckBox::indicator:checked {{ background: {theme.ACCENT}; border-color: {theme.ACCENT}; }}")
+
+    def _remember_draft(self):
+        if self._editing_id is None or not hasattr(self, "_detail"):
+            return
+        record = next((r for r in self._records if r["id"] == self._editing_id), None)
+        if record and self._detail.toPlainText() != record.get("text", ""):
+            self._drafts[self._editing_id] = self._detail.toPlainText()
+        else:
+            self._drafts.pop(self._editing_id, None)
+
+    def _check_memo(self, memo_id, checked):
+        if checked:
+            self._checked_ids.add(memo_id)
+        else:
+            self._checked_ids.discard(memo_id)
+        self._update_batch_total()
+
+    def _update_batch_total(self):
+        visible = {r["id"] for r in self._filtered}
+        self._batch_total.setText(f"{len(self._checked_ids)} checked; {len(self._checked_ids - visible)} hidden")
+        self._preview_batch_btn.setText(f"Preview Cockpit changes ({len(self._checked_ids)})")
+        self._preview_batch_btn.setAccessibleName(self._preview_batch_btn.text())
+        self._preview_batch_btn.setFixedWidth(self._preview_batch_btn.sizeHint().width())
+
+    def clear_batch(self):
+        self._checked_ids.clear()
+        self._update_batch_total()
+        self._render_cards()
+
+    def select_today_batch(self):
+        from datetime import datetime
+        from samsara.cockpit_memos import quick_source, select_memos, MemoDisposition
+        try:
+            selection = select_memos([quick_source(r) for r in self._records], mode="today",
+                                     now=datetime.now().astimezone(), allow_partial=True)
+        except MemoDisposition as exc:
+            self._status.setText(str(exc))
+            return False
+        self._checked_ids = {m["memo_id"] for m in selection.memos}
+        self._batch_mode.setChecked(True)
+        self._render_cards()
+        self._update_batch_total()
+        self._status.setText("Today's capture date in " + selection.timezone + ". Partial memos remain marked.")
+        return True
+
+    def preview_batch(self):
+        from plugins.commands.cockpit import start_preview
+        self._remember_draft()
+        if self._checked_ids & self._drafts.keys():
+            self._status.setText("Save checked memo edits explicitly before previewing the batch.")
+            return False
+        if not self._checked_ids:
+            self._status.setText("Check at least one saved memo.")
+            return False
+        try:
+            result = start_preview(self._app, dict(mode="checked", checked_ids=tuple(self._checked_ids)),
+                                   home=self._home, completed=self._batch_ready.emit)
+            self._batch_runner = getattr(self._app, "_cockpit_memo_runner", None)
+            self._approve_batch_btn.hide()
+            self._cancel_batch_btn.show()
+            self._batch_preview.setPlainText("Preparing a preview from the saved selection.")
+            self._batch_preview.show()
+            self._set_batch_status("Preparing a preview from the saved selection.")
+            self._batch_review.show()
+            return result
+        except ValueError as exc:
+            self._status.setText(str(exc))
+            return False
+
+    def _show_batch_preview(self, runner, error):
+        if error:
+            self._set_batch_status(error)
+            self._approve_batch_btn.setEnabled(False)
+            return
+        if getattr(self._app, "_cockpit_memo_runner", runner) is not runner or runner._cancelled:
+            return
+        self._batch_runner = runner
+        pages = [runner.read_page(i, page_size=3) for i in range(max(1, (len(runner.proposal["items"]) + 2) // 3))]
+        # Questions are locally rendered reason/candidates, never model wording.
+        remainder = [str(q["reason"]) + ": " + ", ".join(q["candidate_ids"])
+                     for q in runner.proposal["unresolved"]]
+        self._batch_preview_text = "\n".join(list(runner.selection.warnings) + pages + remainder)
+        self._batch_preview.setPlainText(self._batch_preview_text)
+        self._batch_source_choice.clear()
+        for number, memo in enumerate(runner.selection.memos, 1):
+            self._batch_source_choice.addItem(f"Source {number}: {memo['source_kind']} — {memo['captured_at']}", memo['memo_id'])
+        self._batch_source_choice.show()
+        self._batch_source_btn.show()
+        self._batch_preview.show()
+        self._approve_batch_btn.setEnabled(True)
+        while self._batch_choices_layout.count():
+            child = self._batch_choices_layout.takeAt(0)
+            if child.widget():
+                child.widget().hide()
+                child.widget().deleteLater()
+        self._batch_choice_controls = []
+        titles = {r["id"]: r["title"] for r in runner.context["records"]}
+        for number, row in enumerate(runner.proposal["items"], 1):
+            widget = QWidget()
+            widget.setMinimumHeight(48)
+            line = QHBoxLayout(widget)
+            line.setContentsMargins(4, 4, 4, 4)
+            check = QCheckBox(f"Include item {number}")
+            check.setAccessibleName(check.text())
+            check.setFont(theme.qfont(theme.TYPE_BODY))
+            check.setMinimumHeight(40)
+            check.setStyleSheet(self._batch_checkbox_style())
+            check.setChecked(row["included"])
+            check.setEnabled(row["disposition"] in {"included", "excluded", "needs_target_choice"})
+            line.addWidget(check)
+            choice = QComboBox()
+            choice.setFont(theme.qfont(theme.TYPE_BODY))
+            choice.setMinimumHeight(40)
+            choice.setAccessibleName(f"Choose existing target for item {number}")
+            choice.addItem("Choose a target", None)
+            for candidate in row["candidates"]:
+                choice.addItem(titles.get(candidate["id"], candidate["id"]), candidate["id"])
+            selected = runner.proposal["target_choices"].get(row["item_key"])
+            if selected:
+                choice.setCurrentIndex(choice.findData(selected))
+            choice.setVisible(row["disposition"] == "needs_target_choice" or row["item_key"] in runner.proposal["target_choices"])
+            choice.currentIndexChanged.connect(lambda index, c=check: c.setChecked(index > 0))
+            check.toggled.connect(lambda _value: self._approve_batch_btn.setEnabled(False))
+            choice.currentIndexChanged.connect(lambda _index: self._approve_batch_btn.setEnabled(False))
+            line.addWidget(choice)
+            self._batch_choice_controls.append((row["item_key"], check, choice))
+            self._batch_choices_layout.addWidget(widget)
+        self._batch_choices_area.setFixedHeight(min(230, max(80, len(self._batch_choice_controls) * 56 + 16)))
+        self._batch_choices_area.setVisible(bool(self._batch_choice_controls))
+        self._revise_batch_btn.setVisible(bool(self._batch_choice_controls))
+        self._approve_batch_btn.setVisible(True)
+        self._cancel_batch_btn.show()
+        self._set_batch_status("Review every proposed change. Unresolved items remain excluded.")
+        self._batch_review.show()
+
+    def _set_batch_status(self, message):
+        self._status.setText(message)
+        self._batch_review_status.setText(message)
+
+    def show_batch_source(self):
+        if self._batch_runner is None:
+            return False
+        memo_id = self._batch_source_choice.currentData()
+        memo = next((m for m in self._batch_runner.selection.memos if m['memo_id'] == memo_id), None)
+        if memo is None:
+            return False
+        self._batch_preview.setPlainText(self._batch_preview_text + "\n\nSelected source:\n" + memo['text'])
+        return True
+
+    def revise_batch(self):
+        runner = self._batch_runner
+        if runner is None:
+            return False
+        keys, choices = [], {}
+        for key, check, choice in self._batch_choice_controls:
+            if check.isChecked():
+                keys.append(key)
+            if choice.currentData() is not None:
+                choices[key] = choice.currentData()
+        from samsara.runtime import thread_registry
+        def work():
+            try:
+                runner.repreview(selected_keys=keys, target_choices=choices)
+                self._batch_ready.emit(runner, "")
+            except Exception:
+                self._batch_ready.emit(None, "Choices could not be previewed; refresh the batch before approval.")
+        # Updating choices always invalidates authority; approval requires the
+        # newly displayed, server-validated immutable preview.
+        self._approve_batch_btn.setEnabled(False)
+        thread_registry.spawn("cockpit.memo.repreview", work, daemon=True)
+        return True
+
+    def approve_batch(self):
+        if self._batch_runner is None:
+            return False
+        self._remember_draft()
+        if {m["memo_id"] for m in self._batch_runner.selection.memos} & self._drafts.keys():
+            self._set_batch_status("Save checked memo edits explicitly and refresh the preview before approval.")
+            return False
+        try:
+            from samsara import execution_policy as policy
+            self._batch_runner.stage_approval(listen=False)
+            outcome = policy.answer_pending(self._app, "yes", source=policy.ANSWER_DIALOG)
+            if outcome != "approved":
+                self._set_batch_status("Batch approval refused; refresh the preview.")
+                return False
+            result = self._batch_runner.last_result or {}
+            result = result.get("receipt") or result
+            self._set_batch_status("Batch " + str(result.get("status", "status unknown; recover the request"))
+                                   + "; unresolved items remain excluded.")
+            return True
+        except ValueError as exc:
+            self._set_batch_status(str(exc))
+            return False
+
+    def cancel_batch(self):
+        if self._batch_runner is not None:
+            self._batch_runner.cancel()
+            if (getattr(self._app, "_cockpit_memo_runner", None) is self._batch_runner
+                    and not self._batch_runner.application_uncertain):
+                self._app._cockpit_memo_runner = None
+        self._batch_runner = None
+        self._batch_preview.hide()
+        self._batch_choices_area.hide()
+        self._revise_batch_btn.hide()
+        self._batch_source_choice.hide()
+        self._batch_source_btn.hide()
+        self._batch_review.hide()
+        self._approve_batch_btn.hide()
+        self._cancel_batch_btn.hide()
+        self._set_batch_status("Batch cancelled.")
 
     # ---- Actions --------------------------------------------------------
 

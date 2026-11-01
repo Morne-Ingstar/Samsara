@@ -129,6 +129,97 @@
     "state": "completed",
     "text": "toggle alpha and volume down"
   },
+  "cockpit.approve_cockpit_memo_batch": {
+    "calls": [],
+    "detail": {},
+    "generated_by": "890",
+    "state": "miss",
+    "text": "approve cockpit memo batch alpha and volume down"
+  },
+  "cockpit.choose_cockpit_target": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "choose cockpit target",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "choose cockpit target alpha and volume down"
+  },
+  "cockpit.preview_cockpit_memos": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "preview cockpit memos",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "preview cockpit memos alpha and volume down"
+  },
+  "cockpit.read_next_cockpit_changes": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "read next cockpit changes",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "read next cockpit changes alpha and volume down"
+  },
+  "cockpit.recover_cockpit_batch": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "recover cockpit batch",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "recover cockpit batch alpha and volume down"
+  },
+  "cockpit.review_cockpit_batch": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "review cockpit batch",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "review cockpit batch alpha and volume down"
+  },
+  "cockpit.skip_cockpit_item": {
+    "calls": [],
+    "detail": {},
+    "generated_by": "890",
+    "state": "miss",
+    "text": "skip cockpit item alpha and volume down"
+  },
+  "cockpit.use_todays_memos_for_cockpit": {
+    "calls": [],
+    "detail": {},
+    "generated_by": "890",
+    "state": "miss",
+    "text": "use todays memos for cockpit alpha and volume down"
+  },
   "comfy.make_an_image_of": {
     "calls": [],
     "detail": {},
