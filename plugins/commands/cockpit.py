@@ -211,3 +211,170 @@ def choose_target(app, remainder=""):
 def approval_identity(app, remainder=""):
     """Registry identity for bound policy only. Dispatch never approves a batch."""
     return False
+
+
+
+def briefing_client(app):
+    from samsara.cockpit_client import CockpitClient
+    return getattr(app, '_cockpit_read_client', None) or CockpitClient(owner_adapter=getattr(app, '_cockpit_owner_adapter', None))
+
+
+def find_briefing_item(briefing, target):
+    from samsara.cockpit_memos import MemoDisposition
+    value = ' '.join(target.casefold().split())
+    rows = [r for k in ('actionable', 'waiting', 'deferred', 'routines', 'omitted', 'unavailable') for r in briefing.get(k, [])]
+    if value in ('', 'that', 'that one'):
+        ident = next(iter(briefing.get('recommendations', [])), None)
+        matches = [r for r in rows if r['id'] == ident]
+    else:
+        matches = [r for r in rows if value in (r['id'].casefold(), ' '.join((r.get('title') or '').casefold().split()))]
+    if len(matches) != 1:
+        raise MemoDisposition('Name one exact Cockpit title or namespaced ID; no target was selected.')
+    return matches[0]
+
+
+def read_briefing(app):
+    result = briefing_client(app).briefing()
+    app._cockpit_last_briefing = result
+    return result['speech_text']
+
+
+def why_briefing(app, target=''):
+    result = getattr(app, '_cockpit_last_briefing', None) or briefing_client(app).briefing()
+    row = find_briefing_item(result, target)
+    evidence = '; '.join(r['text'] for r in row['reasons'])
+    return 'PLACEHOLDER: ' + row['title'] + '. ' + evidence + '. Snapshot ' + result['captured_at'] + '. ' + '; '.join(row.get('warnings', []))
+
+
+def _briefing_work(app, work):
+    from samsara import execution_policy as policy
+    generation = policy.capture_generation(app)
+    from samsara.runtime import thread_registry
+    def run():
+        try:
+            if not policy.is_fresh(app, generation):
+                return
+            message = work()
+            if policy.is_fresh(app, generation):
+                announce(app, message)
+        except ValueError as exc:
+            if policy.is_fresh(app, generation):
+                announce(app, str(exc))
+    thread_registry.spawn('cockpit.briefing', run, daemon=True)
+    return True
+
+
+# Deliberately distinct from tasks.py's Todoist `what's on today` identity and aliases.
+@command('cockpit today', aliases=['read cockpit today', 'what should i do in cockpit'], pack='utilities',
+         risk_class='read', ai_composable=True, side_effects=['network', 'ui'],
+         param_schema={'remainder': {'type': 'str', 'max_len': 0}})
+def today_briefing(app, remainder=''):
+    return _briefing_work(app, lambda: read_briefing(app))
+
+
+@command('why cockpit item', aliases=['what about cockpit item'], pack='utilities', risk_class='read',
+         ai_composable=True, side_effects=['network', 'ui'],
+         param_schema={'remainder': {'type': 'str', 'max_len': 300}})
+def why_item(app, remainder=''):
+    return _briefing_work(app, lambda: why_briefing(app, remainder))
+
+
+def followup(app, action, target, value=None):
+    from datetime import date, timedelta
+    from samsara.cockpit_memos import FollowupRunner, MemoDisposition
+    from samsara import execution_policy as policy
+    generation = policy.capture_generation(app)
+    client = briefing_client(app)
+    context = client.context()
+    # Resolve only against the fresh complete write context; exact title or ID.
+    last = getattr(app, '_cockpit_last_briefing', {})
+    row = find_briefing_item(dict(actionable=context['records'], recommendations=last.get('recommendations', [])), target)
+    if row['kind'] not in ('task', 'event') or not row.get('writable'):
+        raise MemoDisposition('Ticket, goal and routine writes are unsupported in V1.')
+    tomorrow = (date.fromisoformat(context['local_date']) + timedelta(days=1)).isoformat()
+    if action == 'move':
+        requested = value if isinstance(value, dict) else {'date': value or 'tomorrow'}
+        day = tomorrow if requested['date'] == 'tomorrow' else date.fromisoformat(requested['date']).isoformat()
+        if requested.get('time') and row['kind'] != 'event':
+            raise MemoDisposition('A task move preserves its deadline; name an appointment to change its clock time.')
+        fields = {'start_after' if row['kind'] == 'task' else 'date': day}
+        if requested.get('time'):
+            fields['time'] = requested['time']
+    elif action == 'deadline' and row['kind'] == 'task':
+        fields = {'due_date': tomorrow if value == 'tomorrow' else date.fromisoformat(value).isoformat()}
+    elif action == 'complete' and row['kind'] == 'task':
+        fields = {'status': 'done'}
+    elif action == 'priority' and row['kind'] == 'task' and value in ('high', 'normal', 'low'):
+        fields = {'priority': value}
+    else:
+        raise MemoDisposition('This follow-up is unsupported in V1.')
+    previous = getattr(app, '_cockpit_memo_runner', None)
+    if previous:
+        if previous.application_uncertain:
+            raise MemoDisposition('Recover the previous receipt before another change.')
+        previous.cancel()
+    runner = FollowupRunner(app, client)
+    app._cockpit_memo_runner = runner
+    runner.start_fields(row['id'], fields, context=context, generation=generation)
+    message = runner.read_page()
+    if row['kind'] == 'event':
+        message += ' Appointment: ' + str(row.get('date')) + ' ' + str(row.get('time') or row.get('due_time')) + ' to ' + str(fields.get('date',row.get('date'))) + ' ' + str(fields.get('time',row.get('time') or row.get('due_time'))) + '.'
+    if fields.get('start_after') and row.get('due_date') and row['due_date'] < fields['start_after']:
+        message += ' Planned work starts after the preserved deadline ' + row['due_date'] + '.'
+    message += ' No changes applied. Review Cockpit batch for approval.'
+    return message
+
+
+@command('move cockpit item', pack='utilities', risk_class='write', ai_composable=False,
+         side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':350}})
+def move_item(app, remainder=''):
+    match = re.fullmatch(r'(.+) to (tomorrow|\d{4}-\d{2}-\d{2})(?: at ((?:[01]\d|2[0-3]):[0-5]\d))?', remainder.strip(), re.I)
+    if not match:
+        announce(app, 'PLACEHOLDER: Name the Cockpit item followed by to tomorrow.')
+        return False
+    return _briefing_work(app, lambda: followup(app, 'move', match[1], dict(date=match[2].lower(),time=match[3])))
+
+
+@command('set cockpit deadline', pack='utilities', risk_class='write', ai_composable=False,
+         side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':350}})
+def set_deadline(app, remainder=''):
+    match = re.fullmatch(r'(.+) to (tomorrow|\d{4}-\d{2}-\d{2})', remainder.strip(), re.I)
+    if not match:
+        return False
+    return _briefing_work(app, lambda: followup(app, 'deadline', match[1], match[2].lower()))
+
+
+@command('complete cockpit item', pack='utilities', risk_class='write', ai_composable=False,
+         side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':300}})
+def complete_item(app, remainder=''):
+    return _briefing_work(app, lambda: followup(app, 'complete', remainder))
+
+
+@command('set cockpit priority', pack='utilities', risk_class='write', ai_composable=False,
+         side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':350}})
+def set_priority(app, remainder=''):
+    match = re.fullmatch(r'(.+) to (high|normal|low)', remainder.strip(), re.I)
+    if not match:
+        return False
+    return _briefing_work(app, lambda: followup(app, 'priority', match[1], match[2].lower()))
+
+
+@command('undo cockpit update', pack='utilities', risk_class='write', ai_composable=False,
+         side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','max_len':100}})
+def undo_update(app, remainder=''):
+    def work():
+        from samsara.cockpit_memos import FollowupRunner, MemoDisposition
+        old = getattr(app, '_cockpit_memo_runner', None)
+        receipt = ((old.last_result or {}).get('receipt') or old.last_result or {}) if old else {}
+        receipt_id = remainder.strip() or receipt.get('receipt_id')
+        if not receipt_id:
+            raise MemoDisposition('Name the applied receipt to preview its undo.')
+        if old:
+            if old.application_uncertain:
+                raise MemoDisposition('Recover the previous receipt before undo.')
+            old.cancel()
+        runner = FollowupRunner(app, briefing_client(app))
+        app._cockpit_memo_runner = runner
+        runner.start_undo(receipt_id)
+        return runner.read_page() + ' No changes applied. Review Cockpit batch for approval.'
+    return _briefing_work(app, work)

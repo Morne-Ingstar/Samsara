@@ -150,6 +150,44 @@
     "state": "rejected",
     "text": "choose cockpit target alpha and volume down"
   },
+  "cockpit.cockpit_today": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "cockpit today",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "cockpit today alpha and volume down"
+  },
+  "cockpit.complete_cockpit_item": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "complete cockpit item",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "complete cockpit item alpha and volume down"
+  },
+  "cockpit.move_cockpit_item": {
+    "calls": [],
+    "detail": {
+      "detail": "argument 'monitor' must be a monitor",
+      "reason": "invalid_args"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "move cockpit item alpha and volume down"
+  },
   "cockpit.preview_cockpit_memos": {
     "calls": [],
     "detail": {
@@ -206,6 +244,34 @@
     "state": "rejected",
     "text": "review cockpit batch alpha and volume down"
   },
+  "cockpit.set_cockpit_deadline": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "set cockpit deadline",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "set cockpit deadline alpha and volume down"
+  },
+  "cockpit.set_cockpit_priority": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "set cockpit priority",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "set cockpit priority alpha and volume down"
+  },
   "cockpit.skip_cockpit_item": {
     "calls": [],
     "detail": {},
@@ -213,12 +279,33 @@
     "state": "miss",
     "text": "skip cockpit item alpha and volume down"
   },
+  "cockpit.undo_cockpit_update": {
+    "calls": [],
+    "detail": {},
+    "generated_by": "890",
+    "state": "miss",
+    "text": "undo cockpit update alpha and volume down"
+  },
   "cockpit.use_todays_memos_for_cockpit": {
     "calls": [],
     "detail": {},
     "generated_by": "890",
     "state": "miss",
     "text": "use todays memos for cockpit alpha and volume down"
+  },
+  "cockpit.why_cockpit_item": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "why cockpit item",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "why cockpit item alpha and volume down"
   },
   "comfy.make_an_image_of": {
     "calls": [],

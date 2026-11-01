@@ -7903,6 +7903,83 @@
     },
     {
       "aliases": [
+        "cockpit today",
+        "read cockpit today",
+        "what should i do in cockpit"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.cockpit_today",
+      "description": "cockpit today",
+      "examples": [],
+      "kind": "plugin",
+      "object": "today",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "read",
+      "source": "plugins/commands/cockpit.py:268",
+      "undoable": true,
+      "verb": "cockpit",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "complete cockpit item"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.complete_cockpit_item",
+      "description": "complete cockpit item",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_item",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:347",
+      "undoable": false,
+      "verb": "complete",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "move cockpit item"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.move_cockpit_item",
+      "description": "move cockpit item",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_item",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:328",
+      "undoable": false,
+      "verb": "move",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "preview cockpit memos",
         "turn my last memo into a cockpit update",
         "use memos for cockpit"
@@ -8005,6 +8082,56 @@
     },
     {
       "aliases": [
+        "set cockpit deadline"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.set_cockpit_deadline",
+      "description": "set cockpit deadline",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_deadline",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:338",
+      "undoable": false,
+      "verb": "set",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "set cockpit priority"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.set_cockpit_priority",
+      "description": "set cockpit priority",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_priority",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:353",
+      "undoable": false,
+      "verb": "set",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "skip cockpit item"
       ],
       "args": [
@@ -8030,6 +8157,31 @@
     },
     {
       "aliases": [
+        "undo cockpit update"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.undo_cockpit_update",
+      "description": "undo cockpit update",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_update",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/cockpit.py:362",
+      "undoable": true,
+      "verb": "undo",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "use todays memos for cockpit"
       ],
       "args": [
@@ -8051,6 +8203,32 @@
       "source": "plugins/commands/cockpit.py:114",
       "undoable": true,
       "verb": "use",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "what about cockpit item",
+        "why cockpit item"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "cockpit.why_cockpit_item",
+      "description": "why cockpit item",
+      "examples": [],
+      "kind": "plugin",
+      "object": "cockpit_item",
+      "pack": "utilities",
+      "plugin": "cockpit",
+      "precondition": "",
+      "risk": "read",
+      "source": "plugins/commands/cockpit.py:275",
+      "undoable": true,
+      "verb": "why",
       "whole_utterance": false
     },
     {

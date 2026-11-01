@@ -60,6 +60,26 @@ class CockpitClient:
     def preview(self, envelope):
         return self._json("POST", "/api/changes/preview", deepcopy(envelope))
 
+    def briefing(self):
+        """Partial coverage is advice, never an empty-success or write authority."""
+        value = self._json("GET", "/api/briefing")
+        if (value.get('schema_version') != 'cockpit.briefing.v1'
+                or value.get('ranking_version') != 1
+                or not isinstance(value.get('actionable'), list)
+                or not isinstance(value.get('full_order'), list)
+                or [r.get('id') for r in value['actionable']] != value['full_order']
+                or not isinstance(value.get('speech_items'), list)
+                or len(value['speech_items']) > 5
+                or not isinstance(value.get('speech_text'), str)):
+            raise CockpitError('Cockpit briefing is invalid or unavailable.')
+        return value
+
+    def undo_preview(self, receipt_id, request_id):
+        for ident in (receipt_id, request_id):
+            if not isinstance(ident, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', ident):
+                raise CockpitError('Invalid receipt or request ID.')
+        return self._json('POST', '/api/changes/' + receipt_id + '/undo-preview', {'request_id': request_id})
+
     def recover(self, request_id):
         if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", request_id):
             raise CockpitError("Invalid request ID.")

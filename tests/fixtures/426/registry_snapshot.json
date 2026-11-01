@@ -7860,6 +7860,83 @@
     "precondition": ""
   },
   {
+    "canonical_id": "cockpit.cockpit_today",
+    "plugin": "cockpit",
+    "phrase": "cockpit today",
+    "verb": "cockpit",
+    "object": "today",
+    "aliases": [
+      "cockpit today",
+      "read cockpit today",
+      "what should i do in cockpit"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "cockpit today",
+    "risk": "read",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.complete_cockpit_item",
+    "plugin": "cockpit",
+    "phrase": "complete cockpit item",
+    "verb": "complete",
+    "object": "cockpit_item",
+    "aliases": [
+      "complete cockpit item"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "complete cockpit item",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.move_cockpit_item",
+    "plugin": "cockpit",
+    "phrase": "move cockpit item",
+    "verb": "move",
+    "object": "cockpit_item",
+    "aliases": [
+      "move cockpit item"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "move cockpit item",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "cockpit.preview_cockpit_memos",
     "plugin": "cockpit",
     "phrase": "preview cockpit memos",
@@ -7962,6 +8039,56 @@
     "precondition": ""
   },
   {
+    "canonical_id": "cockpit.set_cockpit_deadline",
+    "plugin": "cockpit",
+    "phrase": "set cockpit deadline",
+    "verb": "set",
+    "object": "cockpit_deadline",
+    "aliases": [
+      "set cockpit deadline"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "set cockpit deadline",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.set_cockpit_priority",
+    "plugin": "cockpit",
+    "phrase": "set cockpit priority",
+    "verb": "set",
+    "object": "cockpit_priority",
+    "aliases": [
+      "set cockpit priority"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "set cockpit priority",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "cockpit.skip_cockpit_item",
     "plugin": "cockpit",
     "phrase": "skip cockpit item",
@@ -7987,6 +8114,31 @@
     "precondition": ""
   },
   {
+    "canonical_id": "cockpit.undo_cockpit_update",
+    "plugin": "cockpit",
+    "phrase": "undo cockpit update",
+    "verb": "undo",
+    "object": "cockpit_update",
+    "aliases": [
+      "undo cockpit update"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "undo cockpit update",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "cockpit.use_todays_memos_for_cockpit",
     "plugin": "cockpit",
     "phrase": "use todays memos for cockpit",
@@ -8003,6 +8155,32 @@
       }
     ],
     "description": "use todays memos for cockpit",
+    "risk": "read",
+    "whole_utterance": false,
+    "pack": "utilities",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "cockpit.why_cockpit_item",
+    "plugin": "cockpit",
+    "phrase": "why cockpit item",
+    "verb": "why",
+    "object": "cockpit_item",
+    "aliases": [
+      "what about cockpit item",
+      "why cockpit item"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "why cockpit item",
     "risk": "read",
     "whole_utterance": false,
     "pack": "utilities",

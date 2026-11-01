@@ -718,3 +718,137 @@ class ProposalRunner:
             self.operation.cancel(self.app, "cancelled", chip=False)
             self.operation = None
         self.client.cancel()
+
+
+
+def bounded_memo_signals(sources, records, *, now):
+    """Pure adapter over explicitly supplied saved sources; never reads a vault.
+
+    Only exact namespaced ID mentions qualify. Urgency requires a standalone
+    `Urgent task:<id>.` directive, so quoted/negated/general topic text cannot
+    assert it. Ambiguous titles and unknown timestamps yield no signal.
+    """
+    if len(sources) > 20 or sum(len(s.get('text', '')) for s in sources) > 50000:
+        raise MemoDisposition('Memo signal scope exceeds twenty sources or 50000 characters.')
+    known = {r['id'] for r in records}
+    result = []
+    for source in sources:
+        if not source.get('has_transcript') or source.get('partial'):
+            continue
+        try:
+            stamp = datetime.fromisoformat(source['captured_at'])
+            if stamp.tzinfo is None or not 0 <= (now.date()-stamp.astimezone(now.tzinfo).date()).days <= 7:
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        text = source['text']
+        if hashlib.sha256(text.replace('\r\n', '\n').encode()).hexdigest() != source.get('text_sha256'):
+            raise MemoDisposition('Memo signal source changed; select it again.')
+        for ident in sorted(known):
+            match = re.search(r'(?<![\w:])'+re.escape(ident)+r'(?![\w:-])', text)
+            if not match:
+                continue
+            urgent = bool(re.search(r'(?m)^Urgent '+re.escape(ident)+r'[.!]?$', text))
+            result.append(dict(target_id=ident, origin_id=source.get('upstream_id') or ('quick:' if source.get('source_kind')=='quick' else '')+source['memo_id'],
+                captured_at=source['captured_at'], owner_urgent=urgent,
+                evidence=dict(memo_id=source['memo_id'], text_sha256=source['text_sha256'], start=match.start(), end=match.end())))
+    return result
+
+
+class FollowupRunner(ProposalRunner):
+    """Deterministic voice draft through the existing confirmed changes service.
+
+    No extractor/provider needed. Production approval retains 975c's trusted
+    native adapter gate; preview never claims an applied change.
+    """
+    def __init__(self, app, client):
+        self._instruction_sources = []
+        super().__init__(app, client, None, lambda: deepcopy(self._instruction_sources))
+
+    def _current(self):
+        from samsara import execution_policy as policy
+        return (not self._cancelled and policy.is_fresh(self.app, self.generation)
+                and self.selection.unchanged(self.source_reader()))
+
+    def start_fields(self, target_id, fields, *, context=None, generation=None):
+        from samsara import execution_policy as policy
+        if self.application_uncertain:
+            raise MemoDisposition('Recover the previous receipt before another change.')
+        self.generation = policy.capture_generation(self.app) if generation is None else generation
+        self._cancelled = False
+        self._voice_page = 0
+        self.context = deepcopy(context) if context is not None else self.client.context()
+        row = next((r for r in self.context['records'] if r['id'] == target_id), None)
+        if not row or row.get('kind') not in ('task', 'event') or not row.get('writable'):
+            raise MemoDisposition('Ticket, goal and routine writes are unsupported in V1.')
+        # Callers may submit only these explicitly voiced, bounded fields.
+        allowed = {'start_after', 'due_date', 'status', 'priority'} if row['kind'] == 'task' else {'date', 'time'}
+        if not fields or set(fields)-allowed:
+            raise MemoDisposition('Unsupported follow-up fields.')
+        self.request_id = uuid.uuid4().hex
+        text = target_id + ' ' + ' '.join(k + ' ' + str(v) for k, v in sorted(fields.items()))
+        source = normalize_memo_v1(dict(memo_id='instruction_'+self.request_id, source_kind='direct_instruction',
+            source_locator='session', captured_at=self.context['captured_at'], capture_timezone=self.context.get('timezone'),
+            text=text, has_transcript=True, partial=False, upstream_id=None))
+        self._instruction_sources = [source]
+        self.selection = Selection(json.dumps([source]), self.context.get('timezone') or self.context.get('utc_offset') or 'unknown', 'direct')
+        self.provider_identity = dict(provider='local templates', model='none')
+        self.draft = dict(schema_version=EXTRACTION_VERSION, items=[dict(item_key='followup',
+            action='update_task' if row['kind'] == 'task' else 'update_event', target_id=target_id, fields=deepcopy(fields),
+            evidence=[dict(memo_id=source['memo_id'], start=0, end=len(text))],
+            match=dict(method='explicit_id', candidates=[dict(id=target_id, reason='Explicit owner target')], needs_resolution=False),
+            time_resolution=None)], unresolved=[], no_change=[])
+        validate_extraction_v1(self.draft, self.context, [source])
+        return self.repreview()
+
+    def start_undo(self, receipt_id):
+        from samsara import execution_policy as policy
+        if self.application_uncertain:
+            raise MemoDisposition('Recover the previous receipt before undo.')
+        self.generation = policy.capture_generation(self.app)
+        self.context = self.client.context()
+        original = self.client.recover(receipt_id).get('receipt')
+        if not original or original.get('status') != 'applied':
+            raise MemoDisposition('An applied receipt is required for undo.')
+        self.request_id = uuid.uuid4().hex
+        if not policy.is_fresh(self.app, self.generation):
+            raise MemoDisposition('Undo cancelled before preview.')
+        self._cancelled = False
+        self._voice_page = 0
+        self._instruction_sources = []
+        self.selection = Selection('[]', self.context.get('timezone') or 'unknown', 'undo')
+        self.provider_identity = dict(provider='local templates', model='none')
+        proposal = self.client.undo_preview(receipt_id, self.request_id)
+        state = self.context['sources']['state']
+        if not self._current():
+            raise MemoDisposition('Late undo preview discarded.')
+        if (proposal.get('schema_version') != 'cockpit.changes.v1' or proposal.get('kind') != 'undo'
+                or proposal.get('undo_of') != receipt_id or proposal.get('request_id') != self.request_id
+                or proposal.get('base_hash') != state['hash'] or proposal.get('base_revision') != state['revision']
+                or proposal.get('source_hash') != original.get('source_hash')
+                or proposal.get('proposal_hash') != _hash({k:v for k,v in proposal.items() if k!='proposal_hash'})):
+            raise MemoDisposition('Undo preview does not match the receipt and snapshot.')
+        self.proposal = proposal
+        self._preview_fingerprint = _hash(proposal)
+        self._binding = {k:proposal[k] for k in ('proposal_id','proposal_hash','request_id')}
+        self._binding.update(source_hash=self.selection.manifest_hash, context_hash=_hash(self.context), generation=self.generation)
+        self._reviewed = set()
+        return deepcopy(proposal)
+
+    def read_page(self, page=0, page_size=3):
+        if type(page) is not int or page < 0 or not 1 <= page_size <= 5:
+            raise MemoDisposition('Invalid preview page.')
+        output = []
+        for row in self.proposal['items'][page*page_size:(page+1)*page_size]:
+            diff = row.get('diff') or {}
+            details = []
+            for field in diff.get('fields', []):
+                before = field['before']['value'] if field['before']['present'] else 'unset'
+                after = field['after']['value'] if field['after']['present'] else 'unset'
+                details.append('.'.join(field['path']) + ': ' + str(before) + ' to ' + str(after))
+            if diff.get('collection') == 'notes':
+                details.append('Restore the reviewed note addition')
+            output.append(str(diff.get('title') or row['target_id']) + ': ' + '; '.join(details) + '.')
+            if row.get('included'):
+                self._reviewed.add(row['item_key'])
+        return 'PLACEHOLDER: Preview only. ' + ' '.join(output)
