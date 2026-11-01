@@ -6,6 +6,23 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.40.3] - 2026-11-01
+
+0.40.3 - signed installer and app, a more forgiving microphone setup, and a safer uninstall.
+
+- The installer, the uninstaller and the Samsara programs are now code-signed.
+- A very large clipboard no longer blocks dictation; the text is typed instead.
+- If your chosen microphone is missing (for example a Bluetooth headset that is off), Samsara falls back to System default and shows that it did. You can mark a preferred microphone with a star; Samsara switches back to it when it reconnects.
+- Uninstalling now closes Samsara first, and a cancelled uninstall keeps everything.
+- Add-ons that have no download yet are hidden in the installer and on the Components page.
+- The optional CUDA pack is available as a download.
+- New offline Help cards explain Samsara's terms, and the Settings window no longer crashes when closed and reopened.
+- After an in-app update, Samsara restarts itself with the same profile.
+- Back up and restore your settings, say "digest that" for a short spoken summary of an agent's last reply, open favorites by voice, resume a ticket by voice, and the speech-pace dropdown no longer cuts off its labels.
+- "Mic is too loud" now warns only on sustained clipping, not a single cough.
+
+<!-- RELEASE NOTES DRAFT 942d -->
+
 ## [0.40.2] - 2026-11-01
 
 0.40.2 - Windows executables and installer are now code-signed.

@@ -56,8 +56,8 @@ or **“double click 7.”**
 | --- | --- |
 | [**Latest published release**](https://github.com/Morne-Ingstar/Samsara/releases/latest) | Install the published Windows build. |
 
-v0.40.1 is the current release (Latest). Its download filenames are
-listed in the [install guide](Docs/INSTALL.md); open its [release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.40.1)
+v0.40.3 is the current release (Latest). Its download filenames are
+listed in the [install guide](Docs/INSTALL.md); open its [release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.40.3)
 to download the installer or portable ZIP.
 
 Samsara is still evolving; “public release” does not mean every workflow is
