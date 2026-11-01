@@ -8089,6 +8089,25 @@
     "precondition": ""
   },
   {
+    "canonical_id": "core_utils.restore_my_settings",
+    "plugin": "core_utils",
+    "phrase": "restore my settings",
+    "verb": "restore",
+    "object": "my_settings",
+    "aliases": [
+      "restore my settings"
+    ],
+    "args": [],
+    "description": "Opens the verified local snapshot picker; confirmation is in the dialog.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "core_utils.save_alias",
     "plugin": "core_utils",
     "phrase": "save alias",

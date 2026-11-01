@@ -23,6 +23,8 @@ def prepared(root, monkeypatch, route):
 @pytest.mark.parametrize('route', ['installer', 'portable'])
 @pytest.mark.parametrize('profile', [None, '', 'absolute', 'relative'])
 def test_helper_gets_fresh_runtime_and_same_profile(tmp_path, monkeypatch, route, profile):
+    # Unset/empty profile cases still snapshot: keep their default home disposable.
+    monkeypatch.setenv('USERPROFILE', str(tmp_path / 'synthetic-user'))
     p = prepared(tmp_path, monkeypatch, route)
     monkeypatch.chdir(tmp_path)
     original = None if profile is None else '' if profile == '' else str(

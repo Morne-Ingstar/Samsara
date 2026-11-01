@@ -2592,12 +2592,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     def load_config(self):
         """Load configuration from JSON file"""
         logger.debug("[CONFIG] load_config: entry")
+        from samsara.config_seed import incomplete_setup_config, structural_error as _structural_error
+        from samsara.user_backup import config_defaults_before_load
 
-        from samsara.config_seed import (
-            build_default_config, incomplete_setup_config, structural_error as _structural_error,
-        )
-
-        default_config = build_default_config(
+        default_config = config_defaults_before_load(self,
             home=Path.home(),
             macro_defaults=get_default_macro_config(),
             notification_defaults=get_default_notification_config(),

@@ -705,6 +705,8 @@ def prepare_update(
 ) -> PreparedUpdate:
     """Download, verify, and safely stage an update beside the install."""
     _require_update_eligible()
+    from samsara.user_backup import create_snapshot
+    create_snapshot(reason="pre-change")
     from samsara.update_installer import archive_guard, prepare
     if release.asset_url.rsplit('/',1)[-1].startswith('SamsaraSetup-'):
         return prepare(release,install_dir,progress_callback,opener=opener,timeout=timeout,
@@ -1174,16 +1176,8 @@ def launch_prepared_update(
             except OSError:
                 pass
         raise
-    try:
-        from samsara.update_installer import launch_helper
-        launch_helper(prepared, current_pid, process_runner)
-    except Exception as exc:
-        message = f"Could not launch the update installer: {exc}"
-        try:
-            _cleanup_pre_swap_failure(prepared, message)
-        except OSError as cleanup_exc:
-            exc.add_note(f"Could not record update cleanup status: {cleanup_exc}")
-        raise UpdateError(f"Could not launch the update installer: {exc}") from exc
+    from samsara.user_backup import launch_update_with_backup
+    launch_update_with_backup(prepared, current_pid, process_runner)
 
 
 def _validated_recorded_path(

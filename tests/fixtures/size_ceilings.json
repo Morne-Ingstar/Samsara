@@ -1,6 +1,6 @@
 {
   "ceilings": {
-    "dictation.py": 12385,
+    "dictation.py": 12383,
     "plugins/commands/ask_ollama.py": 3683,
     "plugins/commands/show_numbers.py": 1976,
     "plugins/commands/window_switcher.py": 1537,
@@ -14,7 +14,7 @@
     "samsara/ui/home_qt.py": 2549,
     "samsara/ui/mic_setup_wizard_qt.py": 1553,
     "samsara/ui/tray_qt.py": 1503,
-    "samsara/updater.py": 1630
+    "samsara/updater.py": 1624
   },
   "slack": 25,
   "threshold": 1500

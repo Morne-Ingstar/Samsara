@@ -600,7 +600,7 @@ class GeneralPage:
         layout.addWidget(backup_card)
 
         backup_desc = QLabel(
-            "Backups include private values like API keys — keep the files private."
+            "Manual configuration exports include private values like API keys — keep the files private."
         )
         backup_desc.setObjectName("configBackupPrivacyWarning")
         backup_desc.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")
@@ -637,6 +637,17 @@ class GeneralPage:
 
         backup_buttons.addStretch()
         backup_layout.addLayout(backup_buttons)
+
+        from samsara.user_backup import show_restore_dialog
+        snapshots_btn = QPushButton("Restore my settings…")
+        snapshots_btn.setObjectName("restoreUserSnapshotButton")
+        snapshots_btn.clicked.connect(lambda: show_restore_dialog(self.app, self))
+        backup_layout.addWidget(snapshots_btn)
+        snapshot_desc = QLabel(
+            "Automatic local snapshots include settings, dictionary, commands, snippets and memos.\n"
+            "Credentials are excluded. Keeps 7 daily and 4 weekly copies. No cloud upload.")
+        snapshot_desc.setWordWrap(True)
+        backup_layout.addWidget(snapshot_desc)
 
         def _save(_acc):
             previous_launch_at_login = bool(

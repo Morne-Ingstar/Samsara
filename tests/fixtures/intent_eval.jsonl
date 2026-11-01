@@ -15598,6 +15598,46 @@
 {"id": "core_utils.restart_samsara", "kind": "sentence", "polarity": "negative", "reject": "core_utils.restart_samsara", "text": "yesterday afternoon we argued for an hour about who would reboot samsara first"}
 {"id": "core_utils.restart_samsara", "kind": "other_command", "polarity": "negative", "reject": "core_utils.restart_samsara", "text": "samsara ava"}
 {"id": "core_utils.restart_samsara", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.restart_samsara", "text": "purple octopus samsara velvet noodle"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "alias", "polarity": "positive", "text": "restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "um restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "punct", "polarity": "positive", "text": "Restore my settings."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "restore my settings for me please"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "punct", "polarity": "positive", "text": "Restore, my settings?"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you please restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "could you just restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "uh restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "restore my settings please"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "restore my settings now"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "so restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "could you restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "please restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "okay restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "go ahead and restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "would you please restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "restore my settings for me"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "i need you to restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "restore my settings right now"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "hey restore my settings"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "restore my settings thanks"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings please"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Can you restore my settings please."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings for me"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Can you restore my settings for me."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings now"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Can you restore my settings now."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings thanks"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Can you restore my settings thanks."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings right now"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Can you restore my settings right now."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "can you restore my settings for me please"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Can you restore my settings for me please."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "could you restore my settings please"}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "Could you restore my settings please."}
+{"accept": ["core_utils.restore_my_settings"], "id": "core_utils.restore_my_settings", "kind": "filler", "polarity": "positive", "text": "could you restore my settings for me"}
+{"id": "core_utils.restore_my_settings", "kind": "sentence", "polarity": "negative", "reject": "core_utils.restore_my_settings", "text": "in the story the old captain decides to restore my settings as the storm arrives"}
+{"id": "core_utils.restore_my_settings", "kind": "other_command", "polarity": "negative", "reject": "core_utils.restore_my_settings", "text": "find my"}
+{"id": "core_utils.restore_my_settings", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.restore_my_settings", "text": "thunderous noodle settings glimmer banana"}
 {"accept": ["core_utils.save_alias"], "id": "core_utils.save_alias", "kind": "alias", "polarity": "positive", "text": "remove alias"}
 {"accept": ["core_utils.save_alias"], "id": "core_utils.save_alias", "kind": "determiner", "polarity": "positive", "text": "save the alias"}
 {"accept": ["core_utils.save_alias"], "id": "core_utils.save_alias", "kind": "filler", "polarity": "positive", "text": "please save alias"}

@@ -15,12 +15,23 @@ logger = get_logger(__name__)
 
 def start_services(app):
     """Install the user-owned alias file after the live matcher exists."""
+    from samsara.user_backup import start_daily_service
+    start_daily_service(app)
     try:
         from samsara import plugin_commands
         from samsara.command_catalog import install_user_aliases
         install_user_aliases(plugin_commands._shared_matcher, Path(app.config_path).parent)
     except Exception as exc:
         logger.warning("[ALIASES] Could not load personal aliases: %s", exc)
+
+@command("restore my settings", pack="core", risk_class="safe", ai_visible=False)
+def restore_my_settings(app, remainder="", **kwargs):
+    """Opens the verified local snapshot picker; confirmation is in the dialog."""
+    from samsara.ui import qt_runtime
+    from samsara.user_backup import show_restore_dialog
+    qt_runtime.post(lambda: show_restore_dialog(app))
+    return True
+
 
 def speak_if_available(app, text):
     if hasattr(app, 'audio_coordinator') and app.audio_coordinator:
