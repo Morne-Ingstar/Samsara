@@ -22,6 +22,8 @@ def harness(qapp, monkeypatch, tmp_path):
     from samsara.ui import qt_runtime
     from samsara.ui.first_run_qt import ComponentsPage
 
+    monkeypatch.setenv('SAMSARA_HOME_DIR', str(tmp_path / 'samsara-home'))
+
     monkeypatch.setattr(autostart, 'sync_run_entry', lambda *a, **k: None)
     monkeypatch.setattr(ComponentsPage, 'refresh_async', lambda self: None)
     monkeypatch.setattr(ava_readiness, 'tracker', ava_readiness.ReadinessTracker())

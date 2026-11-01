@@ -219,18 +219,9 @@ DEFAULT_SYSTEM_PROMPT = AVA_PERSONA_TEXT + RELAXED_SYSTEM_PROMPT + _SHARED_MODES
 # config['ava_memory']['max_turns'] caps stored turns (context/cost guard).
 
 def _ava_memory_path(app):
-    """Return the on-disk path for persisted Ava memory (next to config.json).
-
-    The app stores its config file path on app.config_path; we drop the
-    memory file in the same directory. Falls back to this plugin's tree only
-    if config_path is somehow unavailable.
-    """
+    """Return the per-user path for persisted Ava memory."""
     import os
-    cfg_path = getattr(app, "config_path", None)
-    if cfg_path:
-        return os.path.join(os.path.dirname(str(cfg_path)), "ava_memory.json")
-    fallback = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    return os.path.join(fallback, "ava_memory.json")
+    return os.fspath(samsara_home_dir() / "ava_memory.json")
 
 
 def _build_ava_memory(app):

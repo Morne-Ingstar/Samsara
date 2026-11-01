@@ -68,6 +68,15 @@ class TestParseAction2:
         parsed = ask_ollama._parse_structured_response(response)
         assert parsed["type"] == "conversation"
 
+    @pytest.mark.parametrize("config_path", [Path("config.json"), None])
+    def test_ava_memory_path_uses_samsara_home(self, monkeypatch, tmp_path, config_path):
+        home = tmp_path / "samsara-home"
+        monkeypatch.setenv("SAMSARA_HOME_DIR", str(home))
+        app = _app()
+        app.config_path = config_path
+
+        assert Path(ask_ollama._ava_memory_path(app)) == home / "ava_memory.json"
+
 
 # ---------------------------------------------------------------------------
 # handle_response -- ACTION2 routing
