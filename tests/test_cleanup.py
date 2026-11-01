@@ -24,14 +24,14 @@ class TestYouKnowFillerCommaAnchored:
         assert clean_text("do you know what I mean") == "Do you know what I mean."
 
     def test_you_know_with_comma_still_strips(self):
-        assert clean_text("It's, you know, complicated") == "It's, complicated."
+        assert clean_text("It's, you know, complicated") == "It's, you know, complicated."  # 997a: keep discourse words.
 
     def test_you_know_trailing_comma_filler_still_strips(self):
         assert clean_text("so I went there, you know, and left") == \
-            "So I went there, and left."
+            "So I went there, you know, and left."  # 997a: keep discourse words.
 
     def test_you_know_at_start_with_comma_still_strips(self):
-        assert clean_text("you know, that's not right") == "That's not right."
+        assert clean_text("you know, that's not right") == "You know, that's not right."  # 997a: keep discourse words.
 
 
 class TestOtherFillersUnchanged:
@@ -46,25 +46,25 @@ class TestOtherFillersUnchanged:
         assert clean_text("uh let's go") == "Let's go."
 
     def test_like_with_comma_stripped(self):
-        assert clean_text("it was, like, huge") == "It was, huge."
+        assert clean_text("it was, like, huge") == "It was, like, huge."  # 997a: keep discourse words.
 
     def test_like_meaningful_use_survives(self):
         assert clean_text("it looks like a bug") == "It looks like a bug."
 
     def test_i_mean_with_comma_stripped(self):
-        assert clean_text("I mean, that's fair") == "That's fair."
+        assert clean_text("I mean, that's fair") == "I mean, that's fair."  # 997a: keep discourse words.
 
     def test_i_mean_without_comma_survives(self):
         assert clean_text("I mean it this time") == "I mean it this time."
 
     def test_basically_with_comma_stripped(self):
-        assert clean_text("basically, it works") == "It works."
+        assert clean_text("basically, it works") == "Basically, it works."  # 997a: keep discourse words.
 
     def test_actually_with_comma_stripped(self):
-        assert clean_text("actually, no") == "No."
+        assert clean_text("actually, no") == "Actually, no."  # 997a: keep discourse words.
 
     def test_so_with_comma_stripped(self):
-        assert clean_text("so, anyway") == "Anyway."
+        assert clean_text("so, anyway") == "So, anyway."  # 997a: keep discourse words.
 
     def test_so_meaningful_use_survives(self):
         assert clean_text("I'm so tired") == "I'm so tired."
@@ -86,7 +86,7 @@ class TestEmptyAndNoneInput:
 
 class TestFillersListStructure:
     def test_you_know_pattern_is_comma_anchored(self):
-        assert r'\byou know\b(?=,)' in FILLERS
+        assert r'\byou know\b(?=,)' not in FILLERS  # 997a: meaningful even with a comma.
 
     def test_um_and_uh_remain_unanchored(self):
         assert r'\bum\b' in FILLERS

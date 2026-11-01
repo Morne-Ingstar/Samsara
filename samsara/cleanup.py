@@ -14,32 +14,12 @@ so any over-cleaning is recoverable.
 
 import re
 
-# Filler-word patterns. Each runs with re.IGNORECASE.
-#
-# Notes on the lookaheads:
-# - `\blike\b(?=,)`: only filler "like," with a trailing comma. The wider
-#   `(?=,|\s)` would also strip the word "like" from "it looks like a bug",
-#   which is a meaningful comparison.
-# - `\bso\b(?=,\s)` etc.: comma-anchored so we don't disturb meaningful uses
-#   ("I'm so tired" stays; "so, anyway" becomes "anyway").
-# - `\byou know\b(?=,)`: comma-anchored 2026-07-10 -- was unanchored, which
-#   deleted the phrase from EVERY position in EVERY dictation regardless of
-#   filler-vs-meaningful use, including "you know what I mean" -> "What I
-#   mean." (root cause of a hotkey word-loss defect previously misattributed
-#   to audio/decode-parameter theories -- raw Whisper output was correct all
-#   along; this cleanup rule silently deleted it downstream). Now only
-#   "you know," with Whisper's own filler comma survives stripping, matching
-#   every other context-sensitive entry in this list and the module's own
-#   "err toward keeping a word" philosophy.
+# Remove hesitation sounds only. A decoder's comma does not establish that
+# a discourse word is disposable; those words must survive in clean mode.
 FILLERS = [
     r'\bum\b',
     r'\buh\b',
-    r'\blike\b(?=,)',
-    r'\byou know\b(?=,)',
-    r'\bI mean\b(?=,)',
-    r'\bbasically\b(?=,)',
-    r'\bactually\b(?=,)',
-    r'\bso\b(?=,\s)',
+    r'\ber\b',
 ]
 
 
@@ -61,6 +41,9 @@ def clean_text(text, mode="clean"):
     # Strip filler words
     for pattern in FILLERS:
         result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+
+    # A repeated subject is a stutter; keep emphatic repeats such as "very very".
+    result = re.sub(r'\b(I)(?:[ \t]+\1)+\b', r'\1', result, flags=re.IGNORECASE)
 
     # Collapse runs of whitespace left by filler removal
     result = re.sub(r'\s{2,}', ' ', result)

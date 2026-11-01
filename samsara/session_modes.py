@@ -487,9 +487,9 @@ def is_dictate_commit(raw_text: str) -> bool:
     """Whole-utterance manual commit for buffered DICTATE mode.
 
     Case and punctuation never matter ("End.", "END", "end,"): the match runs
-    on normalize_utterance(). Only DICTATE_COMMIT_PHRASE matches -- see
-    _DICTATE_COMMIT_HOMOPHONES for why a lone "and" no longer does."""
-    return normalize_utterance(raw_text) in _DICTATE_COMMIT_HOMOPHONES
+    on normalize_utterance(). Accept the configured word and the Settings
+    promise "send", each only as a whole utterance. A lone "and" never matches."""
+    return normalize_utterance(raw_text) in (_DICTATE_COMMIT_HOMOPHONES | {"send"})
 
 
 def _registry_tokens(text: str) -> list:
@@ -3119,7 +3119,7 @@ class SessionModeManager(UtteranceUndoMixin):
             return False
         current_hwnd = self._foreground_hwnd_resolver()
         recorded_hwnd = item.extra.get("hwnd")
-        if recorded_hwnd is None or current_hwnd != recorded_hwnd:
+        if recorded_hwnd is not None and current_hwnd != recorded_hwnd:
             log.warning(
                 "[SESSION] scratch-that refused: foreground window changed since this "
                 "chunk was dictated (recorded_hwnd=%r current_hwnd=%r)",
