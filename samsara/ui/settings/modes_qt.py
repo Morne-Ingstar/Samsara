@@ -908,7 +908,7 @@ class ModesPage:
         ava_key_notes_layout.setSpacing(theme.SPACE_1)
         ava_key_notes_layout.addWidget(self._widgets['ava_mode_key_warn'])
         ava_off_note = QLabel(
-            "Ava is off - this key does nothing until you turn her on in Settings > Ava.")  # stand-in
+            "Ava is off - this key does nothing until you choose where Ava runs.")  # PLACEHOLDER COPY (1010)
         ava_off_note.setWordWrap(True)
         ava_off_note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         ava_key_notes_layout.addWidget(ava_off_note)

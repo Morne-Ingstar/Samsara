@@ -181,29 +181,65 @@ def _conversation_log_control(owner):
 
 def _add_setup_guide(owner, page):
     import weakref
-    from PySide6.QtWidgets import QPushButton
-    from .presentation import SettingRow
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+    from samsara.ui import theme
 
+    # Reuse the existing title/subtitle as one header, with a compact action
+    # on its right. The guide no longer consumes a setting row.
+    heading = page.column.takeAt(0).widget()
+    line = page.column.takeAt(0).widget()
+    header = QWidget(page.container)
+    header_layout = QHBoxLayout(header)
+    header_layout.setContentsMargins(0, 0, 0, 0)
+    text = QVBoxLayout()
+    text.setSpacing(page.column.spacing())
+    text.addWidget(heading)
+    text.addWidget(line)
+    header_layout.addLayout(text, 1)
     button = QPushButton("Set up Ava...")
+    button.setProperty("settingsToolAction", True)
+    button.setFixedHeight(theme.HIT_TARGET_MIN)
+    button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
     button.clicked.connect(
         lambda: getattr(owner.app, "open_ava_guide", lambda: None)()
     )
-    row = SettingRow("Ava setup", "", [button], parent=page.container)
-    line = row.detail
-    page.base.addWidget(row)
-    page.base_rows.append(row)
+    header_layout.addWidget(button, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    page.column.insertWidget(0, header)
+    page.ava_header = header
     owner._widgets["ava_setup_guide_line"] = line
     owner._widgets["ava_setup_guide_button"] = button
 
-    def refresh_line():
-        from samsara import ava_readiness
+    setup_pending = None
 
+    def refresh_disclosure_title():
+        title = "More Ava settings" if setup_pending else "Advanced"
+        page.advanced.toggle.setAccessibleName(title)
+        page.advanced.toggle.setText(
+            title + ("  ▾" if page.advanced.toggle.isChecked() else "  ▸"))
+
+    page.advanced.toggle.toggled.connect(lambda _on: refresh_disclosure_title())
+
+    def refresh_line():
+        nonlocal setup_pending
+        from samsara import ai_preferences, ava_readiness
+
+        # Configuration and temporary provider availability are different: a
+        # configured but offline/warming provider keeps the normal controls.
+        pending = not ai_preferences.runtime_state(owner.app.config, "ava").allowed
         readiness = ava_readiness.readiness_for(owner.app)
+        # PLACEHOLDER COPY (1010): setup status uses the existing subtitle slot.
         line.setText(
-            "Ava is ready. You can change or test the setup in the guide."
-            if readiness.ready else
-            "Ava is not set up yet. Use the guide to get it ready."
+            ("Ava is ready. You can change or test the setup in the guide."
+             if readiness.ready else
+             "Ava is not set up yet. Use the guide to get it ready.")
+            if pending else SUBTITLE
         )
+        button.setVisible(pending)
+        if pending != setup_pending:
+            setup_pending = pending
+            page.advanced.toggle.setChecked(False)
+        refresh_disclosure_title()
 
     refresh_line()
     from samsara import ava_readiness

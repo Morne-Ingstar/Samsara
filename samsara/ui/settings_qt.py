@@ -219,6 +219,8 @@ class _SettingsWindow(
         # Already-visible navigation retains both edits and the snapshot.
         if not self.isVisible() and self._visit_shown:
             self._refresh_visit()
+        if not self.isVisible():
+            self._prepare_first_paint()
         self._visit_shown = True
         super().show()
 
@@ -226,8 +228,23 @@ class _SettingsWindow(
         # surface_requested restores minimized windows through this entry.
         if not self.isVisible() and self._visit_shown:
             self._refresh_visit()
+        if not self.isVisible():
+            self._prepare_first_paint()
         self._visit_shown = True
         super().showNormal()
+
+    def _prepare_first_paint(self):
+        """Polish and lay out the selected, themed page before exposing it."""
+        self.ensurePolished()
+        for widget in self.centralWidget().findChildren(QWidget):
+            widget.ensurePolished()
+        self.layout().activate()
+        self.centralWidget().layout().activate()
+        page = self._stack.currentWidget()
+        if page.layout() is not None:
+            page.layout().activate()
+        if isinstance(page, QScrollArea):
+            page.widget().layout().activate()
 
     def _visit_callback(self, callback, *widgets):
         generation = self._visit_generation
@@ -325,8 +342,16 @@ class _SettingsWindow(
         if name in tools_page.TOOLS:
             self.open_tool(name)
             return
-        window_activation.surface_requested(self)
+        # A reopened visit must refresh before selecting its destination; show()
+        # then retains that prepared tree rather than rebuilding it a second time.
+        self._prepare_requested_visit()
         self._sidebar.setCurrentRow(_TAB_NAMES.index(name))
+        window_activation.surface_requested(self)
+
+    def _prepare_requested_visit(self):
+        if not self.isVisible() and self._visit_shown:
+            self._refresh_visit()
+            self._visit_shown = False
 
     def _select_tool(self, name):
         name = _ALIASES.get(name, name)
@@ -358,8 +383,9 @@ class _SettingsWindow(
         apply_button.setVisible(not bool(page and page.property("settingsNoApply")))
 
     def open_tool(self, name):
-        window_activation.surface_requested(self)
+        self._prepare_requested_visit()
         self._select_tool(name)
+        window_activation.surface_requested(self)
 
     def open_preferences(self, name):
         self.show_tab(name)

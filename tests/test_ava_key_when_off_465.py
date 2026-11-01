@@ -9,7 +9,7 @@ import pytest
 from tests.test_tts_feedback_level_372 import _shutdown_test_coordinators
 
 MESSAGE = "Ava is off. Turn her on in Settings > Ava."
-NOTE = "Ava is off - this key does nothing until you turn her on in Settings > Ava."
+NOTE = "Ava is off - this key does nothing until you choose where Ava runs."  # 1010: user is already on Ava.
 
 
 @pytest.fixture

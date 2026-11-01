@@ -247,7 +247,7 @@ class AgentsControls(QWidget):
         self.desktop_examples.rows.addWidget(self.merge_example)
         note("3. Quit and reopen Claude Desktop to load the connection. Keep Samsara open.", desktop)
 
-        note("Use Hermes Agent's MCP connection. The experimental Hermes integration is in Settings > Integrations.", hermes)
+        note("Use Hermes Agent's MCP connection.", hermes)  # PLACEHOLDER COPY (1010)
         note("1. Open your Hermes profile's .env file. Add or replace this line, then save. Copy includes your private token.", hermes)
         self.hermes_env = CodeSnippet(name="Hermes profile token, token hidden", copy_action=self.copy_hermes_env)
         hermes.addWidget(self.hermes_env)
