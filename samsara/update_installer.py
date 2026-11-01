@@ -289,6 +289,14 @@ def launch_helper(prepared, current_pid, process_runner):
     breakaway = int(getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0))
     command = [str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
                'Bypass', '-WindowStyle', 'Hidden', '-File', str(prepared.helper_path)]
+    # The helper's children must be independent frozen applications, not
+    # workers inheriting the outgoing build's PyInstaller runtime state.
+    environment = os.environ.copy()
+    environment['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+    if environment.get('SAMSARA_HOME_DIR'):
+        # The helper and replacement app use different working directories.
+        # Keep unset/empty overrides unchanged: they use the default mutex.
+        environment['SAMSARA_HOME_DIR'] = str(Path(environment['SAMSARA_HOME_DIR']).resolve())
     # A frozen/windowed parent may have absent or unusable stdio. PowerShell
     # can exit before executing -File when it inherits those handles.
     with launch_log_path(prepared).open('ab', buffering=0) as output:
@@ -296,7 +304,7 @@ def launch_helper(prepared, current_pid, process_runner):
             output.write((time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())+' '+message+'\n').encode('utf-8'))
             logger.info('[UPDATE] %s', message)
         options = dict(cwd=str(prepared.helper_path.parent), close_fds=True,
-                       stdin=subprocess.DEVNULL, stdout=output, stderr=output)
+                       stdin=subprocess.DEVNULL, stdout=output, stderr=output, env=environment)
         note('launch requesting job breakaway')
         try:
             try:
@@ -423,7 +431,7 @@ function Start-RecoveryCopy($copies) {
             Assert-NotReparsePoint $copyExe $installParent
             if (Test-Path -LiteralPath $copyExe -PathType Leaf) {
                 Write-HelperLog 'relaunch recovery copy'
-                Start-Process -FilePath $copyExe -WorkingDirectory $copy -WindowStyle Hidden
+                Start-Process -FilePath $copyExe -WorkingDirectory $copy -WindowStyle Normal
                 return
             }
         } catch { }
@@ -489,7 +497,7 @@ try {
     Invoke-CustomizationMigration
     Write-UpdateStatus 'awaiting_confirmation' 'The installer completed; waiting for Samsara to start.'
     Write-HelperLog 'relaunch updated copy'
-    $newProcess = Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install -WindowStyle Hidden -PassThru
+    $newProcess = Start-Process -FilePath (Join-Path $install $executable) -WorkingDirectory $install -WindowStyle Normal -PassThru
     $healthDeadline = (Get-Date).AddSeconds(180)
     while ((Get-Date) -lt $healthDeadline) {
         $current = Get-Content -LiteralPath $status -Raw | ConvertFrom-Json
