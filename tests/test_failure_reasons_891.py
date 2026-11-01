@@ -37,9 +37,9 @@ def test_short_tap_reuses_the_home_key_accessor():
 
 
 @pytest.mark.parametrize('peak,shown', [(0.8, False), (.989, False), (.99, True), (1., True)])
-def test_clipping_uses_pcm_amplitude_at_the_boundary(peak, shown):
+def test_sustained_clipping_uses_pcm_amplitude_at_the_boundary(peak, shown):
     app = host()
-    reasons.post_clipping(app, np.array([0., -peak], dtype=np.float64))
+    reasons.post_clipping(app, np.full(3 * app.model_rate, -peak, dtype=np.float64))
     assert app.listening_indicator.show_outcome.called == shown
     if shown:
         label, kind, duration = app.listening_indicator.show_outcome.call_args.args
@@ -73,7 +73,7 @@ def test_real_display_receives_reason_and_shared_reading_time(qapp, monkeypatch,
         app.listening_indicator = ListeningIndicator()
         monkeypatch.setattr(app.listening_indicator, '_now_ms', lambda: 0)
     try:
-        reasons.post_reason(app, kind, peak=.99)
+        reasons.post_reason(app, kind, sustained_clipping=True)
         if controller:
             controller.drain()
             notice = controller.view().notice
@@ -81,7 +81,7 @@ def test_real_display_receives_reason_and_shared_reading_time(qapp, monkeypatch,
             assert notice.owner == 'capture_' + kind
         else:
             label, deadline = app.listening_indicator._chip_label, app.listening_indicator._chip_deadline
-        assert reasons.reason_for(kind, {'config': app.config, 'peak': .99})[0] in label
+        assert reasons.reason_for(kind, {'config': app.config, 'sustained_clipping': True})[0] in label
         # 899: reason receipts use the same formula on both displays.
         assert deadline == message_duration_ms(label, 'accent' if kind == 'clipping' else 'error') / 1000
     finally:
@@ -136,7 +136,7 @@ def test_batch_exit_seams_use_reasons_without_changing_detection():
 def test_streaming_final_receipt_preserves_existing_specific_guidance(monkeypatch, text, duration, existing, expected):
     monkeypatch.setattr('samsara.tutorial_capture.final_current', lambda _: True)
     session = SimpleNamespace(app=host(), cancel_event=SimpleNamespace(is_set=lambda: False),
-                              _deliver_final=Mock(), _decode_failure=existing, _capture_peak_891=1.)
+                              _deliver_final=Mock(), _decode_failure=existing, _capture_clipping_972=True)
     reasons.deliver_stream_final(session, text, None, duration, 20)
     session._deliver_final.assert_called_once_with(text, None, duration, 20)
     assert session.app.listening_indicator.show_outcome.call_args.args[0].startswith(expected)
@@ -198,7 +198,7 @@ def test_full_clipping_survives_routine_receipts_in_queue_order(monkeypatch, dra
     app = host()
     controller = LiveSurfaceController(app, model=LiveSurfaceModel(clock=lambda: 0.))
     app.listening_indicator = LiveSurfaceIndicatorAdapter(controller)
-    reasons.post_clipping(app, np.ones(2))
+    reasons.post_clipping(app, np.ones(3 * app.model_rate))
     if drain_between:
         controller.drain()
     app.listening_indicator.show_outcome(receipt, 'success')
@@ -218,7 +218,7 @@ def test_full_routine_receipt_is_accepted_after_clipping_expires(monkeypatch):
     app = host()
     controller = LiveSurfaceController(app, model=LiveSurfaceModel(clock=lambda: now[0]))
     app.listening_indicator = LiveSurfaceIndicatorAdapter(controller)
-    reasons.post_clipping(app, np.ones(2))
+    reasons.post_clipping(app, np.ones(3 * app.model_rate))
     controller.drain()
     now[0] = controller.view().notice.expires_at
     app.listening_indicator.show_outcome('typed', 'success')

@@ -2,6 +2,19 @@
 from __future__ import annotations
 
 import logging
+import threading
+from time import monotonic
+
+
+CLIP_AMPLITUDE = .99
+CLIP_FRAME_S = .020
+CLIP_WINDOW_S = .250
+CLIP_VOICED_RMS = .01
+CLIP_MIN_WINDOWS = 3
+CLIP_MIN_VOICED_FRACTION = .30
+CLIP_MIN_SPREAD_S = 2.0
+CLIP_NOTICE_INTERVAL_S = 600.0
+_clip_notice_lock = threading.Lock()
 
 
 def reason_for(kind, context):
@@ -19,7 +32,7 @@ def reason_for(kind, context):
         return 'Nothing heard - check the mic, or speak louder', ''
     if kind == 'long_failure':
         return "Couldn't transcribe that - try a shorter take", 'Report a problem'
-    if kind == 'clipping' and context.get('peak', 0) >= .99:
+    if kind == 'clipping' and context.get('sustained_clipping', False):
         return 'Mic is too loud - turn the mic level down', ''
     return '', ''
 
@@ -32,16 +45,54 @@ def capture_peak(audio):
     return float(np.max(np.abs(audio)))
 
 
-def post_reason(app, kind, *, handsfree=False, peak=0.0, headline=None):
+def sustained_clipping(audio, sample_rate):
+    """Require clipping across voiced windows, beyond a short cough cluster.
+
+    RMS is an amplitude-only proxy for voiced activity; silence must not dilute
+    a genuinely hot take. No transcript, mic access or audio retention is needed.
+    """
+    import numpy as np
+    if audio is None or not len(audio) or sample_rate <= 0:
+        return False
+    samples = np.asarray(audio).reshape(-1)
+    frame_size = max(1, round(sample_rate * CLIP_FRAME_S))
+    starts = np.arange(0, samples.size, frame_size)
+    sizes = np.minimum(frame_size, samples.size - starts)
+    magnitudes = np.abs(samples.astype(np.float64))
+    peaks = np.maximum.reduceat(magnitudes, starts)
+    rms = np.sqrt(np.add.reduceat(magnitudes ** 2, starts) / sizes)
+    windows = np.floor(starts / sample_rate / CLIP_WINDOW_S).astype(int)
+    voiced = np.unique(windows[rms >= CLIP_VOICED_RMS])
+    clipped = np.unique(windows[peaks >= CLIP_AMPLITUDE])
+    # Include clipped windows even when a sparse clipped sample has low RMS.
+    active = np.union1d(voiced, clipped)
+    return bool(len(clipped) >= CLIP_MIN_WINDOWS
+                and len(clipped) >= CLIP_MIN_VOICED_FRACTION * len(active)
+                and (clipped[-1] - clipped[0]) * CLIP_WINDOW_S >= CLIP_MIN_SPREAD_S)
+
+
+def post_reason(app, kind, *, handsfree=False, sustained_clipping=False, headline=None):
     """Use the existing message lifetime, report action and speech queue."""
     from samsara.live_surface.feedback import schedule_feedback
     from samsara.message_durations import message_duration_ms
     config = getattr(app, 'config', {}) or {}
-    text, hint = reason_for(kind, dict(config=config, handsfree=handsfree, peak=peak))
+    text, hint = reason_for(kind, dict(config=config, handsfree=handsfree,
+                                     sustained_clipping=sustained_clipping))
     text = headline or text
     if not text:
         return
     quiet = kind == 'clipping'
+    speak = config.get('tts', {}).get('feedback_level') == 'full'
+    if quiet:
+        with _clip_notice_lock:
+            now = monotonic()
+            last = getattr(app, '_clipping_notice_at_972', None)
+            if last is not None and now - last < CLIP_NOTICE_INTERVAL_S:
+                return
+            app._clipping_notice_at_972 = now
+            speak = speak and not getattr(app, '_clipping_spoken_972', False)
+            if speak:
+                app._clipping_spoken_972 = True
     label = 'Captured\n' + text if quiet else text
     severity = 'accent' if quiet else 'error'
     try:
@@ -52,7 +103,7 @@ def post_reason(app, kind, *, handsfree=False, peak=0.0, headline=None):
             app._show_outcome_chip(label, severity, duration)
         if callable(getattr(app, '_schedule_ui', None)):
             app._schedule_ui(_home_message, app, text, duration)
-        if config.get('tts', {}).get('feedback_level') == 'full':
+        if speak:
             app._speak_session_notice(text)
     except Exception:
         logging.getLogger(__name__).debug('Capture feedback unavailable', exc_info=True)
@@ -65,7 +116,7 @@ def _home_message(app, text, duration):
 
 
 def post_clipping(app, audio):
-    post_reason(app, 'clipping', peak=capture_peak(audio))
+    post_reason(app, 'clipping', sustained_clipping=sustained_clipping(audio, app.model_rate))
 
 
 def post_delivery_clipping(app, audio, delivered):
@@ -109,7 +160,7 @@ def show_empty_capture(app, duration_s, mode='hold', *, tutorial_owner=None):
 def finish_streaming_if_empty(worker, audio):
     from samsara.speech_presence import finish_streaming_if_empty as finish
     session = worker._session
-    session._capture_peak_891 = capture_peak(audio)
+    session._capture_clipping_972 = sustained_clipping(audio, session.app.model_rate)
     duration = len(audio) / session.app.model_rate if audio is not None else 0
     session._empty_capture_kind_891 = 'short_tap' if duration < .51 else 'near_silent'
     # The detector can synchronously deliver on_final; mark ownership first.
@@ -164,4 +215,5 @@ def deliver_stream_final(session, text, raw_text, duration_s, elapsed_ms):
         # Audio-lost/retry guidance already explains its own detection; retain it.
         post_reason(session.app, kind, headline=existing if isinstance(existing, str) else None)
     else:
-        post_reason(session.app, 'clipping', peak=getattr(session, '_capture_peak_891', 0))
+        post_reason(session.app, 'clipping',
+                    sustained_clipping=getattr(session, '_capture_clipping_972', False))
