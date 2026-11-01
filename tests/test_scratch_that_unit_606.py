@@ -118,6 +118,12 @@ def test_intervening_change_refuses_without_selection_or_deletion(editor, change
     else:
         editor.document = b'X\0' + editor.document[2:]
     unchanged = editor.snapshot()
+    if change == 'away_and_back':
+        # 1001: input alone is allowed after exact document/caret proof.
+        assert unit.change() is True
+        assert editor.document == b''
+        assert editor.messages == [0xB1, 0xC2]
+        return
     assert unit.change() is False
     assert editor.snapshot() == unchanged
     assert editor.messages == []

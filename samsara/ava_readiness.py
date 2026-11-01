@@ -140,6 +140,11 @@ def failure_sentence(kind: Optional[str], provider: Optional[str], retry_after=N
     the provider's raw error text."""
     # STAND-IN COPY (566): grouped under report 562's existing wording ask.
     name = display_name(provider)
+    # PLACEHOLDER COPY (1001)
+    if kind == 'empty_reply':
+        return 'Ava received an empty answer. Please try again.'
+    if kind == 'answer_cut_off':
+        return 'Ava could not finish the answer. Please try again.'
     if kind == BAD_KEY:
         return f"Ava is offline. {name} rejected the API key. Check it in Settings."
     if kind == RATE_LIMITED:
@@ -170,6 +175,9 @@ def failure_sentence(kind: Optional[str], provider: Optional[str], retry_after=N
 
 # STAND-IN COPY (566)
 _SHORT = {
+    # PLACEHOLDER COPY (1001)
+    'empty_reply': 'empty answer',
+    'answer_cut_off': 'answer cut off',
     BLOCKED: "policy or budget block",
     MODEL_UNAVAILABLE: "model or route unavailable",
     PROVIDER_DOWN: "provider unavailable",

@@ -145,6 +145,13 @@ def test_readback_scratch_rechecks_and_never_deletes_after_change(rig, change):
         editor.document = b'X\0' + editor.document[2:]
     before = editor.snapshot()
     result = m.dispatch_utterance('scratch that', GOOD)
+    if change == 'away_and_back':
+        # 1001: command input alone is allowed after exact document/caret proof.
+        assert result.kind == 'scratch_success'
+        assert editor.document == b''
+        assert editor.messages == [0xB1, 0xC2]
+        m._remove_chars_fn.assert_not_called()
+        return
     assert result.kind == 'scratch_refuse'
     assert outcome_chip(result.kind, result.detail) == (dv.CHANGED, 'warning')
     assert editor.snapshot() == before

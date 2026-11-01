@@ -524,6 +524,9 @@ class SettingsServices:
                 or getattr(self.app, 'audio_coordinator', None) is None
             ))
             self.app.config.update(updates)
+            if 'command_mode' in updates and hasattr(self.app, 'command_matching_enabled'):
+                self.app.command_matching_enabled = bool(
+                    (self.app.config.get('command_mode') or {}).get('command_matching_enabled', False))
             if replace_tts:
                 self._replace_tts_runtime(requested_tts)
             save_settings(self.app, model_choices)

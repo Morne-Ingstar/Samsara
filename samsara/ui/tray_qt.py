@@ -1266,14 +1266,8 @@ class SamsaraTrayQt(QObject):
 
     def _core_actions(self, menu):
         """Add recovery actions before constructing any optional sections."""
-        app = self._app
-        show_action = self._add(menu, "Show Samsara", lambda: app.show_main_window())
-        menu.setDefaultAction(show_action)
-        settings_action = self._add(menu, "Settings", lambda: app.open_settings())
-        support_action = self._add(menu, "Something wrong?", self._open_support_tab)
-        restart_action = self._add(menu, "Restart Samsara", self._restart_samsara)
-        exit_action = self._add(menu, "Exit", lambda: app.quit_app())
-        return show_action, settings_action, support_action, restart_action, exit_action
+        from samsara.ui.tray_actions import add_core_actions
+        return add_core_actions(self, menu)
 
     def _open_support_tab(self):
         open_support_tab(self._app)

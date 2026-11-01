@@ -123,9 +123,10 @@ class DictationUnit:
     def _change(self, *, redo=False):
         if self.removed != redo or self.expected is None:
             return False
-        if _editor_snapshot() != self.expected:
+        current = _editor_snapshot()
+        if current is None or current[:5] != self.expected[:5]:
             return False
-        initial = self.expected
+        initial = current
         from samsara.clipboard import _user32 as u
         offset = self.before[3]
         end = offset if redo else offset + len(self.text.encode('utf-16-le')) // 2
@@ -138,7 +139,7 @@ class DictationUnit:
             return False
         selected = _editor_snapshot()
         if (selected is None or selected[:3] != self.expected[:3]
-                or selected[3:5] != (offset, end) or selected[5] != self.expected[5]):
+                or selected[3:5] != (offset, end) or selected[5] != initial[5]):
             self.expected = None
             return False
         replacement = ctypes.create_unicode_buffer(self.text if redo else '')

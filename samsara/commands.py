@@ -349,7 +349,7 @@ class CommandExecutor:
     #: A reminder utterance BEGINS with its trigger. "Tell Sarah to remind me
     #: in 5 minutes to check the build" is a sentence about a reminder.
     _REMINDER_OPENERS = ("remind me ", "set a reminder", "set reminder")
-    _REMINDER_NUMERIC = re.compile(r"^\d+ minute reminder\b")
+    _REMINDER_NUMERIC = re.compile(r"^(.+?) minute reminder\b")
 
     @staticmethod
     def _whole_utterance(text_lower: str) -> str:
@@ -361,7 +361,9 @@ class CommandExecutor:
     def _is_whole_reminder(self, whole: str) -> bool:
         if any(whole.startswith(opener) for opener in self._REMINDER_OPENERS):
             return True
-        return bool(self._REMINDER_NUMERIC.match(whole))
+        from samsara.spoken_numbers import parse_spoken_number
+        match = self._REMINDER_NUMERIC.match(whole)
+        return bool(match and parse_spoken_number(match.group(1)) is not None)
 
     def _authorize_session_control(self, cid, args, text, app):
         return execution_policy.authorize(

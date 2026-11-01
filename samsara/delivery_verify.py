@@ -161,10 +161,14 @@ class ReadbackUnit:
             return False
 
     def _change(self, redo):
+        current = _native_snapshot()
         if (self.expected is None or self.removed != redo
-                or _native_snapshot() != self.expected):
+                or current is None or current[:5] != self.expected[:5]):
             return False
-        initial = self.expected
+        # A command key changes GetLastInputInfo without editing the document.
+        # Rebase only after exact window/control/text/selection proof; retain
+        # the input fence throughout the selection/replacement transaction.
+        initial = current
         offset = self.before[3]
         end = offset if redo else offset + len(self.text.encode('utf-16-le')) // 2
         control = initial[1]

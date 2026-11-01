@@ -1158,10 +1158,6 @@ class ModesPage:
                 matching = self._widgets['cmd_matching_enabled'].isChecked()
                 cmd_cfg['command_matching_enabled'] = matching
                 cmd_cfg['dictation_literal_commands_only'] = self._widgets['cmd_dictation_literal_only'].isChecked()
-                # commands.py gates on the attribute, set once at startup;
-                # keep it in step so the change applies without a restart.
-                if hasattr(self.app, 'command_matching_enabled'):
-                    self.app.command_matching_enabled = matching
                 cmd_cfg['button'] = self._widgets['cmd_tab_button'].combo
                 cmd_cfg['suppress_button'] = self._widgets['cmd_tab_suppress'].isChecked()
                 updates['command_mode'] = cmd_cfg
